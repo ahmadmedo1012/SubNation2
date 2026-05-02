@@ -1,0 +1,45 @@
+{
+  "name": "SubNation — سوق الاشتراكات الرقمية",
+  "short_name": "SubNation",
+  "description": "سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وأكثر بالدينار الليبي.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a0a",
+  "theme_color": "#e11d48",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["shopping", "entertainment"],
+  "icons": [
+    {
+      "src": "/subnation-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/subnation-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "المتجر",
+      "short_name": "المتجر",
+      "description": "تصفح الاشتراكات المتاحة",
+      "url": "/",
+      "icons": [{ "src": "/subnation-logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "طلباتي",
+      "short_name": "الطلبات",
+      "description": "عرض طلباتي",
+      "url": "/orders",
+      "icons": [{ "src": "/subnation-logo.png", "sizes": "96x96" }]
+    }
+  ]
+}

@@ -6,6 +6,8 @@ import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { Navbar } from "@/components/layout/Navbar";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { Footer } from "@/components/layout/Footer";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import HomePage from "@/pages/home";
 import LoginPage from "@/pages/login";
@@ -16,6 +18,7 @@ import OrdersPage from "@/pages/orders";
 import OrderDetailPage from "@/pages/order-detail";
 import LoyaltyPage from "@/pages/loyalty";
 import SupportPage from "@/pages/support";
+import TermsPage from "@/pages/terms";
 import AdminLoginPage from "@/pages/admin/login";
 import AdminDashboardPage from "@/pages/admin/dashboard";
 import AdminTopupsPage from "@/pages/admin/topups";
@@ -41,27 +44,31 @@ function AppRoutes() {
     <div className="min-h-screen bg-background text-foreground">
       {!isAdmin && <Navbar />}
       <main className={!isAdmin && !isAuth ? "pb-16 md:pb-0" : ""}>
-        <Switch>
-          <Route path="/" component={HomePage} />
-          <Route path="/login" component={LoginPage} />
-          <Route path="/register" component={RegisterPage} />
-          <Route path="/product/:id" component={ProductPage} />
-          <Route path="/wallet" component={WalletPage} />
-          <Route path="/orders" component={OrdersPage} />
-          <Route path="/orders/:orderCode" component={OrderDetailPage} />
-          <Route path="/loyalty" component={LoyaltyPage} />
-          <Route path="/support" component={SupportPage} />
-          <Route path="/admin/login" component={AdminLoginPage} />
-          <Route path="/admin" component={AdminDashboardPage} />
-          <Route path="/admin/topups" component={AdminTopupsPage} />
-          <Route path="/admin/orders" component={AdminOrdersPage} />
-          <Route path="/admin/products" component={AdminProductsPage} />
-          <Route path="/admin/users" component={AdminUsersPage} />
-          <Route path="/admin/settings" component={AdminSettingsPage} />
-          <Route path="/admin/tickets" component={AdminTicketsPage} />
-          <Route component={NotFound} />
-        </Switch>
+        <ErrorBoundary>
+          <Switch>
+            <Route path="/" component={HomePage} />
+            <Route path="/login" component={LoginPage} />
+            <Route path="/register" component={RegisterPage} />
+            <Route path="/product/:id" component={ProductPage} />
+            <Route path="/wallet" component={WalletPage} />
+            <Route path="/orders" component={OrdersPage} />
+            <Route path="/orders/:orderCode" component={OrderDetailPage} />
+            <Route path="/loyalty" component={LoyaltyPage} />
+            <Route path="/support" component={SupportPage} />
+            <Route path="/terms" component={TermsPage} />
+            <Route path="/admin/login" component={AdminLoginPage} />
+            <Route path="/admin" component={AdminDashboardPage} />
+            <Route path="/admin/topups" component={AdminTopupsPage} />
+            <Route path="/admin/orders" component={AdminOrdersPage} />
+            <Route path="/admin/products" component={AdminProductsPage} />
+            <Route path="/admin/users" component={AdminUsersPage} />
+            <Route path="/admin/settings" component={AdminSettingsPage} />
+            <Route path="/admin/tickets" component={AdminTicketsPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </ErrorBoundary>
       </main>
+      {!isAdmin && <Footer />}
       {!isAdmin && <MobileNav />}
     </div>
   );
