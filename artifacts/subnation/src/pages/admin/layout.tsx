@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingBag, Wallet, Package,
   Users, LogOut, Shield, Settings, RefreshCw,
   MessageSquare, ChevronRight, Menu, X,
-  Search, Loader2, Plus, Clock, Zap, Gift,
+  Search, Loader2, Plus, Clock, Zap, Gift, Tag,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -26,6 +26,7 @@ const NAV_SECTIONS = [
       { href: "/admin/products",  label: "المنتجات",      icon: Package },
       { href: "/admin/users",     label: "المستخدمون",   icon: Users },
       { href: "/admin/referrals", label: "الإحالات",      icon: Gift },
+      { href: "/admin/coupons",   label: "الكوبونات",     icon: Tag },
     ],
   },
   {
@@ -47,6 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/tickets":   "الدعم الفني",
   "/admin/settings":  "الإعدادات",
   "/admin/referrals": "الإحالات",
+  "/admin/coupons":   "الكوبونات",
 };
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: any; href: string }[]> = {

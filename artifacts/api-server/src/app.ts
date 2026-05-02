@@ -4,6 +4,9 @@ import pinoHttp from "pino-http";
 import { rateLimit } from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { runMigrations } from "./migrate";
+
+runMigrations().catch(err => { logger.error({ err }, "Startup migration failed"); });
 
 const app: Express = express();
 

@@ -3,9 +3,11 @@ import { useGetProduct, useCreateOrder, useGetMe, getGetProductQueryKey, getGetM
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertCircle, CheckCircle, ShoppingCart, ArrowRight, Package,
-  Info, Tag, Lock, Wallet, Truck, ShieldCheck, Headphones, Copy, Check
+  Info, Tag, Lock, Wallet, Truck, ShieldCheck, Headphones, Copy, Check,
+  Percent, X, Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,6 +62,10 @@ export default function ProductPage() {
   const { toast } = useToast();
   const [orderResult, setOrderResult] = useState<any>(null);
   const [error, setError] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [couponValidating, setCouponValidating] = useState(false);
+  const [couponResult, setCouponResult] = useState<null | { code: string; discount_amount: number; final_amount: number; type: string; value: number; description: string | null }>(null);
+  const [couponError, setCouponError] = useState("");
 
   const numericId = parseInt(id ?? "0");
 
@@ -84,6 +90,34 @@ export default function ProductPage() {
       },
     },
   });
+
+  const validateCoupon = async () => {
+    if (!couponInput.trim() || !product) return;
+    setCouponValidating(true);
+    setCouponError("");
+    setCouponResult(null);
+    try {
+      const basePrice = product.sale_price ?? product.price;
+      const r = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: couponInput.trim().toUpperCase(), order_amount: basePrice }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      setCouponResult(data);
+    } catch (err: any) {
+      setCouponError(err.message);
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponInput("");
+    setCouponResult(null);
+    setCouponError("");
+  };
 
   const copyField = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => toast({ title: `تم نسخ ${label}` }));
@@ -304,13 +338,20 @@ export default function ProductPage() {
               token={token}
               product={product}
               user={user}
-              displayPrice={displayPrice}
-              canAfford={!!canAfford}
-              shortfall={shortfall}
+              displayPrice={couponResult ? couponResult.final_amount : displayPrice}
+              canAfford={!!(user && (user.wallet_balance ?? 0) >= (couponResult ? couponResult.final_amount : displayPrice))}
+              shortfall={(couponResult ? couponResult.final_amount : displayPrice) - (user?.wallet_balance ?? 0)}
               isPending={createOrderMutation.isPending}
-              onBuy={() => { setError(""); createOrderMutation.mutate({ data: { product_id: product.id } }); }}
+              onBuy={() => { setError(""); createOrderMutation.mutate({ data: { product_id: product.id, coupon_code: couponResult?.code } as any }); }}
               onLogin={() => navigate("/login")}
               onWallet={() => navigate("/wallet")}
+              couponInput={couponInput}
+              couponResult={couponResult}
+              couponError={couponError}
+              couponValidating={couponValidating}
+              onCouponChange={setCouponInput}
+              onCouponValidate={validateCoupon}
+              onCouponClear={clearCoupon}
             />
           </div>
         </div>
@@ -322,13 +363,20 @@ export default function ProductPage() {
           token={token}
           product={product}
           user={user}
-          displayPrice={displayPrice}
-          canAfford={!!canAfford}
-          shortfall={shortfall}
+          displayPrice={couponResult ? couponResult.final_amount : displayPrice}
+          canAfford={!!(user && (user.wallet_balance ?? 0) >= (couponResult ? couponResult.final_amount : displayPrice))}
+          shortfall={(couponResult ? couponResult.final_amount : displayPrice) - (user?.wallet_balance ?? 0)}
           isPending={createOrderMutation.isPending}
-          onBuy={() => { setError(""); createOrderMutation.mutate({ data: { product_id: product.id } }); }}
+          onBuy={() => { setError(""); createOrderMutation.mutate({ data: { product_id: product.id, coupon_code: couponResult?.code } as any }); }}
           onLogin={() => navigate("/login")}
           onWallet={() => navigate("/wallet")}
+          couponInput={couponInput}
+          couponResult={couponResult}
+          couponError={couponError}
+          couponValidating={couponValidating}
+          onCouponChange={setCouponInput}
+          onCouponValidate={validateCoupon}
+          onCouponClear={clearCoupon}
           compact
         />
       </div>
@@ -336,12 +384,83 @@ export default function ProductPage() {
   );
 }
 
+interface CouponResult { code: string; discount_amount: number; final_amount: number; type: string; value: number; description: string | null }
+
+function CouponField({
+  couponInput, couponResult, couponError, couponValidating, token,
+  onCouponChange, onCouponValidate, onCouponClear,
+}: {
+  couponInput: string; couponResult: CouponResult | null; couponError: string;
+  couponValidating: boolean; token: string | null;
+  onCouponChange: (v: string) => void; onCouponValidate: () => void; onCouponClear: () => void;
+}) {
+  if (!token) return null;
+  return (
+    <div className="space-y-1.5">
+      {/* Input row */}
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <Tag className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={couponInput}
+            onChange={e => { onCouponChange(e.target.value.toUpperCase()); if (couponResult) onCouponClear(); }}
+            onKeyDown={e => { if (e.key === "Enter" && !couponResult) onCouponValidate(); }}
+            placeholder="رمز الكوبون"
+            className="pr-9 h-9 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            disabled={!!couponResult}
+          />
+        </div>
+        {couponResult ? (
+          <button
+            onClick={onCouponClear}
+            className="h-9 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <button
+            onClick={onCouponValidate}
+            disabled={!couponInput.trim() || couponValidating}
+            className="h-9 px-3 rounded-lg bg-muted/50 border border-border/60 text-xs font-bold hover:bg-muted hover:border-border transition-all press-spring disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {couponValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "تحقق"}
+          </button>
+        )}
+      </div>
+
+      {/* Error */}
+      {couponError && (
+        <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2">
+          <AlertCircle className="w-3 h-3 shrink-0" />
+          {couponError}
+        </div>
+      )}
+
+      {/* Success */}
+      {couponResult && (
+        <div className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-1.5 text-emerald-400">
+            <CheckCircle className="w-3 h-3 shrink-0" />
+            <span className="font-mono font-black">{couponResult.code}</span>
+            <span>— {couponResult.type === "percentage" ? `${couponResult.value}%` : `${couponResult.value} د.ل`} خصم</span>
+          </div>
+          <span className="font-black text-emerald-400">−{formatCurrency(couponResult.discount_amount)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CtaBlock({
   token, product, user, displayPrice, canAfford, shortfall,
   isPending, onBuy, onLogin, onWallet, compact,
+  couponInput, couponResult, couponError, couponValidating,
+  onCouponChange, onCouponValidate, onCouponClear,
 }: {
   token: string | null; product: any; user: any; displayPrice: number; canAfford: boolean;
   shortfall: number; isPending: boolean; onBuy: () => void; onLogin: () => void; onWallet: () => void; compact?: boolean;
+  couponInput?: string; couponResult?: CouponResult | null; couponError?: string; couponValidating?: boolean;
+  onCouponChange?: (v: string) => void; onCouponValidate?: () => void; onCouponClear?: () => void;
 }) {
   if (!token) {
     return (
@@ -373,6 +492,19 @@ function CtaBlock({
     );
   }
 
+  const couponField = !compact && onCouponChange && onCouponValidate && onCouponClear ? (
+    <CouponField
+      token={token}
+      couponInput={couponInput ?? ""}
+      couponResult={couponResult ?? null}
+      couponError={couponError ?? ""}
+      couponValidating={couponValidating ?? false}
+      onCouponChange={onCouponChange}
+      onCouponValidate={onCouponValidate}
+      onCouponClear={onCouponClear}
+    />
+  ) : null;
+
   if (!canAfford) {
     return (
       <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
@@ -388,6 +520,7 @@ function CtaBlock({
           </>
         ) : (
           <>
+            {couponField}
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="flex items-center justify-between gap-2 px-4 py-3 bg-muted/25 border border-border/50 rounded-xl col-span-2">
                 <span className="text-muted-foreground">رصيدك الحالي</span>
@@ -408,7 +541,8 @@ function CtaBlock({
   }
 
   return (
-    <div className={compact ? "flex items-center gap-3" : ""}>
+    <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
+      {!compact && couponField}
       {compact && (
         <div className="flex-1 text-right">
           <div className="font-black text-primary text-xl tabular-nums">{formatCurrency(displayPrice)}</div>

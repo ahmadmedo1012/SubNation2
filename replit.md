@@ -105,6 +105,11 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - `PATCH /api/admin/tickets/:id/status` — change ticket status
 - `GET /api/admin/referrals` — referral stats + top referrers leaderboard + full list (filter: ?status=, ?search=)
 - `POST /api/admin/referrals/:id/credit` — manually credit a pending referral (gives 50 pts to referrer + notification)
+- `GET /api/coupons/admin` — list all coupons (admin)
+- `POST /api/coupons/admin` — create a new coupon (admin)
+- `PATCH /api/coupons/admin/:id` — update coupon (toggle active, change max_uses/expires_at/description)
+- `DELETE /api/coupons/admin/:id` — deactivate coupon (soft delete)
+- `POST /api/coupons/validate` — user validates a coupon code for a given order_amount, returns discount_amount + final_amount
 
 ## Phase 2 Features
 

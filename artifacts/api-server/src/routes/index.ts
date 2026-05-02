@@ -8,6 +8,7 @@ import { adminRouter } from "./admin";
 import { supportRouter } from "./support";
 import { loyaltyRouter } from "./loyalty";
 import { notificationsRouter } from "./notifications";
+import { couponsRouter } from "./coupons";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use("/support/tickets", supportRouter);
 router.use("/loyalty", loyaltyRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
+router.use("/coupons", couponsRouter);
 
 export default router;
