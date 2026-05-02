@@ -28,9 +28,6 @@ router.get("/", async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
 
-  const [pendingResult] = await db.select({ count: count() }).from(walletTopupsTable)
-    .where(eq(walletTopupsTable.userId, userId));
-
   const recentOrders = await db.select({
     order: ordersTable,
     productName: productsTable.name,
@@ -40,9 +37,6 @@ router.get("/", async (req, res) => {
     .where(eq(ordersTable.userId, userId))
     .orderBy(desc(ordersTable.createdAt))
     .limit(5);
-
-  const pendingTopups = await db.select({ count: count() }).from(walletTopupsTable)
-    .where(eq(walletTopupsTable.userId, userId));
 
   const pendingCount = (await db.select({ count: count() }).from(walletTopupsTable)
     .where(eq(walletTopupsTable.status, "pending")))[0]?.count ?? 0;
@@ -87,23 +81,34 @@ router.post("/topups", async (req, res) => {
 
   const parse = CreateTopupBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const { amount, payment_network, sender_phone, payment_reference } = parse.data;
+  const { amount, payment_method, payment_network, sender_phone, sender_account, payment_reference } = parse.data;
 
   if (amount <= 0 || amount > 10000) {
     return res.status(400).json({ error: "قيمة الشحن غير صالحة" });
   }
 
+  const method = payment_method ?? "mobile_transfer";
+
+  if (method === "mobile_transfer" && !payment_network) {
+    return res.status(400).json({ error: "يرجى اختيار الشبكة" });
+  }
+  if (method === "lypay" && !sender_account) {
+    return res.status(400).json({ error: "يرجى إدخال رقم حساب المُرسل" });
+  }
+
   const [topup] = await db.insert(walletTopupsTable).values({
     userId,
     amount: String(amount),
-    paymentNetwork: payment_network,
-    senderPhone: sender_phone,
+    paymentMethod: method,
+    paymentNetwork: payment_network ?? null,
+    senderPhone: sender_phone ?? null,
+    senderAccount: sender_account ?? null,
     paymentReference: payment_reference ?? null,
     status: "pending",
   }).returning();
 
   const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (currentUser) notifyNewTopup(currentUser.phone, amount, payment_network);
+  if (currentUser) notifyNewTopup(currentUser.phone, amount, method === "lypay" ? "LyPay" : payment_network ?? "");
 
   return res.status(201).json(formatTopup(topup));
 });
@@ -112,8 +117,10 @@ function formatTopup(topup: typeof walletTopupsTable.$inferSelect) {
   return {
     id: topup.id,
     amount: parseFloat(String(topup.amount)),
-    payment_network: topup.paymentNetwork,
+    payment_method: topup.paymentMethod,
+    payment_network: topup.paymentNetwork ?? null,
     sender_phone: topup.senderPhone ?? null,
+    sender_account: topup.senderAccount ?? null,
     payment_reference: topup.paymentReference ?? null,
     status: topup.status,
     admin_note: topup.adminNote ?? null,

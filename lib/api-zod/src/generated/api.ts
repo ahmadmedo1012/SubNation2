@@ -233,8 +233,10 @@ export const GetWalletResponse = zod.object({
 export const ListTopupsResponseItem = zod.object({
   id: zod.number(),
   amount: zod.number(),
-  payment_network: zod.string(),
+  payment_method: zod.string(),
+  payment_network: zod.string().nullish(),
   sender_phone: zod.string().nullish(),
+  sender_account: zod.string().nullish(),
   payment_reference: zod.string().nullish(),
   status: zod.enum(["pending", "approved", "rejected"]),
   admin_note: zod.string().nullish(),
@@ -248,8 +250,10 @@ export const ListTopupsResponse = zod.array(ListTopupsResponseItem);
  */
 export const CreateTopupBody = zod.object({
   amount: zod.number(),
-  payment_network: zod.string(),
-  sender_phone: zod.string(),
+  payment_method: zod.string(),
+  payment_network: zod.string().nullish(),
+  sender_phone: zod.string().nullish(),
+  sender_account: zod.string().nullish(),
   payment_reference: zod.string().nullish(),
 });
 
@@ -300,8 +304,10 @@ export const ListAdminTopupsResponseItem = zod.object({
   user_id: zod.number(),
   user_phone: zod.string(),
   amount: zod.number(),
-  payment_network: zod.string(),
+  payment_method: zod.string(),
+  payment_network: zod.string().nullish(),
   sender_phone: zod.string().nullish(),
+  sender_account: zod.string().nullish(),
   payment_reference: zod.string().nullish(),
   status: zod.string(),
   admin_note: zod.string().nullish(),
