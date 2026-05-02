@@ -4,7 +4,14 @@ import { eq, or } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
 import { RegisterBody, LoginBody } from "@workspace/api-zod";
-import { notifyNewUser } from "../telegram";
+import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
+
+// ── In-memory OTP store (phone → {code, expires}) ─────────────────────────────
+const otpStore = new Map<string, { code: string; expires: number }>();
+function purgeExpiredOtps() {
+  const now = Date.now();
+  for (const [k, v] of otpStore) if (v.expires < now) otpStore.delete(k);
+}
 
 const router = Router();
 
@@ -116,6 +123,64 @@ router.post("/login", async (req, res) => {
 
 router.post("/logout", (_req, res) => {
   return res.json({ success: true, message: "تم تسجيل الخروج" });
+});
+
+// ── Forgot password: generate OTP, notify admin via Telegram ──────────────────
+router.post("/forgot-password", async (req, res) => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone || typeof phone !== "string") {
+    return res.status(400).json({ error: "رقم الهاتف مطلوب" });
+  }
+  const normalizedPhone = validateLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: "رقم الهاتف غير صالح" });
+  }
+
+  // Always respond success to prevent user enumeration
+  const [user] = await db.select({ id: usersTable.id })
+    .from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
+
+  if (user) {
+    purgeExpiredOtps();
+    const code = Math.floor(100_000 + Math.random() * 900_000).toString();
+    otpStore.set(normalizedPhone, { code, expires: Date.now() + 30 * 60_000 });
+    notifyPasswordResetRequest(normalizedPhone, code);
+  }
+
+  return res.json({ success: true, message: "إذا كان الرقم مسجلاً، سيتم إرسال كود التحقق قريباً" });
+});
+
+// ── Reset password: validate OTP, update password hash ────────────────────────
+router.post("/reset-password", async (req, res) => {
+  const { phone, otp, newPassword } = req.body as {
+    phone?: string; otp?: string; newPassword?: string;
+  };
+  if (!phone || !otp || !newPassword) {
+    return res.status(400).json({ error: "جميع الحقول مطلوبة" });
+  }
+  const normalizedPhone = validateLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
+
+  const passwordTrimmed = newPassword.trim();
+  if (passwordTrimmed.length < 8 || passwordTrimmed.length > 128) {
+    return res.status(400).json({ error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
+  }
+
+  purgeExpiredOtps();
+  const stored = otpStore.get(normalizedPhone);
+  if (!stored || stored.code !== otp.trim() || stored.expires < Date.now()) {
+    return res.status(400).json({ error: "كود التحقق غير صحيح أو منتهي الصلاحية" });
+  }
+
+  const [user] = await db.update(usersTable)
+    .set({ passwordHash: hashPassword(passwordTrimmed) })
+    .where(eq(usersTable.phone, normalizedPhone))
+    .returning();
+
+  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+  otpStore.delete(normalizedPhone);
+  const token = generateToken({ userId: user.id });
+  return res.json({ success: true, token });
 });
 
 router.get("/me", async (req, res) => {

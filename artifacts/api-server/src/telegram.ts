@@ -42,3 +42,8 @@ export function notifyNewOrder(phone: string, productName: string, amount: numbe
   const msg = `🛒 <b>طلب جديد</b>\nالمستخدم: <code>${phone}</code>\nالمنتج: <b>${productName}</b>\nالمبلغ: <b>${amount.toFixed(2)} د.ل</b>`;
   sendTelegramMessage(msg).catch(() => {});
 }
+
+export function notifyPasswordResetRequest(phone: string, code: string): void {
+  const msg = `🔑 <b>طلب إعادة تعيين كلمة المرور</b>\n\nالهاتف: <code>${phone}</code>\nكود التحقق: <b>${code}</b>\n⏳ ينتهي خلال 30 دقيقة\n\n<i>أرسل هذا الكود للمستخدم عبر أي وسيلة تواصل.</i>`;
+  sendTelegramMessage(msg).catch(() => {});
+}
