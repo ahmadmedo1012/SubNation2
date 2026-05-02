@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
 import { Logo } from "./Logo";
@@ -14,6 +14,13 @@ export function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 6);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
 
   const { data: user } = useGetMe({
     query: { enabled: !!token, retry: false, refetchInterval: 30_000 },
@@ -28,7 +35,11 @@ export function Navbar() {
     }`;
 
   return (
-    <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-md border-b border-border">
+    <header className={`sticky top-0 z-50 transition-all duration-200 ${
+      scrolled
+        ? "bg-card/97 backdrop-blur-2xl border-b border-border shadow-md shadow-black/20"
+        : "bg-card/88 backdrop-blur-md border-b border-border/50"
+    }`}>
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
         <Link href="/">
           <Logo size="sm" />
@@ -39,8 +50,8 @@ export function Navbar() {
           <Link href="/" className={navCls("/")}>الكتالوج</Link>
           {token && (
             <>
-              <Link href="/wallet" className={navCls("/wallet")}>المحفظة</Link>
-              <Link href="/orders" className={navCls("/orders")}>طلباتي</Link>
+              <Link href="/wallet"  className={navCls("/wallet")}>المحفظة</Link>
+              <Link href="/orders"  className={navCls("/orders")}>طلباتي</Link>
               <Link href="/loyalty" className={navCls("/loyalty")}>الولاء</Link>
               <Link href="/support" className={navCls("/support")}>الدعم</Link>
             </>
@@ -50,7 +61,7 @@ export function Navbar() {
         <div className="flex items-center gap-1">
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg hover:bg-secondary/80 active:scale-95 transition-all duration-150 text-muted-foreground hover:text-foreground"
+            className="p-2 rounded-lg hover:bg-secondary/80 active:scale-90 transition-all duration-150 text-muted-foreground hover:text-foreground"
             aria-label="تبديل الثيم"
           >
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -61,9 +72,9 @@ export function Navbar() {
           {token && user ? (
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/80 hover:bg-secondary px-3 py-1.5 rounded-lg text-sm font-bold transition-all duration-150 active:scale-95 cursor-pointer">
-                  <Wallet className="w-3.5 h-3.5 text-primary" />
-                  <span>{formatCurrency(user.wallet_balance ?? 0)}</span>
+                <div className="flex items-center gap-1.5 bg-secondary/80 hover:bg-secondary border border-border/40 hover:border-primary/25 px-3 py-1.5 rounded-lg text-sm font-bold transition-all duration-150 active:scale-95 cursor-pointer group">
+                  <Wallet className="w-3.5 h-3.5 text-primary transition-transform group-hover:scale-110 duration-150" />
+                  <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                 </div>
               </Link>
               <Button
@@ -86,10 +97,10 @@ export function Navbar() {
             </div>
           )}
 
-          {/* Mobile menu button — only for guests */}
+          {/* Mobile menu button — guests only */}
           {!token && (
             <button
-              className="md:hidden p-2 rounded-lg hover:bg-secondary/80 active:scale-95 transition-all"
+              className="md:hidden p-2 rounded-lg hover:bg-secondary/80 active:scale-90 transition-all"
               onClick={() => setOpen(v => !v)}
               aria-label="القائمة"
             >
@@ -97,12 +108,13 @@ export function Navbar() {
             </button>
           )}
 
+          {/* Mobile wallet chip — logged-in */}
           {token && user && (
             <div className="md:hidden flex items-center">
               <Link href="/wallet">
-                <div className="flex items-center gap-1 bg-secondary/80 px-2.5 py-1.5 rounded-lg text-xs font-bold active:scale-95 transition-transform">
+                <div className="flex items-center gap-1 bg-secondary/80 border border-border/40 px-2.5 py-1.5 rounded-lg text-xs font-bold active:scale-90 transition-transform">
                   <Wallet className="w-3 h-3 text-primary" />
-                  <span>{formatCurrency(user.wallet_balance ?? 0)}</span>
+                  <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                 </div>
               </Link>
             </div>
@@ -112,10 +124,10 @@ export function Navbar() {
 
       {/* Mobile guest menu — slide in */}
       {!token && open && (
-        <div className="md:hidden border-t border-border bg-card px-4 py-3 space-y-1 animate-in slide-in-from-top-2 duration-150">
-          <Link href="/" onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors min-h-[44px]">الكتالوج</Link>
-          <Link href="/login" onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-secondary/80 transition-colors min-h-[44px]">تسجيل الدخول</Link>
-          <Link href="/register" onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-lg text-sm font-bold text-primary hover:bg-primary/10 transition-colors min-h-[44px]">إنشاء حساب مجاني</Link>
+        <div className="md:hidden border-t border-border bg-card/98 backdrop-blur-xl px-4 py-3 space-y-1 animate-in slide-in-from-top-2 duration-150">
+          <Link href="/"        onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors min-h-[44px]">الكتالوج</Link>
+          <Link href="/login"   onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary/80 transition-colors min-h-[44px]">تسجيل الدخول</Link>
+          <Link href="/register" onClick={() => setOpen(false)} className="flex items-center px-3 py-2.5 rounded-xl text-sm font-bold text-primary hover:bg-primary/10 transition-colors min-h-[44px]">إنشاء حساب مجاني</Link>
         </div>
       )}
     </header>

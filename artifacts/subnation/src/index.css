@@ -310,6 +310,103 @@
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
+
+  /* ── Text rendering & typography ──────────────────── */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.65;
+  }
+  h1, h2, h3, h4 { line-height: 1.25; letter-spacing: -0.01em; }
+
+  /* Fluid type utilities */
+  .text-fluid-xl  { font-size: clamp(1.25rem, 3.5vw, 1.5rem); }
+  .text-fluid-2xl { font-size: clamp(1.5rem, 4.5vw, 2.25rem); }
+  .text-fluid-3xl { font-size: clamp(1.875rem, 5.5vw, 3rem); }
+
+  /* ── Global animation system ───────────────────────── */
+
+  /* Page fade-in */
+  @keyframes page-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .page-in { animation: page-in 0.28s ease-out both; }
+
+  /* Float-in with spring feel (for cards, modals) */
+  @keyframes float-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
+  .float-in { animation: float-in 0.32s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+
+  /* Stagger delay helpers */
+  .stagger-1 { animation-delay: 0.04s; }
+  .stagger-2 { animation-delay: 0.08s; }
+  .stagger-3 { animation-delay: 0.12s; }
+  .stagger-4 { animation-delay: 0.16s; }
+  .stagger-5 { animation-delay: 0.20s; }
+  .stagger-6 { animation-delay: 0.24s; }
+  .stagger-7 { animation-delay: 0.28s; }
+  .stagger-8 { animation-delay: 0.32s; }
+
+  /* Error shake */
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-5px); }
+    40%, 80% { transform: translateX(5px); }
+  }
+  .shake { animation: shake 0.4s ease-in-out; }
+
+  /* Success ring expand */
+  @keyframes success-ring {
+    0%   { transform: scale(0.85); opacity: 0.55; }
+    100% { transform: scale(1.6);  opacity: 0; }
+  }
+  .success-ring { animation: success-ring 0.75s ease-out forwards; }
+
+  /* Gradient text */
+  .text-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(350 89% 68%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Dot-grid pattern (for hero backgrounds) */
+  .dot-grid {
+    background-image: radial-gradient(circle, hsl(var(--muted-foreground) / 0.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Card spring hover — replaces flat hover:translate */
+  .card-spring {
+    transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.22s ease;
+    will-change: transform;
+  }
+  .card-spring:hover { transform: translateY(-3px); }
+
+  /* Press-spring for buttons */
+  .press-spring { transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .press-spring:active { transform: scale(0.93); }
+
+  /* CTA glow pulse — applied to primary buy button */
+  @keyframes cta-glow {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.3), 0 6px 20px -6px hsl(var(--primary) / 0.5); }
+    50%       { box-shadow: 0 0 0 5px hsl(var(--primary) / 0),  0 6px 20px -6px hsl(var(--primary) / 0.5); }
+  }
+  .cta-glow { animation: cta-glow 2.5s ease-in-out infinite; }
+
+  /* Subtle scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.35); }
   .toggle-elevate::before,
   .toggle-elevate-2::before {
     content: "";
