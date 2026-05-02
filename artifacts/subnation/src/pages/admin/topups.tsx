@@ -49,8 +49,8 @@ export default function AdminTopupsPage() {
   const params: Record<string, string> = {};
   if (statusFilter) params.status = statusFilter;
 
-  const { data: topups = [], isLoading, refetch } = useListAdminTopups(params, {
-    query: { queryKey: getListAdminTopupsQueryKey(params), enabled: !!adminToken, refetchInterval: 30_000 },
+  const { data: allTopups = [], isLoading, refetch } = useListAdminTopups({}, {
+    query: { queryKey: getListAdminTopupsQueryKey({}), enabled: !!adminToken, refetchInterval: 30_000 },
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
   });
 
@@ -60,7 +60,6 @@ export default function AdminTopupsPage() {
       onSuccess() {
         setProcessingId(null);
         queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
-        queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey(params) });
       },
     },
   });
@@ -71,15 +70,14 @@ export default function AdminTopupsPage() {
       onSuccess() {
         setProcessingId(null);
         queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
-        queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey(params) });
       },
     },
   });
 
   if (!adminToken) { navigate("/admin/login"); return null; }
 
-  const allTopups = useListAdminTopups({}, { query: { queryKey: getListAdminTopupsQueryKey({}), enabled: !!adminToken }, request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } } });
-  const pendingCount = (allTopups.data ?? []).filter((t: any) => t.status === "pending").length;
+  const pendingCount = allTopups.filter((t: any) => t.status === "pending").length;
+  const topups = statusFilter ? allTopups.filter((t: any) => t.status === statusFilter) : allTopups;
 
   const handleApprove = (id: number) => {
     setProcessingId(id);

@@ -153,6 +153,51 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - Categories: billing, technical, order, account, other
 - Status: open → in_progress → closed
 
+## Phase 7 Features (Admin Panel UI/UX Overhaul — Section 2)
+
+### AdminLayout (`artifacts/subnation/src/pages/admin/layout.tsx`)
+- **Collapsible sidebar**: collapse toggle button, icon-only mode at w-16
+- **Mobile overlay sidebar**: hamburger menu button in top bar, backdrop dismiss
+- **Badge system**: sidebar nav items show pending counts (topups, tickets) via `badges` prop
+- **Sticky top bar**: backdrop-blur header with live refresh indicator + refresh button
+
+### Dashboard (`artifacts/subnation/src/pages/admin/dashboard.tsx`)
+- 8 KPI metric cards in 2×4 grid, each linking to relevant admin page
+- Yellow alert banner when pending topups exist
+- AreaChart (orders + revenue) and BarChart (new users) with gradient fills
+- Quick access link list
+
+### Topups (`artifacts/subnation/src/pages/admin/topups.tsx`)
+- All topups fetched at once, client-side filtered (no double hook calls)
+- Rich cards: amount prominent, method/network badges (LyPay vs تحويل رصيد)
+- Approve/reject inline with optional reject note
+- Animated pending count badge
+
+### Orders (`artifacts/subnation/src/pages/admin/orders.tsx`)
+- Zebra-striped table with status badges
+- Search bar (order code / phone / product name) + status filter tabs
+
+### Users (`artifacts/subnation/src/pages/admin/users.tsx`)
+- Zebra-striped table, current state summary in edit modal
+- Wallet mode toggle: Add / Subtract / Set
+- Tier select dropdown
+
+### Products (`artifacts/subnation/src/pages/admin/products.tsx`)
+- Card grid with product image, stock, order count
+- Delete confirmation inline (two-step: trash → archive icon + X)
+- Product search bar (>4 products)
+
+### Tickets (`artifacts/subnation/src/pages/admin/tickets.tsx`)
+- Avatar-style chat bubbles (shield icon for admin, user icon for user)
+- Auto-scroll to latest message on open/reply
+- Empty state in right pane when no ticket selected
+- Close/reopen status buttons
+
+### Settings (`artifacts/subnation/src/pages/admin/settings.tsx`)
+- Three tabs: التكاملات / الإشعارات / الأمان
+- Integrations tab: Telegram config status + setup instructions
+- Security tab: JWT, password hashing, rate-limit, CORS status display
+
 ## Phase 5 Features (Flash Sale + Admin Enhancements)
 
 - Flash sale admin panel: create/stop sale, discount 1–99%, countdown timer on homepage
