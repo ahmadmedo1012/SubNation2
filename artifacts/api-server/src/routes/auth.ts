@@ -8,7 +8,8 @@ import { notifyNewUser } from "../telegram";
 
 const router = Router();
 
-const JWT_SECRET = process.env.SESSION_SECRET ?? "subnation-secret-key-change-in-prod";
+if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET environment variable is required");
+const JWT_SECRET: string = process.env.SESSION_SECRET;
 
 function hashPassword(password: string): string {
   return createHash("sha256").update(password + "subnation_salt").digest("hex");

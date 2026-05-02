@@ -153,6 +153,31 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - Categories: billing, technical, order, account, other
 - Status: open → in_progress → closed
 
+## Phase 5 Features (Flash Sale + Admin Enhancements)
+
+- Flash sale admin panel: create/stop sale, discount 1–99%, countdown timer on homepage
+- Admin settings page: Telegram toggle, platform name, maintenance mode, custom JSON
+- Admin inventory view: table of all stock items with sold/available status
+- Admin support badge: unread ticket count on nav link
+
+## Phase 6 Features (Security + Validation)
+
+- **Libyan phone validation**: 10-digit, prefixes 091/092/093/094. Validated backend + frontend with real-time inline feedback. Util: `artifacts/subnation/src/lib/validation.ts`
+- **Pending topup limit**: max 3 pending topups per user (HTTP 429 + locked UI banner)
+- **Google OAuth**: `POST /api/auth/google` — verifies ID token via tokeninfo API. New users get `phone = g_<sub>` placeholder. Requires `VITE_GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_ID` env vars
+- **Input sanitization**: trim + length guards on all register/login inputs
+- **JWT hard-fail**: `SESSION_SECRET` env var throws on startup if not set
+
+## Production Hardening
+
+- **Rate limiting** (`express-rate-limit`): `/api/auth/*` = 20 req/15min; all `/api/*` = 120 req/min
+- **CORS**: Restricted to `REPLIT_DOMAINS` in production; open in development
+- **DB pool**: `max: 10`, `idleTimeoutMillis: 30s`, `connectionTimeoutMillis: 5s`
+- **Vite build**: `sourcemap: false`; function-based `manualChunks` (vendor-react, vendor-query, vendor-charts, vendor-icons) — keeps React in one chunk to prevent duplicate context errors
+- **Font loading**: Google Fonts loaded once via `<link rel="preload">` in HTML only (CSS `@import` removed)
+- **SEO**: `<meta name="description">`, `theme-color`, Open Graph tags in `index.html`
+- **Seed script**: `pnpm --filter @workspace/scripts seed` — creates admin user + 8 sample products. Reads `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars (defaults: `admin`/`SubNation@2026`)
+
 ## Important Notes
 
 - Run `pnpm run typecheck:libs` after modifying any `lib/db/src/schema/*.ts` file
@@ -160,3 +185,4 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - Flash sale applies discount to ALL products when active
 - Referral signup grants 5 LYD to the new user's wallet automatically
 - Admin JWT uses `SESSION_SECRET + "_admin"` as secret key
+- Password hashing: SHA256 + `"subnation_salt"` — changing salt invalidates all existing accounts

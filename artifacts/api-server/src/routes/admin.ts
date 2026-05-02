@@ -8,7 +8,8 @@ import { AdminLoginBody, CreateProductBody, UpdateProductBody } from "@workspace
 import { notifyTopupApproved, notifyTopupRejected, isTelegramConfigured } from "../telegram";
 
 const router = Router();
-const JWT_SECRET = process.env.SESSION_SECRET ?? "subnation-secret-key-change-in-prod";
+if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET environment variable is required");
+const JWT_SECRET: string = process.env.SESSION_SECRET;
 const ADMIN_JWT_SECRET = JWT_SECRET + "_admin";
 
 function hashPassword(password: string): string {
