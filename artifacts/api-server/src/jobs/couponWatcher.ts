@@ -1,14 +1,13 @@
 import { db, couponsTable } from "@workspace/db";
 import { eq, and, isNotNull, gt, lte } from "drizzle-orm";
 import { notifyCouponExpiringSoon, isTelegramConfigured } from "../telegram";
+import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 
 // Track which coupons we already alerted about (per server session)
 const alertedExpiring = new Set<number>();
 
 async function checkExpiringCoupons(): Promise<void> {
-  if (!isTelegramConfigured()) return;
-
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -29,7 +28,14 @@ async function checkExpiringCoupons(): Promise<void> {
       if (alertedExpiring.has(coupon.id)) continue;
       const expiresAt = coupon.expiresAt!;
       const hoursLeft = (expiresAt.getTime() - now.getTime()) / (60 * 60 * 1000);
-      notifyCouponExpiringSoon(coupon.code, expiresAt, hoursLeft);
+      if (isTelegramConfigured()) notifyCouponExpiringSoon(coupon.code, expiresAt, hoursLeft);
+      const hrs = hoursLeft.toFixed(1);
+      const expStr = expiresAt.toLocaleString("ar-LY", { timeZone: "Africa/Tripoli" });
+      await logAdminAlert(
+        "coupon_expiring",
+        `كوبون يوشك على الانتهاء: ${coupon.code}`,
+        `ينتهي خلال ${hrs} ساعة — في ${expStr}`,
+      );
       alertedExpiring.add(coupon.id);
       logger.info({ couponCode: coupon.code, hoursLeft }, "Coupon expiry alert sent");
     }

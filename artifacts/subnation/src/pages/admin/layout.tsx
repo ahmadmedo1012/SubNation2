@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingBag, Wallet, Package,
   Users, LogOut, Shield, Settings, RefreshCw,
   MessageSquare, ChevronRight, Menu, X,
-  Search, Loader2, Plus, Clock, Zap, Gift, Tag,
+  Search, Loader2, Plus, Clock, Zap, Gift, Tag, Bell,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -18,6 +18,7 @@ const NAV_SECTIONS = [
       { href: "/admin/topups",    label: "طلبات الشحن",   icon: Wallet,          badgeKey: "pendingTopups" },
       { href: "/admin/orders",    label: "الطلبات",        icon: ShoppingBag },
       { href: "/admin/tickets",   label: "الدعم الفني",   icon: MessageSquare,   badgeKey: "openTickets" },
+      { href: "/admin/alerts",    label: "التنبيهات",     icon: Bell,            badgeKey: "unreadAlerts" },
     ],
   },
   {
@@ -49,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/settings":  "الإعدادات",
   "/admin/referrals": "الإحالات",
   "/admin/coupons":   "الكوبونات",
+  "/admin/alerts":    "صندوق التنبيهات",
 };
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: any; href: string }[]> = {
@@ -220,7 +222,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 interface AdminLayoutProps {
   children: ReactNode;
   onRefresh?: () => void;
-  badges?: { pendingTopups?: number; openTickets?: number };
+  badges?: { pendingTopups?: number; openTickets?: number; unreadAlerts?: number };
 }
 
 export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
@@ -252,7 +254,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
   const refreshLabel = secondsAgo < 10 ? "الآن" : secondsAgo < 60 ? `${secondsAgo}ث` : `${Math.round(secondsAgo / 60)}د`;
   const pageTitle = PAGE_TITLES[location] ?? "الإدارة";
-  const totalBadges = (badges?.pendingTopups ?? 0) + (badges?.openTickets ?? 0);
+  const totalBadges = (badges?.pendingTopups ?? 0) + (badges?.openTickets ?? 0) + (badges?.unreadAlerts ?? 0);
   const contextActions = CONTEXT_ACTIONS[location] ?? [];
 
   const NavItem = ({ item }: { item: typeof ALL_NAV[0] }) => {

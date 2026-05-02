@@ -4,7 +4,8 @@ import { eq, and, desc, count, gt, sql } from "drizzle-orm";
 import { verifyToken } from "./auth";
 import { CreateOrderBody } from "@workspace/api-zod";
 import { randomBytes } from "crypto";
-import { notifyNewOrder, notifyCouponMaxedOut } from "../telegram";
+import { notifyNewOrder, notifyCouponMaxedOut, isTelegramConfigured } from "../telegram";
+import { logAdminAlert } from "../jobs/alertLogger";
 
 const router = Router();
 
@@ -143,7 +144,12 @@ router.post("/", async (req, res) => {
       .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
       .where(eq(couponsTable.id, appliedCoupon.id));
     if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
-      notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
+      if (isTelegramConfigured()) notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
+      logAdminAlert(
+        "coupon_maxed",
+        `كوبون استُنفد: ${appliedCoupon.code}`,
+        `وصل الكوبون إلى الحد الأقصى من الاستخدام (${appliedCoupon.maxUses} مرة) وأُوقف تلقائياً`,
+      );
     }
   }
 

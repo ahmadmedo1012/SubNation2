@@ -1,6 +1,7 @@
 import { db, inventoryTable, productsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { notifyLowStock, isTelegramConfigured } from "../telegram";
+import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 
 const LOW_STOCK_THRESHOLD = 3;
@@ -10,8 +11,6 @@ const alertedLow = new Set<number>();
 const alertedZero = new Set<number>();
 
 async function checkLowStock(): Promise<void> {
-  if (!isTelegramConfigured()) return;
-
   try {
     const products = await db
       .select({ id: productsTable.id, name: productsTable.name })
@@ -27,12 +26,14 @@ async function checkLowStock(): Promise<void> {
       const stock = Number(row?.count ?? 0);
 
       if (stock === 0 && !alertedZero.has(product.id)) {
-        notifyLowStock(product.name, 0);
+        if (isTelegramConfigured()) notifyLowStock(product.name, 0);
+        await logAdminAlert("no_stock", `نفاد المخزون: ${product.name}`, `المخزون وصل إلى صفر وحدات`);
         alertedZero.add(product.id);
-        alertedLow.delete(product.id); // reset so we re-alert if it goes low again later
+        alertedLow.delete(product.id);
         logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
       } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
-        notifyLowStock(product.name, stock);
+        if (isTelegramConfigured()) notifyLowStock(product.name, stock);
+        await logAdminAlert("low_stock", `مخزون منخفض: ${product.name}`, `تبقّى ${stock} وحدة فقط`);
         alertedLow.add(product.id);
         alertedZero.delete(product.id);
         logger.info({ productId: product.id, productName: product.name, stock }, "Low stock alert sent");

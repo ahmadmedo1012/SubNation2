@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable, supportTicketsTable, ticketRepliesTable, referralEventsTable } from "@workspace/db";
+import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable, supportTicketsTable, ticketRepliesTable, referralEventsTable, adminAlertsTable } from "@workspace/db";
 import { createNotification } from "../notify";
 import { eq, and, count, sum, desc, gte, like, sql, or } from "drizzle-orm";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { AdminLoginBody, CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
 import { notifyTopupApproved, notifyTopupRejected, isTelegramConfigured } from "../telegram";
+import { getAdminAlerts, markAlertRead, markAllAlertsRead, countUnreadAlerts } from "../jobs/alertLogger";
 
 const router = Router();
 if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET environment variable is required");
@@ -724,6 +725,57 @@ router.post("/referrals/:id/credit", async (req, res) => {
   );
 
   return res.json({ success: true, points_credited: POINTS });
+});
+
+// ─── Admin Alerts Inbox ───────────────────────────────────────────────────────
+
+router.get("/alerts", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    const alerts = await getAdminAlerts(200);
+    const unreadCount = await countUnreadAlerts();
+    return res.json({ alerts, unreadCount });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch admin alerts");
+    return res.status(500).json({ error: "خطأ في جلب التنبيهات" });
+  }
+});
+
+router.patch("/alerts/read-all", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    await markAllAlertsRead();
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to mark all alerts read");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
+router.patch("/alerts/:id/read", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "معرّف غير صالح" });
+  try {
+    await markAlertRead(id);
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to mark alert read");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
+router.delete("/alerts/:id", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: "معرّف غير صالح" });
+  try {
+    await db.delete(adminAlertsTable).where(eq(adminAlertsTable.id, id));
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete alert");
+    return res.status(500).json({ error: "خطأ" });
+  }
 });
 
 export { router as adminRouter };

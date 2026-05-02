@@ -36,6 +36,18 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00;
     `);
 
+    // Admin alerts inbox
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_alerts (
+        id         SERIAL PRIMARY KEY,
+        type       VARCHAR(30) NOT NULL DEFAULT 'system',
+        title      VARCHAR(255) NOT NULL,
+        message    TEXT,
+        is_read    BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     logger.info("Migrations completed");
   } catch (err) {
     logger.error({ err }, "Migration failed");

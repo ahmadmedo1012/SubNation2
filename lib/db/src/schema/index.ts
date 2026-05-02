@@ -10,3 +10,4 @@ export * from "./ticket_replies";
 export * from "./referral_events";
 export * from "./notifications";
 export * from "./coupons";
+export * from "./admin_alerts";

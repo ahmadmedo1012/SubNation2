@@ -31,6 +31,7 @@ import AdminSettingsPage from "@/pages/admin/settings";
 import AdminTicketsPage from "@/pages/admin/tickets";
 import AdminReferralsPage from "@/pages/admin/referrals";
 import AdminCouponsPage from "@/pages/admin/coupons";
+import AdminAlertsPage from "@/pages/admin/alerts";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -72,6 +73,7 @@ function AppRoutes() {
             <Route path="/admin/tickets" component={AdminTicketsPage} />
             <Route path="/admin/referrals" component={AdminReferralsPage} />
             <Route path="/admin/coupons" component={AdminCouponsPage} />
+            <Route path="/admin/alerts" component={AdminAlertsPage} />
             <Route component={NotFound} />
           </Switch>
         </ErrorBoundary>
