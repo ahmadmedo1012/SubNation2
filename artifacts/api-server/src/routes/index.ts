@@ -7,6 +7,7 @@ import { walletRouter } from "./wallet";
 import { adminRouter } from "./admin";
 import { supportRouter } from "./support";
 import { loyaltyRouter } from "./loyalty";
+import { notificationsRouter } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,7 @@ router.use("/wallet", walletRouter);
 router.use("/wallet/topups", walletRouter);
 router.use("/support/tickets", supportRouter);
 router.use("/loyalty", loyaltyRouter);
+router.use("/notifications", notificationsRouter);
 router.use("/admin", adminRouter);
 
 export default router;

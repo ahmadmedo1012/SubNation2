@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable, supportTicketsTable, ticketRepliesTable, referralEventsTable } from "@workspace/db";
+import { createNotification } from "../notify";
 import { eq, and, count, sum, desc, gte, like, sql, or } from "drizzle-orm";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
@@ -177,11 +178,17 @@ router.post("/topups/:id/approve", async (req, res) => {
         if (referrer) {
           await db.update(usersTable).set({ loyaltyPoints: referrer.loyaltyPoints + 50 })
             .where(eq(usersTable.id, referrer.id));
+          await createNotification(referrer.id, "loyalty",
+            "حصلت على 50 نقطة من إحالة!",
+            "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن", "/loyalty");
         }
       }
     }
 
     notifyTopupApproved(user.phone, parseFloat(String(topup.amount)));
+    await createNotification(user.id, "wallet",
+      `تم قبول شحن ${parseFloat(String(topup.amount)).toFixed(2)} د.ل`,
+      "تمت إضافة الرصيد إلى محفظتك بنجاح", "/wallet");
   }
 
   return res.json({ success: true, message: "تمت الموافقة على طلب الشحن وإضافة الرصيد" });
@@ -200,7 +207,12 @@ router.post("/topups/:id/reject", async (req, res) => {
   await db.update(walletTopupsTable).set({ status: "rejected", adminNote, reviewedAt: new Date() }).where(eq(walletTopupsTable.id, id));
 
   const [rejUser] = await db.select().from(usersTable).where(eq(usersTable.id, topup.userId)).limit(1);
-  if (rejUser) notifyTopupRejected(rejUser.phone, parseFloat(String(topup.amount)));
+  if (rejUser) {
+    notifyTopupRejected(rejUser.phone, parseFloat(String(topup.amount)));
+    await createNotification(rejUser.id, "wallet",
+      `تم رفض طلب الشحن (${parseFloat(String(topup.amount)).toFixed(2)} د.ل)`,
+      "تواصل مع الدعم إذا كنت ترى أن هذا خطأ", "/support");
+  }
 
   return res.json({ success: true, message: "تم رفض طلب الشحن" });
 });
@@ -560,6 +572,11 @@ router.post("/tickets/:id/reply", async (req, res) => {
   }).returning();
 
   await db.update(supportTicketsTable).set({ status: "in_progress" }).where(eq(supportTicketsTable.id, id));
+
+  // Notify ticket owner
+  await createNotification(row.ticket.userId, "support",
+    "رد جديد على تذكرتك",
+    message.trim().slice(0, 100), `/support`);
 
   return res.status(201).json({ id: reply.id, author_type: reply.authorType, message: reply.message, created_at: reply.createdAt.toISOString() });
 });

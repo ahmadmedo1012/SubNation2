@@ -1,0 +1,168 @@
+role:
+You are a senior frontend architect, UX refinement specialist, and real-time systems engineer working inside the existing Vite + React codebase of "subnation". You are executing an advanced refinement and polish phase focused on UI perfection, notification system maturity, branding consistency, and mobile-first excellence.
+
+task:
+Enhance and refine the platform by:
+
+* Building a complete, structured notification system (real-time + organized)
+* Integrating and standardizing branding (logo + name "SubNation")
+* Improving visual quality, animations, and UI consistency
+* Optimizing the entire experience for mobile users (primary focus)
+
+context:
+
+* Platform is already functional and advanced
+* Previous phases implemented core systems (wallet, referral, admin, etc.)
+* This phase is focused on:
+
+  * Polish
+  * Consistency
+  * UX smoothness
+  * Branding
+  * Real-time interaction
+
+reasoning:
+
+* Refine instead of rebuilding
+* Eliminate all visual and UX inconsistencies
+* Make the platform feel premium and cohesive
+* Ensure mobile experience is flawless and app-like
+* Implement real-time systems cleanly without performance issues
+
+stop conditions:
+
+* Notification system is fully real-time, organized, and reliable
+* Branding (logo + name "SubNation") is consistent across all pages
+* UI is visually clean, modern, and consistent
+* Mobile UX is smooth, fast, and intuitive
+* No visual glitches, layout issues, or inconsistent behaviors remain
+
+output:
+
+1. Notification System (Advanced):
+
+   * Implement full notification system:
+
+     * Real-time (WebSocket or efficient polling)
+     * Types:
+
+       * Wallet (recharge / deduction)
+       * Orders (created / completed)
+       * System (alerts / updates)
+       * Support replies
+
+   * UI:
+
+     * Notification bell in header
+     * Badge counter
+     * Dropdown panel:
+
+       * Clean list
+       * Categorized items
+       * Read / unread states
+     * Dedicated notifications page (optional)
+
+   * Features:
+
+     * Mark as read / mark all as read
+     * Auto-update without refresh
+     * Store history
+
+2. Branding Integration:
+
+   * Use provided logo across:
+
+     * Header
+     * Login/register pages
+     * Admin dashboard (light version if needed)
+     * Favicon
+
+   * Standardize name:
+
+     * Use "SubNation" everywhere (no variations)
+
+   * Ensure:
+
+     * Proper sizing and spacing
+     * Responsive behavior
+     * Clean alignment with UI
+
+3. UI Polish & Visual Refinement:
+
+   * Improve:
+
+     * Spacing consistency
+     * Alignment
+     * Shadows and depth
+     * Border radius consistency
+   * Enhance buttons:
+
+     * Hover / active / focus states
+     * Smooth transitions
+   * Improve cards and sections:
+
+     * Cleaner layout
+     * Better visual hierarchy
+
+4. Animations & Micro-Interactions:
+
+   * Add subtle animations:
+
+     * Page transitions
+     * Button interactions
+     * Notification appearance
+   * Keep animations:
+
+     * Fast
+     * Lightweight
+     * Non-intrusive
+
+5. Mobile-First Optimization (Critical):
+
+   * Review all screens on mobile:
+
+     * Navigation (thumb-friendly)
+     * Touch targets (adequate size)
+     * Vertical spacing
+   * Optimize:
+
+     * Forms (wallet / auth / support)
+     * Lists (subscriptions / orders)
+   * Ensure:
+
+     * No horizontal scroll
+     * Fast rendering
+     * Smooth interaction
+
+6. Header & Navigation Refinement:
+
+   * Clean header layout:
+
+     * Logo (left)
+     * Actions (right)
+   * Ensure consistency across pages
+   * Optimize mobile navigation (compact + clear)
+
+7. Performance & Smoothness:
+
+   * Ensure:
+
+     * No lag in interactions
+     * Smooth transitions
+     * Optimized rendering
+   * Avoid heavy animations or unnecessary re-renders
+
+8. Final Validation:
+
+   * Test:
+
+     * Notifications (real-time behavior)
+     * UI consistency across pages
+     * Mobile experience end-to-end
+   * Ensure:
+
+     * No bugs
+     * No broken layouts
+     * Premium, polished feel
+
+Implement all improvements cleanly and incrementally within the current system without breaking existing functionality.
