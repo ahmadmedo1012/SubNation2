@@ -8,6 +8,7 @@ import {
   Search, Loader2, Plus, Clock, Zap, Gift, Tag, Bell,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 const NAV_SECTIONS = [
@@ -234,6 +235,23 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [secondsAgo, setSecondsAgo] = useState(0);
 
+  // Auto-fetch unread alerts count for the badge — works on every page
+  const { data: alertCountData } = useQuery<{ count: number }>({
+    queryKey: ["admin-alerts-unread-count"],
+    queryFn: () =>
+      fetch("/api/admin/alerts/unread-count", {
+        headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" },
+      }).then(r => r.json()),
+    refetchInterval: 30_000,
+    enabled: !!adminToken,
+    staleTime: 15_000,
+  });
+
+  const mergedBadges = {
+    ...badges,
+    unreadAlerts: alertCountData?.count ?? badges?.unreadAlerts ?? 0,
+  };
+
   useEffect(() => { setLastUpdated(new Date()); setSecondsAgo(0); }, [children]);
   useEffect(() => {
     const id = setInterval(() => setSecondsAgo(Math.round((Date.now() - lastUpdated.getTime()) / 1000)), 5000);
@@ -254,12 +272,12 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
   const refreshLabel = secondsAgo < 10 ? "الآن" : secondsAgo < 60 ? `${secondsAgo}ث` : `${Math.round(secondsAgo / 60)}د`;
   const pageTitle = PAGE_TITLES[location] ?? "الإدارة";
-  const totalBadges = (badges?.pendingTopups ?? 0) + (badges?.openTickets ?? 0) + (badges?.unreadAlerts ?? 0);
+  const totalBadges = (mergedBadges.pendingTopups ?? 0) + (mergedBadges.openTickets ?? 0) + (mergedBadges.unreadAlerts ?? 0);
   const contextActions = CONTEXT_ACTIONS[location] ?? [];
 
   const NavItem = ({ item }: { item: typeof ALL_NAV[0] }) => {
     const active = location === item.href;
-    const badge = item.badgeKey ? (badges as any)?.[item.badgeKey] : undefined;
+    const badge = item.badgeKey ? (mergedBadges as any)?.[item.badgeKey] : undefined;
     return (
       <div>
         <Link href={item.href} onClick={() => setMobileOpen(false)}>

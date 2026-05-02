@@ -1,5 +1,5 @@
 import { db, adminAlertsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, count } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 export type AlertType =
@@ -41,9 +41,20 @@ export async function markAllAlertsRead() {
 }
 
 export async function countUnreadAlerts(): Promise<number> {
-  const rows = await db
-    .select({ id: adminAlertsTable.id })
+  const [row] = await db
+    .select({ count: count() })
     .from(adminAlertsTable)
     .where(eq(adminAlertsTable.isRead, false));
-  return rows.length;
+  return Number(row?.count ?? 0);
+}
+
+export async function deleteReadAlerts(): Promise<number> {
+  const result = await db
+    .delete(adminAlertsTable)
+    .where(eq(adminAlertsTable.isRead, true));
+  return (result as any).rowCount ?? 0;
+}
+
+export async function deleteAllAlerts(): Promise<void> {
+  await db.delete(adminAlertsTable);
 }

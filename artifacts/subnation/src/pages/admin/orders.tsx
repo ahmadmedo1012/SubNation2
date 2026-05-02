@@ -1,12 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { useListAdminOrders, getListAdminOrdersQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import { AdminLayout } from "./layout";
-import { ShoppingBag, Search, Download, X, ChevronDown, Calendar, CheckSquare, Square, Zap, TrendingUp, Tag, BarChart2, ChevronUp, Ticket, BadgePercent } from "lucide-react";
+import { ShoppingBag, Search, Download, X, ChevronDown, Calendar, CheckSquare, Square, Zap, TrendingUp, Tag, BarChart2, ChevronUp, Ticket, BadgePercent, RefreshCw, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+
+const BULK_STATUSES = [
+  { value: "completed",  label: "مكتمل",         color: "text-emerald-400" },
+  { value: "delivered",  label: "مُسلَّم",         color: "text-emerald-400" },
+  { value: "pending",    label: "قيد الانتظار",   color: "text-yellow-400" },
+  { value: "processing", label: "جارٍ التنفيذ",   color: "text-blue-400" },
+  { value: "failed",     label: "فشل",            color: "text-red-400" },
+  { value: "refunded",   label: "مسترجع",         color: "text-blue-400" },
+];
 
 const STATUS_FILTERS = [
   { value: "",           label: "الكل" },
@@ -53,12 +63,15 @@ function TableSkeleton() {
 export default function AdminOrdersPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [dateRange, setDateRange] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showStats, setShowStats] = useState(true);
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const { data: allOrders = [], isLoading, refetch } = useListAdminOrders({}, {
     query: { queryKey: getListAdminOrdersQueryKey({}), enabled: !!adminToken, refetchInterval: 30_000 },
@@ -66,6 +79,23 @@ export default function AdminOrdersPage() {
   });
 
   if (!adminToken) { navigate("/admin/login"); return null; }
+
+  const applyBulkStatus = async (status: string) => {
+    setBulkUpdating(true);
+    setBulkStatusOpen(false);
+    try {
+      await fetch("/api/admin/orders/bulk-status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ ids: Array.from(selectedIds), status }),
+      });
+      setSelectedIds(new Set());
+      refetch();
+      qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({}) });
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
 
   // Keyboard shortcut: / to focus search, Esc to clear
   useEffect(() => {
@@ -356,12 +386,44 @@ export default function AdminOrdersPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
             <Zap className="w-4 h-4 text-primary shrink-0" />
             <span className="text-sm font-bold text-primary">{selectedIds.size} طلب محدد</span>
-            <div className="flex gap-2 mr-auto">
+            <div className="flex gap-2 mr-auto flex-wrap items-center">
+              {/* Bulk status dropdown */}
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => setBulkStatusOpen(v => !v)}
+                  disabled={bulkUpdating}
+                >
+                  {bulkUpdating
+                    ? <><RefreshCw className="w-3 h-3 animate-spin" /> جارٍ التحديث...</>
+                    : <><ChevronRight className="w-3 h-3 rotate-90" /> تغيير الحالة</>
+                  }
+                </Button>
+                {bulkStatusOpen && (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setBulkStatusOpen(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-30 bg-card border border-border rounded-xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100">
+                      {BULK_STATUSES.map(s => (
+                        <button
+                          key={s.value}
+                          onClick={() => applyBulkStatus(s.value)}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium hover:bg-muted/40 transition-colors text-right ${s.color}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.color.replace("text-", "bg-")}`} />
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={exportSelected}>
-                <Download className="w-3 h-3" /> تصدير المحدد
+                <Download className="w-3 h-3" /> تصدير
               </Button>
               <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
                 <X className="w-3 h-3 ml-1" /> إلغاء

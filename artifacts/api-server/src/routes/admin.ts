@@ -6,7 +6,7 @@ import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { AdminLoginBody, CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
 import { notifyTopupApproved, notifyTopupRejected, isTelegramConfigured } from "../telegram";
-import { getAdminAlerts, markAlertRead, markAllAlertsRead, countUnreadAlerts } from "../jobs/alertLogger";
+import { getAdminAlerts, markAlertRead, markAllAlertsRead, countUnreadAlerts, deleteReadAlerts, deleteAllAlerts } from "../jobs/alertLogger";
 
 const router = Router();
 if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET environment variable is required");
@@ -106,6 +106,18 @@ router.get("/orders", async (req, res) => {
     discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
     created_at: r.order.createdAt?.toISOString(),
   })));
+});
+
+router.patch("/orders/bulk-status", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const { ids, status } = req.body ?? {};
+  const ALLOWED = ["pending", "processing", "completed", "delivered", "failed", "refunded"];
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids مطلوبة" });
+  if (!status || !ALLOWED.includes(status)) return res.status(400).json({ error: "حالة غير صالحة" });
+  const numIds: number[] = ids.map(Number).filter(n => !isNaN(n));
+  if (numIds.length === 0) return res.status(400).json({ error: "لا معرّفات صالحة" });
+  await db.update(ordersTable).set({ status: status as any }).where(sql`id = ANY(${numIds})`);
+  return res.json({ success: true, updated: numIds.length });
 });
 
 router.get("/topups", async (req, res) => {
@@ -765,6 +777,28 @@ router.patch("/alerts/:id/read", async (req, res) => {
   }
 });
 
+router.delete("/alerts/read", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    const deleted = await deleteReadAlerts();
+    return res.json({ success: true, deleted });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete read alerts");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
+router.delete("/alerts", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    await deleteAllAlerts();
+    return res.json({ success: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete all alerts");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
 router.delete("/alerts/:id", async (req, res) => {
   if (!verifyAdminToken(req, res)) return;
   const id = parseInt(req.params.id, 10);
@@ -774,6 +808,16 @@ router.delete("/alerts/:id", async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete alert");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
+router.get("/alerts/unread-count", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    const count = await countUnreadAlerts();
+    return res.json({ count });
+  } catch (err) {
     return res.status(500).json({ error: "خطأ" });
   }
 });
