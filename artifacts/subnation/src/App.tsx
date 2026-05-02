@@ -17,6 +17,7 @@ import WalletPage from "@/pages/wallet";
 import OrdersPage from "@/pages/orders";
 import OrderDetailPage from "@/pages/order-detail";
 import LoyaltyPage from "@/pages/loyalty";
+import ReferralsPage from "@/pages/referrals";
 import SupportPage from "@/pages/support";
 import TermsPage from "@/pages/terms";
 import ForgotPasswordPage from "@/pages/forgot-password";
@@ -55,6 +56,7 @@ function AppRoutes() {
             <Route path="/orders" component={OrdersPage} />
             <Route path="/orders/:orderCode" component={OrderDetailPage} />
             <Route path="/loyalty" component={LoyaltyPage} />
+            <Route path="/referrals" component={ReferralsPage} />
             <Route path="/support" component={SupportPage} />
             <Route path="/terms" component={TermsPage} />
             <Route path="/forgot-password" component={ForgotPasswordPage} />

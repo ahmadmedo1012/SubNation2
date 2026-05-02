@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Star, Gift, Copy, Check, Users, TrendingUp, Zap,
-  Share2, ShoppingCart, Crown, Wallet, ArrowUpRight,
+  Share2, ShoppingCart, Crown, Wallet, ArrowUpRight, ChevronLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -228,7 +228,7 @@ export default function LoyaltyPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="grid grid-cols-3 gap-2 text-center text-xs mb-3">
               {HOW_REFERRAL_WORKS.map((s) => (
                 <div key={s.step} className="bg-background/40 border border-border/40 rounded-xl p-2.5 flex flex-col items-center gap-1.5">
                   <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -238,6 +238,13 @@ export default function LoyaltyPage() {
                 </div>
               ))}
             </div>
+            <Link href="/referrals">
+              <button className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/20 hover:border-primary/30 text-primary text-sm font-bold transition-all active:scale-[0.98] press-spring">
+                <Users className="w-3.5 h-3.5" />
+                عرض سجل الإحالات الكامل
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            </Link>
           </div>
 
           {/* Points Conversion */}

@@ -76,6 +76,7 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 
 ### Loyalty (Phase 4)
 - `GET /api/loyalty` — points, tier, referral code/link, referral stats (auth)
+- `GET /api/loyalty/referrals` — list of referral events with masked phone, status, credited_at (auth)
 - `POST /api/loyalty/convert-points` — convert points → wallet balance (min 100 pts, auth)
 
 ### Support (Phase 4)
@@ -136,7 +137,9 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 ## Phase 4 Features (Loyalty + Support)
 
 ### Loyalty & Referral System
-- `/loyalty` page: points balance, tier progress bar, referral code/link copy, points conversion
+- `/loyalty` page: points balance, tier progress bar, referral code/link copy, points conversion, link to referrals history
+- `/referrals` page: dedicated referral program page — stats (total/credited/pending/points earned), referral code + link with copy, share button (Web Share API), how-it-works 4-step grid, full referral history list with masked phone numbers and status
+- `GET /api/loyalty/referrals` — returns list of referral events with masked referee phone, status, timestamps, points earned
 - Unique referral code per user, generated on registration
 - Anti-fraud: referral credited only after referee's first approved topup
 - 50 points per successful referral, 100 points = 1 LYD

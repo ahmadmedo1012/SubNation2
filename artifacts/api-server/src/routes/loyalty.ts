@@ -96,6 +96,38 @@ router.post("/convert-points", async (req, res) => {
   });
 });
 
+router.get("/referrals", async (req, res) => {
+  const userId = requireAuth(req, res);
+  if (!userId) return;
+
+  const events = await db
+    .select({
+      id: referralEventsTable.id,
+      status: referralEventsTable.status,
+      createdAt: referralEventsTable.createdAt,
+      creditedAt: referralEventsTable.creditedAt,
+      phone: usersTable.phone,
+    })
+    .from(referralEventsTable)
+    .innerJoin(usersTable, eq(usersTable.id, referralEventsTable.refereeId))
+    .where(eq(referralEventsTable.referrerId, userId))
+    .orderBy(desc(referralEventsTable.createdAt));
+
+  const maskPhone = (p: string) =>
+    p.length >= 7 ? p.slice(0, 3) + "****" + p.slice(-3) : p;
+
+  return res.json(
+    events.map(e => ({
+      id: e.id,
+      status: e.status,
+      phone_masked: maskPhone(e.phone),
+      created_at: e.createdAt.toISOString(),
+      credited_at: e.creditedAt?.toISOString() ?? null,
+      points_earned: e.status === "credited" ? POINTS_PER_REFERRAL : 0,
+    }))
+  );
+});
+
 function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
   if (spend < TIER_THRESHOLDS.silver) return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
   if (spend < TIER_THRESHOLDS.gold) return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
