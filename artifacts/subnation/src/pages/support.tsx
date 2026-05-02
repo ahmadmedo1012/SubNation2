@@ -238,7 +238,7 @@ export default function SupportPage() {
       {/* Tickets List */}
       {!selectedTicket && (
         loading ? (
-          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="bg-card border border-border rounded-xl h-20 animate-pulse" />)}</div>
+          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="rounded-xl h-20 skeleton-shimmer border border-border/40" />)}</div>
         ) : tickets.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-2xl">
             <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
