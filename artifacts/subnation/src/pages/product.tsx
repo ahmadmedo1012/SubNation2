@@ -210,51 +210,58 @@ export default function ProductPage() {
         العودة للكتالوج
       </button>
 
-      <div className="bg-card border border-border rounded-2xl overflow-hidden float-in">
+      <div className="bg-card border border-border/55 rounded-2xl overflow-hidden float-in shadow-xl shadow-black/15">
         {/* Image */}
-        <div className={`aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden`}>
+        <div className={`aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}>
+          {/* Ambient inner glow */}
+          <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/20 pointer-events-none" />
+
           {product.image_url ? (
             <img
               src={product.image_url}
               alt={product.name}
-              className="w-full h-full object-contain p-10 transition-transform duration-500 hover:scale-[1.03]"
+              className="w-full h-full object-contain p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
             />
           ) : (
-            <span className="text-8xl font-black text-white/12 select-none">{product.name[0]}</span>
+            <span className="text-8xl font-black text-white/10 select-none">{product.name[0]}</span>
           )}
-          <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-md text-white/85 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/10">
+
+          {/* Top badges */}
+          <div className="absolute top-3 right-3 bg-black/55 backdrop-blur-sm text-white/85 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/8">
             {categoryLabel(product.category)}
           </div>
           {product.discount_percent && (
-            <div className="absolute top-3 left-3 flex items-center gap-1 bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full shadow-lg shadow-primary/35">
+            <div className="absolute top-3 left-3 flex items-center gap-1 bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
               <Tag className="w-3 h-3" />
               خصم {product.discount_percent}%
             </div>
           )}
-          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card to-transparent" />
+
+          {/* Fade into card body */}
+          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-card to-transparent" />
         </div>
 
         <div className="p-5 space-y-4">
           {/* Title */}
           <div>
-            <h1 className="text-fluid-2xl font-black mb-1.5 leading-tight">{product.name}</h1>
+            <h1 className="text-fluid-2xl font-black mb-1.5 leading-tight tracking-tight">{product.name}</h1>
             {product.description && (
-              <p className="text-muted-foreground leading-relaxed text-sm">{product.description}</p>
+              <p className="text-muted-foreground/80 leading-relaxed text-sm">{product.description}</p>
             )}
           </div>
 
           {/* Price + stock */}
-          <div className="flex items-center gap-4 p-4 bg-muted/25 border border-border/50 rounded-xl">
+          <div className="flex items-center gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
             <div className="flex-1">
               <div className="text-3xl font-black text-primary leading-none tabular-nums">{formatCurrency(displayPrice)}</div>
               {product.sale_price && (
-                <div className="text-muted-foreground/45 text-sm line-through mt-1 tabular-nums">{formatCurrency(product.price)}</div>
+                <div className="text-muted-foreground/40 text-sm line-through mt-1.5 tabular-nums">{formatCurrency(product.price)}</div>
               )}
             </div>
-            <div className={`flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-xl border ${
+            <div className={`flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-xl border ${
               product.is_available
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                : "bg-muted border-border text-muted-foreground"
+                ? "bg-emerald-500/10 border-emerald-500/22 text-emerald-400"
+                : "bg-muted/50 border-border/50 text-muted-foreground/60"
             }`}>
               {product.is_available ? (
                 <><CheckCircle className="w-3.5 h-3.5" /> متوفر ({product.stock_count})</>

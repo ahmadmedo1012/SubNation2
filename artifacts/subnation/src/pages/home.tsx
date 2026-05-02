@@ -164,28 +164,28 @@ export default function HomePage() {
           <div className="mb-5 page-in">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-muted-foreground text-sm mb-0.5">مرحباً بك</p>
+                <p className="text-muted-foreground/70 text-sm mb-0.5">مرحباً بك مجدداً</p>
                 <h1 className="text-fluid-2xl font-black leading-tight">اشترِ اشتراكك المفضل اليوم</h1>
               </div>
               <div className="flex gap-2">
                 <Link href="/wallet">
-                  <div className="bg-card border border-border/60 hover:border-primary/35 rounded-xl px-3.5 py-2.5 flex items-center gap-2 transition-all duration-200 card-spring cursor-pointer min-w-[110px]">
-                    <div className="w-7 h-7 rounded-lg bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0">
+                  <div className="bg-card border border-border/55 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/8 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-220 card-spring cursor-pointer min-w-[120px]">
+                    <div className="w-8 h-8 rounded-lg bg-primary/12 border border-primary/22 flex items-center justify-center shrink-0">
                       <Wallet className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <div className="text-[10px] text-muted-foreground leading-none mb-0.5">المحفظة</div>
-                      <div className="font-black text-sm tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</div>
+                      <div className="text-[10px] text-muted-foreground/70 leading-none mb-0.5">المحفظة</div>
+                      <div className="font-black text-sm tabular-nums text-foreground">{formatCurrency(user.wallet_balance ?? 0)}</div>
                     </div>
                   </div>
                 </Link>
                 <Link href="/loyalty">
-                  <div className="bg-card border border-border/60 hover:border-yellow-400/35 rounded-xl px-3.5 py-2.5 flex items-center gap-2 transition-all duration-200 card-spring cursor-pointer">
-                    <div className="w-7 h-7 rounded-lg bg-yellow-400/12 border border-yellow-400/20 flex items-center justify-center shrink-0">
+                  <div className="bg-card border border-border/55 hover:border-yellow-400/40 hover:shadow-lg hover:shadow-yellow-900/10 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-220 card-spring cursor-pointer">
+                    <div className="w-8 h-8 rounded-lg bg-yellow-400/10 border border-yellow-400/22 flex items-center justify-center shrink-0">
                       <Star className="w-3.5 h-3.5 text-yellow-400" />
                     </div>
                     <div>
-                      <div className="text-[10px] text-muted-foreground leading-none mb-0.5">النقاط</div>
+                      <div className="text-[10px] text-muted-foreground/70 leading-none mb-0.5">النقاط</div>
                       <div className="font-black text-sm tabular-nums">{user.loyalty_points ?? 0}</div>
                     </div>
                   </div>
@@ -195,45 +195,50 @@ export default function HomePage() {
           </div>
         ) : (
           /* Guest: editorial hero */
-          <div className="relative overflow-hidden rounded-2xl border border-border/50 mb-6 bg-card page-in">
-            <div className="absolute inset-0 dot-grid pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-l from-primary/8 via-transparent to-transparent pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/60 via-primary/25 to-transparent" />
+          <div className="relative overflow-hidden rounded-2xl border border-border/45 mb-6 bg-card page-in">
+            {/* Background layers */}
+            <div className="absolute inset-0 dot-grid pointer-events-none opacity-70" />
+            <div className="absolute inset-0 bg-gradient-to-l from-primary/9 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/70 via-primary/30 to-transparent" />
 
-            <div className="relative px-5 py-6 sm:px-8 sm:py-8">
+            {/* Ambient glow blobs */}
+            <div className="absolute top-[-40px] right-[10%] w-64 h-64 bg-primary/7 rounded-full blur-3xl pointer-events-none blob-drift" />
+            <div className="absolute bottom-[-30px] left-[20%] w-48 h-48 bg-primary/4 rounded-full blur-3xl pointer-events-none blob-drift-slow" />
+
+            <div className="relative px-5 py-6 sm:px-8 sm:py-9">
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <span className="text-[10px] font-black bg-primary/15 text-primary border border-primary/25 px-2.5 py-0.5 rounded-full">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/15 text-primary border border-primary/28 px-2.5 py-0.5 rounded-full">
                       ليبيا #1
                     </span>
-                    <span className="text-[11px] text-muted-foreground">سوق الاشتراكات الرقمية</span>
+                    <span className="text-[11px] text-muted-foreground/70">سوق الاشتراكات الرقمية</span>
                   </div>
-                  <h1 className="text-fluid-3xl font-black mb-2 leading-tight tracking-tight">
+                  <h1 className="text-fluid-3xl font-black mb-2.5 leading-tight tracking-tight">
                     اشتراكات رقمية
                     <br />
-                    <span className="text-gradient">بالدينار الليبي</span>
+                    <span className="text-gradient-animated">بالدينار الليبي</span>
                   </h1>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-4 max-w-sm">
+                  <p className="text-muted-foreground/80 text-sm leading-relaxed mb-4 max-w-sm">
                     تسليم فوري، دفع آمن، دعم متواصل. كل اشتراكاتك في مكان واحد.
                   </p>
 
-                  {/* Brand chips — show what's available */}
+                  {/* Brand chips */}
                   <div className="relative overflow-hidden mb-4">
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
-                      {BRANDS.map(brand => (
-                        <span key={brand} className="shrink-0 text-[11px] font-bold bg-muted/60 border border-border/50 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap">
+                      {BRANDS.map((brand, i) => (
+                        <span key={brand} className={`shrink-0 text-[11px] font-bold bg-muted/50 border border-border/45 text-muted-foreground/80 px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border hover:text-muted-foreground transition-colors duration-150 float-in stagger-${Math.min(i + 1, 8)}`}>
                           {brand}
                         </span>
                       ))}
-                      <span className="shrink-0 text-[11px] text-muted-foreground/50 px-1 whitespace-nowrap">وأكثر…</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground/40 px-1 whitespace-nowrap">وأكثر…</span>
                     </div>
                   </div>
 
                   {/* Trust pills */}
                   <div className="flex flex-wrap gap-2 mb-5">
                     {TRUST_ITEMS.map(item => (
-                      <div key={item.label} className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/35 border border-border/40 px-2.5 py-1 rounded-full">
+                      <div key={item.label} className="flex items-center gap-1.5 text-xs text-muted-foreground/75 bg-muted/30 border border-border/35 px-2.5 py-1 rounded-full hover:bg-muted/50 transition-colors">
                         <item.icon className="w-3 h-3" />
                         {item.label}
                       </div>
@@ -242,14 +247,14 @@ export default function HomePage() {
 
                   <div className="flex gap-2.5 flex-wrap">
                     <Link href="/register">
-                      <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] h-11 px-6 font-bold transition-all cta-glow text-sm">
+                      <Button className="bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 active:scale-[0.97] h-11 px-7 font-bold transition-all cta-glow text-sm">
                         إنشاء حساب مجاني
                       </Button>
                     </Link>
                     <Link href="/login">
-                      <Button variant="outline" className="active:scale-[0.97] h-11 px-4 transition-all text-sm gap-1.5">
+                      <Button variant="outline" className="active:scale-[0.97] h-11 px-4 transition-all text-sm gap-1.5 hover:bg-muted/50">
                         تسجيل الدخول
-                        <ArrowLeft className="w-3.5 h-3.5 opacity-50" />
+                        <ArrowLeft className="w-3.5 h-3.5 opacity-45" />
                       </Button>
                     </Link>
                   </div>
@@ -259,13 +264,13 @@ export default function HomePage() {
                 {stats && (
                   <div className="hidden sm:flex flex-col gap-2 shrink-0">
                     {[
-                      { label: "منتج متاح",     value: stats.available_products, color: "text-emerald-400", border: "border-emerald-500/15", bg: "bg-emerald-500/6" },
-                      { label: "أقل سعر",        value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—", color: "text-primary", border: "border-primary/15", bg: "bg-primary/6" },
-                      { label: "وحدة بالمخزون", value: stats.total_units,        color: "text-blue-400",    border: "border-blue-500/15",   bg: "bg-blue-500/6" },
-                    ].map(s => (
-                      <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl px-4 py-2.5 text-right min-w-[108px]`}>
-                        <div className={`font-black text-xl leading-none mb-0.5 tabular-nums ${s.color}`}>{s.value}</div>
-                        <div className="text-xs text-muted-foreground">{s.label}</div>
+                      { label: "منتج متاح",     value: stats.available_products,                                      color: "text-emerald-400", border: "border-emerald-500/18", bg: "bg-emerald-500/7" },
+                      { label: "أقل سعر",        value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—", color: "text-primary",      border: "border-primary/18",    bg: "bg-primary/7"    },
+                      { label: "وحدة بالمخزون", value: stats.total_units,                                             color: "text-blue-400",    border: "border-blue-500/18",   bg: "bg-blue-500/7"   },
+                    ].map((s, i) => (
+                      <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl px-4 py-3 text-right min-w-[112px] float-in stagger-${i + 1} hover:brightness-110 transition-all duration-200`}>
+                        <div className={`font-black text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}>{s.value}</div>
+                        <div className="text-xs text-muted-foreground/70">{s.label}</div>
                       </div>
                     ))}
                   </div>

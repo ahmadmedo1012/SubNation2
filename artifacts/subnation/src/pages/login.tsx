@@ -41,17 +41,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-bl from-primary/5 via-background to-background">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-background">
+      {/* Ambient background glows */}
+      <div className="absolute top-[-10%] right-[15%] w-96 h-96 bg-primary/6 rounded-full blur-[80px] pointer-events-none blob-drift" />
+      <div className="absolute bottom-[-5%] left-[10%] w-72 h-72 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow" />
+      <div className="absolute inset-0 dot-grid opacity-30 pointer-events-none" />
+
+      <div className="relative w-full max-w-sm">
+        <div className="text-center mb-8 reveal-up">
           <div className="flex justify-center mb-5">
             <Logo size="lg" />
           </div>
           <h1 className="text-xl font-black">تسجيل الدخول</h1>
-          <p className="text-muted-foreground text-sm mt-1">أدخل بيانات حسابك للمتابعة</p>
+          <p className="text-muted-foreground/75 text-sm mt-1">أدخل بيانات حسابك للمتابعة</p>
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/10">
+        <div className="bg-card border border-border/60 rounded-2xl p-6 shadow-2xl shadow-black/20 reveal-up stagger-2">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="phone">رقم الهاتف</Label>
@@ -107,7 +112,7 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              className="w-full h-11 bg-primary hover:bg-primary/90 font-bold text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+              className="w-full h-11 bg-primary hover:bg-primary/90 font-bold text-base shadow-xl shadow-primary/25 transition-all active:scale-[0.97] cta-glow"
               disabled={loginMutation.isPending}
             >
               {loginMutation.isPending ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
@@ -116,17 +121,17 @@ export default function LoginPage() {
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">أو</span>
-            <div className="flex-1 h-px bg-border" />
+            <div className="flex-1 h-px bg-border/50" />
+            <span className="text-xs text-muted-foreground/60">أو</span>
+            <div className="flex-1 h-px bg-border/50" />
           </div>
 
           {/* Google Sign-In */}
           <GoogleSignInButton />
 
-          <div className="mt-5 text-center text-sm text-muted-foreground">
+          <div className="mt-5 text-center text-sm text-muted-foreground/75">
             ليس لديك حساب؟{" "}
-            <Link href="/register" className="text-primary font-bold hover:underline underline-offset-2">إنشاء حساب جديد</Link>
+            <Link href="/register" className="text-primary font-bold hover:text-primary/80 transition-colors">إنشاء حساب جديد</Link>
           </div>
         </div>
       </div>
@@ -172,7 +177,7 @@ function GoogleSignInButton() {
         type="button"
         onClick={handleGoogleLogin}
         disabled={loading}
-        className="w-full h-11 flex items-center justify-center gap-3 border border-border rounded-xl bg-card hover:bg-secondary transition-all active:scale-[0.98] font-medium text-sm disabled:opacity-60"
+        className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-180 active:scale-[0.97] font-medium text-sm disabled:opacity-60 press-spring"
       >
         <GoogleIcon />
         {loading ? "جارٍ التحقق..." : "المتابعة عبر Google"}
