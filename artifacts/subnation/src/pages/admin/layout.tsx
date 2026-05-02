@@ -1,11 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { formatCurrency } from "@/lib/utils";
 import {
   LayoutDashboard, ShoppingBag, Wallet, Package,
   Users, LogOut, Shield, Settings, RefreshCw,
-  MessageSquare, ChevronRight, Menu, X
+  MessageSquare, ChevronRight, Menu, X,
+  Search, Loader2, Plus, Clock, Zap,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 const NAV_SECTIONS = [
@@ -45,6 +47,172 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/settings":  "الإعدادات",
 };
 
+const CONTEXT_ACTIONS: Record<string, { label: string; icon: any; href: string }[]> = {
+  "/admin/products": [
+    { label: "إضافة منتج جديد", icon: Plus,  href: "/admin/products#new" },
+  ],
+  "/admin/topups": [
+    { label: "المعلقة فقط",     icon: Clock, href: "/admin/topups" },
+  ],
+  "/admin/orders": [
+    { label: "آخر الطلبات",     icon: Zap,   href: "/admin/orders" },
+  ],
+};
+
+// ── Global search component ──────────────────────────────────────────────────
+
+function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ orders: any[]; users: any[]; products: any[] }>({
+    orders: [], users: [], products: [],
+  });
+  const [loading, setLoading] = useState(false);
+  const [, navigate] = useLocation();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const headers = { Authorization: `Bearer ${adminToken}` };
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults({ orders: [], users: [], products: [] }); return; }
+    const timer = setTimeout(() => {
+      setLoading(true);
+      Promise.all([
+        fetch(`/api/admin/orders?search=${encodeURIComponent(q)}`, { headers }).then(r => r.json()).catch(() => []),
+        fetch(`/api/admin/users?search=${encodeURIComponent(q)}`, { headers }).then(r => r.json()).catch(() => []),
+        fetch(`/api/admin/products?search=${encodeURIComponent(q)}`, { headers }).then(r => r.json()).catch(() => []),
+      ]).then(([orders, users, products]) => {
+        setResults({
+          orders:   Array.isArray(orders)   ? orders.slice(0, 4)   : [],
+          users:    Array.isArray(users)    ? users.slice(0, 4)    : [],
+          products: Array.isArray(products) ? products.slice(0, 4) : [],
+        });
+      }).finally(() => setLoading(false));
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const total = results.orders.length + results.users.length + results.products.length;
+
+  const goTo = (href: string) => { navigate(href); onClose(); };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[12vh] px-4"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Input */}
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
+          {loading
+            ? <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" />
+            : <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+          }
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="بحث في الطلبات، المستخدمين، المنتجات..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/45 text-right"
+          />
+          <kbd className="text-[10px] font-mono text-muted-foreground/40 bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">esc</kbd>
+        </div>
+
+        {/* Results */}
+        {query.length >= 2 && (
+          <div className="max-h-72 overflow-y-auto">
+            {!loading && total === 0 && (
+              <div className="py-10 text-center text-muted-foreground text-sm">لا نتائج لـ "{query}"</div>
+            )}
+
+            {results.orders.length > 0 && (
+              <div className="p-2">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">الطلبات</div>
+                {results.orders.map((o: any) => (
+                  <button key={o.id} onClick={() => goTo("/admin/orders")}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right">
+                    <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{o.product_name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{o.order_code} · {o.user_phone}</div>
+                    </div>
+                    <span className="font-black text-primary text-xs tabular-nums shrink-0">{formatCurrency(o.amount)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {results.users.length > 0 && (
+              <div className="p-2">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">المستخدمون</div>
+                {results.users.map((u: any) => (
+                  <button key={u.id} onClick={() => goTo("/admin/users")}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                      <Users className="w-3.5 h-3.5 text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono text-sm font-bold">{u.phone}</div>
+                      <div className="text-xs text-muted-foreground">{formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {results.products.length > 0 && (
+              <div className="p-2">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">المنتجات</div>
+                {results.products.map((p: any) => (
+                  <button key={p.id} onClick={() => goTo("/admin/products")}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right">
+                    <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
+                      {p.image_url
+                        ? <img src={p.image_url} className="w-full h-full object-contain p-1" />
+                        : <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">{formatCurrency(p.price)} · {p.stock_count} وحدة</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Idle hint */}
+        {query.length < 2 && (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground/40">
+            ابحث باسم المنتج، رقم الطلب، أو رقم الهاتف
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-4 py-2 border-t border-border bg-muted/10 flex items-center gap-4 text-[10px] text-muted-foreground/35">
+          <span><kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↵</kbd> اختيار</span>
+          <span><kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">esc</kbd> إغلاق</span>
+          <span className="mr-auto"><kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">⌘K</kbd> فتح</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main layout ──────────────────────────────────────────────────────────────
+
 interface AdminLayoutProps {
   children: ReactNode;
   onRefresh?: () => void;
@@ -53,9 +221,10 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [location] = useLocation();
-  const { adminLogout } = useAuth();
+  const { adminToken, adminLogout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [secondsAgo, setSecondsAgo] = useState(0);
 
@@ -65,38 +234,67 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     return () => clearInterval(id);
   }, [lastUpdated]);
 
+  // Cmd+K / Ctrl+K global shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearch(v => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const refreshLabel = secondsAgo < 10 ? "الآن" : secondsAgo < 60 ? `${secondsAgo}ث` : `${Math.round(secondsAgo / 60)}د`;
   const pageTitle = PAGE_TITLES[location] ?? "الإدارة";
   const totalBadges = (badges?.pendingTopups ?? 0) + (badges?.openTickets ?? 0);
+  const contextActions = CONTEXT_ACTIONS[location] ?? [];
 
   const NavItem = ({ item }: { item: typeof ALL_NAV[0] }) => {
     const active = location === item.href;
     const badge = item.badgeKey ? (badges as any)?.[item.badgeKey] : undefined;
     return (
-      <Link href={item.href} onClick={() => setMobileOpen(false)}>
-        <div className={`
-          relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium
-          transition-all duration-150 group
-          ${active
-            ? "bg-primary/15 text-primary font-bold border border-primary/20"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-          }
-          ${collapsed ? "justify-center px-2" : ""}
-        `}>
-          <item.icon className={`w-4 h-4 shrink-0 transition-colors ${active ? "text-primary" : ""}`} />
-          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-          {!collapsed && badge ? (
-            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}>
-              {badge}
-            </span>
-          ) : null}
-          {collapsed && badge ? (
-            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
-              {badge > 9 ? "9+" : badge}
-            </span>
-          ) : null}
-        </div>
-      </Link>
+      <div>
+        <Link href={item.href} onClick={() => setMobileOpen(false)}>
+          <div className={`
+            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium
+            transition-all duration-150 group
+            ${active
+              ? "bg-primary/15 text-primary font-bold border border-primary/20"
+              : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+            }
+            ${collapsed ? "justify-center px-2" : ""}
+          `}>
+            <item.icon className={`w-4 h-4 shrink-0 transition-colors ${active ? "text-primary" : ""}`} />
+            {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+            {!collapsed && badge ? (
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}>
+                {badge}
+              </span>
+            ) : null}
+            {collapsed && badge ? (
+              <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
+                {badge > 9 ? "9+" : badge}
+              </span>
+            ) : null}
+          </div>
+        </Link>
+
+        {/* Context quick actions — only when active and not collapsed */}
+        {active && !collapsed && contextActions.length > 0 && (
+          <div className="mt-1 mr-3 space-y-0.5 border-r border-primary/15 pr-2">
+            {contextActions.map(action => (
+              <Link key={action.href + action.label} href={action.href} onClick={() => setMobileOpen(false)}>
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-primary/8 transition-all duration-100">
+                  <action.icon className="w-3 h-3 shrink-0" />
+                  <span>{action.label}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -106,7 +304,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       <div className={`p-3 border-b border-border flex items-center gap-2 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed ? (
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm shadow-primary/30">
               <Shield className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
@@ -115,7 +313,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             </div>
           </div>
         ) : (
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center relative">
+          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center relative shadow-sm shadow-primary/30">
             <Shield className="w-3.5 h-3.5 text-white" />
             {totalBadges > 0 && (
               <span className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
@@ -149,8 +347,18 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="p-2.5 border-t border-border">
+      {/* Footer: search hint + logout */}
+      <div className="p-2.5 border-t border-border space-y-0.5">
+        {!collapsed && (
+          <button
+            onClick={() => setShowSearch(true)}
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group"
+          >
+            <Search className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1 text-right">بحث سريع</span>
+            <kbd className="text-[9px] font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">⌘K</kbd>
+          </button>
+        )}
         <button
           onClick={adminLogout}
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
@@ -164,6 +372,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* Global search overlay */}
+      {showSearch && adminToken && (
+        <GlobalSearch adminToken={adminToken} onClose={() => setShowSearch(false)} />
+      )}
+
       {/* Desktop sidebar */}
       <aside className={`hidden md:flex flex-col shrink-0 bg-card border-l border-border transition-all duration-200 ${collapsed ? "w-[52px]" : "w-52"}`}>
         {sidebarContent}
@@ -182,12 +395,12 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       {/* Main content */}
       <main className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-30 border-b border-border bg-card/92 backdrop-blur-md px-4 md:px-5 h-12 flex items-center gap-3">
+        <div className="sticky top-0 z-30 border-b border-border bg-card/93 backdrop-blur-md px-4 md:px-5 h-12 flex items-center gap-3">
           <button
             className="md:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
             onClick={() => setMobileOpen(v => !v)}
           >
-            {mobileOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
+            {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
             {!mobileOpen && totalBadges > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
                 {totalBadges > 9 ? "9+" : totalBadges}
@@ -195,8 +408,25 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             )}
           </button>
 
-          {/* Page title */}
           <h1 className="font-bold text-sm flex-1 truncate">{pageTitle}</h1>
+
+          {/* Global search trigger */}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
+          >
+            <Search className="w-3 h-3" />
+            <span>بحث...</span>
+            <kbd className="text-[9px] font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">⌘K</kbd>
+          </button>
+
+          {/* Mobile search icon */}
+          <button
+            onClick={() => setShowSearch(true)}
+            className="sm:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+          >
+            <Search className="w-4 h-4" />
+          </button>
 
           {/* Last updated */}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
