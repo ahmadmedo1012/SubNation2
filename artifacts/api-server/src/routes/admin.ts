@@ -741,6 +741,20 @@ router.post("/referrals/:id/credit", async (req, res) => {
 
 // ─── Admin Alerts Inbox ───────────────────────────────────────────────────────
 
+// Returns only alerts newer than ?since=<id> — used by the realtime toast watcher
+router.get("/alerts/new", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  try {
+    const sinceId = parseInt(req.query.since as string ?? "0", 10) || 0;
+    const allAlerts = await getAdminAlerts(50);
+    const newAlerts = allAlerts.filter(a => a.id > sinceId);
+    return res.json({ alerts: newAlerts });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch new alerts");
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
 router.get("/alerts", async (req, res) => {
   if (!verifyAdminToken(req, res)) return;
   try {

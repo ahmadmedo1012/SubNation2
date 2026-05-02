@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, ShoppingBag, Wallet, Package,
   Users, LogOut, Shield, Settings, RefreshCw,
@@ -269,6 +270,43 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Real-time alert polling: show toast for new alerts every 30s
+  useEffect(() => {
+    if (!adminToken) return;
+
+    const ALERT_LABELS: Record<string, string> = {
+      coupon_maxed:    "كوبون استُنفد",
+      coupon_expiring: "كوبون منتهٍ قريباً",
+      low_stock:       "مخزون منخفض",
+      no_stock:        "نفاد مخزون",
+      system:          "إشعار النظام",
+    };
+
+    const poll = () => {
+      const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
+      fetch(`/api/admin/alerts/new?since=${lastId}`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      })
+        .then(r => r.ok ? r.json() : { alerts: [] })
+        .then((data: { alerts?: Array<{ id: number; type: string; message: string }> }) => {
+          const alerts = data?.alerts ?? [];
+          if (alerts.length === 0) return;
+          alerts.forEach(alert => {
+            toast({
+              title: ALERT_LABELS[alert.type] ?? "تنبيه",
+              description: alert.message,
+            });
+          });
+          const maxId = Math.max(...alerts.map(a => a.id));
+          localStorage.setItem("sn_last_alert_id", String(maxId));
+        })
+        .catch(() => {});
+    };
+
+    const id = setInterval(poll, 30_000);
+    return () => clearInterval(id);
+  }, [adminToken]);
 
   const refreshLabel = secondsAgo < 10 ? "الآن" : secondsAgo < 60 ? `${secondsAgo}ث` : `${Math.round(secondsAgo / 60)}د`;
   const pageTitle = PAGE_TITLES[location] ?? "الإدارة";
