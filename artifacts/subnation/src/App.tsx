@@ -13,6 +13,8 @@ import ProductPage from "@/pages/product";
 import WalletPage from "@/pages/wallet";
 import OrdersPage from "@/pages/orders";
 import OrderDetailPage from "@/pages/order-detail";
+import LoyaltyPage from "@/pages/loyalty";
+import SupportPage from "@/pages/support";
 import AdminLoginPage from "@/pages/admin/login";
 import AdminDashboardPage from "@/pages/admin/dashboard";
 import AdminTopupsPage from "@/pages/admin/topups";
@@ -20,6 +22,7 @@ import AdminOrdersPage from "@/pages/admin/orders";
 import AdminProductsPage from "@/pages/admin/products";
 import AdminUsersPage from "@/pages/admin/users";
 import AdminSettingsPage from "@/pages/admin/settings";
+import AdminTicketsPage from "@/pages/admin/tickets";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -43,6 +46,8 @@ function AppRoutes() {
         <Route path="/wallet" component={WalletPage} />
         <Route path="/orders" component={OrdersPage} />
         <Route path="/orders/:orderCode" component={OrderDetailPage} />
+        <Route path="/loyalty" component={LoyaltyPage} />
+        <Route path="/support" component={SupportPage} />
         <Route path="/admin/login" component={AdminLoginPage} />
         <Route path="/admin" component={AdminDashboardPage} />
         <Route path="/admin/topups" component={AdminTopupsPage} />
@@ -50,6 +55,7 @@ function AppRoutes() {
         <Route path="/admin/products" component={AdminProductsPage} />
         <Route path="/admin/users" component={AdminUsersPage} />
         <Route path="/admin/settings" component={AdminSettingsPage} />
+        <Route path="/admin/tickets" component={AdminTicketsPage} />
         <Route component={NotFound} />
       </Switch>
     </div>

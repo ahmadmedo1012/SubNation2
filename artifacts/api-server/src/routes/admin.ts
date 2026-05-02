@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable } from "@workspace/db";
+import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable, supportTicketsTable, ticketRepliesTable, referralEventsTable } from "@workspace/db";
 import { eq, and, count, sum, desc, gte, like, sql, or } from "drizzle-orm";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
@@ -150,7 +150,37 @@ router.post("/topups/:id/approve", async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, topup.userId)).limit(1);
   if (user) {
     const newBalance = +(parseFloat(String(user.walletBalance)) + parseFloat(String(topup.amount))).toFixed(2);
-    await db.update(usersTable).set({ walletBalance: String(newBalance) }).where(eq(usersTable.id, user.id));
+    const newLifetime = +(parseFloat(String(user.lifetimeSpend)) + parseFloat(String(topup.amount))).toFixed(2);
+
+    let newTier = user.loyaltyTier;
+    if (newLifetime >= 5000) newTier = "platinum";
+    else if (newLifetime >= 2000) newTier = "gold";
+    else if (newLifetime >= 500) newTier = "silver";
+    else newTier = "bronze";
+
+    await db.update(usersTable).set({
+      walletBalance: String(newBalance),
+      lifetimeSpend: String(newLifetime),
+      loyaltyTier: newTier,
+    }).where(eq(usersTable.id, user.id));
+
+    // Referral credit: credit 50 points to referrer on first approved topup
+    if (user.referredBy) {
+      const [existingCredit] = await db.select().from(referralEventsTable)
+        .where(eq(referralEventsTable.refereeId, user.id)).limit(1);
+
+      if (existingCredit && existingCredit.status === "pending") {
+        await db.update(referralEventsTable).set({ status: "credited", creditedAt: new Date() })
+          .where(eq(referralEventsTable.refereeId, user.id));
+
+        const [referrer] = await db.select().from(usersTable).where(eq(usersTable.id, user.referredBy)).limit(1);
+        if (referrer) {
+          await db.update(usersTable).set({ loyaltyPoints: referrer.loyaltyPoints + 50 })
+            .where(eq(usersTable.id, referrer.id));
+        }
+      }
+    }
+
     notifyTopupApproved(user.phone, parseFloat(String(topup.amount)));
   }
 
@@ -409,6 +439,141 @@ router.get("/settings", async (req, res) => {
     telegram_bot_set: !!process.env.TELEGRAM_BOT_TOKEN,
     telegram_chat_set: !!process.env.TELEGRAM_CHAT_ID,
   });
+});
+
+// ── Chart Data ────────────────────────────────────────────────────────────────
+
+router.get("/chart-data", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+
+  const days = 7;
+  const result: Array<{ date: string; orders: number; revenue: number; users: number }> = [];
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const end = new Date(start.getTime() + 86400000);
+
+    const [ordersRow] = await db.select({ count: count(), revenue: sum(ordersTable.amount) })
+      .from(ordersTable)
+      .where(and(sql`${ordersTable.createdAt} >= ${start}`, sql`${ordersTable.createdAt} < ${end}`));
+
+    const [usersRow] = await db.select({ count: count() })
+      .from(usersTable)
+      .where(and(sql`${usersTable.createdAt} >= ${start}`, sql`${usersTable.createdAt} < ${end}`));
+
+    result.push({
+      date: start.toLocaleDateString("ar-LY", { month: "short", day: "numeric" }),
+      orders: Number(ordersRow?.count ?? 0),
+      revenue: parseFloat(String(ordersRow?.revenue ?? 0)),
+      users: Number(usersRow?.count ?? 0),
+    });
+  }
+
+  return res.json(result);
+});
+
+// ── Admin Ticket Management ───────────────────────────────────────────────────
+
+router.get("/tickets", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const { status } = req.query;
+
+  const conditions = status && typeof status === "string"
+    ? [eq(supportTicketsTable.status, status as any)]
+    : [];
+
+  const tickets = await db.select({
+    ticket: supportTicketsTable,
+    userPhone: usersTable.phone,
+  }).from(supportTicketsTable)
+    .leftJoin(usersTable, eq(supportTicketsTable.userId, usersTable.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(supportTicketsTable.updatedAt))
+    .limit(100);
+
+  const withCounts = await Promise.all(tickets.map(async ({ ticket, userPhone }) => {
+    const [cntRow] = await db.select({ count: count() }).from(ticketRepliesTable)
+      .where(eq(ticketRepliesTable.ticketId, ticket.id));
+    const [lastReply] = await db.select().from(ticketRepliesTable)
+      .where(eq(ticketRepliesTable.ticketId, ticket.id))
+      .orderBy(desc(ticketRepliesTable.createdAt)).limit(1);
+    return {
+      id: ticket.id,
+      user_phone: userPhone ?? "",
+      title: ticket.title,
+      category: ticket.category,
+      status: ticket.status,
+      created_at: ticket.createdAt.toISOString(),
+      reply_count: Number(cntRow?.count ?? 0),
+      last_reply_at: lastReply?.createdAt?.toISOString() ?? null,
+      has_unread_admin: lastReply?.authorType === "user",
+    };
+  }));
+
+  return res.json(withCounts);
+});
+
+router.get("/tickets/:id", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const [row] = await db.select({ ticket: supportTicketsTable, userPhone: usersTable.phone })
+    .from(supportTicketsTable)
+    .leftJoin(usersTable, eq(supportTicketsTable.userId, usersTable.id))
+    .where(eq(supportTicketsTable.id, id)).limit(1);
+
+  if (!row) return res.status(404).json({ error: "التذكرة غير موجودة" });
+
+  const replies = await db.select().from(ticketRepliesTable)
+    .where(eq(ticketRepliesTable.ticketId, id))
+    .orderBy(ticketRepliesTable.createdAt);
+
+  return res.json({
+    id: row.ticket.id,
+    user_phone: row.userPhone ?? "",
+    title: row.ticket.title,
+    category: row.ticket.category,
+    status: row.ticket.status,
+    created_at: row.ticket.createdAt.toISOString(),
+    replies: replies.map(r => ({ id: r.id, author_type: r.authorType, message: r.message, created_at: r.createdAt.toISOString() })),
+  });
+});
+
+router.post("/tickets/:id/reply", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const { message } = req.body ?? {};
+  if (!message?.trim()) return res.status(400).json({ error: "الرسالة مطلوبة" });
+
+  const [ticket] = await db.select().from(supportTicketsTable).where(eq(supportTicketsTable.id, id)).limit(1);
+  if (!ticket) return res.status(404).json({ error: "التذكرة غير موجودة" });
+
+  const [reply] = await db.insert(ticketRepliesTable).values({
+    ticketId: id,
+    authorType: "admin",
+    message: message.trim(),
+  }).returning();
+
+  await db.update(supportTicketsTable).set({ status: "in_progress" }).where(eq(supportTicketsTable.id, id));
+
+  return res.status(201).json({ id: reply.id, author_type: reply.authorType, message: reply.message, created_at: reply.createdAt.toISOString() });
+});
+
+router.patch("/tickets/:id/status", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const { status } = req.body ?? {};
+  if (!["open", "in_progress", "closed"].includes(status)) return res.status(400).json({ error: "حالة غير صالحة" });
+
+  await db.update(supportTicketsTable).set({ status }).where(eq(supportTicketsTable.id, id));
+  return res.json({ success: true });
 });
 
 export { router as adminRouter };

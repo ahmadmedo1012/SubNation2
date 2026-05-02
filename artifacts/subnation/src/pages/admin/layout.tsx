@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { LayoutDashboard, ShoppingBag, Wallet, Package, Users, LogOut, Shield, Settings, RefreshCw } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Wallet, Package, Users, LogOut, Shield, Settings, RefreshCw, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 
@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/orders", label: "الطلبات", icon: ShoppingBag },
   { href: "/admin/products", label: "المنتجات", icon: Package },
   { href: "/admin/users", label: "المستخدمون", icon: Users },
+  { href: "/admin/tickets", label: "الدعم الفني", icon: MessageSquare },
   { href: "/admin/settings", label: "الإعدادات", icon: Settings },
 ];
 
@@ -35,7 +36,6 @@ export function AdminLayout({ children, onRefresh }: { children: ReactNode; onRe
 
   return (
     <div className="min-h-screen flex">
-      {/* Sidebar */}
       <aside className="w-56 shrink-0 bg-card border-l border-border flex flex-col">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
@@ -64,9 +64,7 @@ export function AdminLayout({ children, onRefresh }: { children: ReactNode; onRe
         </div>
       </aside>
 
-      {/* Content */}
       <main className="flex-1 overflow-auto">
-        {/* Top bar with live indicator */}
         <div className="border-b border-border bg-card/50 px-6 py-2 flex items-center justify-end gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />

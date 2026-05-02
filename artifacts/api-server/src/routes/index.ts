@@ -5,6 +5,8 @@ import { productsRouter } from "./products";
 import { ordersRouter } from "./orders";
 import { walletRouter } from "./wallet";
 import { adminRouter } from "./admin";
+import { supportRouter } from "./support";
+import { loyaltyRouter } from "./loyalty";
 
 const router: IRouter = Router();
 
@@ -25,6 +27,8 @@ router.get("/flash-sale", (req: Request, res: Response, next: NextFunction) => {
 router.use("/orders", ordersRouter);
 router.use("/wallet", walletRouter);
 router.use("/wallet/topups", walletRouter);
+router.use("/support/tickets", supportRouter);
+router.use("/loyalty", loyaltyRouter);
 router.use("/admin", adminRouter);
 
 export default router;

@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
-import { Wallet, LogOut, Menu, X, Sun, Moon } from "lucide-react";
+import { Wallet, LogOut, Menu, X, Sun, Moon, Star, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
@@ -20,6 +20,8 @@ export function Navbar() {
   });
 
   const isActive = (path: string) => location === path;
+  const navCls = (path: string) =>
+    `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isActive(path) ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`;
 
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border">
@@ -32,16 +34,22 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1">
-          <Link href="/" className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isActive("/") ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}>
-            الكتالوج
-          </Link>
+          <Link href="/" className={navCls("/")}>الكتالوج</Link>
           {token && (
             <>
-              <Link href="/wallet" className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isActive("/wallet") ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}>
-                المحفظة
+              <Link href="/wallet" className={navCls("/wallet")}>المحفظة</Link>
+              <Link href="/orders" className={navCls("/orders")}>طلباتي</Link>
+              <Link href="/loyalty" className={navCls("/loyalty")}>
+                <span className="flex items-center gap-1">
+                  <Star className="w-3.5 h-3.5" />
+                  الولاء
+                </span>
               </Link>
-              <Link href="/orders" className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isActive("/orders") ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}>
-                طلباتي
+              <Link href="/support" className={navCls("/support")}>
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  الدعم
+                </span>
               </Link>
             </>
           )}
@@ -92,6 +100,8 @@ export function Navbar() {
             <>
               <Link href="/wallet" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-md text-sm font-medium hover:bg-secondary">المحفظة</Link>
               <Link href="/orders" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-md text-sm font-medium hover:bg-secondary">طلباتي</Link>
+              <Link href="/loyalty" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-md text-sm font-medium hover:bg-secondary">الولاء والإحالة</Link>
+              <Link href="/support" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-md text-sm font-medium hover:bg-secondary">الدعم الفني</Link>
               <button onClick={() => { logout(); setOpen(false); }} className="w-full text-right px-3 py-2 rounded-md text-sm font-medium text-destructive hover:bg-secondary">تسجيل الخروج</button>
             </>
           )}

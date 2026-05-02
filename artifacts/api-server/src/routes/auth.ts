@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, referralEventsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
@@ -61,6 +61,15 @@ router.post("/register", async (req, res) => {
     referredBy: referredById,
     walletBalance: referredById ? "5.00" : "0.00",
   }).returning();
+
+  // Create pending referral event so it gets credited on first approved topup
+  if (referredById && referredById !== user.id) {
+    await db.insert(referralEventsTable).values({
+      referrerId: referredById,
+      refereeId: user.id,
+      status: "pending",
+    }).onConflictDoNothing();
+  }
 
   notifyNewUser(normalizedPhone, !!referredById);
 
