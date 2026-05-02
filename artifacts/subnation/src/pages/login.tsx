@@ -38,13 +38,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-bl from-primary/5 via-background to-background">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <Logo size="lg" showText={false} />
+          <div className="flex justify-center mb-5">
+            <Logo size="lg" />
           </div>
-          <div className="flex justify-center mb-2">
-            <Logo size="md" className="justify-center" showText />
-          </div>
-          <h1 className="text-xl font-black mt-3">تسجيل الدخول</h1>
+          <h1 className="text-xl font-black">تسجيل الدخول</h1>
           <p className="text-muted-foreground text-sm mt-1">أدخل بيانات حسابك للمتابعة</p>
         </div>
 

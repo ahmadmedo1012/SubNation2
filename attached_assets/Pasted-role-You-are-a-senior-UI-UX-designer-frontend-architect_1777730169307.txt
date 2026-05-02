@@ -1,0 +1,146 @@
+role:
+You are a senior UI/UX designer, frontend architect, and visual systems specialist working inside the existing Vite + React codebase of "subnation". You specialize in transforming interfaces from basic to premium-level products with clean, modern, and highly consistent visual systems.
+
+task:
+Execute a comprehensive visual and UX refinement across the entire platform to eliminate any basic or unprofessional appearance and elevate the product to a modern, premium, and highly polished interface.
+
+context:
+
+* Platform is already functional and stable
+* Previous phases implemented core systems and features
+* Current issue:
+
+  * Visual quality is still not at premium level
+  * Presence of weak styling, inconsistent elements, or emoji-based icons
+* Goal:
+
+  * Transform UI from "basic" → "modern, clean, professional"
+  * Achieve a cohesive, high-end SaaS look
+
+reasoning:
+
+* Focus on visual system consistency
+* Replace all low-quality or default elements
+* Introduce a unified design language
+* Ensure mobile-first polish
+* Improve perceived quality through small details (spacing, shadows, typography)
+
+stop conditions:
+
+* No emoji or low-quality icons remain
+* UI is consistent across all pages
+* Visual hierarchy is clear and strong
+* Interface feels modern, premium, and clean
+* Mobile experience looks and feels professional
+* No visual clutter or inconsistency remains
+
+output:
+
+1. Icon System Upgrade:
+
+   * Remove ALL emoji/icons used in UI
+   * Replace with professional icon library:
+
+     * (Lucide / Heroicons / Phosphor or equivalent)
+   * Ensure:
+
+     * Consistent stroke/size
+     * Proper alignment with text
+     * Semantic usage (each icon meaningful)
+
+2. Design System Refinement:
+
+   * Define and enforce:
+
+     * Color palette (primary / secondary / states)
+     * Typography (clear scale: headings / body / labels)
+     * Spacing system (consistent margins/padding)
+     * Border radius system
+     * Shadow system (light, medium, strong)
+
+3. Component Standardization:
+
+   * Refactor all components:
+
+     * Buttons (primary / secondary / ghost / danger)
+     * Cards
+     * Inputs
+     * Modals
+     * Alerts
+   * Ensure:
+
+     * Consistent sizes
+     * Unified styles
+     * Predictable behavior
+
+4. UI Cleanup:
+
+   * Remove:
+
+     * Visual noise
+     * Inconsistent spacing
+     * Misaligned elements
+   * Improve:
+
+     * Layout structure
+     * Section separation
+     * Readability
+
+5. Typography Improvement:
+
+   * Use modern, clean fonts
+   * Improve:
+
+     * Line height
+     * Font weight hierarchy
+     * Readability on mobile
+
+6. Buttons & Interactions:
+
+   * Add states:
+
+     * Hover
+     * Active
+     * Focus
+     * Disabled
+   * Smooth transitions (fast and subtle)
+
+7. Cards & Content Layout:
+
+   * Improve subscription cards:
+
+     * Clear structure
+     * Better spacing
+     * Strong CTA visibility
+   * Consistent grid/layout system
+
+8. Animations & Micro-Interactions:
+
+   * Add:
+
+     * Subtle hover effects
+     * Smooth transitions
+     * Lightweight motion
+   * Avoid heavy or distracting animations
+
+9. Mobile-First Polish:
+
+   * Review all screens on mobile:
+
+     * Spacing
+     * Touch targets
+     * Readability
+   * Ensure:
+
+     * Clean vertical flow
+     * No clutter
+
+10. Final Consistency Pass:
+
+* Check entire platform:
+
+  * Same design language everywhere
+  * No mismatched components
+  * No leftover old styles
+
+Deliver a clean, modern, premium interface with strong consistency and no low-quality elements.

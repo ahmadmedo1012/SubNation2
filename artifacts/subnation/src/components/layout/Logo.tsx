@@ -8,23 +8,52 @@ interface LogoProps {
 
 export function Logo({ size = "md", showText = true, className }: LogoProps) {
   const iconSizes = { sm: "w-7 h-7", md: "w-9 h-9", lg: "w-14 h-14" };
-  const textSizes = { sm: "text-base", md: "text-lg", lg: "text-2xl" };
-  const innerSizes = { sm: "text-xs", md: "text-sm", lg: "text-xl" };
+  const svgSizes  = { sm: "w-4 h-4",  md: "w-5 h-5",  lg: "w-8 h-8"  };
+  const textSizes = { sm: "text-base", md: "text-xl",  lg: "text-3xl"  };
 
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
+      {/* Shield icon — matches the actual SubNation brand mark */}
       <div className={cn(
-        "rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-lg shadow-primary/25",
+        "rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-lg shadow-primary/30",
         iconSizes[size]
       )}>
-        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className={cn("w-5 h-5", size === "sm" && "w-4 h-4", size === "lg" && "w-9 h-9")}>
-          <path d="M8 10C8 8.9 8.9 8 10 8h5c3.3 0 6 2.7 6 6s-2.7 6-6 6H8V10z" fill="white" fillOpacity="0.95"/>
-          <path d="M16 20c0-1.1.9-2 2-2h2c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4V20z" fill="white" fillOpacity="0.6"/>
-          <circle cx="10" cy="22" r="2" fill="white" fillOpacity="0.4"/>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={svgSizes[size]}
+        >
+          {/* Shield outline */}
+          <path
+            d="M12 2L4 5.5v6c0 4.5 3.4 8.7 8 9.7 4.6-1 8-5.2 8-9.7v-6L12 2z"
+            fill="white"
+            fillOpacity="0.15"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          {/* Play triangle */}
+          <path
+            d="M10 9l5 3-5 3V9z"
+            fill="white"
+            fillOpacity="0.95"
+          />
+          {/* Orbit arc / cursor dot */}
+          <circle cx="16.5" cy="14.5" r="1.2" fill="white" fillOpacity="0.7" />
+          <path
+            d="M9 14.5 Q12.5 17 16.5 14.5"
+            stroke="white"
+            strokeWidth="1.2"
+            strokeOpacity="0.6"
+            fill="none"
+            strokeLinecap="round"
+          />
         </svg>
       </div>
+
       {showText && (
-        <span className={cn("font-black tracking-tight", textSizes[size])}>
+        <span className={cn("font-black tracking-tight leading-none", textSizes[size])}>
           Sub<span className="text-primary">Nation</span>
         </span>
       )}

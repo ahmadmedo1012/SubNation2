@@ -73,9 +73,10 @@ export default function SupportPage() {
     }
   };
 
-  useEffect(() => { fetchTickets(); }, [token]);
-
-  if (!token) { navigate("/login"); return null; }
+  useEffect(() => {
+    if (!token) { navigate("/login"); return; }
+    fetchTickets();
+  }, [token]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -45,13 +45,10 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-bl from-primary/5 via-background to-background">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <div className="flex justify-center mb-3">
-            <Logo size="lg" showText={false} />
+          <div className="flex justify-center mb-5">
+            <Logo size="lg" />
           </div>
-          <div className="flex justify-center mb-2">
-            <Logo size="md" showText />
-          </div>
-          <h1 className="text-xl font-black mt-3">إنشاء حساب جديد</h1>
+          <h1 className="text-xl font-black">إنشاء حساب جديد</h1>
           <p className="text-muted-foreground text-sm mt-1">انضم واشترك بأفضل الخدمات الرقمية</p>
         </div>
 

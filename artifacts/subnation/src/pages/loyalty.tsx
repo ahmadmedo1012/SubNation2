@@ -4,7 +4,10 @@ import { useLocation } from "wouter";
 import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Star, Gift, Copy, Check, ArrowRight, Users, TrendingUp, Zap, ChevronRight } from "lucide-react";
+import {
+  Star, Gift, Copy, Check, Users, TrendingUp, Zap,
+  Share2, ShoppingCart, Crown, Wallet, ArrowUpRight,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface LoyaltyData {
@@ -29,7 +32,10 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <button onClick={copy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-bold transition-colors">
+    <button
+      onClick={copy}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-bold transition-all active:scale-95"
+    >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
       {copied ? "تم النسخ!" : label}
     </button>
@@ -57,15 +63,15 @@ export default function LoyaltyPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); }, [token]);
-
-  if (!token) { navigate("/login"); return null; }
+  useEffect(() => {
+    if (!token) { navigate("/login"); return; }
+    fetchData();
+  }, [token]);
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
     const pts = parseInt(convertPoints);
     if (!pts || pts < 100) { toast({ title: "الحد الأدنى 100 نقطة", variant: "destructive" }); return; }
-
     setConverting(true);
     try {
       const res = await fetch("/api/loyalty/convert-points", {
@@ -92,11 +98,24 @@ export default function LoyaltyPage() {
       )) * 100))
     : 100;
 
+  const HOW_TO_EARN = [
+    { icon: <Users className="w-4 h-4 text-blue-400" />, bg: "bg-blue-400/10", label: "إحالة صديق يُتم أول شحن", points: `+${data?.points_rate.points_per_referral ?? 50} نقطة` },
+    { icon: <ShoppingCart className="w-4 h-4 text-emerald-400" />, bg: "bg-emerald-400/10", label: "عند كل عملية شراء", points: "نقاط تلقائية" },
+    { icon: <Crown className="w-4 h-4 text-slate-400" />, bg: "bg-slate-400/10", label: "المستوى الفضي (500 د.ل إنفاق)", points: "مزايا إضافية" },
+    { icon: <Star className="w-4 h-4 text-yellow-400" />, bg: "bg-yellow-400/10", label: "المستوى الذهبي (2000 د.ل إنفاق)", points: "أولوية الدعم" },
+  ];
+
+  const HOW_REFERRAL_WORKS = [
+    { icon: <Share2 className="w-4 h-4 text-primary" />, step: "1", text: "شارك رابط الإحالة" },
+    { icon: <Users className="w-4 h-4 text-primary" />, step: "2", text: "صديقك يسجل حسابه" },
+    { icon: <Wallet className="w-4 h-4 text-primary" />, step: "3", text: "يُتم أول شحن للمحفظة" },
+  ];
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-          <Star className="w-5 h-5 text-primary" />
+      <div className="flex items-center gap-3 mb-7">
+        <div className="w-10 h-10 rounded-xl bg-yellow-400/10 flex items-center justify-center">
+          <Star className="w-5 h-5 text-yellow-400" />
         </div>
         <div>
           <h1 className="text-2xl font-black">الولاء والإحالة</h1>
@@ -106,50 +125,64 @@ export default function LoyaltyPage() {
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="bg-card border border-border rounded-xl h-32 animate-pulse" />)}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl h-32 animate-pulse" />
+          ))}
         </div>
       ) : data ? (
-        <div className="space-y-6">
-          {/* Stats row */}
+        <div className="space-y-5">
+          {/* Stats Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-card border border-border rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2 font-bold uppercase tracking-wide">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-bold uppercase tracking-wide">
                 <Star className="w-3.5 h-3.5 text-yellow-400" />
                 نقاطي
               </div>
               <div className="text-3xl font-black text-yellow-400 mb-1">{data.points.toLocaleString()}</div>
-              <div className="text-sm text-muted-foreground">= {data.points_value_lyd} د.ل</div>
+              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                <span>=</span>
+                <span className="font-bold text-foreground">{data.points_value_lyd}</span>
+                <span>د.ل</span>
+              </div>
             </div>
 
             <div className="bg-card border border-border rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2 font-bold uppercase tracking-wide">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-bold uppercase tracking-wide">
                 <TrendingUp className="w-3.5 h-3.5" />
                 مستواي
               </div>
-              <div className={`text-2xl font-black mb-1 ${tierColor(data.tier)}`}>{tierLabel(data.tier)}</div>
+              <div className={`text-2xl font-black mb-2 ${tierColor(data.tier)}`}>{tierLabel(data.tier)}</div>
               {data.next_tier ? (
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>التالي: {data.next_tier.label}</span>
+                    <span>التالي: <span className="font-bold">{data.next_tier.label}</span></span>
                     <span>{formatCurrency(data.next_tier.remaining)} متبقٍ</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${tierProgressPercent}%` }} />
+                    <div
+                      className="h-full bg-primary rounded-full transition-all duration-700"
+                      style={{ width: `${tierProgressPercent}%` }}
+                    />
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-cyan-400 font-bold">أعلى مستوى! 🎉</div>
+                <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-bold">
+                  <Crown className="w-3.5 h-3.5" />
+                  أعلى مستوى متاح
+                </div>
               )}
             </div>
 
             <div className="bg-card border border-border rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2 font-bold uppercase tracking-wide">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-bold uppercase tracking-wide">
                 <Users className="w-3.5 h-3.5 text-blue-400" />
                 إحالاتي
               </div>
               <div className="text-3xl font-black text-blue-400 mb-1">{data.referrals_credited}</div>
               <div className="text-sm text-muted-foreground">
-                {data.referrals_pending > 0 && <span className="text-yellow-400">{data.referrals_pending} معلق · </span>}
+                {data.referrals_pending > 0 && (
+                  <span className="text-yellow-400 font-bold ml-1">{data.referrals_pending} معلق ·</span>
+                )}
                 إجمالي ناجح
               </div>
             </div>
@@ -159,35 +192,43 @@ export default function LoyaltyPage() {
           <div className="bg-gradient-to-br from-primary/10 via-card to-card border border-primary/20 rounded-2xl p-6">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
-                <h2 className="font-black text-lg mb-1">ادعُ أصدقاءك</h2>
+                <h2 className="font-black text-lg mb-1.5">ادعُ أصدقاءك</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   شارك رمز إحالتك — عند اشتراك صديق وإتمام أول شحن،
                   <span className="text-yellow-400 font-bold"> تحصل على {data.points_rate.points_per_referral} نقطة</span>
                 </p>
               </div>
-              <Gift className="w-8 h-8 text-primary shrink-0" />
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Gift className="w-5 h-5 text-primary" />
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5 mb-5">
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-secondary rounded-lg px-3 py-2.5 font-mono text-sm font-bold">{data.referral_code}</div>
+                <div className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-bold tracking-widest">
+                  {data.referral_code}
+                </div>
                 <CopyButton text={data.referral_code} label="نسخ الرمز" />
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-secondary rounded-lg px-3 py-2.5 text-xs text-muted-foreground truncate font-mono">{window.location.origin}/register?ref={data.referral_code}</div>
-                <CopyButton text={`${window.location.origin}/register?ref=${data.referral_code}`} label="نسخ الرابط" />
+                <div className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 text-xs text-muted-foreground truncate font-mono">
+                  {window.location.origin}/register?ref={data.referral_code}
+                </div>
+                <CopyButton
+                  text={`${window.location.origin}/register?ref=${data.referral_code}`}
+                  label="نسخ الرابط"
+                />
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs">
-              {[
-                { icon: "1️⃣", text: "شارك الرابط" },
-                { icon: "2️⃣", text: "صديقك يسجل" },
-                { icon: "3️⃣", text: "يتم شحن محفظته" },
-              ].map((s, i) => (
-                <div key={i} className="bg-muted/40 rounded-lg p-2.5">
-                  <div className="text-lg mb-1">{s.icon}</div>
-                  <div className="text-muted-foreground">{s.text}</div>
+            {/* Steps */}
+            <div className="grid grid-cols-3 gap-3 text-center text-xs">
+              {HOW_REFERRAL_WORKS.map((s) => (
+                <div key={s.step} className="bg-background/40 border border-border/50 rounded-xl p-3 flex flex-col items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    {s.icon}
+                  </div>
+                  <div className="font-bold text-foreground/80">{s.text}</div>
                 </div>
               ))}
             </div>
@@ -195,17 +236,28 @@ export default function LoyaltyPage() {
 
           {/* Points Conversion */}
           <div className="bg-card border border-border rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Zap className="w-5 h-5 text-primary" />
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-primary" />
+              </div>
               <h2 className="font-black">تحويل النقاط إلى رصيد</h2>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              كل <span className="font-bold text-foreground">{data.points_rate.points_per_lyd} نقطة</span> = <span className="font-bold text-primary">1 د.ل</span> في محفظتك
+            <p className="text-sm text-muted-foreground mb-5 mr-10">
+              كل{" "}
+              <span className="font-bold text-foreground">{data.points_rate.points_per_lyd} نقطة</span>
+              {" "}={" "}
+              <span className="font-bold text-primary">1 د.ل</span>
+              {" "}في محفظتك
             </p>
 
             {data.points < 100 ? (
-              <div className="p-3 bg-muted/40 rounded-xl text-sm text-muted-foreground">
-                تحتاج إلى <span className="font-bold text-foreground">{100 - data.points} نقطة</span> إضافية للوصول للحد الأدنى (100 نقطة)
+              <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl text-sm text-muted-foreground">
+                <ArrowUpRight className="w-4 h-4 shrink-0 text-primary" />
+                <span>
+                  تحتاج إلى{" "}
+                  <span className="font-bold text-foreground">{100 - data.points} نقطة</span>
+                  {" "}إضافية للوصول للحد الأدنى (100 نقطة)
+                </span>
               </div>
             ) : (
               <form onSubmit={handleConvert} className="flex gap-3">
@@ -219,37 +271,38 @@ export default function LoyaltyPage() {
                     value={convertPoints}
                     onChange={e => setConvertPoints(e.target.value)}
                     dir="ltr"
-                    className="text-left"
+                    className="text-left h-11"
                   />
                   {convertPoints && parseInt(convertPoints) >= 100 && (
-                    <p className="text-xs text-emerald-400 mt-1 px-1">
-                      ستحصل على {(parseInt(convertPoints) / 100).toFixed(2)} د.ل
+                    <p className="text-xs text-emerald-400 mt-1.5 px-1 font-bold">
+                      ستحصل على {(parseInt(convertPoints) / 100).toFixed(2)} د.ل في محفظتك
                     </p>
                   )}
                 </div>
-                <Button type="submit" disabled={converting || !convertPoints} className="bg-primary hover:bg-primary/90 shrink-0">
-                  {converting ? "جاري التحويل..." : "تحويل"}
+                <Button
+                  type="submit"
+                  disabled={converting || !convertPoints}
+                  className="bg-primary hover:bg-primary/90 shrink-0 h-11 px-5 font-bold active:scale-95 transition-all"
+                >
+                  {converting ? "جارٍ التحويل..." : "تحويل"}
                 </Button>
               </form>
             )}
           </div>
 
-          {/* How points are earned */}
+          {/* How to earn */}
           <div className="bg-card border border-border rounded-2xl p-6">
             <h2 className="font-black mb-4">كيف تكسب النقاط؟</h2>
-            <div className="space-y-3">
-              {[
-                { icon: "👥", label: "إحالة صديق يُتم أول شحن", points: `+${data.points_rate.points_per_referral} نقطة` },
-                { icon: "🛒", label: "عند كل عملية شراء", points: "نقاط تلقائية" },
-                { icon: "💰", label: "المستوى الفضي (500 د.ل إنفاق)", points: "مزايا إضافية" },
-                { icon: "⚡", label: "المستوى الذهبي (2000 د.ل إنفاق)", points: "أولوية الدعم" },
-              ].map((row, i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
+            <div className="space-y-2.5">
+              {HOW_TO_EARN.map((row, i) => (
+                <div key={i} className="flex items-center justify-between p-3.5 bg-muted/20 hover:bg-muted/40 rounded-xl transition-colors">
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{row.icon}</span>
-                    <span className="text-sm">{row.label}</span>
+                    <div className={`w-7 h-7 rounded-lg ${row.bg} flex items-center justify-center shrink-0`}>
+                      {row.icon}
+                    </div>
+                    <span className="text-sm font-medium">{row.label}</span>
                   </div>
-                  <span className="text-xs font-bold text-primary">{row.points}</span>
+                  <span className="text-xs font-bold text-primary whitespace-nowrap">{row.points}</span>
                 </div>
               ))}
             </div>

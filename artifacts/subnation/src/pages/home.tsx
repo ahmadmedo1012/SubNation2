@@ -4,7 +4,7 @@ import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetFlashSaleQue
 import { useAuth } from "@/lib/auth";
 import { ProductCard } from "@/components/ProductCard";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
-import { Search, Zap, Clock, Wallet, ShoppingBag, TrendingUp } from "lucide-react";
+import { Search, Zap, Clock, Wallet, Star, TrendingUp, PackageSearch, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -55,7 +55,6 @@ export default function HomePage() {
   });
 
   const flashSale = flashSaleData?.flash_sale;
-
   const [flashTimeLeft, setFlashTimeLeft] = useState("");
 
   useEffect(() => {
@@ -75,120 +74,138 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen">
-      {/* Hero / Flash Sale Banner */}
+      {/* Flash Sale Banner */}
       {flashSale && (
-        <div className="bg-gradient-to-l from-primary/20 via-primary/10 to-transparent border-b border-primary/20 py-4 px-4">
+        <div className="bg-gradient-to-l from-primary/20 via-primary/10 to-transparent border-b border-primary/20 py-3 px-4">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center gap-3 sm:gap-6">
-            <div className="flex items-center gap-2 text-primary font-black text-lg">
-              <Zap className="w-5 h-5 fill-current animate-pulse" />
+            <div className="flex items-center gap-2 text-primary font-black">
+              <Zap className="w-4 h-4 fill-current animate-pulse" />
               <span>فلاش سيل</span>
             </div>
-            <div className="flex-1 text-center sm:text-right">
+            <div className="flex-1 text-center sm:text-right text-sm">
               <span className="font-bold text-foreground">{flashSale.title}</span>
               <span className="text-primary font-black mr-2">— خصم {flashSale.discount_percent}%</span>
             </div>
-            <div className="flex items-center gap-1.5 text-sm font-mono bg-card border border-border px-3 py-1.5 rounded-lg">
+            <div className="flex items-center gap-1.5 text-sm font-mono bg-card border border-border px-3 py-1.5 rounded-lg shrink-0">
               <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="font-bold tabular-nums">{flashTimeLeft || "..."}</span>
+              <span className="font-black tabular-nums">{flashTimeLeft || "..."}</span>
             </div>
           </div>
         </div>
       )}
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Welcome + Stats */}
-        <div className="mb-8">
-          {token && user ? (
-            <div className="flex flex-wrap items-start gap-4 mb-6">
-              <div className="flex-1">
-                <h1 className="text-2xl font-black mb-1">مرحباً بك في سبنيشن</h1>
-                <p className="text-muted-foreground text-sm">اشترك بأفضل الخدمات الرقمية بأسعار مناسبة</p>
-              </div>
-              <div className="flex gap-3">
-                <Link href="/wallet">
-                  <div className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-2 hover:border-primary/50 transition-colors cursor-pointer">
-                    <Wallet className="w-4 h-4 text-primary" />
-                    <div>
-                      <div className="text-xs text-muted-foreground">رصيد المحفظة</div>
-                      <div className="font-black text-sm">{formatCurrency(user.wallet_balance ?? 0)}</div>
-                    </div>
-                  </div>
-                </Link>
-                <Link href="/orders">
-                  <div className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-2 hover:border-primary/50 transition-colors cursor-pointer">
-                    <ShoppingBag className="w-4 h-4 text-primary" />
-                    <div>
-                      <div className="text-xs text-muted-foreground">نقاط الولاء</div>
-                      <div className="font-black text-sm">{user.loyalty_points ?? 0}</div>
-                    </div>
-                  </div>
-                </Link>
-              </div>
+        {/* Header section */}
+        {token && user ? (
+          <div className="flex flex-wrap items-start gap-4 mb-7">
+            <div className="flex-1">
+              <h1 className="text-2xl font-black mb-1">أهلاً بك في SubNation</h1>
+              <p className="text-muted-foreground text-sm">اشترك بأفضل الخدمات الرقمية بأسعار مناسبة</p>
             </div>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6 p-6 bg-gradient-to-l from-primary/10 to-transparent border border-primary/20 rounded-2xl">
-              <div>
-                <h1 className="text-2xl font-black mb-1">سوق الاشتراكات الرقمية</h1>
-                <p className="text-muted-foreground">Netflix • Spotify • Disney+ • PS Plus وأكثر — بالدينار الليبي</p>
-              </div>
-              <div className="flex gap-2">
-                <Link href="/login"><Button variant="outline">تسجيل الدخول</Button></Link>
-                <Link href="/register"><Button className="bg-primary hover:bg-primary/90">إنشاء حساب مجاني</Button></Link>
-              </div>
-            </div>
-          )}
-
-          {stats && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              {[
-                { label: "منتج متاح", value: stats.available_products },
-                { label: "وحدة في المخزون", value: stats.total_units },
-                { label: "أقل سعر", value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—" },
-                { label: "منتج إجمالي", value: stats.total_products },
-              ].map((s) => (
-                <div key={s.label} className="bg-card border border-border rounded-xl p-3 text-center">
-                  <div className="text-xl font-black text-primary">{s.value}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            <div className="flex gap-2.5">
+              <Link href="/wallet">
+                <div className="bg-card border border-border hover:border-primary/40 rounded-xl px-4 py-3 flex items-center gap-2.5 transition-colors cursor-pointer">
+                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Wallet className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">رصيد المحفظة</div>
+                    <div className="font-black text-sm">{formatCurrency(user.wallet_balance ?? 0)}</div>
+                  </div>
                 </div>
-              ))}
+              </Link>
+              <Link href="/loyalty">
+                <div className="bg-card border border-border hover:border-yellow-400/40 rounded-xl px-4 py-3 flex items-center gap-2.5 transition-colors cursor-pointer">
+                  <div className="w-7 h-7 rounded-lg bg-yellow-400/10 flex items-center justify-center">
+                    <Star className="w-3.5 h-3.5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">نقاط الولاء</div>
+                    <div className="font-black text-sm">{user.loyalty_points ?? 0}</div>
+                  </div>
+                </div>
+              </Link>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-7 p-6 bg-gradient-to-l from-primary/10 to-transparent border border-primary/20 rounded-2xl">
+            <div>
+              <h1 className="text-2xl font-black mb-1.5">سوق الاشتراكات الرقمية</h1>
+              <p className="text-muted-foreground text-sm">Netflix · Spotify · Disney+ · PS Plus وأكثر — بالدينار الليبي</p>
+            </div>
+            <div className="flex gap-2">
+              <Link href="/login"><Button variant="outline">تسجيل الدخول</Button></Link>
+              <Link href="/register">
+                <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">إنشاء حساب مجاني</Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7">
+            {[
+              { label: "منتج متاح", value: stats.available_products, color: "text-emerald-400" },
+              { label: "وحدة في المخزون", value: stats.total_units, color: "text-blue-400" },
+              { label: "أقل سعر", value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—", color: "text-primary" },
+              { label: "منتج إجمالي", value: stats.total_products, color: "text-muted-foreground" },
+            ].map((s) => (
+              <div key={s.label} className="bg-card border border-border rounded-xl p-3.5 text-center hover:border-border/70 transition-colors">
+                <div className={`text-xl font-black mb-0.5 ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-muted-foreground">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex flex-wrap gap-2.5 mb-6">
+          <div className="relative flex-1 min-w-44">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <Input
               type="search"
               placeholder="ابحث عن منتج..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pr-9"
+              className="pr-9 h-9"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
+
+          <div className="flex flex-wrap gap-1.5">
             {CATEGORIES.map(c => (
               <button
                 key={c.value}
                 onClick={() => setCategory(c.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${category === c.value ? "bg-primary text-white" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  category === c.value
+                    ? "bg-primary text-white shadow-sm shadow-primary/25"
+                    : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                }`}
               >
                 {c.label}
               </button>
             ))}
           </div>
+
           <div className="flex items-center gap-2">
-            <select
-              value={sort}
-              onChange={e => setSort(e.target.value)}
-              className="bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+            <div className="relative">
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value)}
+                className="h-9 appearance-none bg-secondary border border-border rounded-lg pr-3 pl-7 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+              >
+                {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            </div>
             <button
               onClick={() => setAvailableOnly(v => !v)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${availableOnly ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-secondary text-muted-foreground hover:text-foreground"}`}
+              className={`px-3 py-1.5 h-9 rounded-lg text-sm font-medium transition-all ${
+                availableOnly
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
             >
               متوفر فقط
             </button>
@@ -201,7 +218,7 @@ export default function HomePage() {
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="bg-card border border-border rounded-xl overflow-hidden animate-pulse">
                 <div className="aspect-video bg-muted" />
-                <div className="p-4 space-y-2">
+                <div className="p-4 space-y-2.5">
                   <div className="h-4 bg-muted rounded w-3/4" />
                   <div className="h-3 bg-muted rounded w-full" />
                   <div className="h-3 bg-muted rounded w-1/2" />
@@ -210,9 +227,9 @@ export default function HomePage() {
             ))}
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">لا توجد منتجات تطابق بحثك</p>
+          <div className="text-center py-20 text-muted-foreground bg-card border border-border rounded-2xl">
+            <PackageSearch className="w-12 h-12 mx-auto mb-3 opacity-25" />
+            <p className="font-bold">لا توجد منتجات تطابق بحثك</p>
             <p className="text-sm mt-1">جرب تغيير الفلتر أو كلمة البحث</p>
           </div>
         ) : (
