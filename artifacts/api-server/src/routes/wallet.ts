@@ -3,6 +3,7 @@ import { db, usersTable, walletTopupsTable, ordersTable, productsTable } from "@
 import { eq, desc, count } from "drizzle-orm";
 import { verifyToken } from "./auth";
 import { CreateTopupBody } from "@workspace/api-zod";
+import { notifyNewTopup } from "../telegram";
 
 const router = Router();
 
@@ -100,6 +101,9 @@ router.post("/topups", async (req, res) => {
     paymentReference: payment_reference ?? null,
     status: "pending",
   }).returning();
+
+  const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (currentUser) notifyNewTopup(currentUser.phone, amount, payment_network);
 
   return res.status(201).json(formatTopup(topup));
 });

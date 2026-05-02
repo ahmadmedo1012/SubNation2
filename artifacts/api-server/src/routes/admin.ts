@@ -4,6 +4,7 @@ import { eq, and, count, sum, desc, gte, like, sql, or } from "drizzle-orm";
 import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { AdminLoginBody, CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
+import { notifyTopupApproved, notifyTopupRejected, isTelegramConfigured } from "../telegram";
 
 const router = Router();
 const JWT_SECRET = process.env.SESSION_SECRET ?? "subnation-secret-key-change-in-prod";
@@ -148,6 +149,7 @@ router.post("/topups/:id/approve", async (req, res) => {
   if (user) {
     const newBalance = +(parseFloat(String(user.walletBalance)) + parseFloat(String(topup.amount))).toFixed(2);
     await db.update(usersTable).set({ walletBalance: String(newBalance) }).where(eq(usersTable.id, user.id));
+    notifyTopupApproved(user.phone, parseFloat(String(topup.amount)));
   }
 
   return res.json({ success: true, message: "تمت الموافقة على طلب الشحن وإضافة الرصيد" });
@@ -164,6 +166,9 @@ router.post("/topups/:id/reject", async (req, res) => {
 
   const adminNote = req.body?.admin_note ?? null;
   await db.update(walletTopupsTable).set({ status: "rejected", adminNote, reviewedAt: new Date() }).where(eq(walletTopupsTable.id, id));
+
+  const [rejUser] = await db.select().from(usersTable).where(eq(usersTable.id, topup.userId)).limit(1);
+  if (rejUser) notifyTopupRejected(rejUser.phone, parseFloat(String(topup.amount)));
 
   return res.json({ success: true, message: "تم رفض طلب الشحن" });
 });
@@ -305,6 +310,103 @@ router.get("/users", async (req, res) => {
     referral_code: u.referralCode ?? null,
     created_at: u.createdAt?.toISOString(),
   })));
+});
+
+router.patch("/users/:id", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
+  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+  const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier } = req.body ?? {};
+  const updates: Record<string, any> = {};
+
+  if (typeof wallet_adjustment === "number") {
+    const current = parseFloat(String(user.walletBalance));
+    const next = +(current + wallet_adjustment).toFixed(2);
+    if (next < 0) return res.status(400).json({ error: "الرصيد لا يمكن أن يكون سالباً" });
+    updates.walletBalance = String(next);
+  } else if (typeof wallet_balance === "number") {
+    if (wallet_balance < 0) return res.status(400).json({ error: "الرصيد لا يمكن أن يكون سالباً" });
+    updates.walletBalance = String(wallet_balance.toFixed(2));
+  }
+  if (typeof loyalty_points === "number" && loyalty_points >= 0) {
+    updates.loyaltyPoints = loyalty_points;
+  }
+  if (typeof loyalty_tier === "string" && ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)) {
+    updates.loyaltyTier = loyalty_tier;
+  }
+
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "لا توجد تعديلات" });
+
+  const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
+  return res.json({
+    id: updated.id,
+    phone: updated.phone,
+    wallet_balance: parseFloat(String(updated.walletBalance)),
+    loyalty_points: updated.loyaltyPoints,
+    loyalty_tier: updated.loyaltyTier,
+  });
+});
+
+router.post("/products/:id/inventory", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  const productId = parseInt(req.params.id);
+  if (isNaN(productId)) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId)).limit(1);
+  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+
+  const { entries, bulk_text } = req.body ?? {};
+
+  let items: Array<{ accountEmail: string; accountPassword: string; extraDetails?: string }> = [];
+
+  if (bulk_text && typeof bulk_text === "string") {
+    const lines = bulk_text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const parts = line.split(/[|,\t]/);
+      if (parts.length >= 2) {
+        items.push({
+          accountEmail: parts[0].trim(),
+          accountPassword: parts[1].trim(),
+          extraDetails: parts[2]?.trim() || undefined,
+        });
+      }
+    }
+  } else if (Array.isArray(entries)) {
+    items = entries
+      .filter((e: any) => e.account_email && e.account_password)
+      .map((e: any) => ({
+        accountEmail: e.account_email,
+        accountPassword: e.account_password,
+        extraDetails: e.extra_details || undefined,
+      }));
+  }
+
+  if (items.length === 0) return res.status(400).json({ error: "لا توجد بيانات صالحة للإضافة" });
+  if (items.length > 500) return res.status(400).json({ error: "الحد الأقصى 500 عنصر دفعة واحدة" });
+
+  const inserted = await db.insert(inventoryTable).values(
+    items.map(item => ({
+      productId,
+      accountEmail: item.accountEmail,
+      accountPassword: item.accountPassword,
+      extraDetails: item.extraDetails ?? null,
+    }))
+  ).returning();
+
+  return res.status(201).json({ success: true, added: inserted.length, message: `تم إضافة ${inserted.length} عنصر إلى المخزون` });
+});
+
+router.get("/settings", async (req, res) => {
+  if (!verifyAdminToken(req, res)) return;
+  return res.json({
+    telegram_configured: isTelegramConfigured(),
+    telegram_bot_set: !!process.env.TELEGRAM_BOT_TOKEN,
+    telegram_chat_set: !!process.env.TELEGRAM_CHAT_ID,
+  });
 });
 
 export { router as adminRouter };

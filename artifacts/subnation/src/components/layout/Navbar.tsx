@@ -1,18 +1,21 @@
 import { Link, useLocation } from "wouter";
 import { useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
-import { Wallet, ShoppingBag, LogOut, Menu, X } from "lucide-react";
+import { Wallet, LogOut, Menu, X, Sun, Moon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "./NotificationBell";
 
 export function Navbar() {
   const { token, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
 
   const { data: user } = useGetMe({
-    query: { enabled: !!token, retry: false },
+    query: { enabled: !!token, retry: false, refetchInterval: 30_000 },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
@@ -44,9 +47,19 @@ export function Navbar() {
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+            aria-label={theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}
+          >
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
+          <NotificationBell />
+
           {token && user ? (
-            <div className="hidden md:flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1.5">
               <Link href="/wallet" className="flex items-center gap-1.5 bg-secondary px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-muted transition-colors">
                 <Wallet className="w-3.5 h-3.5 text-primary" />
                 <span>{formatCurrency(user.wallet_balance ?? 0)}</span>
@@ -56,7 +69,7 @@ export function Navbar() {
               </Button>
             </div>
           ) : (
-            <div className="hidden md:flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1.5">
               <Link href="/login">
                 <Button variant="ghost" size="sm">تسجيل الدخول</Button>
               </Link>
@@ -65,6 +78,7 @@ export function Navbar() {
               </Link>
             </div>
           )}
+
           <button className="md:hidden p-2 rounded-md hover:bg-secondary transition-colors" onClick={() => setOpen(v => !v)}>
             {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>

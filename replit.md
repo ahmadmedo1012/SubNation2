@@ -75,6 +75,43 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - `DELETE /api/admin/products/:id` — archive product (admin auth)
 - `GET /api/admin/users` — list users (admin auth)
 
+## Phase 2 Features (Enhancement & Advanced)
+
+### Theme System
+- Dark/Light toggle in navbar (sun/moon icon), persisted in localStorage as `sn_theme`
+- Light mode uses `.light` class on `<html>` (CSS variables override)
+- FOUC prevention via inline `<script>` in index.html
+- ThemeProvider context: `artifacts/subnation/src/lib/theme.tsx`
+
+### Notification Bell
+- Polling-based (30s interval) user notification bell in Navbar
+- Fetches `/api/orders` + `/api/wallet/topups`, shows recent events with unread count
+- Unread count based on `sn_notif_seen` timestamp in localStorage
+- Component: `artifacts/subnation/src/components/layout/NotificationBell.tsx`
+
+### Real-time Admin Dashboard
+- All admin data queries use `refetchInterval: 30_000` for live updates
+- Live indicator in admin header: "آخر تحديث: Xث" (seconds since last fetch)
+- Manual refresh button in admin header for immediate refresh
+- Alert banner when pending topups exist
+
+### Admin User Management
+- Edit modal in `/admin/users` for adjusting: wallet (add/subtract/set), loyalty points, loyalty tier
+- Backend: `PATCH /api/admin/users/:id` supports `wallet_balance`, `wallet_adjustment`, `loyalty_points`, `loyalty_tier`
+
+### Admin Inventory Bulk Upload
+- Upload panel per-product in `/admin/products` (click "مخزون" button)
+- Paste-style bulk upload: one per line as `email|password|extra_details`
+- Backend: `POST /api/admin/products/:id/inventory` (bulk_text or JSON entries)
+- Max 500 entries per upload
+
+### Telegram Notifications
+- Helper: `artifacts/api-server/src/telegram.ts`
+- Backend: `GET /api/admin/settings` returns Telegram config status
+- Settings page: `/admin/settings` shows Telegram status + setup instructions
+- Triggers: new user register, new topup request, topup approved/rejected, new order
+- Requires: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` env vars (Replit Secrets)
+
 ## Important Notes
 
 - Run `pnpm --filter @workspace/api-spec run codegen` after changing openapi.yaml, then manually restore `lib/api-zod/src/index.ts` to `export * from "./generated/api";`

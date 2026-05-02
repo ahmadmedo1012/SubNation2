@@ -4,13 +4,19 @@ import { useLocation, Link } from "wouter";
 import { formatCurrency } from "@/lib/utils";
 import { Users, ShoppingBag, TrendingUp, Clock, Package, Wallet, BarChart2, ArrowUpRight } from "lucide-react";
 import { AdminLayout } from "./layout";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function AdminDashboardPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
 
-  const { data: stats, isLoading } = useGetAdminStats({
-    query: { queryKey: getGetAdminStatsQueryKey(), enabled: !!adminToken },
+  const { data: stats, isLoading, refetch } = useGetAdminStats({
+    query: {
+      queryKey: getGetAdminStatsQueryKey(),
+      enabled: !!adminToken,
+      refetchInterval: 30_000,
+    },
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
   });
 
@@ -18,6 +24,11 @@ export default function AdminDashboardPage() {
     navigate("/admin/login");
     return null;
   }
+
+  const handleRefresh = () => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
+  };
 
   const cards = stats ? [
     { label: "إجمالي المستخدمين", value: stats.total_users, icon: Users, color: "text-blue-400", bg: "bg-blue-400/10", link: "/admin/users" },
@@ -31,7 +42,7 @@ export default function AdminDashboardPage() {
   ] : [];
 
   return (
-    <AdminLayout>
+    <AdminLayout onRefresh={handleRefresh}>
       <div>
         <h1 className="text-2xl font-black mb-6">لوحة التحكم</h1>
 
@@ -58,15 +69,31 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
+        {/* Urgent alert for pending topups */}
+        {(stats?.pending_topups ?? 0) > 0 && (
+          <div className="mt-6 p-4 bg-yellow-400/10 border border-yellow-400/30 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+              <span className="text-yellow-400 font-bold text-sm">
+                {stats!.pending_topups} طلب شحن بانتظار المراجعة
+              </span>
+            </div>
+            <Link href="/admin/topups">
+              <span className="text-xs text-yellow-400 underline underline-offset-2 cursor-pointer">مراجعة الآن</span>
+            </Link>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
           <div className="bg-card border border-border rounded-xl p-5">
             <h2 className="font-bold mb-3 text-sm text-muted-foreground">وصول سريع</h2>
             <div className="space-y-2">
               {[
                 { label: "مراجعة طلبات الشحن المعلقة", href: "/admin/topups", urgent: (stats?.pending_topups ?? 0) > 0 },
-                { label: "إدارة المنتجات", href: "/admin/products", urgent: false },
+                { label: "إدارة المنتجات والمخزون", href: "/admin/products", urgent: false },
                 { label: "عرض الطلبات", href: "/admin/orders", urgent: false },
                 { label: "إدارة المستخدمين", href: "/admin/users", urgent: false },
+                { label: "إعدادات النظام", href: "/admin/settings", urgent: false },
               ].map(item => (
                 <Link key={item.href} href={item.href}>
                   <div className="flex items-center justify-between p-3 rounded-lg hover:bg-secondary transition-colors cursor-pointer">

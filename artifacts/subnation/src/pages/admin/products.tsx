@@ -10,8 +10,9 @@ import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Edit2, Trash2, Package, X, CheckCircle } from "lucide-react";
+import { Plus, Edit2, Trash2, Package, X, CheckCircle, Upload, ChevronDown } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const EMPTY_FORM = { name: "", description: "", image_url: "", price: "", category: "", usage_terms: "", is_active: true };
 
@@ -19,14 +20,18 @@ export default function AdminProductsPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [inventoryProductId, setInventoryProductId] = useState<number | null>(null);
+  const [bulkText, setBulkText] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
 
   const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
 
-  const { data: products = [], isLoading } = useListAdminProducts({
-    query: { queryKey: getListAdminProductsQueryKey(), enabled: !!adminToken },
+  const { data: products = [], isLoading, refetch } = useListAdminProducts({
+    query: { queryKey: getListAdminProductsQueryKey(), enabled: !!adminToken, refetchInterval: 60_000 },
     request: { headers },
   });
 
@@ -34,17 +39,17 @@ export default function AdminProductsPage() {
 
   const createMutation = useCreateProduct({
     request: { headers },
-    mutation: { onSuccess() { invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); } },
+    mutation: { onSuccess() { invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast({ title: "تمت الإضافة" }); } },
   });
 
   const updateMutation = useUpdateProduct({
     request: { headers },
-    mutation: { onSuccess() { invalidate(); setEditingId(null); setForm({ ...EMPTY_FORM }); } },
+    mutation: { onSuccess() { invalidate(); setEditingId(null); setForm({ ...EMPTY_FORM }); toast({ title: "تم التحديث" }); } },
   });
 
   const deleteMutation = useDeleteProduct({
     request: { headers },
-    mutation: { onSuccess() { invalidate(); } },
+    mutation: { onSuccess() { invalidate(); toast({ title: "تمت الأرشفة" }); } },
   });
 
   if (!adminToken) { navigate("/admin/login"); return null; }
@@ -79,16 +84,45 @@ export default function AdminProductsPage() {
       is_active: product.is_active,
     });
     setShowForm(true);
+    setInventoryProductId(null);
   };
 
   const cancelForm = () => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM }); };
 
+  const toggleInventoryUpload = (productId: number) => {
+    setInventoryProductId(prev => prev === productId ? null : productId);
+    setBulkText("");
+    setShowForm(false);
+  };
+
+  const handleInventoryUpload = async (productId: number) => {
+    if (!bulkText.trim()) return;
+    setUploadLoading(true);
+    try {
+      const res = await fetch(`/api/admin/products/${productId}/inventory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ bulk_text: bulkText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      toast({ title: "تم الرفع", description: data.message });
+      setBulkText("");
+      setInventoryProductId(null);
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
   return (
-    <AdminLayout>
+    <AdminLayout onRefresh={() => refetch()}>
       <div>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-black">المنتجات</h1>
-          <Button onClick={() => { setShowForm(true); setEditingId(null); setForm({ ...EMPTY_FORM }); }} className="bg-primary hover:bg-primary/90">
+          <Button onClick={() => { setShowForm(true); setEditingId(null); setForm({ ...EMPTY_FORM }); setInventoryProductId(null); }} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 ml-1" />
             إضافة منتج
           </Button>
@@ -151,33 +185,75 @@ export default function AdminProductsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {products.map((product: any) => (
-              <div key={product.id} className={`bg-card border border-border rounded-xl p-4 ${!product.is_active ? "opacity-60" : ""}`}>
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
-                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-contain p-1" onError={e => (e.currentTarget.style.display = "none")} /> : <Package className="w-5 h-5 text-muted-foreground" />}
+              <div key={product.id} className={`bg-card border border-border rounded-xl overflow-hidden ${!product.is_active ? "opacity-60" : ""}`}>
+                <div className="p-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+                      {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-contain p-1" onError={e => (e.currentTarget.style.display = "none")} /> : <Package className="w-5 h-5 text-muted-foreground" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm truncate">{product.name}</div>
+                      <div className="text-xs text-muted-foreground">{categoryLabel(product.category)}</div>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm truncate">{product.name}</div>
-                    <div className="text-xs text-muted-foreground">{categoryLabel(product.category)}</div>
+                  <div className="flex items-center justify-between text-sm mb-3">
+                    <span className="font-black text-primary">{formatCurrency(product.price)}</span>
+                    <div className="flex gap-2 text-xs text-muted-foreground">
+                      <span className={product.stock_count === 0 ? "text-red-400 font-bold" : ""}>{product.stock_count} في المخزون</span>
+                      <span>·</span>
+                      <span>{product.order_count} طلب</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => startEdit(product)}>
+                      <Edit2 className="w-3.5 h-3.5 ml-1" />
+                      تعديل
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={`flex-1 ${inventoryProductId === product.id ? "border-primary/40 text-primary bg-primary/5" : "border-muted-foreground/20 text-muted-foreground"}`}
+                      onClick={() => toggleInventoryUpload(product.id)}
+                    >
+                      <Upload className="w-3.5 h-3.5 ml-1" />
+                      مخزون
+                    </Button>
+                    <Button size="sm" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => deleteMutation.mutate({ id: product.id })}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-sm mb-3">
-                  <span className="font-black text-primary">{formatCurrency(product.price)}</span>
-                  <div className="flex gap-2 text-xs text-muted-foreground">
-                    <span>{product.stock_count} في المخزون</span>
-                    <span>·</span>
-                    <span>{product.order_count} طلب</span>
+
+                {/* Inventory Upload Panel */}
+                {inventoryProductId === product.id && (
+                  <div className="border-t border-border bg-muted/20 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Upload className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs font-bold">رفع مخزون جديد</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      كل سطر: <span className="font-mono">البريد|كلمةالمرور|تفاصيل_إضافية</span>
+                    </p>
+                    <textarea
+                      value={bulkText}
+                      onChange={e => setBulkText(e.target.value)}
+                      placeholder={"example@email.com|Password123|بيانات إضافية\nuser2@mail.com|Pass456"}
+                      className="w-full h-28 bg-secondary border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                      dir="ltr"
+                    />
+                    <div className="flex gap-2 mt-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setInventoryProductId(null)}>إلغاء</Button>
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-primary hover:bg-primary/90"
+                        onClick={() => handleInventoryUpload(product.id)}
+                        disabled={uploadLoading || !bulkText.trim()}
+                      >
+                        {uploadLoading ? "جاري الرفع..." : `رفع (${bulkText.split("\n").filter(l => l.trim()).length} عناصر)`}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => startEdit(product)}>
-                    <Edit2 className="w-3.5 h-3.5 ml-1" />
-                    تعديل
-                  </Button>
-                  <Button size="sm" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => deleteMutation.mutate({ id: product.id })}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
+                )}
               </div>
             ))}
           </div>

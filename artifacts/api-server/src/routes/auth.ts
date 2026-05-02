@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
 import { RegisterBody, LoginBody } from "@workspace/api-zod";
+import { notifyNewUser } from "../telegram";
 
 const router = Router();
 
@@ -60,6 +61,8 @@ router.post("/register", async (req, res) => {
     referredBy: referredById,
     walletBalance: referredById ? "5.00" : "0.00",
   }).returning();
+
+  notifyNewUser(normalizedPhone, !!referredById);
 
   const token = generateToken({ userId: user.id });
   return res.status(201).json({ user: formatUser(user), token });

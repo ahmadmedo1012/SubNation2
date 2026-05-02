@@ -173,6 +173,62 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* LIGHT MODE OVERRIDE */
+.light {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .06);
+
+  --background: 0 0% 97%;
+  --foreground: 220 20% 10%;
+
+  --border: 220 13% 88%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 220 20% 10%;
+  --card-border: 220 13% 88%;
+
+  --sidebar: 220 16% 95%;
+  --sidebar-foreground: 220 20% 10%;
+  --sidebar-border: 220 13% 88%;
+  --sidebar-primary: 350 89% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 14% 91%;
+  --sidebar-accent-foreground: 220 20% 20%;
+  --sidebar-ring: 350 89% 48%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 20% 10%;
+  --popover-border: 220 13% 88%;
+
+  --primary: 350 89% 48%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 220 14% 93%;
+  --secondary-foreground: 220 20% 20%;
+
+  --muted: 220 14% 93%;
+  --muted-foreground: 220 14% 48%;
+
+  --accent: 220 14% 93%;
+  --accent-foreground: 220 20% 20%;
+
+  --destructive: 0 84% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 220 13% 88%;
+  --ring: 350 89% 48%;
+
+  --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.07);
+  --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.07);
+  --shadow-sm: 0px 1px 3px 0px hsl(0 0% 0% / 0.10);
+  --shadow: 0px 2px 4px 0px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0px 3px 6px 0px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0px 4px 12px 0px hsl(0 0% 0% / 0.12);
+  --shadow-xl: 0px 8px 20px 0px hsl(0 0% 0% / 0.12);
+}
+
 @layer base {
   * {
     @apply border-border;

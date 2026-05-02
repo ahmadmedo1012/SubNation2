@@ -4,6 +4,7 @@ import { eq, and, desc, count, gt } from "drizzle-orm";
 import { verifyToken } from "./auth";
 import { CreateOrderBody } from "@workspace/api-zod";
 import { randomBytes } from "crypto";
+import { notifyNewOrder } from "../telegram";
 
 const router = Router();
 
@@ -117,6 +118,8 @@ router.post("/", async (req, res) => {
     deliveredUsageTerms: product.usageTerms,
     deliveredAt: now,
   }).returning();
+
+  notifyNewOrder(user.phone, product.name, finalPrice);
 
   return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
 });
