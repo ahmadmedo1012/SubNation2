@@ -47,3 +47,22 @@ export function notifyPasswordResetRequest(phone: string, code: string): void {
   const msg = `🔑 <b>طلب إعادة تعيين كلمة المرور</b>\n\nالهاتف: <code>${phone}</code>\nكود التحقق: <b>${code}</b>\n⏳ ينتهي خلال 30 دقيقة\n\n<i>أرسل هذا الكود للمستخدم عبر أي وسيلة تواصل.</i>`;
   sendTelegramMessage(msg).catch(() => {});
 }
+
+export function notifyCouponMaxedOut(code: string, maxUses: number): void {
+  const msg = `🎟️ <b>كوبون استُنفد بالكامل</b>\n\nالرمز: <code>${code}</code>\nتم استخدامه <b>${maxUses} مرة</b> (الحد الأقصى)\n\nℹ️ الكوبون لا يزال نشطاً ولكنه لن يقبل استخدامات جديدة.`;
+  sendTelegramMessage(msg).catch(() => {});
+}
+
+export function notifyCouponExpiringSoon(code: string, expiresAt: Date, hoursLeft: number): void {
+  const timeLabel = hoursLeft <= 1 ? "أقل من ساعة" : `${Math.floor(hoursLeft)} ساعة`;
+  const dateStr = expiresAt.toLocaleDateString("ar-LY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const msg = `⏰ <b>كوبون يوشك على الانتهاء</b>\n\nالرمز: <code>${code}</code>\nينتهي خلال: <b>${timeLabel}</b>\nوقت الانتهاء: ${dateStr}\n\nيمكنك تمديده أو إيقافه من لوحة الإدارة.`;
+  sendTelegramMessage(msg).catch(() => {});
+}
+
+export function notifyLowStock(productName: string, stockCount: number): void {
+  const urgency = stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
+  const countStr = stockCount === 0 ? "لا توجد وحدات متبقية" : `${stockCount} وحدة فقط`;
+  const msg = `${urgency}\n\nالمنتج: <b>${productName}</b>\nالمتوفر: ${countStr}\n\nيرجى إضافة مخزون جديد في أقرب وقت.`;
+  sendTelegramMessage(msg).catch(() => {});
+}

@@ -5,8 +5,12 @@ import { rateLimit } from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./migrate";
+import { startCouponWatcher } from "./jobs/couponWatcher";
+import { startStockWatcher } from "./jobs/stockWatcher";
 
 runMigrations().catch(err => { logger.error({ err }, "Startup migration failed"); });
+startCouponWatcher();
+startStockWatcher();
 
 const app: Express = express();
 

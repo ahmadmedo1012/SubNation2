@@ -4,7 +4,7 @@ import { eq, and, desc, count, gt, sql } from "drizzle-orm";
 import { verifyToken } from "./auth";
 import { CreateOrderBody } from "@workspace/api-zod";
 import { randomBytes } from "crypto";
-import { notifyNewOrder } from "../telegram";
+import { notifyNewOrder, notifyCouponMaxedOut } from "../telegram";
 
 const router = Router();
 
@@ -136,11 +136,15 @@ router.post("/", async (req, res) => {
     loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
   }).where(eq(usersTable.id, userId));
 
-  // Increment coupon usage
+  // Increment coupon usage and notify if maxed out
   if (appliedCoupon) {
+    const newUsedCount = appliedCoupon.usedCount + 1;
     await db.update(couponsTable)
       .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
       .where(eq(couponsTable.id, appliedCoupon.id));
+    if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
+      notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
+    }
   }
 
   const [order] = await db.execute(sql`
