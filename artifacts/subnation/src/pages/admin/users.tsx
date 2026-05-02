@@ -7,7 +7,7 @@ import { AdminLayout } from "./layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Users, Search, Edit2, X, CheckCircle, Plus, Minus, Wallet, Star, Filter } from "lucide-react";
+import { Users, Search, Edit2, X, CheckCircle, Plus, Minus, Wallet, Star, Filter, Download } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -153,6 +153,27 @@ export default function AdminUsersPage() {
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
 
+  const exportUsersCSV = () => {
+    const csvHeaders = ["رقم الهاتف", "الرصيد", "المستوى", "النقاط", "الإجمالي المنفق", "الطلبات", "تاريخ التسجيل"];
+    const rows = sorted.map((u: any) => [
+      u.phone ?? "",
+      (u.wallet_balance ?? 0).toFixed(2),
+      tierLabel(u.loyalty_tier ?? ""),
+      u.loyalty_points ?? 0,
+      (u.lifetime_spend ?? 0).toFixed(2),
+      u.order_count ?? 0,
+      u.created_at ? formatDate(u.created_at) : "",
+    ]);
+    const csv = [csvHeaders, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `users_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <AdminLayout onRefresh={() => refetch()}>
       <div className="space-y-5">
@@ -186,6 +207,17 @@ export default function AdminUsersPage() {
               فلترة
               {hasFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
             </button>
+            {!isLoading && sorted.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={exportUsersCSV}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">تصدير CSV</span>
+              </Button>
+            )}
           </div>
         </div>
 

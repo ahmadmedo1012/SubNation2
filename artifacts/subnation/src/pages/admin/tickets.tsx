@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,15 @@ const STATUS_FILTERS = [
   { value: "open",        label: "مفتوحة" },
   { value: "in_progress", label: "قيد المعالجة" },
   { value: "closed",      label: "مغلقة" },
+];
+
+const CATEGORY_FILTERS = [
+  { value: "", label: "جميع الفئات" },
+  { value: "billing",   label: "💳 الدفع" },
+  { value: "order",     label: "📦 الطلبات" },
+  { value: "technical", label: "🔧 تقني" },
+  { value: "account",   label: "👤 الحساب" },
+  { value: "other",     label: "🗂 أخرى" },
 ];
 
 interface TicketSummary {
@@ -53,6 +62,7 @@ export default function AdminTicketsPage() {
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<TicketDetail | null>(null);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
@@ -119,6 +129,10 @@ export default function AdminTicketsPage() {
 
   const openCount  = tickets.filter(t => t.status === "open").length;
   const pendingCount = tickets.filter(t => t.status === "open" || t.status === "in_progress").length;
+  const visibleTickets = tickets.filter(t => {
+    const matchCategory = !categoryFilter || t.category === categoryFilter;
+    return matchCategory;
+  });
 
   return (
     <AdminLayout onRefresh={fetchTickets} badges={{ openTickets: openCount }}>
@@ -127,25 +141,44 @@ export default function AdminTicketsPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-black">تذاكر الدعم</h1>
+              <h1 className="text-xl font-black">تذاكر الدعم</h1>
               {pendingCount > 0 && (
                 <span className="bg-blue-400/20 text-blue-400 border border-blue-400/30 text-xs font-black px-2.5 py-1 rounded-full">
                   {pendingCount} نشطة
                 </span>
               )}
             </div>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              {tickets.length} تذكرة إجمالاً
+            <p className="text-muted-foreground text-xs mt-0.5">
+              {visibleTickets.length}{visibleTickets.length !== tickets.length ? ` / ${tickets.length}` : ""} تذكرة
             </p>
           </div>
-          <div className="flex gap-1.5 bg-secondary/50 border border-border rounded-xl p-1">
-            {STATUS_FILTERS.map(s => (
-              <button key={s.value} onClick={() => setStatusFilter(s.value)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}>
-                {s.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-secondary/50 border border-border rounded-xl p-1">
+              {STATUS_FILTERS.map(s => (
+                <button key={s.value} onClick={() => setStatusFilter(s.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        {/* Category filter chips */}
+        <div className="flex flex-wrap gap-1.5">
+          {CATEGORY_FILTERS.map(c => (
+            <button
+              key={c.value}
+              onClick={() => setCategoryFilter(c.value)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                categoryFilter === c.value
+                  ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
         </div>
 
         {/* Split pane */}
@@ -156,14 +189,14 @@ export default function AdminTicketsPage() {
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="bg-card border border-border rounded-xl h-20 skeleton-shimmer" />
               ))
-            ) : tickets.length === 0 ? (
+            ) : visibleTickets.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
                 <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
                 <p className="font-bold">لا توجد تذاكر</p>
                 <p className="text-sm mt-1">ستظهر تذاكر الدعم هنا</p>
               </div>
             ) : (
-              tickets.map(t => {
+              visibleTickets.map(t => {
                 const sc = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.open;
                 const isActive = selected?.id === t.id;
                 return (
@@ -175,17 +208,24 @@ export default function AdminTicketsPage() {
                           {t.status === "open" && (
                             <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 animate-pulse" />
                           )}
-                          <span className="font-bold text-sm truncate leading-snug">{t.title}</span>
+                          <span className="font-bold text-sm truncate leading-snug flex-1">{t.title}</span>
+                          {(t.last_reply_at || t.created_at) && (
+                            <span className="text-[10px] text-muted-foreground/40 shrink-0 tabular-nums">
+                              {formatRelativeTime(t.last_reply_at ?? t.created_at)}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">{t.user_phone}</span>
                           {t.category && (
-                            <span className="text-xs text-muted-foreground/60">· {CATEGORIES[t.category] ?? t.category}</span>
+                            <span className="text-[11px] text-muted-foreground/55 bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
+                              {CATEGORIES[t.category] ?? t.category}
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`text-[11px] px-2 py-0.5 rounded-full border font-bold ${sc.color}`}>{sc.label}</span>
-                          <span className="text-xs text-muted-foreground">{t.reply_count} ردود</span>
+                          <span className="text-xs text-muted-foreground/50">{t.reply_count} ردود</span>
                         </div>
                       </div>
                       <ChevronLeft className="w-4 h-4 text-muted-foreground/30 shrink-0 mt-0.5 group-hover:text-muted-foreground transition-colors" />

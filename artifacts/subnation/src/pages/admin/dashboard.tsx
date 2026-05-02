@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/util
 import {
   Users, ShoppingBag, TrendingUp, Clock, Package,
   Wallet, BarChart2, AlertTriangle, ArrowUpRight, CheckCircle, Zap,
-  TrendingDown, Download
+  TrendingDown, Download, Plus, ListOrdered
 } from "lucide-react";
 import { AdminLayout } from "./layout";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,10 +38,10 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 const PERIOD_OPTIONS = [
-  { label: "7أ",  days: 7 },
-  { label: "14أ", days: 14 },
-  { label: "30أ", days: 30 },
-  { label: "90أ", days: 90 },
+  { label: "٧ أيام",  days: 7 },
+  { label: "١٤ يوماً", days: 14 },
+  { label: "شهر",  days: 30 },
+  { label: "٣ أشهر", days: 90 },
 ];
 
 const GRANULARITY_OPTIONS = [
@@ -274,6 +274,35 @@ export default function AdminDashboardPage() {
                 </div>
               </Link>
             ))}
+          </div>
+        )}
+
+        {/* Quick actions strip */}
+        {stats && !statsLoading && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-widest hidden sm:inline">إجراءات:</span>
+            {(stats.pending_topups ?? 0) > 0 && (
+              <Link href="/admin/topups">
+                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-medium">
+                  <Clock className="w-3 h-3" /> موافقة الشحن ({stats.pending_topups})
+                </button>
+              </Link>
+            )}
+            <Link href="/admin/orders">
+              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+                <ListOrdered className="w-3 h-3" /> الطلبات
+              </button>
+            </Link>
+            <Link href="/admin/products">
+              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+                <Plus className="w-3 h-3" /> منتج جديد
+              </button>
+            </Link>
+            <Link href="/admin/users">
+              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+                <Users className="w-3 h-3" /> المستخدمون
+              </button>
+            </Link>
           </div>
         )}
 

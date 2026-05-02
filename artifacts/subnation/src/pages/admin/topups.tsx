@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, Clock, Smartphone, Building2, User, Hash, Calendar, MessageSquare, AlertTriangle, X, CheckCheck } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Smartphone, Building2, User, Hash, Calendar, MessageSquare, AlertTriangle, X, CheckCheck, Copy, Check } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -119,6 +119,27 @@ function RejectModal({ topup, onConfirm, onCancel, loading }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <button
+      onClick={copy}
+      title="نسخ"
+      className={`shrink-0 rounded transition-colors ${copied ? "text-emerald-400" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+    >
+      {copied
+        ? <Check className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
+        : <Copy className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
+      }
+    </button>
   );
 }
 
@@ -236,7 +257,18 @@ export default function AdminTopupsPage() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">{(allTopups as any[]).length} طلب إجمالاً</p>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span>{(allTopups as any[]).length} طلب إجمالاً</span>
+              {pendingCount > 0 && (() => {
+                const pendingTotal = (allTopups as any[]).filter((t: any) => t.status === "pending").reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+                return pendingTotal > 0 ? (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                    <span className="text-yellow-400 font-bold tabular-nums">{formatCurrency(pendingTotal)} إجمالي معلق</span>
+                  </>
+                ) : null;
+              })()}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -326,12 +358,14 @@ export default function AdminTopupsPage() {
                       <User className="w-3 h-3 text-muted-foreground shrink-0" />
                       <span className="text-muted-foreground">المستخدم:</span>
                       <span className="font-mono font-bold text-foreground">{t.user_phone}</span>
+                      <CopyButton text={t.user_phone} size="xs" />
                     </div>
                     {t.sender_phone && (
                       <div className="flex items-center gap-1.5 text-xs">
                         <Smartphone className="w-3 h-3 text-muted-foreground shrink-0" />
                         <span className="text-muted-foreground">المُرسل:</span>
                         <span className="font-mono font-bold text-foreground">{t.sender_phone}</span>
+                        <CopyButton text={t.sender_phone} size="xs" />
                       </div>
                     )}
                     {t.payment_reference && (
@@ -339,6 +373,7 @@ export default function AdminTopupsPage() {
                         <Hash className="w-3 h-3 text-muted-foreground shrink-0" />
                         <span className="text-muted-foreground">المرجع:</span>
                         <span className="font-mono text-xs text-foreground">{t.payment_reference}</span>
+                        <CopyButton text={t.payment_reference} size="xs" />
                       </div>
                     )}
                     {t.sender_account && (
@@ -346,6 +381,7 @@ export default function AdminTopupsPage() {
                         <User className="w-3 h-3 text-muted-foreground shrink-0" />
                         <span className="text-muted-foreground">الحساب:</span>
                         <span className="font-mono font-bold text-foreground">{t.sender_account}</span>
+                        <CopyButton text={t.sender_account} size="xs" />
                       </div>
                     )}
                   </div>

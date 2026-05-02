@@ -38,8 +38,10 @@ export function categoryLabel(cat: string | null | undefined): string {
 
 export function statusLabel(status: string): string {
   const labels: Record<string, string> = {
-    pending: "قيد الانتظار", completed: "مكتمل", failed: "فشل",
-    refunded: "مسترجع", approved: "موافق عليه", rejected: "مرفوض",
+    pending: "قيد الانتظار", processing: "جارٍ التنفيذ",
+    completed: "مكتمل", delivered: "مكتمل",
+    failed: "فشل", refunded: "مسترجع",
+    approved: "موافق عليه", rejected: "مرفوض",
   };
   return labels[status] ?? status;
 }
@@ -47,11 +49,25 @@ export function statusLabel(status: string): string {
 export function statusColor(status: string): string {
   const colors: Record<string, string> = {
     pending: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+    processing: "text-blue-400 bg-blue-400/10 border-blue-400/20",
     completed: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    delivered: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
     approved: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
     failed: "text-red-400 bg-red-400/10 border-red-400/20",
     rejected: "text-red-400 bg-red-400/10 border-red-400/20",
     refunded: "text-blue-400 bg-blue-400/10 border-blue-400/20",
   };
   return colors[status] ?? "text-muted-foreground";
+}
+
+export function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  if (mins < 1) return "الآن";
+  if (mins < 60) return `منذ ${mins} د`;
+  if (hours < 24) return `منذ ${hours} س`;
+  if (days < 7) return `منذ ${days} أيام`;
+  return new Date(dateStr).toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
 }
