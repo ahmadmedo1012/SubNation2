@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
-import { ShoppingCart, Tag, CheckCircle, Lock } from "lucide-react";
+import { Zap, Lock, Tag, Star, CheckCircle } from "lucide-react";
 
 interface Product {
   id: number;
@@ -16,112 +16,126 @@ interface Product {
   order_count?: number;
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  streaming: "bg-violet-500/15 text-violet-400 border-violet-500/20",
-  music:     "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-  gaming:    "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  productivity: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+const CATEGORY_ACCENT: Record<string, { bg: string; text: string; border: string; glow: string; gradient: string }> = {
+  streaming:    { bg: "bg-violet-500/12",  text: "text-violet-300",  border: "border-violet-500/20", glow: "hover:shadow-violet-500/8",  gradient: "from-violet-950/80 via-violet-900/40 to-violet-800/20" },
+  music:        { bg: "bg-emerald-500/12", text: "text-emerald-300", border: "border-emerald-500/20", glow: "hover:shadow-emerald-500/8", gradient: "from-emerald-950/80 via-emerald-900/40 to-emerald-800/20" },
+  gaming:       { bg: "bg-blue-500/12",    text: "text-blue-300",    border: "border-blue-500/20",   glow: "hover:shadow-blue-500/8",   gradient: "from-blue-950/80 via-blue-900/40 to-blue-800/20" },
+  productivity: { bg: "bg-amber-500/12",   text: "text-amber-300",   border: "border-amber-500/20",  glow: "hover:shadow-amber-500/8",  gradient: "from-amber-950/80 via-amber-900/40 to-amber-800/20" },
 };
 
-const CATEGORY_GLOW: Record<string, string> = {
-  streaming: "hover:shadow-violet-500/10",
-  music:     "hover:shadow-emerald-500/10",
-  gaming:    "hover:shadow-blue-500/10",
-  productivity: "hover:shadow-amber-500/10",
-};
+const DEFAULT_ACCENT = { bg: "bg-primary/12", text: "text-primary", border: "border-primary/20", glow: "hover:shadow-primary/8", gradient: "from-primary/20 via-primary/8 to-transparent" };
 
-const PLACEHOLDER_GRADIENTS: Record<string, string> = {
-  streaming:    "from-violet-900/60 to-violet-800/30",
-  music:        "from-emerald-900/60 to-emerald-800/30",
-  gaming:       "from-blue-900/60 to-blue-800/30",
-  productivity: "from-amber-900/60 to-amber-800/30",
-};
+function PopularBadge({ count }: { count?: number }) {
+  if (!count || count < 5) return null;
+  if (count >= 20) return (
+    <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 bg-yellow-500/20 backdrop-blur-sm border border-yellow-500/30 text-yellow-300 text-[10px] font-black px-2 py-0.5 rounded-full">
+      <Star className="w-2.5 h-2.5 fill-current" />
+      الأكثر مبيعاً
+    </div>
+  );
+  if (count >= 5) return (
+    <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 bg-emerald-500/15 backdrop-blur-sm border border-emerald-500/20 text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full">
+      <Zap className="w-2.5 h-2.5" />
+      شائع
+    </div>
+  );
+  return null;
+}
 
 export function ProductCard({ product }: { product: Product }) {
   const displayPrice = product.sale_price ?? product.price;
   const cat = product.category ?? "streaming";
-  const categoryColor = CATEGORY_COLORS[cat] ?? "bg-secondary text-muted-foreground border-border";
-  const glowClass = CATEGORY_GLOW[cat] ?? "hover:shadow-primary/10";
-  const gradientClass = PLACEHOLDER_GRADIENTS[cat] ?? "from-primary/20 to-primary/5";
+  const accent = CATEGORY_ACCENT[cat] ?? DEFAULT_ACCENT;
+  const unavailable = !product.is_available;
 
   return (
     <Link href={`/product/${product.id}`}>
       <div className={`
         group relative bg-card border border-border rounded-2xl overflow-hidden cursor-pointer
-        transition-all duration-200 ease-out
-        hover:-translate-y-1 hover:border-border/60 hover:shadow-xl ${glowClass}
-        ${!product.is_available ? "opacity-60" : ""}
+        transition-all duration-200 ease-out will-change-transform
+        hover:-translate-y-1 hover:border-border/70 hover:shadow-2xl ${accent.glow}
+        ${unavailable ? "opacity-55 saturate-50" : ""}
       `}>
 
         {/* Discount badge */}
-        {product.discount_percent && (
-          <div className="absolute top-2.5 right-2.5 z-10 bg-primary text-white text-[11px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg shadow-primary/40">
+        {product.discount_percent ? (
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-primary text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg shadow-primary/40">
             <Tag className="w-2.5 h-2.5" />
             {product.discount_percent}%
           </div>
-        )}
+        ) : null}
+
+        {/* Popular / bestseller badge */}
+        <PopularBadge count={product.order_count} />
 
         {/* Out of stock overlay */}
-        {!product.is_available && (
-          <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/80 text-[11px] font-bold px-2 py-1 rounded-full">
+        {unavailable && (
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/70 backdrop-blur-sm text-white/70 text-[10px] font-bold px-2 py-0.5 rounded-full">
             <Lock className="w-2.5 h-2.5" />
-            نفذ المخزون
+            نفذ
           </div>
         )}
 
-        {/* Product image */}
-        <div className={`aspect-video bg-gradient-to-br ${gradientClass} flex items-center justify-center overflow-hidden relative`}>
+        {/* Image area */}
+        <div className={`aspect-[4/3] bg-gradient-to-b ${accent.gradient} flex items-center justify-center overflow-hidden relative`}>
           {product.image_url ? (
             <img
               src={product.image_url}
               alt={product.name}
-              className="w-full h-full object-contain p-6 transition-transform duration-300 group-hover:scale-105"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              className="w-full h-full object-contain p-7 transition-transform duration-300 group-hover:scale-[1.04]"
+              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
           ) : (
-            <div className="flex flex-col items-center gap-1 select-none">
-              <span className="text-5xl font-black text-white/25 group-hover:text-white/35 transition-colors duration-200">
-                {product.name[0]}
-              </span>
-            </div>
+            <span className="text-6xl font-black text-white/15 select-none group-hover:text-white/22 transition-colors duration-200">
+              {product.name[0]}
+            </span>
           )}
-          {/* Bottom gradient overlay */}
-          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-card/80 to-transparent" />
+          {/* Gradient fade into body */}
+          <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" />
         </div>
 
         {/* Card body */}
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <h3 className="font-bold text-sm leading-snug line-clamp-1 flex-1">{product.name}</h3>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${categoryColor}`}>
+        <div className="p-4 pt-3.5">
+          {/* Name + category */}
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <h3 className="font-bold text-sm leading-snug line-clamp-1 flex-1 group-hover:text-foreground transition-colors">
+              {product.name}
+            </h3>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}>
               {categoryLabel(product.category)}
             </span>
           </div>
 
+          {/* Description */}
           {product.description && (
-            <p className="text-muted-foreground text-xs line-clamp-2 mb-3 leading-relaxed">{product.description}</p>
+            <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed mb-3">{product.description}</p>
           )}
 
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/40">
-            <div>
-              <div className="font-black text-primary text-base leading-none">{formatCurrency(displayPrice)}</div>
+          {/* Price + availability row */}
+          <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/40">
+            <div className="flex flex-col">
+              <span className="font-black text-primary text-[17px] leading-none tabular-nums">{formatCurrency(displayPrice)}</span>
               {product.sale_price && (
-                <div className="text-muted-foreground/50 text-xs line-through mt-0.5">{formatCurrency(product.price)}</div>
+                <span className="text-muted-foreground/45 text-[11px] line-through mt-0.5 tabular-nums">{formatCurrency(product.price)}</span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
-              {product.is_available ? (
-                <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                  <CheckCircle className="w-2.5 h-2.5" />
-                  {product.stock_count}
-                </div>
-              ) : (
-                <span className="text-[11px] text-muted-foreground">غير متوفر</span>
-              )}
-              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center transition-all duration-200 group-hover:bg-primary group-hover:scale-110">
-                <ShoppingCart className="w-3.5 h-3.5 text-primary group-hover:text-white transition-colors" />
+            {product.is_available ? (
+              <div className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl border ${accent.bg} ${accent.text} ${accent.border}`}>
+                <CheckCircle className="w-2.5 h-2.5" />
+                <span>{product.stock_count > 99 ? "+99" : product.stock_count}</span>
               </div>
+            ) : (
+              <span className="text-[11px] text-muted-foreground/60">غير متوفر</span>
+            )}
+          </div>
+        </div>
+
+        {/* Hover CTA strip */}
+        <div className="overflow-hidden h-0 group-hover:h-11 transition-all duration-200 ease-out">
+          <div className="px-4 pb-3.5">
+            <div className="w-full h-9 rounded-xl bg-primary flex items-center justify-center text-white text-sm font-bold shadow-md shadow-primary/25 transition-all duration-150">
+              اشترِ الآن
             </div>
           </div>
         </div>

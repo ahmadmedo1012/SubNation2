@@ -270,6 +270,38 @@
     animation: flash-banner-sweep 4s ease-in-out infinite;
   }
 
+  /* Scrollbar suppression */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Card entrance animation */
+  @keyframes card-enter {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
+  .card-enter {
+    animation: card-enter 0.22s ease-out both;
+  }
+  .card-enter-delay-1 { animation-delay: 0.04s; }
+  .card-enter-delay-2 { animation-delay: 0.08s; }
+  .card-enter-delay-3 { animation-delay: 0.12s; }
+
+  /* Better focus rings */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.6);
+    outline-offset: 2px;
+  }
+
+  /* Smooth transitions for interactive elements */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
   }
