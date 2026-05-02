@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import { AdminLayout } from "./layout";
-import { ShoppingBag, Search, Download, X, ChevronDown, Calendar, CheckSquare, Square, Zap } from "lucide-react";
+import { ShoppingBag, Search, Download, X, ChevronDown, Calendar, CheckSquare, Square, Zap, TrendingUp, Tag, BarChart2, ChevronUp, Ticket, BadgePercent } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -58,6 +58,7 @@ export default function AdminOrdersPage() {
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [dateRange, setDateRange] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showStats, setShowStats] = useState(true);
 
   const { data: allOrders = [], isLoading, refetch } = useListAdminOrders({}, {
     query: { queryKey: getListAdminOrdersQueryKey({}), enabled: !!adminToken, refetchInterval: 30_000 },
@@ -101,6 +102,24 @@ export default function AdminOrdersPage() {
   }).length;
 
   const totalRevenue = filtered.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+
+  // Coupon stats from ALL orders (not filtered) for the overview panel
+  const couponOrders = (allOrders as any[]).filter((o: any) => o.coupon_code);
+  const totalDiscounts = couponOrders.reduce((sum: number, o: any) => sum + (Number(o.discount_amount) || 0), 0);
+  const totalRevenueAll = (allOrders as any[]).reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+
+  // Top coupon codes: { code, uses, totalDiscount }
+  const couponMap = couponOrders.reduce((acc: Record<string, { uses: number; totalDiscount: number }>, o: any) => {
+    const c = o.coupon_code as string;
+    if (!acc[c]) acc[c] = { uses: 0, totalDiscount: 0 };
+    acc[c].uses++;
+    acc[c].totalDiscount += Number(o.discount_amount) || 0;
+    return acc;
+  }, {});
+  const topCoupons = Object.entries(couponMap)
+    .map(([code, v]) => ({ code, ...v }))
+    .sort((a, b) => b.uses - a.uses)
+    .slice(0, 4);
 
   const exportCSV = () => {
     const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
@@ -211,6 +230,129 @@ export default function AdminOrdersPage() {
             </Button>
           </div>
         </div>
+
+        {/* Stats Panel */}
+        {!isLoading && (allOrders as any[]).length > 0 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowStats(s => !s)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/10 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <BarChart2 className="w-4 h-4 text-primary" />
+                إحصائيات الطلبات والكوبونات
+              </div>
+              <div className="flex items-center gap-3">
+                {!showStats && (
+                  <span className="text-xs text-muted-foreground font-normal">
+                    {couponOrders.length} طلب بكوبون · خصم {formatCurrency(totalDiscounts)}
+                  </span>
+                )}
+                {showStats
+                  ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                  : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                }
+              </div>
+            </button>
+
+            {showStats && (
+              <div className="border-t border-border/50 p-4 space-y-4">
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {/* Total revenue */}
+                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                      <TrendingUp className="w-3 h-3" />
+                      إجمالي الإيرادات
+                    </div>
+                    <div className="font-black text-base tabular-nums text-primary">{formatCurrency(totalRevenueAll)}</div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">{(allOrders as any[]).length} طلب</div>
+                  </div>
+
+                  {/* Total discounts */}
+                  <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/15">
+                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/80 mb-1.5">
+                      <BadgePercent className="w-3 h-3" />
+                      إجمالي الخصومات
+                    </div>
+                    <div className="font-black text-base tabular-nums text-emerald-400">{formatCurrency(totalDiscounts)}</div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                      {totalRevenueAll + totalDiscounts > 0
+                        ? `${((totalDiscounts / (totalRevenueAll + totalDiscounts)) * 100).toFixed(1)}% من المبيعات`
+                        : "—"
+                      }
+                    </div>
+                  </div>
+
+                  {/* Orders with coupons */}
+                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                      <Ticket className="w-3 h-3" />
+                      طلبات بكوبون
+                    </div>
+                    <div className="font-black text-base tabular-nums">{couponOrders.length}</div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                      {(allOrders as any[]).length > 0
+                        ? `${((couponOrders.length / (allOrders as any[]).length) * 100).toFixed(0)}% من الكل`
+                        : "—"
+                      }
+                    </div>
+                  </div>
+
+                  {/* Unique coupons */}
+                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                      <Tag className="w-3 h-3" />
+                      كوبونات مستخدمة
+                    </div>
+                    <div className="font-black text-base tabular-nums">{Object.keys(couponMap).length}</div>
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">كود فريد</div>
+                  </div>
+                </div>
+
+                {/* Top coupons table */}
+                {topCoupons.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <Tag className="w-3 h-3" />
+                      أكثر الكوبونات استخداماً
+                    </p>
+                    <div className="space-y-1.5">
+                      {topCoupons.map((c, i) => {
+                        const maxUses = topCoupons[0].uses;
+                        const barWidth = maxUses > 0 ? (c.uses / maxUses) * 100 : 0;
+                        return (
+                          <div key={c.code} className="flex items-center gap-3 group">
+                            <span className="text-[10px] font-black text-muted-foreground/40 w-4 shrink-0 text-center">{i + 1}</span>
+                            <span className="font-mono font-black text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
+                              {c.code}
+                            </span>
+                            <div className="flex-1 flex items-center gap-2 min-w-0">
+                              <div className="flex-1 h-1.5 bg-muted/40 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-emerald-500/60 rounded-full transition-all duration-500"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold tabular-nums shrink-0">{c.uses}×</span>
+                            </div>
+                            <span className="text-xs font-bold text-emerald-400 tabular-nums shrink-0 hidden sm:block">
+                              -{formatCurrency(c.totalDiscount)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {topCoupons.length === 0 && (
+                  <p className="text-xs text-muted-foreground/40 text-center py-2">لم يُستخدم أي كوبون بعد</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
