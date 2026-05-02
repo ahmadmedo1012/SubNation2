@@ -6,18 +6,19 @@ import { ProductCard } from "@/components/ProductCard";
 import { formatCurrency } from "@/lib/utils";
 import {
   Search, Zap, Clock, Wallet, Star, PackageSearch,
-  ChevronDown, Package, ShieldCheck, Truck, Headphones, ArrowLeft
+  ChevronDown, Package, ShieldCheck, Truck, Headphones, ArrowLeft,
+  LayoutGrid, Tv2, Music2, Gamepad2, Briefcase
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 
 const CATEGORIES = [
-  { value: "",              label: "الكل",    emoji: "✦" },
-  { value: "streaming",    label: "بث مباشر", emoji: "🎬" },
-  { value: "music",        label: "موسيقى",   emoji: "🎵" },
-  { value: "gaming",       label: "ألعاب",    emoji: "🎮" },
-  { value: "productivity", label: "إنتاجية",  emoji: "💼" },
+  { value: "",              label: "الكل",     Icon: LayoutGrid },
+  { value: "streaming",    label: "بث مباشر",  Icon: Tv2       },
+  { value: "music",        label: "موسيقى",    Icon: Music2    },
+  { value: "gaming",       label: "ألعاب",     Icon: Gamepad2  },
+  { value: "productivity", label: "إنتاجية",   Icon: Briefcase },
 ];
 
 const SORTS = [
@@ -341,7 +342,7 @@ export default function HomePage() {
                       }
                     `}
                   >
-                    <span className="text-[12px]">{c.emoji}</span>
+                    <c.Icon className="w-3.5 h-3.5" />
                     {c.label}
                   </button>
                 );

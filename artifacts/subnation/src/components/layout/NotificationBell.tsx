@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Bell, Check, CheckCheck, Wallet, ShoppingBag, MessageSquare, Star, Info, X } from "lucide-react";
+import {
+  Bell, BellDot, CheckCheck, Wallet, ShoppingBag,
+  MessageSquare, Star, Info, X, Package
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { formatDate } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import { Link } from "wouter";
 
 interface Notif {
@@ -14,18 +17,25 @@ interface Notif {
   created_at: string;
 }
 
-const TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
-  wallet: { icon: <Wallet className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-400/10" },
-  order: { icon: <ShoppingBag className="w-3.5 h-3.5" />, color: "text-blue-400", bg: "bg-blue-400/10" },
-  support: { icon: <MessageSquare className="w-3.5 h-3.5" />, color: "text-purple-400", bg: "bg-purple-400/10" },
-  loyalty: { icon: <Star className="w-3.5 h-3.5" />, color: "text-yellow-400", bg: "bg-yellow-400/10" },
-  system: { icon: <Info className="w-3.5 h-3.5" />, color: "text-muted-foreground", bg: "bg-muted/50" },
+const TYPE_CONFIG: Record<string, {
+  icon: React.ElementType;
+  color: string;
+  bg: string;
+  border: string;
+}> = {
+  wallet:  { icon: Wallet,       color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+  order:   { icon: ShoppingBag,  color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"    },
+  support: { icon: MessageSquare,color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20"  },
+  loyalty: { icon: Star,         color: "text-yellow-400",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20"  },
+  product: { icon: Package,      color: "text-primary",     bg: "bg-primary/10",     border: "border-primary/20"     },
+  system:  { icon: Info,         color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border/40"       },
 };
 
 export function NotificationBell() {
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [animating, setAnimating] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = notifs.filter(n => !n.is_read).length;
@@ -49,6 +59,11 @@ export function NotificationBell() {
     setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
   };
 
+  const handleOpen = () => {
+    if (!open) setAnimating(true);
+    setOpen(v => !v);
+  };
+
   useEffect(() => {
     if (!token) return;
     fetch_();
@@ -68,75 +83,143 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={ref}>
+      {/* Bell button */}
       <button
-        onClick={() => setOpen(v => !v)}
-        className="relative p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+        onClick={handleOpen}
+        className={`relative p-2 rounded-lg transition-all duration-150 active:scale-90 ${
+          open
+            ? "bg-primary/12 text-primary"
+            : "hover:bg-secondary/70 text-muted-foreground hover:text-foreground"
+        }`}
         aria-label="الإشعارات"
       >
-        <Bell className="w-4 h-4" />
+        {unread > 0
+          ? <BellDot className="w-4 h-4" />
+          : <Bell className="w-4 h-4" />
+        }
+
+        {/* Unread badge */}
         {unread > 0 && (
-          <span className="absolute -top-0.5 -left-0.5 w-4 h-4 bg-primary text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
+          <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
+      {/* Dropdown panel */}
       {open && (
-        <div className="absolute top-full mt-2 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden"
-          style={{ right: 0, left: "auto" }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div
+          className="absolute top-full mt-2.5 w-[340px] bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/30 z-50 overflow-hidden float-in"
+          style={{ right: 0, left: "auto" }}
+          onAnimationEnd={() => setAnimating(false)}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/20">
             <div className="flex items-center gap-2">
+              <Bell className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="font-bold text-sm">الإشعارات</span>
               {unread > 0 && (
-                <span className="bg-primary/10 text-primary text-xs font-black px-1.5 py-0.5 rounded-full">{unread}</span>
+                <span className="bg-primary text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                  {unread}
+                </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               {unread > 0 && (
-                <button onClick={markAllRead} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors px-2 py-1 rounded-md hover:bg-secondary">
+                <button
+                  onClick={markAllRead}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1.5 rounded-lg hover:bg-primary/8 press-spring"
+                >
                   <CheckCheck className="w-3 h-3" />
                   قراءة الكل
                 </button>
               )}
-              <button onClick={() => setOpen(false)} className="p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground">
+              <button
+                onClick={() => setOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors press-spring"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
+          {/* Body */}
           {notifs.length === 0 ? (
-            <div className="py-10 text-center text-muted-foreground">
-              <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" />
-              <p className="text-sm font-medium">لا توجد إشعارات</p>
+            <div className="py-14 text-center text-muted-foreground">
+              <div className="relative w-14 h-14 mx-auto mb-3">
+                <div className="absolute inset-0 rounded-2xl bg-muted/50 blur-sm" />
+                <div className="relative w-14 h-14 rounded-2xl bg-muted/40 border border-border/30 flex items-center justify-center">
+                  <Bell className="w-6 h-6 opacity-20" />
+                </div>
+              </div>
+              <p className="text-sm font-bold text-foreground/60 mb-0.5">لا توجد إشعارات</p>
+              <p className="text-xs text-muted-foreground/60">ستظهر هنا آخر التحديثات</p>
             </div>
           ) : (
-            <div className="max-h-96 overflow-y-auto divide-y divide-border/40">
-              {notifs.map(n => {
+            <div className="max-h-[420px] overflow-y-auto divide-y divide-border/25 scrollbar-none">
+              {notifs.map((n, i) => {
                 const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.system;
+                const IconComp = cfg.icon;
+
                 const inner = (
                   <div
                     onClick={() => !n.is_read && markRead(n.id)}
-                    className={`flex items-start gap-3 px-4 py-3 hover:bg-secondary/40 transition-colors cursor-pointer ${!n.is_read ? "bg-primary/3" : ""}`}
+                    className={`
+                      relative flex items-start gap-3 px-4 py-3.5
+                      hover:bg-muted/30 transition-colors duration-150 cursor-pointer
+                      float-in stagger-${Math.min(i + 1, 8)}
+                      ${!n.is_read ? "bg-primary/[0.03]" : ""}
+                    `}
                   >
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg} ${cfg.color}`}>
-                      {cfg.icon}
+                    {/* Unread left bar */}
+                    {!n.is_read && (
+                      <div className="absolute right-0 top-3 bottom-3 w-0.5 bg-primary/60 rounded-full" />
+                    )}
+
+                    {/* Icon */}
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${cfg.bg} ${cfg.border}`}>
+                      <IconComp className={`w-3.5 h-3.5 ${cfg.color}`} />
                     </div>
+
+                    {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1">
-                        <p className={`text-sm font-medium leading-snug ${!n.is_read ? "text-foreground" : "text-foreground/80"}`}>{n.title}</p>
-                        {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`text-sm font-semibold leading-snug ${!n.is_read ? "text-foreground" : "text-foreground/75"}`}>
+                          {n.title}
+                        </p>
+                        {!n.is_read && (
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5 badge-pulse" />
+                        )}
                       </div>
-                      {n.message && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>}
-                      <p className="text-xs text-muted-foreground/60 mt-1">{formatDate(n.created_at)}</p>
+                      {n.message && (
+                        <p className="text-xs text-muted-foreground/75 mt-0.5 line-clamp-2 leading-relaxed">
+                          {n.message}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground/45 mt-1.5 font-medium">
+                        {formatRelativeTime(n.created_at)}
+      </p>
                     </div>
                   </div>
                 );
+
                 return n.link ? (
-                  <Link key={n.id} href={n.link} onClick={() => setOpen(false)}>{inner}</Link>
+                  <Link key={n.id} href={n.link} onClick={() => setOpen(false)}>
+                    {inner}
+                  </Link>
                 ) : (
                   <div key={n.id}>{inner}</div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Footer */}
+          {notifs.length > 0 && (
+            <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center">
+              <p className="text-xs text-muted-foreground/55">
+                {notifs.length} إشعار — آخر تحديث منذ لحظات
+              </p>
             </div>
           )}
         </div>

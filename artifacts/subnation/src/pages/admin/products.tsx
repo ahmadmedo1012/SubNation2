@@ -28,11 +28,11 @@ const CATEGORY_OPTIONS = [
 ];
 
 const CATEGORY_FILTERS = [
-  { value: "", label: "الكل" },
-  { value: "streaming",    label: "🎬 بث مباشر" },
-  { value: "music",        label: "🎵 موسيقى" },
-  { value: "gaming",       label: "🎮 ألعاب" },
-  { value: "productivity", label: "💼 إنتاجية" },
+  { value: "",             label: "الكل"     },
+  { value: "streaming",    label: "بث مباشر" },
+  { value: "music",        label: "موسيقى"   },
+  { value: "gaming",       label: "ألعاب"    },
+  { value: "productivity", label: "إنتاجية"  },
 ];
 
 function InlineStockEdit({ productId, current, adminToken, onDone }: {

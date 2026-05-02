@@ -29,12 +29,12 @@ const STATUS_FILTERS = [
 ];
 
 const CATEGORY_FILTERS = [
-  { value: "", label: "جميع الفئات" },
-  { value: "billing",   label: "💳 الدفع" },
-  { value: "order",     label: "📦 الطلبات" },
-  { value: "technical", label: "🔧 تقني" },
-  { value: "account",   label: "👤 الحساب" },
-  { value: "other",     label: "🗂 أخرى" },
+  { value: "",          label: "جميع الفئات" },
+  { value: "billing",   label: "الدفع"       },
+  { value: "order",     label: "الطلبات"     },
+  { value: "technical", label: "تقني"        },
+  { value: "account",   label: "الحساب"      },
+  { value: "other",     label: "أخرى"        },
 ];
 
 interface TicketSummary {
