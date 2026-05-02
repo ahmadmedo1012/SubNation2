@@ -1,8 +1,8 @@
 import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
-import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
-import { Package, ChevronLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2, Sparkles } from "lucide-react";
+import { formatCurrency, formatDateShort, statusLabel, statusColor } from "@/lib/utils";
+import { Package, ChevronLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2, Sparkles, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STAGGER = ["", "stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6", "stagger-7", "stagger-8", "stagger-9", "stagger-10", "stagger-11", "stagger-12"];
@@ -160,7 +160,13 @@ export default function OrdersPage() {
                           {order.order_code}
                         </span>
                         {order.created_at && (
-                          <span className="text-[11px] text-muted-foreground/50">{formatDate(order.created_at)}</span>
+                          <span className="text-[11px] text-muted-foreground/50">{formatDateShort(order.created_at)}</span>
+                        )}
+                        {(order as any).coupon_code && (
+                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                            <Tag className="w-2.5 h-2.5" />
+                            {(order as any).coupon_code}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -168,6 +174,11 @@ export default function OrdersPage() {
                     {/* Right side */}
                     <div className="flex items-center gap-2.5 shrink-0">
                       <div className="text-right">
+                        {(order as any).discount_amount > 0 && (
+                          <div className="text-[10px] text-muted-foreground/40 line-through tabular-nums">
+                            {formatCurrency((order.amount ?? 0) + (order as any).discount_amount)}
+                          </div>
+                        )}
                         <div className="font-black text-sm tabular-nums">{formatCurrency(order.amount)}</div>
                         <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 justify-end ${statusColor(order.status)}`}>
                           <StatusIcon status={order.status} />

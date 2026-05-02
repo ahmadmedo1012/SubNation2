@@ -66,8 +66,17 @@ export function formatRelativeTime(dateStr: string): string {
   const hours = Math.floor(diff / 3_600_000);
   const days = Math.floor(diff / 86_400_000);
   if (mins < 1) return "الآن";
-  if (mins < 60) return `منذ ${mins} د`;
-  if (hours < 24) return `منذ ${hours} س`;
+  if (mins < 60) return `منذ ${mins} ${mins === 1 ? "دقيقة" : "د"}`;
+  if (hours < 24) return `منذ ${hours} ${hours === 1 ? "ساعة" : "س"}`;
+  if (days === 1) return "أمس";
   if (days < 7) return `منذ ${days} أيام`;
   return new Date(dateStr).toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
+}
+
+export function formatDateShort(dateStr: string): string {
+  const d = new Date(dateStr);
+  const diff = Date.now() - d.getTime();
+  const hours = Math.floor(diff / 3_600_000);
+  if (hours < 48) return formatRelativeTime(dateStr);
+  return d.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
 }

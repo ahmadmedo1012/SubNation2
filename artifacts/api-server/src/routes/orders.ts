@@ -34,6 +34,8 @@ function formatOrder(order: any, productName: string, productImageUrl: string | 
     product_name: productName,
     product_image_url: productImageUrl ?? null,
     amount: parseFloat(String(order.amount)),
+    coupon_code: (order.couponCode as string | null) ?? null,
+    discount_amount: order.discountAmount ? parseFloat(String(order.discountAmount)) : 0,
     status: order.status,
     delivered_email: order.deliveredEmail ?? null,
     delivered_password: order.deliveredPassword ?? null,

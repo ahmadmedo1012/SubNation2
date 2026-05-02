@@ -370,7 +370,10 @@ export default function AdminOrdersPage() {
                                   {order.delivered_extra_details && (
                                     <div><span className="text-muted-foreground">تفاصيل: </span><span>{order.delivered_extra_details}</span></div>
                                   )}
-                                  {!order.delivered_email && !order.delivered_password && !order.delivered_extra_details && (
+                                  {order.coupon_code && (
+                                    <div><span className="text-muted-foreground">الكوبون: </span><span className="font-mono font-bold text-emerald-400">{order.coupon_code}</span>{order.discount_amount > 0 && <span className="text-muted-foreground mr-1">(خصم {formatCurrency(order.discount_amount)})</span>}</div>
+                                  )}
+                                  {!order.delivered_email && !order.delivered_password && !order.delivered_extra_details && !order.coupon_code && (
                                     <span className="text-muted-foreground/50">لا توجد بيانات تسليم</span>
                                   )}
                                 </div>

@@ -19,6 +19,8 @@ export const ordersTable = pgTable("orders", {
   deliveredExtraDetails: text("delivered_extra_details"),
   deliveredUsageTerms: text("delivered_usage_terms"),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  couponCode: varchar("coupon_code", { length: 50 }),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0.00"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

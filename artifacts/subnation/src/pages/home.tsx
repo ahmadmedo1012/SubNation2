@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useListProducts, useGetCatalogStats, useGetFlashSale, useGetMe } from "@workspace/api-client-react";
 import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetFlashSaleQueryKey, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
@@ -59,10 +59,18 @@ function ProductSkeleton() {
 
 export default function HomePage() {
   const { token } = useAuth();
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [sort, setSort] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = (val: string) => {
+    setSearchInput(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearch(val), 320);
+  };
 
   const params: Record<string, string> = {};
   if (search)        params.search = search;
@@ -109,7 +117,7 @@ export default function HomePage() {
     return () => clearInterval(id);
   }, [flashSale?.ends_at]);
 
-  const activeFilterCount = [search, category, sort, availableOnly ? "1" : ""].filter(Boolean).length;
+  const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(Boolean).length;
 
   return (
     <div className="min-h-screen">
@@ -307,8 +315,8 @@ export default function HomePage() {
               <Input
                 type="search"
                 placeholder="ابحث عن اشتراك..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={e => handleSearchChange(e.target.value)}
                 className="pr-9 h-10 text-sm bg-card border-border/55 focus:border-primary/50 transition-all duration-150"
               />
             </div>
@@ -372,7 +380,7 @@ export default function HomePage() {
             </p>
             {activeFilterCount > 0 && (
               <button
-                onClick={() => { setSearch(""); setCategory(""); setSort(""); setAvailableOnly(false); }}
+                onClick={() => { setSearch(""); setSearchInput(""); setCategory(""); setSort(""); setAvailableOnly(false); }}
                 className="text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring"
               >
                 مسح ({activeFilterCount})
@@ -395,7 +403,7 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground/60 mb-5">جرب تغيير الفلتر أو كلمة البحث</p>
             {activeFilterCount > 0 && (
               <button
-                onClick={() => { setSearch(""); setCategory(""); setSort(""); setAvailableOnly(false); }}
+                onClick={() => { setSearch(""); setSearchInput(""); setCategory(""); setSort(""); setAvailableOnly(false); }}
                 className="text-sm font-bold text-primary border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
               >
                 مسح جميع الفلاتر

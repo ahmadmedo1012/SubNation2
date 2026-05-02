@@ -219,10 +219,10 @@ export default function LoyaltyPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex-1 bg-background/40 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono">
-                  {window.location.origin}/register?ref={data.referral_code}
+                  {data.referral_link || `${window.location.origin}/register?ref=${data.referral_code}`}
                 </div>
                 <CopyButton
-                  text={`${window.location.origin}/register?ref=${data.referral_code}`}
+                  text={data.referral_link || `${window.location.origin}/register?ref=${data.referral_code}`}
                   label="رابط"
                 />
               </div>

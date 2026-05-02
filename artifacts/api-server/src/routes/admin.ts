@@ -100,6 +100,9 @@ router.get("/orders", async (req, res) => {
     status: r.order.status,
     delivered_email: r.order.deliveredEmail ?? null,
     delivered_password: r.order.deliveredPassword ?? null,
+    delivered_extra_details: r.order.deliveredExtraDetails ?? null,
+    coupon_code: r.order.couponCode ?? null,
+    discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
     created_at: r.order.createdAt?.toISOString(),
   })));
 });
