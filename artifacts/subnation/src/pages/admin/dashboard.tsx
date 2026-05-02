@@ -15,12 +15,14 @@ import {
   Tooltip, ResponsiveContainer, LineChart, Line
 } from "recharts";
 
-interface ChartDay { date: string; orders: number; revenue: number; users: number }
+interface ChartDay { date: string; orders: number; revenue: number; users: number; discounts: number; coupon_orders: number }
+
+const CURRENCY_KEYS = new Set(["الإيرادات", "الخصومات"]);
 
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border rounded-xl p-3 shadow-2xl text-xs min-w-[140px]">
+    <div className="bg-card border border-border rounded-xl p-3 shadow-2xl text-xs min-w-[150px]">
       <p className="font-bold text-muted-foreground mb-2">{label}</p>
       {payload.map((p: any) => (
         <div key={p.name} className="flex items-center justify-between gap-4 mb-1 last:mb-0">
@@ -29,7 +31,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
             <span className="text-muted-foreground">{p.name}</span>
           </div>
           <span className="font-black tabular-nums">
-            {p.name === "الإيرادات" ? formatCurrency(Number(p.value)) : p.value}
+            {CURRENCY_KEYS.has(p.name) ? formatCurrency(Number(p.value)) : p.value}
           </span>
         </div>
       ))}
@@ -67,10 +69,12 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
       key = date.toLocaleDateString("ar", { year: "numeric", month: "short" });
     }
 
-    if (!buckets[key]) buckets[key] = { date: key, orders: 0, revenue: 0, users: 0 };
-    buckets[key].orders  += Number(d.orders)  || 0;
-    buckets[key].revenue += Number(d.revenue) || 0;
-    buckets[key].users   += Number(d.users)   || 0;
+    if (!buckets[key]) buckets[key] = { date: key, orders: 0, revenue: 0, users: 0, discounts: 0, coupon_orders: 0 };
+    buckets[key].orders        += Number(d.orders)        || 0;
+    buckets[key].revenue       += Number(d.revenue)       || 0;
+    buckets[key].users         += Number(d.users)         || 0;
+    buckets[key].discounts     += Number(d.discounts)     || 0;
+    buckets[key].coupon_orders += Number(d.coupon_orders) || 0;
   });
 
   return Object.values(buckets);
@@ -106,8 +110,8 @@ function TrendBadge({ data, dataKey }: { data: ChartDay[]; dataKey: keyof ChartD
 }
 
 function exportChartCSV(data: ChartDay[], days: number) {
-  const headers = ["التاريخ", "الطلبات", "الإيرادات", "المستخدمون الجدد"];
-  const rows = data.map(d => [d.date, d.orders, d.revenue.toFixed(2), d.users]);
+  const headers = ["التاريخ", "الطلبات", "الإيرادات", "الخصومات", "طلبات بكوبون", "المستخدمون الجدد"];
+  const rows = data.map(d => [d.date, d.orders, d.revenue.toFixed(2), (d.discounts || 0).toFixed(2), d.coupon_orders || 0, d.users]);
   const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -314,7 +318,20 @@ export default function AdminDashboardPage() {
               {/* Revenue + Orders chart */}
               <div className="bg-card border border-border rounded-xl p-5">
                 <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
-                  <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
+                  <div>
+                    <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="w-3 h-0.5 bg-primary rounded inline-block" />الإيرادات
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />الطلبات
+                      </span>
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />الخصومات
+                      </span>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Granularity picker */}
                     <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
@@ -374,14 +391,57 @@ export default function AdminDashboardPage() {
                           <stop offset="5%"  stopColor="#10b981" stopOpacity={0.2} />
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                         </linearGradient>
+                        <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#f59e0b" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                       <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
                       <Tooltip content={<ChartTooltip />} />
-                      <Area type="monotone" dataKey="revenue" name="الإيرادات" stroke="#e11d48" fill="url(#revGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                      <Area type="monotone" dataKey="orders"  name="الطلبات"   stroke="#10b981" fill="url(#ordGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                      <Area type="monotone" dataKey="revenue"   name="الإيرادات" stroke="#e11d48" fill="url(#revGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                      <Area type="monotone" dataKey="orders"    name="الطلبات"   stroke="#10b981" fill="url(#ordGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                      <Area type="monotone" dataKey="discounts" name="الخصومات"  stroke="#f59e0b" fill="url(#discGrad)" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} strokeDasharray="4 2" />
                     </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Discounts & Coupon Orders chart */}
+              <div className="bg-card border border-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
+                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
+                      الخصومات
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
+                      طلبات بكوبون
+                    </span>
+                  </div>
+                </div>
+                {chartLoading ? (
+                  <div className="h-28 skeleton-shimmer rounded-lg" />
+                ) : displayData.every(d => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0) ? (
+                  <div className="h-28 flex items-center justify-center text-muted-foreground/40 text-xs">
+                    لا يوجد استخدام كوبونات في هذه الفترة
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={120}>
+                    <BarChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="discounts"     name="الخصومات"      fill="#f59e0b" radius={[3,3,0,0]} maxBarSize={24} fillOpacity={0.8} />
+                      <Bar dataKey="coupon_orders" name="طلبات بكوبون"  fill="#10b981" radius={[3,3,0,0]} maxBarSize={24} fillOpacity={0.6} />
+                    </BarChart>
                   </ResponsiveContainer>
                 )}
               </div>

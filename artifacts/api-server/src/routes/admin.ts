@@ -462,8 +462,8 @@ router.get("/settings", async (req, res) => {
 router.get("/chart-data", async (req, res) => {
   if (!verifyAdminToken(req, res)) return;
 
-  const days = 7;
-  const result: Array<{ date: string; orders: number; revenue: number; users: number }> = [];
+  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
+  const result: Array<{ date: string; orders: number; revenue: number; users: number; discounts: number; coupon_orders: number }> = [];
 
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
@@ -471,7 +471,12 @@ router.get("/chart-data", async (req, res) => {
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const end = new Date(start.getTime() + 86400000);
 
-    const [ordersRow] = await db.select({ count: count(), revenue: sum(ordersTable.amount) })
+    const [ordersRow] = await db.select({
+      count: count(),
+      revenue: sum(ordersTable.amount),
+      discounts: sum(ordersTable.discountAmount),
+      coupon_orders: sql<number>`count(case when ${ordersTable.couponCode} is not null then 1 end)`,
+    })
       .from(ordersTable)
       .where(and(sql`${ordersTable.createdAt} >= ${start}`, sql`${ordersTable.createdAt} < ${end}`));
 
@@ -483,6 +488,8 @@ router.get("/chart-data", async (req, res) => {
       date: start.toLocaleDateString("ar-LY", { month: "short", day: "numeric" }),
       orders: Number(ordersRow?.count ?? 0),
       revenue: parseFloat(String(ordersRow?.revenue ?? 0)),
+      discounts: parseFloat(String(ordersRow?.discounts ?? 0)),
+      coupon_orders: Number(ordersRow?.coupon_orders ?? 0),
       users: Number(usersRow?.count ?? 0),
     });
   }
