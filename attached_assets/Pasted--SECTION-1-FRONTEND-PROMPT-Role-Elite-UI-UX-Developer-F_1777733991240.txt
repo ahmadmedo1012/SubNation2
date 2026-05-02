@@ -1,0 +1,37 @@
+**SECTION 1 — FRONTEND PROMPT**
+
+**Role:** Elite UI/UX Developer & Frontend Architect
+**Task:** Execute a comprehensive visual and UX overhaul of the main SubNation frontend to achieve a premium, "world-class" SaaS feel with mobile-first perfection.
+
+**Context & Current State:**
+The platform is functionally solid but lacks the visual polish, micro-interactions, and refined typography expected of a top-tier digital marketplace. The current design feels slightly generic and lacks a strong visual hierarchy, especially on mobile devices.
+
+**Execution Instructions:**
+
+**1. Typography & Visual Hierarchy:**
+*   **Font Upgrade:** Implement a premium Arabic-supported font (e.g., Cairo, Tajawal, or IBM Plex Sans Arabic) across the entire platform. Ensure consistent font weights (Light for body, Medium/SemiBold for subheadings, Bold/ExtraBold for primary headings).
+*   **Hierarchy:** Increase the contrast between primary headings, secondary text, and metadata. Use subtle color variations (e.g., slate gray for secondary text) rather than just size differences to establish hierarchy.
+*   **Spacing & Rhythm:** Standardize padding and margins using a strict 4px/8px/16px/24px/32px spacing system. Increase whitespace around major sections (like the "Flash Sale" banner and product grid) to let the content breathe.
+
+**2. Color Palette & Contrast:**
+*   **Refinement:** The current dark theme is functional but needs depth. Introduce a subtle gradient or a very dark, desaturated primary brand color (e.g., deep navy or midnight blue) for the background instead of pure black/dark gray.
+*   **Accent Colors:** Ensure the primary accent color (red/pink used for discounts and buttons) is vibrant but accessible. Use a slightly muted version for hover states.
+*   **Card Backgrounds:** Slightly lighten the product card backgrounds to create better contrast against the main background. Add a very subtle, soft border (e.g., 1px solid rgba(255,255,255,0.05)) to define edges clearly.
+
+**3. Animations & Micro-interactions:**
+*   **Hover States:** Add smooth, 200ms ease-in-out transitions to all interactive elements (buttons, product cards, navigation links).
+*   **Product Cards:** On hover, slightly elevate the card (translateY(-2px)) and add a soft, colored glow or drop shadow that matches the brand accent color.
+*   **Loading States:** Implement skeleton loaders for the product grid instead of blank screens or basic spinners during data fetching.
+*   **Button Feedback:** Add a subtle ripple or scale-down effect on button click (active state) to provide immediate tactile feedback.
+
+**4. Mobile-First Polish (CRITICAL):**
+*   **Navigation:** Transform the top navigation into a sleek, bottom-fixed tab bar for mobile users, or a highly responsive hamburger menu with a smooth slide-in animation.
+*   **Product Grid:** Ensure the product grid gracefully degrades to a single column on small screens, with appropriately sized touch targets (minimum 44x44px) for all buttons and links.
+*   **Filter/Search:** Make the search bar and category filters sticky at the top on mobile, or hide them behind a clean "Filter" button that opens a bottom sheet modal.
+*   **Typography Scaling:** Implement fluid typography or strict media queries to ensure headings are not overwhelmingly large on mobile, while body text remains legible (minimum 14px).
+
+**5. Specific Component Upgrades:**
+*   **Flash Sale Banner:** Make it more prominent but less intrusive. Use a subtle animated gradient background and a pulsing effect on the countdown timer.
+*   **Product Details Modal/Page:** Improve the layout by placing the image/icon on the top (or left on desktop) and clearly separating the pricing, stock status, and "Login to Buy" action with distinct visual blocks.
+
+**Deliverable:** Implement these changes using Tailwind CSS (or the existing styling solution), ensuring all code is clean, modular, and strictly adheres to the new design system.

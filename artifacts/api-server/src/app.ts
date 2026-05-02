@@ -7,6 +7,9 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Trust the first hop from Replit's reverse proxy (needed for rate limiting & IP detection)
+app.set("trust proxy", 1);
+
 // ── CORS ─────────────────────────────────────────────────────────────────────
 // In production restrict to REPLIT_DOMAINS; in dev allow all
 const allowedOrigins = process.env.REPLIT_DOMAINS
