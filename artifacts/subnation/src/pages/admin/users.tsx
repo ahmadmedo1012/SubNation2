@@ -7,7 +7,7 @@ import { AdminLayout } from "./layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Users, Search, Edit2, X, CheckCircle, Plus, Minus, Wallet, Star } from "lucide-react";
+import { Users, Search, Edit2, X, CheckCircle, Plus, Minus, Wallet, Star, Filter } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,10 +26,26 @@ const TIERS = [
   { value: "platinum", label: "بلاتيني" },
 ];
 
+const TIER_FILTERS = [
+  { value: "", label: "الكل" },
+  { value: "bronze",   label: "برونزي" },
+  { value: "silver",   label: "فضي" },
+  { value: "gold",     label: "ذهبي" },
+  { value: "platinum", label: "بلاتيني" },
+];
+
 const WALLET_MODES = [
   { value: "add",      label: "إضافة", icon: Plus },
   { value: "subtract", label: "خصم",   icon: Minus },
   { value: "set",      label: "تحديد", icon: null },
+];
+
+const SORT_OPTIONS = [
+  { value: "wallet_desc",   label: "الرصيد ↓" },
+  { value: "spend_desc",    label: "الإنفاق ↓" },
+  { value: "orders_desc",   label: "الطلبات ↓" },
+  { value: "points_desc",   label: "النقاط ↓" },
+  { value: "created_asc",   label: "الأقدم" },
 ];
 
 function TableSkeleton() {
@@ -58,6 +74,9 @@ export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [tierFilter, setTierFilter] = useState("");
+  const [sortBy, setSortBy] = useState("wallet_desc");
+  const [showFilters, setShowFilters] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditUserForm>({ wallet_mode: "add", wallet_value: "", loyalty_points: "", loyalty_tier: "" });
@@ -74,6 +93,22 @@ export default function AdminUsersPage() {
 
   const totalWallet = (users as any[]).reduce((sum: number, u: any) => sum + (u.wallet_balance ?? 0), 0);
   const totalSpend  = (users as any[]).reduce((sum: number, u: any) => sum + (u.lifetime_spend ?? 0), 0);
+
+  // Client-side tier filter + sort
+  const tierFiltered = tierFilter
+    ? (users as any[]).filter((u: any) => u.loyalty_tier === tierFilter)
+    : (users as any[]);
+
+  const sorted = [...tierFiltered].sort((a: any, b: any) => {
+    switch (sortBy) {
+      case "wallet_desc":  return (b.wallet_balance ?? 0)  - (a.wallet_balance ?? 0);
+      case "spend_desc":   return (b.lifetime_spend ?? 0)  - (a.lifetime_spend ?? 0);
+      case "orders_desc":  return (b.order_count ?? 0)     - (a.order_count ?? 0);
+      case "points_desc":  return (b.loyalty_points ?? 0)  - (a.loyalty_points ?? 0);
+      case "created_asc":  return new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
+      default: return 0;
+    }
+  });
 
   function openEdit(user: any) {
     setEditingUser(user);
@@ -106,7 +141,7 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "خطأ");
-      toast({ title: "تم الحفظ" });
+      toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey(params) });
       setEditingUser(null);
     } catch (err: any) {
@@ -116,6 +151,8 @@ export default function AdminUsersPage() {
     }
   }
 
+  const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
+
   return (
     <AdminLayout onRefresh={() => refetch()}>
       <div className="space-y-5">
@@ -124,18 +161,87 @@ export default function AdminUsersPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">المستخدمون</h1>
             <p className="text-xs text-muted-foreground">
-              {(users as any[]).length > 0 ? `${(users as any[]).length} مستخدم مسجل` : "إدارة حسابات المستخدمين"}
+              {(users as any[]).length > 0 ? `${sorted.length} / ${(users as any[]).length} مستخدم` : "إدارة حسابات المستخدمين"}
+              {tierFilter && ` · فلتر: ${tierLabel(tierFilter)}`}
             </p>
           </div>
-          <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              type="search" placeholder="بحث برقم الهاتف..."
-              value={search} onChange={e => setSearch(e.target.value)}
-              className="pr-9 h-9 w-56 text-sm" dir="ltr"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                type="search" placeholder="بحث برقم الهاتف..."
+                value={search} onChange={e => setSearch(e.target.value)}
+                className="pr-9 h-9 w-56 text-sm" dir="ltr"
+              />
+            </div>
+            <button
+              onClick={() => setShowFilters(v => !v)}
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-medium transition-all ${
+                hasFilters || showFilters
+                  ? "bg-primary/10 border-primary/30 text-primary"
+                  : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              فلترة
+              {hasFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+            </button>
           </div>
         </div>
+
+        {/* Filter panel */}
+        {showFilters && (
+          <div className="bg-card border border-border rounded-xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2">مستوى الولاء</div>
+                <div className="flex gap-1 flex-wrap">
+                  {TIER_FILTERS.map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => setTierFilter(t.value)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                        tierFilter === t.value
+                          ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                          : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2">الترتيب</div>
+                <div className="flex gap-1 flex-wrap">
+                  {SORT_OPTIONS.map(s => (
+                    <button
+                      key={s.value}
+                      onClick={() => setSortBy(s.value)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                        sortBy === s.value
+                          ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                          : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {hasFilters && (
+                <div className="flex items-end">
+                  <button
+                    onClick={() => { setTierFilter(""); setSortBy("wallet_desc"); }}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    إعادة ضبط
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Summary stats strip */}
         {!isLoading && (users as any[]).length > 0 && !search && (
@@ -187,6 +293,13 @@ export default function AdminUsersPage() {
                 ))}
               </div>
 
+              {/* Extra quick info */}
+              <div className="flex items-center gap-4 mb-4 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
+                <span>الطلبات: <strong className="text-foreground">{editingUser.order_count}</strong></span>
+                <span>الإنفاق: <strong className="text-emerald-400">{formatCurrency(editingUser.lifetime_spend)}</strong></span>
+                {editingUser.created_at && <span>التسجيل: <strong className="text-foreground">{formatDate(editingUser.created_at)}</strong></span>}
+              </div>
+
               <form onSubmit={handleSave} className="space-y-4">
                 <div>
                   <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
@@ -234,14 +347,19 @@ export default function AdminUsersPage() {
         )}
 
         {/* Table */}
-        {isLoading ? <TableSkeleton /> : (users as any[]).length === 0 ? (
+        {isLoading ? <TableSkeleton /> : sorted.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
             <div className="w-12 h-12 rounded-xl bg-muted mx-auto mb-3 flex items-center justify-center">
               <Users className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm">
-              {search ? `لا نتائج لـ "${search}"` : "لا يوجد مستخدمون"}
+              {search ? `لا نتائج لـ "${search}"` : tierFilter ? `لا مستخدمون بمستوى ${tierLabel(tierFilter)}` : "لا يوجد مستخدمون"}
             </p>
+            {(search || tierFilter) && (
+              <button onClick={() => { setSearch(""); setTierFilter(""); }} className="text-xs text-primary hover:underline mt-2">
+                مسح الفلاتر
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -262,18 +380,26 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(users as any[]).map((user: any, idx: number) => (
+                    {sorted.map((user: any, idx: number) => (
                       <tr key={user.id} className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}>
-                        <td className="px-4 py-3 font-mono font-bold text-sm">{user.phone}</td>
-                        <td className="px-4 py-3 font-black text-primary tabular-nums">{formatCurrency(user.wallet_balance)}</td>
-                        <td className="px-4 py-3">
-                          <span className={`font-bold text-xs ${tierColor(user.loyalty_tier)}`}>{tierLabel(user.loyalty_tier)}</span>
+                        <td className="px-4 py-2.5 font-mono font-bold text-sm">{user.phone}</td>
+                        <td className="px-4 py-2.5 font-black text-primary tabular-nums">{formatCurrency(user.wallet_balance)}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`font-bold text-xs px-2 py-0.5 rounded-full border ${
+                            user.loyalty_tier === "platinum" ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20"
+                            : user.loyalty_tier === "gold" ? "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
+                            : user.loyalty_tier === "silver" ? "text-slate-300 bg-slate-400/10 border-slate-400/20"
+                            : user.loyalty_tier === "bronze" ? "text-amber-600 bg-amber-600/10 border-amber-600/20"
+                            : "text-muted-foreground bg-muted/40 border-border"
+                          }`}>
+                            {tierLabel(user.loyalty_tier)}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 tabular-nums text-sm">{user.loyalty_points}</td>
-                        <td className="px-4 py-3 text-muted-foreground tabular-nums">{formatCurrency(user.lifetime_spend)}</td>
-                        <td className="px-4 py-3 tabular-nums">{user.order_count}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">{user.created_at ? formatDate(user.created_at) : "—"}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2.5 tabular-nums text-sm">{user.loyalty_points}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground tabular-nums">{formatCurrency(user.lifetime_spend)}</td>
+                        <td className="px-4 py-2.5 tabular-nums font-semibold">{user.order_count}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums">{user.created_at ? formatDate(user.created_at) : "—"}</td>
+                        <td className="px-4 py-2.5">
                           <button onClick={() => openEdit(user)}
                             className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90">
                             <Edit2 className="w-3.5 h-3.5" />
@@ -284,14 +410,15 @@ export default function AdminUsersPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground">
-                {(users as any[]).length} مستخدم
+              <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground flex items-center justify-between">
+                <span>{sorted.length} مستخدم</span>
+                <span className="text-muted-foreground/40">انقر على قلم التحرير للتعديل</span>
               </div>
             </div>
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
-              {(users as any[]).map((user: any) => (
+              {sorted.map((user: any) => (
                 <div key={user.id} className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono font-bold text-sm">{user.phone}</div>

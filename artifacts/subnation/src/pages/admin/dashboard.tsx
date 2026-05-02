@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/util
 import {
   Users, ShoppingBag, TrendingUp, Clock, Package,
   Wallet, BarChart2, AlertTriangle, ArrowUpRight, CheckCircle, Zap,
-  TrendingDown
+  TrendingDown, Download
 } from "lucide-react";
 import { AdminLayout } from "./layout";
 import { useQueryClient } from "@tanstack/react-query";
@@ -41,7 +41,40 @@ const PERIOD_OPTIONS = [
   { label: "7أ",  days: 7 },
   { label: "14أ", days: 14 },
   { label: "30أ", days: 30 },
+  { label: "90أ", days: 90 },
 ];
+
+const GRANULARITY_OPTIONS = [
+  { label: "يومي",    value: "daily" },
+  { label: "أسبوعي", value: "weekly" },
+  { label: "شهري",   value: "monthly" },
+];
+
+// Aggregate chart data into weekly or monthly buckets
+function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
+  if (granularity === "daily" || data.length === 0) return data;
+
+  const buckets: Record<string, ChartDay> = {};
+
+  data.forEach(d => {
+    const date = new Date(d.date);
+    let key: string;
+    if (granularity === "weekly") {
+      const week = new Date(date);
+      week.setDate(date.getDate() - date.getDay());
+      key = week.toLocaleDateString("ar", { month: "short", day: "numeric" });
+    } else {
+      key = date.toLocaleDateString("ar", { year: "numeric", month: "short" });
+    }
+
+    if (!buckets[key]) buckets[key] = { date: key, orders: 0, revenue: 0, users: 0 };
+    buckets[key].orders  += Number(d.orders)  || 0;
+    buckets[key].revenue += Number(d.revenue) || 0;
+    buckets[key].users   += Number(d.users)   || 0;
+  });
+
+  return Object.values(buckets);
+}
 
 // Mini sparkline for KPI trend — uses last N days of chart data
 function Sparkline({ data, dataKey, color }: { data: ChartDay[]; dataKey: keyof ChartDay; color: string }) {
@@ -72,6 +105,19 @@ function TrendBadge({ data, dataKey }: { data: ChartDay[]; dataKey: keyof ChartD
   );
 }
 
+function exportChartCSV(data: ChartDay[], days: number) {
+  const headers = ["التاريخ", "الطلبات", "الإيرادات", "المستخدمون الجدد"];
+  const rows = data.map(d => [d.date, d.orders, d.revenue.toFixed(2), d.users]);
+  const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `chart_${days}d_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminDashboardPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
@@ -79,6 +125,7 @@ export default function AdminDashboardPage() {
   const [chartData, setChartData] = useState<ChartDay[]>([]);
   const [chartDays, setChartDays] = useState(7);
   const [chartLoading, setChartLoading] = useState(false);
+  const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
 
@@ -113,6 +160,16 @@ export default function AdminDashboardPage() {
   };
 
   const badges = { pendingTopups: stats?.pending_topups ?? 0, openTickets: 0 };
+
+  const displayData = aggregateData(chartData, granularity);
+
+  // Auto-set sensible default granularity based on period
+  const onChangeDays = (days: number) => {
+    setChartDays(days);
+    if (days <= 14) setGranularity("daily");
+    else if (days <= 30) setGranularity("daily");
+    else setGranularity("weekly");
+  };
 
   const METRIC_CARDS = stats ? [
     {
@@ -227,29 +284,58 @@ export default function AdminDashboardPage() {
             <div className="xl:col-span-3 space-y-5">
               {/* Revenue + Orders chart */}
               <div className="bg-card border border-border rounded-xl p-5">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
                   <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
-                  <div className="flex items-center gap-1.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                    {PERIOD_OPTIONS.map(opt => (
-                      <button
-                        key={opt.days}
-                        onClick={() => setChartDays(opt.days)}
-                        className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all duration-150 ${
-                          chartDays === opt.days
-                            ? "bg-card shadow-sm text-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Granularity picker */}
+                    <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                      {GRANULARITY_OPTIONS.map(g => (
+                        <button
+                          key={g.value}
+                          onClick={() => setGranularity(g.value as any)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all duration-150 ${
+                            granularity === g.value
+                              ? "bg-card shadow-sm text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {g.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Period picker */}
+                    <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                      {PERIOD_OPTIONS.map(opt => (
+                        <button
+                          key={opt.days}
+                          onClick={() => onChangeDays(opt.days)}
+                          className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all duration-150 ${
+                            chartDays === opt.days
+                              ? "bg-card shadow-sm text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Export chart data */}
+                    <button
+                      onClick={() => exportChartCSV(displayData, chartDays)}
+                      className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                      title="تصدير بيانات المخطط CSV"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
                 {chartLoading ? (
                   <div className="h-40 skeleton-shimmer rounded-lg" />
                 ) : (
                   <ResponsiveContainer width="100%" height={160}>
-                    <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                    <AreaChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
                       <defs>
                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%"  stopColor="#e11d48" stopOpacity={0.2} />
@@ -275,13 +361,31 @@ export default function AdminDashboardPage() {
               <div className="bg-card border border-border rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
-                  <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">آخر {chartDays} أيام</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
+                      {granularity === "daily" ? "يومي" : granularity === "weekly" ? "أسبوعي" : "شهري"} · آخر {chartDays} يوم
+                    </span>
+                    <button
+                      onClick={() => {
+                        const usersData = displayData.map(d => [d.date, d.users]);
+                        const csv = [["التاريخ", "المستخدمون الجدد"], ...usersData].map(r => r.join(",")).join("\n");
+                        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `users_${chartDays}d.csv`; a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground/50 hover:text-muted-foreground"
+                      title="تصدير CSV"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
                 {chartLoading ? (
                   <div className="h-28 skeleton-shimmer rounded-lg" />
                 ) : (
                   <ResponsiveContainer width="100%" height={120}>
-                    <BarChart data={chartData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                    <BarChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                       <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} allowDecimals={false} />

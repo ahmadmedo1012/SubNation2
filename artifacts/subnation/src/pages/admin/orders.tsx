@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useListAdminOrders, getListAdminOrdersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import { AdminLayout } from "./layout";
-import { ShoppingBag, Search, Package, Download, X, ChevronDown } from "lucide-react";
+import { ShoppingBag, Search, Download, X, ChevronDown, Calendar, CheckSquare, Square, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -16,6 +16,21 @@ const STATUS_FILTERS = [
   { value: "failed",     label: "فاشل" },
   { value: "refunded",   label: "مسترجع" },
 ];
+
+const DATE_RANGES = [
+  { label: "الكل",    days: 0 },
+  { label: "اليوم",   days: 1 },
+  { label: "7 أيام",  days: 7 },
+  { label: "30 يوم",  days: 30 },
+];
+
+function isWithinDays(dateStr: string, days: number) {
+  if (!days) return true;
+  const d = new Date(dateStr);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return d >= cutoff;
+}
 
 function TableSkeleton() {
   return (
@@ -41,6 +56,8 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [dateRange, setDateRange] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const { data: allOrders = [], isLoading, refetch } = useListAdminOrders({}, {
     query: { queryKey: getListAdminOrdersQueryKey({}), enabled: !!adminToken, refetchInterval: 30_000 },
@@ -67,13 +84,14 @@ export default function AdminOrdersPage() {
   }, {});
 
   const byStatus = statusFilter ? (allOrders as any[]).filter((o: any) => o.status === statusFilter) : (allOrders as any[]);
+  const byDate = dateRange ? byStatus.filter((o: any) => o.created_at && isWithinDays(o.created_at, dateRange)) : byStatus;
   const filtered = search
-    ? byStatus.filter((o: any) =>
+    ? byDate.filter((o: any) =>
         o.order_code?.toLowerCase().includes(search.toLowerCase()) ||
         o.user_phone?.includes(search) ||
         o.product_name?.toLowerCase().includes(search.toLowerCase())
       )
-    : byStatus;
+    : byDate;
 
   const todayCount = (allOrders as any[]).filter((o: any) => {
     if (!o.created_at) return false;
@@ -82,8 +100,10 @@ export default function AdminOrdersPage() {
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   }).length;
 
+  const totalRevenue = filtered.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+
   const exportCSV = () => {
-    const headers = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
+    const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
     const rows = filtered.map((o: any) => [
       o.order_code ?? "",
       o.user_phone ?? "",
@@ -92,12 +112,44 @@ export default function AdminOrdersPage() {
       statusLabel(o.status),
       o.created_at ? formatDate(o.created_at) : "",
     ]);
-    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const csv = [csvHeaders, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((o: any) => o.id)));
+  };
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((o: any) => selectedIds.has(o.id));
+
+  const exportSelected = () => {
+    const sel = filtered.filter((o: any) => selectedIds.has(o.id));
+    const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
+    const rows = sel.map((o: any) => [
+      o.order_code ?? "", o.user_phone ?? "", (o.product_name ?? "").replace(/,/g, "؛"),
+      o.amount ?? 0, statusLabel(o.status), o.created_at ? formatDate(o.created_at) : "",
+    ]);
+    const csv = [csvHeaders, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders_selected_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -115,6 +167,12 @@ export default function AdminOrdersPage() {
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                   <span className="text-primary font-bold">{todayCount} اليوم</span>
+                </>
+              )}
+              {filtered.length !== (allOrders as any[]).length && (
+                <>
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                  <span className="text-emerald-400 font-bold tabular-nums">{formatCurrency(totalRevenue)}</span>
                 </>
               )}
             </div>
@@ -143,37 +201,85 @@ export default function AdminOrdersPage() {
               size="sm"
               variant="outline"
               className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={exportCSV}
+              onClick={selectedIds.size > 0 ? exportSelected : exportCSV}
               disabled={filtered.length === 0}
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">تصدير CSV</span>
+              <span className="hidden sm:inline">
+                {selectedIds.size > 0 ? `تصدير (${selectedIds.size})` : "تصدير CSV"}
+              </span>
             </Button>
           </div>
         </div>
 
-        {/* Status filter tabs with counts */}
-        <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1 overflow-x-auto scrollbar-none">
-          {STATUS_FILTERS.map(s => {
-            const count = s.value ? statusCounts[s.value] ?? 0 : (allOrders as any[]).length;
-            const active = statusFilter === s.value;
-            return (
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-150">
+            <Zap className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-sm font-bold text-primary">{selectedIds.size} طلب محدد</span>
+            <div className="flex gap-2 mr-auto">
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={exportSelected}>
+                <Download className="w-3 h-3" /> تصدير المحدد
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
+                <X className="w-3 h-3 ml-1" /> إلغاء
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Filters row */}
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Status filter tabs with counts */}
+          <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1 overflow-x-auto scrollbar-none">
+            {STATUS_FILTERS.map(s => {
+              const count = s.value ? statusCounts[s.value] ?? 0 : (allOrders as any[]).length;
+              const active = statusFilter === s.value;
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => setStatusFilter(s.value)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                    active ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {s.label}
+                  {count > 0 && (
+                    <span className={`text-[10px] font-black px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground/60"}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Date range quick-filter */}
+          <div className="flex items-center gap-1 bg-secondary/40 border border-border rounded-xl p-1">
+            <Calendar className="w-3 h-3 text-muted-foreground/50 mx-1" />
+            {DATE_RANGES.map(dr => (
               <button
-                key={s.value}
-                onClick={() => setStatusFilter(s.value)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
-                  active ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
+                key={dr.days}
+                onClick={() => setDateRange(dr.days)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                  dateRange === dr.days ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {s.label}
-                {count > 0 && (
-                  <span className={`text-[10px] font-black px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground/60"}`}>
-                    {count}
-                  </span>
-                )}
+                {dr.label}
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          {(search || statusFilter || dateRange > 0) && (
+            <button
+              onClick={() => { setSearch(""); setStatusFilter(""); setDateRange(0); }}
+              className="text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              مسح الكل
+            </button>
+          )}
+
+          <span className="text-xs text-muted-foreground mr-auto">{filtered.length} نتيجة</span>
         </div>
 
         {/* Table */}
@@ -185,8 +291,8 @@ export default function AdminOrdersPage() {
               <ShoppingBag className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm mb-1">لا توجد طلبات</p>
-            {(search || statusFilter) && (
-              <button onClick={() => { setSearch(""); setStatusFilter(""); }} className="text-xs text-primary hover:underline mt-1">
+            {(search || statusFilter || dateRange > 0) && (
+              <button onClick={() => { setSearch(""); setStatusFilter(""); setDateRange(0); }} className="text-xs text-primary hover:underline mt-1">
                 مسح الفلاتر
               </button>
             )}
@@ -199,6 +305,14 @@ export default function AdminOrdersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/25">
+                      <th className="px-4 py-3 w-8">
+                        <button onClick={toggleSelectAll} className="text-muted-foreground/40 hover:text-primary transition-colors">
+                          {allFilteredSelected
+                            ? <CheckSquare className="w-3.5 h-3.5 text-primary" />
+                            : <Square className="w-3.5 h-3.5" />
+                          }
+                        </button>
+                      </th>
                       <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">رقم الطلب</th>
                       <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">المستخدم</th>
                       <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">المنتج</th>
@@ -209,90 +323,117 @@ export default function AdminOrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((order: any, idx: number) => (
-                      <>
-                        <tr
-                          key={order.id}
-                          onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
-                          className={`border-b border-border/30 transition-colors hover:bg-muted/20 cursor-pointer group ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
-                        >
-                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{order.order_code}</td>
-                          <td className="px-4 py-3 font-mono text-xs font-bold">{order.user_phone}</td>
-                          <td className="px-4 py-3 font-medium text-sm max-w-40 truncate">{order.product_name}</td>
-                          <td className="px-4 py-3 font-black text-primary text-sm tabular-nums">{formatCurrency(order.amount)}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${statusColor(order.status)}`}>
-                              {statusLabel(order.status)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs tabular-nums">{order.created_at ? formatDate(order.created_at) : "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors">
-                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`} />
-                          </td>
-                        </tr>
-                        {expandedRow === order.id && (
-                          <tr key={`exp-${order.id}`} className="bg-muted/10">
-                            <td colSpan={7} className="px-4 py-3 border-b border-border/30">
-                              <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
-                                {order.delivered_email && (
-                                  <div><span className="text-muted-foreground">البريد: </span><span className="font-mono font-bold">{order.delivered_email}</span></div>
-                                )}
-                                {order.delivered_password && (
-                                  <div><span className="text-muted-foreground">كلمة المرور: </span><span className="font-mono font-bold">{order.delivered_password}</span></div>
-                                )}
-                                {order.delivered_extra_details && (
-                                  <div><span className="text-muted-foreground">تفاصيل: </span><span>{order.delivered_extra_details}</span></div>
-                                )}
-                                {!order.delivered_email && !order.delivered_password && !order.delivered_extra_details && (
-                                  <span className="text-muted-foreground/50">لا توجد بيانات تسليم</span>
-                                )}
-                              </div>
+                    {filtered.map((order: any, idx: number) => {
+                      const isSelected = selectedIds.has(order.id);
+                      return (
+                        <React.Fragment key={order.id}>
+                          <tr
+                            className={`border-b border-border/30 transition-colors hover:bg-muted/20 cursor-pointer group ${
+                              isSelected ? "bg-primary/3" : idx % 2 !== 0 ? "bg-muted/[0.035]" : ""
+                            }`}
+                          >
+                            <td className="px-4 py-2.5">
+                              <button
+                                onClick={e => { e.stopPropagation(); toggleSelect(order.id); }}
+                                className="text-muted-foreground/30 hover:text-primary transition-colors"
+                              >
+                                {isSelected
+                                  ? <CheckSquare className="w-3.5 h-3.5 text-primary" />
+                                  : <Square className="w-3.5 h-3.5" />
+                                }
+                              </button>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>{order.order_code}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs font-bold" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>{order.user_phone}</td>
+                            <td className="px-4 py-2.5 font-medium text-sm max-w-40 truncate" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>{order.product_name}</td>
+                            <td className="px-4 py-2.5 font-black text-primary text-sm tabular-nums" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>{formatCurrency(order.amount)}</td>
+                            <td className="px-4 py-2.5" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>
+                              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${statusColor(order.status)}`}>
+                                {statusLabel(order.status)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>{order.created_at ? formatDate(order.created_at) : "—"}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}>
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`} />
                             </td>
                           </tr>
-                        )}
-                      </>
-                    ))}
+                          {expandedRow === order.id && (
+                            <tr key={`exp-${order.id}`} className="bg-muted/10">
+                              <td colSpan={8} className="px-4 py-3 border-b border-border/30">
+                                <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
+                                  {order.delivered_email && (
+                                    <div><span className="text-muted-foreground">البريد: </span><span className="font-mono font-bold">{order.delivered_email}</span></div>
+                                  )}
+                                  {order.delivered_password && (
+                                    <div><span className="text-muted-foreground">كلمة المرور: </span><span className="font-mono font-bold">{order.delivered_password}</span></div>
+                                  )}
+                                  {order.delivered_extra_details && (
+                                    <div><span className="text-muted-foreground">تفاصيل: </span><span>{order.delivered_extra_details}</span></div>
+                                  )}
+                                  {!order.delivered_email && !order.delivered_password && !order.delivered_extra_details && (
+                                    <span className="text-muted-foreground/50">لا توجد بيانات تسليم</span>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/10 flex items-center justify-between text-xs text-muted-foreground">
-                <span>{filtered.length} طلب{search && ` · نتائج "${search}"`}</span>
+                <span>
+                  {filtered.length} طلب
+                  {search && ` · نتائج "${search}"`}
+                  {filtered.length > 0 && ` · إجمالي ${formatCurrency(totalRevenue)}`}
+                </span>
                 <span className="hidden sm:inline text-muted-foreground/40">انقر على الصف لعرض بيانات التسليم</span>
               </div>
             </div>
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
-              {filtered.map((order: any) => (
-                <div
-                  key={order.id}
-                  className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-border/60 transition-colors"
-                  onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <div className="font-bold text-sm">{order.product_name}</div>
-                      <div className="font-mono text-xs text-muted-foreground mt-0.5">{order.user_phone}</div>
+              {filtered.map((order: any) => {
+                const isSelected = selectedIds.has(order.id);
+                return (
+                  <div
+                    key={order.id}
+                    className={`bg-card border rounded-xl p-4 cursor-pointer transition-colors ${isSelected ? "border-primary/40 bg-primary/3" : "border-border hover:border-border/60"}`}
+                    onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
+                  >
+                    <div className="flex items-start gap-2 mb-2">
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleSelect(order.id); }}
+                        className="mt-0.5 text-muted-foreground/30 hover:text-primary transition-colors shrink-0"
+                      >
+                        {isSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm">{order.product_name}</div>
+                        <div className="font-mono text-xs text-muted-foreground mt-0.5">{order.user_phone}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-black text-primary tabular-nums">{formatCurrency(order.amount)}</div>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 inline-block ${statusColor(order.status)}`}>
+                          {statusLabel(order.status)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="font-black text-primary tabular-nums">{formatCurrency(order.amount)}</div>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 inline-block ${statusColor(order.status)}`}>
-                        {statusLabel(order.status)}
-                      </span>
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 border-t border-border/30 pt-2">
+                      <span className="font-mono">{order.order_code}</span>
+                      {order.created_at && <><span>·</span><span>{formatDate(order.created_at)}</span></>}
                     </div>
+                    {expandedRow === order.id && (order.delivered_email || order.delivered_password) && (
+                      <div className="mt-2 pt-2 border-t border-border/30 space-y-1 text-xs">
+                        {order.delivered_email && <div><span className="text-muted-foreground">البريد: </span><span className="font-mono font-bold">{order.delivered_email}</span></div>}
+                        {order.delivered_password && <div><span className="text-muted-foreground">كلمة المرور: </span><span className="font-mono font-bold">{order.delivered_password}</span></div>}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 border-t border-border/30 pt-2">
-                    <span className="font-mono">{order.order_code}</span>
-                    {order.created_at && <><span>·</span><span>{formatDate(order.created_at)}</span></>}
-                  </div>
-                  {expandedRow === order.id && (order.delivered_email || order.delivered_password) && (
-                    <div className="mt-2 pt-2 border-t border-border/30 space-y-1 text-xs">
-                      {order.delivered_email && <div><span className="text-muted-foreground">البريد: </span><span className="font-mono font-bold">{order.delivered_email}</span></div>}
-                      {order.delivered_password && <div><span className="text-muted-foreground">كلمة المرور: </span><span className="font-mono font-bold">{order.delivered_password}</span></div>}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

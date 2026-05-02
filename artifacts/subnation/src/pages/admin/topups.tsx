@@ -5,8 +5,9 @@ import { useLocation } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, Clock, Smartphone, Building2, User, Hash, Calendar, MessageSquare, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Smartphone, Building2, User, Hash, Calendar, MessageSquare, AlertTriangle, X, CheckCheck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 function MethodBadge({ method }: { method: string }) {
   if (method === "lypay") return (
@@ -55,14 +56,80 @@ function TopupCardSkeleton() {
   );
 }
 
+// Reject modal
+function RejectModal({ topup, onConfirm, onCancel, loading }: {
+  topup: any;
+  onConfirm: (note: string) => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  const [note, setNote] = useState("");
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={e => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-black text-sm">تأكيد الرفض</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              <span className="font-mono font-bold text-foreground">{formatCurrency(topup.amount)}</span> · {topup.user_phone}
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-xs font-bold text-muted-foreground block mb-1.5">سبب الرفض <span className="text-muted-foreground/50">(اختياري)</span></label>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
+            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
+            dir="rtl"
+            autoFocus
+            onKeyDown={e => { if (e.key === "Escape") onCancel(); if ((e.ctrlKey || e.metaKey) && e.key === "Enter") onConfirm(note); }}
+          />
+          <p className="text-[10px] text-muted-foreground/50 mt-1">
+            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd> للتأكيد ·
+            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">Esc</kbd> للإلغاء
+          </p>
+        </div>
+
+        <div className="flex gap-2.5">
+          <Button
+            variant="outline"
+            className="flex-1 h-9 active:scale-[0.97]"
+            onClick={onCancel}
+          >
+            إلغاء
+          </Button>
+          <Button
+            className="flex-1 h-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground active:scale-[0.97] shadow-sm shadow-destructive/20"
+            onClick={() => onConfirm(note)}
+            disabled={loading}
+          >
+            <XCircle className="w-3.5 h-3.5 ml-1.5" />
+            {loading ? "جارٍ الرفض..." : "تأكيد الرفض"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminTopupsPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState("pending");
-  const [rejectNote, setRejectNote] = useState<Record<number, string>>({});
   const [processingId, setProcessingId] = useState<number | null>(null);
-  const [expandedReject, setExpandedReject] = useState<number | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<any | null>(null);
 
   const { data: allTopups = [], isLoading, refetch } = useListAdminTopups({}, {
     query: { queryKey: getListAdminTopupsQueryKey({}), enabled: !!adminToken, refetchInterval: 20_000 },
@@ -73,12 +140,41 @@ export default function AdminTopupsPage() {
 
   const approveMutation = useApproveTopup({
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
-    mutation: { onSuccess() { setProcessingId(null); invalidate(); } },
+    mutation: {
+      onSuccess(_, vars) {
+        setProcessingId(null);
+        invalidate();
+        const t = (allTopups as any[]).find((x: any) => x.id === vars.id);
+        toast({
+          title: "✓ تمت الموافقة",
+          description: t ? `${formatCurrency(t.amount)} لـ ${t.user_phone}` : "تمت الموافقة على الطلب",
+        });
+      },
+      onError() {
+        setProcessingId(null);
+        toast({ title: "خطأ", description: "فشلت الموافقة، حاول مرة أخرى", variant: "destructive" });
+      },
+    },
   });
 
   const rejectMutation = useRejectTopup({
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
-    mutation: { onSuccess() { setProcessingId(null); setExpandedReject(null); invalidate(); } },
+    mutation: {
+      onSuccess(_, vars) {
+        setProcessingId(null);
+        setRejectTarget(null);
+        invalidate();
+        const t = (allTopups as any[]).find((x: any) => x.id === vars.id);
+        toast({
+          title: "تم الرفض",
+          description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
+        });
+      },
+      onError() {
+        setProcessingId(null);
+        toast({ title: "خطأ", description: "فشل الرفض، حاول مرة أخرى", variant: "destructive" });
+      },
+    },
   });
 
   if (!adminToken) { navigate("/admin/login"); return null; }
@@ -96,13 +192,37 @@ export default function AdminTopupsPage() {
     approveMutation.mutate({ id, data: { admin_note: "تمت الموافقة" } });
   };
 
-  const handleReject = (id: number) => {
-    setProcessingId(id);
-    rejectMutation.mutate({ id, data: { admin_note: rejectNote[id] || "مرفوض" } });
+  const handleReject = (note: string) => {
+    if (!rejectTarget) return;
+    setProcessingId(rejectTarget.id);
+    rejectMutation.mutate({ id: rejectTarget.id, data: { admin_note: note || "مرفوض" } });
+  };
+
+  const approveAll = async () => {
+    const pending = (allTopups as any[]).filter((t: any) => t.status === "pending");
+    for (const t of pending) {
+      await fetch(`/api/admin/topups/${t.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
+      });
+    }
+    toast({ title: `✓ تمت الموافقة على ${pending.length} طلب` });
+    invalidate();
   };
 
   return (
     <AdminLayout onRefresh={() => refetch()} badges={{ pendingTopups: pendingCount }}>
+      {/* Reject modal */}
+      {rejectTarget && (
+        <RejectModal
+          topup={rejectTarget}
+          onConfirm={handleReject}
+          onCancel={() => { setRejectTarget(null); setProcessingId(null); }}
+          loading={processingId === rejectTarget.id}
+        />
+      )}
+
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -119,28 +239,42 @@ export default function AdminTopupsPage() {
             <p className="text-xs text-muted-foreground">{(allTopups as any[]).length} طلب إجمالاً</p>
           </div>
 
-          {/* Status filter tabs */}
-          <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1">
-            {STATUS_FILTERS.map(s => {
-              const count = s.value ? (statusCounts[s.value] ?? 0) : (allTopups as any[]).length;
-              const active = statusFilter === s.value;
-              return (
-                <button
-                  key={s.value}
-                  onClick={() => setStatusFilter(s.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
-                    active ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {s.label}
-                  {count > 0 && (
-                    <span className={`text-[10px] font-black ${active ? "text-muted-foreground" : "text-muted-foreground/50"}`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            {pendingCount > 1 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 gap-1.5 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/10 text-xs"
+                onClick={approveAll}
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                موافقة الكل ({pendingCount})
+              </Button>
+            )}
+
+            {/* Status filter tabs */}
+            <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1">
+              {STATUS_FILTERS.map(s => {
+                const count = s.value ? (statusCounts[s.value] ?? 0) : (allTopups as any[]).length;
+                const active = statusFilter === s.value;
+                return (
+                  <button
+                    key={s.value}
+                    onClick={() => setStatusFilter(s.value)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                      active ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {s.label}
+                    {count > 0 && (
+                      <span className={`text-[10px] font-black ${active ? "text-muted-foreground" : "text-muted-foreground/50"}`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -180,7 +314,8 @@ export default function AdminTopupsPage() {
                     </span>
                     <MethodBadge method={t.payment_method ?? "mobile_transfer"} />
                     {t.payment_method !== "lypay" && <NetworkBadge net={t.payment_network} />}
-                    <span className="mr-auto text-xs text-muted-foreground/50 tabular-nums">
+                    <span className="mr-auto text-xs text-muted-foreground/50 tabular-nums flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
                       {t.created_at ? formatDate(t.created_at) : ""}
                     </span>
                   </div>
@@ -225,18 +360,7 @@ export default function AdminTopupsPage() {
 
                   {/* Actions — pending only */}
                   {t.status === "pending" && (
-                    <div className="border-t border-border/40 pt-3 space-y-2">
-                      {expandedReject === t.id && (
-                        <input
-                          type="text"
-                          placeholder="سبب الرفض (اختياري)"
-                          value={rejectNote[t.id] ?? ""}
-                          onChange={e => setRejectNote(prev => ({ ...prev, [t.id]: e.target.value }))}
-                          className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                          dir="rtl"
-                          autoFocus
-                        />
-                      )}
+                    <div className="border-t border-border/40 pt-3">
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -245,40 +369,18 @@ export default function AdminTopupsPage() {
                           disabled={processingId === t.id}
                         >
                           <CheckCircle className="w-3.5 h-3.5 ml-1.5" />
-                          {processingId === t.id ? "جارٍ..." : "موافقة"}
+                          {processingId === t.id && rejectTarget?.id !== t.id ? "جارٍ..." : "موافقة"}
                         </Button>
-                        {expandedReject === t.id ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-9 border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold active:scale-[0.97] transition-transform px-4"
-                              onClick={() => handleReject(t.id)}
-                              disabled={processingId === t.id}
-                            >
-                              <XCircle className="w-3.5 h-3.5 ml-1.5" />
-                              تأكيد الرفض
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-9 text-muted-foreground hover:text-foreground px-3"
-                              onClick={() => setExpandedReject(null)}
-                            >
-                              إلغاء
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-9 border-red-500/20 text-red-400/70 hover:border-red-500/40 hover:text-red-400 hover:bg-red-500/8 active:scale-[0.97] transition-transform px-4"
-                            onClick={() => setExpandedReject(t.id)}
-                          >
-                            <XCircle className="w-3.5 h-3.5 ml-1.5" />
-                            رفض
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold active:scale-[0.97] transition-transform px-5"
+                          onClick={() => setRejectTarget(t)}
+                          disabled={processingId === t.id}
+                        >
+                          <XCircle className="w-3.5 h-3.5 ml-1.5" />
+                          رفض
+                        </Button>
                       </div>
                     </div>
                   )}
