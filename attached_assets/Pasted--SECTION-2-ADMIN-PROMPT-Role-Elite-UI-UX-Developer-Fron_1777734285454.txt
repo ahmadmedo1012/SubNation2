@@ -1,0 +1,37 @@
+**SECTION 2 — ADMIN PROMPT**
+
+**Role:** Elite UI/UX Developer & Frontend Architect
+**Task:** Optimize the SubNation admin panel for usability, layout, navigation clarity, data presentation, speed, and workflow efficiency, achieving a fast, clean, and efficient experience.
+
+**Context & Current State:**
+The admin panel is functional but suffers from visual inconsistencies, suboptimal data presentation, and a lack of modern UX patterns. The current layout can feel cluttered, and navigation could be more intuitive, especially for frequent administrative tasks.
+
+**Execution Instructions:**
+
+**1. Layout & Navigation Optimization:**
+*   **Sidebar Navigation:** Implement a collapsible sidebar navigation with clear, concise icons and labels. Highlight the active menu item distinctly. Consider adding a search function within the sidebar for quick access to specific sections.
+*   **Dashboard Overview:** Redesign the main dashboard to prioritize critical information. Use a grid-based layout with customizable widgets for key metrics (e.g., total users, daily orders, revenue, pending shipping requests). Each widget should have a clear title and a subtle call-to-action to view details.
+*   **Consistency:** Ensure consistent header and footer elements across all admin pages. Standardize button styles, form element designs, and alert messages.
+
+**2. Data Presentation & Clarity (Tables, Charts):**
+*   **Tables:**
+    *   **Readability:** Increase row height slightly and add subtle zebra-striping or hover effects for better readability. Ensure consistent padding within cells.
+    *   **Action Buttons:** Consolidate action buttons (e.g., "Edit", "Delete", "Stock") into a single dropdown or context menu per row to reduce visual clutter.
+    *   **Filtering/Sorting:** Implement intuitive filtering and sorting options for all table columns. Add a global search bar above tables for quick record lookup.
+    *   **Pagination:** Ensure clear pagination controls are present and functional for large datasets.
+*   **Charts:**
+    *   **Modernization:** Upgrade existing charts (e.g., "New Users (7 Days)", "Orders and Revenue (7 Days)") to a more modern, minimalist style. Use clear labels, tooltips on hover, and consistent color palettes.
+    *   **Interactivity:** Add basic interactivity to charts, such as zooming, panning, and data point highlighting.
+    *   **Legends:** Ensure chart legends are clear and do not overlap with data.
+
+**3. Workflow Efficiency & Responsiveness:**
+*   **Form Design:** Streamline forms (e.g., "Add Product", "Edit Product") with clear input labels, validation messages, and logical grouping of fields. Use modern input types (e.g., date pickers, number inputs with steppers).
+*   **Action Confirmation:** Implement clear, non-intrusive confirmation modals or toasts for critical actions (e.g., deleting a product, approving a recharge request).
+*   **Responsiveness:** Ensure the admin panel is fully responsive and usable on tablet devices. While desktop is primary, tablet usability is crucial for on-the-go administration.
+*   **Speed:** Optimize asset loading and data fetching to ensure a snappy user experience. Implement lazy loading for large datasets where appropriate.
+
+**4. Specific Section Improvements:**
+*   **Recharge Requests:** Redesign the "Recharge Requests" page to present each request as a card with all relevant information (user, amount, sender details, status) clearly visible. Provide prominent "Approve" and "Reject" buttons with an optional rejection reason input.
+*   **Settings Page:** Organize settings into logical tabs or sections (e.g., "General", "Integrations", "Notifications") to improve discoverability and reduce cognitive load.
+
+**Deliverable:** Implement these changes using the existing framework and styling solution, focusing on clean code, modular components, and adherence to a new, refined admin design system.
