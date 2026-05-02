@@ -103,6 +103,8 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 - `GET /api/admin/tickets/:id` — ticket detail + replies
 - `POST /api/admin/tickets/:id/reply` — admin reply
 - `PATCH /api/admin/tickets/:id/status` — change ticket status
+- `GET /api/admin/referrals` — referral stats + top referrers leaderboard + full list (filter: ?status=, ?search=)
+- `POST /api/admin/referrals/:id/credit` — manually credit a pending referral (gives 50 pts to referrer + notification)
 
 ## Phase 2 Features
 
@@ -139,6 +141,7 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 ### Loyalty & Referral System
 - `/loyalty` page: points balance, tier progress bar, referral code/link copy, points conversion, link to referrals history
 - `/referrals` page: dedicated referral program page — stats (total/credited/pending/points earned), referral code + link with copy, share button (Web Share API), how-it-works 4-step grid, full referral history list with masked phone numbers and status
+- `/admin/referrals` page: admin referrals dashboard — stats, top-referrers leaderboard (top 10), full list with referrer+referee phones, manual "منح نقاط" button for pending referrals
 - `GET /api/loyalty/referrals` — returns list of referral events with masked referee phone, status, timestamps, points earned
 - Unique referral code per user, generated on registration
 - Anti-fraud: referral credited only after referee's first approved topup
