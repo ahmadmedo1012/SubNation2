@@ -5,8 +5,9 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Eye, EyeOff, Gift } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Gift, CheckCircle } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
+import { libyanPhoneError, isValidLibyanPhone } from "@/lib/validation";
 
 export default function RegisterPage() {
   const [, navigate] = useLocation();
@@ -16,6 +17,8 @@ export default function RegisterPage() {
   const [referralCode, setReferralCode] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -35,11 +38,34 @@ export default function RegisterPage() {
     },
   });
 
+  const handlePhoneChange = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 10);
+    setPhone(digits);
+    if (phoneTouched) setPhoneError(libyanPhoneError(digits));
+  };
+
+  const handlePhoneBlur = () => {
+    setPhoneTouched(true);
+    setPhoneError(libyanPhoneError(phone));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setPhoneTouched(true);
+
+    const pErr = libyanPhoneError(phone);
+    if (pErr) { setPhoneError(pErr); return; }
+
+    if (!isValidLibyanPhone(phone)) {
+      setPhoneError("يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094");
+      return;
+    }
+
     registerMutation.mutate({ data: { phone, password, referral_code: referralCode || undefined } });
   };
+
+  const phoneValid = phone.length === 10 && !libyanPhoneError(phone);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-bl from-primary/5 via-background to-background">
@@ -59,19 +85,41 @@ export default function RegisterPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Phone */}
             <div className="space-y-1.5">
               <Label htmlFor="phone">رقم الهاتف</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="09XXXXXXXX"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-                dir="ltr"
-                className="text-left h-11"
-              />
+              <div className="relative">
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="091XXXXXXX"
+                  value={phone}
+                  onChange={e => handlePhoneChange(e.target.value)}
+                  onBlur={handlePhoneBlur}
+                  required
+                  dir="ltr"
+                  className={`h-11 text-left pl-10 ${phoneTouched && phoneError ? "border-destructive focus-visible:ring-destructive/30" : phoneValid ? "border-emerald-500/50" : ""}`}
+                  maxLength={10}
+                  autoComplete="tel"
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                  {phoneTouched && phoneValid && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                  {phoneTouched && phoneError && <AlertCircle className="w-4 h-4 text-destructive" />}
+                </div>
+              </div>
+              {phoneTouched && phoneError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <span>{phoneError}</span>
+                </p>
+              )}
+              {!phoneTouched && (
+                <p className="text-xs text-muted-foreground">
+                  أرقام ليبيانا (091/093) أو مدار (092/094) — 10 أرقام
+                </p>
+              )}
             </div>
+
+            {/* Password */}
             <div className="space-y-1.5">
               <Label htmlFor="password">كلمة المرور</Label>
               <div className="relative">
@@ -84,6 +132,7 @@ export default function RegisterPage() {
                   required
                   minLength={8}
                   className="pl-10 h-11"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -93,7 +142,12 @@ export default function RegisterPage() {
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {password.length > 0 && password.length < 8 && (
+                <p className="text-xs text-yellow-400">تحتاج {8 - password.length} أحرف إضافية</p>
+              )}
             </div>
+
+            {/* Referral */}
             <div className="space-y-1.5">
               <Label htmlFor="referral">رمز الإحالة <span className="text-muted-foreground font-normal">(اختياري)</span></Label>
               <Input
@@ -123,6 +177,15 @@ export default function RegisterPage() {
             </Button>
           </form>
 
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-xs text-muted-foreground">أو سجل عبر</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          <GoogleSignUpButton />
+
           <div className="mt-5 text-center text-sm text-muted-foreground">
             لديك حساب؟{" "}
             <Link href="/login" className="text-primary font-bold hover:underline underline-offset-2">تسجيل الدخول</Link>
@@ -131,4 +194,88 @@ export default function RegisterPage() {
       </div>
     </div>
   );
+}
+
+function GoogleSignUpButton() {
+  const { setToken } = useAuth();
+  const [, navigate] = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleGoogle = async () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) { setError("تسجيل الدخول عبر Google غير مفعّل حالياً"); return; }
+    setLoading(true); setError("");
+    try {
+      const credential = await requestGoogleCredential(clientId);
+      const res = await fetch("/api/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "فشل التحقق من Google");
+      setToken(data.token);
+      navigate("/");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={handleGoogle}
+        disabled={loading}
+        className="w-full h-11 flex items-center justify-center gap-3 border border-border rounded-xl bg-card hover:bg-secondary transition-all active:scale-[0.98] font-medium text-sm disabled:opacity-60"
+      >
+        <GoogleIcon />
+        {loading ? "جارٍ التحقق..." : "المتابعة عبر Google"}
+      </button>
+      {error && <p className="text-xs text-destructive text-center">{error}</p>}
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.616z" fill="#4285F4"/>
+      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.859-3.048.859-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+      <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+function requestGoogleCredential(clientId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!(window as any).google?.accounts?.id) {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.onload = () => initAndPrompt();
+      script.onerror = () => reject(new Error("تعذّر تحميل مكتبة Google"));
+      document.head.appendChild(script);
+    } else {
+      initAndPrompt();
+    }
+    function initAndPrompt() {
+      (window as any).google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response: any) => {
+          if (response.credential) resolve(response.credential);
+          else reject(new Error("لم يتم إكمال تسجيل الدخول"));
+        },
+        cancel_on_tap_outside: true,
+      });
+      (window as any).google.accounts.id.prompt((notification: any) => {
+        if (notification.isSkippedMoment() || notification.isDismissedMoment()) {
+          reject(new Error("تم إلغاء تسجيل الدخول"));
+        }
+      });
+    }
+  });
 }

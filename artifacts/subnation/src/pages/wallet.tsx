@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGetWallet, useListTopups, useCreateTopup, getGetWalletQueryKey, getListTopupsQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
@@ -6,11 +6,14 @@ import { formatCurrency, formatDate, statusLabel, statusColor, tierLabel, tierCo
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Plus, Clock, CheckCircle, XCircle, AlertCircle, Star, Smartphone, Building2, Copy, Check } from "lucide-react";
+import { Wallet, Plus, Clock, CheckCircle, XCircle, AlertCircle, Star, Smartphone, Building2, Copy, Check, Lock } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { libyanPhoneError, isValidLibyanPhone } from "@/lib/validation";
 
 // ── Constants ────────────────────────────────────────────────────────────────
+
+const MAX_PENDING = 3;
 
 const LYPAY_INFO = {
   account_name: "سبنيشن ليبيا",
@@ -33,11 +36,6 @@ const NETWORKS = [
 type Method = "mobile_transfer" | "lypay";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function methodLabel(method: string) {
-  if (method === "lypay") return "LyPay";
-  return "تحويل رصيد";
-}
 
 function networkLabel(net?: string | null) {
   if (net === "libyana") return "ليبيانا";
@@ -98,8 +96,14 @@ export default function WalletPage() {
   const [amount, setAmount] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
   const [senderAccount, setSenderAccount] = useState("");
+  const [senderPhoneTouched, setSenderPhoneTouched] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!token) navigate("/login");
+  }, [token]);
 
   const { data: wallet, isLoading } = useGetWallet({
     query: { enabled: !!token, queryKey: getGetWalletQueryKey() },
@@ -111,6 +115,10 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
+  // Count user's own pending topups for anti-abuse UI enforcement
+  const pendingCount = (topups as any[]).filter((t: any) => t.status === "pending").length;
+  const pendingBlocked = pendingCount >= MAX_PENDING;
+
   const topupMutation = useCreateTopup({
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
     mutation: {
@@ -119,6 +127,7 @@ export default function WalletPage() {
         setAmount("");
         setSenderPhone("");
         setSenderAccount("");
+        setSenderPhoneTouched(false);
         queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
         setTimeout(() => setSuccess(false), 6000);
@@ -127,33 +136,43 @@ export default function WalletPage() {
       onError(err: any) {
         setError(err?.response?.data?.error ?? "فشل في إرسال طلب الشحن.");
       },
+      onSettled() { setSubmitting(false); },
     },
   });
-
-  if (!token) {
-    navigate("/login");
-    return null;
-  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess(false);
 
+    if (pendingBlocked) {
+      setError("لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها");
+      return;
+    }
+
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) {
       setError("يرجى إدخال مبلغ صالح");
       return;
     }
-    if (method === "mobile_transfer" && !senderPhone.trim()) {
-      setError("يرجى إدخال رقم هاتف المُرسل");
-      return;
+
+    if (method === "mobile_transfer") {
+      setSenderPhoneTouched(true);
+      if (!senderPhone.trim()) { setError("يرجى إدخال رقم هاتف المُرسل"); return; }
+      const phoneErr = libyanPhoneError(senderPhone);
+      if (phoneErr) { setError(phoneErr); return; }
+      if (!isValidLibyanPhone(senderPhone)) {
+        setError("رقم هاتف المُرسل غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094");
+        return;
+      }
     }
+
     if (method === "lypay" && !senderAccount.trim()) {
       setError("يرجى إدخال رقم حساب المُرسل");
       return;
     }
 
+    setSubmitting(true);
     topupMutation.mutate({
       data: {
         amount: parsedAmount,
@@ -166,6 +185,9 @@ export default function WalletPage() {
   };
 
   const presets = method === "mobile_transfer" ? NETWORK_PRESETS[network] ?? [] : [25, 50, 100, 200];
+  const senderPhoneErr = senderPhoneTouched ? libyanPhoneError(senderPhone) : null;
+
+  if (!token) return null;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -197,11 +219,29 @@ export default function WalletPage() {
             </div>
           )}
 
+          {/* Pending Limit Banner */}
+          {pendingBlocked && (
+            <div className="flex items-start gap-3 p-4 bg-yellow-400/10 border border-yellow-400/30 rounded-2xl">
+              <Lock className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm text-yellow-300">طلبات الشحن مؤقتاً موقوفة</p>
+                <p className="text-xs text-yellow-400/80 mt-0.5">
+                  لديك {pendingCount} طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها (الحد الأقصى {MAX_PENDING})
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Recharge Form Card */}
-          <div className="bg-card border border-border rounded-2xl p-6">
+          <div className={`bg-card border border-border rounded-2xl p-6 transition-opacity ${pendingBlocked ? "opacity-60 pointer-events-none select-none" : ""}`}>
             <div className="flex items-center gap-2 mb-5">
               <Plus className="w-5 h-5 text-primary" />
               <h2 className="font-black text-lg">شحن المحفظة</h2>
+              {pendingCount > 0 && !pendingBlocked && (
+                <span className="mr-auto text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded-full">
+                  {pendingCount}/{MAX_PENDING} طلبات معلقة
+                </span>
+              )}
             </div>
 
             {/* Method Selection */}
@@ -290,13 +330,32 @@ export default function WalletPage() {
                   <p className="text-xs text-muted-foreground mb-2">
                     حوّل الرصيد إلى: <span className="font-bold text-foreground">091-3456789</span> ثم أدخل رقمك أدناه
                   </p>
-                  <Input
-                    type="tel"
-                    placeholder="09XXXXXXXX"
-                    value={senderPhone}
-                    onChange={e => setSenderPhone(e.target.value)}
-                    required dir="ltr" className="text-left"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="tel"
+                      placeholder="091XXXXXXX"
+                      value={senderPhone}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        setSenderPhone(digits);
+                        if (senderPhoneTouched) setSenderPhoneTouched(true);
+                      }}
+                      onBlur={() => setSenderPhoneTouched(true)}
+                      required dir="ltr"
+                      className={`text-left pl-10 ${senderPhoneTouched && senderPhoneErr ? "border-destructive" : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr ? "border-emerald-500/50" : ""}`}
+                      maxLength={10}
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                      {senderPhoneTouched && !senderPhoneErr && senderPhone.length === 10 && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+                      {senderPhoneTouched && senderPhoneErr && <AlertCircle className="w-4 h-4 text-destructive" />}
+                    </div>
+                  </div>
+                  {senderPhoneTouched && senderPhoneErr && (
+                    <p className="text-xs text-destructive mt-1">{senderPhoneErr}</p>
+                  )}
+                  {!senderPhoneTouched && (
+                    <p className="text-xs text-muted-foreground mt-1">أرقام ليبيانا (091/093) أو مدار (092/094)</p>
+                  )}
                 </div>
 
                 <div className="border-t border-border/50" />
@@ -307,8 +366,8 @@ export default function WalletPage() {
                     <StepBadge n={4} label="أرسل الطلب" active={true} />
                   </div>
                   {renderFeedback(success, error)}
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 text-base" disabled={topupMutation.isPending}>
-                    {topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
+                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 text-base" disabled={submitting || topupMutation.isPending}>
+                    {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
                   </Button>
                 </div>
               </form>
@@ -402,8 +461,8 @@ export default function WalletPage() {
                       تأكد من إتمام التحويل المصرفي أولاً قبل إرسال الطلب
                     </div>
                     {renderFeedback(success, error)}
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 text-base" disabled={topupMutation.isPending}>
-                      {topupMutation.isPending ? "جارٍ الإرسال..." : "تأكيد طلب الشحن"}
+                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 text-base" disabled={submitting || topupMutation.isPending}>
+                      {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "تأكيد طلب الشحن"}
                     </Button>
                   </div>
                 </form>
@@ -415,7 +474,14 @@ export default function WalletPage() {
         {/* Right: Topup History */}
         <div className="lg:col-span-2">
           <div className="bg-card border border-border rounded-2xl p-6 h-full">
-            <h2 className="font-black mb-4">سجل الشحن</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-black">سجل الشحن</h2>
+              {pendingCount > 0 && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 border border-yellow-400/20">
+                  {pendingCount} معلق
+                </span>
+              )}
+            </div>
             {topups.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Wallet className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -423,7 +489,7 @@ export default function WalletPage() {
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[600px] overflow-y-auto">
-                {topups.map((t: any) => (
+                {(topups as any[]).map((t: any) => (
                   <div key={t.id} className="flex items-start justify-between gap-2 p-3 bg-muted/30 rounded-xl">
                     <div className="flex items-start gap-2">
                       {topupIcon(t.status)}

@@ -33,7 +33,7 @@ router.get("/", async (req, res) => {
   let result = products.map(p => {
     const stockCount = stockMap.get(p.id) ?? 0;
     const basePrice = parseFloat(String(p.price));
-    const discountPercent = flashSale ? parseFloat(String(flashSale.discountPercent)) : 0;
+    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
     const salePrice = discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
     return {
       id: p.id,
@@ -120,7 +120,7 @@ router.get("/:id", async (req, res) => {
 
   const flashSale = await getActiveFlashSale();
   const basePrice = parseFloat(String(product.price));
-  const discountPercent = flashSale ? parseFloat(String(flashSale.discountPercent)) : 0;
+  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const salePrice = discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
   const stockCount = Number(stockResult?.count ?? 0);
 

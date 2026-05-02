@@ -574,7 +574,7 @@ router.post("/tickets/:id/reply", async (req, res) => {
   await db.update(supportTicketsTable).set({ status: "in_progress" }).where(eq(supportTicketsTable.id, id));
 
   // Notify ticket owner
-  await createNotification(row.ticket.userId, "support",
+  await createNotification(ticket.userId, "support",
     "رد جديد على تذكرتك",
     message.trim().slice(0, 100), `/support`);
 

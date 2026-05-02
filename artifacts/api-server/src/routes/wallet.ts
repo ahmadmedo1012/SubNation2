@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, walletTopupsTable, ordersTable, productsTable } from "@workspace/db";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, and } from "drizzle-orm";
 import { verifyToken } from "./auth";
 import { CreateTopupBody } from "@workspace/api-zod";
 import { notifyNewTopup } from "../telegram";
@@ -94,6 +94,30 @@ router.post("/topups", async (req, res) => {
   }
   if (method === "lypay" && !sender_account) {
     return res.status(400).json({ error: "يرجى إدخال رقم حساب المُرسل" });
+  }
+
+  // Validate Libyan sender phone format
+  if (method === "mobile_transfer" && sender_phone) {
+    const LIBYAN_PREFIXES = ["91", "92", "93", "94"];
+    const digits = sender_phone.replace(/\D/g, "");
+    const norm = digits.length === 10 && digits.startsWith("0") ? digits.slice(1) : digits;
+    if (norm.length !== 9 || !LIBYAN_PREFIXES.some(p => norm.startsWith(p))) {
+      return res.status(400).json({ error: "رقم هاتف المُرسل غير صالح" });
+    }
+  }
+
+  // Anti-abuse: max 3 pending requests per user
+  const MAX_PENDING = 3;
+  const [{ pendingCount }] = await db.select({ pendingCount: count() })
+    .from(walletTopupsTable)
+    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
+
+  if (Number(pendingCount) >= MAX_PENDING) {
+    return res.status(429).json({
+      error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
+      pending_count: Number(pendingCount),
+      limit: MAX_PENDING,
+    });
   }
 
   const [topup] = await db.insert(walletTopupsTable).values({

@@ -5,7 +5,8 @@ import { z } from "zod/v4";
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull().default(""),
+  googleId: varchar("google_id", { length: 255 }).unique(),
   walletBalance: numeric("wallet_balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
   loyaltyPoints: integer("loyalty_points").notNull().default(0),
   loyaltyTier: varchar("loyalty_tier", { length: 50 }).notNull().default("bronze"),
