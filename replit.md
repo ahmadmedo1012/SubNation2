@@ -48,8 +48,18 @@ Arabic (RTL) digital subscriptions marketplace for Libya. Users buy Netflix, Spo
 
 ## Default Credentials
 
-- **Admin login**: username=`admin`, password=`SubNation@2026`
+- **Admin login**: username=`admin`, password=`admin123`
 - Admin access URL: `/admin/login`
+- **Welcome coupon**: `WELCOME10` — 10% off, up to 100 uses
+
+## Seed Data (auto-seeded on startup)
+
+12 products × 5 inventory items = 60 units:
+- Streaming: Netflix Premium (14.99), Spotify Premium (5.99), Disney+ Standard (9.99), YouTube Premium (6.99), Apple TV+ (4.99), Crunchyroll Premium (4.49)
+- Gaming: PlayStation Plus Essential (17.99), Xbox Game Pass Ultimate (19.99)
+- Productivity: Canva Pro (7.99), Microsoft 365 Personal (12.99), NordVPN 1 شهر (8.99), Adobe Creative Cloud (24.99)
+
+Seed condition: runs when product count < 12. Per-product deduplication by name. Per-product inventory check (adds up to 5 unsold units).
 
 ## API Routes
 

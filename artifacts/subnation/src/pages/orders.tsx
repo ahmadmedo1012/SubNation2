@@ -2,22 +2,20 @@ import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-reac
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { formatCurrency, formatDateShort, statusLabel, statusColor } from "@/lib/utils";
-import { Package, ChevronLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2, Sparkles, Tag } from "lucide-react";
+import { Package, ChevronLeft, ShoppingBag, Clock, CheckCircle, XCircle, Sparkles, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STAGGER = ["", "stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6", "stagger-7", "stagger-8", "stagger-9", "stagger-10", "stagger-11", "stagger-12"];
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "delivered") return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
+  if (status === "completed") return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
   if (status === "failed" || status === "refunded") return <XCircle className="w-3.5 h-3.5 text-red-400" />;
-  if (status === "processing") return <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />;
   return <Clock className="w-3.5 h-3.5 text-yellow-400" />;
 }
 
 function statusLeftBorder(status: string): string {
-  if (status === "delivered") return "border-l-emerald-500/55";
+  if (status === "completed") return "border-l-emerald-500/55";
   if (status === "failed" || status === "refunded") return "border-l-red-500/55";
-  if (status === "processing") return "border-l-blue-500/55";
   return "border-l-yellow-500/45";
 }
 
@@ -53,8 +51,8 @@ export default function OrdersPage() {
 
   if (!token) { navigate("/login"); return null; }
 
-  const pending = orders.filter((o: any) => o.status === "pending" || o.status === "processing");
-  const delivered = orders.filter((o: any) => o.status === "delivered");
+  const pending = orders.filter((o: any) => o.status === "pending");
+  const completed = orders.filter((o: any) => o.status === "completed");
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -86,10 +84,10 @@ export default function OrdersPage() {
               {pending.length} قيد الانتظار
             </div>
           )}
-          {delivered.length > 0 && (
+          {completed.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-full">
               <CheckCircle className="w-3 h-3" />
-              {delivered.length} مكتمل
+              {completed.length} مكتمل
             </div>
           )}
         </div>

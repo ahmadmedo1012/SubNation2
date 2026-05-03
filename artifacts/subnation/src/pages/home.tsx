@@ -59,9 +59,8 @@ function ProductSkeleton() {
 }
 
 function OrderStatusIcon({ status }: { status: string }) {
-  if (status === "delivered") return <CheckCircle className="w-3 h-3 text-emerald-400" />;
+  if (status === "completed") return <CheckCircle className="w-3 h-3 text-emerald-400" />;
   if (status === "failed" || status === "refunded") return <XCircle className="w-3 h-3 text-red-400" />;
-  if (status === "processing") return <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />;
   return <Clock className="w-3 h-3 text-yellow-400" />;
 }
 

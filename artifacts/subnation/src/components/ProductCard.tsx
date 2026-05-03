@@ -97,13 +97,22 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               alt={product.name}
               loading="lazy"
               className="w-full h-full object-contain p-5 sm:p-6 transition-transform duration-350 ease-out group-hover:scale-[1.07] drop-shadow-lg"
-              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+              onError={e => {
+                const el = e.target as HTMLImageElement;
+                el.style.display = "none";
+                const fallback = el.nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = "flex";
+              }}
             />
-          ) : (
-            <span className="text-5xl font-black text-white/8 select-none group-hover:text-white/16 transition-colors duration-250">
+          ) : null}
+          <div
+            style={{ display: product.image_url ? "none" : "flex" }}
+            className="absolute inset-0 items-center justify-center"
+          >
+            <span className={`text-6xl font-black select-none opacity-30 group-hover:opacity-45 transition-opacity duration-250 drop-shadow-lg ${accent.text}`}>
               {product.name[0]}
             </span>
-          )}
+          </div>
           {/* Fade into card body */}
           <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" />
         </div>

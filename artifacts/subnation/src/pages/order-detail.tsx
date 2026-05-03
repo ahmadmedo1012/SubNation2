@@ -41,9 +41,8 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 function StatusSteps({ status }: { status: string }) {
   const steps = [
-    { key: "pending",    label: "استُلم الطلب",   done: true },
-    { key: "processing", label: "جارٍ التنفيذ",   done: status === "processing" || status === "delivered" },
-    { key: "delivered",  label: "تم التسليم",      done: status === "delivered" },
+    { key: "pending",   label: "استُلم الطلب", done: true },
+    { key: "completed", label: "تم التسليم",   done: status === "completed" },
   ];
   if (status === "failed" || status === "refunded") return null;
   return (
@@ -132,9 +131,8 @@ export default function OrderDetailPage() {
         <div className="bg-card border border-border/55 rounded-2xl overflow-hidden shadow-lg shadow-black/10 float-in">
           {/* Status color bar */}
           <div className={`h-1 w-full ${
-            order.status === "delivered" ? "bg-gradient-to-l from-emerald-500/80 to-emerald-400/20" :
+            order.status === "completed" ? "bg-gradient-to-l from-emerald-500/80 to-emerald-400/20" :
             order.status === "failed" || order.status === "refunded" ? "bg-gradient-to-l from-red-500/80 to-red-400/20" :
-            order.status === "processing" ? "bg-gradient-to-l from-blue-500/80 to-blue-400/20" :
             "bg-gradient-to-l from-yellow-500/60 to-yellow-400/10"
           }`} />
 

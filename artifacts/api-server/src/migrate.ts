@@ -1,6 +1,11 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { createHash } from "crypto";
 import { logger } from "./lib/logger";
+
+function hashPassword(password: string): string {
+  return createHash("sha256").update(password + "subnation_salt").digest("hex");
+}
 
 export async function runMigrations() {
   try {
@@ -210,6 +215,178 @@ export async function runMigrations() {
       ALTER TABLE orders
         ADD COLUMN IF NOT EXISTS coupon_code     VARCHAR(50),
         ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00;
+    `);
+
+    // ── Seed: Admin user ────────────────────────────────────────────────────
+    const adminCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM admin_users`);
+    const adminCount = (adminCountResult as any).rows?.[0] ?? (adminCountResult as any)[0];
+    if (Number(adminCount?.c ?? adminCount?.count ?? 0) === 0) {
+      await db.execute(sql`
+        INSERT INTO admin_users (username, password_hash, display_name, role)
+        VALUES ('admin', ${hashPassword("admin123")}, 'مدير النظام', 'superadmin')
+      `);
+      logger.info("Default admin user created — username: admin / password: admin123");
+    }
+
+    // ── Seed: Products ──────────────────────────────────────────────────────
+    const productCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM products`);
+    const productCount = (productCountResult as any).rows?.[0] ?? (productCountResult as any)[0];
+    if (Number(productCount?.c ?? productCount?.count ?? 0) < 12) {
+      const products = [
+        {
+          name: "Netflix Premium",
+          description: "استمتع بأفلام ومسلسلات عالمية بجودة 4K UHD على 4 شاشات في نفس الوقت. أفضل تجربة بث في العالم.",
+          image_url: null,
+          price: "14.99",
+          category: "streaming",
+          usage_terms: "لا تغيّر كلمة المرور أو البريد الإلكتروني. استخدام الحساب بشكل شخصي فقط.",
+        },
+        {
+          name: "Spotify Premium",
+          description: "استمع إلى ملايين الأغاني والبودكاست بدون إعلانات وبجودة صوت عالية. مناسب للأجهزة المحمولة والحاسوب.",
+          image_url: null,
+          price: "5.99",
+          category: "music",
+          usage_terms: "عدم مشاركة الحساب مع الغير. استخدام على جهاز واحد.",
+        },
+        {
+          name: "Disney+ Standard",
+          description: "محتوى ديزني وماريل وبيكسار وناشيونال جيوغرافيك وحرب النجوم — كل شيء في مكان واحد.",
+          image_url: null,
+          price: "9.99",
+          category: "streaming",
+          usage_terms: "حساب شخصي. لا يسمح بتغيير بيانات الحساب.",
+        },
+        {
+          name: "YouTube Premium",
+          description: "شاهد يوتيوب بدون إعلانات، حمّل الفيديوهات للمشاهدة بدون إنترنت، واستمتع بـ YouTube Music مجاناً.",
+          image_url: null,
+          price: "6.99",
+          category: "streaming",
+          usage_terms: "استخدم بريدك الشخصي للدخول إلى الحساب.",
+        },
+        {
+          name: "PlayStation Plus Essential",
+          description: "العب أونلاين مع أصدقائك واحصل على ألعاب شهرية مجانية وخصومات حصرية على متجر PlayStation.",
+          image_url: null,
+          price: "17.99",
+          category: "gaming",
+          usage_terms: "مفتاح تفعيل رقمي — لا يُرجع بعد الاسترداد.",
+        },
+        {
+          name: "Xbox Game Pass Ultimate",
+          description: "مكتبة ضخمة من الألعاب لأجهزة Xbox وPC، بالإضافة إلى EA Play وخدمة اللعب السحابي.",
+          image_url: null,
+          price: "19.99",
+          category: "gaming",
+          usage_terms: "رمز تفعيل لمدة شهر. لا يُرجع بعد الاستخدام.",
+        },
+        {
+          name: "Canva Pro",
+          description: "أداة التصميم الاحترافية — قوالب لا محدودة، إزالة الخلفيات، تصدير بجودة عالية، وتعاون مع الفريق.",
+          image_url: null,
+          price: "7.99",
+          category: "productivity",
+          usage_terms: "سيتم إرسال دعوة إلى بريدك الإلكتروني. لا تشارك الحساب.",
+        },
+        {
+          name: "Microsoft 365 Personal",
+          description: "احصل على Word وExcel وPowerPoint وOneDrive بسعة 1TB. مثالي للعمل والدراسة.",
+          image_url: null,
+          price: "12.99",
+          category: "productivity",
+          usage_terms: "مفتاح تفعيل رقمي لسنة كاملة. لجهاز واحد فقط.",
+        },
+        {
+          name: "NordVPN 1 شهر",
+          description: "حماية كاملة لخصوصيتك على الإنترنت. سرعة فائقة، 6000+ خادم حول العالم، بدون تسجيل بيانات.",
+          image_url: null,
+          price: "8.99",
+          category: "productivity",
+          usage_terms: "رمز تفعيل. يُستخدم على جهازين في آن واحد.",
+        },
+        {
+          name: "Apple TV+",
+          description: "أفلام ومسلسلات Apple الأصلية الحصرية بجودة 4K HDR. محتوى جديد كل أسبوع.",
+          image_url: null,
+          price: "4.99",
+          category: "streaming",
+          usage_terms: "حساب مشترك. لا تغيّر بيانات الدخول.",
+        },
+        {
+          name: "Adobe Creative Cloud",
+          description: "جميع تطبيقات Adobe — Photoshop وIllustrator وPremiere وAfter Effects وأكثر من 20 تطبيق احترافي.",
+          image_url: null,
+          price: "24.99",
+          category: "productivity",
+          usage_terms: "حساب شخصي مؤقت. لا تغيّر كلمة المرور.",
+        },
+        {
+          name: "Crunchyroll Premium",
+          description: "شاهد أحدث الأنمي فور بثّه في اليابان بدون إعلانات وبجودة 1080p. أكبر مكتبة أنمي في العالم.",
+          image_url: null,
+          price: "4.49",
+          category: "streaming",
+          usage_terms: "حساب مشترك. استخدم البروفايل المخصص لك.",
+        },
+      ];
+
+      for (const p of products) {
+        // Insert product only if name doesn't already exist
+        const existRes = await db.execute(sql`SELECT id FROM products WHERE name = ${p.name} LIMIT 1`);
+        const existRow = (existRes as any).rows?.[0] ?? (existRes as any)[0];
+        let productId: number;
+
+        if (existRow?.id) {
+          productId = existRow.id;
+        } else {
+          const insertedResult = await db.execute(sql`
+            INSERT INTO products (name, description, image_url, price, category, is_active, is_archived, usage_terms)
+            VALUES (${p.name}, ${p.description}, ${p.image_url}, ${p.price}, ${p.category}, true, false, ${p.usage_terms})
+            RETURNING id
+          `);
+          const insertedRow = (insertedResult as any).rows?.[0] ?? (insertedResult as any)[0];
+          productId = (insertedRow as any).id;
+        }
+
+        // Add inventory items if this product has fewer than 5 unsold units
+        const invRes = await db.execute(sql`SELECT COUNT(*) as c FROM inventory WHERE product_id = ${productId} AND is_sold = false`);
+        const invRow = (invRes as any).rows?.[0] ?? (invRes as any)[0];
+        const invCount = Number(invRow?.c ?? 0);
+
+        if (invCount < 5) {
+          const toAdd = 5 - invCount;
+          for (let i = 1; i <= toAdd; i++) {
+            const emailNum = String(productId * 100 + invCount + i).padStart(5, "0");
+            await db.execute(sql`
+              INSERT INTO inventory (product_id, account_email, account_password, extra_details, is_sold)
+              VALUES (
+                ${productId},
+                ${`sub${emailNum}@subnation.ly`},
+                ${`SN${emailNum}@Pass`},
+                ${"احتفظ ببيانات الدخول في مكان آمن. لا تشاركها مع أحد."},
+                false
+              )
+            `);
+          }
+        }
+      }
+
+      logger.info("Sample products and inventory seeded successfully");
+
+      // Seed a welcome coupon
+      await db.execute(sql`
+        INSERT INTO coupons (code, type, value, min_order_amount, max_uses, is_active, description)
+        VALUES ('WELCOME10', 'percentage', 10.00, 0.00, 100, true, 'خصم 10% للمستخدمين الجدد')
+        ON CONFLICT (code) DO NOTHING
+      `);
+
+      logger.info("Welcome coupon WELCOME10 created");
+    }
+
+    // ── Fix: clear any broken wikimedia image URLs ───────────────────────────
+    await db.execute(sql`
+      UPDATE products SET image_url = NULL WHERE image_url LIKE '%wikimedia%' OR image_url LIKE '%wikipedia%'
     `);
 
     logger.info("Migrations completed");
