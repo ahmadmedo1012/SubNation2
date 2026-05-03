@@ -6,6 +6,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 interface Notif {
   id: number;
@@ -33,9 +34,12 @@ const TYPE_CONFIG: Record<string, {
 
 export function NotificationBell() {
   const { token } = useAuth();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [animating, setAnimating] = useState(false);
+  const [prevUnreadIds, setPrevUnreadIds] = useState<Set<number>>(new Set());
+  const initialLoadDone = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = notifs.filter(n => !n.is_read).length;
@@ -45,7 +49,26 @@ export function NotificationBell() {
     if (!token) return;
     try {
       const r = await fetch("/api/notifications", { headers });
-      if (r.ok) setNotifs(await r.json());
+      if (!r.ok) return;
+      const data: Notif[] = await r.json();
+      setNotifs(data);
+
+      const newUnreadIds = new Set(data.filter(n => !n.is_read).map(n => n.id));
+
+      if (initialLoadDone.current) {
+        const brand_new = data.filter(n => !n.is_read && !prevUnreadIds.has(n.id));
+        if (brand_new.length > 0) {
+          const latest = brand_new[0];
+          toast({
+            title: latest.title,
+            description: latest.message ?? undefined,
+          });
+        }
+      } else {
+        initialLoadDone.current = true;
+      }
+
+      setPrevUnreadIds(newUnreadIds);
     } catch {}
   };
 

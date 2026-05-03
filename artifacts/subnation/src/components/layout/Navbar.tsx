@@ -3,7 +3,7 @@ import { useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
-import { Wallet, LogOut, Menu, X, Sun, Moon } from "lucide-react";
+import { Wallet, LogOut, Menu, X, Sun, Moon, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "./NotificationBell";
@@ -89,6 +89,11 @@ export function Navbar() {
                 <div className="flex items-center gap-1.5 bg-secondary/70 hover:bg-secondary border border-border/40 hover:border-primary/25 px-3 py-1.5 rounded-lg text-sm font-bold transition-all duration-150 active:scale-95 cursor-pointer group">
                   <Wallet className="w-3.5 h-3.5 text-primary transition-transform group-hover:scale-110 duration-150" />
                   <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                </div>
+              </Link>
+              <Link href="/profile">
+                <div className="p-2 rounded-lg hover:bg-secondary/70 active:scale-90 transition-all text-muted-foreground hover:text-foreground cursor-pointer" title="حسابي">
+                  <User className="w-4 h-4" />
                 </div>
               </Link>
               <Button

@@ -183,6 +183,39 @@ router.post("/reset-password", async (req, res) => {
   return res.json({ success: true, token });
 });
 
+// ── Change password (authenticated) ──────────────────────────────────────────
+router.post("/change-password", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "غير مصرح" });
+  }
+  const token = authHeader.slice(7);
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ error: "جلسة منتهية" });
+
+  const { current_password, new_password } = req.body as { current_password?: string; new_password?: string };
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: "جميع الحقول مطلوبة" });
+  }
+  const newTrimmed = new_password.trim();
+  if (newTrimmed.length < 6) {
+    return res.status(400).json({ error: "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل" });
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+
+  if (user.passwordHash !== hashPassword(current_password)) {
+    return res.status(400).json({ error: "كلمة المرور الحالية غير صحيحة" });
+  }
+
+  await db.update(usersTable)
+    .set({ passwordHash: hashPassword(newTrimmed) })
+    .where(eq(usersTable.id, payload.userId));
+
+  return res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح" });
+});
+
 router.get("/me", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {

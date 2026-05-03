@@ -21,6 +21,7 @@ import ReferralsPage from "@/pages/referrals";
 import SupportPage from "@/pages/support";
 import TermsPage from "@/pages/terms";
 import ForgotPasswordPage from "@/pages/forgot-password";
+import ProfilePage from "@/pages/profile";
 import AdminLoginPage from "@/pages/admin/login";
 import AdminDashboardPage from "@/pages/admin/dashboard";
 import AdminTopupsPage from "@/pages/admin/topups";
@@ -63,6 +64,7 @@ function AppRoutes() {
             <Route path="/support" component={SupportPage} />
             <Route path="/terms" component={TermsPage} />
             <Route path="/forgot-password" component={ForgotPasswordPage} />
+            <Route path="/profile" component={ProfilePage} />
             <Route path="/admin/login" component={AdminLoginPage} />
             <Route path="/admin" component={AdminDashboardPage} />
             <Route path="/admin/topups" component={AdminTopupsPage} />

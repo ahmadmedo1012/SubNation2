@@ -1,13 +1,13 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { Home, Wallet, ShoppingBag, Star, MessageSquare } from "lucide-react";
+import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
 
 const TABS = [
-  { href: "/",        icon: Home,          label: "الرئيسية" },
-  { href: "/wallet",  icon: Wallet,        label: "المحفظة" },
-  { href: "/orders",  icon: ShoppingBag,   label: "طلباتي" },
-  { href: "/loyalty", icon: Star,          label: "الولاء" },
-  { href: "/support", icon: MessageSquare, label: "الدعم" },
+  { href: "/",        icon: Home,       label: "الرئيسية" },
+  { href: "/wallet",  icon: Wallet,     label: "المحفظة" },
+  { href: "/orders",  icon: ShoppingBag,label: "طلباتي" },
+  { href: "/loyalty", icon: Star,       label: "الولاء" },
+  { href: "/profile", icon: User,       label: "حسابي" },
 ];
 
 export function MobileNav() {

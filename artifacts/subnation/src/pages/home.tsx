@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { useListProducts, useGetCatalogStats, useGetFlashSale, useGetMe } from "@workspace/api-client-react";
-import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetFlashSaleQueryKey, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useListProducts, useGetCatalogStats, useGetFlashSale, useGetMe, useListOrders } from "@workspace/api-client-react";
+import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetFlashSaleQueryKey, getGetMeQueryKey, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { ProductCard } from "@/components/ProductCard";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
   Search, Zap, Clock, Wallet, Star, PackageSearch,
   ChevronDown, Package, ShieldCheck, Truck, Headphones, ArrowLeft,
-  LayoutGrid, Tv2, Music2, Gamepad2, Briefcase
+  LayoutGrid, Tv2, Music2, Gamepad2, Briefcase, ChevronLeft,
+  CheckCircle, Loader2, XCircle
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,13 @@ function ProductSkeleton() {
   );
 }
 
+function OrderStatusIcon({ status }: { status: string }) {
+  if (status === "delivered") return <CheckCircle className="w-3 h-3 text-emerald-400" />;
+  if (status === "failed" || status === "refunded") return <XCircle className="w-3 h-3 text-red-400" />;
+  if (status === "processing") return <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />;
+  return <Clock className="w-3 h-3 text-yellow-400" />;
+}
+
 export default function HomePage() {
   const { token } = useAuth();
   const [searchInput, setSearchInput] = useState("");
@@ -94,6 +102,12 @@ export default function HomePage() {
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
+
+  const { data: recentOrders = [] } = useListOrders({
+    query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+  const latestOrders = (recentOrders as any[]).slice(0, 4);
 
   const flashSale = flashSaleData?.flash_sale;
   const [flashTimeLeft, setFlashTimeLeft] = useState({ h: 0, m: 0, s: 0 });
@@ -171,7 +185,7 @@ export default function HomePage() {
         {token && user ? (
           /* Logged-in: compact personalized header */
           <div className="mb-5 page-in">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
                 <p className="text-muted-foreground/70 text-sm mb-0.5">مرحباً بك مجدداً</p>
                 <h1 className="text-fluid-2xl font-black leading-tight">اشترِ اشتراكك المفضل اليوم</h1>
@@ -201,6 +215,47 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
+
+            {/* Recent orders strip */}
+            {latestOrders.length > 0 && (
+              <div className="bg-card border border-border/50 rounded-2xl overflow-hidden float-in stagger-1">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+                  <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                    <Clock className="w-3.5 h-3.5" />
+                    آخر الطلبات
+                  </div>
+                  <Link href="/orders">
+                    <button className="flex items-center gap-0.5 text-xs text-primary hover:text-primary/80 font-bold transition-colors press-spring">
+                      عرض الكل
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                  </Link>
+                </div>
+                <div className="divide-y divide-border/20">
+                  {latestOrders.map((order: any) => (
+                    <Link key={order.id} href={`/orders/${order.order_code}`}>
+                      <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors cursor-pointer group">
+                        <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/30">
+                          {order.product_image_url
+                            ? <img src={order.product_image_url} alt={order.product_name} className="w-full h-full object-contain p-1" />
+                            : <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold truncate group-hover:text-primary transition-colors">{order.product_name}</div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <OrderStatusIcon status={order.status} />
+                            <span className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}>{statusLabel(order.status)}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs font-black tabular-nums shrink-0">{formatCurrency(order.amount)}</div>
+                        <ChevronLeft className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary transition-colors shrink-0" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Guest: editorial hero */
