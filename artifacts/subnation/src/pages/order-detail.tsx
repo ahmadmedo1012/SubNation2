@@ -146,8 +146,10 @@ export default function OrderDetailPage() {
                     <img src={(order as any).product_image_url} alt={order.product_name ?? ""} className="w-full h-full object-contain p-1.5" />
                   </div>
                 ) : (
-                  <div className="w-12 h-12 rounded-xl bg-muted/50 border border-border/40 flex items-center justify-center shrink-0">
-                    <Package className="w-5 h-5 text-muted-foreground/30" />
+                  <div className="w-12 h-12 rounded-xl bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
+                    <span className="text-xl font-black text-primary/50 select-none">
+                      {(order.product_name ?? "؟")[0]}
+                    </span>
                   </div>
                 )}
                 <div>

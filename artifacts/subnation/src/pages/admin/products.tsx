@@ -19,6 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 
 const EMPTY_FORM = { name: "", description: "", image_url: "", price: "", category: "", usage_terms: "", is_active: true };
 
+const CATEGORY_INITIAL_COLOR: Record<string, string> = {
+  streaming:    "bg-violet-500/20 text-violet-300",
+  music:        "bg-emerald-500/20 text-emerald-300",
+  gaming:       "bg-blue-500/20 text-blue-300",
+  productivity: "bg-amber-500/20 text-amber-300",
+};
+
 const CATEGORY_OPTIONS = [
   { value: "",             label: "اختر الفئة" },
   { value: "streaming",    label: "بث مباشر" },
@@ -431,10 +438,10 @@ export default function AdminProductsPage() {
                           : <Square className="w-4 h-4" />
                         }
                       </button>
-                      <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/50">
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category] ?? "bg-muted") : "bg-muted"}`}>
                         {product.image_url
-                          ? <img src={product.image_url} alt={product.name} className="w-full h-full object-contain p-1.5" onError={e => (e.currentTarget.style.display = "none")} />
-                          : <Package className="w-5 h-5 text-muted-foreground/40" />
+                          ? <img src={product.image_url} alt={product.name} className="w-full h-full object-contain p-1.5" onError={e => { e.currentTarget.style.display = "none"; e.currentTarget.parentElement!.classList.add(CATEGORY_INITIAL_COLOR[product.category]?.split(" ")[0] ?? "bg-muted"); }} />
+                          : <span className="text-base font-black opacity-70">{product.name.charAt(0).toUpperCase()}</span>
                         }
                       </div>
                       <div className="flex-1 min-w-0">

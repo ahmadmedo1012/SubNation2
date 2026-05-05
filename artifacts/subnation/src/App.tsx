@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { Navbar } from "@/components/layout/Navbar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Footer } from "@/components/layout/Footer";
+import { FlashSaleBanner } from "@/components/layout/FlashSaleBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import HomePage from "@/pages/home";
@@ -49,6 +50,7 @@ function AppRoutes() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {!isAdmin && <Navbar />}
+      {!isAdmin && <FlashSaleBanner />}
       <main className={!isAdmin && !isAuth ? "pb-16 md:pb-0" : ""}>
         <ErrorBoundary>
           <Switch>

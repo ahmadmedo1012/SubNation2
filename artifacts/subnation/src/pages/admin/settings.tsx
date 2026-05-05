@@ -153,7 +153,7 @@ export default function AdminSettingsPage() {
               {[
                 { label: "تشفير JWT",       value: "SESSION_SECRET (env)",          ok: true },
                 { label: "تشفير كلمات المرور", value: "SHA-256 + salt",           ok: true },
-                { label: "تحديد معدل الطلبات", value: "20 طلب/15 دقيقة على المصادقة", ok: true },
+                { label: "تحديد معدل الطلبات", value: "20 طلب/15 دقيقة على تسجيل الدخول", ok: true },
                 { label: "CORS",             value: "مقيّد بنطاقات REPLIT_DOMAINS", ok: true },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-xl">

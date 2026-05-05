@@ -144,7 +144,9 @@ export default function OrdersPage() {
                           className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (
-                        <Package className="w-5 h-5 text-muted-foreground/35" />
+                        <span className="text-xl font-black text-primary/50 select-none">
+                          {(order.product_name ?? "؟")[0]}
+                        </span>
                       )}
                     </div>
 

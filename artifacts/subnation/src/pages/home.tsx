@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
-import { useListProducts, useGetCatalogStats, useGetFlashSale, useGetMe, useListOrders } from "@workspace/api-client-react";
-import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetFlashSaleQueryKey, getGetMeQueryKey, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { useState, useRef } from "react";
+import { useListProducts, useGetCatalogStats, useGetMe, useListOrders } from "@workspace/api-client-react";
+import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetMeQueryKey, getListOrdersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { ProductCard } from "@/components/ProductCard";
 import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
-  Search, Zap, Clock, Wallet, Star, PackageSearch,
+  Search, Clock, Wallet, Star, PackageSearch,
   ChevronDown, Package, ShieldCheck, Truck, Headphones, ArrowLeft,
   LayoutGrid, Tv2, Music2, Gamepad2, Briefcase, ChevronLeft,
   CheckCircle, Loader2, XCircle
@@ -93,10 +93,6 @@ export default function HomePage() {
     query: { queryKey: getGetCatalogStatsQueryKey() },
   });
 
-  const { data: flashSaleData } = useGetFlashSale({
-    query: { queryKey: getGetFlashSaleQueryKey() },
-  });
-
   const { data: user } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
@@ -108,76 +104,10 @@ export default function HomePage() {
   });
   const latestOrders = (recentOrders as any[]).slice(0, 4);
 
-  const flashSale = flashSaleData?.flash_sale;
-  const [flashTimeLeft, setFlashTimeLeft] = useState({ h: 0, m: 0, s: 0 });
-  const [flashUrgent, setFlashUrgent] = useState(false);
-  const [flashActive, setFlashActive] = useState(true);
-
-  useEffect(() => {
-    if (!flashSale) return;
-    const update = () => {
-      const diff = new Date(flashSale.ends_at).getTime() - Date.now();
-      if (diff <= 0) { setFlashActive(false); return; }
-      setFlashTimeLeft({
-        h: Math.floor(diff / 3600000),
-        m: Math.floor((diff % 3600000) / 60000),
-        s: Math.floor((diff % 60000) / 1000),
-      });
-      setFlashUrgent(diff < 3600000);
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [flashSale?.ends_at]);
-
   const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(Boolean).length;
 
   return (
     <div className="min-h-screen">
-
-      {/* ── Flash Sale Banner ──────────────────────────────── */}
-      {flashSale && flashActive && (
-        <div className={`relative overflow-hidden border-b py-2.5 px-4 transition-colors duration-500 ${
-          flashUrgent
-            ? "bg-gradient-to-l from-primary/22 via-primary/12 to-primary/5 border-primary/30"
-            : "bg-gradient-to-l from-primary/14 via-primary/7 to-transparent border-primary/15"
-        }`}>
-          <div className="absolute inset-0 flash-banner-glow opacity-70 pointer-events-none" />
-          <div className="relative max-w-6xl mx-auto flex items-center gap-3 justify-between">
-            <div className="flex items-center gap-2 shrink-0">
-              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                flashUrgent ? "bg-primary text-white" : "bg-primary/20 border border-primary/30"
-              }`}>
-                <Zap className={`w-3 h-3 fill-current ${flashUrgent ? "text-white" : "text-primary"}`} />
-              </div>
-              <span className={`text-xs font-black ${flashUrgent ? "text-primary" : "text-primary/80"}`}>عرض محدود</span>
-            </div>
-            <div className="flex-1 text-center text-sm font-bold text-foreground/90 truncate px-2">
-              {flashSale.title}
-              <span className="text-primary font-black"> — {flashSale.discount_percent}% خصم</span>
-            </div>
-            {/* Countdown */}
-            <div className={`flex items-center gap-1 shrink-0 ${flashUrgent ? "text-primary" : "text-muted-foreground"}`}>
-              {[
-                { val: flashTimeLeft.h, label: "س" },
-                { val: flashTimeLeft.m, label: "د" },
-                { val: flashTimeLeft.s, label: "ث" },
-              ].map((seg, i) => (
-                <div key={i} className="flex items-center gap-1">
-                  {i > 0 && <span className="font-black opacity-40 text-xs">:</span>}
-                  <div className={`flex flex-col items-center min-w-[26px] px-1 py-0.5 rounded-md border transition-colors ${
-                    flashUrgent ? "bg-primary/15 border-primary/35" : "bg-card/60 border-border/60"
-                  }`}>
-                    <span className="font-black tabular-nums text-xs leading-tight">{String(seg.val).padStart(2, "0")}</span>
-                    <span className="text-[7px] opacity-50 leading-none">{seg.label}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
 
         {/* ── Hero ─────────────────────────────────────────── */}
@@ -478,7 +408,7 @@ export default function HomePage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 {
-                  icon: Zap,
+                  icon: Truck,
                   color: "text-yellow-400",
                   bg: "bg-yellow-400/8 border-yellow-400/15",
                   title: "تسليم فوري",

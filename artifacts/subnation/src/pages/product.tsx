@@ -20,6 +20,13 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
   productivity: "from-amber-950 via-amber-900/60 to-amber-800/20",
 };
 
+const CATEGORY_INITIAL_COLOR: Record<string, string> = {
+  streaming:    "text-violet-300",
+  music:        "text-emerald-300",
+  gaming:       "text-blue-300",
+  productivity: "text-amber-300",
+};
+
 const TRUST_SIGNALS = [
   { icon: Truck,       label: "تسليم فوري", desc: "حصل عليه فور الدفع" },
   { icon: ShieldCheck, label: "دفع آمن",    desc: "من محفظتك المشحونة" },
@@ -155,6 +162,7 @@ export default function ProductPage() {
   const displayPrice = product.sale_price ?? product.price;
   const canAfford = user && (user.wallet_balance ?? 0) >= displayPrice;
   const gradientClass = CATEGORY_GRADIENTS[product.category ?? "streaming"] ?? "from-primary/20 via-primary/8 to-transparent";
+  const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
   const shortfall = displayPrice - (user?.wallet_balance ?? 0);
 
   // ── Order success ─────────────────────────────────────────────────────────
@@ -257,7 +265,7 @@ export default function ProductPage() {
               className="w-full h-full object-contain p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
             />
           ) : (
-            <span className="text-8xl font-black text-white/10 select-none">{product.name[0]}</span>
+            <span className={`text-8xl font-black select-none opacity-30 drop-shadow-2xl ${initialColorClass}`}>{product.name[0]}</span>
           )}
 
           {/* Top badges */}

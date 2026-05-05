@@ -10,21 +10,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const BULK_STATUSES = [
-  { value: "completed",  label: "مكتمل",         color: "text-emerald-400" },
-  { value: "delivered",  label: "مُسلَّم",         color: "text-emerald-400" },
-  { value: "pending",    label: "قيد الانتظار",   color: "text-yellow-400" },
-  { value: "processing", label: "جارٍ التنفيذ",   color: "text-blue-400" },
-  { value: "failed",     label: "فشل",            color: "text-red-400" },
-  { value: "refunded",   label: "مسترجع",         color: "text-blue-400" },
+  { value: "completed", label: "مكتمل",       color: "text-emerald-400" },
+  { value: "pending",   label: "قيد الانتظار", color: "text-yellow-400" },
+  { value: "failed",    label: "فشل",          color: "text-red-400" },
+  { value: "refunded",  label: "مسترجع",       color: "text-blue-400" },
 ];
 
 const STATUS_FILTERS = [
-  { value: "",           label: "الكل" },
-  { value: "delivered",  label: "مكتمل" },
-  { value: "pending",    label: "معلق" },
-  { value: "processing", label: "جارٍ" },
-  { value: "failed",     label: "فاشل" },
-  { value: "refunded",   label: "مسترجع" },
+  { value: "",          label: "الكل" },
+  { value: "completed", label: "مكتمل" },
+  { value: "pending",   label: "معلق" },
+  { value: "failed",    label: "فاشل" },
+  { value: "refunded",  label: "مسترجع" },
 ];
 
 const DATE_RANGES = [

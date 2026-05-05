@@ -234,6 +234,16 @@ Seed condition: runs when product count < 12. Per-product deduplication by name.
 - **Input sanitization**: trim + length guards on all register/login inputs
 - **JWT hard-fail**: `SESSION_SECRET` env var throws on startup if not set
 
+## Recent Bug Fixes & Improvements
+
+- **Auth rate limit fix**: `authLimiter` now applies only to login/register/google/change-password — NOT to `/api/auth/me`. Navbar polls `/me` every 30s safely.
+- **Admin orders status fix**: `BULK_STATUSES` and `STATUS_FILTERS` now use only valid DB statuses (`completed`, `pending`, `failed`, `refunded`); removed invalid `delivered` and `processing` values.
+- **Product image fallbacks**: All product cards (home, product page, orders, order-detail, admin products) show a category-colored initial letter when no image is available. Colors: streaming=violet, music=emerald, gaming=blue, productivity=amber.
+- **Flash sale banner**: Removed flash sale state/hooks from `home.tsx` (now handled globally in `App.tsx` via `FlashSaleBanner`). Fixed `Zap` import — replaced with `Truck` icon for trust footer.
+- **Support page**: Redesigned with category pill selector, chat-style message view with avatars (Shield for admin, User for user), relative timestamps with tooltips, and last-reply preview in ticket list.
+- **Settings security tab**: Updated rate limit description to accurately reflect that only login routes are rate-limited.
+- **Unused imports removed**: Cleaned up `useEffect` from `alerts.tsx` and `home.tsx`.
+
 ## Production Hardening
 
 - **Rate limiting** (`express-rate-limit`): `/api/auth/*` = 20 req/15min; all `/api/*` = 120 req/min
