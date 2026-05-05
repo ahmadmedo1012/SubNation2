@@ -1,7 +1,16 @@
 [build]
   command = "pnpm --filter @workspace/subnation... run build"
-  publish = "artifacts/subnation/dist"
+  publish = "artifacts/subnation/dist/public"
 
 [build.environment]
+  # Required by artifacts/subnation/vite.config.ts at config evaluation time.
+  BASE_PATH = "/"
+  PORT = "5173"
   # Exclude dist folder and Replit config files from secrets scan - contains only public keys and dev config
   SECRETS_SCAN_OMIT_PATHS = "artifacts/subnation/dist,.replit,artifacts/api-server/.replit-artifact/artifact.toml,replit.md"
+
+# SPA fallback: route all unmatched paths to index.html so client-side routing (wouter) works.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
