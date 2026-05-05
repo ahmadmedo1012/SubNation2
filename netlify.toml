@@ -1,7 +1,7 @@
 [build]
-  command = "pnpm --filter @workspace/mockup-sandbox... run build"
-  publish = "artifacts/mockup-sandbox/dist"
+  command = "pnpm --filter @workspace/subnation... run build"
+  publish = "artifacts/subnation/dist"
 
 [build.environment]
   # Exclude dist folder and Replit config files from secrets scan - contains only public keys and dev config
-  SECRETS_SCAN_OMIT_PATHS = "artifacts/mockup-sandbox/dist,.replit,artifacts/api-server/.replit-artifact/artifact.toml,replit.md"
+  SECRETS_SCAN_OMIT_PATHS = "artifacts/subnation/dist,.replit,artifacts/api-server/.replit-artifact/artifact.toml,replit.md"
