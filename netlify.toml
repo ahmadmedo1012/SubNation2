@@ -3,5 +3,5 @@
   publish = "artifacts/mockup-sandbox/dist"
 
 [build.environment]
-  # Exclude dist folder from secrets scan - contains only public keys (Firebase, Google Client ID, reCAPTCHA)
-  SECRETS_SCAN_OMIT_PATHS = "artifacts/mockup-sandbox/dist"
+  # Exclude dist folder and Replit config files from secrets scan - contains only public keys and dev config
+  SECRETS_SCAN_OMIT_PATHS = "artifacts/mockup-sandbox/dist,.replit,artifacts/api-server/.replit-artifact/artifact.toml,replit.md"
