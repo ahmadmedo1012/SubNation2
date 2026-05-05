@@ -3,5 +3,5 @@
   publish = "artifacts/mockup-sandbox/dist"
 
 [build.environment]
-  # Whitelist public Vite env vars - these are meant to be exposed in client code
-  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_STORAGE_BUCKET,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_APP_ID,VITE_FIREBASE_MEASUREMENT_ID,VITE_RECAPTCHA_SITE_KEY,VITE_GOOGLE_CLIENT_ID"
+  # Exclude dist folder from secrets scan - contains only public keys (Firebase, Google Client ID, reCAPTCHA)
+  SECRETS_SCAN_OMIT_PATHS = "artifacts/mockup-sandbox/dist"
