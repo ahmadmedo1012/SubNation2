@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle, Eye, EyeOff, Gift, CheckCircle } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
 import { libyanPhoneError, isValidLibyanPhone } from "@/lib/validation";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { AuthProviders } from "@/components/AuthProviders";
 
 export default function RegisterPage() {
   const [, navigate] = useLocation();
@@ -178,16 +178,9 @@ export default function RegisterPage() {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">أو سجل عبر</span>
-            <div className="flex-1 h-px bg-border" />
+          <div className="mt-5">
+            <AuthProviders dividerLabel="أو سجل عبر" />
           </div>
-
-          <GoogleSignInButton
-            className="w-full h-11 flex items-center justify-center gap-3 border border-border rounded-xl bg-card hover:bg-secondary transition-all active:scale-[0.98] font-medium text-sm disabled:opacity-60"
-          />
 
           <div className="mt-5 text-center text-sm text-muted-foreground">
             لديك حساب؟{" "}

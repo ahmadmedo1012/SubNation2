@@ -210,12 +210,43 @@ export async function runMigrations() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key        VARCHAR(255) PRIMARY KEY,
+        value      TEXT NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     await db.execute(sql`
       ALTER TABLE orders
         ADD COLUMN IF NOT EXISTS coupon_code     VARCHAR(50),
         ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00;
     `);
+
+    await db.execute(sql`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS github_id   VARCHAR(255) UNIQUE,
+        ADD COLUMN IF NOT EXISTS facebook_id VARCHAR(255) UNIQUE,
+        ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE;
+    `);
+
+    // ── Seed: default auth provider configs (no-op if already set) ──────────
+    const providerDefaults = [
+      ["auth.google",   JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
+      ["auth.github",   JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
+      ["auth.facebook", JSON.stringify({ enabled: false, app_id: "", app_secret: "" })],
+      ["auth.telegram", JSON.stringify({ enabled: false, bot_username: "", bot_token: "" })],
+      ["auth.apple",    JSON.stringify({ enabled: false, client_id: "", team_id: "", key_id: "", private_key: "" })],
+    ];
+    for (const [key, value] of providerDefaults) {
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value)
+        VALUES (${key}, ${value})
+        ON CONFLICT (key) DO NOTHING
+      `);
+    }
 
     // ── Seed: Admin user ────────────────────────────────────────────────────
     const adminCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM admin_users`);

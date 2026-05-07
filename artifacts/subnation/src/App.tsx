@@ -34,6 +34,7 @@ import AdminTicketsPage from "@/pages/admin/tickets";
 import AdminReferralsPage from "@/pages/admin/referrals";
 import AdminCouponsPage from "@/pages/admin/coupons";
 import AdminAlertsPage from "@/pages/admin/alerts";
+import AuthCallbackPage from "@/pages/auth-callback";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -67,6 +68,7 @@ function AppRoutes() {
             <Route path="/terms" component={TermsPage} />
             <Route path="/forgot-password" component={ForgotPasswordPage} />
             <Route path="/profile" component={ProfilePage} />
+            <Route path="/auth/callback" component={AuthCallbackPage} />
             <Route path="/admin/login" component={AdminLoginPage} />
             <Route path="/admin" component={AdminDashboardPage} />
             <Route path="/admin/topups" component={AdminTopupsPage} />

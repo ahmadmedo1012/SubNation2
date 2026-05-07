@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { AuthProviders } from "@/components/AuthProviders";
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
@@ -120,15 +120,10 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-border/50" />
-            <span className="text-xs text-muted-foreground/60">أو</span>
-            <div className="flex-1 h-px bg-border/50" />
+          {/* OAuth Providers (includes divider when providers are available) */}
+          <div className="mt-5">
+            <AuthProviders dividerLabel="أو" />
           </div>
-
-          {/* Google Sign-In */}
-          <GoogleSignInButton />
 
           <div className="mt-5 text-center text-sm text-muted-foreground/75">
             ليس لديك حساب؟{" "}
