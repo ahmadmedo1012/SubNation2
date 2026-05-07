@@ -1,23 +1,14 @@
 import { Router } from "express";
-import { db, usersTable, supportTicketsTable, ticketRepliesTable } from "@workspace/db";
+import { db, supportTicketsTable, ticketRepliesTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
-import { verifyToken } from "./auth";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 
 const router = Router();
 
-function requireAuth(req: any, res: any): number | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "غير مصرح" }); return null; }
-  const payload = verifyToken(authHeader.slice(7));
-  if (!payload) { res.status(401).json({ error: "جلسة منتهية" }); return null; }
-  return payload.userId;
-}
-
 const CATEGORIES = ["billing", "technical", "order", "account", "other"];
 
-router.get("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const tickets = await db.select().from(supportTicketsTable)
     .where(eq(supportTicketsTable.userId, userId))
@@ -45,9 +36,8 @@ router.get("/", async (req, res) => {
   return res.json(withReplyCounts);
 });
 
-router.post("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const { title, message, category } = req.body ?? {};
   if (!title?.trim() || !message?.trim()) {
@@ -71,9 +61,8 @@ router.post("/", async (req, res) => {
   return res.status(201).json({ id: ticket.id, title: ticket.title, status: ticket.status, created_at: ticket.createdAt.toISOString() });
 });
 
-router.get("/:id", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/:id", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
@@ -103,9 +92,8 @@ router.get("/:id", async (req, res) => {
   });
 });
 
-router.post("/:id/reply", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/:id/reply", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });

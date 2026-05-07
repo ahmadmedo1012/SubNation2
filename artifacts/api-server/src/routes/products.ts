@@ -1,8 +1,21 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { db, productsTable, inventoryTable, ordersTable, flashSalesTable } from "@workspace/db";
-import { eq, and, count, sql, desc, asc, gt } from "drizzle-orm";
+import { eq, and, count, gt } from "drizzle-orm";
 
 const router = Router();
+
+async function getActiveFlashSale() {
+  const now = new Date();
+  const [sale] = await db.select().from(flashSalesTable)
+    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now))).limit(1);
+  if (!sale) return null;
+  return {
+    id: sale.id,
+    title: sale.title,
+    discount_percent: parseFloat(String(sale.discountPercent)),
+    ends_at: sale.endsAt.toISOString(),
+  };
+}
 
 router.get("/", async (req, res) => {
   const { category, available_only, sort, search } = req.query;
@@ -71,7 +84,7 @@ router.get("/", async (req, res) => {
   return res.json(result);
 });
 
-router.get("/stats", async (_req, res) => {
+export async function getProductStatsHandler(_req: Request, res: Response) {
   const products = await db.select().from(productsTable)
     .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
 
@@ -96,12 +109,15 @@ router.get("/stats", async (_req, res) => {
     lowest_price: lowestPrice,
     has_flash_sale: !!flashSale,
   });
-});
+}
 
-router.get("/flash-sale", async (_req, res) => {
+export async function getFlashSaleHandler(_req: Request, res: Response) {
   const flashSale = await getActiveFlashSale();
   return res.json({ flash_sale: flashSale });
-});
+}
+
+router.get("/stats", getProductStatsHandler);
+router.get("/flash-sale", getFlashSaleHandler);
 
 router.get("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -140,18 +156,5 @@ router.get("/:id", async (req, res) => {
     order_count: Number(orderResult?.count ?? 0),
   });
 });
-
-async function getActiveFlashSale() {
-  const now = new Date();
-  const [sale] = await db.select().from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now))).limit(1);
-  if (!sale) return null;
-  return {
-    id: sale.id,
-    title: sale.title,
-    discount_percent: parseFloat(String(sale.discountPercent)),
-    ends_at: sale.endsAt.toISOString(),
-  };
-}
 
 export { router as productsRouter };

@@ -1,30 +1,12 @@
 import { Router } from "express";
-import { db, couponsTable, usersTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
-import { verifyToken } from "./auth";
-import jwt from "jsonwebtoken";
+import { db, couponsTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router = Router();
-if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required");
-const JWT_SECRET: string = process.env.SESSION_SECRET;
-const ADMIN_JWT_SECRET = JWT_SECRET + "_admin";
 
-function requireUser(req: any, res: any): number | null {
-  const h = req.headers.authorization;
-  if (!h?.startsWith("Bearer ")) { res.status(401).json({ error: "غير مصرح" }); return null; }
-  const p = verifyToken(h.slice(7));
-  if (!p) { res.status(401).json({ error: "جلسة منتهية" }); return null; }
-  return p.userId;
-}
-
-function requireAdmin(req: any, res: any): boolean {
-  const h = req.headers.authorization;
-  if (!h?.startsWith("Bearer ")) { res.status(401).json({ error: "غير مصرح" }); return false; }
-  try { jwt.verify(h.slice(7), ADMIN_JWT_SECRET); return true; }
-  catch { res.status(401).json({ error: "جلسة الإدارة منتهية" }); return false; }
-}
-
-function formatCoupon(c: any) {
+function formatCoupon(c: typeof couponsTable.$inferSelect) {
   return {
     id: c.id,
     code: c.code,
@@ -42,10 +24,7 @@ function formatCoupon(c: any) {
 
 // ── User: validate a coupon ───────────────────────────────────────────────────
 
-router.post("/validate", async (req, res) => {
-  const userId = requireUser(req, res);
-  if (!userId) return;
-
+router.post("/validate", requireUser, async (req, res) => {
   const { code, order_amount } = req.body ?? {};
   if (!code?.trim()) return res.status(400).json({ error: "رمز الكوبون مطلوب" });
   if (typeof order_amount !== "number" || order_amount <= 0) {
@@ -75,8 +54,7 @@ router.post("/validate", async (req, res) => {
   if (coupon.type === "percentage") {
     discountAmount = +(order_amount * parseFloat(String(coupon.value)) / 100).toFixed(2);
   } else {
-    discountAmount = Math.min(parseFloat(String(coupon.value)), order_amount);
-    discountAmount = +discountAmount.toFixed(2);
+    discountAmount = +Math.min(parseFloat(String(coupon.value)), order_amount).toFixed(2);
   }
 
   const finalAmount = +(order_amount - discountAmount).toFixed(2);
@@ -94,17 +72,14 @@ router.post("/validate", async (req, res) => {
 
 // ── Admin: list ───────────────────────────────────────────────────────────────
 
-router.get("/admin", async (req, res) => {
-  if (!requireAdmin(req, res)) return;
+router.get("/admin", requireAdmin, async (_req, res) => {
   const coupons = await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt));
   return res.json(coupons.map(formatCoupon));
 });
 
 // ── Admin: create ─────────────────────────────────────────────────────────────
 
-router.post("/admin", async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
+router.post("/admin", requireAdmin, async (req, res) => {
   const { code, type, value, min_order_amount, max_uses, expires_at, description } = req.body ?? {};
   if (!code?.trim()) return res.status(400).json({ error: "رمز الكوبون مطلوب" });
   if (!["percentage", "fixed"].includes(type)) return res.status(400).json({ error: "نوع الخصم غير صالح" });
@@ -131,9 +106,7 @@ router.post("/admin", async (req, res) => {
 
 // ── Admin: update ─────────────────────────────────────────────────────────────
 
-router.patch("/admin/:id", async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
+router.patch("/admin/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -152,11 +125,9 @@ router.patch("/admin/:id", async (req, res) => {
   return res.json(formatCoupon(updated));
 });
 
-// ── Admin: delete ─────────────────────────────────────────────────────────────
+// ── Admin: delete (soft) ──────────────────────────────────────────────────────
 
-router.delete("/admin/:id", async (req, res) => {
-  if (!requireAdmin(req, res)) return;
-
+router.delete("/admin/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 

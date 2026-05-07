@@ -1,31 +1,30 @@
 import { Router } from "express";
-import { db, usersTable, referralEventsTable, walletTopupsTable, ordersTable } from "@workspace/db";
-import { eq, desc, and, count, sum } from "drizzle-orm";
-import { verifyToken } from "./auth";
+import { db, usersTable, referralEventsTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 
 const router = Router();
-const POINTS_PER_LYD = 100;
-const POINTS_PER_REFERRAL = 50;
-const TIER_THRESHOLDS = { silver: 500, gold: 2000, platinum: 5000 };
 
-function requireAuth(req: any, res: any): number | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "غير مصرح" }); return null; }
-  const payload = verifyToken(authHeader.slice(7));
-  if (!payload) { res.status(401).json({ error: "جلسة منتهية" }); return null; }
-  return payload.userId;
-}
+export const POINTS_PER_LYD = 100;
+export const POINTS_PER_REFERRAL = 50;
+export const TIER_THRESHOLDS = { silver: 500, gold: 2000, platinum: 5000 } as const;
 
-function computeTier(lifetimeSpend: number): string {
+export function computeTier(lifetimeSpend: number): string {
   if (lifetimeSpend >= TIER_THRESHOLDS.platinum) return "platinum";
   if (lifetimeSpend >= TIER_THRESHOLDS.gold) return "gold";
   if (lifetimeSpend >= TIER_THRESHOLDS.silver) return "silver";
   return "bronze";
 }
 
-router.get("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
+  if (spend < TIER_THRESHOLDS.silver) return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
+  if (spend < TIER_THRESHOLDS.gold) return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
+  if (spend < TIER_THRESHOLDS.platinum) return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - spend };
+  return null;
+}
+
+router.get("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
@@ -56,9 +55,8 @@ router.get("/", async (req, res) => {
   });
 });
 
-router.post("/convert-points", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/convert-points", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const { points } = req.body ?? {};
   const pointsToConvert = parseInt(points);
@@ -96,9 +94,8 @@ router.post("/convert-points", async (req, res) => {
   });
 });
 
-router.get("/referrals", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/referrals", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const events = await db
     .select({
@@ -128,11 +125,4 @@ router.get("/referrals", async (req, res) => {
   );
 });
 
-function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
-  if (spend < TIER_THRESHOLDS.silver) return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
-  if (spend < TIER_THRESHOLDS.gold) return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
-  if (spend < TIER_THRESHOLDS.platinum) return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - spend };
-  return null;
-}
-
-export { router as loyaltyRouter, POINTS_PER_REFERRAL, computeTier };
+export { router as loyaltyRouter };

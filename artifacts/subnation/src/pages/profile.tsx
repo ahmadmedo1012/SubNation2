@@ -9,28 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   User, Phone, Shield, Star, Wallet, LogOut, Eye, EyeOff,
-  CheckCircle, AlertCircle, Lock, Crown, TrendingUp, Copy, Check,
+  CheckCircle, AlertCircle, Lock, Crown, TrendingUp,
   ChevronLeft, Gift
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      onClick={copy}
-      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary/18 text-primary text-xs font-bold transition-all active:scale-95 shrink-0"
-    >
-      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-      {copied ? "تم" : "نسخ"}
-    </button>
-  );
-}
+import { CopyButton } from "@/components/CopyButton";
 
 export default function ProfilePage() {
   const { token, logout } = useAuth();
@@ -62,7 +45,7 @@ export default function ProfilePage() {
     setPwSuccess(false);
 
     if (!currentPassword.trim()) { setPwError("أدخل كلمة المرور الحالية"); return; }
-    if (newPassword.length < 6) { setPwError("كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل"); return; }
+    if (newPassword.length < 8) { setPwError("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"); return; }
     if (newPassword !== confirmPassword) { setPwError("كلمتا المرور غير متطابقتين"); return; }
 
     setChangingPassword(true);

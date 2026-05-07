@@ -1,29 +1,15 @@
 import { Router } from "express";
 import { db, usersTable, walletTopupsTable, ordersTable, productsTable } from "@workspace/db";
 import { eq, desc, count, and } from "drizzle-orm";
-import { verifyToken } from "./auth";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { CreateTopupBody } from "@workspace/api-zod";
+import { normalizeLibyanPhone } from "../lib/crypto";
 import { notifyNewTopup } from "../telegram";
 
 const router = Router();
 
-function requireAuth(req: any, res: any): number | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "غير مصرح" });
-    return null;
-  }
-  const payload = verifyToken(authHeader.slice(7));
-  if (!payload) {
-    res.status(401).json({ error: "جلسة منتهية" });
-    return null;
-  }
-  return payload.userId;
-}
-
-router.get("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
@@ -38,8 +24,10 @@ router.get("/", async (req, res) => {
     .orderBy(desc(ordersTable.createdAt))
     .limit(5);
 
-  const pendingCount = (await db.select({ count: count() }).from(walletTopupsTable)
-    .where(eq(walletTopupsTable.status, "pending")))[0]?.count ?? 0;
+  // Count only THIS user's pending topups
+  const [{ pendingCount }] = await db.select({ pendingCount: count() })
+    .from(walletTopupsTable)
+    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
 
   return res.json({
     balance: parseFloat(String(user.walletBalance)),
@@ -64,9 +52,8 @@ router.get("/", async (req, res) => {
   });
 });
 
-router.get("/topups", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/topups", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const topups = await db.select().from(walletTopupsTable)
     .where(eq(walletTopupsTable.userId, userId))
@@ -75,9 +62,8 @@ router.get("/topups", async (req, res) => {
   return res.json(topups.map(formatTopup));
 });
 
-router.post("/topups", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/topups", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateTopupBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
@@ -96,12 +82,8 @@ router.post("/topups", async (req, res) => {
     return res.status(400).json({ error: "يرجى إدخال رقم حساب المُرسل" });
   }
 
-  // Validate Libyan sender phone format
   if (method === "mobile_transfer" && sender_phone) {
-    const LIBYAN_PREFIXES = ["91", "92", "93", "94"];
-    const digits = sender_phone.replace(/\D/g, "");
-    const norm = digits.length === 10 && digits.startsWith("0") ? digits.slice(1) : digits;
-    if (norm.length !== 9 || !LIBYAN_PREFIXES.some(p => norm.startsWith(p))) {
+    if (!normalizeLibyanPhone(sender_phone)) {
       return res.status(400).json({ error: "رقم هاتف المُرسل غير صالح" });
     }
   }

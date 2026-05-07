@@ -1,33 +1,15 @@
 import { Router } from "express";
 import { db, ordersTable, productsTable, inventoryTable, usersTable, flashSalesTable, couponsTable } from "@workspace/db";
-import { eq, and, desc, count, gt, sql } from "drizzle-orm";
-import { verifyToken } from "./auth";
+import { eq, and, desc, gt, sql } from "drizzle-orm";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { CreateOrderBody } from "@workspace/api-zod";
-import { randomBytes } from "crypto";
+import { generateOrderCode } from "../lib/crypto";
 import { notifyNewOrder, notifyCouponMaxedOut, isTelegramConfigured } from "../telegram";
 import { logAdminAlert } from "../jobs/alertLogger";
 
 const router = Router();
 
-function requireAuth(req: any, res: any): number | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "غير مصرح" });
-    return null;
-  }
-  const payload = verifyToken(authHeader.slice(7));
-  if (!payload) {
-    res.status(401).json({ error: "جلسة منتهية" });
-    return null;
-  }
-  return payload.userId;
-}
-
-function generateOrderCode(): string {
-  return "SN" + randomBytes(4).toString("hex").toUpperCase();
-}
-
-function formatOrder(order: any, productName: string, productImageUrl: string | null | undefined) {
+function formatOrder(order: typeof ordersTable.$inferSelect, productName: string, productImageUrl: string | null | undefined) {
   return {
     id: order.id,
     order_code: order.orderCode,
@@ -35,7 +17,7 @@ function formatOrder(order: any, productName: string, productImageUrl: string | 
     product_name: productName,
     product_image_url: productImageUrl ?? null,
     amount: parseFloat(String(order.amount)),
-    coupon_code: (order.couponCode as string | null) ?? null,
+    coupon_code: order.couponCode ?? null,
     discount_amount: order.discountAmount ? parseFloat(String(order.discountAmount)) : 0,
     status: order.status,
     delivered_email: order.deliveredEmail ?? null,
@@ -47,9 +29,8 @@ function formatOrder(order: any, productName: string, productImageUrl: string | 
   };
 }
 
-router.get("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const orders = await db.select({
     order: ordersTable,
@@ -63,9 +44,8 @@ router.get("/", async (req, res) => {
   return res.json(orders.map(r => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
 
-router.post("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateOrderBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
@@ -89,7 +69,7 @@ router.post("/", async (req, res) => {
 
   // Apply coupon
   let discountAmount = 0;
-  let appliedCoupon: any = null;
+  let appliedCoupon: typeof couponsTable.$inferSelect | null = null;
   if (couponCode) {
     const [coupon] = await db.select().from(couponsTable)
       .where(eq(couponsTable.code, couponCode)).limit(1);
@@ -137,7 +117,6 @@ router.post("/", async (req, res) => {
     loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
   }).where(eq(usersTable.id, userId));
 
-  // Increment coupon usage and notify if maxed out
   if (appliedCoupon) {
     const newUsedCount = appliedCoupon.usedCount + 1;
     await db.update(couponsTable)
@@ -153,51 +132,32 @@ router.post("/", async (req, res) => {
     }
   }
 
-  const [order] = await db.execute(sql`
-    INSERT INTO orders (
-      order_code, user_id, product_id, inventory_id,
-      amount, wallet_balance_before, wallet_balance_after,
-      status, delivered_email, delivered_password,
-      delivered_extra_details, delivered_usage_terms, delivered_at,
-      coupon_code, discount_amount
-    ) VALUES (
-      ${generateOrderCode()}, ${userId}, ${product_id}, ${inventoryItem.id},
-      ${String(finalPrice)}, ${String(currentBalance)}, ${String(newBalance)},
-      'completed', ${inventoryItem.accountEmail}, ${inventoryItem.accountPassword},
-      ${inventoryItem.extraDetails}, ${product.usageTerms}, ${now},
-      ${appliedCoupon?.code ?? null}, ${String(discountAmount)}
-    ) RETURNING *
-  `);
+  // Use ORM insert instead of raw SQL
+  const [order] = await db.insert(ordersTable).values({
+    orderCode: generateOrderCode(),
+    userId,
+    productId: product_id,
+    inventoryId: inventoryItem.id,
+    amount: String(finalPrice),
+    walletBalanceBefore: String(currentBalance),
+    walletBalanceAfter: String(newBalance),
+    status: "completed",
+    deliveredEmail: inventoryItem.accountEmail,
+    deliveredPassword: inventoryItem.accountPassword,
+    deliveredExtraDetails: inventoryItem.extraDetails ?? null,
+    deliveredUsageTerms: product.usageTerms ?? null,
+    deliveredAt: now,
+    couponCode: appliedCoupon?.code ?? null,
+    discountAmount: String(discountAmount),
+  }).returning();
 
   notifyNewOrder(user.phone, product.name, finalPrice);
 
-  const orderRow = order as any;
-  return res.status(201).json({
-    ...formatOrder(
-      {
-        id: orderRow.id, orderCode: orderRow.order_code,
-        productId: orderRow.product_id, inventoryId: orderRow.inventory_id,
-        amount: orderRow.amount,
-        walletBalanceBefore: orderRow.wallet_balance_before,
-        walletBalanceAfter: orderRow.wallet_balance_after,
-        status: orderRow.status,
-        deliveredEmail: orderRow.delivered_email,
-        deliveredPassword: orderRow.delivered_password,
-        deliveredExtraDetails: orderRow.delivered_extra_details,
-        deliveredUsageTerms: orderRow.delivered_usage_terms,
-        deliveredAt: orderRow.delivered_at,
-        createdAt: orderRow.created_at,
-      },
-      product.name, product.imageUrl
-    ),
-    coupon_code: appliedCoupon?.code ?? null,
-    discount_amount: discountAmount,
-  });
+  return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
 });
 
-router.get("/:orderCode", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/:orderCode", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const [result] = await db.select({
     order: ordersTable,

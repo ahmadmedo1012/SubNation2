@@ -1,21 +1,12 @@
 import { Router } from "express";
 import { db, notificationsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { verifyToken } from "./auth";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 
 const router = Router();
 
-function requireAuth(req: any, res: any): number | null {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) { res.status(401).json({ error: "غير مصرح" }); return null; }
-  const payload = verifyToken(auth.slice(7));
-  if (!payload) { res.status(401).json({ error: "جلسة منتهية" }); return null; }
-  return payload.userId;
-}
-
-router.get("/", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.get("/", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
 
   const rows = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.userId, userId))
@@ -33,17 +24,15 @@ router.get("/", async (req, res) => {
   })));
 });
 
-router.post("/read-all", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/read-all", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
   await db.update(notificationsTable).set({ isRead: true })
     .where(eq(notificationsTable.userId, userId));
   return res.json({ success: true });
 });
 
-router.post("/:id/read", async (req, res) => {
-  const userId = requireAuth(req, res);
-  if (!userId) return;
+router.post("/:id/read", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
   await db.update(notificationsTable).set({ isRead: true })

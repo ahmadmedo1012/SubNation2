@@ -5,10 +5,11 @@ import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Star, Gift, Copy, Check, Users, TrendingUp, Zap,
+  Star, Gift, Users, TrendingUp, Zap,
   Share2, ShoppingCart, Crown, Wallet, ArrowUpRight, ChevronLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CopyButton } from "@/components/CopyButton";
 
 interface LoyaltyData {
   points: number;
@@ -22,24 +23,6 @@ interface LoyaltyData {
   points_value_lyd: string;
   next_tier: { tier: string; label: string; remaining: number } | null;
   points_rate: { points_per_referral: number; points_per_lyd: number };
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      onClick={copy}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/18 text-primary text-sm font-bold transition-all active:scale-95 shrink-0"
-    >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-      {copied ? "تم!" : label}
-    </button>
-  );
 }
 
 function StatSkeleton() {
@@ -95,7 +78,7 @@ export default function LoyaltyPage() {
     }
   };
 
-  const TIER_THRESHOLDS: Record<string, number> = { silver: 500, gold: 1500, platinum: 3000 };
+  const TIER_THRESHOLDS: Record<string, number> = { silver: 500, gold: 2000, platinum: 5000 };
 
   const tierProgressPercent = data?.next_tier
     ? Math.max(2, Math.min(100, 100 - (data.next_tier.remaining / (TIER_THRESHOLDS[data.next_tier.tier] ?? 1)) * 100))

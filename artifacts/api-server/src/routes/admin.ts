@@ -1,36 +1,15 @@
 import { Router } from "express";
 import { db, usersTable, ordersTable, productsTable, walletTopupsTable, inventoryTable, adminUsersTable, supportTicketsTable, ticketRepliesTable, referralEventsTable, adminAlertsTable } from "@workspace/db";
 import { createNotification } from "../notify";
-import { eq, and, count, sum, desc, gte, like, sql, or } from "drizzle-orm";
-import { createHash } from "crypto";
-import jwt from "jsonwebtoken";
+import { eq, and, count, sum, desc, gte, like, sql } from "drizzle-orm";
 import { AdminLoginBody, CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
+import { hashPassword } from "../lib/crypto";
+import { signAdminToken } from "../lib/jwt";
+import { requireAdmin } from "../middlewares/requireAdmin";
 import { notifyTopupApproved, notifyTopupRejected, isTelegramConfigured } from "../telegram";
 import { getAdminAlerts, markAlertRead, markAllAlertsRead, countUnreadAlerts, deleteReadAlerts, deleteAllAlerts } from "../jobs/alertLogger";
 
 const router = Router();
-if (!process.env.SESSION_SECRET) throw new Error("SESSION_SECRET environment variable is required");
-const JWT_SECRET: string = process.env.SESSION_SECRET;
-const ADMIN_JWT_SECRET = JWT_SECRET + "_admin";
-
-function hashPassword(password: string): string {
-  return createHash("sha256").update(password + "subnation_salt").digest("hex");
-}
-
-function verifyAdminToken(req: any, res: any): { adminId: number } | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "غير مصرح" });
-    return null;
-  }
-  try {
-    const decoded = jwt.verify(authHeader.slice(7), ADMIN_JWT_SECRET) as { adminId: number };
-    return decoded;
-  } catch {
-    res.status(401).json({ error: "جلسة الإدارة منتهية" });
-    return null;
-  }
-}
 
 router.post("/login", async (req, res) => {
   const parse = AdminLoginBody.safeParse(req.body);
@@ -42,13 +21,11 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
   }
 
-  const token = jwt.sign({ adminId: admin.id }, ADMIN_JWT_SECRET, { expiresIn: "8h" });
+  const token = signAdminToken({ adminId: admin.id });
   return res.json({ token, display_name: admin.displayName });
 });
 
-router.get("/stats", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/stats", requireAdmin, async (_req, res) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -73,9 +50,7 @@ router.get("/stats", async (req, res) => {
   });
 });
 
-router.get("/orders", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/orders", requireAdmin, async (req, res) => {
   const { status } = req.query;
   const conditions = status && typeof status === "string"
     ? [eq(ordersTable.status, status as any)]
@@ -108,8 +83,7 @@ router.get("/orders", async (req, res) => {
   })));
 });
 
-router.patch("/orders/bulk-status", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/orders/bulk-status", requireAdmin, async (req, res) => {
   const { ids, status } = req.body ?? {};
   const ALLOWED = ["pending", "processing", "completed", "delivered", "failed", "refunded"];
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids مطلوبة" });
@@ -120,9 +94,7 @@ router.patch("/orders/bulk-status", async (req, res) => {
   return res.json({ success: true, updated: numIds.length });
 });
 
-router.get("/topups", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/topups", requireAdmin, async (req, res) => {
   const { status } = req.query;
   const conditions = status && typeof status === "string"
     ? [eq(walletTopupsTable.status, status as any)]
@@ -153,8 +125,7 @@ router.get("/topups", async (req, res) => {
   })));
 });
 
-router.post("/topups/:id/approve", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -182,7 +153,6 @@ router.post("/topups/:id/approve", async (req, res) => {
       loyaltyTier: newTier,
     }).where(eq(usersTable.id, user.id));
 
-    // Referral credit: credit 50 points to referrer on first approved topup
     if (user.referredBy) {
       const [existingCredit] = await db.select().from(referralEventsTable)
         .where(eq(referralEventsTable.refereeId, user.id)).limit(1);
@@ -211,8 +181,7 @@ router.post("/topups/:id/approve", async (req, res) => {
   return res.json({ success: true, message: "تمت الموافقة على طلب الشحن وإضافة الرصيد" });
 });
 
-router.post("/topups/:id/reject", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.post("/topups/:id/reject", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -234,9 +203,7 @@ router.post("/topups/:id/reject", async (req, res) => {
   return res.json({ success: true, message: "تم رفض طلب الشحن" });
 });
 
-router.get("/products", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/products", requireAdmin, async (_req, res) => {
   const products = await db.select().from(productsTable)
     .where(eq(productsTable.isArchived, false))
     .orderBy(desc(productsTable.createdAt));
@@ -265,8 +232,7 @@ router.get("/products", async (req, res) => {
   })));
 });
 
-router.post("/products", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.post("/products", requireAdmin, async (req, res) => {
   const parse = CreateProductBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   const data = parse.data;
@@ -297,8 +263,7 @@ router.post("/products", async (req, res) => {
   });
 });
 
-router.patch("/products/:id", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/products/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -339,8 +304,7 @@ router.patch("/products/:id", async (req, res) => {
   });
 });
 
-router.delete("/products/:id", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.delete("/products/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -348,8 +312,7 @@ router.delete("/products/:id", async (req, res) => {
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 
-router.get("/users", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/users", requireAdmin, async (req, res) => {
   const { search } = req.query;
 
   const users = search && typeof search === "string"
@@ -373,8 +336,7 @@ router.get("/users", async (req, res) => {
   })));
 });
 
-router.patch("/users/:id", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/users/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -412,8 +374,7 @@ router.patch("/users/:id", async (req, res) => {
   });
 });
 
-router.post("/products/:id/inventory", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = parseInt(req.params.id);
   if (isNaN(productId)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -461,8 +422,7 @@ router.post("/products/:id/inventory", async (req, res) => {
   return res.status(201).json({ success: true, added: inserted.length, message: `تم إضافة ${inserted.length} عنصر إلى المخزون` });
 });
 
-router.get("/settings", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/settings", requireAdmin, async (_req, res) => {
   return res.json({
     telegram_configured: isTelegramConfigured(),
     telegram_bot_set: !!process.env.TELEGRAM_BOT_TOKEN,
@@ -470,11 +430,7 @@ router.get("/settings", async (req, res) => {
   });
 });
 
-// ── Chart Data ────────────────────────────────────────────────────────────────
-
-router.get("/chart-data", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/chart-data", requireAdmin, async (req, res) => {
   const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
   const result: Array<{ date: string; orders: number; revenue: number; users: number; discounts: number; coupon_orders: number }> = [];
 
@@ -510,12 +466,8 @@ router.get("/chart-data", async (req, res) => {
   return res.json(result);
 });
 
-// ── Admin Ticket Management ───────────────────────────────────────────────────
-
-router.get("/tickets", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/tickets", requireAdmin, async (req, res) => {
   const { status } = req.query;
-
   const conditions = status && typeof status === "string"
     ? [eq(supportTicketsTable.status, status as any)]
     : [];
@@ -551,8 +503,7 @@ router.get("/tickets", async (req, res) => {
   return res.json(withCounts);
 });
 
-router.get("/tickets/:id", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/tickets/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -578,8 +529,7 @@ router.get("/tickets/:id", async (req, res) => {
   });
 });
 
-router.post("/tickets/:id/reply", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -597,7 +547,6 @@ router.post("/tickets/:id/reply", async (req, res) => {
 
   await db.update(supportTicketsTable).set({ status: "in_progress" }).where(eq(supportTicketsTable.id, id));
 
-  // Notify ticket owner
   await createNotification(ticket.userId, "support",
     "رد جديد على تذكرتك",
     message.trim().slice(0, 100), `/support`);
@@ -605,8 +554,7 @@ router.post("/tickets/:id/reply", async (req, res) => {
   return res.status(201).json({ id: reply.id, author_type: reply.authorType, message: reply.message, created_at: reply.createdAt.toISOString() });
 });
 
-router.patch("/tickets/:id/status", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -617,21 +565,9 @@ router.patch("/tickets/:id/status", async (req, res) => {
   return res.json({ success: true });
 });
 
-// ── Referrals ─────────────────────────────────────────────────────────────────
-
-router.get("/referrals", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.get("/referrals", requireAdmin, async (req, res) => {
   const { status, search } = req.query;
 
-  const referrer = usersTable;
-  const referee  = { ...usersTable, phone: usersTable.phone };
-
-  // Aliases
-  const referrerAlias = sql<string>`ref_r.phone`;
-  const refereeAlias  = sql<string>`ref_e.phone`;
-
-  // Full list via raw join for two users
   const rows = await db.execute(sql`
     SELECT
       re.id,
@@ -650,7 +586,6 @@ router.get("/referrals", async (req, res) => {
     LIMIT 200
   `);
 
-  // Top referrers
   const topReferrers = await db.execute(sql`
     SELECT
       u.phone,
@@ -664,7 +599,6 @@ router.get("/referrals", async (req, res) => {
     LIMIT 10
   `);
 
-  // Stats
   const [statsRow] = await db.execute(sql`
     SELECT
       COUNT(*) AS total,
@@ -709,9 +643,7 @@ router.get("/referrals", async (req, res) => {
   });
 });
 
-router.post("/referrals/:id/credit", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-
+router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "معرف غير صالح" });
 
@@ -720,7 +652,6 @@ router.post("/referrals/:id/credit", async (req, res) => {
   if (event.status === "credited") return res.status(400).json({ error: "تم منح النقاط مسبقاً" });
 
   const POINTS = 50;
-
   await db.update(referralEventsTable)
     .set({ status: "credited", creditedAt: new Date() })
     .where(eq(referralEventsTable.id, id));
@@ -739,11 +670,7 @@ router.post("/referrals/:id/credit", async (req, res) => {
   return res.json({ success: true, points_credited: POINTS });
 });
 
-// ─── Admin Alerts Inbox ───────────────────────────────────────────────────────
-
-// Returns only alerts newer than ?since=<id> — used by the realtime toast watcher
-router.get("/alerts/new", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/alerts/new", requireAdmin, async (req, res) => {
   try {
     const sinceId = parseInt(req.query.since as string ?? "0", 10) || 0;
     const allAlerts = await getAdminAlerts(50);
@@ -755,8 +682,16 @@ router.get("/alerts/new", async (req, res) => {
   }
 });
 
-router.get("/alerts", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.get("/alerts/unread-count", requireAdmin, async (_req, res) => {
+  try {
+    const c = await countUnreadAlerts();
+    return res.json({ count: c });
+  } catch {
+    return res.status(500).json({ error: "خطأ" });
+  }
+});
+
+router.get("/alerts", requireAdmin, async (_req, res) => {
   try {
     const alerts = await getAdminAlerts(200);
     const unreadCount = await countUnreadAlerts();
@@ -767,8 +702,7 @@ router.get("/alerts", async (req, res) => {
   }
 });
 
-router.patch("/alerts/read-all", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/alerts/read-all", requireAdmin, async (_req, res) => {
   try {
     await markAllAlertsRead();
     return res.json({ success: true });
@@ -778,8 +712,7 @@ router.patch("/alerts/read-all", async (req, res) => {
   }
 });
 
-router.patch("/alerts/:id/read", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.patch("/alerts/:id/read", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: "معرّف غير صالح" });
   try {
@@ -791,8 +724,7 @@ router.patch("/alerts/:id/read", async (req, res) => {
   }
 });
 
-router.delete("/alerts/read", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.delete("/alerts/read", requireAdmin, async (_req, res) => {
   try {
     const deleted = await deleteReadAlerts();
     return res.json({ success: true, deleted });
@@ -802,19 +734,7 @@ router.delete("/alerts/read", async (req, res) => {
   }
 });
 
-router.delete("/alerts", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
-  try {
-    await deleteAllAlerts();
-    return res.json({ success: true });
-  } catch (err) {
-    req.log.error({ err }, "Failed to delete all alerts");
-    return res.status(500).json({ error: "خطأ" });
-  }
-});
-
-router.delete("/alerts/:id", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.delete("/alerts/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: "معرّف غير صالح" });
   try {
@@ -826,12 +746,12 @@ router.delete("/alerts/:id", async (req, res) => {
   }
 });
 
-router.get("/alerts/unread-count", async (req, res) => {
-  if (!verifyAdminToken(req, res)) return;
+router.delete("/alerts", requireAdmin, async (_req, res) => {
   try {
-    const count = await countUnreadAlerts();
-    return res.json({ count });
+    await deleteAllAlerts();
+    return res.json({ success: true });
   } catch (err) {
+    req.log.error({ err }, "Failed to delete all alerts");
     return res.status(500).json({ error: "خطأ" });
   }
 });
