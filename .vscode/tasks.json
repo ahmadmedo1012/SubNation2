@@ -1,0 +1,106 @@
+{
+  // SubNation VS Code tasks.
+  //
+  // "Dev: Full Stack" is configured to auto-run when you open this folder
+  // (runOptions.runOn = "folderOpen"). It starts the API and the Vite dev
+  // server together via the workspace's orchestrator, which auto-picks free
+  // ports. Frontend HMR and `tsx watch` for the API give instant reloads.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev: Full Stack",
+      "detail": "Start API + Vite with auto ports, HMR and live reload.",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "FORCE_COLOR": "1"
+        }
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false,
+        "echo": true,
+        "clear": false,
+        "close": false,
+        "group": "dev"
+      },
+      "problemMatcher": [
+        {
+          "owner": "subnation-dev",
+          "source": "subnation",
+          "fileLocation": ["relative", "${workspaceFolder}"],
+          "pattern": [
+            {
+              "regexp": "^([^\\s].*?)[(:](\\d+)[,:](\\d+)[):]\\s*(warning|error)\\s*:?\\s*(.*)$",
+              "file": 1,
+              "line": 2,
+              "column": 3,
+              "severity": 4,
+              "message": 5
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": {
+              "regexp": "SubNation local dev|vite v\\d"
+            },
+            "endsPattern": {
+              "regexp": "ready in \\d|Server listening"
+            }
+          }
+        }
+      ],
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Build",
+      "detail": "Typecheck, build API and frontend for production.",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "build"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "Typecheck",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "typecheck"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": ["$tsc"],
+      "group": "test"
+    },
+    {
+      "label": "DB: push schema",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "db:push"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "DB: seed",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "db:seed"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}

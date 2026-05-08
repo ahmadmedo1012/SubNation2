@@ -1,7 +1,7 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import path from "path";
+import { defineConfig } from "vite";
 
 const rawPort = process.env.PORT ?? process.env.FRONTEND_PORT ?? "5173";
 
@@ -12,14 +12,14 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const basePath = process.env.BASE_PATH ?? "/";
-const apiProxyTarget = process.env.API_PROXY_TARGET ?? process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8080";
+const apiProxyTarget =
+  process.env.API_PROXY_TARGET ??
+  process.env.VITE_API_PROXY_TARGET ??
+  "http://127.0.0.1:8080";
 
 export default defineConfig({
   base: basePath,
-  plugins: [
-    react(),
-    tailwindcss(),
-  ],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
@@ -36,13 +36,21 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           // Keep all react-family packages in a single shared chunk
-          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/scheduler")) {
+          if (
+            id.includes("node_modules/react") ||
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/scheduler")
+          ) {
             return "vendor-react";
           }
           if (id.includes("node_modules/@tanstack")) {
             return "vendor-query";
           }
-          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-") || id.includes("node_modules/victory-")) {
+          if (
+            id.includes("node_modules/recharts") ||
+            id.includes("node_modules/d3-") ||
+            id.includes("node_modules/victory-")
+          ) {
             return "vendor-charts";
           }
           if (id.includes("node_modules/lucide-react")) {
@@ -57,6 +65,9 @@ export default defineConfig({
     strictPort: false,
     host: "0.0.0.0",
     allowedHosts: true,
+    // Open a browser tab on first dev start. Disable with VITE_OPEN=false
+    // (the workspace orchestrator sets this for non-TTY / CI runs).
+    open: process.env.VITE_OPEN === "false" ? false : true,
     proxy: {
       "/api": {
         target: apiProxyTarget,

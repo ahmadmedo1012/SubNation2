@@ -1,0 +1,52 @@
+{
+  // SubNation debug configurations.
+  //
+  // "Dev: Full Stack (debug)" starts the orchestrator with the API in
+  // inspect mode and automatically attaches the debugger. Set a breakpoint
+  // anywhere in backend/src/** and hit F5.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to API",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/backend/dist/**/*.mjs"],
+      "presentation": { "group": "1_debug", "order": 1 }
+    },
+    {
+      "name": "Dev: API only (inspect)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@workspace/api-server", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_OPTIONS": "--inspect"
+      },
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "presentation": { "group": "1_debug", "order": 2 }
+    },
+    {
+      "name": "Open app in browser",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "sourceMaps": true,
+      "presentation": { "group": "2_browser", "order": 1 }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Dev: Full Stack (debug)",
+      "configurations": ["Dev: API only (inspect)", "Open app in browser"],
+      "stopAll": true,
+      "presentation": { "group": "0_compound", "order": 1 }
+    }
+  ]
+}
