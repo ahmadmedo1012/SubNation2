@@ -61,3 +61,67 @@ The build validates TypeScript, builds the API, and builds the frontend into `fr
 - `GET /api/admin/stats`
 
 Generated frontend hooks live in `shared/api-client-react`; backend validation schemas live in `shared/api-zod`.
+
+## Configuration
+
+All runtime configuration flows through a single `.env` file. Copy
+`config/env.example` to `.env` and edit the values. See that file for the
+full annotated reference — the most important keys are:
+
+| Key | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string (required). |
+| `SESSION_SECRET` | JWT signing secret (required in production). |
+| `PORT` / `API_PORT` / `FRONTEND_PORT` | Preferred ports; runner auto-falls back to the next free port. |
+| `APP_URL` / `APP_ORIGINS` | Public origin and CORS allow-list. |
+| `BASE_PATH` | Sub-path the SPA is served under (e.g. `/app/`). |
+| `VITE_API_URL` | Absolute backend origin — only needed for split (frontend-only) deploys. |
+
+You should not need to edit code to change hosts, ports or domains.
+
+## Deployment
+
+The backend already serves the built frontend on the same origin, so the
+simplest deployment is a single Node process.
+
+### Docker (any VPS / self-hosted)
+
+```bash
+cp config/env.example .env   # edit values
+docker compose up --build -d
+```
+
+The compose file ships a Postgres service; point `DATABASE_URL` at an
+external database if you prefer.
+
+### VPS / bare metal
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm start                   # listens on $PORT (default 8080)
+```
+
+Run behind nginx / Caddy / a cloud load balancer. Nothing else has to change.
+
+### Vercel / Netlify (frontend only)
+
+1. Set the project root to `frontend/`.
+2. Build command: `pnpm --filter @workspace/subnation... run build`
+3. Publish directory: `frontend/dist/public`.
+4. Set `VITE_API_URL=https://your-api.example.com` in the project env.
+5. Add a rewrite so browser requests to `/api/*` are proxied to your API
+   (Netlify: `_redirects`; Vercel: `vercel.json` rewrites). Not required
+   if you set `VITE_API_URL` — the client will then call the API directly.
+
+### cPanel / shared hosting
+
+1. Upload the repo, run `pnpm install && pnpm run build` (or upload the
+   pre-built `frontend/dist/public` and `backend/dist`).
+2. Set `BASE_PATH=/your-subpath/` if the app lives under a sub-directory.
+3. Start the Node app with `pnpm start`; point the domain at `$PORT`.
+
+### Replit
+
+Add a `.env` with `DATABASE_URL` and `SESSION_SECRET`. Replit injects
+`PORT`; `pnpm start` picks it up automatically.

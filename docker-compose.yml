@@ -1,0 +1,48 @@
+# -----------------------------------------------------------------------------
+# SubNation - local / single-host production stack.
+#
+#   docker compose up --build
+#
+# All runtime configuration is read from the `.env` file at the repo root
+# (create it from `config/env.example`). You should not need to edit this
+# file to deploy to a new environment.
+# -----------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-subnation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subnation}
+      POSTGRES_DB: ${POSTGRES_DB:-subnation}
+    volumes:
+      - subnation_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-subnation} -d ${POSTGRES_DB:-subnation}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL so the containerised app talks to the db service.
+      DATABASE_URL: >-
+        postgres://${POSTGRES_USER:-subnation}:${POSTGRES_PASSWORD:-subnation}@db:5432/${POSTGRES_DB:-subnation}
+      PORT: "8080"
+      NODE_ENV: production
+    ports:
+      - "${PORT:-8080}:8080"
+
+volumes:
+  subnation_db:

@@ -34,6 +34,13 @@ node_modules
 /.env
 /.env.*
 !/config/env.example
+# Per-package envs (Vite auto-loads frontend/.env*)
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 /.sass-cache
 /connect.lock
 /coverage
