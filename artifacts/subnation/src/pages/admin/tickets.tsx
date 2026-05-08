@@ -153,7 +153,7 @@ export default function AdminTicketsPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-secondary/50 border border-border rounded-xl p-1">
+            <div className="flex gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1">
               {STATUS_FILTERS.map(s => (
                 <button key={s.value} onClick={() => setStatusFilter(s.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}>
@@ -187,21 +187,21 @@ export default function AdminTicketsPage() {
           <div className={`lg:col-span-2 ${selected ? "hidden lg:flex" : "flex"} flex-col gap-2`}>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="bg-card border border-border rounded-xl h-20 skeleton-shimmer" />
+                <div key={i} className="bg-card border border-border/60 rounded-2xl h-20 skeleton-shimmer" />
               ))
             ) : visibleTickets.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
+              <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
                 <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
                 <p className="font-bold">لا توجد تذاكر</p>
                 <p className="text-sm mt-1">ستظهر تذاكر الدعم هنا</p>
               </div>
             ) : (
-              visibleTickets.map(t => {
+              visibleTickets.map((t, i) => {
                 const sc = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.open;
                 const isActive = selected?.id === t.id;
                 return (
                   <button key={t.id} onClick={() => openTicket(t.id)}
-                    className={`w-full bg-card border rounded-xl p-4 text-right transition-all duration-150 hover:shadow-md group ${isActive ? "border-primary/50 bg-primary/3 shadow-sm" : "border-border hover:border-border/80"}`}>
+                    className={`float-in stagger-${Math.min(i + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 hover:shadow-md group ${isActive ? "border-primary/40 bg-primary/4 shadow-sm shadow-primary/5" : "border-border/60 hover:border-border"}`}>
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -288,7 +288,7 @@ export default function AdminTicketsPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0" style={{ maxHeight: "380px" }}>
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0" style={{ maxHeight: "clamp(280px, 45vh, 480px)" }}>
                 {selected.replies.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-12 text-muted-foreground">
                     <MessageSquare className="w-8 h-8 mb-2 opacity-25" />

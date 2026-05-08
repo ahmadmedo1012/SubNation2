@@ -50,8 +50,8 @@ const SORT_OPTIONS = [
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="border-b border-border bg-muted/30 h-11" />
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+      <div className="border-b border-border/60 bg-muted/30 h-11" />
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}>
           <div className="h-4 bg-muted skeleton-shimmer rounded w-28 shrink-0" />
@@ -223,7 +223,7 @@ export default function AdminUsersPage() {
 
         {/* Filter panel */}
         {showFilters && (
-          <div className="bg-card border border-border rounded-xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-wrap gap-6">
               <div>
                 <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2">مستوى الولاء</div>
@@ -284,7 +284,7 @@ export default function AdminUsersPage() {
               { label: "إجمالي الإنفاق",    value: formatCurrency(totalSpend),      icon: Star,   color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/15" },
               { label: "متوسط الإنفاق",     value: formatCurrency((users as any[]).length > 0 ? totalSpend / (users as any[]).length : 0), icon: Star, color: "text-purple-400", bg: "bg-purple-400/10", border: "border-purple-400/15" },
             ].map(stat => (
-              <div key={stat.label} className={`bg-card border ${stat.border} rounded-xl px-4 py-3 flex items-center gap-3`}>
+              <div key={stat.label} className={`float-in bg-card border ${stat.border} rounded-2xl px-4 py-3 flex items-center gap-3`}>
                 <div className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center shrink-0`}>
                   <stat.icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
@@ -312,7 +312,7 @@ export default function AdminUsersPage() {
               </div>
 
               {/* Current snapshot */}
-              <div className="grid grid-cols-3 gap-2 mb-4 p-3.5 bg-muted/25 border border-border/50 rounded-xl">
+              <div className="grid grid-cols-3 gap-2 mb-4 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
                 {[
                   { label: "الرصيد",   value: formatCurrency(editingUser.wallet_balance), cls: "text-primary" },
                   { label: "النقاط",   value: editingUser.loyalty_points,                cls: "text-foreground" },
@@ -335,7 +335,7 @@ export default function AdminUsersPage() {
               <form onSubmit={handleSave} className="space-y-4">
                 <div>
                   <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
-                  <div className="flex gap-1 mb-2 bg-secondary/50 border border-border rounded-xl p-1">
+                  <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
                     {WALLET_MODES.map(opt => (
                       <button key={opt.value} type="button"
                         onClick={() => setForm(f => ({ ...f, wallet_mode: opt.value as any }))}
@@ -380,8 +380,8 @@ export default function AdminUsersPage() {
 
         {/* Table */}
         {isLoading ? <TableSkeleton /> : sorted.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
-            <div className="w-12 h-12 rounded-xl bg-muted mx-auto mb-3 flex items-center justify-center">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
               <Users className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm">
@@ -396,7 +396,7 @@ export default function AdminUsersPage() {
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
+            <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -451,7 +451,7 @@ export default function AdminUsersPage() {
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
               {sorted.map((user: any) => (
-                <div key={user.id} className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+                <div key={user.id} className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono font-bold text-sm">{user.phone}</div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">

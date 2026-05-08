@@ -236,7 +236,7 @@ export default function AdminAlertsPage() {
               const m = TYPE_META[s.key as AlertType];
               return (
                 <button key={s.key} onClick={() => setFilter(filter === s.key ? "all" : s.key as FilterType)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-150 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition-all duration-150 ${
                     filter === s.key ? `${m.bg} ${m.border} ${m.color}` : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
                   }`}>
                   <m.icon className="w-3 h-3" />
@@ -251,7 +251,7 @@ export default function AdminAlertsPage() {
         )}
 
         {/* Filter tabs */}
-        <div className="flex items-center gap-1 bg-muted/30 border border-border/40 p-1 rounded-xl overflow-x-auto scrollbar-none w-fit max-w-full">
+        <div className="flex items-center gap-1 bg-muted/30 border border-border/40 p-1 rounded-2xl overflow-x-auto scrollbar-none w-fit max-w-full">
           {FILTERS.map(tab => {
             const cnt = tab.value === "all" ? alerts.length
               : tab.value === "unread" ? unreadCount
@@ -316,10 +316,10 @@ export default function AdminAlertsPage() {
                       <div
                         key={alert.id}
                         onClick={() => !alert.isRead && markRead.mutate(alert.id)}
-                        className={`group flex items-start gap-3 px-4 py-3 rounded-xl border transition-all duration-150 ${
+                        className={`group flex items-start gap-3 px-4 py-3 rounded-2xl border transition-all duration-150 ${
                           alert.isRead
                             ? "bg-card/40 border-border/40 opacity-60 cursor-default"
-                            : "bg-card border-border shadow-sm cursor-pointer hover:border-border/80 hover:shadow"
+                            : "bg-card border-border/60 shadow-sm cursor-pointer hover:border-border hover:shadow-md hover:shadow-black/10"
                         }`}
                       >
                         {/* Unread dot */}

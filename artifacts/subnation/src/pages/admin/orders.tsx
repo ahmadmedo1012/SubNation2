@@ -41,16 +41,16 @@ function isWithinDays(dateStr: string, days: number) {
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="border-b border-border bg-muted/30 h-11" />
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+      <div className="border-b border-border/60 bg-muted/30 h-11" />
       {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}>
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded w-24 shrink-0" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded w-28" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded flex-1" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded w-16 shrink-0" />
+        <div key={i} className={`flex items-center gap-4 px-4 py-3 border-b border-border/25 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}>
+          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-24 shrink-0" />
+          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-28" />
+          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md flex-1" />
+          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-16 shrink-0" />
           <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14 shrink-0" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded w-20 shrink-0" />
+          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-20 shrink-0" />
         </div>
       ))}
     </div>
@@ -260,7 +260,7 @@ export default function AdminOrdersPage() {
 
         {/* Stats Panel */}
         {!isLoading && (allOrders as any[]).length > 0 && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="bg-card border border-border/60 rounded-2xl overflow-hidden float-in stagger-1">
             <button
               onClick={() => setShowStats(s => !s)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/10 transition-colors"
@@ -287,7 +287,7 @@ export default function AdminOrdersPage() {
                 {/* Summary cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {/* Total revenue */}
-                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                  <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
                       <TrendingUp className="w-3 h-3" />
                       إجمالي الإيرادات
@@ -297,7 +297,7 @@ export default function AdminOrdersPage() {
                   </div>
 
                   {/* Total discounts */}
-                  <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/15">
+                  <div className="bg-emerald-500/5 rounded-2xl p-3 border border-emerald-500/15">
                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/80 mb-1.5">
                       <BadgePercent className="w-3 h-3" />
                       إجمالي الخصومات
@@ -312,7 +312,7 @@ export default function AdminOrdersPage() {
                   </div>
 
                   {/* Orders with coupons */}
-                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                  <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
                       <Ticket className="w-3 h-3" />
                       طلبات بكوبون
@@ -327,7 +327,7 @@ export default function AdminOrdersPage() {
                   </div>
 
                   {/* Unique coupons */}
-                  <div className="bg-muted/20 rounded-xl p-3 border border-border/40">
+                  <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
                       <Tag className="w-3 h-3" />
                       كوبونات مستخدمة
@@ -383,7 +383,7 @@ export default function AdminOrdersPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
             <Zap className="w-4 h-4 text-primary shrink-0" />
             <span className="text-sm font-bold text-primary">{selectedIds.size} طلب محدد</span>
             <div className="flex gap-2 mr-auto flex-wrap items-center">
@@ -404,7 +404,7 @@ export default function AdminOrdersPage() {
                 {bulkStatusOpen && (
                   <>
                     <div className="fixed inset-0 z-20" onClick={() => setBulkStatusOpen(false)} />
-                    <div className="absolute left-0 top-full mt-1 z-30 bg-card border border-border rounded-xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100">
+                    <div className="absolute left-0 top-full mt-1 z-30 bg-card border border-border/60 rounded-2xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100">
                       {BULK_STATUSES.map(s => (
                         <button
                           key={s.value}
@@ -432,7 +432,7 @@ export default function AdminOrdersPage() {
         {/* Filters row */}
         <div className="flex flex-wrap gap-3 items-center">
           {/* Status filter tabs with counts */}
-          <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1 overflow-x-auto scrollbar-none">
+          <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 overflow-x-auto scrollbar-none">
             {STATUS_FILTERS.map(s => {
               const count = s.value ? statusCounts[s.value] ?? 0 : (allOrders as any[]).length;
               const active = statusFilter === s.value;
@@ -456,7 +456,7 @@ export default function AdminOrdersPage() {
           </div>
 
           {/* Date range quick-filter */}
-          <div className="flex items-center gap-1 bg-secondary/40 border border-border rounded-xl p-1">
+          <div className="flex items-center gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
             <Calendar className="w-3 h-3 text-muted-foreground/50 mx-1" />
             {DATE_RANGES.map(dr => (
               <button
@@ -487,8 +487,8 @@ export default function AdminOrdersPage() {
         {isLoading ? (
           <TableSkeleton />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
-            <div className="w-12 h-12 rounded-xl bg-muted mx-auto mb-3 flex items-center justify-center">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
               <ShoppingBag className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm mb-1">لا توجد طلبات</p>
@@ -501,7 +501,7 @@ export default function AdminOrdersPage() {
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
+            <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -604,7 +604,7 @@ export default function AdminOrdersPage() {
                 return (
                   <div
                     key={order.id}
-                    className={`bg-card border rounded-xl p-4 cursor-pointer transition-colors ${isSelected ? "border-primary/40 bg-primary/3" : "border-border hover:border-border/60"}`}
+                    className={`bg-card border rounded-2xl p-4 cursor-pointer transition-colors ${isSelected ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-border"}`}
                     onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
                   >
                     <div className="flex items-start gap-2 mb-2">

@@ -263,7 +263,7 @@ export default function AdminProductsPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150">
             <Zap className="w-4 h-4 text-primary shrink-0" />
             <span className="text-sm font-bold text-primary">{selectedIds.size} منتج محدد</span>
             <div className="flex gap-2 mr-auto flex-wrap">
@@ -375,7 +375,7 @@ export default function AdminProductsPage() {
               </button>
             )}
           </div>
-          <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1 overflow-x-auto scrollbar-none">
+          <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 overflow-x-auto scrollbar-none">
             {CATEGORY_FILTERS.map(c => (
               <button
                 key={c.value}
@@ -402,11 +402,11 @@ export default function AdminProductsPage() {
         {/* Grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="bg-card border border-border rounded-xl h-40 skeleton-shimmer" />)}
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="bg-card border border-border/60 rounded-2xl h-40 skeleton-shimmer" />)}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
-            <div className="w-12 h-12 rounded-xl bg-muted mx-auto mb-3 flex items-center justify-center">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
               <Package className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm">لا توجد منتجات</p>
@@ -418,11 +418,11 @@ export default function AdminProductsPage() {
               return (
                 <div
                   key={product.id}
-                  className={`bg-card border rounded-xl overflow-hidden transition-all ${
+                  className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
                     isSelected ? "border-primary/40 ring-1 ring-primary/20 shadow-md shadow-primary/5"
-                    : !product.is_active ? "opacity-55 border-border"
+                    : !product.is_active ? "opacity-55 border-border/60"
                     : product.stock_count === 0 ? "border-orange-500/25"
-                    : "border-border"
+                    : "border-border/60 hover:border-border"
                   }`}
                 >
                   <div className="p-4">

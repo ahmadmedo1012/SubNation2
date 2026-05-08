@@ -226,10 +226,10 @@ export default function AdminDashboardPage() {
 
         {/* Urgent alert */}
         {(stats?.pending_topups ?? 0) > 0 && (
-          <div className="flex items-center justify-between p-4 bg-yellow-400/8 border border-yellow-400/20 rounded-xl gap-4">
+          <div className="flex items-center justify-between p-4 bg-yellow-400/8 border border-yellow-400/20 rounded-2xl gap-4 float-in">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-yellow-400/15 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-4 h-4 text-yellow-400" />
+              <div className="w-9 h-9 rounded-xl bg-yellow-400/15 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4.5 h-4.5 text-yellow-400" />
               </div>
               <div>
                 <p className="font-bold text-sm text-yellow-400">{stats!.pending_topups} طلب شحن بانتظار المراجعة</p>
@@ -237,7 +237,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <Link href="/admin/topups">
-              <span className="shrink-0 text-xs font-bold text-yellow-400 border border-yellow-400/30 px-3 py-1.5 rounded-lg hover:bg-yellow-400/10 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5">
+              <span className="shrink-0 text-xs font-bold text-yellow-400 border border-yellow-400/30 px-3 py-1.5 rounded-xl hover:bg-yellow-400/10 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5">
                 <CheckCircle className="w-3.5 h-3.5" />
                 مراجعة الكل
               </span>
@@ -249,16 +249,16 @@ export default function AdminDashboardPage() {
         {statsLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-card border border-border rounded-xl h-24 skeleton-shimmer" />
+              <div key={i} className="bg-card border border-border rounded-2xl h-28 skeleton-shimmer" />
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {METRIC_CARDS.map(card => (
+            {METRIC_CARDS.map((card, i) => (
               <Link key={card.label} href={card.link}>
-                <div className={`bg-card border rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/10 cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border hover:border-border/60"}`}>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className={`w-8 h-8 ${card.bg} border ${card.border} rounded-lg flex items-center justify-center shrink-0`}>
+                <div className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/15 cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border/60 hover:border-border"}`}>
+                  <div className="flex items-start justify-between gap-2 mb-2.5">
+                    <div className={`w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0`}>
                       <card.icon className={`w-4 h-4 ${card.color}`} />
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -314,9 +314,9 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
           {/* Charts */}
           {(chartData.length > 0 || chartLoading) && (
-            <div className="xl:col-span-3 space-y-5">
+            <div className="xl:col-span-3 space-y-5 float-in stagger-7">
               {/* Revenue + Orders chart */}
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="bg-card border border-border/60 rounded-2xl p-5">
                 <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
                   <div>
                     <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
@@ -409,7 +409,7 @@ export default function AdminDashboardPage() {
               </div>
 
               {/* Discounts & Coupon Orders chart */}
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="bg-card border border-border/60 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
@@ -447,7 +447,7 @@ export default function AdminDashboardPage() {
               </div>
 
               {/* New users chart */}
-              <div className="bg-card border border-border rounded-xl p-5">
+              <div className="bg-card border border-border/60 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
                   <div className="flex items-center gap-2">
@@ -488,7 +488,7 @@ export default function AdminDashboardPage() {
           )}
 
           {/* Recent orders stream */}
-          <div className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border rounded-xl overflow-hidden flex flex-col`}>
+          <div className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}>
             <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-primary" />

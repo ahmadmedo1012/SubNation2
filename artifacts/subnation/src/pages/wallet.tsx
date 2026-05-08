@@ -6,7 +6,10 @@ import { formatCurrency, formatDate, statusLabel, statusColor, tierLabel, tierCo
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wallet, Plus, Clock, CheckCircle, XCircle, AlertCircle, Star, Smartphone, Building2, Copy, Check, Lock, TrendingUp } from "lucide-react";
+import {
+  Wallet, Plus, Clock, CheckCircle, XCircle, AlertCircle, Star,
+  Smartphone, Building2, Copy, Check, Lock, TrendingUp,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { libyanPhoneError, isValidLibyanPhone } from "@/lib/validation";
@@ -27,8 +30,8 @@ const NETWORK_PRESETS: Record<string, number[]> = {
 };
 
 const NETWORKS = [
-  { value: "libyana", label: "ليبيانا", color: "text-green-400",  border: "border-green-500/40",  bg: "bg-green-500/10"  },
-  { value: "madar",   label: "مدار",    color: "text-blue-400",   border: "border-blue-500/40",   bg: "bg-blue-500/10"  },
+  { value: "libyana", label: "ليبيانا", color: "text-green-300",  border: "border-green-500/45",  bg: "bg-green-500/10", activeBg: "bg-green-500"  },
+  { value: "madar",   label: "مدار",    color: "text-blue-300",   border: "border-blue-500/45",   bg: "bg-blue-500/10",  activeBg: "bg-blue-500"   },
 ];
 
 type Method = "mobile_transfer" | "lypay";
@@ -39,35 +42,40 @@ function networkLabel(net?: string | null) {
   return net ?? "";
 }
 
-function topupIcon(status: string) {
+function topupStatusIcon(status: string) {
   if (status === "approved") return <CheckCircle className="w-4 h-4 text-emerald-400" />;
   if (status === "rejected") return <XCircle className="w-4 h-4 text-red-400" />;
-  return <Clock className="w-4 h-4 text-yellow-400" />;
+  return <Clock className="w-4 h-4 text-yellow-400 pulse-dot" />;
 }
 
-function CopyBtn({ text, label }: { text: string; label: string }) {
+function CopyBtn({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
+  const handle = async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
   return (
     <button
-      onClick={handleCopy}
-      className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-primary/10 hover:bg-primary/20 text-primary transition-colors shrink-0"
-      title={`نسخ ${label}`}
+      onClick={handle}
+      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-180 press-spring border ${
+        copied
+          ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/25"
+          : "bg-primary/8 text-primary border-primary/20 hover:bg-primary/15"
+      }`}
     >
       {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-      {copied ? "تم" : "نسخ"}
+      {copied ? "تم" : (label ?? "نسخ")}
     </button>
   );
 }
 
-function StepBadge({ n, label, active }: { n: number; label: string; active: boolean }) {
+function StepDot({ n, label, active }: { n: number; label: string; active: boolean }) {
   return (
-    <div className={`flex items-center gap-2 text-xs font-bold transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}>
-      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black transition-colors ${active ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}>
+    <div className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground/55"}`}>
+      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-200 shadow-sm ${
+        active ? "bg-primary text-white shadow-primary/30" : "bg-muted/50 border border-border/50 text-muted-foreground/40"
+      }`}>
         {n}
       </div>
       <span>{label}</span>
@@ -78,26 +86,10 @@ function StepBadge({ n, label, active }: { n: number; label: string; active: boo
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-[11px] text-muted-foreground/65 mb-0.5 font-medium">{label}</div>
       <div className="font-bold text-sm">{value}</div>
     </div>
   );
-}
-
-function renderFeedback(success: boolean, error: string) {
-  if (success) return (
-    <div className="flex items-center gap-2 text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 rounded-xl mb-3">
-      <CheckCircle className="w-4 h-4 shrink-0" />
-      <span>تم إرسال طلب الشحن بنجاح! سيتم مراجعته قريباً.</span>
-    </div>
-  );
-  if (error) return (
-    <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 border border-destructive/20 px-3 py-2.5 rounded-xl mb-3 shake">
-      <AlertCircle className="w-4 h-4 shrink-0" />
-      <span>{error}</span>
-    </div>
-  );
-  return null;
 }
 
 export default function WalletPage() {
@@ -106,19 +98,17 @@ export default function WalletPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [method, setMethod] = useState<Method>("mobile_transfer");
-  const [network, setNetwork] = useState("libyana");
-  const [amount, setAmount] = useState("");
-  const [senderPhone, setSenderPhone] = useState("");
+  const [method, setMethod]               = useState<Method>("mobile_transfer");
+  const [network, setNetwork]             = useState("libyana");
+  const [amount, setAmount]               = useState("");
+  const [senderPhone, setSenderPhone]     = useState("");
   const [senderAccount, setSenderAccount] = useState("");
   const [senderPhoneTouched, setSenderPhoneTouched] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess]             = useState(false);
+  const [error, setError]                 = useState("");
+  const [submitting, setSubmitting]       = useState(false);
 
-  useEffect(() => {
-    if (!token) navigate("/login");
-  }, [token]);
+  useEffect(() => { if (!token) navigate("/login"); }, [token]);
 
   const { data: wallet, isLoading } = useGetWallet({
     query: { enabled: !!token, queryKey: getGetWalletQueryKey() },
@@ -130,7 +120,7 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const pendingCount = (topups as any[]).filter((t: any) => t.status === "pending").length;
+  const pendingCount   = (topups as any[]).filter((t: any) => t.status === "pending").length;
   const pendingBlocked = pendingCount >= MAX_PENDING;
 
   const topupMutation = useCreateTopup({
@@ -144,8 +134,8 @@ export default function WalletPage() {
         setSenderPhoneTouched(false);
         queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-        setTimeout(() => setSuccess(false), 6000);
-        toast({ title: "تم إرسال الطلب", description: "سيتم مراجعة طلب الشحن خلال دقائق." });
+        setTimeout(() => setSuccess(false), 7000);
+        toast({ title: "تم إرسال الطلب ✓", description: "سيتم مراجعة طلب الشحن خلال دقائق." });
       },
       onError(err: any) {
         setError(err?.response?.data?.error ?? "فشل في إرسال طلب الشحن.");
@@ -159,16 +149,10 @@ export default function WalletPage() {
     setError("");
     setSuccess(false);
 
-    if (pendingBlocked) {
-      setError("لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها");
-      return;
-    }
+    if (pendingBlocked) { setError("لديك طلبات قيد المراجعة، يرجى الانتظار حتى تُعتمد"); return; }
 
     const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
-      setError("يرجى إدخال مبلغ صالح");
-      return;
-    }
+    if (!parsedAmount || parsedAmount <= 0) { setError("يرجى إدخال مبلغ صالح"); return; }
 
     if (method === "mobile_transfer") {
       setSenderPhoneTouched(true);
@@ -181,10 +165,7 @@ export default function WalletPage() {
       }
     }
 
-    if (method === "lypay" && !senderAccount.trim()) {
-      setError("يرجى إدخال رقم حساب المُرسل");
-      return;
-    }
+    if (method === "lypay" && !senderAccount.trim()) { setError("يرجى إدخال رقم حساب المُرسل"); return; }
 
     setSubmitting(true);
     topupMutation.mutate({
@@ -192,103 +173,112 @@ export default function WalletPage() {
         amount: parsedAmount,
         payment_method: method,
         payment_network: method === "mobile_transfer" ? network : undefined,
-        sender_phone: method === "mobile_transfer" ? senderPhone || undefined : undefined,
-        sender_account: method === "lypay" ? senderAccount || undefined : undefined,
+        sender_phone:    method === "mobile_transfer" ? senderPhone || undefined : undefined,
+        sender_account:  method === "lypay" ? senderAccount || undefined : undefined,
       },
     });
   };
 
   const presets = method === "mobile_transfer" ? NETWORK_PRESETS[network] ?? [] : [25, 50, 100, 200];
   const senderPhoneErr = senderPhoneTouched ? libyanPhoneError(senderPhone) : null;
-
   if (!token) return null;
 
   const tier = wallet?.loyalty_tier ?? "bronze";
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-7 page-in">
+
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-          <Wallet className="w-4.5 h-4.5 text-primary" />
+        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <Wallet className="w-5 h-5 text-primary" />
         </div>
-        <h1 className="text-xl font-black">المحفظة</h1>
+        <div>
+          <h1 className="text-xl font-black">المحفظة</h1>
+          <p className="text-xs text-muted-foreground/70">شحن الرصيد وعرض السجل</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-        {/* Left: Balance + Form */}
+        {/* ── LEFT: Balance + Form ────────────────────────────────── */}
         <div className="lg:col-span-3 space-y-4">
 
-          {/* ── Premium Balance Card ─────────────────────────────── */}
+          {/* Balance card */}
           {isLoading ? (
-            <div className="rounded-2xl h-36 skeleton-shimmer border border-border/50" />
+            <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
           ) : wallet ? (
-            <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/18 via-primary/6 to-card p-5">
-              {/* Decorative dot grid */}
-              <div className="absolute inset-0 dot-grid opacity-40 pointer-events-none" />
-              {/* Glow orb */}
-              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/12 blur-2xl pointer-events-none" />
+            <div className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-5 shadow-xl shadow-primary/8">
+              <div className="absolute inset-0 dot-grid opacity-35 pointer-events-none" />
+              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/10 blur-3xl pointer-events-none blob-drift" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
 
               <div className="relative flex items-start justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-1.5 text-primary/70 text-xs font-bold mb-1.5">
+                  <div className="flex items-center gap-1.5 text-primary/65 text-xs font-bold mb-2">
                     <Wallet className="w-3.5 h-3.5" />
                     الرصيد المتاح
                   </div>
-                  <div className="text-4xl font-black tabular-nums mb-3 leading-none">
+                  <div className="text-4xl font-black tabular-nums mb-3 leading-none text-foreground num-pop">
                     {formatCurrency(wallet.balance ?? 0)}
                   </div>
-                  <div className="flex items-center gap-3 text-sm flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${tierColor(tier).replace("text-", "bg-")}`} />
-                      <span className="text-muted-foreground text-xs">المستوى:</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        tier === "bronze" ? "bg-amber-500" : tier === "silver" ? "bg-slate-400" : tier === "gold" ? "bg-yellow-400" : "bg-cyan-400"
+                      }`} />
+                      <span className="text-muted-foreground/65 text-xs">المستوى:</span>
                       <span className={`font-black text-xs ${tierColor(tier)}`}>{tierLabel(tier)}</span>
                     </div>
                     <div className="flex items-center gap-1 text-xs">
                       <Star className="w-3 h-3 text-yellow-400" />
-                      <span className="font-bold tabular-nums">{wallet.loyalty_points ?? 0}</span>
-                      <span className="text-muted-foreground">نقطة</span>
+                      <span className="font-black tabular-nums text-yellow-400">{wallet.loyalty_points ?? 0}</span>
+                      <span className="text-muted-foreground/55">نقطة</span>
                     </div>
                   </div>
                 </div>
-                {/* Tier badge */}
-                <div className={`shrink-0 px-3 py-1.5 rounded-xl border text-[11px] font-black ${tierColor(tier)} bg-current/10 border-current/20`}
-                  style={{ color: "inherit" }}>
-                  <div className={`text-[11px] font-black ${tierColor(tier)}`}>{tierLabel(tier)}</div>
+                <div className={`shrink-0 px-3 py-2 rounded-xl border text-[11px] font-black bg-background/30 ${
+                  tier === "bronze" ? "border-amber-500/25 text-amber-400" :
+                  tier === "silver" ? "border-slate-400/25 text-slate-300" :
+                  tier === "gold"   ? "border-yellow-400/25 text-yellow-400" :
+                  "border-cyan-400/25 text-cyan-400"
+                }`}>
+                  {tierLabel(tier)}
                 </div>
               </div>
             </div>
           ) : null}
 
-          {/* Pending limit banner */}
+          {/* Pending limit warning */}
           {pendingBlocked && (
-            <div className="flex items-start gap-3 p-4 bg-yellow-400/8 border border-yellow-400/25 rounded-2xl float-in">
+            <div className="flex items-start gap-3 p-4 bg-yellow-400/7 border border-yellow-400/22 rounded-2xl float-in">
               <Lock className="w-4.5 h-4.5 text-yellow-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-sm text-yellow-300">طلبات الشحن موقوفة مؤقتاً</p>
-                <p className="text-xs text-yellow-400/75 mt-0.5">
+                <p className="text-xs text-yellow-400/70 mt-0.5">
                   لديك {pendingCount} طلبات قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
               </div>
             </div>
           )}
 
-          {/* Recharge Form */}
-          <div className={`bg-card border border-border/60 rounded-2xl p-5 transition-opacity ${pendingBlocked ? "opacity-55 pointer-events-none select-none" : ""}`}>
-            <div className="flex items-center gap-2 mb-5">
-              <Plus className="w-4.5 h-4.5 text-primary" />
+          {/* Form card */}
+          <div className={`bg-card border border-border/55 rounded-2xl p-5 transition-all duration-300 ${pendingBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}>
+            <div className="flex items-center gap-2.5 mb-5">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
+                <Plus className="w-3.5 h-3.5 text-primary" />
+              </div>
               <h2 className="font-black">شحن المحفظة</h2>
               {pendingCount > 0 && !pendingBlocked && (
-                <span className="mr-auto text-xs text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded-full">
+                <span className="mr-auto text-xs text-yellow-400 bg-yellow-400/8 border border-yellow-400/18 px-2 py-0.5 rounded-full">
                   {pendingCount}/{MAX_PENDING} معلق
                 </span>
               )}
             </div>
 
-            {/* Method Selection */}
+            {/* Method tabs */}
             <div className="mb-5">
-              <p className="text-xs text-muted-foreground mb-2 font-bold">طريقة الدفع</p>
+              <p className="text-xs text-muted-foreground/75 mb-2.5 font-bold">طريقة الدفع</p>
               <div className="grid grid-cols-2 gap-2.5">
                 {[
                   { id: "mobile_transfer" as Method, icon: Smartphone, title: "تحويل رصيد", sub: "ليبيانا / مدار" },
@@ -298,83 +288,111 @@ export default function WalletPage() {
                     key={m.id}
                     type="button"
                     onClick={() => { setMethod(m.id); setError(""); setSuccess(false); }}
-                    className={`flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-right ${
-                      method === m.id ? "border-primary bg-primary/6" : "border-border hover:border-primary/30"
+                    className={`flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all duration-180 text-right press-spring ${
+                      method === m.id
+                        ? "border-primary/50 bg-primary/7 shadow-sm"
+                        : "border-border/50 hover:border-border/80 bg-card"
                     }`}
                   >
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${method === m.id ? "bg-primary" : "bg-muted"}`}>
-                      <m.icon className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground"}`} />
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${method === m.id ? "bg-primary shadow-sm shadow-primary/30" : "bg-muted/60"}`}>
+                      <m.icon className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground/65"}`} />
                     </div>
                     <div>
-                      <div className="font-bold text-sm">{m.title}</div>
-                      <div className="text-xs text-muted-foreground">{m.sub}</div>
+                      <div className={`font-bold text-sm ${method === m.id ? "text-foreground" : "text-foreground/80"}`}>{m.title}</div>
+                      <div className="text-xs text-muted-foreground/60">{m.sub}</div>
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Mobile Transfer Form */}
+            {/* Mobile Transfer Flow */}
             {method === "mobile_transfer" && (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Network */}
+              <form onSubmit={handleSubmit} className="space-y-5">
+
+                {/* Step 1: Network */}
                 <div>
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <StepBadge n={1} label="اختر شبكتك" active />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <StepDot n={1} label="اختر شبكتك" active />
+                  <div className="grid grid-cols-2 gap-2 mt-3">
                     {NETWORKS.map(n => (
-                      <button key={n.value} type="button" onClick={() => setNetwork(n.value)}
-                        className={`py-2.5 rounded-xl border-2 font-bold text-sm transition-all ${
-                          network === n.value ? `${n.border} ${n.bg} ${n.color}` : "border-border text-muted-foreground hover:text-foreground"
-                        }`}>
+                      <button
+                        key={n.value}
+                        type="button"
+                        onClick={() => setNetwork(n.value)}
+                        className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
+                          network === n.value
+                            ? `${n.border} ${n.bg} ${n.color} shadow-sm`
+                            : "border-border/50 text-muted-foreground/65 hover:text-foreground hover:border-border/80"
+                        }`}
+                      >
                         {n.label}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="border-t border-border/40" />
 
-                {/* Amount */}
+                <div className="border-t border-border/20" />
+
+                {/* Step 2: Amount */}
                 <div>
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <StepBadge n={2} label="المبلغ (د.ل)" active />
-                  </div>
-                  <div className="grid grid-cols-5 gap-1.5 mb-2.5">
+                  <StepDot n={2} label="المبلغ بالدينار الليبي" active />
+                  <div className="flex gap-2 mt-3 mb-2.5 flex-wrap">
                     {presets.map(p => (
-                      <button key={p} type="button" onClick={() => setAmount(String(p))}
-                        className={`py-1.5 rounded-lg text-sm font-black transition-all border ${
-                          amount === String(p) ? "border-primary bg-primary text-white shadow-sm shadow-primary/20" : "border-border bg-secondary hover:bg-muted"
-                        }`}>
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setAmount(String(p))}
+                        className={`flex-1 min-w-[52px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                          amount === String(p)
+                            ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
+                            : "border-border/50 bg-muted/40 text-muted-foreground/80 hover:bg-muted/70 hover:text-foreground"
+                        }`}
+                      >
                         {p}
                       </button>
                     ))}
                   </div>
-                  <Input type="number" min="1" max="10000" step="0.5"
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    step="0.5"
                     placeholder="أو أدخل مبلغاً آخر..."
-                    value={amount} onChange={e => setAmount(e.target.value)}
-                    required dir="ltr" className="text-left" />
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    required
+                    dir="ltr"
+                    className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
+                  />
                 </div>
-                <div className="border-t border-border/40" />
 
-                {/* Sender Phone */}
+                <div className="border-t border-border/20" />
+
+                {/* Step 3: Phone */}
                 <div>
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <StepBadge n={3} label="رقم هاتف المُرسل" active />
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    حوّل الرصيد إلى: <span className="font-bold text-foreground">091-3456789</span> ثم أدخل رقمك أدناه
+                  <StepDot n={3} label="رقم هاتف المُرسل" active />
+                  <p className="text-xs text-muted-foreground/60 mt-2 mb-3">
+                    حوّل الرصيد إلى:{" "}
+                    <span className="font-black text-foreground/80 font-mono">091-3456789</span>
+                    {" "}ثم أدخل رقمك أدناه
                   </p>
                   <div className="relative">
-                    <Input type="tel" placeholder="091XXXXXXX"
+                    <Input
+                      type="tel"
+                      placeholder="091XXXXXXX"
                       value={senderPhone}
                       onChange={e => {
-                        const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
-                        setSenderPhone(digits);
+                        const d = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        setSenderPhone(d);
                       }}
                       onBlur={() => setSenderPhoneTouched(true)}
-                      required dir="ltr"
-                      className={`text-left pl-10 ${senderPhoneTouched && senderPhoneErr ? "border-destructive" : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr ? "border-emerald-500/50" : ""}`}
+                      required
+                      dir="ltr"
+                      className={`text-left pl-10 h-11 rounded-xl bg-card transition-all ${
+                        senderPhoneTouched && senderPhoneErr ? "border-destructive/60 focus:ring-destructive/15" :
+                        senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr ? "border-emerald-500/50" :
+                        "border-border/50 focus:border-primary/45 focus:ring-primary/12"
+                      } focus:ring-2`}
                       maxLength={10}
                     />
                     <div className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -383,99 +401,142 @@ export default function WalletPage() {
                     </div>
                   </div>
                   {senderPhoneTouched && senderPhoneErr && (
-                    <p className="text-xs text-destructive mt-1">{senderPhoneErr}</p>
-                  )}
-                  {!senderPhoneTouched && (
-                    <p className="text-xs text-muted-foreground mt-1">ليبيانا (091/093) أو مدار (092/094)</p>
+                    <p className="text-xs text-destructive mt-1.5">{senderPhoneErr}</p>
                   )}
                 </div>
-                <div className="border-t border-border/40" />
 
-                {/* Submit */}
+                <div className="border-t border-border/20" />
+
+                {/* Step 4: Submit */}
                 <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <StepBadge n={4} label="أرسل الطلب" active />
+                  <StepDot n={4} label="أرسل الطلب" active />
+                  <div className="mt-3">
+                    {success && (
+                      <div className="flex items-center gap-2.5 text-emerald-400 text-sm bg-emerald-500/8 border border-emerald-500/18 px-4 py-3 rounded-xl mb-3">
+                        <CheckCircle className="w-4 h-4 shrink-0" />
+                        <span>تم إرسال طلب الشحن بنجاح! سيتم مراجعته قريباً.</span>
+                      </div>
+                    )}
+                    {error && (
+                      <div className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+                    <Button
+                      type="submit"
+                      className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl transition-all"
+                      disabled={submitting || topupMutation.isPending}
+                    >
+                      {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
+                    </Button>
                   </div>
-                  {renderFeedback(success, error)}
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-11 text-base shadow-md shadow-primary/20 cta-glow"
-                    disabled={submitting || topupMutation.isPending}>
-                    {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
-                  </Button>
                 </div>
               </form>
             )}
 
-            {/* LyPay Form */}
+            {/* LyPay Flow */}
             {method === "lypay" && (
-              <div className="space-y-4">
+              <div className="space-y-5">
+
+                {/* Step 1: Bank info */}
                 <div>
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <StepBadge n={1} label="معلومات الحساب" active />
-                  </div>
-                  <div className="bg-muted/35 border border-border/50 rounded-xl p-4 space-y-3 text-sm">
-                    <InfoRow label="اسم الحساب" value={LYPAY_INFO.account_name} />
-                    <InfoRow label="البنك" value={LYPAY_INFO.bank} />
-                    <InfoRow label="الفرع" value={LYPAY_INFO.branch} />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">رقم الحساب</div>
-                        <div className="font-mono font-bold">{LYPAY_INFO.account_number}</div>
-                      </div>
-                      <CopyBtn text={LYPAY_INFO.account_number} label="رقم الحساب" />
+                  <StepDot n={1} label="معلومات الحساب المصرفي" active />
+                  <div className="mt-3 bg-muted/25 border border-border/45 rounded-xl p-4 space-y-3.5 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <InfoRow label="اسم الحساب" value={LYPAY_INFO.account_name} />
+                      <InfoRow label="البنك"       value={LYPAY_INFO.bank} />
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                    <InfoRow label="الفرع" value={LYPAY_INFO.branch} />
+                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                      <InfoRow label="رقم الحساب" value={LYPAY_INFO.account_number} />
+                      <CopyBtn text={LYPAY_INFO.account_number} label="نسخ" />
+                    </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
                       <div>
-                        <div className="text-xs text-muted-foreground mb-0.5">IBAN</div>
-                        <div className="font-mono font-bold tracking-wide text-sm">{LYPAY_INFO.iban}</div>
+                        <div className="text-[11px] text-muted-foreground/65 mb-0.5 font-medium">IBAN</div>
+                        <div className="font-mono font-bold text-sm tracking-wide">{LYPAY_INFO.iban}</div>
                       </div>
-                      <CopyBtn text={LYPAY_INFO.iban.replace(/\s/g, "")} label="IBAN" />
+                      <CopyBtn text={LYPAY_INFO.iban.replace(/\s/g, "")} label="نسخ" />
                     </div>
                   </div>
                 </div>
-                <div className="border-t border-border/40" />
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="border-t border-border/20" />
+
+                <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
-                    <div className="flex items-center gap-3 mb-2.5">
-                      <StepBadge n={2} label="المبلغ المحوّل (د.ل)" active />
-                    </div>
-                    <div className="grid grid-cols-4 gap-1.5 mb-2.5">
+                    <StepDot n={2} label="المبلغ المحوّل (د.ل)" active />
+                    <div className="flex gap-2 mt-3 mb-2.5">
                       {presets.map(p => (
-                        <button key={p} type="button" onClick={() => setAmount(String(p))}
-                          className={`py-1.5 rounded-lg text-sm font-black transition-all border ${
-                            amount === String(p) ? "border-primary bg-primary text-white" : "border-border bg-secondary hover:bg-muted"
-                          }`}>
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setAmount(String(p))}
+                          className={`flex-1 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                            amount === String(p)
+                              ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
+                              : "border-border/50 bg-muted/40 text-muted-foreground/80 hover:bg-muted/70"
+                          }`}
+                        >
                           {p}
                         </button>
                       ))}
                     </div>
-                    <Input type="number" min="1" max="10000" step="0.5"
-                      placeholder="أدخل المبلغ بالدينار الليبي"
-                      value={amount} onChange={e => setAmount(e.target.value)}
-                      required dir="ltr" className="text-left" />
+                    <Input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      step="0.5"
+                      placeholder="المبلغ بالدينار الليبي"
+                      value={amount}
+                      onChange={e => setAmount(e.target.value)}
+                      required
+                      dir="ltr"
+                      className="text-left h-11 rounded-xl bg-card"
+                    />
                   </div>
-                  <div className="border-t border-border/40" />
+
+                  <div className="border-t border-border/20" />
 
                   <div>
-                    <div className="flex items-center gap-3 mb-2.5">
-                      <StepBadge n={3} label="رقم حسابك (المُرسل)" active />
-                    </div>
-                    <Input type="text" placeholder="أدخل رقم حساب المُرسل"
-                      value={senderAccount} onChange={e => setSenderAccount(e.target.value)}
-                      required dir="ltr" className="text-left font-mono" />
+                    <StepDot n={3} label="رقم حسابك (المُرسل)" active />
+                    <Input
+                      type="text"
+                      placeholder="أدخل رقم حساب المُرسل"
+                      value={senderAccount}
+                      onChange={e => setSenderAccount(e.target.value)}
+                      required
+                      dir="ltr"
+                      className="text-left font-mono mt-3 h-11 rounded-xl bg-card"
+                    />
                   </div>
-                  <div className="border-t border-border/40" />
+
+                  <div className="border-t border-border/20" />
 
                   <div>
-                    <div className="flex items-center gap-3 mb-2.5">
-                      <StepBadge n={4} label="تأكيد الطلب" active />
-                    </div>
-                    <div className="mb-3 p-3 bg-yellow-400/8 border border-yellow-400/18 rounded-lg text-xs text-yellow-400">
+                    <StepDot n={4} label="تأكيد الإرسال" active />
+                    <div className="mt-3 mb-3 p-3.5 bg-yellow-400/7 border border-yellow-400/18 rounded-xl text-xs text-yellow-400 flex items-center gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       تأكد من إتمام التحويل المصرفي أولاً قبل إرسال الطلب
                     </div>
-                    {renderFeedback(success, error)}
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-11 text-base shadow-md shadow-primary/20 cta-glow"
-                      disabled={submitting || topupMutation.isPending}>
+                    {success && (
+                      <div className="flex items-center gap-2.5 text-emerald-400 text-sm bg-emerald-500/8 border border-emerald-500/18 px-4 py-3 rounded-xl mb-3">
+                        <CheckCircle className="w-4 h-4 shrink-0" />
+                        تم إرسال طلب الشحن بنجاح!
+                      </div>
+                    )}
+                    {error && (
+                      <div className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        {error}
+                      </div>
+                    )}
+                    <Button
+                      type="submit"
+                      className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl"
+                      disabled={submitting || topupMutation.isPending}
+                    >
                       {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "تأكيد طلب الشحن"}
                     </Button>
                   </div>
@@ -485,51 +546,45 @@ export default function WalletPage() {
           </div>
         </div>
 
-        {/* Right: Topup History */}
+        {/* ── RIGHT: Topup History ──────────────────────────────── */}
         <div className="lg:col-span-2">
-          <div className="bg-card border border-border/60 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          <div className="bg-card border border-border/55 rounded-2xl p-5 sticky top-20">
+            <div className="flex items-center gap-2.5 mb-4">
+              <TrendingUp className="w-4 h-4 text-muted-foreground/60" />
               <h2 className="font-black text-sm">سجل الشحن</h2>
               {(topups as any[]).length > 0 && (
-                <span className="mr-auto text-xs text-muted-foreground bg-muted/50 border border-border/40 px-2 py-0.5 rounded-full">
-                  {(topups as any[]).length}
-                </span>
+                <span className="mr-auto text-xs text-muted-foreground/55 font-medium">{(topups as any[]).length} طلب</span>
               )}
             </div>
 
             {(topups as any[]).length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
-                  <Wallet className="w-5 h-5 opacity-30" />
+              <div className="text-center py-10 text-muted-foreground/45">
+                <div className="w-10 h-10 rounded-xl bg-muted/35 border border-border/30 flex items-center justify-center mx-auto mb-2.5">
+                  <Clock className="w-4.5 h-4.5 opacity-30" />
                 </div>
-                <p className="text-sm font-medium mb-0.5">لا توجد عمليات شحن</p>
-                <p className="text-xs text-muted-foreground/60">سيظهر تاريخ الشحن هنا</p>
+                <p className="text-xs font-medium">لا توجد طلبات شحن بعد</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {(topups as any[]).map((t: any) => (
-                  <div key={t.id} className="flex items-start gap-3 p-3 bg-muted/20 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors">
-                    <div className="mt-0.5 shrink-0">{topupIcon(t.status)}</div>
+              <div className="space-y-2.5 max-h-[480px] overflow-y-auto scrollbar-none">
+                {(topups as any[]).map((t: any, i: number) => (
+                  <div
+                    key={t.id}
+                    className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}
+                  >
+                    <div className="shrink-0">{topupStatusIcon(t.status)}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className="font-black text-sm tabular-nums">{formatCurrency(t.amount)}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor(t.status)}`}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-xs font-bold tabular-nums">{formatCurrency(t.amount)}</span>
+                        {t.payment_network && (
+                          <span className="text-[10px] text-muted-foreground/50 font-medium">· {networkLabel(t.payment_network)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(t.status)}`}>
                           {statusLabel(t.status)}
                         </span>
+                        <span className="text-[10px] text-muted-foreground/40">{formatDate(t.created_at)}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                        {t.payment_method === "mobile_transfer" ? (
-                          <span>{networkLabel(t.payment_network)}</span>
-                        ) : (
-                          <span>تحويل مصرفي</span>
-                        )}
-                        <span className="opacity-40">·</span>
-                        <span>{formatDate(t.created_at)}</span>
-                      </div>
-                      {t.admin_note && (
-                        <p className="text-xs text-muted-foreground/65 mt-1 leading-tight">{t.admin_note}</p>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -537,8 +592,9 @@ export default function WalletPage() {
             )}
           </div>
         </div>
-
       </div>
+
+      <div className="h-6 md:h-0" />
     </div>
   );
 }

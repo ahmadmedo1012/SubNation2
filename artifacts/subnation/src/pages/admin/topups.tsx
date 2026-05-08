@@ -41,17 +41,17 @@ const STATUS_FILTERS = [
 
 function TopupCardSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="bg-card border border-border/60 rounded-2xl p-4">
       <div className="flex items-center gap-4 mb-3">
-        <div className="h-6 bg-muted skeleton-shimmer rounded w-24" />
+        <div className="h-7 bg-muted skeleton-shimmer rounded-lg w-24" />
         <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14" />
         <div className="h-5 bg-muted skeleton-shimmer rounded-full w-16" />
       </div>
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="h-4 bg-muted skeleton-shimmer rounded w-full" />
-        <div className="h-4 bg-muted skeleton-shimmer rounded w-4/5" />
+        <div className="h-4 bg-muted skeleton-shimmer rounded-md w-full" />
+        <div className="h-4 bg-muted skeleton-shimmer rounded-md w-4/5" />
       </div>
-      <div className="h-9 bg-muted skeleton-shimmer rounded-lg" />
+      <div className="h-9 bg-muted skeleton-shimmer rounded-xl" />
     </div>
   );
 }
@@ -285,7 +285,7 @@ export default function AdminTopupsPage() {
             )}
 
             {/* Status filter tabs */}
-            <div className="flex gap-1 bg-secondary/40 border border-border rounded-xl p-1">
+            <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
               {STATUS_FILTERS.map(s => {
                 const count = s.value ? (statusCounts[s.value] ?? 0) : (allTopups as any[]).length;
                 const active = statusFilter === s.value;
@@ -316,21 +316,22 @@ export default function AdminTopupsPage() {
             {Array.from({ length: 3 }).map((_, i) => <TopupCardSkeleton key={i} />)}
           </div>
         ) : topups.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
-            <div className="w-12 h-12 rounded-xl bg-muted mx-auto mb-3 flex items-center justify-center">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
               <Clock className="w-5 h-5 opacity-30" />
             </div>
             <p className="font-bold text-sm">
               {statusFilter === "pending" ? "لا توجد طلبات معلقة" : "لا توجد طلبات في هذه الفئة"}
             </p>
+            <p className="text-xs text-muted-foreground/50 mt-1">ستظهر الطلبات هنا عند ورودها</p>
           </div>
         ) : (
           <div className="space-y-2.5">
-            {topups.map((t: any) => (
+            {topups.map((t: any, i: number) => (
               <div
                 key={t.id}
-                className={`bg-card rounded-xl border overflow-hidden transition-all ${
-                  t.status === "pending" ? "border-yellow-400/20 shadow-sm shadow-yellow-400/4" : "border-border"
+                className={`float-in stagger-${Math.min(i + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:shadow-black/10 ${
+                  t.status === "pending" ? "border-yellow-400/20 shadow-sm shadow-yellow-400/4" : "border-border/60"
                 }`}
               >
                 {t.status === "pending" && (

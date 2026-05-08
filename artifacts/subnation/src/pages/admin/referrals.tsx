@@ -57,8 +57,8 @@ const MEDAL_COLORS = [
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="border-b border-border bg-muted/30 h-11" />
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+      <div className="border-b border-border/60 bg-muted/30 h-11" />
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}>
           <div className="h-4 bg-muted skeleton-shimmer rounded w-28" />
@@ -77,8 +77,8 @@ function StatCard({ label, value, icon: Icon, color, bg }: {
   icon: React.ElementType; color: string; bg: string;
 }) {
   return (
-    <div className="bg-card border border-border/60 rounded-xl p-4">
-      <div className={`w-8 h-8 rounded-lg border flex items-center justify-center mb-3 ${bg}`}>
+    <div className="bg-card border border-border/60 rounded-2xl p-4">
+      <div className={`w-8 h-8 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
         <Icon className={`w-4 h-4 ${color}`} />
       </div>
       <div className={`text-2xl font-black tabular-nums mb-0.5 ${color}`}>{value}</div>
@@ -152,7 +152,7 @@ export default function AdminReferralsPage() {
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center float-in">
               <Gift className="w-4.5 h-4.5 text-primary" />
             </div>
             <div>
@@ -181,7 +181,7 @@ export default function AdminReferralsPage() {
 
         {/* Top Referrers Leaderboard */}
         {topReferrers.length > 0 && (
-          <div className="bg-card border border-border/60 rounded-xl p-4">
+          <div className="bg-card border border-border/60 rounded-2xl p-4 float-in stagger-5">
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="w-3.5 h-3.5 text-yellow-400" />
               <h2 className="font-black text-sm">أكثر المستخدمين إحالةً</h2>
@@ -239,7 +239,7 @@ export default function AdminReferralsPage() {
         {loading ? (
           <TableSkeleton />
         ) : list.length === 0 ? (
-          <div className="bg-card border border-border rounded-xl py-16 text-center text-muted-foreground">
+          <div className="bg-card border border-border/60 rounded-2xl py-16 text-center text-muted-foreground">
             <div className="w-14 h-14 rounded-2xl bg-muted/30 border border-border/40 flex items-center justify-center mx-auto mb-3">
               <Gift className="w-6 h-6 opacity-20" />
             </div>
@@ -249,7 +249,7 @@ export default function AdminReferralsPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
             {/* Table header */}
             <div className="hidden md:grid grid-cols-[1fr_1fr_100px_130px_90px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-bold text-muted-foreground">
               <span>المُحيل</span>

@@ -136,7 +136,7 @@ function ProviderCard({
   const isConfigured = provider.fields.some(f => !f.isSecret && !!config[f.key]);
 
   return (
-    <div className={`bg-card border rounded-xl overflow-hidden transition-all ${enabled ? "border-border" : "border-border/50 opacity-75"}`}>
+    <div className={`bg-card border rounded-2xl overflow-hidden transition-all ${enabled ? "border-border/60" : "border-border/40 opacity-75"}`}>
       {/* Header */}
       <div className="flex items-center gap-3.5 px-5 py-4">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-muted/60 border border-border/60 shrink-0">
@@ -294,7 +294,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex flex-wrap gap-1 bg-secondary/50 border border-border rounded-xl p-1 w-fit">
+        <div className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -311,7 +311,7 @@ export default function AdminSettingsPage() {
         {activeTab === "auth" && (
           <div className="space-y-5">
             {/* Summary banner */}
-            <div className="flex items-center gap-3 px-5 py-3.5 bg-card border border-border rounded-xl">
+            <div className="flex items-center gap-3 px-5 py-3.5 bg-card border border-border/60 rounded-2xl float-in">
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <KeyRound className="w-4 h-4 text-primary" />
               </div>
@@ -330,7 +330,7 @@ export default function AdminSettingsPage() {
 
             {loading ? (
               <div className="space-y-3">
-                {[1, 2, 3].map(i => <div key={i} className="h-16 skeleton-shimmer rounded-xl" />)}
+                {[1, 2, 3].map(i => <div key={i} className="h-16 skeleton-shimmer rounded-2xl" />)}
               </div>
             ) : (
               <div className="space-y-3">
@@ -346,7 +346,7 @@ export default function AdminSettingsPage() {
             )}
 
             {/* Info box */}
-            <div className="flex items-start gap-3 p-4 bg-muted/30 border border-border/50 rounded-xl">
+            <div className="flex items-start gap-3 p-4 bg-muted/30 border border-border/50 rounded-2xl">
               <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
               <div className="text-xs text-muted-foreground leading-relaxed space-y-1">
                 <p className="font-bold text-foreground/80">كيف يعمل النظام؟</p>
@@ -360,9 +360,9 @@ export default function AdminSettingsPage() {
         {/* ── Integrations Tab ──────────────────────────────────────────── */}
         {activeTab === "integrations" && (
           <div className="space-y-5">
-            <div className="bg-card border border-border rounded-xl p-6">
+            <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
               <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
                   <Bot className="w-4.5 h-4.5 text-blue-400" />
                 </div>
                 <div>
@@ -379,7 +379,7 @@ export default function AdminSettingsPage() {
               </div>
 
               {loading ? (
-                <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted skeleton-shimmer rounded-xl" />)}</div>
+                <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted skeleton-shimmer rounded-2xl" />)}</div>
               ) : (
                 <div className="space-y-2">
                   {[
@@ -387,7 +387,7 @@ export default function AdminSettingsPage() {
                     { icon: Key,  label: "TELEGRAM_BOT_TOKEN",  ok: settings?.telegram_bot_set,    okText: "تم الضبط",   failText: "غير موجود" },
                     { icon: Hash, label: "TELEGRAM_CHAT_ID",    ok: settings?.telegram_chat_set,   okText: "تم الضبط",   failText: "غير موجود" },
                   ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between px-4 py-3 bg-muted/25 border border-border/60 rounded-xl">
+                    <div key={row.label} className="flex items-center justify-between px-4 py-3 bg-muted/25 border border-border/60 rounded-2xl">
                       <div className="flex items-center gap-2.5 text-sm">
                         <row.icon className="w-4 h-4 text-muted-foreground" />
                         <span className="font-mono text-xs">{row.label}</span>
@@ -401,7 +401,7 @@ export default function AdminSettingsPage() {
                 </div>
               )}
 
-              <div className="mt-5 p-4 bg-muted/30 border border-border/50 rounded-xl">
+              <div className="mt-5 p-4 bg-muted/30 border border-border/50 rounded-2xl">
                 <div className="flex items-center gap-2 mb-3">
                   <Info className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm font-bold">كيفية الإعداد</span>
@@ -426,7 +426,7 @@ export default function AdminSettingsPage() {
 
         {/* ── Notifications Tab ─────────────────────────────────────────── */}
         {activeTab === "notifications" && (
-          <div className="bg-card border border-border rounded-xl p-6">
+          <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
             <h2 className="font-bold mb-4 text-sm">الأحداث التي يتم إشعارك بها</h2>
             <div className="space-y-2">
               {[
@@ -436,7 +436,7 @@ export default function AdminSettingsPage() {
                 "رفض طلب شحن",
                 "إتمام طلب شراء جديد",
               ].map(event => (
-                <div key={event} className="flex items-center gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-xl">
+                <div key={event} className="flex items-center gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl">
                   <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span className="text-sm">{event}</span>
                   <span className="mr-auto text-xs text-muted-foreground">عبر تيليجرام</span>
@@ -448,7 +448,7 @@ export default function AdminSettingsPage() {
 
         {/* ── Security Tab ──────────────────────────────────────────────── */}
         {activeTab === "security" && (
-          <div className="bg-card border border-border rounded-xl p-6">
+          <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
             <h2 className="font-bold mb-4 text-sm">إعدادات الأمان</h2>
             <div className="space-y-3 text-sm text-muted-foreground">
               {[
@@ -459,7 +459,7 @@ export default function AdminSettingsPage() {
                 { label: "OAuth Redirect Safety",  value: "كود مؤقت — يُستخدم مرة واحدة",        ok: true },
                 { label: "Telegram Widget Verify", value: "HMAC-SHA256 + فحص auth_date",          ok: true },
               ].map(item => (
-                <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-xl">
+                <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl">
                   <div className="flex items-center gap-2.5">
                     <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span className="font-medium text-sm">{item.label}</span>
