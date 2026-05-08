@@ -1,7 +1,7 @@
 [build]
   command = "pnpm --filter @workspace/subnation... run build"
-  publish = "artifacts/subnation/dist"
+  publish = "frontend/dist/public"
 
 [build.environment]
-  # Exclude dist folder and Replit config files from secrets scan - contains only public keys and dev config
-  SECRETS_SCAN_OMIT_PATHS = "artifacts/subnation/dist,.replit,artifacts/api-server/.replit-artifact/artifact.toml,replit.md"
+  # Exclude generated frontend output from secrets scan.
+  SECRETS_SCAN_OMIT_PATHS = "frontend/dist/public"

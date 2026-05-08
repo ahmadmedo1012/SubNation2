@@ -1,0 +1,11 @@
+{
+  "name": "@workspace/api-spec",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "codegen": "orval --config ./orval.config.ts && node -e \"require('node:fs').writeFileSync('../api-zod/src/index.ts', 'export * from \\\"./generated/api\\\";\\n')\" && pnpm -w run typecheck:libs"
+  },
+  "devDependencies": {
+    "orval": "^8.5.2"
+  }
+}

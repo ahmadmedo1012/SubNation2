@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx ./src/dev.ts",
     "hello": "tsx ./src/hello.ts",
+    "start": "tsx ./src/start.ts",
     "seed": "tsx ./src/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
