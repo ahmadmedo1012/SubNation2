@@ -3,11 +3,11 @@ import { useAuth } from "@/lib/auth";
 import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
 
 const TABS = [
-  { href: "/",        icon: Home,       label: "الرئيسية" },
-  { href: "/wallet",  icon: Wallet,     label: "المحفظة" },
-  { href: "/orders",  icon: ShoppingBag,label: "طلباتي" },
-  { href: "/loyalty", icon: Star,       label: "الولاء" },
-  { href: "/profile", icon: User,       label: "حسابي" },
+  { href: "/",        icon: Home,        label: "الرئيسية" },
+  { href: "/wallet",  icon: Wallet,      label: "المحفظة" },
+  { href: "/orders",  icon: ShoppingBag, label: "طلباتي" },
+  { href: "/loyalty", icon: Star,        label: "الولاء" },
+  { href: "/profile", icon: User,        label: "حسابي" },
 ];
 
 export function MobileNav() {
@@ -18,46 +18,53 @@ export function MobileNav() {
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/96 backdrop-blur-2xl border-t border-border/40"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-50"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* Premium top border line */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border/80 to-transparent" />
+      {/* Blur + glass background */}
+      <div className="absolute inset-0 bg-card/92 backdrop-blur-3xl border-t border-white/[0.06]" />
 
-      <div className="flex h-[58px]">
+      {/* Gradient top rule */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+
+      <div className="relative flex h-[60px]">
         {TABS.map(tab => {
           const active = location === tab.href;
           return (
             <Link key={tab.href} href={tab.href} className="flex-1">
               <div
-                className="relative flex flex-col items-center justify-center h-full gap-0.5 group"
+                className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none"
                 style={{ WebkitTapHighlightColor: "transparent" }}
               >
-                {/* Active indicator bar */}
+                {/* Active pill background */}
                 {active && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-primary" />
+                  <div className="absolute inset-x-2 inset-y-[6px] rounded-2xl bg-primary/12 tab-slide-in" />
                 )}
 
-                {/* Icon container */}
-                <div className={`
-                  relative flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl
-                  transition-all duration-180
-                  ${active ? "bg-primary/10" : "group-active:bg-muted/40"}
-                `}
-                  style={{ WebkitTapHighlightColor: "transparent" }}>
-                  <tab.icon
-                    className={`transition-all duration-180 ${
-                      active
-                        ? "w-[21px] h-[21px] text-primary"
-                        : "w-[20px] h-[20px] text-muted-foreground group-active:text-foreground"
-                    }`}
-                  />
-                  <span className={`text-[9.5px] font-bold leading-none transition-colors duration-180 ${
-                    active ? "text-primary" : "text-muted-foreground"
-                  }`}>
-                    {tab.label}
-                  </span>
-                </div>
+                {/* Active top accent bar */}
+                {active && (
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[2.5px] rounded-full bg-primary tab-slide-in" />
+                )}
+
+                {/* Icon */}
+                <tab.icon
+                  strokeWidth={active ? 2.5 : 1.8}
+                  className={`
+                    relative z-10 transition-all duration-200 ease-out
+                    ${active
+                      ? "w-[22px] h-[22px] text-primary"
+                      : "w-[20px] h-[20px] text-muted-foreground/70"
+                    }
+                  `}
+                />
+
+                {/* Label */}
+                <span className={`
+                  relative z-10 text-[9.5px] leading-none font-semibold transition-all duration-200
+                  ${active ? "text-primary font-bold" : "text-muted-foreground/60"}
+                `}>
+                  {tab.label}
+                </span>
               </div>
             </Link>
           );
