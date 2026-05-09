@@ -1,5 +1,4 @@
-import { db } from "@workspace/db";
-import { auditLogsTable } from "@workspace/db/src/schema";
+import { auditLogsTable, db } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 interface AuditParams {
