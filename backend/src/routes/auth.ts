@@ -1,8 +1,13 @@
-import { Router } from "express";
-import { db, usersTable, referralEventsTable } from "@workspace/db";
+import { LoginBody, RegisterBody } from "@workspace/api-zod";
+import { db, referralEventsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { RegisterBody, LoginBody } from "@workspace/api-zod";
-import { hashPassword, generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
+import { Router } from "express";
+import {
+  generateReferralCode,
+  hashPassword,
+  normalizeLibyanPhone,
+  verifyPassword,
+} from "../lib/crypto";
 import { signUserToken, verifyUserToken } from "../lib/jwt";
 import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
 
@@ -29,34 +34,50 @@ router.post("/register", async (req, res) => {
 
   const normalizedPhone = normalizeLibyanPhone(phone);
   if (!normalizedPhone) {
-    return res.status(400).json({ error: "رقم الهاتف غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094" });
+    return res
+      .status(400)
+      .json({ error: "رقم الهاتف غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094" });
   }
 
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
+  const [existing] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.phone, normalizedPhone))
+    .limit(1);
   if (existing) {
     return res.status(409).json({ error: "رقم الهاتف مسجل مسبقاً" });
   }
 
   let referredById: number | undefined;
   if (referral_code) {
-    const [referrer] = await db.select().from(usersTable).where(eq(usersTable.referralCode, referral_code)).limit(1);
+    const [referrer] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.referralCode, referral_code))
+      .limit(1);
     if (referrer) referredById = referrer.id;
   }
 
-  const [user] = await db.insert(usersTable).values({
-    phone: normalizedPhone,
-    passwordHash: hashPassword(passwordTrimmed),
-    referralCode: generateReferralCode(),
-    referredBy: referredById,
-    walletBalance: referredById ? "5.00" : "0.00",
-  }).returning();
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      phone: normalizedPhone,
+      passwordHash: await hashPassword(passwordTrimmed),
+      referralCode: generateReferralCode(),
+      referredBy: referredById,
+      walletBalance: referredById ? "5.00" : "0.00",
+    })
+    .returning();
 
   if (referredById && referredById !== user.id) {
-    await db.insert(referralEventsTable).values({
-      referrerId: referredById,
-      refereeId: user.id,
-      status: "pending",
-    }).onConflictDoNothing();
+    await db
+      .insert(referralEventsTable)
+      .values({
+        referrerId: referredById,
+        refereeId: user.id,
+        status: "pending",
+      })
+      .onConflictDoNothing();
   }
 
   notifyNewUser(normalizedPhone, !!referredById);
@@ -73,9 +94,24 @@ router.post("/login", async (req, res) => {
   const { phone, password } = parse.data;
   const normalizedPhone = normalizeLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
-  if (!user || user.passwordHash !== hashPassword(password)) {
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.phone, normalizedPhone))
+    .limit(1);
+  if (!user) {
     return res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
+  }
+  const { valid, needsRehash } = await verifyPassword(password, user.passwordHash);
+  if (!valid) {
+    return res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
+  }
+  // Auto-migrate legacy SHA-256 hash to argon2id
+  if (needsRehash) {
+    await db
+      .update(usersTable)
+      .set({ passwordHash: await hashPassword(password) })
+      .where(eq(usersTable.id, user.id));
   }
 
   const token = signUserToken({ userId: user.id });
@@ -97,8 +133,11 @@ router.post("/forgot-password", async (req, res) => {
   }
 
   // Always respond success to prevent user enumeration
-  const [user] = await db.select({ id: usersTable.id })
-    .from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
+  const [user] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.phone, normalizedPhone))
+    .limit(1);
 
   if (user) {
     purgeExpiredOtps();
@@ -112,7 +151,9 @@ router.post("/forgot-password", async (req, res) => {
 
 router.post("/reset-password", async (req, res) => {
   const { phone, otp, newPassword } = req.body as {
-    phone?: string; otp?: string; newPassword?: string;
+    phone?: string;
+    otp?: string;
+    newPassword?: string;
   };
   if (!phone || !otp || !newPassword) {
     return res.status(400).json({ error: "جميع الحقول مطلوبة" });
@@ -130,8 +171,9 @@ router.post("/reset-password", async (req, res) => {
     return res.status(400).json({ error: "كود التحقق غير صحيح أو منتهي الصلاحية" });
   }
 
-  const [user] = await db.update(usersTable)
-    .set({ passwordHash: hashPassword(passwordTrimmed) })
+  const [user] = await db
+    .update(usersTable)
+    .set({ passwordHash: await hashPassword(passwordTrimmed) })
     .where(eq(usersTable.phone, normalizedPhone))
     .returning();
 
@@ -150,7 +192,10 @@ router.post("/change-password", async (req, res) => {
   const payload = verifyUserToken(authHeader.slice(7));
   if (!payload) return res.status(401).json({ error: "جلسة منتهية" });
 
-  const { current_password, new_password } = req.body as { current_password?: string; new_password?: string };
+  const { current_password, new_password } = req.body as {
+    current_password?: string;
+    new_password?: string;
+  };
   if (!current_password || !new_password) {
     return res.status(400).json({ error: "جميع الحقول مطلوبة" });
   }
@@ -159,15 +204,30 @@ router.post("/change-password", async (req, res) => {
     return res.status(400).json({ error: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" });
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, payload.userId))
+    .limit(1);
   if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
 
-  if (user.passwordHash !== hashPassword(current_password)) {
+  const { valid: currentValid, needsRehash: currentNeedsRehash } = await verifyPassword(
+    current_password,
+    user.passwordHash,
+  );
+  if (!currentValid) {
     return res.status(400).json({ error: "كلمة المرور الحالية غير صحيحة" });
   }
+  if (currentNeedsRehash) {
+    await db
+      .update(usersTable)
+      .set({ passwordHash: await hashPassword(current_password) })
+      .where(eq(usersTable.id, user.id));
+  }
 
-  await db.update(usersTable)
-    .set({ passwordHash: hashPassword(newTrimmed) })
+  await db
+    .update(usersTable)
+    .set({ passwordHash: await hashPassword(newTrimmed) })
     .where(eq(usersTable.id, payload.userId));
 
   return res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح" });
@@ -181,7 +241,11 @@ router.get("/me", async (req, res) => {
   const payload = verifyUserToken(authHeader.slice(7));
   if (!payload) return res.status(401).json({ error: "جلسة منتهية" });
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, payload.userId))
+    .limit(1);
   if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
   return res.json(formatUser(user));
 });
@@ -194,9 +258,11 @@ router.post("/google", async (req, res) => {
 
   let payload: { sub: string; email?: string; name?: string } | null = null;
   try {
-    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    const r = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`,
+    );
     if (!r.ok) throw new Error("invalid token");
-    const data = await r.json() as any;
+    const data = (await r.json()) as any;
 
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (clientId && data.aud !== clientId) {
@@ -211,8 +277,11 @@ router.post("/google", async (req, res) => {
     return res.status(401).json({ error: "فشل استرجاع بيانات Google" });
   }
 
-  const [existingByGoogle] = await db.select().from(usersTable)
-    .where(eq(usersTable.googleId, payload.sub)).limit(1);
+  const [existingByGoogle] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.googleId, payload.sub))
+    .limit(1);
 
   if (existingByGoogle) {
     const token = signUserToken({ userId: existingByGoogle.id });
@@ -220,13 +289,16 @@ router.post("/google", async (req, res) => {
   }
 
   const placeholderPhone = `g_${payload.sub}`;
-  const [newUser] = await db.insert(usersTable).values({
-    phone: placeholderPhone,
-    passwordHash: "",
-    googleId: payload.sub,
-    referralCode: generateReferralCode(),
-    walletBalance: "0.00",
-  }).returning();
+  const [newUser] = await db
+    .insert(usersTable)
+    .values({
+      phone: placeholderPhone,
+      passwordHash: "",
+      googleId: payload.sub,
+      referralCode: generateReferralCode(),
+      walletBalance: "0.00",
+    })
+    .returning();
 
   const token = signUserToken({ userId: newUser.id });
   return res.status(201).json({ user: formatUser(newUser), token, needs_phone: true });

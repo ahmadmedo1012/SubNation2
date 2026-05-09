@@ -1,13 +1,7 @@
 import { db } from "@workspace/db";
-import { createHash } from "crypto";
 import { sql } from "drizzle-orm";
+import { hashPassword } from "./lib/crypto";
 import { logger } from "./lib/logger";
-
-function hashPassword(password: string): string {
-  return createHash("sha256")
-    .update(password + "subnation_salt")
-    .digest("hex");
-}
 
 export async function runMigrations() {
   try {
@@ -284,7 +278,7 @@ export async function runMigrations() {
     if (Number(adminCount?.c ?? adminCount?.count ?? 0) === 0) {
       await db.execute(sql`
         INSERT INTO admin_users (username, password_hash, display_name, role)
-        VALUES ('admin', ${hashPassword("admin123")}, 'مدير النظام', 'superadmin')
+        VALUES ('admin', ${await hashPassword("admin123")}, 'مدير النظام', 'superadmin')
       `);
       logger.info("Default admin user created — username: admin / password: admin123");
     }
