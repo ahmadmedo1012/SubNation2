@@ -1,10 +1,12 @@
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
+import { sql } from "drizzle-orm";
 import { logger } from "./lib/logger";
 
 function hashPassword(password: string): string {
-  return createHash("sha256").update(password + "subnation_salt").digest("hex");
+  return createHash("sha256")
+    .update(password + "subnation_salt")
+    .digest("hex");
 }
 
 export async function runMigrations() {
@@ -23,6 +25,9 @@ export async function runMigrations() {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'coupon_type') THEN
           CREATE TYPE coupon_type AS ENUM ('percentage', 'fixed');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
+          CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
         END IF;
       END $$;
     `);
@@ -211,6 +216,28 @@ export async function runMigrations() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id          SERIAL PRIMARY KEY,
+        actor_id    INTEGER,
+        actor_type  audit_actor_type NOT NULL DEFAULT 'system',
+        action      VARCHAR(100) NOT NULL,
+        target_type VARCHAR(50),
+        target_id   INTEGER,
+        metadata    TEXT,
+        ip          VARCHAR(45),
+        user_agent  VARCHAR(500),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id, actor_type);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_target ON audit_logs(target_type, target_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS system_settings (
         key        VARCHAR(255) PRIMARY KEY,
         value      TEXT NOT NULL DEFAULT '{}',
@@ -234,11 +261,14 @@ export async function runMigrations() {
 
     // ── Seed: default auth provider configs (no-op if already set) ──────────
     const providerDefaults = [
-      ["auth.google",   JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
-      ["auth.github",   JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
+      ["auth.google", JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
+      ["auth.github", JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],
       ["auth.facebook", JSON.stringify({ enabled: false, app_id: "", app_secret: "" })],
       ["auth.telegram", JSON.stringify({ enabled: false, bot_username: "", bot_token: "" })],
-      ["auth.apple",    JSON.stringify({ enabled: false, client_id: "", team_id: "", key_id: "", private_key: "" })],
+      [
+        "auth.apple",
+        JSON.stringify({ enabled: false, client_id: "", team_id: "", key_id: "", private_key: "" }),
+      ],
     ];
     for (const [key, value] of providerDefaults) {
       await db.execute(sql`
@@ -266,7 +296,8 @@ export async function runMigrations() {
       const products = [
         {
           name: "Netflix Premium",
-          description: "استمتع بأفلام ومسلسلات عالمية بجودة 4K UHD على 4 شاشات في نفس الوقت. أفضل تجربة بث في العالم.",
+          description:
+            "استمتع بأفلام ومسلسلات عالمية بجودة 4K UHD على 4 شاشات في نفس الوقت. أفضل تجربة بث في العالم.",
           image_url: null,
           price: "14.99",
           category: "streaming",
@@ -274,7 +305,8 @@ export async function runMigrations() {
         },
         {
           name: "Spotify Premium",
-          description: "استمع إلى ملايين الأغاني والبودكاست بدون إعلانات وبجودة صوت عالية. مناسب للأجهزة المحمولة والحاسوب.",
+          description:
+            "استمع إلى ملايين الأغاني والبودكاست بدون إعلانات وبجودة صوت عالية. مناسب للأجهزة المحمولة والحاسوب.",
           image_url: null,
           price: "5.99",
           category: "music",
@@ -282,7 +314,8 @@ export async function runMigrations() {
         },
         {
           name: "Disney+ Standard",
-          description: "محتوى ديزني وماريل وبيكسار وناشيونال جيوغرافيك وحرب النجوم — كل شيء في مكان واحد.",
+          description:
+            "محتوى ديزني وماريل وبيكسار وناشيونال جيوغرافيك وحرب النجوم — كل شيء في مكان واحد.",
           image_url: null,
           price: "9.99",
           category: "streaming",
@@ -290,7 +323,8 @@ export async function runMigrations() {
         },
         {
           name: "YouTube Premium",
-          description: "شاهد يوتيوب بدون إعلانات، حمّل الفيديوهات للمشاهدة بدون إنترنت، واستمتع بـ YouTube Music مجاناً.",
+          description:
+            "شاهد يوتيوب بدون إعلانات، حمّل الفيديوهات للمشاهدة بدون إنترنت، واستمتع بـ YouTube Music مجاناً.",
           image_url: null,
           price: "6.99",
           category: "streaming",
@@ -298,7 +332,8 @@ export async function runMigrations() {
         },
         {
           name: "PlayStation Plus Essential",
-          description: "العب أونلاين مع أصدقائك واحصل على ألعاب شهرية مجانية وخصومات حصرية على متجر PlayStation.",
+          description:
+            "العب أونلاين مع أصدقائك واحصل على ألعاب شهرية مجانية وخصومات حصرية على متجر PlayStation.",
           image_url: null,
           price: "17.99",
           category: "gaming",
@@ -306,7 +341,8 @@ export async function runMigrations() {
         },
         {
           name: "Xbox Game Pass Ultimate",
-          description: "مكتبة ضخمة من الألعاب لأجهزة Xbox وPC، بالإضافة إلى EA Play وخدمة اللعب السحابي.",
+          description:
+            "مكتبة ضخمة من الألعاب لأجهزة Xbox وPC، بالإضافة إلى EA Play وخدمة اللعب السحابي.",
           image_url: null,
           price: "19.99",
           category: "gaming",
@@ -314,7 +350,8 @@ export async function runMigrations() {
         },
         {
           name: "Canva Pro",
-          description: "أداة التصميم الاحترافية — قوالب لا محدودة، إزالة الخلفيات، تصدير بجودة عالية، وتعاون مع الفريق.",
+          description:
+            "أداة التصميم الاحترافية — قوالب لا محدودة، إزالة الخلفيات، تصدير بجودة عالية، وتعاون مع الفريق.",
           image_url: null,
           price: "7.99",
           category: "productivity",
@@ -330,7 +367,8 @@ export async function runMigrations() {
         },
         {
           name: "NordVPN 1 شهر",
-          description: "حماية كاملة لخصوصيتك على الإنترنت. سرعة فائقة، 6000+ خادم حول العالم، بدون تسجيل بيانات.",
+          description:
+            "حماية كاملة لخصوصيتك على الإنترنت. سرعة فائقة، 6000+ خادم حول العالم، بدون تسجيل بيانات.",
           image_url: null,
           price: "8.99",
           category: "productivity",
@@ -346,7 +384,8 @@ export async function runMigrations() {
         },
         {
           name: "Adobe Creative Cloud",
-          description: "جميع تطبيقات Adobe — Photoshop وIllustrator وPremiere وAfter Effects وأكثر من 20 تطبيق احترافي.",
+          description:
+            "جميع تطبيقات Adobe — Photoshop وIllustrator وPremiere وAfter Effects وأكثر من 20 تطبيق احترافي.",
           image_url: null,
           price: "24.99",
           category: "productivity",
@@ -354,7 +393,8 @@ export async function runMigrations() {
         },
         {
           name: "Crunchyroll Premium",
-          description: "شاهد أحدث الأنمي فور بثّه في اليابان بدون إعلانات وبجودة 1080p. أكبر مكتبة أنمي في العالم.",
+          description:
+            "شاهد أحدث الأنمي فور بثّه في اليابان بدون إعلانات وبجودة 1080p. أكبر مكتبة أنمي في العالم.",
           image_url: null,
           price: "4.49",
           category: "streaming",
@@ -364,7 +404,9 @@ export async function runMigrations() {
 
       for (const p of products) {
         // Insert product only if name doesn't already exist
-        const existRes = await db.execute(sql`SELECT id FROM products WHERE name = ${p.name} LIMIT 1`);
+        const existRes = await db.execute(
+          sql`SELECT id FROM products WHERE name = ${p.name} LIMIT 1`,
+        );
         const existRow = (existRes as any).rows?.[0] ?? (existRes as any)[0];
         let productId: number;
 
@@ -381,7 +423,9 @@ export async function runMigrations() {
         }
 
         // Add inventory items if this product has fewer than 5 unsold units
-        const invRes = await db.execute(sql`SELECT COUNT(*) as c FROM inventory WHERE product_id = ${productId} AND is_sold = false`);
+        const invRes = await db.execute(
+          sql`SELECT COUNT(*) as c FROM inventory WHERE product_id = ${productId} AND is_sold = false`,
+        );
         const invRow = (invRes as any).rows?.[0] ?? (invRes as any)[0];
         const invCount = Number(invRow?.c ?? 0);
 
