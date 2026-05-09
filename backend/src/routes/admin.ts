@@ -26,6 +26,7 @@ import { hashPassword, verifyPassword } from "../lib/crypto";
 import { encrypt, safeDecrypt } from "../lib/encryption";
 import { intParam, queryString, rowsFromResult } from "../lib/http";
 import { signAdminToken } from "../lib/jwt";
+import { insertLedgerEntry } from "../lib/ledger";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { createNotification } from "../notify";
@@ -299,6 +300,19 @@ router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
 
   // Notifications outside transaction (non-critical, best-effort)
   if (user) {
+    await insertLedgerEntry({
+      userId: user.id,
+      type: "topup",
+      amount: String(topup.amount),
+      balanceBefore: String(user.walletBalance),
+      balanceAfter: String(
+        parseFloat(String(user.walletBalance)) + parseFloat(String(topup.amount)),
+      ),
+      referenceId: topup.id,
+      referenceType: "wallet_topup",
+      description: `Topup approved: ${parseFloat(String(topup.amount)).toFixed(2)} د.ل`,
+    });
+
     if (user.referredBy) {
       const [referrer] = await db
         .select()

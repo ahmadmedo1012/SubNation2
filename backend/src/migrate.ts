@@ -24,6 +24,9 @@ export async function runMigrations() {
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
           CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ledger_entry_type') THEN
+          CREATE TYPE ledger_entry_type AS ENUM ('topup', 'purchase', 'refund', 'adjustment', 'referral_credit');
+        END IF;
       END $$;
     `);
 
@@ -267,6 +270,27 @@ export async function runMigrations() {
 
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_login_attempts_identifier ON login_attempts(identifier);
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS wallet_ledger (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER NOT NULL,
+        type            ledger_entry_type NOT NULL,
+        amount          NUMERIC(10,2) NOT NULL,
+        balance_before  NUMERIC(10,2) NOT NULL,
+        balance_after   NUMERIC(10,2) NOT NULL,
+        reference_id    INTEGER,
+        reference_type  VARCHAR(50),
+        description     VARCHAR(500),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_wallet_ledger_user ON wallet_ledger(user_id);
+      CREATE INDEX IF NOT EXISTS idx_wallet_ledger_type ON wallet_ledger(type);
+      CREATE INDEX IF NOT EXISTS idx_wallet_ledger_created ON wallet_ledger(created_at DESC);
     `);
 
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────

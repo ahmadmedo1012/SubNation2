@@ -14,6 +14,7 @@ import { logAdminAlert } from "../jobs/alertLogger";
 import { generateOrderCode } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
 import { stringParam } from "../lib/http";
+import { insertLedgerEntry } from "../lib/ledger";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { isTelegramConfigured, notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
 
@@ -223,6 +224,17 @@ router.post("/", requireUser, async (req, res) => {
   if (!order) {
     return res.status(409).json({ error: "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى." });
   }
+
+  await insertLedgerEntry({
+    userId,
+    type: "purchase",
+    amount: String(finalPrice),
+    balanceBefore: String(currentBalance),
+    balanceAfter: String(newBalance),
+    referenceId: order.id,
+    referenceType: "order",
+    description: `Purchase: ${product.name}`,
+  });
 
   notifyNewOrder(user.phone, product.name, finalPrice);
 
