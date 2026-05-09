@@ -282,6 +282,41 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE;
     `);
 
+    // ── Foreign Key constraints (idempotent — uses IF NOT EXISTS via DO block) ──
+    const fkStatements = [
+      `ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE orders ADD CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT`,
+      `ALTER TABLE orders ADD CONSTRAINT fk_orders_inventory FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE SET NULL`,
+      `ALTER TABLE inventory ADD CONSTRAINT fk_inventory_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE`,
+      `ALTER TABLE wallet_topups ADD CONSTRAINT fk_topups_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE notifications ADD CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE support_tickets ADD CONSTRAINT fk_tickets_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE referral_events ADD CONSTRAINT fk_referral_referrer FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE referral_events ADD CONSTRAINT fk_referral_referee FOREIGN KEY (referee_id) REFERENCES users(id) ON DELETE CASCADE`,
+      `ALTER TABLE users ADD CONSTRAINT fk_users_referred_by FOREIGN KEY (referred_by) REFERENCES users(id) ON DELETE SET NULL`,
+    ];
+    for (const stmt of fkStatements) {
+      await db.execute(
+        sql`DO $$ BEGIN ${sql.raw(stmt)}; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      );
+    }
+
+    // ── Missing indexes for common query patterns ───────────────────────────
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+      CREATE INDEX IF NOT EXISTS idx_orders_product ON orders(product_id);
+      CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+      CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_inventory_product ON inventory(product_id);
+      CREATE INDEX IF NOT EXISTS idx_inventory_sold ON inventory(is_sold) WHERE is_sold = false;
+      CREATE INDEX IF NOT EXISTS idx_topups_user ON wallet_topups(user_id);
+      CREATE INDEX IF NOT EXISTS idx_topups_status ON wallet_topups(status);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+      CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id);
+      CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
+      CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
+    `);
+
     // ── Seed: default auth provider configs (no-op if already set) ──────────
     const providerDefaults = [
       ["auth.google", JSON.stringify({ enabled: false, client_id: "", client_secret: "" })],

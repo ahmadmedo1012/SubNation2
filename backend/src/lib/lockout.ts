@@ -5,8 +5,12 @@ import { sql } from "drizzle-orm";
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
-export async function checkLockout(identifier: string): Promise<{ locked: boolean; lockedUntil: Date | null }> {
-  const [record] = await db.select().from(loginAttemptsTable)
+export async function checkLockout(
+  identifier: string,
+): Promise<{ locked: boolean; lockedUntil: Date | null }> {
+  const [record] = await db
+    .select()
+    .from(loginAttemptsTable)
     .where(eq(loginAttemptsTable.identifier, identifier))
     .limit(1);
 
@@ -23,7 +27,9 @@ export async function checkLockout(identifier: string): Promise<{ locked: boolea
 }
 
 export async function recordFailedAttempt(identifier: string): Promise<void> {
-  const [record] = await db.select().from(loginAttemptsTable)
+  const [record] = await db
+    .select()
+    .from(loginAttemptsTable)
     .where(eq(loginAttemptsTable.identifier, identifier))
     .limit(1);
 
@@ -37,11 +43,11 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
   }
 
   const newCount = record.attemptCount + 1;
-  const lockedUntil = newCount >= MAX_ATTEMPTS
-    ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000)
-    : null;
+  const lockedUntil =
+    newCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
 
-  await db.update(loginAttemptsTable)
+  await db
+    .update(loginAttemptsTable)
     .set({
       attemptCount: sql`${loginAttemptsTable.attemptCount} + 1`,
       lockedUntil,
@@ -51,6 +57,5 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
 }
 
 export async function resetAttempts(identifier: string): Promise<void> {
-  await db.delete(loginAttemptsTable)
-    .where(eq(loginAttemptsTable.identifier, identifier));
+  await db.delete(loginAttemptsTable).where(eq(loginAttemptsTable.identifier, identifier));
 }
