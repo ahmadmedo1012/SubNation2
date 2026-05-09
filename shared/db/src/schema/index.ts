@@ -6,6 +6,7 @@ export * from "./flash_sales";
 export * from "./inventory";
 export * from "./notifications";
 export * from "./orders";
+export * from "./otps";
 export * from "./products";
 export * from "./referral_events";
 export * from "./support_tickets";

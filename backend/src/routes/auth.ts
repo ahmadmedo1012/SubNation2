@@ -1,6 +1,6 @@
 import { LoginBody, RegisterBody } from "@workspace/api-zod";
-import { db, referralEventsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, otpsTable, referralEventsTable, usersTable } from "@workspace/db";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { Router } from "express";
 import {
   generateReferralCode,
@@ -12,13 +12,6 @@ import { signUserToken, verifyUserToken } from "../lib/jwt";
 import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
 
 const router = Router();
-
-// ── In-memory OTP store (phone → {code, expires}) ─────────────────────────────
-const otpStore = new Map<string, { code: string; expires: number }>();
-function purgeExpiredOtps() {
-  const now = Date.now();
-  for (const [k, v] of otpStore) if (v.expires < now) otpStore.delete(k);
-}
 
 router.post("/register", async (req, res) => {
   const parse = RegisterBody.safeParse(req.body);
@@ -140,9 +133,13 @@ router.post("/forgot-password", async (req, res) => {
     .limit(1);
 
   if (user) {
-    purgeExpiredOtps();
     const code = Math.floor(100_000 + Math.random() * 900_000).toString();
-    otpStore.set(normalizedPhone, { code, expires: Date.now() + 30 * 60_000 });
+    const expiresAt = new Date(Date.now() + 30 * 60_000);
+    await db.insert(otpsTable).values({
+      phone: normalizedPhone,
+      code,
+      expiresAt,
+    });
     notifyPasswordResetRequest(normalizedPhone, code);
   }
 
@@ -165,9 +162,14 @@ router.post("/reset-password", async (req, res) => {
     return res.status(400).json({ error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" });
   }
 
-  purgeExpiredOtps();
-  const stored = otpStore.get(normalizedPhone);
-  if (!stored || stored.code !== otp.trim() || stored.expires < Date.now()) {
+  const now = new Date();
+  const [otpRecord] = await db
+    .select()
+    .from(otpsTable)
+    .where(and(eq(otpsTable.phone, normalizedPhone), gt(otpsTable.expiresAt, now)))
+    .orderBy(otpsTable.createdAt)
+    .limit(1);
+  if (!otpRecord || otpRecord.code !== otp.trim()) {
     return res.status(400).json({ error: "كود التحقق غير صحيح أو منتهي الصلاحية" });
   }
 
@@ -179,7 +181,11 @@ router.post("/reset-password", async (req, res) => {
 
   if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
 
-  otpStore.delete(normalizedPhone);
+  // Delete used OTP and any expired OTPs for this phone
+  await db
+    .delete(otpsTable)
+    .where(and(eq(otpsTable.phone, normalizedPhone), lt(otpsTable.expiresAt, now)));
+  await db.delete(otpsTable).where(eq(otpsTable.id, otpRecord.id));
   const token = signUserToken({ userId: user.id });
   return res.json({ success: true, token });
 });

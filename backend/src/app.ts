@@ -1,18 +1,20 @@
+import cors from "cors";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import express, { type Express, type Request, type Response, type NextFunction } from "express";
-import cors from "cors";
 import pinoHttp from "pino-http";
-import { rateLimit } from "express-rate-limit";
-import router from "./routes";
+import { startCouponWatcher } from "./jobs/couponWatcher";
+import { startOtpCleanup } from "./jobs/otpCleanup";
+import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./migrate";
-import { startCouponWatcher } from "./jobs/couponWatcher";
-import { startStockWatcher } from "./jobs/stockWatcher";
+import router from "./routes";
 
 void runMigrations();
 startCouponWatcher();
 startStockWatcher();
+startOtpCleanup();
 
 const app: Express = express();
 
@@ -32,7 +34,9 @@ app.set("trust proxy", 1);
 // ── CORS ─────────────────────────────────────────────────────────────────────
 // In production restrict to APP_ORIGINS; in dev allow all origins.
 const allowedOrigins = process.env.APP_ORIGINS
-  ? process.env.APP_ORIGINS.split(",").map(d => d.trim()).filter(Boolean)
+  ? process.env.APP_ORIGINS.split(",")
+      .map((d) => d.trim())
+      .filter(Boolean)
   : [];
 
 app.use(

@@ -239,6 +239,21 @@ export async function runMigrations() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS otps (
+        id          SERIAL PRIMARY KEY,
+        phone       VARCHAR(20) NOT NULL,
+        code        VARCHAR(10) NOT NULL,
+        expires_at  TIMESTAMPTZ NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_otps_phone ON otps(phone);
+      CREATE INDEX IF NOT EXISTS idx_otps_expires ON otps(expires_at);
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     await db.execute(sql`
       ALTER TABLE orders
