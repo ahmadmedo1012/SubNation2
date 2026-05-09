@@ -10,8 +10,11 @@
     "db:push": "pnpm --filter @workspace/db push",
     "db:seed": "pnpm --filter @workspace/scripts seed",
     "codegen": "pnpm --filter @workspace/api-spec codegen",
+    "lint": "eslint . --fix",
+    "format": "prettier --write .",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter @workspace/api-server --filter @workspace/subnation --filter @workspace/scripts --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter @workspace/api-server --filter @workspace/subnation --filter @workspace/scripts --if-present run typecheck",
+    "prepare": "husky"
   },
   "private": true,
   "packageManager": "pnpm@10.0.0",
@@ -20,7 +23,12 @@
     "pnpm": ">=10"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.3",
+    "prettier": "^3.8.1",
     "typescript": "~5.9.2",
-    "prettier": "^3.8.1"
+    "typescript-eslint": "^8.59.2"
   }
 }

@@ -1,17 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatDate } from "@/lib/utils";
-import { AdminLayout } from "./layout";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Tag, Plus, ToggleLeft, ToggleRight, Trash2,
-  RefreshCw, CheckCircle, Clock, XCircle, Percent,
-  Hash, Calendar, Infinity, AlertCircle, X,
-} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Hash,
+  Infinity as InfinityIcon,
+  Percent,
+  Plus,
+  RefreshCw,
+  Tag,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+  X,
+  XCircle,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 interface Coupon {
   id: number;
@@ -61,8 +72,13 @@ interface CreateForm {
 }
 
 const EMPTY_FORM: CreateForm = {
-  code: "", type: "percentage", value: "", min_order_amount: "",
-  max_uses: "", expires_at: "", description: "",
+  code: "",
+  type: "percentage",
+  value: "",
+  min_order_amount: "",
+  max_uses: "",
+  expires_at: "",
+  description: "",
 };
 
 export default function AdminCouponsPage() {
@@ -82,18 +98,26 @@ export default function AdminCouponsPage() {
     "Content-Type": "application/json",
   };
 
-  const fetchCoupons = useCallback(async (silent = false) => {
-    if (!adminToken) return;
-    if (!silent) setLoading(true);
-    try {
-      const r = await fetch("/api/coupons/admin", { headers });
-      if (r.ok) setCoupons(await r.json());
-    } catch {}
-    finally { if (!silent) setLoading(false); }
-  }, [adminToken]);
+  const fetchCoupons = useCallback(
+    async (silent = false) => {
+      if (!adminToken) return;
+      if (!silent) setLoading(true);
+      try {
+        const r = await fetch("/api/coupons/admin", { headers });
+        if (r.ok) setCoupons(await r.json());
+      } catch {
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [adminToken],
+  );
 
   useEffect(() => {
-    if (!adminToken) { navigate("/admin/login"); return; }
+    if (!adminToken) {
+      navigate("/admin/login");
+      return;
+    }
     fetchCoupons();
   }, [adminToken]);
 
@@ -120,7 +144,11 @@ export default function AdminCouponsPage() {
         expires_at: form.expires_at || null,
         description: form.description || null,
       };
-      const r = await fetch("/api/coupons/admin", { method: "POST", headers, body: JSON.stringify(body) });
+      const r = await fetch("/api/coupons/admin", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
       const result = await r.json();
       if (!r.ok) throw new Error(result.error);
       toast({ title: "تم إنشاء الكوبون", description: `رمز: ${result.code}` });
@@ -159,13 +187,12 @@ export default function AdminCouponsPage() {
     } catch {}
   };
 
-  const activeCount = coupons.filter(c => c.is_active).length;
-  const totalUsed  = coupons.reduce((a, c) => a + c.used_count, 0);
+  const activeCount = coupons.filter((c) => c.is_active).length;
+  const totalUsed = coupons.reduce((a, c) => a + c.used_count, 0);
 
   return (
     <AdminLayout onRefresh={() => fetchCoupons()}>
       <div className="space-y-5">
-
         {/* Header */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -204,14 +231,23 @@ export default function AdminCouponsPage() {
 
         {/* Create modal */}
         {showCreate && (
-          <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-center justify-center px-4" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
+          <div
+            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-center justify-center px-4"
+            onClick={(e) => e.target === e.currentTarget && setShowCreate(false)}
+          >
             <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md float-in">
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                 <h2 className="font-black text-sm flex items-center gap-2">
                   <Tag className="w-4 h-4 text-primary" /> إنشاء كوبون جديد
                 </h2>
-                <button onClick={() => { setShowCreate(false); setForm(EMPTY_FORM); }} className="p-1 rounded-lg hover:bg-muted transition-colors">
+                <button
+                  onClick={() => {
+                    setShowCreate(false);
+                    setForm(EMPTY_FORM);
+                  }}
+                  className="p-1 rounded-lg hover:bg-muted transition-colors"
+                >
                   <X className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
@@ -222,7 +258,7 @@ export default function AdminCouponsPage() {
                   <Label className="text-xs font-bold">رمز الكوبون</Label>
                   <Input
                     value={form.code}
-                    onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                    onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                     placeholder="SUMMER20"
                     className="font-mono uppercase"
                   />
@@ -233,17 +269,27 @@ export default function AdminCouponsPage() {
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold">نوع الخصم</Label>
                     <div className="flex gap-1.5">
-                      {(["percentage", "fixed"] as const).map(t => (
+                      {(["percentage", "fixed"] as const).map((t) => (
                         <button
                           key={t}
-                          onClick={() => setForm(f => ({ ...f, type: t }))}
+                          onClick={() => setForm((f) => ({ ...f, type: t }))}
                           className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold border transition-all press-spring ${
                             form.type === t
                               ? "bg-primary text-white border-primary"
                               : "bg-card border-border text-muted-foreground hover:border-border/80"
                           }`}
                         >
-                          {t === "percentage" ? <><Percent className="w-3 h-3 inline ml-1" />نسبة</> : <><Hash className="w-3 h-3 inline ml-1" />مبلغ</>}
+                          {t === "percentage" ? (
+                            <>
+                              <Percent className="w-3 h-3 inline ml-1" />
+                              نسبة
+                            </>
+                          ) : (
+                            <>
+                              <Hash className="w-3 h-3 inline ml-1" />
+                              مبلغ
+                            </>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -255,7 +301,7 @@ export default function AdminCouponsPage() {
                     <Input
                       type="number"
                       value={form.value}
-                      onChange={e => setForm(f => ({ ...f, value: e.target.value }))}
+                      onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
                       placeholder={form.type === "percentage" ? "20" : "5.00"}
                       min="0.01"
                       max={form.type === "percentage" ? "100" : undefined}
@@ -270,7 +316,7 @@ export default function AdminCouponsPage() {
                     <Input
                       type="number"
                       value={form.min_order_amount}
-                      onChange={e => setForm(f => ({ ...f, min_order_amount: e.target.value }))}
+                      onChange={(e) => setForm((f) => ({ ...f, min_order_amount: e.target.value }))}
                       placeholder="0.00"
                     />
                   </div>
@@ -279,7 +325,7 @@ export default function AdminCouponsPage() {
                     <Input
                       type="number"
                       value={form.max_uses}
-                      onChange={e => setForm(f => ({ ...f, max_uses: e.target.value }))}
+                      onChange={(e) => setForm((f) => ({ ...f, max_uses: e.target.value }))}
                       placeholder="بلا حد"
                     />
                   </div>
@@ -291,7 +337,7 @@ export default function AdminCouponsPage() {
                   <Input
                     type="datetime-local"
                     value={form.expires_at}
-                    onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
                   />
                 </div>
 
@@ -299,7 +345,7 @@ export default function AdminCouponsPage() {
                   <Label className="text-xs font-bold">وصف (اختياري)</Label>
                   <Input
                     value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                     placeholder="مثال: خصم الصيف على الاشتراكات"
                   />
                 </div>
@@ -311,10 +357,21 @@ export default function AdminCouponsPage() {
                     disabled={creating}
                     className="flex-1 bg-primary hover:bg-primary/90 press-spring gap-1.5"
                   >
-                    {creating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    {creating ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
                     {creating ? "جارٍ الإنشاء..." : "إنشاء الكوبون"}
                   </Button>
-                  <Button variant="outline" onClick={() => { setShowCreate(false); setForm(EMPTY_FORM); }} className="flex-1">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreate(false);
+                      setForm(EMPTY_FORM);
+                    }}
+                    className="flex-1"
+                  >
                     إلغاء
                   </Button>
                 </div>
@@ -332,7 +389,10 @@ export default function AdminCouponsPage() {
               <Tag className="w-6 h-6 opacity-20" />
             </div>
             <p className="font-bold text-foreground/50 text-sm mb-1">لا توجد كوبونات بعد</p>
-            <button onClick={() => setShowCreate(true)} className="text-xs text-primary hover:underline press-spring">
+            <button
+              onClick={() => setShowCreate(true)}
+              className="text-xs text-primary hover:underline press-spring"
+            >
               + إنشاء أول كوبون
             </button>
           </div>
@@ -361,18 +421,26 @@ export default function AdminCouponsPage() {
                   >
                     {/* Code + description */}
                     <div>
-                      <div className="font-mono font-black text-sm tracking-wider text-foreground">{coupon.code}</div>
+                      <div className="font-mono font-black text-sm tracking-wider text-foreground">
+                        {coupon.code}
+                      </div>
                       {coupon.description && (
-                        <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">{coupon.description}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
+                          {coupon.description}
+                        </div>
                       )}
                     </div>
 
                     {/* Value */}
                     <div className="flex items-center gap-1 font-black text-primary text-sm">
-                      {coupon.type === "percentage"
-                        ? <><Percent className="w-3 h-3" />{coupon.value}%</>
-                        : <>{coupon.value} د.ل</>
-                      }
+                      {coupon.type === "percentage" ? (
+                        <>
+                          <Percent className="w-3 h-3" />
+                          {coupon.value}%
+                        </>
+                      ) : (
+                        <>{coupon.value} د.ل</>
+                      )}
                     </div>
 
                     {/* Min order */}
@@ -387,7 +455,7 @@ export default function AdminCouponsPage() {
                         <span className="text-muted-foreground">/{coupon.max_uses}</span>
                       )}
                       {coupon.max_uses === null && (
-                        <Infinity className="w-3 h-3 text-muted-foreground inline mr-1" />
+                        <InfinityIcon className="w-3 h-3 text-muted-foreground inline mr-1" />
                       )}
                     </div>
 
@@ -399,7 +467,7 @@ export default function AdminCouponsPage() {
                         </span>
                       ) : (
                         <span className="flex items-center gap-1">
-                          <Infinity className="w-3 h-3" /> بلا حد
+                          <InfinityIcon className="w-3 h-3" /> بلا حد
                         </span>
                       )}
                     </div>
@@ -433,12 +501,13 @@ export default function AdminCouponsPage() {
                         title={coupon.is_active ? "تعطيل" : "تفعيل"}
                         className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                       >
-                        {toggling === coupon.id
-                          ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          : coupon.is_active
-                            ? <ToggleRight className="w-4 h-4 text-emerald-400" />
-                            : <ToggleLeft className="w-4 h-4" />
-                        }
+                        {toggling === coupon.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : coupon.is_active ? (
+                          <ToggleRight className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <ToggleLeft className="w-4 h-4" />
+                        )}
                       </button>
                       <button
                         onClick={() => handleDelete(coupon.id)}
