@@ -9,6 +9,7 @@ import {
   verifyPassword,
 } from "../lib/crypto";
 import { signUserToken, verifyUserToken } from "../lib/jwt";
+import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
 import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
 
 const router = Router();
@@ -87,16 +88,26 @@ router.post("/login", async (req, res) => {
   const { phone, password } = parse.data;
   const normalizedPhone = normalizeLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
 
+  const { locked, lockedUntil } = await checkLockout(normalizedPhone);
+  if (locked) {
+    const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    return res
+      .status(429)
+      .json({ error: `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.` });
+  }
+
   const [user] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.phone, normalizedPhone))
     .limit(1);
   if (!user) {
+    await recordFailedAttempt(normalizedPhone);
     return res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
   }
   const { valid, needsRehash } = await verifyPassword(password, user.passwordHash);
   if (!valid) {
+    await recordFailedAttempt(normalizedPhone);
     return res.status(401).json({ error: "رقم الهاتف أو كلمة المرور غير صحيحة" });
   }
   // Auto-migrate legacy SHA-256 hash to argon2id
@@ -106,6 +117,7 @@ router.post("/login", async (req, res) => {
       .set({ passwordHash: await hashPassword(password) })
       .where(eq(usersTable.id, user.id));
   }
+  await resetAttempts(normalizedPhone);
 
   const token = signUserToken({ userId: user.id });
   return res.json({ user: formatUser(user), token });

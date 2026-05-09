@@ -4,6 +4,7 @@ export * from "./audit_logs";
 export * from "./coupons";
 export * from "./flash_sales";
 export * from "./inventory";
+export * from "./login_attempts";
 export * from "./notifications";
 export * from "./orders";
 export * from "./otps";

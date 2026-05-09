@@ -25,6 +25,7 @@ import {
 import { hashPassword, verifyPassword } from "../lib/crypto";
 import { intParam, queryString, rowsFromResult } from "../lib/http";
 import { signAdminToken } from "../lib/jwt";
+import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { createNotification } from "../notify";
 import { isTelegramConfigured, notifyTopupApproved, notifyTopupRejected } from "../telegram";
@@ -36,16 +37,27 @@ router.post("/login", async (req, res) => {
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   const { username, password } = parse.data;
 
+  const lockoutKey = `admin:${username}`;
+  const { locked, lockedUntil } = await checkLockout(lockoutKey);
+  if (locked) {
+    const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    return res
+      .status(429)
+      .json({ error: `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.` });
+  }
+
   const [admin] = await db
     .select()
     .from(adminUsersTable)
     .where(eq(adminUsersTable.username, username))
     .limit(1);
   if (!admin) {
+    await recordFailedAttempt(lockoutKey);
     return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
   }
   const { valid, needsRehash } = await verifyPassword(password, admin.passwordHash);
   if (!valid) {
+    await recordFailedAttempt(lockoutKey);
     return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
   }
   if (needsRehash) {
@@ -54,6 +66,7 @@ router.post("/login", async (req, res) => {
       .set({ passwordHash: await hashPassword(password) })
       .where(eq(adminUsersTable.id, admin.id));
   }
+  await resetAttempts(lockoutKey);
 
   const token = signAdminToken({ adminId: admin.id });
   return res.json({ token, display_name: admin.displayName });

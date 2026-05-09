@@ -254,6 +254,20 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_otps_expires ON otps(expires_at);
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id            SERIAL PRIMARY KEY,
+        identifier    VARCHAR(100) NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        locked_until  TIMESTAMPTZ,
+        last_attempt  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_login_attempts_identifier ON login_attempts(identifier);
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     await db.execute(sql`
       ALTER TABLE orders
