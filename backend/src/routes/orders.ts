@@ -1,16 +1,28 @@
-import { Router } from "express";
-import { db, ordersTable, productsTable, inventoryTable, usersTable, flashSalesTable, couponsTable } from "@workspace/db";
-import { eq, and, desc, gt, sql } from "drizzle-orm";
-import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { CreateOrderBody } from "@workspace/api-zod";
+import {
+  couponsTable,
+  db,
+  flashSalesTable,
+  inventoryTable,
+  ordersTable,
+  productsTable,
+  usersTable,
+} from "@workspace/db";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { Router } from "express";
+import { logAdminAlert } from "../jobs/alertLogger";
 import { generateOrderCode } from "../lib/crypto";
 import { stringParam } from "../lib/http";
-import { notifyNewOrder, notifyCouponMaxedOut, isTelegramConfigured } from "../telegram";
-import { logAdminAlert } from "../jobs/alertLogger";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { isTelegramConfigured, notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
 
 const router = Router();
 
-function formatOrder(order: typeof ordersTable.$inferSelect, productName: string, productImageUrl: string | null | undefined) {
+function formatOrder(
+  order: typeof ordersTable.$inferSelect,
+  productName: string,
+  productImageUrl: string | null | undefined,
+) {
   return {
     id: order.id,
     order_code: order.orderCode,
@@ -33,16 +45,18 @@ function formatOrder(order: typeof ordersTable.$inferSelect, productName: string
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
-  const orders = await db.select({
-    order: ordersTable,
-    productName: productsTable.name,
-    productImageUrl: productsTable.imageUrl,
-  }).from(ordersTable)
+  const orders = await db
+    .select({
+      order: ordersTable,
+      productName: productsTable.name,
+      productImageUrl: productsTable.imageUrl,
+    })
+    .from(ordersTable)
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(eq(ordersTable.userId, userId))
     .orderBy(desc(ordersTable.createdAt));
 
-  return res.json(orders.map(r => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
+  return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
 
 router.post("/", requireUser, async (req, res) => {
@@ -51,16 +65,30 @@ router.post("/", requireUser, async (req, res) => {
   const parse = CreateOrderBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   const { product_id } = parse.data;
-  const couponCode: string | undefined = typeof req.body.coupon_code === "string"
-    ? req.body.coupon_code.trim().toUpperCase() : undefined;
+  const couponCode: string | undefined =
+    typeof req.body.coupon_code === "string"
+      ? req.body.coupon_code.trim().toUpperCase()
+      : undefined;
 
-  const [product] = await db.select().from(productsTable)
-    .where(and(eq(productsTable.id, product_id), eq(productsTable.isActive, true), eq(productsTable.isArchived, false))).limit(1);
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.id, product_id),
+        eq(productsTable.isActive, true),
+        eq(productsTable.isArchived, false),
+      ),
+    )
+    .limit(1);
   if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
 
   const now = new Date();
-  const [flashSale] = await db.select().from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now))).limit(1);
+  const [flashSale] = await db
+    .select()
+    .from(flashSalesTable)
+    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
+    .limit(1);
 
   let basePrice = parseFloat(String(product.price));
   if (flashSale) {
@@ -72,8 +100,11 @@ router.post("/", requireUser, async (req, res) => {
   let discountAmount = 0;
   let appliedCoupon: typeof couponsTable.$inferSelect | null = null;
   if (couponCode) {
-    const [coupon] = await db.select().from(couponsTable)
-      .where(eq(couponsTable.code, couponCode)).limit(1);
+    const [coupon] = await db
+      .select()
+      .from(couponsTable)
+      .where(eq(couponsTable.code, couponCode))
+      .limit(1);
     if (!coupon || !coupon.isActive) {
       return res.status(400).json({ error: "كوبون غير صالح أو منتهي الصلاحية" });
     }
@@ -85,10 +116,12 @@ router.post("/", requireUser, async (req, res) => {
     }
     const minOrder = parseFloat(String(coupon.minOrderAmount));
     if (basePrice < minOrder) {
-      return res.status(400).json({ error: `هذا الكوبون يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل` });
+      return res
+        .status(400)
+        .json({ error: `هذا الكوبون يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل` });
     }
     if (coupon.type === "percentage") {
-      discountAmount = +(basePrice * parseFloat(String(coupon.value)) / 100).toFixed(2);
+      discountAmount = +((basePrice * parseFloat(String(coupon.value))) / 100).toFixed(2);
     } else {
       discountAmount = +Math.min(parseFloat(String(coupon.value)), basePrice).toFixed(2);
     }
@@ -105,52 +138,90 @@ router.post("/", requireUser, async (req, res) => {
     return res.status(400).json({ error: "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً." });
   }
 
-  const [inventoryItem] = await db.select().from(inventoryTable)
-    .where(and(eq(inventoryTable.productId, product_id), eq(inventoryTable.isSold, false))).limit(1);
-  if (!inventoryItem) return res.status(404).json({ error: "المنتج غير متوفر حالياً. حاول لاحقاً." });
+  const [inventoryItem] = await db
+    .select()
+    .from(inventoryTable)
+    .where(and(eq(inventoryTable.productId, product_id), eq(inventoryTable.isSold, false)))
+    .limit(1);
+  if (!inventoryItem)
+    return res.status(404).json({ error: "المنتج غير متوفر حالياً. حاول لاحقاً." });
 
-  await db.update(inventoryTable).set({ isSold: true, soldAt: now }).where(eq(inventoryTable.id, inventoryItem.id));
-
+  // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
-  await db.update(usersTable).set({
-    walletBalance: String(newBalance),
-    lifetimeSpend: String(+(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2)),
-    loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
-  }).where(eq(usersTable.id, userId));
+  const order = await db
+    .transaction(async (tx) => {
+      // Re-verify inventory inside transaction to prevent race conditions
+      const [inv] = await tx
+        .select()
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.id, inventoryItem.id), eq(inventoryTable.isSold, false)))
+        .limit(1);
+      if (!inv) throw new Error("INVENTORY_CLAIMED");
 
-  if (appliedCoupon) {
-    const newUsedCount = appliedCoupon.usedCount + 1;
-    await db.update(couponsTable)
-      .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
-      .where(eq(couponsTable.id, appliedCoupon.id));
-    if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
-      if (isTelegramConfigured()) notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
-      logAdminAlert(
-        "coupon_maxed",
-        `كوبون استُنفد: ${appliedCoupon.code}`,
-        `وصل الكوبون إلى الحد الأقصى من الاستخدام (${appliedCoupon.maxUses} مرة) وأُوقف تلقائياً`,
-      );
-    }
+      await tx
+        .update(inventoryTable)
+        .set({ isSold: true, soldAt: now })
+        .where(eq(inventoryTable.id, inventoryItem.id));
+
+      await tx
+        .update(usersTable)
+        .set({
+          walletBalance: String(newBalance),
+          lifetimeSpend: String(+(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2)),
+          loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
+        })
+        .where(eq(usersTable.id, userId));
+
+      if (appliedCoupon) {
+        const newUsedCount = appliedCoupon.usedCount + 1;
+        await tx
+          .update(couponsTable)
+          .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
+          .where(eq(couponsTable.id, appliedCoupon.id));
+        if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
+          if (isTelegramConfigured())
+            notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
+          logAdminAlert(
+            "coupon_maxed",
+            `كوبون استُنفد: ${appliedCoupon.code}`,
+            `وصل الكوبون إلى الحد الأقصى من الاستخدام (${appliedCoupon.maxUses} مرة) وأُوقف تلقائياً`,
+          );
+        }
+      }
+
+      const [o] = await tx
+        .insert(ordersTable)
+        .values({
+          orderCode: generateOrderCode(),
+          userId,
+          productId: product_id,
+          inventoryId: inventoryItem.id,
+          amount: String(finalPrice),
+          walletBalanceBefore: String(currentBalance),
+          walletBalanceAfter: String(newBalance),
+          status: "completed",
+          deliveredEmail: inventoryItem.accountEmail,
+          deliveredPassword: inventoryItem.accountPassword,
+          deliveredExtraDetails: inventoryItem.extraDetails ?? null,
+          deliveredUsageTerms: product.usageTerms ?? null,
+          deliveredAt: now,
+          couponCode: appliedCoupon?.code ?? null,
+          discountAmount: String(discountAmount),
+        })
+        .returning();
+
+      return o;
+    })
+    .catch((err) => {
+      if (err.message === "INVENTORY_CLAIMED") {
+        return null;
+      }
+      throw err;
+    });
+
+  if (!order) {
+    return res.status(409).json({ error: "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى." });
   }
-
-  // Use ORM insert instead of raw SQL
-  const [order] = await db.insert(ordersTable).values({
-    orderCode: generateOrderCode(),
-    userId,
-    productId: product_id,
-    inventoryId: inventoryItem.id,
-    amount: String(finalPrice),
-    walletBalanceBefore: String(currentBalance),
-    walletBalanceAfter: String(newBalance),
-    status: "completed",
-    deliveredEmail: inventoryItem.accountEmail,
-    deliveredPassword: inventoryItem.accountPassword,
-    deliveredExtraDetails: inventoryItem.extraDetails ?? null,
-    deliveredUsageTerms: product.usageTerms ?? null,
-    deliveredAt: now,
-    couponCode: appliedCoupon?.code ?? null,
-    discountAmount: String(discountAmount),
-  }).returning();
 
   notifyNewOrder(user.phone, product.name, finalPrice);
 
@@ -161,13 +232,16 @@ router.get("/:orderCode", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const orderCode = stringParam(req, "orderCode");
 
-  const [result] = await db.select({
-    order: ordersTable,
-    productName: productsTable.name,
-    productImageUrl: productsTable.imageUrl,
-  }).from(ordersTable)
+  const [result] = await db
+    .select({
+      order: ordersTable,
+      productName: productsTable.name,
+      productImageUrl: productsTable.imageUrl,
+    })
+    .from(ordersTable)
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
-    .where(and(eq(ordersTable.orderCode, orderCode), eq(ordersTable.userId, userId))).limit(1);
+    .where(and(eq(ordersTable.orderCode, orderCode), eq(ordersTable.userId, userId)))
+    .limit(1);
 
   if (!result) return res.status(404).json({ error: "الطلب غير موجود" });
   return res.json(formatOrder(result.order, result.productName ?? "", result.productImageUrl));

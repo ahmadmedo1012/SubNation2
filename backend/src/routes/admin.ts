@@ -207,69 +207,100 @@ router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "الطلب تمت معالجته مسبقاً" });
 
   const adminNote = req.body?.admin_note ?? null;
-  await db
-    .update(walletTopupsTable)
-    .set({ status: "approved", adminNote, reviewedAt: new Date() })
-    .where(eq(walletTopupsTable.id, id));
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, topup.userId)).limit(1);
-  if (user) {
-    const newBalance = +(
-      parseFloat(String(user.walletBalance)) + parseFloat(String(topup.amount))
-    ).toFixed(2);
-    const newLifetime = +(
-      parseFloat(String(user.lifetimeSpend)) + parseFloat(String(topup.amount))
-    ).toFixed(2);
 
-    let newTier = user.loyaltyTier;
-    if (newLifetime >= 5000) newTier = "platinum";
-    else if (newLifetime >= 2000) newTier = "gold";
-    else if (newLifetime >= 500) newTier = "silver";
-    else newTier = "bronze";
-
-    await db
-      .update(usersTable)
-      .set({
-        walletBalance: String(newBalance),
-        lifetimeSpend: String(newLifetime),
-        loyaltyTier: newTier,
-      })
-      .where(eq(usersTable.id, user.id));
-
-    if (user.referredBy) {
-      const [existingCredit] = await db
-        .select()
-        .from(referralEventsTable)
-        .where(eq(referralEventsTable.refereeId, user.id))
+  await db
+    .transaction(async (tx) => {
+      // Re-check topup status inside tx to prevent double-approve race
+      const [current] = await tx
+        .select({ status: walletTopupsTable.status })
+        .from(walletTopupsTable)
+        .where(eq(walletTopupsTable.id, id))
         .limit(1);
+      if (current?.status !== "pending") throw new Error("ALREADY_PROCESSED");
 
-      if (existingCredit && existingCredit.status === "pending") {
-        await db
-          .update(referralEventsTable)
-          .set({ status: "credited", creditedAt: new Date() })
-          .where(eq(referralEventsTable.refereeId, user.id));
+      await tx
+        .update(walletTopupsTable)
+        .set({ status: "approved", adminNote, reviewedAt: new Date() })
+        .where(eq(walletTopupsTable.id, id));
 
-        const [referrer] = await db
-          .select()
-          .from(usersTable)
-          .where(eq(usersTable.id, user.referredBy))
-          .limit(1);
-        if (referrer) {
-          await db
-            .update(usersTable)
-            .set({ loyaltyPoints: referrer.loyaltyPoints + 50 })
-            .where(eq(usersTable.id, referrer.id));
-          await createNotification(
-            referrer.id,
-            "loyalty",
-            "حصلت على 50 نقطة من إحالة!",
-            "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن",
-            "/loyalty",
-          );
+      if (user) {
+        const newBalance = +(
+          parseFloat(String(user.walletBalance)) + parseFloat(String(topup.amount))
+        ).toFixed(2);
+        const newLifetime = +(
+          parseFloat(String(user.lifetimeSpend)) + parseFloat(String(topup.amount))
+        ).toFixed(2);
+
+        let newTier = user.loyaltyTier;
+        if (newLifetime >= 5000) newTier = "platinum";
+        else if (newLifetime >= 2000) newTier = "gold";
+        else if (newLifetime >= 500) newTier = "silver";
+        else newTier = "bronze";
+
+        await tx
+          .update(usersTable)
+          .set({
+            walletBalance: String(newBalance),
+            lifetimeSpend: String(newLifetime),
+            loyaltyTier: newTier,
+          })
+          .where(eq(usersTable.id, user.id));
+
+        if (user.referredBy) {
+          const [existingCredit] = await tx
+            .select()
+            .from(referralEventsTable)
+            .where(eq(referralEventsTable.refereeId, user.id))
+            .limit(1);
+
+          if (existingCredit && existingCredit.status === "pending") {
+            await tx
+              .update(referralEventsTable)
+              .set({ status: "credited", creditedAt: new Date() })
+              .where(eq(referralEventsTable.refereeId, user.id));
+
+            const [referrer] = await tx
+              .select()
+              .from(usersTable)
+              .where(eq(usersTable.id, user.referredBy))
+              .limit(1);
+            if (referrer) {
+              await tx
+                .update(usersTable)
+                .set({ loyaltyPoints: referrer.loyaltyPoints + 50 })
+                .where(eq(usersTable.id, referrer.id));
+            }
+          }
         }
       }
-    }
+    })
+    .catch((err) => {
+      if (err.message === "ALREADY_PROCESSED") {
+        return res.status(409).json({ error: "الطلب تمت معالجته مسبقاً" });
+      }
+      throw err;
+    });
 
+  // Notifications outside transaction (non-critical, best-effort)
+  if (user) {
+    if (user.referredBy) {
+      const [referrer] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, user.referredBy))
+        .limit(1);
+      if (referrer) {
+        await createNotification(
+          referrer.id,
+          "loyalty",
+          "حصلت على 50 نقطة من إحالة!",
+          "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن",
+          "/loyalty",
+        );
+      }
+    }
     notifyTopupApproved(user.phone, parseFloat(String(topup.amount)));
     await createNotification(
       user.id,
@@ -589,13 +620,11 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
     )
     .returning();
 
-  return res
-    .status(201)
-    .json({
-      success: true,
-      added: inserted.length,
-      message: `تم إضافة ${inserted.length} عنصر إلى المخزون`,
-    });
+  return res.status(201).json({
+    success: true,
+    added: inserted.length,
+    message: `تم إضافة ${inserted.length} عنصر إلى المخزون`,
+  });
 });
 
 router.get("/settings", requireAdmin, async (_req, res) => {
@@ -769,14 +798,12 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     `/support`,
   );
 
-  return res
-    .status(201)
-    .json({
-      id: reply.id,
-      author_type: reply.authorType,
-      message: reply.message,
-      created_at: reply.createdAt.toISOString(),
-    });
+  return res.status(201).json({
+    id: reply.id,
+    author_type: reply.authorType,
+    message: reply.message,
+    created_at: reply.createdAt.toISOString(),
+  });
 });
 
 router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
