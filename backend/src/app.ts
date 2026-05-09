@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
+import helmet from "helmet";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
@@ -28,10 +29,7 @@ function resolveFrontendDist(): string | null {
   return candidates.find((candidate) => existsSync(path.join(candidate, "index.html"))) ?? null;
 }
 
-// Trust the first reverse proxy hop when deployed behind one.
-app.set("trust proxy", 1);
-
-// ── CORS ─────────────────────────────────────────────────────────────────────
+// ── CORS / Allowed Origins ────────────────────────────────────────────────────
 // In production restrict to APP_ORIGINS; in dev allow all origins.
 const allowedOrigins = process.env.APP_ORIGINS
   ? process.env.APP_ORIGINS.split(",")
@@ -39,6 +37,34 @@ const allowedOrigins = process.env.APP_ORIGINS
       .filter(Boolean)
   : [];
 
+// ── Security Headers ──────────────────────────────────────────────────────────
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"], // Tailwind needs inline styles
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: [
+          "'self'",
+          ...(allowedOrigins.length ? allowedOrigins : ["http://localhost:*"]),
+        ],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: null,
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Allow external images
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  }),
+);
+
+// Trust the first reverse proxy hop when deployed behind one.
+app.set("trust proxy", 1);
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
 app.use(
   cors({
     origin: (origin, cb) => {
