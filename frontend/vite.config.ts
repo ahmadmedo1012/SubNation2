@@ -3,19 +3,24 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig } from "vite";
 
+
 const rawPort = process.env.PORT ?? process.env.FRONTEND_PORT ?? "5173";
 
+
 const port = Number(rawPort);
+
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH ?? "/";
+
+const basePath = process.env.BASE_PATH ?? "/SubNation2/";
 const apiProxyTarget =
   process.env.API_PROXY_TARGET ??
   process.env.VITE_API_PROXY_TARGET ??
   "http://127.0.0.1:8080";
+
 
 export default defineConfig({
   base: basePath,
@@ -73,15 +78,3 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
         secure: false,
-      },
-    },
-    fs: {
-      strict: true,
-    },
-  },
-  preview: {
-    port,
-    host: "0.0.0.0",
-    allowedHosts: true,
-  },
-});
