@@ -23,6 +23,7 @@ import {
   markAllAlertsRead,
 } from "../jobs/alertLogger";
 import { hashPassword, verifyPassword } from "../lib/crypto";
+import { encrypt, safeDecrypt } from "../lib/encryption";
 import { intParam, queryString, rowsFromResult } from "../lib/http";
 import { signAdminToken } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
@@ -148,7 +149,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
       amount: parseFloat(String(r.order.amount)),
       status: r.order.status,
       delivered_email: r.order.deliveredEmail ?? null,
-      delivered_password: r.order.deliveredPassword ?? null,
+      delivered_password: safeDecrypt(r.order.deliveredPassword),
       delivered_extra_details: r.order.deliveredExtraDetails ?? null,
       coupon_code: r.order.couponCode ?? null,
       discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
@@ -627,7 +628,7 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       items.map((item) => ({
         productId,
         accountEmail: item.accountEmail,
-        accountPassword: item.accountPassword,
+        accountPassword: encrypt(item.accountPassword),
         extraDetails: item.extraDetails ?? null,
       })),
     )

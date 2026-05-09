@@ -12,6 +12,7 @@ import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { Router } from "express";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { generateOrderCode } from "../lib/crypto";
+import { safeDecrypt } from "../lib/encryption";
 import { stringParam } from "../lib/http";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { isTelegramConfigured, notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
@@ -34,7 +35,7 @@ function formatOrder(
     discount_amount: order.discountAmount ? parseFloat(String(order.discountAmount)) : 0,
     status: order.status,
     delivered_email: order.deliveredEmail ?? null,
-    delivered_password: order.deliveredPassword ?? null,
+    delivered_password: safeDecrypt(order.deliveredPassword),
     delivered_extra_details: order.deliveredExtraDetails ?? null,
     delivered_usage_terms: order.deliveredUsageTerms ?? null,
     delivered_at: order.deliveredAt?.toISOString() ?? null,
@@ -201,7 +202,7 @@ router.post("/", requireUser, async (req, res) => {
           walletBalanceAfter: String(newBalance),
           status: "completed",
           deliveredEmail: inventoryItem.accountEmail,
-          deliveredPassword: inventoryItem.accountPassword,
+          deliveredPassword: safeDecrypt(inventoryItem.accountPassword),
           deliveredExtraDetails: inventoryItem.extraDetails ?? null,
           deliveredUsageTerms: product.usageTerms ?? null,
           deliveredAt: now,

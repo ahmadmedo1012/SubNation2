@@ -1,9 +1,10 @@
-import { Router } from "express";
-import { db, usersTable, walletTopupsTable, ordersTable, productsTable } from "@workspace/db";
-import { eq, desc, count, and } from "drizzle-orm";
-import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { CreateTopupBody } from "@workspace/api-zod";
+import { db, ordersTable, productsTable, usersTable, walletTopupsTable } from "@workspace/db";
+import { and, count, desc, eq } from "drizzle-orm";
+import { Router } from "express";
 import { normalizeLibyanPhone } from "../lib/crypto";
+import { safeDecrypt } from "../lib/encryption";
+import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewTopup } from "../telegram";
 
 const router = Router();
@@ -14,18 +15,21 @@ router.get("/", requireUser, async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
 
-  const recentOrders = await db.select({
-    order: ordersTable,
-    productName: productsTable.name,
-    productImageUrl: productsTable.imageUrl,
-  }).from(ordersTable)
+  const recentOrders = await db
+    .select({
+      order: ordersTable,
+      productName: productsTable.name,
+      productImageUrl: productsTable.imageUrl,
+    })
+    .from(ordersTable)
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(eq(ordersTable.userId, userId))
     .orderBy(desc(ordersTable.createdAt))
     .limit(5);
 
   // Count only THIS user's pending topups
-  const [{ pendingCount }] = await db.select({ pendingCount: count() })
+  const [{ pendingCount }] = await db
+    .select({ pendingCount: count() })
     .from(walletTopupsTable)
     .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
 
@@ -34,7 +38,7 @@ router.get("/", requireUser, async (req, res) => {
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,
     pending_topups_count: Number(pendingCount),
-    recent_orders: recentOrders.map(r => ({
+    recent_orders: recentOrders.map((r) => ({
       id: r.order.id,
       order_code: r.order.orderCode,
       product_id: r.order.productId,
@@ -43,7 +47,7 @@ router.get("/", requireUser, async (req, res) => {
       amount: parseFloat(String(r.order.amount)),
       status: r.order.status,
       delivered_email: r.order.deliveredEmail ?? null,
-      delivered_password: r.order.deliveredPassword ?? null,
+      delivered_password: safeDecrypt(r.order.deliveredPassword),
       delivered_extra_details: r.order.deliveredExtraDetails ?? null,
       delivered_usage_terms: r.order.deliveredUsageTerms ?? null,
       delivered_at: r.order.deliveredAt?.toISOString() ?? null,
@@ -55,7 +59,9 @@ router.get("/", requireUser, async (req, res) => {
 router.get("/topups", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
-  const topups = await db.select().from(walletTopupsTable)
+  const topups = await db
+    .select()
+    .from(walletTopupsTable)
     .where(eq(walletTopupsTable.userId, userId))
     .orderBy(desc(walletTopupsTable.createdAt));
 
@@ -67,7 +73,14 @@ router.post("/topups", requireUser, async (req, res) => {
 
   const parse = CreateTopupBody.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const { amount, payment_method, payment_network, sender_phone, sender_account, payment_reference } = parse.data;
+  const {
+    amount,
+    payment_method,
+    payment_network,
+    sender_phone,
+    sender_account,
+    payment_reference,
+  } = parse.data;
 
   if (amount <= 0 || amount > 10000) {
     return res.status(400).json({ error: "قيمة الشحن غير صالحة" });
@@ -90,7 +103,8 @@ router.post("/topups", requireUser, async (req, res) => {
 
   // Anti-abuse: max 3 pending requests per user
   const MAX_PENDING = 3;
-  const [{ pendingCount }] = await db.select({ pendingCount: count() })
+  const [{ pendingCount }] = await db
+    .select({ pendingCount: count() })
     .from(walletTopupsTable)
     .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
 
@@ -102,19 +116,31 @@ router.post("/topups", requireUser, async (req, res) => {
     });
   }
 
-  const [topup] = await db.insert(walletTopupsTable).values({
-    userId,
-    amount: String(amount),
-    paymentMethod: method,
-    paymentNetwork: payment_network ?? null,
-    senderPhone: sender_phone ?? null,
-    senderAccount: sender_account ?? null,
-    paymentReference: payment_reference ?? null,
-    status: "pending",
-  }).returning();
+  const [topup] = await db
+    .insert(walletTopupsTable)
+    .values({
+      userId,
+      amount: String(amount),
+      paymentMethod: method,
+      paymentNetwork: payment_network ?? null,
+      senderPhone: sender_phone ?? null,
+      senderAccount: sender_account ?? null,
+      paymentReference: payment_reference ?? null,
+      status: "pending",
+    })
+    .returning();
 
-  const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (currentUser) notifyNewTopup(currentUser.phone, amount, method === "lypay" ? "LyPay" : payment_network ?? "");
+  const [currentUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (currentUser)
+    notifyNewTopup(
+      currentUser.phone,
+      amount,
+      method === "lypay" ? "LyPay" : (payment_network ?? ""),
+    );
 
   return res.status(201).json(formatTopup(topup));
 });

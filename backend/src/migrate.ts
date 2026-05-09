@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { hashPassword } from "./lib/crypto";
+import { encrypt, isEncrypted } from "./lib/encryption";
 import { logger } from "./lib/logger";
 
 export async function runMigrations() {
@@ -316,6 +317,28 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
     `);
+
+    // ── Encrypt existing plaintext account_passwords ─────────────────────────
+    if (process.env.ENCRYPTION_KEY) {
+      await db.execute(sql`ALTER TABLE inventory ALTER COLUMN account_password TYPE VARCHAR(512)`);
+      const rows: Array<{ id: number; account_password: string }> = await db
+        .execute(sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`)
+        .then((r: any) => r.rows ?? r);
+      let reEncrypted = 0;
+      for (const row of rows) {
+        if (!isEncrypted(row.account_password)) {
+          await db.execute(
+            sql`UPDATE inventory SET account_password = ${encrypt(row.account_password)} WHERE id = ${row.id}`,
+          );
+          reEncrypted++;
+        }
+      }
+      if (reEncrypted > 0) {
+        logger.info({ reEncrypted }, "Re-encrypted plaintext inventory passwords");
+      }
+    } else {
+      logger.warn("ENCRYPTION_KEY not set — inventory passwords remain plaintext");
+    }
 
     // ── Seed: default auth provider configs (no-op if already set) ──────────
     const providerDefaults = [
