@@ -2,14 +2,38 @@ import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-reac
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { formatCurrency, formatDateShort, statusLabel, statusColor } from "@/lib/utils";
-import { Package, ChevronLeft, ShoppingBag, Clock, CheckCircle, XCircle, Sparkles, Tag } from "lucide-react";
+import {
+  Package,
+  ChevronLeft,
+  ShoppingBag,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Sparkles,
+  Tag,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const STAGGER = ["", "stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6", "stagger-7", "stagger-8", "stagger-9", "stagger-10", "stagger-11", "stagger-12"];
+const STAGGER = [
+  "",
+  "stagger-1",
+  "stagger-2",
+  "stagger-3",
+  "stagger-4",
+  "stagger-5",
+  "stagger-6",
+  "stagger-7",
+  "stagger-8",
+  "stagger-9",
+  "stagger-10",
+  "stagger-11",
+  "stagger-12",
+];
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "completed") return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
-  if (status === "failed" || status === "refunded") return <XCircle className="w-3.5 h-3.5 text-red-400" />;
+  if (status === "failed" || status === "refunded")
+    return <XCircle className="w-3.5 h-3.5 text-red-400" />;
   return <Clock className="w-3.5 h-3.5 text-yellow-400" />;
 }
 
@@ -49,16 +73,18 @@ export default function OrdersPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  if (!token) { navigate("/login"); return null; }
+  if (!token) {
+    navigate("/login");
+    return null;
+  }
 
   const pending = orders.filter((o: any) => o.status === "pending");
   const completed = orders.filter((o: any) => o.status === "completed");
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-7 page-in">
+      <div className="flex items-center justify-between gap-3 mb-7 page-in flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
             <ShoppingBag className="w-5 h-5 text-primary" />
@@ -69,7 +95,7 @@ export default function OrdersPage() {
           </div>
         </div>
         {!isLoading && orders.length > 0 && (
-          <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm">
+          <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm shrink-0">
             {orders.length} طلب
           </div>
         )}
@@ -96,11 +122,12 @@ export default function OrdersPage() {
       {/* Loading */}
       {isLoading ? (
         <div className="space-y-2.5">
-          {Array.from({ length: 4 }).map((_, i) => <OrderCardSkeleton key={i} />)}
+          {Array.from({ length: 4 }).map((_, i) => (
+            <OrderCardSkeleton key={i} />
+          ))}
         </div>
-
-      /* Empty state */
-      ) : orders.length === 0 ? (
+      ) : /* Empty state */
+      orders.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
           <div className="relative w-20 h-20 mx-auto mb-5">
             <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
@@ -119,21 +146,22 @@ export default function OrdersPage() {
             </Button>
           </Link>
         </div>
-
-      /* Orders list */
       ) : (
+        /* Orders list */
         <div className="space-y-2.5">
           {orders.map((order: any, i: number) => {
             const staggerClass = STAGGER[Math.min(i, 12)] ?? "";
             return (
               <Link key={order.id} href={`/orders/${order.order_code}`}>
-                <div className={`
+                <div
+                  className={`
                   float-in ${staggerClass}
                   bg-card border border-border/60 border-l-[3px] ${statusLeftBorder(order.status)}
                   rounded-xl p-4
                   hover:border-border hover:border-l-[3px] hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
                   transition-all duration-200 cursor-pointer group active:scale-[0.995] active:translate-y-0
-                `}>
+                `}
+                >
                   <div className="flex items-center gap-3.5">
                     {/* Product image */}
                     <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
@@ -160,7 +188,9 @@ export default function OrdersPage() {
                           {order.order_code}
                         </span>
                         {order.created_at && (
-                          <span className="text-[11px] text-muted-foreground/50">{formatDateShort(order.created_at)}</span>
+                          <span className="text-[11px] text-muted-foreground/50">
+                            {formatDateShort(order.created_at)}
+                          </span>
                         )}
                         {(order as any).coupon_code && (
                           <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
@@ -172,15 +202,19 @@ export default function OrdersPage() {
                     </div>
 
                     {/* Right side */}
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <div className="text-right">
+                    <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
+                      <div className="text-right min-w-0">
                         {(order as any).discount_amount > 0 && (
                           <div className="text-[10px] text-muted-foreground/40 line-through tabular-nums">
                             {formatCurrency((order.amount ?? 0) + (order as any).discount_amount)}
                           </div>
                         )}
-                        <div className="font-black text-sm tabular-nums">{formatCurrency(order.amount)}</div>
-                        <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 justify-end ${statusColor(order.status)}`}>
+                        <div className="font-black text-sm tabular-nums">
+                          {formatCurrency(order.amount)}
+                        </div>
+                        <div
+                          className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 justify-end whitespace-nowrap ${statusColor(order.status)}`}
+                        >
                           <StatusIcon status={order.status} />
                           <span>{statusLabel(order.status)}</span>
                         </div>

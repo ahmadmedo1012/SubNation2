@@ -147,10 +147,10 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[12vh] px-4"
+      className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[84vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
           {loading ? (
@@ -561,7 +561,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             className="md:hidden fixed inset-0 bg-black/65 z-40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="md:hidden fixed right-0 top-0 bottom-0 w-60 bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200">
+          <aside className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200">
             {sidebarContent}
           </aside>
         </>
@@ -623,7 +623,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         </div>
 
         {/* Page content */}
-        <div className="max-w-7xl mx-auto px-4 md:px-5 py-5 md:py-7">{children}</div>
+        <div className="max-w-7xl mx-auto px-4 md:px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:py-7">
+          {children}
+        </div>
       </main>
     </div>
   );

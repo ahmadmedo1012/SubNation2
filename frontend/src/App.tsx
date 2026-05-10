@@ -117,6 +117,7 @@ function AdminProtectedRoutes() {
 
 function AppRoutes() {
   const [location] = useLocation();
+  const { token } = useAuth();
   const isAdmin = location.startsWith("/admin");
   const isAuth = location === "/login" || location === "/register";
 
@@ -125,7 +126,7 @@ function AppRoutes() {
       <RouteLoading />
       {!isAdmin && <Navbar />}
       {!isAdmin && <FlashSaleBanner />}
-      <main className={!isAdmin && !isAuth ? "pb-16 md:pb-0" : ""}>
+      <main className={!isAdmin && !isAuth && token ? "mobile-nav-safe-pad md:pb-0" : ""}>
         <ErrorBoundary>
           <Switch>
             <Route path="/" component={HomePage} />

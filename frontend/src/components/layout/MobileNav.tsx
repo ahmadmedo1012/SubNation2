@@ -27,11 +27,11 @@ export function MobileNav() {
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-      <div className="relative flex h-[60px]">
+      <div className="relative grid h-[60px] grid-cols-5">
         {TABS.map((tab) => {
           const active = location === tab.href;
           return (
-            <Link key={tab.href} href={tab.href} className="flex-1">
+            <Link key={tab.href} href={tab.href} className="min-w-0" aria-label={tab.label}>
               <div
                 className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none press-spring"
                 style={{ WebkitTapHighlightColor: "transparent" }}

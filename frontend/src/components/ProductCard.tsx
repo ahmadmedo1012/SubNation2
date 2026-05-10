@@ -121,7 +121,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
     <Link href={`/product/${product.id}`}>
       <div
         className={`
-        group relative bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer
+        group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
         card-spring hover:border-border/80 hover:shadow-2xl hover:shadow-black/40
@@ -184,7 +184,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
         </div>
 
         {/* Card body */}
-        <div className="p-3.5 pt-3">
+        <div className="p-3.5 pt-3 flex flex-1 flex-col">
           {/* Name + category */}
           <div className="flex items-start gap-2 mb-1.5">
             <h3 className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200">
@@ -235,11 +235,18 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
               <span className="text-[10px] text-muted-foreground/35">غير متوفر</span>
             )}
           </div>
+
+          {product.is_available && (
+            <div className="mt-3 md:hidden h-9 rounded-xl bg-primary flex items-center justify-center gap-1.5 text-white text-xs font-black shadow-lg shadow-primary/25">
+              <ShoppingCart className="w-3.5 h-3.5" />
+              اشترِ الآن
+            </div>
+          )}
         </div>
 
-        {/* Hover CTA — slides up from bottom on desktop, always visible on mobile */}
+        {/* Hover CTA — desktop enhancement; mobile gets an inline touch CTA. */}
         {product.is_available && (
-          <div className="absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-220 ease-out">
+          <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-220 ease-out">
             <div className="mx-3 mb-3 h-9 rounded-xl bg-primary flex items-center justify-center gap-1.5 text-white text-xs font-black shadow-lg shadow-primary/35">
               <ShoppingCart className="w-3.5 h-3.5" />
               اشترِ الآن

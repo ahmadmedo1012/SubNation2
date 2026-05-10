@@ -296,7 +296,7 @@ export default function ProductPage() {
 
   // ── Product page ──────────────────────────────────────────────────────────
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 sm:py-8 pb-28 sm:pb-8">
+    <div className="max-w-xl mx-auto px-4 py-6 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:py-8 sm:pb-8">
       {/* Back link */}
       <button
         onClick={() => navigate("/")}
@@ -318,7 +318,7 @@ export default function ProductPage() {
             <img
               src={product.image_url}
               alt={product.name}
-              className="w-full h-full object-contain p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
+              className="w-full h-full object-contain p-8 sm:p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
             />
           ) : (
             <span
@@ -357,7 +357,7 @@ export default function ProductPage() {
           </div>
 
           {/* Price + stock */}
-          <div className="flex items-center gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
             <div className="flex-1">
               <div className="text-3xl font-black text-primary leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
@@ -369,7 +369,7 @@ export default function ProductPage() {
               )}
             </div>
             <div
-              className={`flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-xl border ${
+              className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
                 product.is_available
                   ? "bg-emerald-500/10 border-emerald-500/22 text-emerald-400"
                   : "bg-muted/50 border-border/50 text-muted-foreground/60"
@@ -421,6 +421,22 @@ export default function ProductPage() {
             ))}
           </div>
 
+          {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
+          {token && (
+            <div className="sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
+              <CouponField
+                token={token}
+                couponInput={couponInput}
+                couponResult={couponResult}
+                couponError={couponError}
+                couponValidating={couponValidating}
+                onCouponChange={setCouponInput}
+                onCouponValidate={validateCoupon}
+                onCouponClear={clearCoupon}
+              />
+            </div>
+          )}
+
           {/* CTA — desktop only (mobile uses sticky bar) */}
           <div className="hidden sm:block">
             <CtaBlock
@@ -461,7 +477,11 @@ export default function ProductPage() {
       </div>
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-2xl shadow-black/30">
+      <div
+        className={`sm:hidden fixed left-0 right-0 z-40 bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
+          token ? "mobile-sticky-above-nav pb-3" : "mobile-sticky-bottom-safe"
+        }`}
+      >
         <CtaBlock
           token={token}
           product={product}
@@ -650,7 +670,7 @@ function CtaBlock({
         )}
         <Button
           onClick={onLogin}
-          className={`${compact ? "shrink-0 h-11 px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+          className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
         >
           {compact ? "دخول" : "تسجيل الدخول للشراء"}
         </Button>
@@ -666,7 +686,10 @@ function CtaBlock({
             {formatCurrency(displayPrice)}
           </div>
         )}
-        <Button disabled className={`${compact ? "shrink-0 h-11 px-5" : "w-full h-12 text-base"}`}>
+        <Button
+          disabled
+          className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"}`}
+        >
           <Lock className="w-4 h-4 ml-2" /> نفذ المخزون
         </Button>
       </div>
@@ -703,7 +726,7 @@ function CtaBlock({
             <Button
               onClick={onWallet}
               variant="outline"
-              className="shrink-0 h-11 px-4 press-spring"
+              className="shrink-0 h-11 min-w-[6.75rem] px-4 press-spring"
             >
               <Wallet className="w-4 h-4 ml-1.5" /> شحن
             </Button>
@@ -752,7 +775,7 @@ function CtaBlock({
       <Button
         onClick={onBuy}
         disabled={isPending}
-        className={`${compact ? "shrink-0 h-11 px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring ${!compact ? "cta-glow" : ""}`}
+        className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring ${!compact ? "cta-glow" : ""}`}
       >
         <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2`} />
         {isPending

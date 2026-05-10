@@ -6,23 +6,53 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  MessageSquare, Plus, ChevronLeft, Clock, CheckCircle, AlertCircle,
-  Send, X, Loader2, Shield, User, Tag, ArrowRight, Headphones,
+  MessageSquare,
+  Plus,
+  ChevronLeft,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Send,
+  X,
+  Loader2,
+  Shield,
+  User,
+  Tag,
+  ArrowRight,
+  Headphones,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CATEGORIES = [
-  { value: "billing",   label: "الدفع والفواتير", icon: "💳" },
-  { value: "order",     label: "الطلبات",         icon: "📦" },
-  { value: "technical", label: "مشكلة تقنية",     icon: "⚙️" },
-  { value: "account",   label: "الحساب",          icon: "👤" },
-  { value: "other",     label: "أخرى",            icon: "💬" },
+  { value: "billing", label: "الدفع والفواتير", icon: "💳" },
+  { value: "order", label: "الطلبات", icon: "📦" },
+  { value: "technical", label: "مشكلة تقنية", icon: "⚙️" },
+  { value: "account", label: "الحساب", icon: "👤" },
+  { value: "other", label: "أخرى", icon: "💬" },
 ];
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode; border: string }> = {
-  open:        { label: "مفتوحة",        color: "text-blue-400 bg-blue-400/10",    icon: <Clock className="w-3 h-3" />,        border: "border-blue-400/25"    },
-  in_progress: { label: "قيد المعالجة", color: "text-yellow-400 bg-yellow-400/10", icon: <AlertCircle className="w-3 h-3" />,  border: "border-yellow-400/25"  },
-  closed:      { label: "مغلقة",         color: "text-muted-foreground bg-muted/30", icon: <CheckCircle className="w-3 h-3" />, border: "border-border"         },
+const STATUS_CONFIG: Record<
+  string,
+  { label: string; color: string; icon: React.ReactNode; border: string }
+> = {
+  open: {
+    label: "مفتوحة",
+    color: "text-blue-400 bg-blue-400/10",
+    icon: <Clock className="w-3 h-3" />,
+    border: "border-blue-400/25",
+  },
+  in_progress: {
+    label: "قيد المعالجة",
+    color: "text-yellow-400 bg-yellow-400/10",
+    icon: <AlertCircle className="w-3 h-3" />,
+    border: "border-yellow-400/25",
+  },
+  closed: {
+    label: "مغلقة",
+    color: "text-muted-foreground bg-muted/30",
+    icon: <CheckCircle className="w-3 h-3" />,
+    border: "border-border",
+  },
 };
 
 interface Ticket {
@@ -38,10 +68,10 @@ interface TicketDetail extends Ticket {
 }
 
 function categoryLabel(cat: string | null) {
-  return CATEGORIES.find(c => c.value === cat)?.label ?? "أخرى";
+  return CATEGORIES.find((c) => c.value === cat)?.label ?? "أخرى";
 }
 function categoryIcon(cat: string | null) {
-  return CATEGORIES.find(c => c.value === cat)?.icon ?? "💬";
+  return CATEGORIES.find((c) => c.value === cat)?.icon ?? "💬";
 }
 
 export default function SupportPage() {
@@ -50,23 +80,23 @@ export default function SupportPage() {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [tickets, setTickets]             = useState<Ticket[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [showCreate, setShowCreate]       = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null);
   const [ticketLoading, setTicketLoading] = useState(false);
-  const [replyText, setReplyText]         = useState("");
-  const [sending, setSending]             = useState(false);
-  const [form, setForm]                   = useState({ title: "", message: "", category: "other" });
-  const [submitting, setSubmitting]       = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [form, setForm] = useState({ title: "", message: "", category: "other" });
+  const [submitting, setSubmitting] = useState(false);
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
   const fetchTickets = () => {
     if (!token) return;
     fetch("/api/support/tickets", { headers })
-      .then(r => r.json())
-      .then(d => setTickets(Array.isArray(d) ? d : []))
+      .then((r) => r.json())
+      .then((d) => setTickets(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -75,16 +105,21 @@ export default function SupportPage() {
     setTicketLoading(true);
     try {
       const res = await fetch(`/api/support/tickets/${id}`, { headers });
-      const d   = await res.json();
+      const d = await res.json();
       setSelectedTicket(d);
       setReplyText("");
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
-    } catch {}
-    finally { setTicketLoading(false); }
+    } catch {
+    } finally {
+      setTicketLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (!token) { navigate("/login"); return; }
+    if (!token) {
+      navigate("/login");
+      return;
+    }
     fetchTickets();
   }, [token]);
 
@@ -139,14 +174,13 @@ export default function SupportPage() {
     }
   };
 
-  const openCount = tickets.filter(t => t.status === "open").length;
+  const openCount = tickets.filter((t) => t.status === "open").length;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-7 page-in">
-
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           {selectedTicket ? (
             <button
               onClick={() => setSelectedTicket(null)}
@@ -159,9 +193,9 @@ export default function SupportPage() {
               <Headphones className="w-5 h-5 text-primary" />
             </div>
           )}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black">
+              <h1 className="text-xl font-black leading-tight break-words">
                 {selectedTicket ? selectedTicket.title : "الدعم الفني"}
               </h1>
               {!selectedTicket && openCount > 0 && (
@@ -173,8 +207,7 @@ export default function SupportPage() {
             <p className="text-xs text-muted-foreground/70">
               {selectedTicket
                 ? `#${selectedTicket.id} · ${formatRelativeTime(selectedTicket.created_at)}`
-                : "نحن هنا للمساعدة على مدار الساعة"
-              }
+                : "نحن هنا للمساعدة على مدار الساعة"}
             </p>
           </div>
         </div>
@@ -182,7 +215,7 @@ export default function SupportPage() {
         {!selectedTicket && !showCreate && (
           <Button
             onClick={() => setShowCreate(true)}
-            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 active:scale-[0.97] transition-all gap-1.5 rounded-xl"
+            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 active:scale-[0.97] transition-all gap-1.5 rounded-xl shrink-0"
           >
             <Plus className="w-4 h-4" />
             تذكرة جديدة
@@ -190,7 +223,10 @@ export default function SupportPage() {
         )}
         {showCreate && !selectedTicket && (
           <button
-            onClick={() => { setShowCreate(false); setForm({ title: "", message: "", category: "other" }); }}
+            onClick={() => {
+              setShowCreate(false);
+              setForm({ title: "", message: "", category: "other" });
+            }}
             className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all press-spring"
           >
             <X className="w-4 h-4" />
@@ -202,15 +238,21 @@ export default function SupportPage() {
       {selectedTicket && (
         <div className="bg-card border border-border/55 rounded-2xl overflow-hidden shadow-lg shadow-black/12 float-in">
           {/* Status bar */}
-          <div className={`h-[3px] ${
-            selectedTicket.status === "open" ? "bg-gradient-to-l from-blue-400/80 via-blue-400/40 to-transparent" :
-            selectedTicket.status === "in_progress" ? "bg-gradient-to-l from-yellow-400/80 via-yellow-400/40 to-transparent" :
-            "bg-gradient-to-l from-border to-transparent"
-          }`} />
+          <div
+            className={`h-[3px] ${
+              selectedTicket.status === "open"
+                ? "bg-gradient-to-l from-blue-400/80 via-blue-400/40 to-transparent"
+                : selectedTicket.status === "in_progress"
+                  ? "bg-gradient-to-l from-yellow-400/80 via-yellow-400/40 to-transparent"
+                  : "bg-gradient-to-l from-border to-transparent"
+            }`}
+          />
 
           {/* Ticket meta */}
           <div className="flex items-center gap-2 px-5 py-3 border-b border-border/25 bg-muted/8 flex-wrap">
-            <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border font-bold ${STATUS_CONFIG[selectedTicket.status]?.color} ${STATUS_CONFIG[selectedTicket.status]?.border}`}>
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border font-bold ${STATUS_CONFIG[selectedTicket.status]?.color} ${STATUS_CONFIG[selectedTicket.status]?.border}`}
+            >
               {STATUS_CONFIG[selectedTicket.status]?.icon}
               {STATUS_CONFIG[selectedTicket.status]?.label}
             </span>
@@ -229,7 +271,7 @@ export default function SupportPage() {
           ) : (
             <div
               className="p-5 space-y-5 overflow-y-auto scrollbar-none"
-              style={{ maxHeight: "460px" }}
+              style={{ maxHeight: "min(460px, calc(100vh - 260px))" }}
             >
               {selectedTicket.replies.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -237,7 +279,9 @@ export default function SupportPage() {
                     <MessageSquare className="w-5 h-5 opacity-20" />
                   </div>
                   <p className="text-sm font-medium">لا توجد رسائل بعد</p>
-                  <p className="text-xs text-muted-foreground/55 mt-1">اكتب ردك أدناه لبدء المحادثة</p>
+                  <p className="text-xs text-muted-foreground/55 mt-1">
+                    اكتب ردك أدناه لبدء المحادثة
+                  </p>
                 </div>
               ) : (
                 selectedTicket.replies.map((r, i) => {
@@ -248,31 +292,48 @@ export default function SupportPage() {
                       className={`flex gap-2.5 float-in stagger-${Math.min(i, 8)} ${isUser ? "flex-row-reverse" : "flex-row"}`}
                     >
                       {/* Avatar */}
-                      <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-1 border ${
-                        isUser
-                          ? "bg-primary border-primary/30 text-white"
-                          : "bg-muted border-border/40 text-muted-foreground"
-                      }`}>
-                        {isUser ? <User className="w-3.5 h-3.5" /> : <Shield className="w-3.5 h-3.5" />}
+                      <div
+                        className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-1 border ${
+                          isUser
+                            ? "bg-primary border-primary/30 text-white"
+                            : "bg-muted border-border/40 text-muted-foreground"
+                        }`}
+                      >
+                        {isUser ? (
+                          <User className="w-3.5 h-3.5" />
+                        ) : (
+                          <Shield className="w-3.5 h-3.5" />
+                        )}
                       </div>
 
                       {/* Bubble */}
-                      <div className={`max-w-[78%] flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+                      <div
+                        className={`max-w-[78%] flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
+                      >
                         {!isUser && (
-                          <span className="text-[11px] font-bold text-primary/80 px-1">فريق الدعم</span>
+                          <span className="text-[11px] font-bold text-primary/80 px-1">
+                            فريق الدعم
+                          </span>
                         )}
-                        <div className={`
+                        <div
+                          className={`
                           rounded-2xl px-4 py-2.5 text-sm leading-relaxed
-                          ${isUser
-                            ? "bg-primary text-white rounded-tl-md shadow-md shadow-primary/22"
-                            : "bg-muted/55 border border-border/35 rounded-tr-md text-foreground/90"
+                          ${
+                            isUser
+                              ? "bg-primary text-white rounded-tl-md shadow-md shadow-primary/22"
+                              : "bg-muted/55 border border-border/35 rounded-tr-md text-foreground/90"
                           }
-                        `}>
+                        `}
+                        >
                           {r.message}
                         </div>
-                        <div className={`flex items-center gap-1 text-[10px] text-muted-foreground/45 px-1 ${isUser ? "flex-row-reverse" : ""}`}>
+                        <div
+                          className={`flex items-center gap-1 text-[10px] text-muted-foreground/45 px-1 ${isUser ? "flex-row-reverse" : ""}`}
+                        >
                           <Clock className="w-2.5 h-2.5" />
-                          <span title={formatDate(r.created_at)}>{formatRelativeTime(r.created_at)}</span>
+                          <span title={formatDate(r.created_at)}>
+                            {formatRelativeTime(r.created_at)}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -294,12 +355,15 @@ export default function SupportPage() {
               <form onSubmit={handleReply} className="flex gap-2">
                 <Input
                   value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
+                  onChange={(e) => setReplyText(e.target.value)}
                   placeholder="اكتب ردك هنا..."
                   className="flex-1 h-10 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 transition-all"
                   dir="rtl"
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(e as any); }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleReply(e as any);
+                    }
                   }}
                 />
                 <button
@@ -307,7 +371,11 @@ export default function SupportPage() {
                   disabled={sending || !replyText.trim()}
                   className="w-10 h-10 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/25 press-spring"
                 >
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {sending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </button>
               </form>
             )}
@@ -328,13 +396,15 @@ export default function SupportPage() {
           <form onSubmit={handleCreate} className="p-5 space-y-4">
             {/* Category pills */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground/80 mb-2.5 block">الفئة</Label>
+              <Label className="text-xs font-bold text-muted-foreground/80 mb-2.5 block">
+                الفئة
+              </Label>
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map(c => (
+                {CATEGORIES.map((c) => (
                   <button
                     key={c.value}
                     type="button"
-                    onClick={() => setForm(f => ({ ...f, category: c.value }))}
+                    onClick={() => setForm((f) => ({ ...f, category: c.value }))}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 press-spring min-h-[36px] ${
                       form.category === c.value
                         ? "bg-primary text-white border-primary shadow-sm shadow-primary/20"
@@ -352,7 +422,7 @@ export default function SupportPage() {
               <Label className="text-xs font-bold text-muted-foreground/80">عنوان المشكلة *</Label>
               <Input
                 value={form.title}
-                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="وصف مختصر للمشكلة..."
                 required
                 className="h-10 rounded-xl border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 bg-card transition-all"
@@ -363,7 +433,7 @@ export default function SupportPage() {
               <Label className="text-xs font-bold text-muted-foreground/80">تفاصيل المشكلة *</Label>
               <textarea
                 value={form.message}
-                onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
                 placeholder="اشرح المشكلة بالتفصيل لنتمكن من مساعدتك بشكل أسرع..."
                 required
                 rows={4}
@@ -372,11 +442,14 @@ export default function SupportPage() {
               />
             </div>
 
-            <div className="flex gap-2.5 pt-1">
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { setShowCreate(false); setForm({ title: "", message: "", category: "other" }); }}
+                onClick={() => {
+                  setShowCreate(false);
+                  setForm({ title: "", message: "", category: "other" });
+                }}
                 className="flex-1 h-10 active:scale-[0.97] rounded-xl"
               >
                 إلغاء
@@ -386,10 +459,17 @@ export default function SupportPage() {
                 disabled={submitting}
                 className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97] shadow-md shadow-primary/22 rounded-xl gap-1.5"
               >
-                {submitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />جارٍ الإرسال...</>
-                  : <><Send className="w-4 h-4" />إرسال التذكرة</>
-                }
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    جارٍ الإرسال...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    إرسال التذكرة
+                  </>
+                )}
               </Button>
             </div>
           </form>
@@ -397,8 +477,8 @@ export default function SupportPage() {
       )}
 
       {/* ── Tickets List ─────────────────────────────────────────── */}
-      {!selectedTicket && (
-        loading ? (
+      {!selectedTicket &&
+        (loading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="h-24 rounded-2xl skeleton-shimmer border border-border/35" />
@@ -450,7 +530,9 @@ export default function SupportPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-bold ${s.color} ${s.border}`}>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-bold ${s.color} ${s.border}`}
+                        >
                           {s.icon}
                           {s.label}
                         </span>
@@ -459,16 +541,22 @@ export default function SupportPage() {
                             {categoryIcon(t.category)} {categoryLabel(t.category)}
                           </span>
                         )}
-                        <span className="text-[11px] text-muted-foreground/40">{formatRelativeTime(t.created_at)}</span>
+                        <span className="text-[11px] text-muted-foreground/40">
+                          {formatRelativeTime(t.created_at)}
+                        </span>
                       </div>
 
                       {t.last_reply && (
-                        <div className={`text-xs px-3 py-1.5 rounded-xl leading-relaxed line-clamp-1 border ${
-                          hasAdminReply
-                            ? "bg-primary/7 text-primary/75 border-primary/15"
-                            : "bg-muted/35 text-muted-foreground/60 border-border/35"
-                        }`}>
-                          <span className="font-bold ml-1">{hasAdminReply ? "فريق الدعم:" : "أنت:"}</span>
+                        <div
+                          className={`text-xs px-3 py-1.5 rounded-xl leading-relaxed line-clamp-1 border ${
+                            hasAdminReply
+                              ? "bg-primary/7 text-primary/75 border-primary/15"
+                              : "bg-muted/35 text-muted-foreground/60 border-border/35"
+                          }`}
+                        >
+                          <span className="font-bold ml-1">
+                            {hasAdminReply ? "فريق الدعم:" : "أنت:"}
+                          </span>
                           {t.last_reply.message}
                         </div>
                       )}
@@ -480,8 +568,7 @@ export default function SupportPage() {
               );
             })}
           </div>
-        )
-      )}
+        ))}
 
       {/* Bottom safe area */}
       <div className="h-6 md:h-0" />

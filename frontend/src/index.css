@@ -242,6 +242,7 @@
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
     scroll-behavior: smooth;
+    overflow-x: clip;
   }
 
   body {
@@ -252,6 +253,19 @@
     line-height: 1.58;
     /* Prevent rubber-band overscroll on iOS */
     overscroll-behavior-y: contain;
+    min-width: 320px;
+    overflow-x: clip;
+  }
+
+  #root {
+    min-height: 100%;
+    isolation: isolate;
+  }
+
+  img,
+  video,
+  canvas {
+    max-width: 100%;
   }
 
   h1,
@@ -259,7 +273,7 @@
   h3,
   h4 {
     line-height: 1.2;
-    letter-spacing: -0.018em;
+    letter-spacing: 0;
   }
 
   /* Better touch responsiveness */
@@ -822,6 +836,11 @@
     font-size: clamp(1.85rem, 5.5vw + 0.5rem, 2.9rem);
   }
 
+  .tracking-tight,
+  .tracking-tighter {
+    letter-spacing: 0;
+  }
+
   /* Subtle scrollbar */
   ::-webkit-scrollbar {
     width: 3px;
@@ -912,6 +931,40 @@
   }
   .pb-safe-4 {
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  }
+
+  .mobile-nav-safe-pad {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-sticky-above-nav {
+    bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-sticky-bottom-safe {
+    bottom: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .card-spring:hover {
+    transform: none;
+  }
+
+  .group:hover .shine-trigger {
+    animation: none;
+  }
+
+  .press-spring:active {
+    transform: scale(0.97);
+  }
+}
+
+@supports not (overflow: clip) {
+  html,
+  body {
+    overflow-x: hidden;
   }
 }
 

@@ -3,9 +3,20 @@ import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { formatRelativeTime, formatDate } from "@/lib/utils";
 import {
-  Users, Copy, Check, Gift, Star, Clock,
-  CheckCircle, Share2, Wallet, ArrowLeft,
-  Zap, Trophy, UserPlus, ChevronLeft,
+  Users,
+  Copy,
+  Check,
+  Gift,
+  Star,
+  Clock,
+  CheckCircle,
+  Share2,
+  Wallet,
+  ArrowLeft,
+  Zap,
+  Trophy,
+  UserPlus,
+  ChevronLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,7 +38,15 @@ interface ReferralEvent {
   points_earned: number;
 }
 
-function CopyBtn({ text, label, size = "md" }: { text: string; label: string; size?: "sm" | "md" }) {
+function CopyBtn({
+  text,
+  label,
+  size = "md",
+}: {
+  text: string;
+  label: string;
+  size?: "sm" | "md";
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     await navigator.clipboard.writeText(text);
@@ -39,9 +58,10 @@ function CopyBtn({ text, label, size = "md" }: { text: string; label: string; si
       onClick={copy}
       className={`
         flex items-center gap-1.5 rounded-xl font-bold transition-all active:scale-95 press-spring shrink-0
-        ${copied
-          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-          : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
+        ${
+          copied
+            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+            : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
         }
         ${size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm"}
       `}
@@ -80,43 +100,74 @@ export default function ReferralsPage() {
     : "";
 
   useEffect(() => {
-    if (!token) { navigate("/login"); return; }
+    if (!token) {
+      navigate("/login");
+      return;
+    }
     Promise.all([
-      fetch("/api/loyalty", { headers }).then(r => r.json()),
-      fetch("/api/loyalty/referrals", { headers }).then(r => r.json()),
-    ]).then(([ov, evs]) => {
-      setOverview(ov);
-      setEvents(Array.isArray(evs) ? evs : []);
-    }).catch(() => {
-      toast({ title: "خطأ في التحميل", variant: "destructive" });
-    }).finally(() => setLoading(false));
+      fetch("/api/loyalty", { headers }).then((r) => r.json()),
+      fetch("/api/loyalty/referrals", { headers }).then((r) => r.json()),
+    ])
+      .then(([ov, evs]) => {
+        setOverview(ov);
+        setEvents(Array.isArray(evs) ? evs : []);
+      })
+      .catch(() => {
+        toast({ title: "خطأ في التحميل", variant: "destructive" });
+      })
+      .finally(() => setLoading(false));
   }, [token]);
 
   const handleShare = async () => {
     if (!overview) return;
     const msg = `انضم إلى SubNation — متجر الاشتراكات الرقمية بالدينار الليبي 🎬\nاستخدم رمز الإحالة: ${overview.referral_code}\n${referralLink}`;
     if (navigator.share) {
-      try { await navigator.share({ title: "SubNation", text: msg, url: referralLink }); }
-      catch {}
+      try {
+        await navigator.share({ title: "SubNation", text: msg, url: referralLink });
+      } catch {}
     } else {
       await navigator.clipboard.writeText(msg);
       toast({ title: "تم نسخ الرسالة", description: "شاركها مع أصدقائك!" });
     }
   };
 
-  const totalPointsEarned = events.filter(e => e.status === "credited")
+  const totalPointsEarned = events
+    .filter((e) => e.status === "credited")
     .reduce((s, e) => s + e.points_earned, 0);
 
   const STEPS = [
-    { icon: Share2,   step: "1", text: "شارك رابط الإحالة",        color: "text-primary",     bg: "bg-primary/10 border-primary/15"     },
-    { icon: UserPlus, step: "2", text: "صديقك يُنشئ حسابه",        color: "text-blue-400",    bg: "bg-blue-400/10 border-blue-400/15"   },
-    { icon: Wallet,   step: "3", text: "يُتم أول شحن للمحفظة",     color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/15" },
-    { icon: Gift,     step: "4", text: "تحصل على نقاط فورية",      color: "text-yellow-400",  bg: "bg-yellow-400/10 border-yellow-400/15"  },
+    {
+      icon: Share2,
+      step: "1",
+      text: "شارك رابط الإحالة",
+      color: "text-primary",
+      bg: "bg-primary/10 border-primary/15",
+    },
+    {
+      icon: UserPlus,
+      step: "2",
+      text: "صديقك يُنشئ حسابه",
+      color: "text-blue-400",
+      bg: "bg-blue-400/10 border-blue-400/15",
+    },
+    {
+      icon: Wallet,
+      step: "3",
+      text: "يُتم أول شحن للمحفظة",
+      color: "text-emerald-400",
+      bg: "bg-emerald-400/10 border-emerald-400/15",
+    },
+    {
+      icon: Gift,
+      step: "4",
+      text: "تحصل على نقاط فورية",
+      color: "text-yellow-400",
+      bg: "bg-yellow-400/10 border-yellow-400/15",
+    },
   ];
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
-
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link href="/loyalty">
@@ -139,26 +190,39 @@ export default function ReferralsPage() {
           {
             label: "إجمالي الإحالات",
             value: loading ? "—" : String(overview?.referrals_total ?? 0),
-            icon: Users, color: "text-blue-400", bg: "bg-blue-400/10 border-blue-400/15",
+            icon: Users,
+            color: "text-blue-400",
+            bg: "bg-blue-400/10 border-blue-400/15",
           },
           {
             label: "إحالات ناجحة",
             value: loading ? "—" : String(overview?.referrals_credited ?? 0),
-            icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/15",
+            icon: CheckCircle,
+            color: "text-emerald-400",
+            bg: "bg-emerald-400/10 border-emerald-400/15",
           },
           {
             label: "قيد الانتظار",
             value: loading ? "—" : String(overview?.referrals_pending ?? 0),
-            icon: Clock, color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/15",
+            icon: Clock,
+            color: "text-yellow-400",
+            bg: "bg-yellow-400/10 border-yellow-400/15",
           },
           {
             label: "نقاط مكتسبة",
             value: loading ? "—" : String(totalPointsEarned),
-            icon: Star, color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/15",
+            icon: Star,
+            color: "text-yellow-400",
+            bg: "bg-yellow-400/10 border-yellow-400/15",
           },
         ].map((s, i) => (
-          <div key={i} className={`bg-card border border-border/50 rounded-2xl p-4 float-in stagger-${i}`}>
-            <div className={`w-7 h-7 rounded-lg border flex items-center justify-center mb-2.5 ${s.bg}`}>
+          <div
+            key={i}
+            className={`bg-card border border-border/50 rounded-2xl p-4 float-in stagger-${i}`}
+          >
+            <div
+              className={`w-7 h-7 rounded-lg border flex items-center justify-center mb-2.5 ${s.bg}`}
+            >
               <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
             </div>
             <div className={`text-2xl font-black tabular-nums ${s.color}`}>{s.value}</div>
@@ -173,7 +237,7 @@ export default function ReferralsPage() {
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground font-bold mb-1">رمز الإحالة الخاص بك</p>
               {loading ? (
@@ -184,14 +248,12 @@ export default function ReferralsPage() {
                 </div>
               )}
             </div>
-            {!loading && overview && (
-              <CopyBtn text={overview.referral_code} label="نسخ الرمز" />
-            )}
+            {!loading && overview && <CopyBtn text={overview.referral_code} label="نسخ الرمز" />}
           </div>
 
           {/* Link row */}
           {!loading && overview && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <div className="flex-1 bg-background/50 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono leading-relaxed">
                 {referralLink}
               </div>
@@ -222,8 +284,8 @@ export default function ReferralsPage() {
             تحصل على{" "}
             <span className="font-black text-yellow-400">
               {overview.points_rate.points_per_referral} نقطة
-            </span>
-            {" "}عند كل إحالة ناجحة — قابلة للتحويل إلى رصيد في المحفظة
+            </span>{" "}
+            عند كل إحالة ناجحة — قابلة للتحويل إلى رصيد في المحفظة
           </p>
         </div>
       )}
@@ -236,7 +298,10 @@ export default function ReferralsPage() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {STEPS.map((s) => (
-            <div key={s.step} className="flex flex-col items-center text-center gap-2 p-3 bg-muted/20 rounded-xl border border-border/30">
+            <div
+              key={s.step}
+              className="flex flex-col items-center text-center gap-2 p-3 bg-muted/20 rounded-xl border border-border/30"
+            >
               <div className={`w-9 h-9 rounded-xl border flex items-center justify-center ${s.bg}`}>
                 <s.icon className={`w-4 h-4 ${s.color}`} />
               </div>
@@ -265,7 +330,9 @@ export default function ReferralsPage() {
 
         {loading ? (
           <div>
-            {Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)}
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonRow key={i} />
+            ))}
           </div>
         ) : events.length === 0 ? (
           <div className="py-14 text-center text-muted-foreground">
@@ -290,15 +357,18 @@ export default function ReferralsPage() {
                   className={`flex items-center gap-3 px-5 py-3.5 float-in stagger-${Math.min(i, 7)}`}
                 >
                   {/* Avatar */}
-                  <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
-                    credited
-                      ? "bg-emerald-500/10 border-emerald-500/20"
-                      : "bg-yellow-500/10 border-yellow-500/20"
-                  }`}>
-                    {credited
-                      ? <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      : <Clock className="w-4 h-4 text-yellow-400" />
-                    }
+                  <div
+                    className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+                      credited
+                        ? "bg-emerald-500/10 border-emerald-500/20"
+                        : "bg-yellow-500/10 border-yellow-500/20"
+                    }`}
+                  >
+                    {credited ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-yellow-400" />
+                    )}
                   </div>
 
                   {/* Info */}
@@ -309,8 +379,7 @@ export default function ReferralsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {credited && ev.credited_at
                         ? `تم الائتمان · ${formatRelativeTime(ev.credited_at)}`
-                        : `سجّل · ${formatRelativeTime(ev.created_at)}`
-                      }
+                        : `سجّل · ${formatRelativeTime(ev.created_at)}`}
                     </p>
                   </div>
 

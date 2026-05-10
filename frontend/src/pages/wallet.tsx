@@ -331,7 +331,7 @@ export default function WalletPage() {
           {isLoading ? (
             <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
           ) : wallet ? (
-            <div className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-5 shadow-xl shadow-primary/8">
+            <div className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-4 sm:p-5 shadow-xl shadow-primary/8">
               <div className="absolute inset-0 dot-grid opacity-35 pointer-events-none" />
               <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/10 blur-3xl pointer-events-none blob-drift" />
               <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
@@ -342,7 +342,7 @@ export default function WalletPage() {
                     <Wallet className="w-3.5 h-3.5" />
                     الرصيد المتاح
                   </div>
-                  <div className="text-4xl font-black tabular-nums mb-3 leading-none text-foreground num-pop">
+                  <div className="text-3xl sm:text-4xl font-black tabular-nums mb-3 leading-none text-foreground num-pop break-words">
                     {formatCurrency(wallet.balance ?? 0)}
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
@@ -421,7 +421,7 @@ export default function WalletPage() {
             {/* Method tabs */}
             <div className="mb-5">
               <p className="text-xs text-muted-foreground/75 mb-2.5 font-bold">طريقة الدفع</p>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   {
                     id: "mobile_transfer" as Method,
@@ -439,7 +439,7 @@ export default function WalletPage() {
                       setError("");
                       setSuccess(false);
                     }}
-                    className={`flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all duration-180 text-right press-spring ${
+                    className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border-2 transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
                       method === m.id
                         ? "border-primary/50 bg-primary/7 shadow-sm"
                         : "border-border/50 hover:border-border/80 bg-card"
@@ -452,13 +452,13 @@ export default function WalletPage() {
                         className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground/65"}`}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div
                         className={`font-bold text-sm ${method === m.id ? "text-foreground" : "text-foreground/80"}`}
                       >
-                        {m.title}
+                        <span className="block leading-snug">{m.title}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground/60">{m.sub}</div>
+                      <div className="text-xs text-muted-foreground/60 leading-snug">{m.sub}</div>
                     </div>
                   </button>
                 ))}
@@ -647,21 +647,21 @@ export default function WalletPage() {
                 <div>
                   <StepDot n={1} label="معلومات الحساب المصرفي" active />
                   <div className="mt-3 bg-muted/25 border border-border/45 rounded-xl p-4 space-y-3.5 text-sm">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <InfoRow label="اسم الحساب" value={LYPAY_INFO.account_name} />
                       <InfoRow label="البنك" value={LYPAY_INFO.bank} />
                     </div>
                     <InfoRow label="الفرع" value={LYPAY_INFO.branch} />
-                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
                       <InfoRow label="رقم الحساب" value={LYPAY_INFO.account_number} />
                       <CopyBtn text={LYPAY_INFO.account_number} label="نسخ" />
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-border/30">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
+                      <div className="min-w-0">
                         <div className="text-[11px] text-muted-foreground/65 mb-0.5 font-medium">
                           IBAN
                         </div>
-                        <div className="font-mono font-bold text-sm tracking-wide">
+                        <div className="font-mono font-bold text-sm break-all">
                           {LYPAY_INFO.iban}
                         </div>
                       </div>
@@ -675,13 +675,13 @@ export default function WalletPage() {
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
                     <StepDot n={2} label="المبلغ المحوّل (د.ل)" active />
-                    <div className="flex gap-2 mt-3 mb-2.5">
+                    <div className="flex flex-wrap gap-2 mt-3 mb-2.5">
                       {presets.map((p) => (
                         <button
                           key={p}
                           type="button"
                           onClick={() => setAmount(String(p))}
-                          className={`flex-1 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                          className={`flex-1 min-w-[64px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
                             amount === String(p)
                               ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
                               : "border-border/50 bg-muted/40 text-muted-foreground/80 hover:bg-muted/70"
@@ -763,7 +763,7 @@ export default function WalletPage() {
 
         {/* ── RIGHT: Topup History ──────────────────────────────── */}
         <div className="lg:col-span-2">
-          <div className="bg-card border border-border/55 rounded-2xl p-5 sticky top-20">
+          <div className="bg-card border border-border/55 rounded-2xl p-5 lg:sticky lg:top-20">
             <div className="flex items-center gap-2.5 mb-4">
               <TrendingUp className="w-4 h-4 text-muted-foreground/60" />
               <h2 className="font-black text-sm">سجل الشحن</h2>
@@ -787,7 +787,7 @@ export default function WalletPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-[480px] overflow-y-auto scrollbar-none">
+              <div className="space-y-2.5 lg:max-h-[480px] overflow-y-auto scrollbar-none">
                 {(topups as any[]).map((t: any, i: number) => (
                   <div
                     key={t.id}
