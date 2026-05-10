@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch ./src/index.ts",
-    "build": "node ./build.mjs",
+    "build": "node ./build.mjs && pnpm --dir .. --filter @workspace/subnation run build",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

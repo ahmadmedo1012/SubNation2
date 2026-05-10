@@ -37,8 +37,7 @@ node_modules
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
-backend/.env
-backend/.env.*
+backend/.env.local
 !backend/.env.example
 /.sass-cache
 /connect.lock
