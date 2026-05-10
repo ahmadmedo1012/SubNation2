@@ -258,6 +258,141 @@ function ProviderCard({
   );
 }
 
+// ── 2FA Setup Component ────────────────────────────────────────────────────────
+
+function TwoFactorSetup({ adminToken }: { adminToken: string }) {
+  const [setupData, setSetupData] = useState<{ secret: string; otpauth_url: string; qrCode?: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const startSetup = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/2fa/setup", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "حدث خطأ أثناء الإعداد");
+      
+      import("qrcode").then(QRCode => {
+        QRCode.default.toDataURL(data.otpauth_url, (err: any, url: string) => {
+          if (!err) setSetupData({ ...data, qrCode: url });
+        });
+      });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifySetup = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/2fa/verify-setup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({ code })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "رمز التحقق غير صحيح");
+      
+      setSuccess(true);
+      setSetupData(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="flex flex-col items-center justify-center py-6 px-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+        <CheckCircle className="w-12 h-12 text-emerald-500 mb-3" />
+        <h3 className="font-bold text-emerald-500">تم تفعيل المصادقة الثنائية بنجاح</h3>
+        <p className="text-sm text-emerald-500/80 mt-1">حسابك الآن محمي بطبقة إضافية من الأمان.</p>
+      </div>
+    );
+  }
+
+  if (setupData) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row items-center gap-6 p-6 bg-muted/20 border border-border/50 rounded-xl">
+          <div className="shrink-0 bg-white p-3 rounded-xl shadow-sm">
+            {setupData.qrCode ? (
+              <img src={setupData.qrCode} alt="QR Code" className="w-32 h-32" />
+            ) : (
+              <div className="w-32 h-32 flex items-center justify-center bg-muted">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+          </div>
+          <div className="flex-1 space-y-3">
+            <h3 className="font-bold text-sm">1. امسح رمز الاستجابة السريعة</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              افتح تطبيق Google Authenticator أو Authy وامسح الرمز ضوئياً.
+              إذا كنت لا تستطيع مسح الرمز، أدخل المفتاح التالي يدوياً:
+            </p>
+            <code className="block bg-background px-3 py-2 rounded-lg border border-border/50 font-mono text-sm tracking-wider text-center">
+              {setupData.secret}
+            </code>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="font-bold text-sm">2. أدخل رمز التحقق</h3>
+          <p className="text-xs text-muted-foreground">أدخل الرمز المكون من 6 أرقام الذي يظهر في تطبيق المصادقة.</p>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              dir="ltr"
+              className="w-full max-w-[200px] h-11 bg-background border border-border/70 rounded-xl px-4 text-center text-lg tracking-widest font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+            />
+            <button
+              onClick={verifySetup}
+              disabled={code.length !== 6 || loading}
+              className="h-11 px-6 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "تفعيل"}
+            </button>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-4">
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        المصادقة الثنائية (2FA) تضيف طبقة أمان إضافية لحسابك. عند تسجيل الدخول، ستحتاج إلى إدخال رمز التحقق من تطبيق مثل Google Authenticator.
+      </p>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <button
+        onClick={startSetup}
+        disabled={loading}
+        className="flex items-center gap-2 h-10 px-5 rounded-xl bg-primary/10 text-primary font-bold text-sm hover:bg-primary/20 transition-all border border-primary/20"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+        إعداد المصادقة الثنائية
+      </button>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
@@ -448,28 +583,43 @@ export default function AdminSettingsPage() {
 
         {/* ── Security Tab ──────────────────────────────────────────────── */}
         {activeTab === "security" && (
-          <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
-            <h2 className="font-bold mb-4 text-sm">إعدادات الأمان</h2>
-            <div className="space-y-3 text-sm text-muted-foreground">
-              {[
-                { label: "تشفير JWT",             value: "HS256 — مفتاح عشوائي آمن",             ok: true },
-                { label: "تشفير كلمات المرور",    value: "SHA-256 + salt",                       ok: true },
-                { label: "تحديد معدل الطلبات",    value: "20 طلب/15 دق على تسجيل الدخول",       ok: true },
-                { label: "CORS",                   value: "مقيّد بنطاقات APP_ORIGINS",            ok: true },
-                { label: "OAuth Redirect Safety",  value: "كود مؤقت — يُستخدم مرة واحدة",        ok: true },
-                { label: "Telegram Widget Verify", value: "HMAC-SHA256 + فحص auth_date",          ok: true },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl">
-                  <div className="flex items-center gap-2.5">
-                    <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
-                    <span className="font-medium text-sm">{item.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-muted-foreground/70">{item.value}</span>
-                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                  </div>
+          <div className="space-y-5">
+            <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5 text-primary" />
                 </div>
-              ))}
+                <div>
+                  <h2 className="font-bold text-sm">المصادقة الثنائية (2FA)</h2>
+                  <p className="text-xs text-muted-foreground">حماية إضافية لحساب الإدارة الخاص بك</p>
+                </div>
+              </div>
+              <TwoFactorSetup adminToken={adminToken} />
+            </div>
+
+            <div className="bg-card border border-border/60 rounded-2xl p-6 float-in delay-75">
+              <h2 className="font-bold mb-4 text-sm">إعدادات الأمان</h2>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                {[
+                  { label: "تشفير JWT",             value: "HS256 — مفتاح عشوائي آمن",             ok: true },
+                  { label: "تشفير كلمات المرور",    value: "SHA-256 + salt",                       ok: true },
+                  { label: "تحديد معدل الطلبات",    value: "20 طلب/15 دق على تسجيل الدخول",       ok: true },
+                  { label: "CORS",                   value: "مقيّد بنطاقات APP_ORIGINS",            ok: true },
+                  { label: "OAuth Redirect Safety",  value: "كود مؤقت — يُستخدم مرة واحدة",        ok: true },
+                  { label: "Telegram Widget Verify", value: "HMAC-SHA256 + فحص auth_date",          ok: true },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl">
+                    <div className="flex items-center gap-2.5">
+                      <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-muted-foreground/70">{item.value}</span>
+                      <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

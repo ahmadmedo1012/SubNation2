@@ -7,6 +7,7 @@
     "editorconfig.editorconfig",
     "mtxr.sqltools",
     "mtxr.sqltools-driver-pg",
-    "ms-azuretools.vscode-docker"
+    "ms-azuretools.vscode-docker",
+    "ms-playwright.playwright"
   ]
 }

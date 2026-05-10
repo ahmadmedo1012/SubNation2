@@ -191,8 +191,10 @@ export interface AdminLoginBody {
 }
 
 export interface AdminAuthResponse {
-  token: string;
-  display_name: string;
+  token?: string;
+  display_name?: string;
+  requires_2fa?: boolean;
+  temp_token?: string;
 }
 
 export interface AdminStats {
@@ -323,9 +325,7 @@ export type ListProductsParams = {
   search?: string | null;
 };
 
-export type ListProductsSort =
-  | (typeof ListProductsSort)[keyof typeof ListProductsSort]
-  | null;
+export type ListProductsSort = (typeof ListProductsSort)[keyof typeof ListProductsSort] | null;
 
 export const ListProductsSort = {
   price_asc: "price_asc",

@@ -1,41 +1,46 @@
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { FlashSaleBanner } from "@/components/layout/FlashSaleBanner";
+import { Footer } from "@/components/layout/Footer";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { Navbar } from "@/components/layout/Navbar";
+import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
-import { Navbar } from "@/components/layout/Navbar";
-import { MobileNav } from "@/components/layout/MobileNav";
-import { Footer } from "@/components/layout/Footer";
-import { FlashSaleBanner } from "@/components/layout/FlashSaleBanner";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
+import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
+// Customer-facing pages — eagerly loaded for the primary user journey.
+import AuthCallbackPage from "@/pages/auth-callback";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import HomePage from "@/pages/home";
 import LoginPage from "@/pages/login";
-import RegisterPage from "@/pages/register";
-import ProductPage from "@/pages/product";
-import WalletPage from "@/pages/wallet";
-import OrdersPage from "@/pages/orders";
-import OrderDetailPage from "@/pages/order-detail";
 import LoyaltyPage from "@/pages/loyalty";
+import NotFound from "@/pages/not-found";
+import OrderDetailPage from "@/pages/order-detail";
+import OrdersPage from "@/pages/orders";
+import ProductPage from "@/pages/product";
+import ProfilePage from "@/pages/profile";
 import ReferralsPage from "@/pages/referrals";
+import RegisterPage from "@/pages/register";
 import SupportPage from "@/pages/support";
 import TermsPage from "@/pages/terms";
-import ForgotPasswordPage from "@/pages/forgot-password";
-import ProfilePage from "@/pages/profile";
-import AdminLoginPage from "@/pages/admin/login";
-import AdminDashboardPage from "@/pages/admin/dashboard";
-import AdminTopupsPage from "@/pages/admin/topups";
-import AdminOrdersPage from "@/pages/admin/orders";
-import AdminProductsPage from "@/pages/admin/products";
-import AdminUsersPage from "@/pages/admin/users";
-import AdminSettingsPage from "@/pages/admin/settings";
-import AdminTicketsPage from "@/pages/admin/tickets";
-import AdminReferralsPage from "@/pages/admin/referrals";
-import AdminCouponsPage from "@/pages/admin/coupons";
-import AdminAlertsPage from "@/pages/admin/alerts";
-import AuthCallbackPage from "@/pages/auth-callback";
-import NotFound from "@/pages/not-found";
+import WalletPage from "@/pages/wallet";
+
+// Admin pages — lazy loaded so customer bundles stay small.
+const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
+const AdminDashboardPage = lazy(() => import("@/pages/admin/dashboard"));
+const AdminTopupsPage = lazy(() => import("@/pages/admin/topups"));
+const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
+const AdminProductsPage = lazy(() => import("@/pages/admin/products"));
+const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
+const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
+const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
+const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
+const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
+const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +55,7 @@ function AppRoutes() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <RouteLoading />
       {!isAdmin && <Navbar />}
       {!isAdmin && <FlashSaleBanner />}
       <main className={!isAdmin && !isAuth ? "pb-16 md:pb-0" : ""}>
@@ -69,17 +75,26 @@ function AppRoutes() {
             <Route path="/forgot-password" component={ForgotPasswordPage} />
             <Route path="/profile" component={ProfilePage} />
             <Route path="/auth/callback" component={AuthCallbackPage} />
-            <Route path="/admin/login" component={AdminLoginPage} />
-            <Route path="/admin" component={AdminDashboardPage} />
-            <Route path="/admin/topups" component={AdminTopupsPage} />
-            <Route path="/admin/orders" component={AdminOrdersPage} />
-            <Route path="/admin/products" component={AdminProductsPage} />
-            <Route path="/admin/users" component={AdminUsersPage} />
-            <Route path="/admin/settings" component={AdminSettingsPage} />
-            <Route path="/admin/tickets" component={AdminTicketsPage} />
-            <Route path="/admin/referrals" component={AdminReferralsPage} />
-            <Route path="/admin/coupons" component={AdminCouponsPage} />
-            <Route path="/admin/alerts" component={AdminAlertsPage} />
+            <Route path="/admin/:rest*">
+              {() => (
+                <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+                  <Switch>
+                    <Route path="/admin/login" component={AdminLoginPage} />
+                    <Route path="/admin" component={AdminDashboardPage} />
+                    <Route path="/admin/topups" component={AdminTopupsPage} />
+                    <Route path="/admin/orders" component={AdminOrdersPage} />
+                    <Route path="/admin/products" component={AdminProductsPage} />
+                    <Route path="/admin/users" component={AdminUsersPage} />
+                    <Route path="/admin/settings" component={AdminSettingsPage} />
+                    <Route path="/admin/tickets" component={AdminTicketsPage} />
+                    <Route path="/admin/referrals" component={AdminReferralsPage} />
+                    <Route path="/admin/coupons" component={AdminCouponsPage} />
+                    <Route path="/admin/alerts" component={AdminAlertsPage} />
+                    <Route component={NotFound} />
+                  </Switch>
+                </Suspense>
+              )}
+            </Route>
             <Route component={NotFound} />
           </Switch>
         </ErrorBoundary>
@@ -90,11 +105,14 @@ function AppRoutes() {
   );
 }
 
+import { SocketInitializer } from "@/components/SocketInitializer";
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
+          <SocketInitializer />
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <AppRoutes />

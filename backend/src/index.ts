@@ -1,5 +1,8 @@
+import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initSocket } from "./lib/socket";
+import { initCronJobs } from "./jobs/cron";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "8080";
 
@@ -16,14 +19,18 @@ function parsePort(value: string): number {
 }
 
 function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): void {
-  const server = app.listen(port, () => {
-    const address = server.address();
+  const httpServer = createServer(app);
+  initSocket(httpServer);
+  initCronJobs();
+
+  httpServer.listen(port, () => {
+    const address = httpServer.address();
     const actualPort = typeof address === "object" && address ? address.port : port;
 
     logger.info({ port: actualPort }, "Server listening");
   });
 
-  server.on("error", (err: NodeJS.ErrnoException) => {
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && port !== 0 && port < 65535 && remainingAttempts > 0) {
       const nextPort = port + 1;
 

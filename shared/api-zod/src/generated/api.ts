@@ -363,9 +363,7 @@ export const ListAdminProductsResponseItem = zod.object({
   usage_terms: zod.string().nullish(),
   created_at: zod.string(),
 });
-export const ListAdminProductsResponse = zod.array(
-  ListAdminProductsResponseItem,
-);
+export const ListAdminProductsResponse = zod.array(ListAdminProductsResponseItem);
 
 /**
  * @summary Create a new product
@@ -454,6 +452,8 @@ export const AdminLoginBody = zod.object({
 });
 
 export const AdminLoginResponse = zod.object({
-  token: zod.string(),
-  display_name: zod.string(),
+  token: zod.string().optional(),
+  display_name: zod.string().optional(),
+  requires_2fa: zod.boolean().optional(),
+  temp_token: zod.string().optional(),
 });

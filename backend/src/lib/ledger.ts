@@ -3,7 +3,12 @@ import { logger } from "./logger";
 
 type LedgerType = "topup" | "purchase" | "refund" | "adjustment" | "referral_credit";
 
-export async function insertLedgerEntry(params: {
+// Drizzle transaction is structurally compatible with `db` for our uses; we
+// accept either to allow inserting inside an active transaction so the ledger
+// commits atomically with the balance change.
+type DbOrTx = typeof db;
+
+export interface LedgerEntryParams {
   userId: number;
   type: LedgerType;
   amount: string;
@@ -12,9 +17,20 @@ export async function insertLedgerEntry(params: {
   referenceId?: number;
   referenceType?: string;
   description?: string;
-}): Promise<void> {
+}
+
+/**
+ * Insert a wallet ledger entry. Pass a transaction (`tx`) to commit
+ * atomically with the surrounding balance mutation. Errors propagate so the
+ * caller's transaction rolls back — the ledger is the source of truth and
+ * MUST not silently fail.
+ */
+export async function insertLedgerEntry(
+  params: LedgerEntryParams,
+  client: DbOrTx = db,
+): Promise<void> {
   try {
-    await db.insert(walletLedgerTable).values({
+    await client.insert(walletLedgerTable).values({
       userId: params.userId,
       type: params.type,
       amount: params.amount,
@@ -26,5 +42,6 @@ export async function insertLedgerEntry(params: {
     });
   } catch (err) {
     logger.error({ err, params }, "Failed to insert wallet ledger entry");
+    throw err;
   }
 }

@@ -33,7 +33,7 @@ export function MobileNav() {
           return (
             <Link key={tab.href} href={tab.href} className="flex-1">
               <div
-                className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none"
+                className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none press-spring"
                 style={{ WebkitTapHighlightColor: "transparent" }}
               >
                 {/* Active pill background */}

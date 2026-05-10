@@ -13,6 +13,7 @@ import { Router } from "express";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { generateOrderCode } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { stringParam } from "../lib/http";
 import { insertLedgerEntry } from "../lib/ledger";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
@@ -65,7 +66,8 @@ router.post("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateOrderBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { product_id } = parse.data;
   const couponCode: string | undefined =
     typeof req.body.coupon_code === "string"
@@ -83,7 +85,8 @@ router.post("/", requireUser, async (req, res) => {
       ),
     )
     .limit(1);
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const now = new Date();
   const [flashSale] = await db
@@ -108,19 +111,30 @@ router.post("/", requireUser, async (req, res) => {
       .where(eq(couponsTable.code, couponCode))
       .limit(1);
     if (!coupon || !coupon.isActive) {
-      return res.status(400).json({ error: "كوبون غير صالح أو منتهي الصلاحية" });
+      return res
+        .status(400)
+        .json(createErrorResponse("كوبون غير صالح أو منتهي الصلاحية", ErrorCode.INVALID_DATA));
     }
     if (coupon.expiresAt && coupon.expiresAt < now) {
-      return res.status(400).json({ error: "انتهت صلاحية هذا الكوبون" });
+      return res
+        .status(400)
+        .json(createErrorResponse("انتهت صلاحية هذا الكوبون", ErrorCode.INVALID_DATA));
     }
     if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-      return res.status(400).json({ error: "تم استخدام هذا الكوبون بالحد الأقصى" });
+      return res
+        .status(400)
+        .json(createErrorResponse("تم استخدام هذا الكوبون بالحد الأقصى", ErrorCode.INVALID_DATA));
     }
     const minOrder = parseFloat(String(coupon.minOrderAmount));
     if (basePrice < minOrder) {
       return res
         .status(400)
-        .json({ error: `هذا الكوبون يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل` });
+        .json(
+          createErrorResponse(
+            `هذا الكوبون يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل`,
+            ErrorCode.INVALID_DATA,
+          ),
+        );
     }
     if (coupon.type === "percentage") {
       discountAmount = +((basePrice * parseFloat(String(coupon.value))) / 100).toFixed(2);
@@ -133,11 +147,21 @@ router.post("/", requireUser, async (req, res) => {
   const finalPrice = +(basePrice - discountAmount).toFixed(2);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
+  if (!user)
+    return res
+      .status(401)
+      .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
   const currentBalance = parseFloat(String(user.walletBalance));
   if (currentBalance < finalPrice) {
-    return res.status(400).json({ error: "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً." });
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.",
+          ErrorCode.INSUFFICIENT_BALANCE,
+        ),
+      );
   }
 
   const [inventoryItem] = await db
@@ -146,7 +170,9 @@ router.post("/", requireUser, async (req, res) => {
     .where(and(eq(inventoryTable.productId, product_id), eq(inventoryTable.isSold, false)))
     .limit(1);
   if (!inventoryItem)
-    return res.status(404).json({ error: "المنتج غير متوفر حالياً. حاول لاحقاً." });
+    return res
+      .status(404)
+      .json(createErrorResponse("المنتج غير متوفر حالياً. حاول لاحقاً.", ErrorCode.OUT_OF_STOCK));
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
@@ -212,6 +238,22 @@ router.post("/", requireUser, async (req, res) => {
         })
         .returning();
 
+      // Ledger entry committed atomically with balance mutation. If this
+      // fails the whole purchase rolls back, keeping the audit trail in sync.
+      await insertLedgerEntry(
+        {
+          userId,
+          type: "purchase",
+          amount: String(finalPrice),
+          balanceBefore: String(currentBalance),
+          balanceAfter: String(newBalance),
+          referenceId: o.id,
+          referenceType: "order",
+          description: `Purchase: ${product.name}`,
+        },
+        tx as unknown as typeof db,
+      );
+
       return o;
     })
     .catch((err) => {
@@ -222,19 +264,15 @@ router.post("/", requireUser, async (req, res) => {
     });
 
   if (!order) {
-    return res.status(409).json({ error: "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى." });
+    return res
+      .status(409)
+      .json(
+        createErrorResponse(
+          "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى.",
+          ErrorCode.OUT_OF_STOCK,
+        ),
+      );
   }
-
-  await insertLedgerEntry({
-    userId,
-    type: "purchase",
-    amount: String(finalPrice),
-    balanceBefore: String(currentBalance),
-    balanceAfter: String(newBalance),
-    referenceId: order.id,
-    referenceType: "order",
-    description: `Purchase: ${product.name}`,
-  });
 
   notifyNewOrder(user.phone, product.name, finalPrice);
 
@@ -256,7 +294,8 @@ router.get("/:orderCode", requireUser, async (req, res) => {
     .where(and(eq(ordersTable.orderCode, orderCode), eq(ordersTable.userId, userId)))
     .limit(1);
 
-  if (!result) return res.status(404).json({ error: "الطلب غير موجود" });
+  if (!result)
+    return res.status(404).json(createErrorResponse("الطلب غير موجود", ErrorCode.ORDER_NOT_FOUND));
   return res.json(formatOrder(result.order, result.productName ?? "", result.productImageUrl));
 });
 

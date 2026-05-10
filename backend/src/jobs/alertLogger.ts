@@ -1,13 +1,8 @@
-import { db, adminAlertsTable } from "@workspace/db";
-import { desc, eq, count } from "drizzle-orm";
+import { adminAlertsTable, db } from "@workspace/db";
+import { count, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-export type AlertType =
-  | "coupon_maxed"
-  | "coupon_expiring"
-  | "low_stock"
-  | "no_stock"
-  | "system";
+export type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system";
 
 export async function logAdminAlert(
   type: AlertType,
@@ -21,19 +16,22 @@ export async function logAdminAlert(
   }
 }
 
-export async function getAdminAlerts(limit = 100) {
+export async function getAdminAlerts(limit = 100, offset = 0) {
   return db
     .select()
     .from(adminAlertsTable)
     .orderBy(desc(adminAlertsTable.createdAt))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countAllAlerts(): Promise<number> {
+  const [row] = await db.select({ count: count() }).from(adminAlertsTable);
+  return Number(row?.count ?? 0);
 }
 
 export async function markAlertRead(id: number) {
-  await db
-    .update(adminAlertsTable)
-    .set({ isRead: true })
-    .where(eq(adminAlertsTable.id, id));
+  await db.update(adminAlertsTable).set({ isRead: true }).where(eq(adminAlertsTable.id, id));
 }
 
 export async function markAllAlertsRead() {
@@ -49,9 +47,7 @@ export async function countUnreadAlerts(): Promise<number> {
 }
 
 export async function deleteReadAlerts(): Promise<number> {
-  const result = await db
-    .delete(adminAlertsTable)
-    .where(eq(adminAlertsTable.isRead, true));
+  const result = await db.delete(adminAlertsTable).where(eq(adminAlertsTable.isRead, true));
   return (result as any).rowCount ?? 0;
 }
 

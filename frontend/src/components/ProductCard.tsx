@@ -62,8 +62,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
         group relative bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer
         float-in ${staggerClass}
         transition-all duration-280 ease-out
-        hover:border-border/80 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-2 hover:scale-[1.01]
-        active:scale-[0.978] active:shadow-md active:translate-y-0 active:duration-100
+        card-spring hover:border-border/80 hover:shadow-2xl hover:shadow-black/40
         ${unavailable ? "opacity-45 saturate-[0.3] pointer-events-none" : ""}
       `}>
 

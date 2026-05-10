@@ -414,7 +414,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         {!collapsed && (
           <button
             onClick={() => setShowSearch(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group"
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group press-spring"
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 text-right">بحث سريع</span>
@@ -423,7 +423,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         )}
         <button
           onClick={adminLogout}
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 press-spring ${collapsed ? "justify-center" : ""}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
           {!collapsed && <span>خروج</span>}

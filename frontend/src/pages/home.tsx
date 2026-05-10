@@ -1,41 +1,100 @@
-import { useState, useRef } from "react";
-import { useListProducts, useGetCatalogStats, useGetMe, useListOrders } from "@workspace/api-client-react";
-import { getListProductsQueryKey, getGetCatalogStatsQueryKey, getGetMeQueryKey, getListOrdersQueryKey } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/auth";
 import { ProductCard } from "@/components/ProductCard";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/lib/auth";
 import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
-  Search, Clock, Wallet, Star, PackageSearch,
-  ChevronDown, Package, ShieldCheck, Truck, Headphones, ArrowLeft,
-  LayoutGrid, Tv2, Music2, Gamepad2, Briefcase, ChevronLeft,
-  CheckCircle, XCircle, SlidersHorizontal
+  getGetCatalogStatsQueryKey,
+  getGetMeQueryKey,
+  getListOrdersQueryKey,
+  getListProductsQueryKey,
+  useGetCatalogStats,
+  useGetMe,
+  useListOrders,
+  useListProducts,
+} from "@workspace/api-client-react";
+import {
+  ArrowLeft,
+  Briefcase,
+  CheckCircle,
+  ChevronDown,
+  ChevronLeft,
+  Clock,
+  Gamepad2,
+  Headphones,
+  LayoutGrid,
+  Music2,
+  Package,
+  PackageSearch,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Star,
+  Truck,
+  Tv2,
+  Wallet,
+  XCircle,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
 const CATEGORIES = [
-  { value: "",              label: "الكل",     Icon: LayoutGrid },
-  { value: "streaming",    label: "بث مباشر",  Icon: Tv2       },
-  { value: "music",        label: "موسيقى",    Icon: Music2    },
-  { value: "gaming",       label: "ألعاب",     Icon: Gamepad2  },
-  { value: "productivity", label: "إنتاجية",   Icon: Briefcase },
+  { value: "", label: "الكل", Icon: LayoutGrid },
+  { value: "streaming", label: "بث مباشر", Icon: Tv2 },
+  { value: "music", label: "موسيقى", Icon: Music2 },
+  { value: "gaming", label: "ألعاب", Icon: Gamepad2 },
+  { value: "productivity", label: "إنتاجية", Icon: Briefcase },
 ];
 
 const SORTS = [
-  { value: "",           label: "الأحدث" },
-  { value: "popular",    label: "الأكثر مبيعاً" },
-  { value: "price_asc",  label: "السعر: الأقل" },
+  { value: "", label: "الأحدث" },
+  { value: "popular", label: "الأكثر مبيعاً" },
+  { value: "price_asc", label: "السعر: الأقل" },
   { value: "price_desc", label: "السعر: الأعلى" },
 ];
 
 const TRUST_ITEMS = [
-  { icon: Truck,       label: "تسليم فوري" },
+  { icon: Truck, label: "تسليم فوري" },
   { icon: ShieldCheck, label: "دفع آمن" },
-  { icon: Headphones,  label: "دعم مستمر" },
+  { icon: Headphones, label: "دعم مستمر" },
 ];
 
-const BRANDS = ["Netflix", "Spotify", "Disney+", "PlayStation", "YouTube", "Canva", "Adobe", "Office 365"];
+const BRANDS = [
+  "Netflix",
+  "Spotify",
+  "Disney+",
+  "PlayStation",
+  "YouTube",
+  "Canva",
+  "Adobe",
+  "Office 365",
+];
+
+// Search history localStorage helpers
+const SEARCH_HISTORY_KEY = "subnation_search_history";
+const MAX_SEARCH_HISTORY = 8;
+
+function getSearchHistory(): string[] {
+  try {
+    const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSearchHistory(query: string) {
+  if (!query.trim()) return;
+  const history = getSearchHistory();
+  const filtered = history.filter((h) => h !== query);
+  filtered.unshift(query);
+  if (filtered.length > MAX_SEARCH_HISTORY) filtered.pop();
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(filtered));
+}
+
+function clearSearchHistory() {
+  localStorage.removeItem(SEARCH_HISTORY_KEY);
+}
 
 function ProductSkeleton() {
   return (
@@ -59,7 +118,8 @@ function ProductSkeleton() {
 
 function OrderStatusIcon({ status }: { status: string }) {
   if (status === "completed") return <CheckCircle className="w-3 h-3 text-emerald-400" />;
-  if (status === "failed" || status === "refunded") return <XCircle className="w-3 h-3 text-red-400" />;
+  if (status === "failed" || status === "refunded")
+    return <XCircle className="w-3 h-3 text-red-400" />;
   return <Clock className="w-3 h-3 text-yellow-400" />;
 }
 
@@ -70,18 +130,43 @@ export default function HomePage() {
   const [category, setCategory] = useState("");
   const [sort, setSort] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load search history on mount
+  useEffect(() => {
+    setSearchHistory(getSearchHistory());
+  }, []);
 
   const handleSearchChange = (val: string) => {
     setSearchInput(val);
+    setShowSearchHistory(val.length > 0 && searchHistory.length > 0);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setSearch(val), 320);
+    debounceRef.current = setTimeout(() => {
+      setSearch(val);
+      if (val.trim()) {
+        saveSearchHistory(val);
+        setSearchHistory(getSearchHistory());
+      }
+    }, 320);
+  };
+
+  const handleSearchHistoryClick = (query: string) => {
+    setSearchInput(query);
+    setSearch(query);
+    setShowSearchHistory(false);
+  };
+
+  const handleClearHistory = () => {
+    clearSearchHistory();
+    setSearchHistory([]);
   };
 
   const params: Record<string, string> = {};
-  if (search)        params.search = search;
-  if (category)      params.category = category;
-  if (sort)          params.sort = sort;
+  if (search) params.search = search;
+  if (category) params.category = category;
+  if (sort) params.sort = sort;
   if (availableOnly) params.available_only = "true";
 
   const { data: products = [], isLoading } = useListProducts(params, {
@@ -103,7 +188,9 @@ export default function HomePage() {
   });
   const latestOrders = (recentOrders as any[]).slice(0, 4);
 
-  const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(Boolean).length;
+  const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(
+    Boolean,
+  ).length;
 
   const clearFilters = () => {
     setSearch("");
@@ -116,14 +203,17 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
-
         {/* ── Hero ─────────────────────────────────────────── */}
         {token && user ? (
           <div className="mb-5 page-in">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <p className="text-muted-foreground/60 text-xs mb-0.5 font-medium">مرحباً بك مجدداً</p>
-                <h1 className="text-fluid-2xl font-black leading-tight">اشترِ اشتراكك المفضل اليوم</h1>
+                <p className="text-muted-foreground/60 text-xs mb-0.5 font-medium">
+                  مرحباً بك مجدداً
+                </p>
+                <h1 className="text-fluid-2xl font-black leading-tight">
+                  اشترِ اشتراكك المفضل اليوم
+                </h1>
               </div>
               <div className="flex gap-2">
                 <Link href="/wallet">
@@ -132,8 +222,12 @@ export default function HomePage() {
                       <Wallet className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">المحفظة</div>
-                      <div className="font-black text-sm tabular-nums text-foreground">{formatCurrency(user.wallet_balance ?? 0)}</div>
+                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                        المحفظة
+                      </div>
+                      <div className="font-black text-sm tabular-nums text-foreground">
+                        {formatCurrency(user.wallet_balance ?? 0)}
+                      </div>
                     </div>
                   </div>
                 </Link>
@@ -143,8 +237,12 @@ export default function HomePage() {
                       <Star className="w-3.5 h-3.5 text-yellow-400" />
                     </div>
                     <div>
-                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">النقاط</div>
-                      <div className="font-black text-sm tabular-nums">{user.loyalty_points ?? 0}</div>
+                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                        النقاط
+                      </div>
+                      <div className="font-black text-sm tabular-nums">
+                        {user.loyalty_points ?? 0}
+                      </div>
                     </div>
                   </div>
                 </Link>
@@ -171,19 +269,32 @@ export default function HomePage() {
                     <Link key={order.id} href={`/orders/${order.order_code}`}>
                       <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
                         <div className="w-8 h-8 rounded-xl bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/25">
-                          {order.product_image_url
-                            ? <img src={order.product_image_url} alt={order.product_name} className="w-full h-full object-contain p-1" />
-                            : <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
-                          }
+                          {order.product_image_url ? (
+                            <img
+                              src={order.product_image_url}
+                              alt={order.product_name}
+                              className="w-full h-full object-contain p-1"
+                            />
+                          ) : (
+                            <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold truncate group-hover:text-primary transition-colors duration-150">{order.product_name}</div>
+                          <div className="text-xs font-bold truncate group-hover:text-primary transition-colors duration-150">
+                            {order.product_name}
+                          </div>
                           <div className="flex items-center gap-1 mt-0.5">
                             <OrderStatusIcon status={order.status} />
-                            <span className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}>{statusLabel(order.status)}</span>
+                            <span
+                              className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}
+                            >
+                              {statusLabel(order.status)}
+                            </span>
                           </div>
                         </div>
-                        <div className="text-xs font-black tabular-nums shrink-0">{formatCurrency(order.amount)}</div>
+                        <div className="text-xs font-black tabular-nums shrink-0">
+                          {formatCurrency(order.amount)}
+                        </div>
                         <ChevronLeft className="w-3 h-3 text-muted-foreground/25 group-hover:text-primary transition-colors shrink-0" />
                       </div>
                     </Link>
@@ -211,7 +322,9 @@ export default function HomePage() {
                     <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/12 text-primary border border-primary/25 px-2.5 py-1 rounded-full">
                       ليبيا #1
                     </span>
-                    <span className="text-[11px] text-muted-foreground/65 font-medium">سوق الاشتراكات الرقمية</span>
+                    <span className="text-[11px] text-muted-foreground/65 font-medium">
+                      سوق الاشتراكات الرقمية
+                    </span>
                   </div>
                   <h1 className="text-fluid-3xl font-black mb-3 leading-[1.15] tracking-tight">
                     اشتراكات رقمية
@@ -233,14 +346,19 @@ export default function HomePage() {
                           {brand}
                         </span>
                       ))}
-                      <span className="shrink-0 text-[11px] text-muted-foreground/35 px-1 whitespace-nowrap">وأكثر…</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground/35 px-1 whitespace-nowrap">
+                        وأكثر…
+                      </span>
                     </div>
                   </div>
 
                   {/* Trust pills */}
                   <div className="flex flex-wrap gap-2 mb-5">
-                    {TRUST_ITEMS.map(item => (
-                      <div key={item.label} className="flex items-center gap-1.5 text-xs text-muted-foreground/70 bg-muted/25 border border-border/30 px-2.5 py-1 rounded-full">
+                    {TRUST_ITEMS.map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 bg-muted/25 border border-border/30 px-2.5 py-1 rounded-full"
+                      >
                         <item.icon className="w-3 h-3" />
                         {item.label}
                       </div>
@@ -254,7 +372,10 @@ export default function HomePage() {
                       </Button>
                     </Link>
                     <Link href="/login">
-                      <Button variant="outline" className="active:scale-[0.97] h-11 px-4 transition-all text-sm gap-1.5 hover:bg-muted/40 rounded-xl">
+                      <Button
+                        variant="outline"
+                        className="active:scale-[0.97] h-11 px-4 transition-all text-sm gap-1.5 hover:bg-muted/40 rounded-xl"
+                      >
                         تسجيل الدخول
                         <ArrowLeft className="w-3.5 h-3.5 opacity-40" />
                       </Button>
@@ -266,12 +387,37 @@ export default function HomePage() {
                 {stats && (
                   <div className="hidden sm:flex flex-col gap-2 shrink-0">
                     {[
-                      { label: "منتج متاح",     value: stats.available_products,                                      color: "text-emerald-400", border: "border-emerald-500/18", bg: "bg-emerald-500/7" },
-                      { label: "أقل سعر",        value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—", color: "text-primary",      border: "border-primary/18",    bg: "bg-primary/7"    },
-                      { label: "وحدة بالمخزون", value: stats.total_units,                                             color: "text-blue-400",    border: "border-blue-500/18",   bg: "bg-blue-500/7"   },
+                      {
+                        label: "منتج متاح",
+                        value: stats.available_products,
+                        color: "text-emerald-400",
+                        border: "border-emerald-500/18",
+                        bg: "bg-emerald-500/7",
+                      },
+                      {
+                        label: "أقل سعر",
+                        value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
+                        color: "text-primary",
+                        border: "border-primary/18",
+                        bg: "bg-primary/7",
+                      },
+                      {
+                        label: "وحدة بالمخزون",
+                        value: stats.total_units,
+                        color: "text-blue-400",
+                        border: "border-blue-500/18",
+                        bg: "bg-blue-500/7",
+                      },
                     ].map((s, i) => (
-                      <div key={s.label} className={`${s.bg} border ${s.border} rounded-2xl px-4 py-3 text-right min-w-[116px] float-in stagger-${i + 1} hover:brightness-105 transition-all duration-200`}>
-                        <div className={`font-black text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}>{s.value}</div>
+                      <div
+                        key={s.label}
+                        className={`${s.bg} border ${s.border} rounded-2xl px-4 py-3 text-right min-w-[116px] float-in stagger-${i + 1} hover:brightness-105 transition-all duration-200`}
+                      >
+                        <div
+                          className={`font-black text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}
+                        >
+                          {s.value}
+                        </div>
                         <div className="text-xs text-muted-foreground/65">{s.label}</div>
                       </div>
                     ))}
@@ -286,12 +432,21 @@ export default function HomePage() {
         {!token && stats && (
           <div className="sm:hidden grid grid-cols-3 gap-2 mb-5">
             {[
-              { label: "منتج",      value: stats.available_products,                                      color: "text-emerald-400" },
-              { label: "أقل سعر",  value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—", color: "text-primary"     },
-              { label: "بالمخزون", value: stats.total_units,                                              color: "text-blue-400"    },
-            ].map(s => (
-              <div key={s.label} className="bg-card border border-border/45 rounded-2xl p-3 text-center">
-                <div className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}>{s.value}</div>
+              { label: "منتج", value: stats.available_products, color: "text-emerald-400" },
+              {
+                label: "أقل سعر",
+                value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
+                color: "text-primary",
+              },
+              { label: "بالمخزون", value: stats.total_units, color: "text-blue-400" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="bg-card border border-border/45 rounded-2xl p-3 text-center"
+              >
+                <div className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}>
+                  {s.value}
+                </div>
                 <div className="text-[10px] text-muted-foreground/65">{s.label}</div>
               </div>
             ))}
@@ -300,7 +455,6 @@ export default function HomePage() {
 
         {/* ── Filters ──────────────────────────────────────── */}
         <div className="sticky top-14 z-30 -mx-4 px-4 py-3 bg-background/96 backdrop-blur-2xl border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mb-6">
-
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
             <div className="relative flex-1">
@@ -309,18 +463,54 @@ export default function HomePage() {
                 type="search"
                 placeholder="ابحث عن اشتراك..."
                 value={searchInput}
-                onChange={e => handleSearchChange(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() =>
+                  setShowSearchHistory(searchInput.length === 0 && searchHistory.length > 0)
+                }
+                onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
                 className="pr-9 h-10 text-sm bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
               />
+              {/* Search history dropdown */}
+              {showSearchHistory && searchHistory.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border/50 rounded-xl shadow-lg shadow-black/20 z-50 overflow-hidden">
+                  <div className="p-2">
+                    <div className="flex items-center justify-between px-2 py-1.5 mb-1">
+                      <span className="text-xs font-bold text-muted-foreground/70">
+                        عمليات البحث السابقة
+                      </span>
+                      <button
+                        onClick={handleClearHistory}
+                        className="text-xs text-muted-foreground/50 hover:text-destructive transition-colors"
+                      >
+                        مسح
+                      </button>
+                    </div>
+                    {searchHistory.map((query) => (
+                      <button
+                        key={query}
+                        onClick={() => handleSearchHistoryClick(query)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
+                      >
+                        <Clock className="w-3 h-3 text-muted-foreground/40" />
+                        {query}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="relative shrink-0">
               <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
               <select
                 value={sort}
-                onChange={e => setSort(e.target.value)}
+                onChange={(e) => setSort(e.target.value)}
                 className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
               >
-                {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {SORTS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
             </div>
@@ -329,7 +519,7 @@ export default function HomePage() {
           {/* Category chips — scrollable with fade edges */}
           <div className="relative overflow-hidden">
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
-              {CATEGORIES.map(c => {
+              {CATEGORIES.map((c) => {
                 const active = category === c.value;
                 return (
                   <button
@@ -338,9 +528,10 @@ export default function HomePage() {
                     className={`
                       flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap
                       transition-all duration-180 press-spring min-h-[38px] shrink-0
-                      ${active
-                        ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
-                        : "bg-card border border-border/50 text-muted-foreground/80 hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+                      ${
+                        active
+                          ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
+                          : "bg-card border border-border/50 text-muted-foreground/80 hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
                       }
                     `}
                   >
@@ -350,7 +541,7 @@ export default function HomePage() {
                 );
               })}
               <button
-                onClick={() => setAvailableOnly(v => !v)}
+                onClick={() => setAvailableOnly((v) => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold"
@@ -368,8 +559,7 @@ export default function HomePage() {
         {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
           <div className="flex items-center justify-between mb-3.5">
             <p className="text-sm text-muted-foreground/70">
-              <span className="font-bold text-foreground">{products.length}</span>{" "}
-              منتج
+              <span className="font-bold text-foreground">{products.length}</span> منتج
               {category && <span className="text-muted-foreground/50"> في هذه الفئة</span>}
             </p>
             {activeFilterCount > 0 && (
@@ -386,7 +576,9 @@ export default function HomePage() {
         {/* ── Products Grid ─────────────────────────────────── */}
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {Array.from({ length: 8 }).map((_, i) => <ProductSkeleton key={i} />)}
+            {Array.from({ length: 8 }).map((_, i) => (
+              <ProductSkeleton key={i} />
+            ))}
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-3xl float-in shadow-sm shadow-black/8">
@@ -422,24 +614,27 @@ export default function HomePage() {
                   color: "text-yellow-400",
                   bg: "bg-yellow-400/8 border-yellow-400/15",
                   title: "تسليم فوري",
-                  desc: "تصلك بيانات الاشتراك فور تأكيد الدفع مباشرة"
+                  desc: "تصلك بيانات الاشتراك فور تأكيد الدفع مباشرة",
                 },
                 {
                   icon: ShieldCheck,
                   color: "text-emerald-400",
                   bg: "bg-emerald-400/8 border-emerald-400/15",
                   title: "دفع آمن",
-                  desc: "محفظتك محمية بالكامل وجميع معاملاتك موثقة"
+                  desc: "محفظتك محمية بالكامل وجميع معاملاتك موثقة",
                 },
                 {
                   icon: Headphones,
                   color: "text-blue-400",
                   bg: "bg-blue-400/8 border-blue-400/15",
                   title: "دعم 24/7",
-                  desc: "فريقنا متاح دائماً لمساعدتك في أي وقت"
+                  desc: "فريقنا متاح دائماً لمساعدتك في أي وقت",
                 },
-              ].map(item => (
-                <div key={item.title} className={`flex items-start gap-3 p-4 rounded-2xl border ${item.bg}`}>
+              ].map((item) => (
+                <div
+                  key={item.title}
+                  className={`flex items-start gap-3 p-4 rounded-2xl border ${item.bg}`}
+                >
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-background/35">
                     <item.icon className={`w-4 h-4 ${item.color}`} />
                   </div>

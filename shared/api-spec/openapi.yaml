@@ -913,7 +913,10 @@ components:
           type: string
         display_name:
           type: string
-      required: [token, display_name]
+        requires_2fa:
+          type: boolean
+        temp_token:
+          type: string
 
     AdminStats:
       type: object

@@ -80,7 +80,7 @@ export function Navbar() {
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-secondary/70 active:scale-90 transition-all duration-150 text-muted-foreground/70 hover:text-foreground touch-target flex items-center justify-center"
+            className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground/70 hover:text-foreground touch-target flex items-center justify-center"
             aria-label="تبديل الثيم"
           >
             {theme === "dark"
@@ -95,13 +95,13 @@ export function Navbar() {
           {token && user ? (
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 active:scale-95 cursor-pointer group">
+                <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group">
                   <Wallet className="w-3.5 h-3.5 text-primary transition-transform group-hover:scale-110 duration-200" />
                   <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                 </div>
               </Link>
               <Link href="/profile">
-                <div className="p-2 rounded-xl hover:bg-secondary/70 active:scale-90 transition-all text-muted-foreground/70 hover:text-foreground cursor-pointer touch-target flex items-center justify-center" title="حسابي">
+                <div className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground/70 hover:text-foreground cursor-pointer touch-target flex items-center justify-center" title="حسابي">
                   <User className="w-4 h-4" />
                 </div>
               </Link>
@@ -109,7 +109,7 @@ export function Navbar() {
                 variant="ghost"
                 size="sm"
                 onClick={logout}
-                className="text-muted-foreground/70 hover:text-foreground active:scale-95 transition-all rounded-xl"
+                className="text-muted-foreground/70 hover:text-foreground press-spring transition-all rounded-xl"
                 title="تسجيل الخروج"
               >
                 <LogOut className="w-4 h-4" />
@@ -118,10 +118,10 @@ export function Navbar() {
           ) : (
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/login">
-                <Button variant="ghost" size="sm" className="active:scale-95 transition-all font-medium rounded-xl">دخول</Button>
+                <Button variant="ghost" size="sm" className="press-spring transition-all font-medium rounded-xl">دخول</Button>
               </Link>
               <Link href="/register">
-                <Button size="sm" className="bg-primary hover:bg-primary/90 active:scale-95 transition-all shadow-md shadow-primary/25 font-bold rounded-xl">
+                <Button size="sm" className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl">
                   حساب مجاني
                 </Button>
               </Link>
@@ -131,7 +131,7 @@ export function Navbar() {
           {/* Mobile menu button — guests only */}
           {!token && (
             <button
-              className="md:hidden p-2 rounded-xl hover:bg-secondary/70 active:scale-90 transition-all touch-target flex items-center justify-center"
+              className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
               onClick={() => setOpen(v => !v)}
               aria-label="القائمة"
             >
@@ -146,7 +146,7 @@ export function Navbar() {
           {token && user && (
             <div className="md:hidden">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold active:scale-90 transition-all">
+                <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all">
                   <Wallet className="w-3 h-3 text-primary" />
                   <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                 </div>

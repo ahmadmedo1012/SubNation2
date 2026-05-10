@@ -78,11 +78,30 @@ app.use(
   }),
 );
 
+import RedisStore from "rate-limit-redis";
+import { createClient } from "redis";
+
+let redisClient: ReturnType<typeof createClient> | null = null;
+if (process.env.REDIS_URL) {
+  redisClient = createClient({ url: process.env.REDIS_URL });
+  redisClient.connect().catch((err) => logger.error({ err }, "Redis connection failed"));
+}
+
+const getStore = () => {
+  if (redisClient) {
+    return new RedisStore({
+      sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+    });
+  }
+  return undefined; // Falls back to default memory store
+};
+
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 // Strict limit on auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20,
+  store: getStore(),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
@@ -92,6 +111,7 @@ const authLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 120,
+  store: getStore(),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "تجاوزت الحد المسموح به. حاول مجدداً بعد قليل." },
@@ -130,6 +150,11 @@ app.use("/api/auth/change-password", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", router);
 
+// JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "المسار غير موجود", code: "NOT_FOUND" });
+});
+
 const frontendDist = resolveFrontendDist();
 
 if (frontendDist) {
@@ -145,9 +170,16 @@ if (frontendDist) {
 }
 
 // ── Global error handler ──────────────────────────────────────────────────────
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, req: { method: req.method, url: req.url } }, "Unhandled error");
-  res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
+
+  if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
+    res.status(400).json({ error: "بيانات غير صالحة" });
+  } else if (err.name === "ZodError") {
+    res.status(400).json({ error: "بيانات غير صالحة", details: err.errors });
+  } else {
+    res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
+  }
 });
 
 export default app;

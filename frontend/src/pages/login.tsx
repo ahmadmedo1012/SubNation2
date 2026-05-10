@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useLogin } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/auth";
+import { AuthProviders } from "@/components/AuthProviders";
+import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/lib/auth";
+import { useLogin } from "@workspace/api-client-react";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
-import { Logo } from "@/components/layout/Logo";
-import { AuthProviders } from "@/components/AuthProviders";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { getErrorMessage } from "../lib/errors";
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
@@ -24,7 +25,7 @@ export default function LoginPage() {
         navigate("/");
       },
       onError(err: any) {
-        setError(err?.response?.data?.error ?? "حدث خطأ. حاول مرة أخرى.");
+        setError(getErrorMessage(err));
       },
     },
   });
@@ -59,25 +60,33 @@ export default function LoginPage() {
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="phone" className="text-sm font-bold">رقم الهاتف</Label>
+              <Label htmlFor="phone" className="text-sm font-bold">
+                رقم الهاتف
+              </Label>
               <Input
                 id="phone"
                 type="tel"
                 placeholder="091XXXXXXX"
                 value={phone}
-                onChange={e => handlePhoneChange(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value)}
                 required
                 dir="ltr"
                 className="h-11 text-left pl-3 rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
                 maxLength={10}
                 autoComplete="tel"
+                aria-describedby={error ? "login-error" : undefined}
               />
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-bold">كلمة المرور</Label>
-                <Link href="/forgot-password" className="text-xs text-muted-foreground/70 hover:text-primary transition-colors">
+                <Label htmlFor="password" className="text-sm font-bold">
+                  كلمة المرور
+                </Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-muted-foreground/70 hover:text-primary transition-colors"
+                >
                   نسيت كلمة المرور؟
                 </Link>
               </div>
@@ -87,15 +96,17 @@ export default function LoginPage() {
                   type={showPass ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   className="pl-10 h-11 rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
                   autoComplete="current-password"
+                  aria-describedby={error ? "login-error" : undefined}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPass(v => !v)}
+                  onClick={() => setShowPass((v) => !v)}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 -m-1 rounded-lg touch-target flex items-center justify-center"
+                  aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -103,7 +114,12 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className={`flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-3.5 py-2.5 rounded-xl ${error ? "shake" : ""}`}>
+              <div
+                id="login-error"
+                role="alert"
+                aria-live="polite"
+                className={`flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-3.5 py-2.5 rounded-xl ${error ? "shake" : ""}`}
+              >
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -124,7 +140,10 @@ export default function LoginPage() {
 
           <div className="mt-5 text-center text-sm text-muted-foreground/65">
             ليس لديك حساب؟{" "}
-            <Link href="/register" className="text-primary font-bold hover:text-primary/80 transition-colors">
+            <Link
+              href="/register"
+              className="text-primary font-bold hover:text-primary/80 transition-colors"
+            >
               إنشاء حساب جديد
             </Link>
           </div>

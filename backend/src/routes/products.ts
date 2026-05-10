@@ -1,14 +1,17 @@
+import { db, flashSalesTable, inventoryTable, ordersTable, productsTable } from "@workspace/db";
+import { and, count, eq, gt, min, sql } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
-import { db, productsTable, inventoryTable, ordersTable, flashSalesTable } from "@workspace/db";
-import { eq, and, count, gt } from "drizzle-orm";
 import { intParam } from "../lib/http";
 
 const router = Router();
 
 async function getActiveFlashSale() {
   const now = new Date();
-  const [sale] = await db.select().from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now))).limit(1);
+  const [sale] = await db
+    .select()
+    .from(flashSalesTable)
+    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
+    .limit(1);
   if (!sale) return null;
   return {
     id: sale.id,
@@ -21,34 +24,75 @@ async function getActiveFlashSale() {
 router.get("/", async (req, res) => {
   const { category, available_only, sort, search } = req.query;
 
-  const products = await db.select().from(productsTable)
-    .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
+  // Build SQL filter conditions — pushdown to the database.
+  const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
+  if (typeof category === "string" && category.trim()) {
+    conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
+  }
+  if (typeof search === "string" && search.trim()) {
+    conditions.push(sql`${productsTable.name} ILIKE ${"%" + search.trim() + "%"}`);
+  }
 
-  const flashSale = await getActiveFlashSale();
-
-  const inventoryCounts = await db.select({
-    productId: inventoryTable.productId,
-    count: count(),
-  }).from(inventoryTable)
+  // Aggregate stock + order counts as a single subquery join, no JS-side reduce.
+  const stockSub = db
+    .select({
+      productId: inventoryTable.productId,
+      stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
+    })
+    .from(inventoryTable)
     .where(eq(inventoryTable.isSold, false))
-    .groupBy(inventoryTable.productId);
+    .groupBy(inventoryTable.productId)
+    .as("stock_sub");
 
-  const stockMap = new Map(inventoryCounts.map(r => [r.productId, r.count]));
-
-  const orderCounts = await db.select({
-    productId: ordersTable.productId,
-    count: count(),
-  }).from(ordersTable)
+  const orderSub = db
+    .select({
+      productId: ordersTable.productId,
+      orderCount: sql<number>`COUNT(*)::int`.as("order_count"),
+    })
+    .from(ordersTable)
     .where(eq(ordersTable.status, "completed"))
-    .groupBy(ordersTable.productId);
+    .groupBy(ordersTable.productId)
+    .as("order_sub");
 
-  const orderMap = new Map(orderCounts.map(r => [r.productId, r.count]));
+  const stockExpr = sql<number>`COALESCE(${stockSub.stockCount}, 0)`;
+  const orderExpr = sql<number>`COALESCE(${orderSub.orderCount}, 0)`;
 
-  let result = products.map(p => {
-    const stockCount = stockMap.get(p.id) ?? 0;
+  if (available_only === "true") {
+    conditions.push(sql`COALESCE(${stockSub.stockCount}, 0) > 0`);
+  }
+
+  let query = db
+    .select({
+      id: productsTable.id,
+      name: productsTable.name,
+      description: productsTable.description,
+      imageUrl: productsTable.imageUrl,
+      price: productsTable.price,
+      category: productsTable.category,
+      isActive: productsTable.isActive,
+      usageTerms: productsTable.usageTerms,
+      stockCount: stockExpr,
+      orderCount: orderExpr,
+    })
+    .from(productsTable)
+    .leftJoin(stockSub, eq(stockSub.productId, productsTable.id))
+    .leftJoin(orderSub, eq(orderSub.productId, productsTable.id))
+    .where(and(...conditions))
+    .$dynamic();
+
+  if (sort === "price_asc") query = query.orderBy(productsTable.price);
+  else if (sort === "price_desc") query = query.orderBy(sql`${productsTable.price} DESC`);
+  else if (sort === "popular") query = query.orderBy(sql`${orderExpr} DESC`);
+  else query = query.orderBy(sql`${productsTable.id} DESC`);
+
+  const [rows, flashSale] = await Promise.all([query, getActiveFlashSale()]);
+  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+
+  const result = rows.map((p) => {
     const basePrice = parseFloat(String(p.price));
-    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-    const salePrice = discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+    const salePrice =
+      discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+    const stockCount = Number(p.stockCount ?? 0);
     return {
       id: p.id,
       name: p.name,
@@ -62,52 +106,43 @@ router.get("/", async (req, res) => {
       is_available: stockCount > 0,
       sale_price: salePrice,
       discount_percent: discountPercent > 0 ? discountPercent : null,
-      order_count: orderMap.get(p.id) ?? 0,
+      order_count: Number(p.orderCount ?? 0),
     };
   });
-
-  if (category && typeof category === "string") {
-    result = result.filter(p => p.category?.toLowerCase() === category.toLowerCase());
-  }
-  if (available_only === "true") {
-    result = result.filter(p => p.is_available);
-  }
-  if (search && typeof search === "string") {
-    const q = search.toLowerCase();
-    result = result.filter(p => p.name.toLowerCase().includes(q));
-  }
-
-  if (sort === "price_asc") result.sort((a, b) => a.price - b.price);
-  else if (sort === "price_desc") result.sort((a, b) => b.price - a.price);
-  else if (sort === "popular") result.sort((a, b) => b.order_count - a.order_count);
-  else result.sort((a, b) => b.id - a.id);
 
   return res.json(result);
 });
 
 export async function getProductStatsHandler(_req: Request, res: Response) {
-  const products = await db.select().from(productsTable)
-    .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
-
-  const inventoryCounts = await db.select({
-    productId: inventoryTable.productId,
-    count: count(),
-  }).from(inventoryTable)
-    .where(eq(inventoryTable.isSold, false))
-    .groupBy(inventoryTable.productId);
-
-  const stockMap = new Map(inventoryCounts.map(r => [r.productId, Number(r.count)]));
-  const totalUnits = Array.from(stockMap.values()).reduce((a, b) => a + b, 0);
-  const availableProducts = products.filter(p => (stockMap.get(p.id) ?? 0) > 0).length;
-  const prices = products.map(p => parseFloat(String(p.price)));
-  const lowestPrice = prices.length ? Math.min(...prices) : null;
-  const flashSale = await getActiveFlashSale();
+  // Aggregate everything in SQL — no in-memory spread, no full table scan in JS.
+  const [[{ totalProducts, lowestPrice }], [{ totalUnits }], inventoryCounts, flashSale] =
+    await Promise.all([
+      db
+        .select({
+          totalProducts: count(),
+          lowestPrice: min(productsTable.price),
+        })
+        .from(productsTable)
+        .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false))),
+      db
+        .select({
+          totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
+        })
+        .from(inventoryTable),
+      db
+        .select({ productId: inventoryTable.productId })
+        .from(inventoryTable)
+        .where(eq(inventoryTable.isSold, false))
+        .groupBy(inventoryTable.productId),
+      getActiveFlashSale(),
+    ]);
 
   return res.json({
-    total_products: products.length,
-    available_products: availableProducts,
-    total_units: totalUnits,
-    lowest_price: lowestPrice,
+    total_products: Number(totalProducts ?? 0),
+    available_products: inventoryCounts.length,
+    total_units: Number(totalUnits ?? 0),
+    lowest_price:
+      lowestPrice !== null && lowestPrice !== undefined ? parseFloat(String(lowestPrice)) : null,
     has_flash_sale: !!flashSale,
   });
 }
@@ -124,21 +159,29 @@ router.get("/:id", async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
 
-  const [product] = await db.select().from(productsTable)
-    .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false))).limit(1);
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
+    .limit(1);
 
   if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
 
-  const [stockResult] = await db.select({ count: count() }).from(inventoryTable)
+  const [stockResult] = await db
+    .select({ count: count() })
+    .from(inventoryTable)
     .where(and(eq(inventoryTable.productId, id), eq(inventoryTable.isSold, false)));
 
-  const [orderResult] = await db.select({ count: count() }).from(ordersTable)
+  const [orderResult] = await db
+    .select({ count: count() })
+    .from(ordersTable)
     .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed")));
 
   const flashSale = await getActiveFlashSale();
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const salePrice = discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+  const salePrice =
+    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
   const stockCount = Number(stockResult?.count ?? 0);
 
   return res.json({

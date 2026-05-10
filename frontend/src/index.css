@@ -128,10 +128,10 @@
   --chart-4: 215 20% 60%;
   --chart-5: 0 80% 58%;
 
-  --app-font-sans: 'Tajawal', sans-serif;
+  --app-font-sans: 'Inter', 'Readex Pro', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: .625rem;
+  --radius: .75rem;
 
   /* Premium dark shadows with real depth */
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.40);

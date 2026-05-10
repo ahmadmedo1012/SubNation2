@@ -256,7 +256,7 @@ export default function AdminDashboardPage() {
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {METRIC_CARDS.map((card, i) => (
               <Link key={card.label} href={card.link}>
-                <div className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/15 cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border/60 hover:border-border"}`}>
+                <div className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40 hover:shadow-yellow-400/10" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}>
                   <div className="flex items-start justify-between gap-2 mb-2.5">
                     <div className={`w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0`}>
                       <card.icon className={`w-4 h-4 ${card.color}`} />
@@ -287,7 +287,7 @@ export default function AdminDashboardPage() {
             <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-widest hidden sm:inline">إجراءات:</span>
             {(stats.pending_topups ?? 0) > 0 && (
               <Link href="/admin/topups">
-                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-medium">
+                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-medium press-spring">
                   <Clock className="w-3 h-3" /> موافقة الشحن ({stats.pending_topups})
                 </button>
               </Link>

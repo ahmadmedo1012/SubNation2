@@ -307,6 +307,12 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE;
     `);
 
+    // OTP brute-force counter (B6)
+    await db.execute(sql`
+      ALTER TABLE otps
+        ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+    `);
+
     // ── Foreign Key constraints (idempotent — uses IF NOT EXISTS via DO block) ──
     const fkStatements = [
       `ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,

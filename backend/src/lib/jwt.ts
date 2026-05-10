@@ -13,11 +13,24 @@ export function signUserToken(payload: object): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
 }
 
+export type TokenError = "expired" | "invalid";
+export type VerifyResult<T> = { ok: true; payload: T } | { ok: false; reason: TokenError };
+
 export function verifyUserToken(token: string): { userId: number } | null {
   try {
     return jwt.verify(token, JWT_SECRET) as { userId: number };
   } catch {
     return null;
+  }
+}
+
+export function verifyUserTokenDetailed(token: string): VerifyResult<{ userId: number }> {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { userId: number };
+    return { ok: true, payload };
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };
+    return { ok: false, reason: "invalid" };
   }
 }
 
@@ -30,5 +43,15 @@ export function verifyAdminToken(token: string): { adminId: number } | null {
     return jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number };
   } catch {
     return null;
+  }
+}
+
+export function verifyAdminTokenDetailed(token: string): VerifyResult<{ adminId: number }> {
+  try {
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number };
+    return { ok: true, payload };
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };
+    return { ok: false, reason: "invalid" };
   }
 }
