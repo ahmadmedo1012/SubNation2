@@ -154,7 +154,7 @@ const frontendDist = resolveFrontendDist();
 if (frontendDist) {
   app.use(express.static(frontendDist));
   app.use((req, res, next) => {
-    if (req.method !== "GET" || req.path.startsWith("/api")) {
+    if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
       return;
     }

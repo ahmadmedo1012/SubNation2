@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
 
@@ -13,38 +13,59 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function readStoredToken(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredToken(key: string, token: string | null): void {
+  try {
+    if (token) localStorage.setItem(key, token);
+    else localStorage.removeItem(key);
+  } catch {
+    // Keep the in-memory session usable when browser storage is unavailable.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem("auth_token"));
-  const [adminToken, setAdminTokenState] = useState<string | null>(() => localStorage.getItem("admin_token"));
+  const [token, setTokenState] = useState<string | null>(() => readStoredToken("auth_token"));
+  const [adminToken, setAdminTokenState] = useState<string | null>(() =>
+    readStoredToken("admin_token"),
+  );
   const queryClient = useQueryClient();
 
-  const setToken = (t: string | null) => {
-    if (t) localStorage.setItem("auth_token", t);
-    else localStorage.removeItem("auth_token");
-    setTokenState(t);
-    queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-  };
+  const setToken = useCallback(
+    (t: string | null) => {
+      writeStoredToken("auth_token", t);
+      setTokenState(t);
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    },
+    [queryClient],
+  );
 
-  const setAdminToken = (t: string | null) => {
-    if (t) localStorage.setItem("admin_token", t);
-    else localStorage.removeItem("admin_token");
+  const setAdminToken = useCallback((t: string | null) => {
+    writeStoredToken("admin_token", t);
     setAdminTokenState(t);
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setToken(null);
     queryClient.clear();
-  };
+  }, [queryClient, setToken]);
 
-  const adminLogout = () => {
+  const adminLogout = useCallback(() => {
     setAdminToken(null);
-  };
+  }, [setAdminToken]);
 
-  return (
-    <AuthContext.Provider value={{ token, adminToken, setToken, setAdminToken, logout, adminLogout }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ token, adminToken, setToken, setAdminToken, logout, adminLogout }),
+    [token, adminToken, setToken, setAdminToken, logout, adminLogout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

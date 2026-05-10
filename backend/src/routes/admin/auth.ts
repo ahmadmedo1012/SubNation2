@@ -2,9 +2,10 @@ import { AdminLoginBody } from "@workspace/api-zod";
 import { adminUsersTable, db } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import { hashPassword, verifyPassword } from "../../lib/crypto";
-import { signAdminToken } from "../../lib/jwt";
+import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../../lib/lockout";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
@@ -60,9 +61,10 @@ router.post("/login/verify-2fa", async (req, res) => {
   if (!temp_token || !code) return res.status(400).json({ error: "بيانات غير مكتملة" });
 
   try {
-    const jwt = await import("jsonwebtoken");
-    const secret = process.env.SESSION_SECRET || "fallback_secret_for_dev";
-    const decoded = jwt.verify(temp_token, secret) as any;
+    const decoded = jwt.verify(temp_token, ADMIN_JWT_SECRET) as {
+      adminId?: number;
+      isTemp?: boolean;
+    };
 
     if (!decoded.isTemp || !decoded.adminId) {
       return res.status(401).json({ error: "جلسة غير صالحة" });
@@ -88,6 +90,31 @@ router.post("/login/verify-2fa", async (req, res) => {
   } catch (err) {
     return res.status(401).json({ error: "جلسة غير صالحة أو منتهية الصلاحية" });
   }
+});
+
+router.get("/session", requireAdmin, async (req, res) => {
+  const adminId = (req as any).adminId as number;
+  const [admin] = await db
+    .select({
+      id: adminUsersTable.id,
+      username: adminUsersTable.username,
+      displayName: adminUsersTable.displayName,
+      role: adminUsersTable.role,
+    })
+    .from(adminUsersTable)
+    .where(eq(adminUsersTable.id, adminId))
+    .limit(1);
+
+  if (!admin) {
+    return res.status(401).json({ error: "جلسة الإدارة غير صالحة" });
+  }
+
+  return res.json({
+    id: admin.id,
+    username: admin.username,
+    display_name: admin.displayName,
+    role: admin.role,
+  });
 });
 
 router.post("/2fa/setup", requireAdmin, async (req, res) => {

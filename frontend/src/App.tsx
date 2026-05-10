@@ -6,10 +6,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
 // Customer-facing pages — eagerly loaded for the primary user journey.
@@ -49,16 +49,52 @@ const queryClient = new QueryClient({
 });
 
 function AdminProtectedRoutes() {
-  const { adminToken } = useAuth();
+  const { adminToken, setAdminToken } = useAuth();
   const [, navigate] = useLocation();
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
 
   useEffect(() => {
     if (!adminToken) {
+      setIsCheckingSession(false);
       navigate("/admin/login");
+      return;
     }
-  }, [adminToken, navigate]);
+
+    const controller = new AbortController();
+    setIsCheckingSession(true);
+
+    fetch("/api/admin/session", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (response.ok) return;
+
+        if (response.status === 401 || response.status === 403) {
+          setAdminToken(null);
+          navigate("/admin/login");
+        }
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          // Let the admin pages surface transient API failures instead of
+          // trapping a valid local session on a blank guard screen.
+          console.warn("Admin session validation failed", error);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsCheckingSession(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [adminToken, navigate, setAdminToken]);
 
   if (!adminToken) return null;
+  if (isCheckingSession) {
+    return <div className="min-h-screen bg-background" aria-busy="true" />;
+  }
 
   return (
     <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
@@ -108,6 +144,7 @@ function AppRoutes() {
             <Route path="/auth/callback" component={AuthCallbackPage} />
 
             <Route path="/admin/login" component={AdminLoginPage} />
+            <Route path="/admin" component={AdminProtectedRoutes} />
             <Route path="/admin/:rest*" component={AdminProtectedRoutes} />
 
             <Route component={NotFound} />
