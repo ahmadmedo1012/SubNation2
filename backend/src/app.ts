@@ -13,6 +13,10 @@ const app: Express = express();
 function resolveFrontendDist(): string | null {
   const candidates = [
     process.env.FRONTEND_DIST,
+    // Relative to current file (works when bundled in dist/ or running from src/)
+    path.resolve(import.meta.dirname, "../../frontend/dist/public"),
+    path.resolve(import.meta.dirname, "../frontend/dist/public"),
+    // Relative to process CWD
     path.resolve(process.cwd(), "../frontend/dist/public"),
     path.resolve(process.cwd(), "frontend/dist/public"),
   ].filter((candidate): candidate is string => Boolean(candidate));

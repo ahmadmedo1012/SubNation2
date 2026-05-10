@@ -60,5 +60,23 @@ Thumbs.db
 .cache/
 .local/
 .agents/
+.claude/
+.claude-flow/
+.swarm/
+.mcp.json
+ruvector.db
+memory/
+*.log
 zipFile/
 *.zip
+
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example

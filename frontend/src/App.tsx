@@ -6,10 +6,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
 // Customer-facing pages — eagerly loaded for the primary user journey.
@@ -30,6 +30,7 @@ import TermsPage from "@/pages/terms";
 import WalletPage from "@/pages/wallet";
 
 // Admin pages — lazy loaded so customer bundles stay small.
+import { AdminLayout } from "@/pages/admin/layout";
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
 const AdminDashboardPage = lazy(() => import("@/pages/admin/dashboard"));
 const AdminTopupsPage = lazy(() => import("@/pages/admin/topups"));
@@ -47,6 +48,37 @@ const queryClient = new QueryClient({
     queries: { staleTime: 30_000, retry: 1 },
   },
 });
+
+function AdminProtectedRoutes() {
+  const { adminToken } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!adminToken) {
+      navigate("/admin/login");
+    }
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
+
+  return (
+    <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+      <Switch>
+        <Route path="/admin" component={AdminDashboardPage} />
+        <Route path="/admin/topups" component={AdminTopupsPage} />
+        <Route path="/admin/orders" component={AdminOrdersPage} />
+        <Route path="/admin/products" component={AdminProductsPage} />
+        <Route path="/admin/users" component={AdminUsersPage} />
+        <Route path="/admin/settings" component={AdminSettingsPage} />
+        <Route path="/admin/tickets" component={AdminTicketsPage} />
+        <Route path="/admin/referrals" component={AdminReferralsPage} />
+        <Route path="/admin/coupons" component={AdminCouponsPage} />
+        <Route path="/admin/alerts" component={AdminAlertsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
+  );
+}
 
 function AppRoutes() {
   const [location] = useLocation();
@@ -75,26 +107,10 @@ function AppRoutes() {
             <Route path="/forgot-password" component={ForgotPasswordPage} />
             <Route path="/profile" component={ProfilePage} />
             <Route path="/auth/callback" component={AuthCallbackPage} />
-            <Route path="/admin/:rest*">
-              {() => (
-                <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
-                  <Switch>
-                    <Route path="/admin/login" component={AdminLoginPage} />
-                    <Route path="/admin" component={AdminDashboardPage} />
-                    <Route path="/admin/topups" component={AdminTopupsPage} />
-                    <Route path="/admin/orders" component={AdminOrdersPage} />
-                    <Route path="/admin/products" component={AdminProductsPage} />
-                    <Route path="/admin/users" component={AdminUsersPage} />
-                    <Route path="/admin/settings" component={AdminSettingsPage} />
-                    <Route path="/admin/tickets" component={AdminTicketsPage} />
-                    <Route path="/admin/referrals" component={AdminReferralsPage} />
-                    <Route path="/admin/coupons" component={AdminCouponsPage} />
-                    <Route path="/admin/alerts" component={AdminAlertsPage} />
-                    <Route component={NotFound} />
-                  </Switch>
-                </Suspense>
-              )}
-            </Route>
+            
+            <Route path="/admin/login" component={AdminLoginPage} />
+            <Route path="/admin/:rest*" component={AdminProtectedRoutes} />
+
             <Route component={NotFound} />
           </Switch>
         </ErrorBoundary>
