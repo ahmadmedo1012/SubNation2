@@ -6,10 +6,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
 // Customer-facing pages — eagerly loaded for the primary user journey.
@@ -30,7 +30,6 @@ import TermsPage from "@/pages/terms";
 import WalletPage from "@/pages/wallet";
 
 // Admin pages — lazy loaded so customer bundles stay small.
-import { AdminLayout } from "@/pages/admin/layout";
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
 const AdminDashboardPage = lazy(() => import("@/pages/admin/dashboard"));
 const AdminTopupsPage = lazy(() => import("@/pages/admin/topups"));
