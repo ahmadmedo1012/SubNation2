@@ -5,17 +5,8 @@ import helmet from "helmet";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
-import { startCouponWatcher } from "./jobs/couponWatcher";
-import { startOtpCleanup } from "./jobs/otpCleanup";
-import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
-import { runMigrations } from "./migrate";
 import router from "./routes";
-
-void runMigrations();
-startCouponWatcher();
-startStockWatcher();
-startOtpCleanup();
 
 const app: Express = express();
 
@@ -36,6 +27,7 @@ const allowedOrigins = process.env.APP_ORIGINS
       .map((d) => d.trim())
       .filter(Boolean)
   : [];
+const isProduction = process.env.NODE_ENV === "production";
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 app.use(
@@ -49,7 +41,9 @@ app.use(
         fontSrc: ["'self'", "data:"],
         connectSrc: [
           "'self'",
-          ...(allowedOrigins.length ? allowedOrigins : ["http://localhost:*"]),
+          ...(allowedOrigins.length || isProduction
+            ? allowedOrigins
+            : ["http://localhost:*", "http://127.0.0.1:*"]),
         ],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],

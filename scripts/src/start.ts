@@ -1,12 +1,5 @@
 import path from "node:path";
-import {
-  findAvailablePort,
-  loadLocalEnv,
-  parsePreferredPort,
-  repoRoot,
-  spawnPnpm,
-  stopProcess,
-} from "./runtime";
+import { loadLocalEnv, parsePreferredPort, repoRoot, spawnPnpm, stopProcess } from "./runtime";
 
 loadLocalEnv();
 
@@ -16,13 +9,13 @@ if (!process.env.SESSION_SECRET && process.env.JWT_SECRET) {
 
 const missing = ["DATABASE_URL", "SESSION_SECRET"].filter((key) => !process.env[key]);
 if (missing.length > 0) {
-  throw new Error(`Missing required environment variables: ${missing.join(", ")}. Copy config/env.example to .env and fill the values.`);
+  throw new Error(
+    `Missing required environment variables: ${missing.join(", ")}. Copy config/env.example to .env and fill the values.`,
+  );
 }
 
-const port = await findAvailablePort(
-  parsePreferredPort(process.env.PORT ?? process.env.API_PORT, 8080, "PORT"),
-);
-const origin = `http://127.0.0.1:${port}`;
+const port = parsePreferredPort(process.env.PORT ?? process.env.API_PORT, 8080, "PORT");
+const origin = process.env.APP_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://127.0.0.1:${port}`;
 
 console.log(`SubNation production server: ${origin}`);
 

@@ -4,8 +4,8 @@ let socket: Socket | null = null;
 
 export function getSocket() {
   if (!socket) {
-    const socketUrl = import.meta.env.VITE_API_URL || "http://localhost:8080";
-    socket = io(socketUrl, {
+    const socketUrl = (import.meta.env.VITE_API_URL ?? "").trim();
+    socket = io(socketUrl || undefined, {
       autoConnect: false,
       reconnectionAttempts: 5,
     });

@@ -1,11 +1,11 @@
 import { createHash } from "crypto";
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { loadLocalEnv } from "./runtime";
 
 // Load .env files BEFORE importing @workspace/db, which throws at module
 // load time if DATABASE_URL is missing.
 loadLocalEnv();
-const { db, pool, usersTable, productsTable, adminUsersTable } =
+const { db, pool, usersTable, productsTable, adminUsersTable, loginAttemptsTable } =
   await import("@workspace/db");
 
 function hashPassword(password: string): string {
@@ -20,6 +20,7 @@ async function seed() {
   // ── Admin user ──────────────────────────────────────────────────────────────
   const adminUsername = process.env.ADMIN_USERNAME ?? "admin";
   const adminPassword = process.env.ADMIN_PASSWORD ?? "SubNation@2026";
+  const resetAdminPassword = process.env.ADMIN_RESET_PASSWORD === "true";
 
   const [existingAdmin] = await db
     .select()
@@ -28,14 +29,25 @@ async function seed() {
     .limit(1);
 
   if (existingAdmin) {
-    console.log(`✅ Admin '${adminUsername}' already exists — skipping`);
+    if (resetAdminPassword) {
+      await db
+        .update(adminUsersTable)
+        .set({ passwordHash: hashPassword(adminPassword) })
+        .where(eq(adminUsersTable.id, existingAdmin.id));
+      await db
+        .delete(loginAttemptsTable)
+        .where(eq(loginAttemptsTable.identifier, `admin:${adminUsername}`));
+      console.log(`✅ Admin '${adminUsername}' password reset`);
+    } else {
+      console.log(`✅ Admin '${adminUsername}' already exists — skipping`);
+    }
   } else {
     await db.insert(adminUsersTable).values({
       username: adminUsername,
       passwordHash: hashPassword(adminPassword),
       displayName: "SubNation Admin",
     });
-    console.log(`✅ Created admin: ${adminUsername} / ${adminPassword}`);
+    console.log(`✅ Created admin: ${adminUsername}`);
     console.log(`   ⚠️  Change this password after first login!\n`);
   }
 
@@ -99,9 +111,7 @@ async function seed() {
     },
   ];
 
-  const existing = await db
-    .select({ name: productsTable.name })
-    .from(productsTable);
+  const existing = await db.select({ name: productsTable.name }).from(productsTable);
   const existingNames = new Set(existing.map((p) => p.name));
 
   let added = 0;
@@ -112,22 +122,12 @@ async function seed() {
     }
   }
 
-  console.log(
-    added > 0
-      ? `✅ Added ${added} products`
-      : "✅ Products already exist — skipping",
-  );
+  console.log(added > 0 ? `✅ Added ${added} products` : "✅ Products already exist — skipping");
 
   // ── Summary ─────────────────────────────────────────────────────────────────
-  const [{ count: adminCount }] = await db
-    .select({ count: adminUsersTable.id })
-    .from(adminUsersTable);
-  const [{ count: productCount }] = await db
-    .select({ count: productsTable.id })
-    .from(productsTable);
-  const [{ count: userCount }] = await db
-    .select({ count: usersTable.id })
-    .from(usersTable);
+  const [{ count: adminCount }] = await db.select({ count: count() }).from(adminUsersTable);
+  const [{ count: productCount }] = await db.select({ count: count() }).from(productsTable);
+  const [{ count: userCount }] = await db.select({ count: count() }).from(usersTable);
 
   console.log("\n── Database Summary ────────────────────────────────");
   console.log(`   Admins:   ${adminCount ?? 0}`);

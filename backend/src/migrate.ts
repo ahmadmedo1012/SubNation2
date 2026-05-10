@@ -55,6 +55,8 @@ export async function runMigrations() {
         password_hash VARCHAR(255) NOT NULL,
         display_name  VARCHAR(100) NOT NULL DEFAULT 'Admin',
         role          VARCHAR(50) NOT NULL DEFAULT 'admin',
+        totp_secret   VARCHAR(255),
+        totp_enabled  BOOLEAN NOT NULL DEFAULT FALSE,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
@@ -307,6 +309,12 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE;
     `);
 
+    await db.execute(sql`
+      ALTER TABLE admin_users
+        ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
     // OTP brute-force counter (B6)
     await db.execute(sql`
       ALTER TABLE otps
@@ -393,11 +401,13 @@ export async function runMigrations() {
     const adminCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM admin_users`);
     const adminCount = (adminCountResult as any).rows?.[0] ?? (adminCountResult as any)[0];
     if (Number(adminCount?.c ?? adminCount?.count ?? 0) === 0) {
+      const adminUsername = process.env.ADMIN_USERNAME || "admin";
+      const adminPassword = process.env.ADMIN_PASSWORD || "SubNation@2026";
       await db.execute(sql`
         INSERT INTO admin_users (username, password_hash, display_name, role)
-        VALUES ('admin', ${await hashPassword("admin123")}, 'مدير النظام', 'superadmin')
+        VALUES (${adminUsername}, ${await hashPassword(adminPassword)}, 'مدير النظام', 'superadmin')
       `);
-      logger.info("Default admin user created — username: admin / password: admin123");
+      logger.info({ username: adminUsername }, "Default admin user created");
     }
 
     // ── Seed: Products ──────────────────────────────────────────────────────

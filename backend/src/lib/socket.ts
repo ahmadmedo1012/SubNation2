@@ -1,13 +1,21 @@
-import { Server as SocketServer } from "socket.io";
 import { Server as HttpServer } from "http";
+import { Server as SocketServer } from "socket.io";
 import { logger } from "./logger";
 
 let io: SocketServer | null = null;
 
+function getAllowedOrigins(): string[] {
+  return (process.env.APP_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export function initSocket(server: HttpServer) {
+  const allowedOrigins = getAllowedOrigins();
   io = new SocketServer(server, {
     cors: {
-      origin: "*", // Adjust in production
+      origin: allowedOrigins.length > 0 ? allowedOrigins : true,
       methods: ["GET", "POST"],
     },
   });

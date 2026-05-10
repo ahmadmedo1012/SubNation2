@@ -1,8 +1,12 @@
 import { createServer } from "http";
 import app from "./app";
+import { startCouponWatcher } from "./jobs/couponWatcher";
+import { initCronJobs } from "./jobs/cron";
+import { startOtpCleanup } from "./jobs/otpCleanup";
+import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
-import { initCronJobs } from "./jobs/cron";
+import { runMigrations } from "./migrate";
 
 const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "8080";
 
@@ -31,7 +35,13 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): vo
   });
 
   httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE" && port !== 0 && port < 65535 && remainingAttempts > 0) {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      err.code === "EADDRINUSE" &&
+      port !== 0 &&
+      port < 65535 &&
+      remainingAttempts > 0
+    ) {
       const nextPort = port + 1;
 
       logger.warn({ port, nextPort }, "Port in use, trying next port");
@@ -44,4 +54,15 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): vo
   });
 }
 
-listen(parsePort(rawPort));
+async function bootstrap(): Promise<void> {
+  await runMigrations();
+  startCouponWatcher();
+  startStockWatcher();
+  startOtpCleanup();
+  listen(parsePort(rawPort), process.env.NODE_ENV === "production" ? 0 : DEFAULT_FALLBACK_ATTEMPTS);
+}
+
+bootstrap().catch((err) => {
+  logger.error({ err }, "Failed to start server");
+  process.exit(1);
+});
