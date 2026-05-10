@@ -31,8 +31,7 @@ node_modules
 !.vscode/extensions.json
 
 # misc
-/.env
-/.env.*
+/.env.local
 !/config/env.example
 # Per-package envs (Vite auto-loads frontend/.env*)
 frontend/.env

@@ -10,26 +10,38 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false
+        value: "postgresql://neondb_owner:npg_ZCsxjW8rQz3o@ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: DB_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "10000"
       - key: SESSION_SECRET
-        sync: false
+        value: "46d26db992e448684077528ca2b74a77ffc22c83d627b9ea3ef302772617bec6ee1815db9e0c84e2e9d2171e4933e9191e252d01481cd8b893fc841f9cedd69d"
       - key: ENCRYPTION_KEY
-        sync: false
+        value: "f83bbca6bf3099c727185a23eee27c4e67e6af8eb09ef56a147965784fb221bb"
       - key: APP_URL
-        sync: false
+        value: "https://subnation2.onrender.com"
       - key: APP_ORIGINS
-        sync: false
+        value: "https://subnation2.onrender.com"
       - key: VITE_API_URL
-        value: ""
+        value: "https://subnation2.onrender.com"
       - key: BASE_PATH
         value: /
       - key: VITE_APP_NAME
         value: SubNation
       - key: VITE_GOOGLE_CLIENT_ID
-        sync: false
+        value: ""
       - key: GOOGLE_CLIENT_ID
-        sync: false
+        value: ""
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
+        value: "8710813831:AAFaP7BvesYP_OSE_utqwXO69Lugm5_ghS0"
       - key: TELEGRAM_CHAT_ID
-        sync: false
+        value: "-1003878819089"
+      - key: ADMIN_USERNAME
+        value: "admin"
+      - key: ADMIN_PASSWORD
+        value: "SubNation@2026"
+      - key: ADMIN_RESET_PASSWORD
+        value: "false"

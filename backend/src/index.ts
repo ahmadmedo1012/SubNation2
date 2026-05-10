@@ -4,11 +4,12 @@ import { startCouponWatcher } from "./jobs/couponWatcher";
 import { initCronJobs } from "./jobs/cron";
 import { startOtpCleanup } from "./jobs/otpCleanup";
 import { startStockWatcher } from "./jobs/stockWatcher";
+import "./lib/env";
 import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { runMigrations } from "./migrate";
 
-const rawPort = process.env["PORT"] ?? process.env["API_PORT"] ?? "8080";
+const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 
 const DEFAULT_FALLBACK_ATTEMPTS = 25;
 

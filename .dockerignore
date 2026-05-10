@@ -17,9 +17,8 @@
 **/.next
 **/coverage
 
-# local envs / secrets
-.env
-.env.*
+# local env overrides
+.env.local
 config/.env
 config/.env.*
 !config/env.example
