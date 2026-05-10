@@ -17,7 +17,7 @@ export class PaymentProcessor {
     userId: number,
     amount: number,
     provider: PaymentProvider,
-    providerData: any
+    providerData: any,
   ): Promise<PaymentResult> {
     logger.info({ userId, amount, provider }, "Processing automated payment");
 
@@ -32,8 +32,11 @@ export class PaymentProcessor {
 
     try {
       await TopupService.createApprovedTopup(userId, amount, provider, mockTransactionId);
-      logger.info({ userId, amount, mockTransactionId }, "Automated payment successful and credited");
-      
+      logger.info(
+        { userId, amount, mockTransactionId },
+        "Automated payment successful and credited",
+      );
+
       return { success: true, transactionId: mockTransactionId };
     } catch (err) {
       logger.error({ err, userId }, "Error finalising automated payment");

@@ -89,14 +89,12 @@ router.post("/", requireUser, async (req, res) => {
     message: message.trim(),
   });
 
-  return res
-    .status(201)
-    .json({
-      id: ticket.id,
-      title: ticket.title,
-      status: ticket.status,
-      created_at: ticket.createdAt.toISOString(),
-    });
+  return res.status(201).json({
+    id: ticket.id,
+    title: ticket.title,
+    status: ticket.status,
+    created_at: ticket.createdAt.toISOString(),
+  });
 });
 
 router.get("/:id", requireUser, async (req, res) => {
@@ -166,14 +164,12 @@ router.post("/:id/reply", requireUser, async (req, res) => {
     .set({ status: "in_progress" })
     .where(eq(supportTicketsTable.id, id));
 
-  return res
-    .status(201)
-    .json({
-      id: reply.id,
-      author_type: reply.authorType,
-      message: reply.message,
-      created_at: reply.createdAt.toISOString(),
-    });
+  return res.status(201).json({
+    id: reply.id,
+    author_type: reply.authorType,
+    message: reply.message,
+    created_at: reply.createdAt.toISOString(),
+  });
 });
 
 export { router as supportRouter };

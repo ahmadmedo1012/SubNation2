@@ -1,10 +1,4 @@
-import {
-  db,
-  inventoryTable,
-  ordersTable,
-  usersTable,
-  walletTopupsTable,
-} from "@workspace/db";
+import { db, inventoryTable, ordersTable, usersTable, walletTopupsTable } from "@workspace/db";
 import { and, count, eq, gte, sql, sum } from "drizzle-orm";
 import { Router } from "express";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -23,16 +17,28 @@ router.get("/stats", requireAdmin, async (_req, res) => {
     [todayOrders],
     [todayRevenue],
     [availableStock],
-    [totalWallet]
+    [totalWallet],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable),
     db.select({ count: count() }).from(ordersTable).where(eq(ordersTable.status, "completed")),
-    db.select({ sum: sum(ordersTable.amount) }).from(ordersTable).where(eq(ordersTable.status, "completed")),
-    db.select({ count: count() }).from(walletTopupsTable).where(eq(walletTopupsTable.status, "pending")),
-    db.select({ count: count() }).from(ordersTable).where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-    db.select({ sum: sum(ordersTable.amount) }).from(ordersTable).where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
+    db
+      .select({ sum: sum(ordersTable.amount) })
+      .from(ordersTable)
+      .where(eq(ordersTable.status, "completed")),
+    db
+      .select({ count: count() })
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.status, "pending")),
+    db
+      .select({ count: count() })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
+    db
+      .select({ sum: sum(ordersTable.amount) })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
     db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
-    db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable)
+    db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable),
   ]);
 
   return res.json({

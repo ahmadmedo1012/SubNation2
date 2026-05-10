@@ -94,7 +94,7 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
   const adminId = (req as any).adminId;
   const secret = generateSecret();
   const otpauth = generateURI({ label: `admin_${adminId}`, issuer: "SubNation", secret });
-  
+
   await db
     .update(adminUsersTable)
     .set({ totpSecret: secret, totpEnabled: false })

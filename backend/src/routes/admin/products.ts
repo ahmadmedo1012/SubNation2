@@ -1,10 +1,5 @@
 import { CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
-import {
-  db,
-  inventoryTable,
-  ordersTable,
-  productsTable,
-} from "@workspace/db";
+import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
 import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { encrypt } from "../../lib/encryption";

@@ -1,21 +1,54 @@
 import { useState, useEffect } from "react";
-import { useGetAdminStats, useListAdminOrders, getGetAdminStatsQueryKey, getListAdminOrdersQueryKey } from "@workspace/api-client-react";
+import {
+  useGetAdminStats,
+  useListAdminOrders,
+  getGetAdminStatsQueryKey,
+  getListAdminOrdersQueryKey,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
 import {
-  Users, ShoppingBag, TrendingUp, Clock, Package,
-  Wallet, BarChart2, AlertTriangle, ArrowUpRight, CheckCircle, Zap,
-  TrendingDown, Download, Plus, ListOrdered
+  Users,
+  ShoppingBag,
+  TrendingUp,
+  Clock,
+  Package,
+  Wallet,
+  BarChart2,
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle,
+  Zap,
+  TrendingDown,
+  Download,
+  Plus,
+  ListOrdered,
 } from "lucide-react";
 import { AdminLayout } from "./layout";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, LineChart, Line
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
 } from "recharts";
 
-interface ChartDay { date: string; orders: number; revenue: number; users: number; discounts: number; coupon_orders: number }
+interface ChartDay {
+  date: string;
+  orders: number;
+  revenue: number;
+  users: number;
+  discounts: number;
+  coupon_orders: number;
+}
 
 const CURRENCY_KEYS = new Set(["الإيرادات", "الخصومات"]);
 
@@ -40,16 +73,16 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 const PERIOD_OPTIONS = [
-  { label: "٧ أيام",  days: 7 },
+  { label: "٧ أيام", days: 7 },
   { label: "١٤ يوماً", days: 14 },
-  { label: "شهر",  days: 30 },
+  { label: "شهر", days: 30 },
   { label: "٣ أشهر", days: 90 },
 ];
 
 const GRANULARITY_OPTIONS = [
-  { label: "يومي",    value: "daily" },
+  { label: "يومي", value: "daily" },
   { label: "أسبوعي", value: "weekly" },
-  { label: "شهري",   value: "monthly" },
+  { label: "شهري", value: "monthly" },
 ];
 
 // Aggregate chart data into weekly or monthly buckets
@@ -58,7 +91,7 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
 
   const buckets: Record<string, ChartDay> = {};
 
-  data.forEach(d => {
+  data.forEach((d) => {
     const date = new Date(d.date);
     let key: string;
     if (granularity === "weekly") {
@@ -69,11 +102,12 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
       key = date.toLocaleDateString("ar", { year: "numeric", month: "short" });
     }
 
-    if (!buckets[key]) buckets[key] = { date: key, orders: 0, revenue: 0, users: 0, discounts: 0, coupon_orders: 0 };
-    buckets[key].orders        += Number(d.orders)        || 0;
-    buckets[key].revenue       += Number(d.revenue)       || 0;
-    buckets[key].users         += Number(d.users)         || 0;
-    buckets[key].discounts     += Number(d.discounts)     || 0;
+    if (!buckets[key])
+      buckets[key] = { date: key, orders: 0, revenue: 0, users: 0, discounts: 0, coupon_orders: 0 };
+    buckets[key].orders += Number(d.orders) || 0;
+    buckets[key].revenue += Number(d.revenue) || 0;
+    buckets[key].users += Number(d.users) || 0;
+    buckets[key].discounts += Number(d.discounts) || 0;
     buckets[key].coupon_orders += Number(d.coupon_orders) || 0;
   });
 
@@ -81,7 +115,15 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
 }
 
 // Mini sparkline for KPI trend — uses last N days of chart data
-function Sparkline({ data, dataKey, color }: { data: ChartDay[]; dataKey: keyof ChartDay; color: string }) {
+function Sparkline({
+  data,
+  dataKey,
+  color,
+}: {
+  data: ChartDay[];
+  dataKey: keyof ChartDay;
+  color: string;
+}) {
   if (data.length < 2) return null;
   return (
     <ResponsiveContainer width="100%" height={32}>
@@ -102,7 +144,9 @@ function TrendBadge({ data, dataKey }: { data: ChartDay[]; dataKey: keyof ChartD
   const pct = Math.round(((second - first) / first) * 100);
   const up = pct >= 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${up ? "text-emerald-400" : "text-red-400"}`}>
+    <span
+      className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${up ? "text-emerald-400" : "text-red-400"}`}
+    >
       {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
       {Math.abs(pct)}%
     </span>
@@ -110,9 +154,23 @@ function TrendBadge({ data, dataKey }: { data: ChartDay[]; dataKey: keyof ChartD
 }
 
 function exportChartCSV(data: ChartDay[], days: number) {
-  const headers = ["التاريخ", "الطلبات", "الإيرادات", "الخصومات", "طلبات بكوبون", "المستخدمون الجدد"];
-  const rows = data.map(d => [d.date, d.orders, d.revenue.toFixed(2), (d.discounts || 0).toFixed(2), d.coupon_orders || 0, d.users]);
-  const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+  const headers = [
+    "التاريخ",
+    "الطلبات",
+    "الإيرادات",
+    "الخصومات",
+    "طلبات بكوبون",
+    "المستخدمون الجدد",
+  ];
+  const rows = data.map((d) => [
+    d.date,
+    d.orders,
+    d.revenue.toFixed(2),
+    (d.discounts || 0).toFixed(2),
+    d.coupon_orders || 0,
+    d.users,
+  ]);
+  const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -133,28 +191,44 @@ export default function AdminDashboardPage() {
 
   const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
 
-  const { data: stats, isLoading: statsLoading, refetch } = useGetAdminStats({
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    refetch,
+  } = useGetAdminStats({
     query: { queryKey: getGetAdminStatsQueryKey(), enabled: !!adminToken, refetchInterval: 30_000 },
     request: { headers },
   });
 
-  const { data: recentOrders = [] } = useListAdminOrders({ limit: 8 }, {
-    query: { queryKey: getListAdminOrdersQueryKey({ limit: 8 }), enabled: !!adminToken, refetchInterval: 30_000 },
-    request: { headers },
-  });
+  const { data: recentOrders = [] } = useListAdminOrders(
+    { limit: 8 },
+    {
+      query: {
+        queryKey: getListAdminOrdersQueryKey({ limit: 8 }),
+        enabled: !!adminToken,
+        refetchInterval: 30_000,
+      },
+      request: { headers },
+    },
+  );
 
   const fetchChart = (days = chartDays) => {
     if (!adminToken) return;
     setChartLoading(true);
     fetch(`/api/admin/chart-data?days=${days}`, { headers })
-      .then(r => r.json())
-      .then(d => setChartData(Array.isArray(d) ? d : []))
+      .then((r) => r.json())
+      .then((d) => setChartData(Array.isArray(d) ? d : []))
       .catch(() => {})
       .finally(() => setChartLoading(false));
   };
 
-  useEffect(() => { if (adminToken) fetchChart(chartDays); }, [adminToken, chartDays]);
-  if (!adminToken) { navigate("/admin/login"); return null; }
+  useEffect(() => {
+    if (adminToken) fetchChart(chartDays);
+  }, [adminToken, chartDays]);
+  if (!adminToken) {
+    navigate("/admin/login");
+    return null;
+  }
 
   const handleRefresh = () => {
     refetch();
@@ -175,55 +249,88 @@ export default function AdminDashboardPage() {
     else setGranularity("weekly");
   };
 
-  const METRIC_CARDS = stats ? [
-    {
-      label: "إيرادات اليوم",   value: formatCurrency(stats.today_revenue ?? 0),
-      sub: `${stats.today_orders ?? 0} طلب اليوم`,
-      icon: TrendingUp, color: "text-primary", bg: "bg-primary/10", border: "border-primary/20",
-      link: "/admin/orders", highlight: true,
-      sparkKey: "revenue" as keyof ChartDay, sparkColor: "#e11d48",
-    },
-    {
-      label: "طلبات الشحن المعلقة", value: stats.pending_topups,
-      sub: "تحتاج مراجعة يدوية",
-      icon: Clock, color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20",
-      link: "/admin/topups", urgent: (stats.pending_topups ?? 0) > 0,
-      sparkKey: null, sparkColor: "",
-    },
-    {
-      label: "إجمالي الإيرادات", value: formatCurrency(stats.total_revenue ?? 0),
-      sub: `${stats.total_orders ?? 0} طلب إجمالاً`,
-      icon: BarChart2, color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/20",
-      link: "/admin/orders",
-      sparkKey: "revenue" as keyof ChartDay, sparkColor: "#10b981",
-    },
-    {
-      label: "المستخدمون",      value: stats.total_users,
-      sub: `${formatCurrency(stats.total_wallet_balance ?? 0)} رصيد كلي`,
-      icon: Users, color: "text-blue-400", bg: "bg-blue-400/10", border: "border-blue-400/20",
-      link: "/admin/users",
-      sparkKey: "users" as keyof ChartDay, sparkColor: "#3b82f6",
-    },
-    {
-      label: "المخزون المتاح",   value: stats.available_stock,
-      sub: "وحدة في المخزون",
-      icon: Package, color: "text-orange-400", bg: "bg-orange-400/10", border: "border-orange-400/20",
-      link: "/admin/products",
-      sparkKey: null, sparkColor: "",
-    },
-    {
-      label: "رصيد المحافظ",     value: formatCurrency(stats.total_wallet_balance ?? 0),
-      sub: "إجمالي أرصدة المستخدمين",
-      icon: Wallet, color: "text-cyan-400", bg: "bg-cyan-400/10", border: "border-cyan-400/20",
-      link: "/admin/users",
-      sparkKey: null, sparkColor: "",
-    },
-  ] : [];
+  const METRIC_CARDS = stats
+    ? [
+        {
+          label: "إيرادات اليوم",
+          value: formatCurrency(stats.today_revenue ?? 0),
+          sub: `${stats.today_orders ?? 0} طلب اليوم`,
+          icon: TrendingUp,
+          color: "text-primary",
+          bg: "bg-primary/10",
+          border: "border-primary/20",
+          link: "/admin/orders",
+          highlight: true,
+          sparkKey: "revenue" as keyof ChartDay,
+          sparkColor: "#e11d48",
+        },
+        {
+          label: "طلبات الشحن المعلقة",
+          value: stats.pending_topups,
+          sub: "تحتاج مراجعة يدوية",
+          icon: Clock,
+          color: "text-yellow-400",
+          bg: "bg-yellow-400/10",
+          border: "border-yellow-400/20",
+          link: "/admin/topups",
+          urgent: (stats.pending_topups ?? 0) > 0,
+          sparkKey: null,
+          sparkColor: "",
+        },
+        {
+          label: "إجمالي الإيرادات",
+          value: formatCurrency(stats.total_revenue ?? 0),
+          sub: `${stats.total_orders ?? 0} طلب إجمالاً`,
+          icon: BarChart2,
+          color: "text-emerald-400",
+          bg: "bg-emerald-400/10",
+          border: "border-emerald-400/20",
+          link: "/admin/orders",
+          sparkKey: "revenue" as keyof ChartDay,
+          sparkColor: "#10b981",
+        },
+        {
+          label: "المستخدمون",
+          value: stats.total_users,
+          sub: `${formatCurrency(stats.total_wallet_balance ?? 0)} رصيد كلي`,
+          icon: Users,
+          color: "text-blue-400",
+          bg: "bg-blue-400/10",
+          border: "border-blue-400/20",
+          link: "/admin/users",
+          sparkKey: "users" as keyof ChartDay,
+          sparkColor: "#3b82f6",
+        },
+        {
+          label: "المخزون المتاح",
+          value: stats.available_stock,
+          sub: "وحدة في المخزون",
+          icon: Package,
+          color: "text-orange-400",
+          bg: "bg-orange-400/10",
+          border: "border-orange-400/20",
+          link: "/admin/products",
+          sparkKey: null,
+          sparkColor: "",
+        },
+        {
+          label: "رصيد المحافظ",
+          value: formatCurrency(stats.total_wallet_balance ?? 0),
+          sub: "إجمالي أرصدة المستخدمين",
+          icon: Wallet,
+          color: "text-cyan-400",
+          bg: "bg-cyan-400/10",
+          border: "border-cyan-400/20",
+          link: "/admin/users",
+          sparkKey: null,
+          sparkColor: "",
+        },
+      ]
+    : [];
 
   return (
     <AdminLayout onRefresh={handleRefresh} badges={badges}>
       <div className="space-y-6">
-
         {/* Urgent alert */}
         {(stats?.pending_topups ?? 0) > 0 && (
           <div className="flex items-center justify-between p-4 bg-yellow-400/8 border border-yellow-400/20 rounded-2xl gap-4 float-in">
@@ -232,7 +339,9 @@ export default function AdminDashboardPage() {
                 <AlertTriangle className="w-4.5 h-4.5 text-yellow-400" />
               </div>
               <div>
-                <p className="font-bold text-sm text-yellow-400">{stats!.pending_topups} طلب شحن بانتظار المراجعة</p>
+                <p className="font-bold text-sm text-yellow-400">
+                  {stats!.pending_topups} طلب شحن بانتظار المراجعة
+                </p>
                 <p className="text-xs text-muted-foreground">يحتاج إلى موافقة يدوية فورية</p>
               </div>
             </div>
@@ -249,16 +358,23 @@ export default function AdminDashboardPage() {
         {statsLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-card border border-border rounded-2xl h-28 skeleton-shimmer" />
+              <div
+                key={i}
+                className="bg-card border border-border rounded-2xl h-28 skeleton-shimmer"
+              />
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {METRIC_CARDS.map((card, i) => (
               <Link key={card.label} href={card.link}>
-                <div className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40 hover:shadow-yellow-400/10" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}>
+                <div
+                  className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40 hover:shadow-yellow-400/10" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
+                >
                   <div className="flex items-start justify-between gap-2 mb-2.5">
-                    <div className={`w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0`}>
+                    <div
+                      className={`w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0`}
+                    >
                       <card.icon className={`w-4 h-4 ${card.color}`} />
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -266,9 +382,13 @@ export default function AdminDashboardPage() {
                       <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground/20 group-hover:text-primary transition-colors" />
                     </div>
                   </div>
-                  <div className="font-black text-xl leading-none mb-0.5 tabular-nums">{card.value}</div>
+                  <div className="font-black text-xl leading-none mb-0.5 tabular-nums">
+                    {card.value}
+                  </div>
                   <div className="text-[11px] text-muted-foreground">{card.label}</div>
-                  {card.sub && <div className="text-[10px] text-muted-foreground/50 mt-0.5">{card.sub}</div>}
+                  {card.sub && (
+                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">{card.sub}</div>
+                  )}
                   {/* Mini sparkline */}
                   {card.sparkKey && chartData.length >= 3 && (
                     <div className="mt-2 -mx-1 opacity-60">
@@ -284,7 +404,9 @@ export default function AdminDashboardPage() {
         {/* Quick actions strip */}
         {stats && !statsLoading && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-widest hidden sm:inline">إجراءات:</span>
+            <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-widest hidden sm:inline">
+              إجراءات:
+            </span>
             {(stats.pending_topups ?? 0) > 0 && (
               <Link href="/admin/topups">
                 <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-medium press-spring">
@@ -322,20 +444,23 @@ export default function AdminDashboardPage() {
                     <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span className="w-3 h-0.5 bg-primary rounded inline-block" />الإيرادات
+                        <span className="w-3 h-0.5 bg-primary rounded inline-block" />
+                        الإيرادات
                       </span>
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />الطلبات
+                        <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
+                        الطلبات
                       </span>
                       <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />الخصومات
+                        <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
+                        الخصومات
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Granularity picker */}
                     <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                      {GRANULARITY_OPTIONS.map(g => (
+                      {GRANULARITY_OPTIONS.map((g) => (
                         <button
                           key={g.value}
                           onClick={() => setGranularity(g.value as any)}
@@ -352,7 +477,7 @@ export default function AdminDashboardPage() {
 
                     {/* Period picker */}
                     <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                      {PERIOD_OPTIONS.map(opt => (
+                      {PERIOD_OPTIONS.map((opt) => (
                         <button
                           key={opt.days}
                           onClick={() => onChangeDays(opt.days)}
@@ -381,28 +506,72 @@ export default function AdminDashboardPage() {
                   <div className="h-40 skeleton-shimmer rounded-lg" />
                 ) : (
                   <ResponsiveContainer width="100%" height={160}>
-                    <AreaChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                    <AreaChart
+                      data={displayData}
+                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                    >
                       <defs>
                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#e11d48" stopOpacity={0.2} />
+                          <stop offset="5%" stopColor="#e11d48" stopOpacity={0.2} />
                           <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#10b981" stopOpacity={0.2} />
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor="#f59e0b" stopOpacity={0.15} />
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
                           <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(255,255,255,0.04)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <Tooltip content={<ChartTooltip />} />
-                      <Area type="monotone" dataKey="revenue"   name="الإيرادات" stroke="#e11d48" fill="url(#revGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                      <Area type="monotone" dataKey="orders"    name="الطلبات"   stroke="#10b981" fill="url(#ordGrad)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                      <Area type="monotone" dataKey="discounts" name="الخصومات"  stroke="#f59e0b" fill="url(#discGrad)" strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} strokeDasharray="4 2" />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        name="الإيرادات"
+                        stroke="#e11d48"
+                        fill="url(#revGrad)"
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="orders"
+                        name="الطلبات"
+                        stroke="#10b981"
+                        fill="url(#ordGrad)"
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="discounts"
+                        name="الخصومات"
+                        stroke="#f59e0b"
+                        fill="url(#discGrad)"
+                        strokeWidth={1.5}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                        strokeDasharray="4 2"
+                      />
                     </AreaChart>
                   </ResponsiveContainer>
                 )}
@@ -413,7 +582,9 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون</p>
+                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                      قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
+                    </p>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                     <span className="flex items-center gap-1">
@@ -428,19 +599,51 @@ export default function AdminDashboardPage() {
                 </div>
                 {chartLoading ? (
                   <div className="h-28 skeleton-shimmer rounded-lg" />
-                ) : displayData.every(d => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0) ? (
+                ) : displayData.every(
+                    (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
+                  ) ? (
                   <div className="h-28 flex items-center justify-center text-muted-foreground/40 text-xs">
                     لا يوجد استخدام كوبونات في هذه الفترة
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height={120}>
-                    <BarChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
+                    <BarChart
+                      data={displayData}
+                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(255,255,255,0.04)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="discounts"     name="الخصومات"      fill="#f59e0b" radius={[3,3,0,0]} maxBarSize={24} fillOpacity={0.8} />
-                      <Bar dataKey="coupon_orders" name="طلبات بكوبون"  fill="#10b981" radius={[3,3,0,0]} maxBarSize={24} fillOpacity={0.6} />
+                      <Bar
+                        dataKey="discounts"
+                        name="الخصومات"
+                        fill="#f59e0b"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={24}
+                        fillOpacity={0.8}
+                      />
+                      <Bar
+                        dataKey="coupon_orders"
+                        name="طلبات بكوبون"
+                        fill="#10b981"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={24}
+                        fillOpacity={0.6}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -452,15 +655,27 @@ export default function AdminDashboardPage() {
                   <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
-                      {granularity === "daily" ? "يومي" : granularity === "weekly" ? "أسبوعي" : "شهري"} · آخر {chartDays} يوم
+                      {granularity === "daily"
+                        ? "يومي"
+                        : granularity === "weekly"
+                          ? "أسبوعي"
+                          : "شهري"}{" "}
+                      · آخر {chartDays} يوم
                     </span>
                     <button
                       onClick={() => {
-                        const usersData = displayData.map(d => [d.date, d.users]);
-                        const csv = [["التاريخ", "المستخدمون الجدد"], ...usersData].map(r => r.join(",")).join("\n");
-                        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                        const usersData = displayData.map((d) => [d.date, d.users]);
+                        const csv = [["التاريخ", "المستخدمون الجدد"], ...usersData]
+                          .map((r) => r.join(","))
+                          .join("\n");
+                        const blob = new Blob(["\uFEFF" + csv], {
+                          type: "text/csv;charset=utf-8;",
+                        });
                         const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a"); a.href = url; a.download = `users_${chartDays}d.csv`; a.click();
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `users_${chartDays}d.csv`;
+                        a.click();
                         URL.revokeObjectURL(url);
                       }}
                       className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground/50 hover:text-muted-foreground"
@@ -474,12 +689,35 @@ export default function AdminDashboardPage() {
                   <div className="h-28 skeleton-shimmer rounded-lg" />
                 ) : (
                   <ResponsiveContainer width="100%" height={120}>
-                    <BarChart data={displayData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 9, fill: "#6b7280" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <BarChart
+                      data={displayData}
+                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(255,255,255,0.04)"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        axisLine={false}
+                        tickLine={false}
+                        allowDecimals={false}
+                      />
                       <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="users" name="مستخدمون جدد" fill="#3b82f6" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                      <Bar
+                        dataKey="users"
+                        name="مستخدمون جدد"
+                        fill="#3b82f6"
+                        radius={[3, 3, 0, 0]}
+                        maxBarSize={28}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -488,14 +726,18 @@ export default function AdminDashboardPage() {
           )}
 
           {/* Recent orders stream */}
-          <div className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}>
+          <div
+            className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}
+          >
             <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-primary" />
                 <h2 className="font-bold text-sm">آخر الطلبات</h2>
               </div>
               <Link href="/admin/orders">
-                <span className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">عرض الكل</span>
+                <span className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+                  عرض الكل
+                </span>
               </Link>
             </div>
             <div className="flex-1 divide-y divide-border/40 overflow-y-auto">
@@ -506,20 +748,31 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 (recentOrders as any[]).slice(0, 8).map((order: any) => (
-                  <div key={order.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors">
+                  <div
+                    key={order.id}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                  >
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-xs truncate">{order.product_name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="font-mono text-[10px] text-muted-foreground/60">{order.user_phone}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground/60">
+                          {order.user_phone}
+                        </span>
                         {order.created_at && (
-                          <span className="text-[10px] text-muted-foreground/35">{formatDate(order.created_at)}</span>
+                          <span className="text-[10px] text-muted-foreground/35">
+                            {formatDate(order.created_at)}
+                          </span>
                         )}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-black text-xs text-primary tabular-nums">{formatCurrency(order.amount)}</div>
+                      <div className="font-black text-xs text-primary tabular-nums">
+                        {formatCurrency(order.amount)}
+                      </div>
                       <div className="mt-0.5">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                        >
                           {statusLabel(order.status)}
                         </span>
                       </div>
@@ -530,7 +783,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
-
       </div>
     </AdminLayout>
   );

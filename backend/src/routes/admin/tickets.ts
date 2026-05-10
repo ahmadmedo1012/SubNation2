@@ -1,9 +1,4 @@
-import {
-  db,
-  supportTicketsTable,
-  ticketRepliesTable,
-  usersTable,
-} from "@workspace/db";
+import { db, supportTicketsTable, ticketRepliesTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { intParam } from "../../lib/http";

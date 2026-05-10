@@ -13,14 +13,14 @@ import { adminSettingsRouter } from "./settings";
 const router = Router();
 
 // Mount sub-routers
-router.use("/", adminAuthRouter);        // /login, /2fa/*
-router.use("/", adminStatsRouter);       // /stats, /chart-data
-router.use("/", adminOrdersRouter);      // /orders, /orders/bulk-status
-router.use("/", adminTopupsRouter);      // /topups/*
-router.use("/", adminProductsRouter);    // /products/*
-router.use("/", adminUsersRouter);       // /users/*
-router.use("/", adminTicketsRouter);     // /tickets/*
-router.use("/", adminReferralsRouter);   // /referrals/*
+router.use("/", adminAuthRouter); // /login, /2fa/*
+router.use("/", adminStatsRouter); // /stats, /chart-data
+router.use("/", adminOrdersRouter); // /orders, /orders/bulk-status
+router.use("/", adminTopupsRouter); // /topups/*
+router.use("/", adminProductsRouter); // /products/*
+router.use("/", adminUsersRouter); // /users/*
+router.use("/", adminTicketsRouter); // /tickets/*
+router.use("/", adminReferralsRouter); // /referrals/*
 router.use("/alerts", adminAlertsRouter);
 router.use("/settings", adminSettingsRouter);
 

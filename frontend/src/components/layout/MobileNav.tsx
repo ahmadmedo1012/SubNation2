@@ -3,11 +3,11 @@ import { useAuth } from "@/lib/auth";
 import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
 
 const TABS = [
-  { href: "/",        icon: Home,        label: "الرئيسية" },
-  { href: "/wallet",  icon: Wallet,      label: "المحفظة" },
-  { href: "/orders",  icon: ShoppingBag, label: "طلباتي" },
-  { href: "/loyalty", icon: Star,        label: "الولاء" },
-  { href: "/profile", icon: User,        label: "حسابي" },
+  { href: "/", icon: Home, label: "الرئيسية" },
+  { href: "/wallet", icon: Wallet, label: "المحفظة" },
+  { href: "/orders", icon: ShoppingBag, label: "طلباتي" },
+  { href: "/loyalty", icon: Star, label: "الولاء" },
+  { href: "/profile", icon: User, label: "حسابي" },
 ];
 
 export function MobileNav() {
@@ -28,7 +28,7 @@ export function MobileNav() {
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
       <div className="relative flex h-[60px]">
-        {TABS.map(tab => {
+        {TABS.map((tab) => {
           const active = location === tab.href;
           return (
             <Link key={tab.href} href={tab.href} className="flex-1">
@@ -51,18 +51,21 @@ export function MobileNav() {
                   strokeWidth={active ? 2.5 : 1.8}
                   className={`
                     relative z-10 transition-all duration-200 ease-out
-                    ${active
-                      ? "w-[22px] h-[22px] text-primary"
-                      : "w-[20px] h-[20px] text-muted-foreground/70"
+                    ${
+                      active
+                        ? "w-[22px] h-[22px] text-primary"
+                        : "w-[20px] h-[20px] text-muted-foreground/70"
                     }
                   `}
                 />
 
                 {/* Label */}
-                <span className={`
+                <span
+                  className={`
                   relative z-10 text-[9.5px] leading-none font-semibold transition-all duration-200
                   ${active ? "text-primary font-bold" : "text-muted-foreground/60"}
-                `}>
+                `}
+                >
                   {tab.label}
                 </span>
               </div>

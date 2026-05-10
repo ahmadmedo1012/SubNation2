@@ -23,10 +23,17 @@ export function Navbar() {
   }, []);
 
   // Close menu on route change
-  useEffect(() => { setOpen(false); }, [location]);
+  useEffect(() => {
+    setOpen(false);
+  }, [location]);
 
   const { data: user } = useGetMe({
-    query: { queryKey: getGetMeQueryKey(), enabled: !!token, retry: false, refetchInterval: 30_000 },
+    query: {
+      queryKey: getGetMeQueryKey(),
+      enabled: !!token,
+      retry: false,
+      refetchInterval: 30_000,
+    },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
@@ -34,13 +41,16 @@ export function Navbar() {
     const active = location === path;
     return (
       <Link href={path}>
-        <div className={`
+        <div
+          className={`
           relative px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150
-          ${active
-            ? "text-primary font-bold"
-            : "text-muted-foreground/80 hover:text-foreground hover:bg-secondary/60"
+          ${
+            active
+              ? "text-primary font-bold"
+              : "text-muted-foreground/80 hover:text-foreground hover:bg-secondary/60"
           }
-        `}>
+        `}
+        >
           {label}
           {active && (
             <div className="absolute inset-x-2.5 -bottom-px h-[2px] rounded-full bg-primary/65 tab-slide-in" />
@@ -51,13 +61,16 @@ export function Navbar() {
   };
 
   return (
-    <header className={`
+    <header
+      className={`
       sticky top-0 z-50 transition-all duration-300
-      ${scrolled
-        ? "bg-card/95 backdrop-blur-3xl border-b border-border/70 shadow-md shadow-black/20"
-        : "bg-card/80 backdrop-blur-xl border-b border-border/35"
+      ${
+        scrolled
+          ? "bg-card/95 backdrop-blur-3xl border-b border-border/70 shadow-md shadow-black/20"
+          : "bg-card/80 backdrop-blur-xl border-b border-border/35"
       }
-    `}>
+    `}
+    >
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
         <Link href="/">
           <Logo size="sm" />
@@ -68,8 +81,8 @@ export function Navbar() {
           {navLink("/", "الكتالوج")}
           {token && (
             <>
-              {navLink("/wallet",  "المحفظة")}
-              {navLink("/orders",  "طلباتي")}
+              {navLink("/wallet", "المحفظة")}
+              {navLink("/orders", "طلباتي")}
               {navLink("/loyalty", "الولاء")}
               {navLink("/support", "الدعم")}
             </>
@@ -83,10 +96,7 @@ export function Navbar() {
             className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground/70 hover:text-foreground touch-target flex items-center justify-center"
             aria-label="تبديل الثيم"
           >
-            {theme === "dark"
-              ? <Sun className="w-4 h-4" />
-              : <Moon className="w-4 h-4" />
-            }
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
           <NotificationBell />
@@ -101,7 +111,10 @@ export function Navbar() {
                 </div>
               </Link>
               <Link href="/profile">
-                <div className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground/70 hover:text-foreground cursor-pointer touch-target flex items-center justify-center" title="حسابي">
+                <div
+                  className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground/70 hover:text-foreground cursor-pointer touch-target flex items-center justify-center"
+                  title="حسابي"
+                >
                   <User className="w-4 h-4" />
                 </div>
               </Link>
@@ -118,10 +131,19 @@ export function Navbar() {
           ) : (
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/login">
-                <Button variant="ghost" size="sm" className="press-spring transition-all font-medium rounded-xl">دخول</Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="press-spring transition-all font-medium rounded-xl"
+                >
+                  دخول
+                </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm" className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl">
+                <Button
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl"
+                >
                   حساب مجاني
                 </Button>
               </Link>
@@ -132,13 +154,10 @@ export function Navbar() {
           {!token && (
             <button
               className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
-              onClick={() => setOpen(v => !v)}
+              onClick={() => setOpen((v) => !v)}
               aria-label="القائمة"
             >
-              {open
-                ? <X className="w-5 h-5" />
-                : <Menu className="w-5 h-5" />
-              }
+              {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           )}
 
@@ -159,13 +178,22 @@ export function Navbar() {
       {/* Mobile guest menu — animated */}
       {!token && open && (
         <div className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in">
-          <Link href="/" className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]">
+          <Link
+            href="/"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]"
+          >
             الكتالوج
           </Link>
-          <Link href="/login" className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]">
+          <Link
+            href="/login"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]"
+          >
             تسجيل الدخول
           </Link>
-          <Link href="/register" className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]">
+          <Link
+            href="/register"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]"
+          >
             إنشاء حساب مجاني ←
           </Link>
         </div>

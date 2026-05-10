@@ -937,7 +937,17 @@ components:
           type: integer
         total_wallet_balance:
           type: number
-      required: [total_users, total_orders, total_revenue, pending_topups, today_orders, today_revenue, available_stock, total_wallet_balance]
+      required:
+        [
+          total_users,
+          total_orders,
+          total_revenue,
+          pending_topups,
+          today_orders,
+          today_revenue,
+          available_stock,
+          total_wallet_balance,
+        ]
 
     AdminOrder:
       type: object
@@ -1080,4 +1090,14 @@ components:
           type: ["string", "null"]
         created_at:
           type: string
-      required: [id, phone, wallet_balance, loyalty_points, loyalty_tier, lifetime_spend, order_count, created_at]
+      required:
+        [
+          id,
+          phone,
+          wallet_balance,
+          loyalty_points,
+          loyalty_tier,
+          lifetime_spend,
+          order_count,
+          created_at,
+        ]

@@ -18,7 +18,7 @@ export function initCronJobs() {
         .from(productsTable)
         .leftJoin(
           inventoryTable,
-          sql`${productsTable.id} = ${inventoryTable.productId} AND ${inventoryTable.isSold} = false`
+          sql`${productsTable.id} = ${inventoryTable.productId} AND ${inventoryTable.isSold} = false`,
         )
         .where(eq(productsTable.isArchived, false))
         .groupBy(productsTable.id, productsTable.name)
