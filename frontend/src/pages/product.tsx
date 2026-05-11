@@ -295,8 +295,10 @@ export default function ProductPage() {
   }
 
   // ── Product page ──────────────────────────────────────────────────────────
+  const mobileContentPad = token ? 'mobile-product-pad-auth' : 'mobile-product-pad-guest';
+
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 pb-[calc(5.75rem+env(safe-area-inset-bottom))] sm:py-8 sm:pb-8">
+    <div className={`max-w-xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>
       {/* Back link */}
       <button
         onClick={() => navigate("/")}
@@ -478,7 +480,7 @@ export default function ProductPage() {
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
-        className={`sm:hidden fixed left-0 right-0 z-40 bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
+        className={`sm:hidden fixed left-0 right-0 z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
           token ? "mobile-sticky-above-nav pb-3" : "mobile-sticky-bottom-safe"
         }`}
       >
@@ -670,7 +672,7 @@ function CtaBlock({
         )}
         <Button
           onClick={onLogin}
-          className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
         >
           {compact ? "دخول" : "تسجيل الدخول للشراء"}
         </Button>
@@ -688,7 +690,7 @@ function CtaBlock({
         )}
         <Button
           disabled
-          className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"}`}
+          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"}`}
         >
           <Lock className="w-4 h-4 ml-2" /> نفذ المخزون
         </Button>
@@ -726,7 +728,7 @@ function CtaBlock({
             <Button
               onClick={onWallet}
               variant="outline"
-              className="shrink-0 h-11 min-w-[6.75rem] px-4 press-spring"
+              className="shrink-0 h-12 min-w-[7.5rem] px-5 press-spring"
             >
               <Wallet className="w-4 h-4 ml-1.5" /> شحن
             </Button>
@@ -775,7 +777,7 @@ function CtaBlock({
       <Button
         onClick={onBuy}
         disabled={isPending}
-        className={`${compact ? "shrink-0 h-11 min-w-[6.75rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring ${!compact ? "cta-glow" : ""}`}
+        className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring ${!compact ? "cta-glow" : ""}`}
       >
         <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2`} />
         {isPending

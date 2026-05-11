@@ -673,7 +673,7 @@
     background: linear-gradient(
       130deg,
       hsl(var(--primary)) 0%,
-      hsl(350 80% 70%) 50%,
+      hsl(350 85% 58%) 50%,
       hsl(var(--primary)) 100%
     );
     background-size: 200% 200%;
@@ -944,6 +944,15 @@
   .mobile-sticky-bottom-safe {
     bottom: 0;
     padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  }
+
+  /* Product page body padding: sticky bar (~68px) + nav (60px) + safe-area */
+  .mobile-product-pad-auth {
+    padding-bottom: calc(68px + 60px + env(safe-area-inset-bottom) + 0.5rem);
+  }
+  /* Guest: sticky bar (~68px) + safe-area, no nav */
+  .mobile-product-pad-guest {
+    padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem);
   }
 }
 

@@ -206,46 +206,54 @@ export default function HomePage() {
         {/* ── Hero ─────────────────────────────────────────── */}
         {token && user ? (
           <div className="mb-5 page-in">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <p className="text-muted-foreground/60 text-xs mb-0.5 font-medium">
-                  مرحباً بك مجدداً
-                </p>
-                <h1 className="text-fluid-2xl font-black leading-tight">
-                  اشترِ اشتراكك المفضل اليوم
-                </h1>
-              </div>
-              <div className="flex gap-2">
-                <Link href="/wallet">
-                  <div className="bg-card border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer min-w-[122px]">
-                    <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                      <Wallet className="w-3.5 h-3.5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
-                        المحفظة
+            {/* Hero banner card */}
+            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15">
+              {/* Background gradient layers */}
+              <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
+              <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
+              <div className="absolute top-[-30px] right-[10%] w-48 h-48 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-muted-foreground/60 text-xs mb-0.5 font-medium">
+                    مرحباً بك مجدداً
+                  </p>
+                  <h1 className="text-fluid-2xl font-black leading-tight text-gradient-animated">
+                    اشترِ اشتراكك المفضل اليوم
+                  </h1>
+                </div>
+                <div className="flex gap-2">
+                  <Link href="/wallet">
+                    <div className="bg-background/50 border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer min-w-[122px]">
+                      <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                        <Wallet className="w-3.5 h-3.5 text-primary" />
                       </div>
-                      <div className="font-black text-sm tabular-nums text-foreground">
-                        {formatCurrency(user.wallet_balance ?? 0)}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-                <Link href="/loyalty">
-                  <div className="bg-card border border-border/50 hover:border-yellow-400/40 hover:shadow-lg hover:shadow-yellow-900/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
-                    <div className="w-8 h-8 rounded-xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center shrink-0">
-                      <Star className="w-3.5 h-3.5 text-yellow-400" />
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
-                        النقاط
-                      </div>
-                      <div className="font-black text-sm tabular-nums">
-                        {user.loyalty_points ?? 0}
+                      <div>
+                        <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                          المحفظة
+                        </div>
+                        <div className="font-black text-sm tabular-nums text-foreground">
+                          {formatCurrency(user.wallet_balance ?? 0)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  <Link href="/loyalty">
+                    <div className="bg-background/50 border border-border/50 hover:border-yellow-400/40 hover:shadow-lg hover:shadow-yellow-900/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
+                      <div className="w-8 h-8 rounded-xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center shrink-0">
+                        <Star className="w-3.5 h-3.5 text-yellow-400" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                          النقاط
+                        </div>
+                        <div className="font-black text-sm tabular-nums">
+                          {user.loyalty_points ?? 0}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </div>
               </div>
             </div>
 
@@ -649,7 +657,7 @@ export default function HomePage() {
         )}
 
         {/* Bottom padding for mobile nav */}
-        <div className="h-6 md:h-0" />
+        <div className={`md:h-0 ${token ? 'mobile-nav-safe-pad' : 'h-6'}`} />
       </div>
     </div>
   );
