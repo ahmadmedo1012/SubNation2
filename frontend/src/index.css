@@ -394,14 +394,12 @@
 @keyframes cta-glow {
   0%,
   100% {
-    box-shadow:
-      0 0 0 0 hsl(var(--primary) / 0.28),
-      0 6px 20px -6px hsl(var(--primary) / 0.45);
+    opacity: 0.55;
+    transform: scale(1);
   }
   50% {
-    box-shadow:
-      0 0 0 6px hsl(var(--primary) / 0),
-      0 6px 20px -6px hsl(var(--primary) / 0.45);
+    opacity: 0;
+    transform: scale(1.18);
   }
 }
 
@@ -668,7 +666,7 @@
     background-clip: text;
   }
 
-  /* Animated gradient text */
+  /* Animated gradient text — static gradient (no non-composited animation) */
   .text-gradient-animated {
     background: linear-gradient(
       130deg,
@@ -676,11 +674,9 @@
       hsl(350 85% 58%) 50%,
       hsl(var(--primary)) 100%
     );
-    background-size: 200% 200%;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    animation: border-flow 3s ease-in-out infinite;
   }
 
   /* Dot-grid pattern */
@@ -738,9 +734,28 @@
     transform: scale(0.91);
   }
 
-  /* CTA glow pulse */
+  /* CTA glow pulse — composited (transform + opacity only) */
   .cta-glow {
+    position: relative;
+    isolation: isolate;
+  }
+  .cta-glow::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.32);
+    opacity: 0;
+    transform: scale(1);
     animation: cta-glow 2.8s ease-in-out infinite;
+    will-change: transform, opacity;
+    z-index: -1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cta-glow::after {
+      animation: none;
+    }
   }
 
   /* Badge pulse for notification dots */

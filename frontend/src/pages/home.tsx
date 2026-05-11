@@ -512,6 +512,8 @@ export default function HomePage() {
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
+                aria-label="ترتيب المنتجات"
+                title="ترتيب المنتجات"
                 className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
               >
                 {SORTS.map((s) => (

@@ -12,22 +12,25 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
-// Customer-facing pages — eagerly loaded for the primary user journey.
-import AuthCallbackPage from "@/pages/auth-callback";
-import ForgotPasswordPage from "@/pages/forgot-password";
+// Home + NotFound are eagerly loaded for fastest first paint of the primary
+// landing route; all other customer pages are lazily code-split so the initial
+// critical bundle stays minimal.
 import HomePage from "@/pages/home";
-import LoginPage from "@/pages/login";
-import LoyaltyPage from "@/pages/loyalty";
 import NotFound from "@/pages/not-found";
-import OrderDetailPage from "@/pages/order-detail";
-import OrdersPage from "@/pages/orders";
-import ProductPage from "@/pages/product";
-import ProfilePage from "@/pages/profile";
-import ReferralsPage from "@/pages/referrals";
-import RegisterPage from "@/pages/register";
-import SupportPage from "@/pages/support";
-import TermsPage from "@/pages/terms";
-import WalletPage from "@/pages/wallet";
+
+const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
+const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password"));
+const LoginPage = lazy(() => import("@/pages/login"));
+const LoyaltyPage = lazy(() => import("@/pages/loyalty"));
+const OrderDetailPage = lazy(() => import("@/pages/order-detail"));
+const OrdersPage = lazy(() => import("@/pages/orders"));
+const ProductPage = lazy(() => import("@/pages/product"));
+const ProfilePage = lazy(() => import("@/pages/profile"));
+const ReferralsPage = lazy(() => import("@/pages/referrals"));
+const RegisterPage = lazy(() => import("@/pages/register"));
+const SupportPage = lazy(() => import("@/pages/support"));
+const TermsPage = lazy(() => import("@/pages/terms"));
+const WalletPage = lazy(() => import("@/pages/wallet"));
 
 // Admin pages — lazy loaded so customer bundles stay small.
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
@@ -128,28 +131,30 @@ function AppRoutes() {
       {!isAdmin && <FlashSaleBanner />}
       <main className={!isAdmin && !isAuth && token ? "mobile-nav-safe-pad md:pb-0" : ""}>
         <ErrorBoundary>
-          <Switch>
-            <Route path="/" component={HomePage} />
-            <Route path="/login" component={LoginPage} />
-            <Route path="/register" component={RegisterPage} />
-            <Route path="/product/:id" component={ProductPage} />
-            <Route path="/wallet" component={WalletPage} />
-            <Route path="/orders" component={OrdersPage} />
-            <Route path="/orders/:orderCode" component={OrderDetailPage} />
-            <Route path="/loyalty" component={LoyaltyPage} />
-            <Route path="/referrals" component={ReferralsPage} />
-            <Route path="/support" component={SupportPage} />
-            <Route path="/terms" component={TermsPage} />
-            <Route path="/forgot-password" component={ForgotPasswordPage} />
-            <Route path="/profile" component={ProfilePage} />
-            <Route path="/auth/callback" component={AuthCallbackPage} />
+          <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+            <Switch>
+              <Route path="/" component={HomePage} />
+              <Route path="/login" component={LoginPage} />
+              <Route path="/register" component={RegisterPage} />
+              <Route path="/product/:id" component={ProductPage} />
+              <Route path="/wallet" component={WalletPage} />
+              <Route path="/orders" component={OrdersPage} />
+              <Route path="/orders/:orderCode" component={OrderDetailPage} />
+              <Route path="/loyalty" component={LoyaltyPage} />
+              <Route path="/referrals" component={ReferralsPage} />
+              <Route path="/support" component={SupportPage} />
+              <Route path="/terms" component={TermsPage} />
+              <Route path="/forgot-password" component={ForgotPasswordPage} />
+              <Route path="/profile" component={ProfilePage} />
+              <Route path="/auth/callback" component={AuthCallbackPage} />
 
-            <Route path="/admin/login" component={AdminLoginPage} />
-            <Route path="/admin" component={AdminProtectedRoutes} />
-            <Route path="/admin/:rest*" component={AdminProtectedRoutes} />
+              <Route path="/admin/login" component={AdminLoginPage} />
+              <Route path="/admin" component={AdminProtectedRoutes} />
+              <Route path="/admin/:rest*" component={AdminProtectedRoutes} />
 
-            <Route component={NotFound} />
-          </Switch>
+              <Route component={NotFound} />
+            </Switch>
+          </Suspense>
         </ErrorBoundary>
       </main>
       {!isAdmin && <Footer />}
@@ -158,7 +163,9 @@ function AppRoutes() {
   );
 }
 
-const SocketInitializer = lazy(() => import("@/components/SocketInitializer").then(m => ({ default: m.SocketInitializer })));
+const SocketInitializer = lazy(() =>
+  import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
+);
 
 function App() {
   return (

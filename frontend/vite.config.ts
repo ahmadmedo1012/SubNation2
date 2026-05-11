@@ -33,27 +33,47 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Ensure tiny shared utility libs stay with the eager critical
+          // bundle so admin-only chart libs don't get pulled into the
+          // home page's import graph.
           if (
-            id.includes("node_modules/react") ||
-            id.includes("node_modules/react-dom") ||
-            id.includes("node_modules/scheduler")
+            id.includes("node_modules/clsx") ||
+            id.includes("node_modules/tailwind-merge") ||
+            id.includes("node_modules/class-variance-authority")
+          ) {
+            return "vendor-utils";
+          }
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/")
           ) {
             return "vendor-react";
           }
           if (id.includes("node_modules/@tanstack")) {
             return "vendor-query";
           }
-          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-") || id.includes("node_modules/victory-")) {
+          if (
+            id.includes("node_modules/recharts") ||
+            id.includes("node_modules/d3-") ||
+            id.includes("node_modules/victory-")
+          ) {
             return "vendor-charts";
           }
           if (id.includes("node_modules/lucide-react")) {
             return "vendor-icons";
           }
-          if (id.includes("node_modules/socket.io-client")) {
+          if (
+            id.includes("node_modules/socket.io-client") ||
+            id.includes("node_modules/engine.io-client")
+          ) {
             return "vendor-socket";
           }
           if (id.includes("node_modules/@radix-ui")) {
             return "vendor-radix";
+          }
+          if (id.includes("node_modules/wouter") || id.includes("node_modules/regexparam")) {
+            return "vendor-router";
           }
         },
       },
