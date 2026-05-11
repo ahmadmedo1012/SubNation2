@@ -11,6 +11,11 @@ import {
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
+import {
+  FirebaseAuthError,
+  resolveFirebaseSession,
+  verifyFirebaseIdToken,
+} from "../services/firebase-auth.service";
 import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
 
 const router = Router();
@@ -432,10 +437,47 @@ router.post("/google", async (req, res) => {
   return res.status(201).json({ user: formatUser(newUser), token, needs_phone: true });
 });
 
+router.post("/firebase/session", async (req, res) => {
+  const { id_token, referral_code } = req.body as { id_token?: string; referral_code?: string };
+  if (!id_token || typeof id_token !== "string") {
+    return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
+  }
+
+  try {
+    const decoded = await verifyFirebaseIdToken(id_token);
+    const result = await resolveFirebaseSession(
+      decoded,
+      typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
+    );
+    if (result.isNewUser) notifyNewUser(result.user.phone, !!result.user.referredBy);
+    const token = signUserToken({ userId: result.user.id });
+    return res.status(result.isNewUser ? 201 : 200).json({
+      user: formatUser(result.user),
+      token,
+      provider: result.provider,
+      is_new_user: result.isNewUser,
+      needs_phone: !result.user.phoneVerified,
+    });
+  } catch (err) {
+    if (err instanceof FirebaseAuthError) {
+      const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
+      return res.status(err.statusCode).json(createErrorResponse(err.message, code));
+    }
+    throw err;
+  }
+});
+
 export function formatUser(user: typeof usersTable.$inferSelect) {
   return {
     id: user.id,
     phone: user.phone,
+    email: user.email ?? null,
+    email_verified: user.emailVerified,
+    phone_verified: user.phoneVerified,
+    display_name: user.displayName ?? null,
+    photo_url: user.photoUrl ?? null,
+    auth_provider: user.authProvider,
+    password_login_enabled: user.passwordLoginEnabled,
     wallet_balance: parseFloat(String(user.walletBalance)),
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,

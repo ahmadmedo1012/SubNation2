@@ -144,6 +144,7 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/google", authLimiter);
+app.use("/api/auth/firebase/session", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", router);

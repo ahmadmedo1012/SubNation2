@@ -12,6 +12,7 @@ export * from "./products";
 export * from "./referral_events";
 export * from "./support_tickets";
 export * from "./ticket_replies";
+export * from "./user_auth_identities";
 export * from "./users";
 export * from "./wallet_ledger";
 export * from "./wallet_topups";

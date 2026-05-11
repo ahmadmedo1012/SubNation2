@@ -1,4 +1,5 @@
 import { AuthProviders } from "@/components/AuthProviders";
+import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,6 +137,10 @@ export default function LoginPage() {
 
           <div className="mt-5">
             <AuthProviders dividerLabel="أو" />
+          </div>
+
+          <div className="mt-4">
+            <FirebasePhoneSignIn dividerLabel="أو عبر كود الهاتف" />
           </div>
 
           <div className="mt-5 text-center text-sm text-muted-foreground/65">

@@ -1,0 +1,240 @@
+import { randomBytes, createHash } from "crypto";
+import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
+import { eq, or } from "drizzle-orm";
+import type { DecodedIdToken } from "firebase-admin/auth";
+import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
+import { getFirebaseAdminAuth } from "../lib/firebase-admin";
+
+export class FirebaseAuthError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "FirebaseAuthError";
+  }
+}
+
+export interface FirebaseSessionResult {
+  user: typeof usersTable.$inferSelect;
+  isNewUser: boolean;
+  provider: string;
+}
+
+export async function verifyFirebaseIdToken(idToken: string) {
+  const auth = getFirebaseAdminAuth();
+  if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
+
+  try {
+    return await auth.verifyIdToken(idToken);
+  } catch {
+    throw new FirebaseAuthError(401, "رمز Firebase غير صالح أو منتهي الصلاحية");
+  }
+}
+
+export async function resolveFirebaseSession(
+  decoded: DecodedIdToken,
+  referralCode?: string,
+): Promise<FirebaseSessionResult> {
+  const uid = decoded.uid;
+  if (!uid) throw new FirebaseAuthError(401, "رمز Firebase غير صالح");
+
+  const provider = getProvider(decoded);
+  const providerUid = getProviderUid(decoded, provider);
+  const phone = decoded.phone_number ? normalizeFirebasePhone(decoded.phone_number) : null;
+  const email = typeof decoded.email === "string" ? decoded.email.toLowerCase() : null;
+  const emailVerified = decoded.email_verified === true;
+  const phoneVerified = !!phone;
+  const displayName = typeof decoded.name === "string" ? decoded.name : null;
+  const photoUrl = typeof decoded.picture === "string" ? decoded.picture : null;
+  const now = new Date();
+
+  const [existingByFirebaseUid] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.firebaseUid, uid))
+    .limit(1);
+
+  if (existingByFirebaseUid) {
+    const [updated] = await updateUserIdentity(existingByFirebaseUid.id, {
+      uid,
+      provider,
+      providerUid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      displayName,
+      photoUrl,
+      now,
+    });
+    await upsertIdentity(updated.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+    return { user: updated, isNewUser: false, provider };
+  }
+
+  const candidates = await findLinkCandidates(uid, provider, providerUid, phone, email, emailVerified);
+  if (candidates.length > 1) {
+    throw new FirebaseAuthError(409, "تعارض في بيانات الحساب. يرجى التواصل مع الدعم لربط الحساب بأمان");
+  }
+
+  if (candidates.length === 1) {
+    const [updated] = await updateUserIdentity(candidates[0]!.id, {
+      uid,
+      provider,
+      providerUid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      displayName,
+      photoUrl,
+      now,
+    });
+    await upsertIdentity(updated.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+    return { user: updated, isNewUser: false, provider };
+  }
+
+  let referredById: number | undefined;
+  if (referralCode) {
+    const [referrer] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.referralCode, referralCode))
+      .limit(1);
+    if (referrer) referredById = referrer.id;
+  }
+
+  const phoneValue = phone ?? firebasePhonePlaceholder(uid);
+  const [created] = await db
+    .insert(usersTable)
+    .values({
+      phone: phoneValue,
+      passwordHash: "",
+      firebaseUid: uid,
+      googleId: provider === "google.com" ? providerUid : undefined,
+      email,
+      emailVerified,
+      phoneVerified,
+      displayName,
+      photoUrl,
+      authProvider: provider === "phone" ? "firebase_phone" : provider === "google.com" ? "firebase_google" : "firebase",
+      passwordLoginEnabled: false,
+      lastAuthAt: now,
+      referralCode: generateReferralCode(),
+      referredBy: referredById,
+      walletBalance: referredById ? "5.00" : "0.00",
+    })
+    .returning();
+
+  if (referredById && referredById !== created.id) {
+    await db
+      .insert(referralEventsTable)
+      .values({ referrerId: referredById, refereeId: created.id, status: "pending" })
+      .onConflictDoNothing();
+  }
+
+  await upsertIdentity(created.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+  return { user: created, isNewUser: true, provider };
+}
+
+function getProvider(decoded: DecodedIdToken) {
+  const provider = decoded.firebase?.sign_in_provider;
+  return typeof provider === "string" && provider.length > 0 ? provider : "firebase";
+}
+
+function getProviderUid(decoded: DecodedIdToken, provider: string) {
+  const identities = (decoded.firebase?.identities ?? {}) as Record<string, unknown>;
+  const values = identities[provider];
+  if (Array.isArray(values) && values.length > 0 && typeof values[0] === "string") return values[0];
+  return decoded.uid;
+}
+
+function normalizeFirebasePhone(phone: string) {
+  return normalizeLibyanPhone(phone) ?? normalizeLibyanPhone(phone.replace(/^\+218/, "0"));
+}
+
+function firebasePhonePlaceholder(uid: string) {
+  return `f_${createHash("sha256").update(uid).digest("hex").slice(0, 18)}`;
+}
+
+async function findLinkCandidates(
+  uid: string,
+  provider: string,
+  providerUid: string,
+  phone: string | null,
+  email: string | null,
+  emailVerified: boolean,
+) {
+  const conditions = [eq(usersTable.firebaseUid, uid)];
+  if (phone) conditions.push(eq(usersTable.phone, phone));
+  if (provider === "google.com") conditions.push(eq(usersTable.googleId, providerUid));
+  if (email && emailVerified) conditions.push(eq(usersTable.email, email));
+
+  const rows = await db.select().from(usersTable).where(or(...conditions));
+  const map = new Map<number, typeof usersTable.$inferSelect>();
+  for (const row of rows) map.set(row.id, row);
+  return [...map.values()];
+}
+
+async function updateUserIdentity(
+  userId: number,
+  data: {
+    uid: string;
+    provider: string;
+    providerUid: string;
+    phone: string | null;
+    email: string | null;
+    emailVerified: boolean;
+    phoneVerified: boolean;
+    displayName: string | null;
+    photoUrl: string | null;
+    now: Date;
+  },
+) {
+  return db
+    .update(usersTable)
+    .set({
+      firebaseUid: data.uid,
+      googleId: data.provider === "google.com" ? data.providerUid : undefined,
+      email: data.email ?? undefined,
+      emailVerified: data.emailVerified,
+      phoneVerified: data.phoneVerified,
+      displayName: data.displayName ?? undefined,
+      photoUrl: data.photoUrl ?? undefined,
+      authProvider: data.provider === "phone" ? "firebase_phone" : data.provider === "google.com" ? "firebase_google" : "firebase",
+      lastAuthAt: data.now,
+    })
+    .where(eq(usersTable.id, userId))
+    .returning();
+}
+
+async function upsertIdentity(
+  userId: number,
+  provider: string,
+  providerUid: string,
+  firebaseUid: string,
+  phone: string | null,
+  email: string | null,
+  emailVerified: boolean,
+  phoneVerified: boolean,
+  now: Date,
+) {
+  const fallbackUid = `${firebaseUid}:${randomBytes(4).toString("hex")}`;
+  await db
+    .insert(userAuthIdentitiesTable)
+    .values({
+      userId,
+      provider,
+      providerUid: providerUid || fallbackUid,
+      firebaseUid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      lastSeenAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [userAuthIdentitiesTable.provider, userAuthIdentitiesTable.providerUid],
+      set: { userId, firebaseUid, phone, email, emailVerified, phoneVerified, lastSeenAt: now },
+    });
+}

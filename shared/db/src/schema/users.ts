@@ -1,10 +1,12 @@
 import {
   type AnyPgColumn,
+  boolean,
   index,
   integer,
   numeric,
   pgTable,
   serial,
+  text,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -21,6 +23,16 @@ export const usersTable = pgTable(
     githubId: varchar("github_id", { length: 255 }).unique(),
     facebookId: varchar("facebook_id", { length: 255 }).unique(),
     telegramId: varchar("telegram_id", { length: 255 }).unique(),
+    firebaseUid: varchar("firebase_uid", { length: 255 }).unique(),
+    email: varchar("email", { length: 255 }),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    phoneVerified: boolean("phone_verified").notNull().default(false),
+    displayName: varchar("display_name", { length: 255 }),
+    photoUrl: text("photo_url"),
+    authProvider: varchar("auth_provider", { length: 50 }).notNull().default("legacy_password"),
+    passwordLoginEnabled: boolean("password_login_enabled").notNull().default(true),
+    legacyPasswordDisabledAt: timestamp("legacy_password_disabled_at", { withTimezone: true }),
+    lastAuthAt: timestamp("last_auth_at", { withTimezone: true }),
     walletBalance: numeric("wallet_balance", { precision: 10, scale: 2 }).notNull().default("0.00"),
     loyaltyPoints: integer("loyalty_points").notNull().default(0),
     loyaltyTier: varchar("loyalty_tier", { length: 50 }).notNull().default("bronze"),
@@ -38,6 +50,8 @@ export const usersTable = pgTable(
   (t) => ({
     referralCodeIdx: index("idx_users_referral_code").on(t.referralCode),
     referredByIdx: index("idx_users_referred_by").on(t.referredBy),
+    firebaseUidIdx: index("idx_users_firebase_uid").on(t.firebaseUid),
+    emailIdx: index("idx_users_email").on(t.email),
   }),
 );
 

@@ -37,6 +37,19 @@ export async function runMigrations() {
         phone          VARCHAR(20) NOT NULL UNIQUE,
         password_hash  VARCHAR(255) NOT NULL DEFAULT '',
         google_id      VARCHAR(255) UNIQUE,
+        github_id      VARCHAR(255) UNIQUE,
+        facebook_id    VARCHAR(255) UNIQUE,
+        telegram_id    VARCHAR(255) UNIQUE,
+        firebase_uid   VARCHAR(255) UNIQUE,
+        email          VARCHAR(255),
+        email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        display_name   VARCHAR(255),
+        photo_url      TEXT,
+        auth_provider  VARCHAR(50) NOT NULL DEFAULT 'legacy_password',
+        password_login_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        legacy_password_disabled_at TIMESTAMPTZ,
+        last_auth_at   TIMESTAMPTZ,
         wallet_balance NUMERIC(10,2) NOT NULL DEFAULT 0.00,
         loyalty_points INTEGER NOT NULL DEFAULT 0,
         loyalty_tier   VARCHAR(50) NOT NULL DEFAULT 'bronze',
@@ -275,6 +288,22 @@ export async function runMigrations() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS user_auth_identities (
+        id             SERIAL PRIMARY KEY,
+        user_id        INTEGER NOT NULL,
+        provider       VARCHAR(50) NOT NULL,
+        provider_uid   VARCHAR(255) NOT NULL,
+        firebase_uid   VARCHAR(255),
+        email          VARCHAR(255),
+        phone          VARCHAR(20),
+        email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        linked_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS wallet_ledger (
         id              SERIAL PRIMARY KEY,
         user_id         INTEGER NOT NULL,
@@ -306,7 +335,24 @@ export async function runMigrations() {
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS github_id   VARCHAR(255) UNIQUE,
         ADD COLUMN IF NOT EXISTS facebook_id VARCHAR(255) UNIQUE,
-        ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE;
+        ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE,
+        ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS display_name VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS photo_url TEXT,
+        ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) NOT NULL DEFAULT 'legacy_password',
+        ADD COLUMN IF NOT EXISTS password_login_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS legacy_password_disabled_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS last_auth_at TIMESTAMPTZ;
+    `);
+
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid_unique
+        ON users(firebase_uid) WHERE firebase_uid IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
 
     await db.execute(sql`
@@ -333,6 +379,7 @@ export async function runMigrations() {
       `ALTER TABLE referral_events ADD CONSTRAINT fk_referral_referrer FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE`,
       `ALTER TABLE referral_events ADD CONSTRAINT fk_referral_referee FOREIGN KEY (referee_id) REFERENCES users(id) ON DELETE CASCADE`,
       `ALTER TABLE users ADD CONSTRAINT fk_users_referred_by FOREIGN KEY (referred_by) REFERENCES users(id) ON DELETE SET NULL`,
+      `ALTER TABLE user_auth_identities ADD CONSTRAINT fk_user_auth_identities_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE`,
     ];
     for (const stmt of fkStatements) {
       await db.execute(
@@ -354,6 +401,9 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id);
       CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_user_auth_identities_provider_uid ON user_auth_identities(provider, provider_uid);
+      CREATE INDEX IF NOT EXISTS idx_user_auth_identities_user ON user_auth_identities(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_auth_identities_firebase_uid ON user_auth_identities(firebase_uid);
     `);
 
     // ── Encrypt existing plaintext account_passwords ─────────────────────────
