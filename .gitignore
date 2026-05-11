@@ -70,3 +70,6 @@ memory/
 zipFile/
 *.zip
 PageSpeed Insights.html
+
+# Firebase service account (sensitive credentials)
+*.firebase-adminsdk*.json
