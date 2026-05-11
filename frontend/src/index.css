@@ -1003,3 +1003,12 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── PERF: off-screen cards skip layout/paint, reserve intrinsic size to
+   eliminate CLS when async data replaces skeletons. */
+@layer utilities {
+  .cv-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 280px;
+  }
+}
