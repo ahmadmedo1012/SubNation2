@@ -36,17 +36,27 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "https://apis.google.com",
+          "https://accounts.google.com",
+          "https://www.gstatic.com",
+          "https://www.googleapis.com",
+        ],
         styleSrc: ["'self'", "'unsafe-inline'"], // Tailwind needs inline styles
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "data:"],
         connectSrc: [
           "'self'",
+          "https://*.firebaseio.com",
+          "https://*.firebaseapp.com",
+          "https://*.googleapis.com",
+          "https://accounts.google.com",
           ...(allowedOrigins.length || isProduction
             ? allowedOrigins
             : ["http://localhost:*", "http://127.0.0.1:*"]),
         ],
-        frameSrc: ["'none'"],
+        frameSrc: ["'self'", "https://accounts.google.com"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,
       },
