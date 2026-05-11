@@ -29,11 +29,10 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Keep all react-family packages in a single shared chunk
           if (
             id.includes("node_modules/react") ||
             id.includes("node_modules/react-dom") ||
@@ -44,15 +43,17 @@ export default defineConfig({
           if (id.includes("node_modules/@tanstack")) {
             return "vendor-query";
           }
-          if (
-            id.includes("node_modules/recharts") ||
-            id.includes("node_modules/d3-") ||
-            id.includes("node_modules/victory-")
-          ) {
+          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-") || id.includes("node_modules/victory-")) {
             return "vendor-charts";
           }
           if (id.includes("node_modules/lucide-react")) {
             return "vendor-icons";
+          }
+          if (id.includes("node_modules/socket.io-client")) {
+            return "vendor-socket";
+          }
+          if (id.includes("node_modules/@radix-ui")) {
+            return "vendor-radix";
           }
         },
       },

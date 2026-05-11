@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { Zap, Lock, Tag, Star, ShoppingCart, AlertTriangle } from "lucide-react";
@@ -109,7 +110,7 @@ function PopularBadge({ count }: { count?: number }) {
   );
 }
 
-export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
+function ProductCardInner({ product, index = 0 }: { product: Product; index?: number }) {
   const displayPrice = product.sale_price ?? product.price;
   const cat = product.category ?? "streaming";
   const accent = CATEGORY_ACCENT[cat] ?? DEFAULT_ACCENT;
@@ -158,8 +159,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
             <img
               src={product.image_url}
               alt={product.name}
+              width={296}
+              height={296}
               loading="lazy"
-              className="w-full h-full object-contain p-5 sm:p-6 transition-transform duration-400 ease-out group-hover:scale-[1.08] drop-shadow-xl"
+              decoding="async"
+              className="w-full h-full object-contain p-5 sm:p-6 transition-opacity duration-300 group-hover:scale-[1.08] drop-shadow-xl opacity-0"
+              onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "1"; }}
               onError={(e) => {
                 const el = e.target as HTMLImageElement;
                 el.style.display = "none";
@@ -187,9 +192,9 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
         <div className="p-3.5 pt-3 flex flex-1 flex-col">
           {/* Name + category */}
           <div className="flex items-start gap-2 mb-1.5">
-            <h3 className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200">
+            <h2 className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200">
               {product.name}
-            </h3>
+            </h2>
             <span
               className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
             >
@@ -207,7 +212,7 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           {/* Price row */}
           <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto">
             <div className="flex items-baseline gap-1.5">
-              <span className="font-black text-primary text-[17px] leading-none tabular-nums">
+              <span className="font-black text-foreground text-[17px] leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </span>
               {product.sale_price && (
@@ -257,3 +262,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
     </Link>
   );
 }
+
+export const ProductCard = memo(ProductCardInner, (prev, next) =>
+  prev.product.id === next.product.id &&
+  prev.product.price === next.product.price &&
+  prev.product.sale_price === next.product.sale_price &&
+  prev.product.stock_count === next.product.stock_count &&
+  prev.product.is_available === next.product.is_available &&
+  prev.index === next.index,
+);

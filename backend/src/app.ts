@@ -1,3 +1,4 @@
+import compression from "compression";
 import cors from "cors";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -57,6 +58,9 @@ app.use(
 
 // Trust the first reverse proxy hop when deployed behind one.
 app.set("trust proxy", 1);
+
+// ── Compression ─────────────────────────────────────────────────────────────
+app.use(compression());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 app.use(

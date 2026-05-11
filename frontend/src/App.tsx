@@ -158,14 +158,16 @@ function AppRoutes() {
   );
 }
 
-import { SocketInitializer } from "@/components/SocketInitializer";
+const SocketInitializer = lazy(() => import("@/components/SocketInitializer").then(m => ({ default: m.SocketInitializer })));
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <SocketInitializer />
+          <Suspense fallback={null}>
+            <SocketInitializer />
+          </Suspense>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <AppRoutes />
