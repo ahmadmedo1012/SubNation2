@@ -295,7 +295,7 @@ export default function ProductPage() {
   }
 
   // ── Product page ──────────────────────────────────────────────────────────
-  const mobileContentPad = token ? 'mobile-product-pad-auth' : 'mobile-product-pad-guest';
+  const mobileContentPad = token ? "mobile-product-pad-auth" : "mobile-product-pad-guest";
 
   return (
     <div className={`max-w-xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>

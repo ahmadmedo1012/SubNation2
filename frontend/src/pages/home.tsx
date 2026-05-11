@@ -657,7 +657,7 @@ export default function HomePage() {
         )}
 
         {/* Bottom padding for mobile nav */}
-        <div className={`md:h-0 ${token ? 'mobile-nav-safe-pad' : 'h-6'}`} />
+        <div className={`md:h-0 ${token ? "mobile-nav-safe-pad" : "h-6"}`} />
       </div>
     </div>
   );
