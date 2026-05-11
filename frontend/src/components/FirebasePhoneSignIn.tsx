@@ -22,7 +22,8 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
 
   if (!isFirebaseAuthConfigured()) return null;
 
-  const referralCode = new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
+  const referralCode =
+    new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
 
   const sendCode = async () => {
     setError("");

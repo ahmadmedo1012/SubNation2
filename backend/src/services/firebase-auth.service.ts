@@ -68,13 +68,33 @@ export async function resolveFirebaseSession(
       photoUrl,
       now,
     });
-    await upsertIdentity(updated.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+    await upsertIdentity(
+      updated.id,
+      provider,
+      providerUid,
+      uid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      now,
+    );
     return { user: updated, isNewUser: false, provider };
   }
 
-  const candidates = await findLinkCandidates(uid, provider, providerUid, phone, email, emailVerified);
+  const candidates = await findLinkCandidates(
+    uid,
+    provider,
+    providerUid,
+    phone,
+    email,
+    emailVerified,
+  );
   if (candidates.length > 1) {
-    throw new FirebaseAuthError(409, "تعارض في بيانات الحساب. يرجى التواصل مع الدعم لربط الحساب بأمان");
+    throw new FirebaseAuthError(
+      409,
+      "تعارض في بيانات الحساب. يرجى التواصل مع الدعم لربط الحساب بأمان",
+    );
   }
 
   if (candidates.length === 1) {
@@ -90,7 +110,17 @@ export async function resolveFirebaseSession(
       photoUrl,
       now,
     });
-    await upsertIdentity(updated.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+    await upsertIdentity(
+      updated.id,
+      provider,
+      providerUid,
+      uid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      now,
+    );
     return { user: updated, isNewUser: false, provider };
   }
 
@@ -117,7 +147,12 @@ export async function resolveFirebaseSession(
       phoneVerified,
       displayName,
       photoUrl,
-      authProvider: provider === "phone" ? "firebase_phone" : provider === "google.com" ? "firebase_google" : "firebase",
+      authProvider:
+        provider === "phone"
+          ? "firebase_phone"
+          : provider === "google.com"
+            ? "firebase_google"
+            : "firebase",
       passwordLoginEnabled: false,
       lastAuthAt: now,
       referralCode: generateReferralCode(),
@@ -133,7 +168,17 @@ export async function resolveFirebaseSession(
       .onConflictDoNothing();
   }
 
-  await upsertIdentity(created.id, provider, providerUid, uid, phone, email, emailVerified, phoneVerified, now);
+  await upsertIdentity(
+    created.id,
+    provider,
+    providerUid,
+    uid,
+    phone,
+    email,
+    emailVerified,
+    phoneVerified,
+    now,
+  );
   return { user: created, isNewUser: true, provider };
 }
 
@@ -170,7 +215,10 @@ async function findLinkCandidates(
   if (provider === "google.com") conditions.push(eq(usersTable.googleId, providerUid));
   if (email && emailVerified) conditions.push(eq(usersTable.email, email));
 
-  const rows = await db.select().from(usersTable).where(or(...conditions));
+  const rows = await db
+    .select()
+    .from(usersTable)
+    .where(or(...conditions));
   const map = new Map<number, typeof usersTable.$inferSelect>();
   for (const row of rows) map.set(row.id, row);
   return [...map.values()];
@@ -201,7 +249,12 @@ async function updateUserIdentity(
       phoneVerified: data.phoneVerified,
       displayName: data.displayName ?? undefined,
       photoUrl: data.photoUrl ?? undefined,
-      authProvider: data.provider === "phone" ? "firebase_phone" : data.provider === "google.com" ? "firebase_google" : "firebase",
+      authProvider:
+        data.provider === "phone"
+          ? "firebase_phone"
+          : data.provider === "google.com"
+            ? "firebase_google"
+            : "firebase",
       lastAuthAt: data.now,
     })
     .where(eq(usersTable.id, userId))

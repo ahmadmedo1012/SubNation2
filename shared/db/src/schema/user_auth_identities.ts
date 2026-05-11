@@ -28,7 +28,10 @@ export const userAuthIdentitiesTable = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    providerUidIdx: uniqueIndex("idx_user_auth_identities_provider_uid").on(t.provider, t.providerUid),
+    providerUidIdx: uniqueIndex("idx_user_auth_identities_provider_uid").on(
+      t.provider,
+      t.providerUid,
+    ),
     userIdx: index("idx_user_auth_identities_user").on(t.userId),
     firebaseUidIdx: index("idx_user_auth_identities_firebase_uid").on(t.firebaseUid),
   }),

@@ -35,7 +35,10 @@ export function getFirebaseAdminApp(): App | null {
   const projectId = process.env.FIREBASE_PROJECT_ID;
 
   if (serviceAccount) {
-    app = initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.projectId ?? projectId });
+    app = initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.projectId ?? projectId,
+    });
     return app;
   }
 
