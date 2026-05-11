@@ -38,14 +38,16 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
           "https://apis.google.com",
           "https://accounts.google.com",
           "https://www.gstatic.com",
           "https://www.googleapis.com",
         ],
-        styleSrc: ["'self'", "'unsafe-inline'"], // Tailwind needs inline styles
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // Tailwind needs inline styles
         imgSrc: ["'self'", "data:", "https:"],
-        fontSrc: ["'self'", "data:"],
+        fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
         connectSrc: [
           "'self'",
           "https://*.firebaseio.com",
@@ -56,13 +58,13 @@ app.use(
             ? allowedOrigins
             : ["http://localhost:*", "http://127.0.0.1:*"]),
         ],
-        frameSrc: ["'self'", "https://accounts.google.com"],
+        frameSrc: ["'self'", "https://accounts.google.com", "https://*.firebaseapp.com"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,
       },
     },
     crossOriginEmbedderPolicy: false, // Allow external images
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    crossOriginOpenerPolicy: { policy: "unsafe-none" },
   }),
 );
 
