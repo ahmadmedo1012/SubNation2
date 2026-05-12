@@ -1,6 +1,15 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { setupFirebaseTokenRefresh } from "./firebase-auth";
 
 interface AuthContextType {
   token: string | null;
@@ -9,6 +18,7 @@ interface AuthContextType {
   setAdminToken: (token: string | null) => void;
   logout: () => void;
   adminLogout: () => void;
+  logoutAllDevices: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -60,9 +70,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdminToken(null);
   }, [setAdminToken]);
 
+  const logoutAllDevices = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout-all-devices", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (err) {
+      console.error("Failed to logout from all devices:", err);
+    } finally {
+      logout();
+    }
+  }, [token, logout]);
+
+  // Setup automatic Firebase token refresh
+  useEffect(() => {
+    const unsubscribe = setupFirebaseTokenRefresh((newToken) => {
+      setToken(newToken);
+    });
+    return unsubscribe;
+  }, [setToken]);
+
   const value = useMemo(
-    () => ({ token, adminToken, setToken, setAdminToken, logout, adminLogout }),
-    [token, adminToken, setToken, setAdminToken, logout, adminLogout],
+    () => ({ token, adminToken, setToken, setAdminToken, logout, adminLogout, logoutAllDevices }),
+    [token, adminToken, setToken, setAdminToken, logout, adminLogout, logoutAllDevices],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

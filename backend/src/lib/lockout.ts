@@ -1,13 +1,21 @@
 import { db, loginAttemptsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MINUTES = 15;
+const BASE_LOCKOUT_MINUTES = 15;
+
+// Exponential backoff: 15min, 30min, 60min, 120min, 240min for 2nd+ lockouts
+function calculateLockoutDuration(failureCount: number): number {
+  if (failureCount <= MAX_ATTEMPTS) {
+    return BASE_LOCKOUT_MINUTES;
+  }
+  const lockoutNumber = Math.ceil((failureCount - MAX_ATTEMPTS) / MAX_ATTEMPTS) + 1;
+  return BASE_LOCKOUT_MINUTES * Math.pow(2, lockoutNumber - 1);
+}
 
 export async function checkLockout(
   identifier: string,
-): Promise<{ locked: boolean; lockedUntil: Date | null }> {
+): Promise<{ locked: boolean; lockedUntil: Date | null; attemptCount: number }> {
   const [record] = await db
     .select()
     .from(loginAttemptsTable)
@@ -15,15 +23,20 @@ export async function checkLockout(
     .limit(1);
 
   if (!record || !record.lockedUntil) {
-    return { locked: false, lockedUntil: null };
+    return { locked: false, lockedUntil: null, attemptCount: record?.attemptCount || 0 };
   }
 
   if (record.lockedUntil > new Date()) {
-    return { locked: true, lockedUntil: record.lockedUntil };
+    return { locked: true, lockedUntil: record.lockedUntil, attemptCount: record.attemptCount };
   }
 
-  // Lockout expired — reset
-  return { locked: false, lockedUntil: null };
+  // Lockout expired — reset count but keep record for tracking
+  await db
+    .update(loginAttemptsTable)
+    .set({ attemptCount: 0, lockedUntil: null })
+    .where(eq(loginAttemptsTable.identifier, identifier));
+
+  return { locked: false, lockedUntil: null, attemptCount: 0 };
 }
 
 export async function recordFailedAttempt(identifier: string): Promise<void> {
@@ -43,8 +56,9 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
   }
 
   const newCount = record.attemptCount + 1;
+  const lockoutDuration = calculateLockoutDuration(newCount);
   const lockedUntil =
-    newCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
+    newCount >= MAX_ATTEMPTS ? new Date(Date.now() + lockoutDuration * 60_000) : null;
 
   await db
     .update(loginAttemptsTable)
@@ -57,5 +71,8 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
 }
 
 export async function resetAttempts(identifier: string): Promise<void> {
-  await db.delete(loginAttemptsTable).where(eq(loginAttemptsTable.identifier, identifier));
+  await db
+    .update(loginAttemptsTable)
+    .set({ attemptCount: 0, lockedUntil: null })
+    .where(eq(loginAttemptsTable.identifier, identifier));
 }

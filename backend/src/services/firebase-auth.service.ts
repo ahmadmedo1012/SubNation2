@@ -80,13 +80,19 @@ export interface FirebaseSessionResult {
   provider: string;
 }
 
-export async function verifyFirebaseIdToken(idToken: string) {
+export async function verifyFirebaseIdToken(idToken: string, checkRevoked = false) {
   const auth = getFirebaseAdminAuth();
   if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
 
   try {
-    return await auth.verifyIdToken(idToken);
-  } catch {
+    // Use checkRevoked to detect revoked Firebase sessions (e.g., after logout all devices)
+    return await auth.verifyIdToken(idToken, checkRevoked);
+  } catch (err: unknown) {
+    const error = err as { code?: string; message?: string };
+    // Handle specific Firebase revoked token error
+    if (error.code === "auth/id-token-revoked") {
+      throw new FirebaseAuthError(401, "تم إبطال جلسة Firebase. يرجى تسجيل الدخول مرة أخرى");
+    }
     throw new FirebaseAuthError(401, "رمز Firebase غير صالح أو منتهي الصلاحية");
   }
 }

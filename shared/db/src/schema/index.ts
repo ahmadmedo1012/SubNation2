@@ -1,6 +1,7 @@
 export * from "./admin_alerts";
 export * from "./admin_users";
 export * from "./audit_logs";
+export * from "./auth_activity";
 export * from "./coupons";
 export * from "./flash_sales";
 export * from "./inventory";

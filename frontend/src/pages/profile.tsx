@@ -54,10 +54,13 @@ export default function ProfilePage() {
   const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
   const [togglingPassword, setTogglingPassword] = useState(false);
+  const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
+  const [loadingProviders, setLoadingProviders] = useState(false);
+  const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) navigate("/login");
-  }, [token]);
+  }, [token, navigate]);
 
   const { data: userData, isLoading } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
@@ -65,6 +68,55 @@ export default function ProfilePage() {
   });
 
   const user = userData as any;
+
+  // Fetch linked providers
+  useEffect(() => {
+    if (token) {
+      fetchLinkedProviders();
+    }
+  }, [token]);
+
+  const fetchLinkedProviders = async () => {
+    setLoadingProviders(true);
+    try {
+      const res = await fetch("/api/auth/providers/linked", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLinkedProviders(data.providers || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch linked providers:", err);
+    } finally {
+      setLoadingProviders(false);
+    }
+  };
+
+  const handleUnlinkProvider = async (provider: string, providerUid: string) => {
+    setUnlinkingProvider(providerUid);
+    try {
+      const res = await fetch("/api/auth/providers/unlink", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ provider, provider_uid: providerUid }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "فشل فصل مزود المصادقة");
+
+      toast({ title: "تم فصل الحساب", description: "تم فصل مزود المصادقة بنجاح." });
+      await fetchLinkedProviders();
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "خطأ",
+        description: err.message,
+      });
+    } finally {
+      setUnlinkingProvider(null);
+    }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,73 +342,100 @@ export default function ProfilePage() {
           </div>
 
           <div className="space-y-3">
-            {!isLoading &&
-              user?.linked_identities?.map((id: any) => (
+            {!loadingProviders &&
+              linkedProviders.map((id) => (
                 <div
-                  key={id.provider}
+                  key={`${id.provider}-${id.providerUid}`}
                   className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-muted/20"
                 >
                   <div className="flex items-center gap-3">
                     {id.provider === "google.com" ? (
                       <Mail className="w-4 h-4 text-blue-400" />
-                    ) : (
+                    ) : id.provider === "firebase.com" ? (
                       <Smartphone className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <User className="w-4 h-4 text-muted-foreground" />
                     )}
                     <div>
                       <div className="text-xs font-bold">
-                        {id.provider === "google.com" ? "Google" : "رقم الهاتف (Firebase)"}
+                        {id.provider === "google.com"
+                          ? "Google"
+                          : id.provider === "firebase.com"
+                            ? "Firebase"
+                            : id.provider}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {id.email || id.phone}
+                        {id.email || id.phone || id.providerUid}
                       </div>
                     </div>
                   </div>
-                  <div className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
-                    نشط
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
+                      نشط
+                    </div>
+                    <button
+                      onClick={() => handleUnlinkProvider(id.provider, id.providerUid)}
+                      disabled={unlinkingProvider === id.providerUid}
+                      className="text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed p-1"
+                      title="فصل الحساب"
+                    >
+                      {unlinkingProvider === id.providerUid ? (
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Unlink className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
               ))}
 
-            {!isLoading && !hasFirebase && (
-              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  <div>
-                    <div className="text-xs font-black text-primary mb-1">
-                      أمن حسابك مع Firebase
-                    </div>
-                    <div className="text-[10px] text-muted-foreground leading-relaxed">
-                      نوصي بربط حسابك مع Google أو رقم الهاتف عبر نظامنا الجديد لتوفير أقصى درجات
-                      الأمان والسهولة.
+            {!loadingProviders &&
+              linkedProviders.length === 0 &&
+              !user?.linked_identities?.length && (
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-black text-primary mb-1">
+                        أمن حسابك مع Firebase
+                      </div>
+                      <div className="text-[10px] text-muted-foreground leading-relaxed">
+                        نوصي بربط حسابك مع Google أو رقم الهاتف عبر نظامنا الجديد لتوفير أقصى درجات
+                        الأمان والسهولة.
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2 pt-1">
-                  <AuthProviders
-                    buttonClassName="w-full h-9 text-xs rounded-lg border border-primary/20 bg-background"
-                    onSuccess={() =>
-                      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() })
-                    }
-                  />
-                  <FirebasePhoneSignIn />
+                  <div className="space-y-2 pt-1">
+                    <AuthProviders
+                      buttonClassName="w-full h-9 text-xs rounded-lg border border-primary/20 bg-background"
+                      onSuccess={() => {
+                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+                        fetchLinkedProviders();
+                      }}
+                    />
+                    <FirebasePhoneSignIn />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {!isLoading && hasFirebase && user?.linked_identities?.length < 2 && (
+            {!loadingProviders && linkedProviders.length < 2 && (
               <div className="pt-2">
                 <p className="text-[10px] text-muted-foreground mb-3 px-1 text-center">
                   يمكنك ربط مزيد من الطرق لتسهيل الدخول
                 </p>
                 <div className="grid grid-cols-1 gap-2">
-                  {!user.linked_identities.find((i: any) => i.provider === "google.com") && (
+                  {!linkedProviders.find((i) => i.provider === "google.com") && (
                     <AuthProviders
                       buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
-                      onSuccess={() =>
-                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() })
-                      }
+                      onSuccess={() => {
+                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+                        fetchLinkedProviders();
+                      }}
                     />
+                  )}
+                  {!linkedProviders.find((i) => i.provider === "firebase.com") && (
+                    <FirebasePhoneSignIn />
                   )}
                 </div>
               </div>

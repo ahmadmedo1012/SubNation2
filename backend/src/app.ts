@@ -91,7 +91,7 @@ app.use(
   }),
 );
 
-// Redis client (optional - if REDIS_URL is set, use it for rate limiting)
+// Redis client (optional - if REDIS_URL is set, use it for rate limiting and session caching)
 let redisClient: ReturnType<typeof createClient> | null = null;
 if (process.env.REDIS_URL) {
   redisClient = createClient({
@@ -100,40 +100,60 @@ if (process.env.REDIS_URL) {
       reconnectStrategy: (retries) => Math.min(retries * 50, 500),
     },
   });
+
+  redisClient.on("error", (err) => {
+    logger.warn({ err }, "Redis client error - falling back to in-memory rate limiting");
+    redisClient = null;
+  });
+
   redisClient.connect().catch((err) => {
-    logger.warn({ err }, "Failed to connect to Redis, falling back to memory store");
+    logger.warn({ err }, "Failed to connect to Redis - falling back to in-memory rate limiting");
     redisClient = null;
   });
 }
 
-const getStore = () => {
-  if (redisClient) {
-    const client = redisClient;
-    return new RedisStore({
-      sendCommand: (...args: string[]) => client.sendCommand(args),
-    });
-  }
-  return undefined; // Falls back to default memory store
-};
-
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
-// Strict limit on auth endpoints (prevent brute force)
+// Use Redis store if available, otherwise fall back to in-memory store
+const rateLimiterStore = redisClient
+  ? new RedisStore({
+      sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+      prefix: "rl:",
+    })
+  : undefined;
+
+// General API rate limiter
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  store: rateLimiterStore,
+  skip: (req) => {
+    // Skip rate limiting for health checks and static assets
+    const path = req.path;
+    return path === "/health" || path.startsWith("/assets/") || path.startsWith("/static/");
+  },
+});
+
+// Strict rate limiter for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
-  store: getStore(),
-  standardHeaders: true,
+  limit: 20,
+  standardHeaders: "draft-8",
   legacyHeaders: false,
+  store: rateLimiterStore,
+  skipFailedRequests: true, // Don't count failed requests
+  skipSuccessfulRequests: false,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
 });
 
 // Per-phone rate limiting for Firebase Phone OTP (prevent abuse on single phone)
 const otpPhoneLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // Max 3 OTP sends per phone
-  store: getStore(),
-  standardHeaders: true,
+  limit: 3, // Max 3 OTP sends per phone
+  standardHeaders: "draft-8",
   legacyHeaders: false,
+  store: rateLimiterStore,
   keyGenerator: (req) => {
     const body = req.body as { phone?: string };
     return body.phone || req.ip || req.socket.remoteAddress || "unknown";
@@ -144,21 +164,11 @@ const otpPhoneLimiter = rateLimit({
 // Per-IP rate limiting for Firebase Phone OTP (prevent bulk abuse)
 const otpIpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // Max 10 OTP sends per IP
-  store: getStore(),
-  standardHeaders: true,
+  limit: 10, // Max 10 OTP sends per IP
+  standardHeaders: "draft-8",
   legacyHeaders: false,
+  store: rateLimiterStore,
   message: { error: "تجاوزت عدد المحاولات من هذا IP. انتظر ساعة." },
-});
-
-// General API limit
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 120,
-  store: getStore(),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "تجاوزت الحد المسموح به. حاول مجدداً بعد قليل." },
 });
 
 // ── Logging ───────────────────────────────────────────────────────────────────

@@ -1,4 +1,10 @@
-import { GoogleAuthProvider, signInWithPopup, signOut, type Auth } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  onIdTokenChanged,
+  signInWithPopup,
+  signOut,
+  type Auth,
+} from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 
 export interface FirebaseSessionResponse {
@@ -64,4 +70,24 @@ export async function refreshCurrentFirebaseSession() {
 export async function resetFirebaseAuth() {
   const auth = getFirebaseAuth();
   if (auth) await signOut(auth);
+}
+
+// Setup automatic token refresh listener
+export function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => void) {
+  const auth = getFirebaseAuth();
+  if (!auth) return () => {};
+
+  const unsubscribe = onIdTokenChanged(auth, async (user) => {
+    if (user) {
+      try {
+        const idToken = await user.getIdToken(true); // Force refresh
+        const session = await refreshFirebaseSession(idToken);
+        onTokenRefresh(session.token);
+      } catch (err) {
+        console.error("Failed to refresh Firebase session:", err);
+      }
+    }
+  });
+
+  return unsubscribe;
 }

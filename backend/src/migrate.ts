@@ -324,6 +324,28 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_wallet_ledger_created ON wallet_ledger(created_at DESC);
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS auth_activity (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER,
+        identifier      VARCHAR(255) NOT NULL,
+        action          VARCHAR(50) NOT NULL,
+        provider        VARCHAR(50),
+        success         BOOLEAN NOT NULL,
+        ip_address      VARCHAR(45),
+        user_agent      TEXT,
+        failure_reason  VARCHAR(255),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_auth_activity_user ON auth_activity(user_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_activity_identifier ON auth_activity(identifier);
+      CREATE INDEX IF NOT EXISTS idx_auth_activity_action ON auth_activity(action);
+      CREATE INDEX IF NOT EXISTS idx_auth_activity_created ON auth_activity(created_at DESC);
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     await db.execute(sql`
       ALTER TABLE orders

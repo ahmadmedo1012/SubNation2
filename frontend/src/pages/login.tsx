@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { useLogin } from "@workspace/api-client-react";
-import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { getErrorMessage } from "../lib/errors";
@@ -140,7 +140,14 @@ export default function LoginPage() {
               className="w-full h-11 bg-primary hover:bg-primary/90 font-bold text-base shadow-xl shadow-primary/25 transition-all active:scale-[0.97] cta-glow rounded-xl mt-1"
               disabled={loginMutation.isPending}
             >
-              {loginMutation.isPending ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
+              {loginMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  جارٍ تسجيل الدخول...
+                </>
+              ) : (
+                "تسجيل الدخول"
+              )}
             </Button>
           </form>
 

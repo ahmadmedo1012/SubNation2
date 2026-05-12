@@ -15,8 +15,12 @@ import {
   verifyPassword,
 } from "../lib/crypto";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
+import { logger } from "../lib/logger";
+import type { AuthenticatedRequest } from "../middlewares/requireUser";
+import { requireUser } from "../middlewares/requireUser";
 import {
   FirebaseAuthError,
   getFirebaseErrorMessage,
@@ -190,8 +194,152 @@ router.post("/login", async (req, res) => {
   return res.json({ user: formatUser(user), token });
 });
 
-router.post("/logout", (_req, res) => {
+router.post("/logout", requireUser, async (req, res) => {
+  const auth = getFirebaseAdminAuth();
+  const userId = (req as AuthenticatedRequest).userId;
+
+  // If user is authenticated and Firebase is enabled, revoke their Firebase refresh tokens
+  if (auth && userId) {
+    try {
+      const [user] = await db
+        .select({ firebaseUid: usersTable.firebaseUid })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+
+      if (user?.firebaseUid) {
+        await auth.revokeRefreshTokens(user.firebaseUid);
+      }
+    } catch (err) {
+      // Log but don't fail logout if Firebase revocation fails
+      logger.warn({ err, userId }, "Failed to revoke Firebase tokens during logout");
+    }
+  }
+
   return res.json({ success: true, message: "تم تسجيل الخروج" });
+});
+
+router.post("/logout-all-devices", requireUser, async (req, res) => {
+  const auth = getFirebaseAdminAuth();
+  const userId = (req as AuthenticatedRequest).userId;
+
+  // Revoke Firebase refresh tokens to logout from all devices
+  if (auth && userId) {
+    try {
+      const [user] = await db
+        .select({ firebaseUid: usersTable.firebaseUid })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+
+      if (user?.firebaseUid) {
+        await auth.revokeRefreshTokens(user.firebaseUid);
+        return res.json({ success: true, message: "تم تسجيل الخروج من جميع الأجهزة" });
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, "Failed to revoke Firebase tokens during logout all devices");
+      return res
+        .status(500)
+        .json(createErrorResponse("فشل تسجيل الخروج من جميع الأجهزة", ErrorCode.INTERNAL_ERROR));
+    }
+  }
+
+  // If no Firebase UID, just clear the current session
+  return res.json({ success: true, message: "تم تسجيل الخروج من الجهاز الحالي" });
+});
+
+// Get linked auth providers for current user
+router.get("/providers/linked", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+
+  try {
+    const identities = await db
+      .select({
+        provider: userAuthIdentitiesTable.provider,
+        providerUid: userAuthIdentitiesTable.providerUid,
+        firebaseUid: userAuthIdentitiesTable.firebaseUid,
+        phone: userAuthIdentitiesTable.phone,
+        email: userAuthIdentitiesTable.email,
+        emailVerified: userAuthIdentitiesTable.emailVerified,
+        phoneVerified: userAuthIdentitiesTable.phoneVerified,
+        createdAt: userAuthIdentitiesTable.createdAt,
+      })
+      .from(userAuthIdentitiesTable)
+      .where(eq(userAuthIdentitiesTable.userId, userId));
+
+    return res.json({ providers: identities });
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to fetch linked providers");
+    return res
+      .status(500)
+      .json(createErrorResponse("فشل جلب مزودي المصادقة", ErrorCode.INTERNAL_ERROR));
+  }
+});
+
+// Unlink an auth provider
+router.post("/providers/unlink", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+  const { provider, provider_uid } = req.body as { provider?: string; provider_uid?: string };
+
+  if (!provider || !provider_uid) {
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  }
+
+  try {
+    // Check if this is the user's primary auth method (has password)
+    const [user] = await db
+      .select({ passwordHash: usersTable.passwordHash, firebaseUid: usersTable.firebaseUid })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+    }
+
+    // Prevent unlinking if this is the only auth method
+    const [identity] = await db
+      .select()
+      .from(userAuthIdentitiesTable)
+      .where(eq(userAuthIdentitiesTable.userId, userId))
+      .limit(1);
+
+    const hasPassword = user.passwordHash && user.passwordHash.length > 0;
+    const hasOtherIdentity =
+      identity && (identity.provider !== provider || identity.providerUid !== provider_uid);
+
+    if (!hasPassword && !hasOtherIdentity) {
+      return res
+        .status(400)
+        .json(createErrorResponse("لا يمكن فصل آخر طريقة مصادقة", ErrorCode.INVALID_DATA));
+    }
+
+    // If unlinking Firebase, revoke refresh tokens
+    if (provider === "firebase.com" && user.firebaseUid) {
+      const auth = getFirebaseAdminAuth();
+      if (auth) {
+        await auth.revokeRefreshTokens(user.firebaseUid);
+      }
+    }
+
+    // Delete the identity
+    await db
+      .delete(userAuthIdentitiesTable)
+      .where(
+        and(
+          eq(userAuthIdentitiesTable.userId, userId),
+          eq(userAuthIdentitiesTable.provider, provider),
+          eq(userAuthIdentitiesTable.providerUid, provider_uid),
+        ),
+      );
+
+    return res.json({ success: true, message: "تم فصل مزود المصادقة" });
+  } catch (err) {
+    logger.error({ err, userId, provider }, "Failed to unlink provider");
+    return res
+      .status(500)
+      .json(createErrorResponse("فشل فصل مزود المصادقة", ErrorCode.INTERNAL_ERROR));
+  }
 });
 
 router.post("/forgot-password", async (req, res) => {
@@ -492,7 +640,8 @@ router.post("/firebase/session", async (req, res) => {
   }
 
   try {
-    const decoded = await verifyFirebaseIdToken(id_token);
+    // Use checkRevoked to detect revoked sessions during initial login
+    const decoded = await verifyFirebaseIdToken(id_token, true);
     const result = await resolveFirebaseSession(
       decoded,
       typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
@@ -514,7 +663,9 @@ router.post("/firebase/session", async (req, res) => {
         .status(err.statusCode)
         .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
-    throw err;
+    return res
+      .status(401)
+      .json(createErrorResponse("فشل إنشاء جلسة آمنة", ErrorCode.INVALID_TOKEN));
   }
 });
 
@@ -525,7 +676,8 @@ router.post("/firebase/refresh", async (req, res) => {
   }
 
   try {
-    const decoded = await verifyFirebaseIdToken(id_token);
+    // Use checkRevoked to detect revoked sessions during refresh
+    const decoded = await verifyFirebaseIdToken(id_token, true);
     const result = await resolveFirebaseSession(decoded);
     const token = signUserToken({ userId: result.user.id });
     return res.json({
