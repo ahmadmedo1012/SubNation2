@@ -14,13 +14,13 @@
  *   PATCH /auth/:id          → update provider config
  */
 
-import { Router } from "express";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { db, usersTable } from "@workspace/db";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { eq, sql } from "drizzle-orm";
-import { signUserToken } from "../lib/jwt";
+import { Router } from "express";
 import { generateReferralCode } from "../lib/crypto";
 import { stringParam } from "../lib/http";
+import { signUserToken } from "../lib/jwt";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
@@ -50,11 +50,15 @@ export const PROVIDERS: ProviderMeta[] = [
     color: "#4285F4",
     icon: "google",
     auth_type: "client_side",
-    description: "تسجيل الدخول عبر Google Identity Services (One Tap + Popup)",
-    setup_url: "https://console.cloud.google.com/apis/credentials",
+    description: "تسجيل الدخول عبر Firebase Google (مستحسن)",
+    setup_url: "https://console.firebase.google.com/project/_/authentication/providers",
     fields: [
-      { key: "client_id",     label: "Client ID",     isSecret: false, placeholder: "123456789.apps.googleusercontent.com" },
-      { key: "client_secret", label: "Client Secret", isSecret: true,  placeholder: "GOCSPX-..." },
+      {
+        key: "firebase_enabled",
+        label: "Firebase مفعّل",
+        isSecret: false,
+        placeholder: "true/false",
+      },
     ],
   },
   {
@@ -66,8 +70,13 @@ export const PROVIDERS: ProviderMeta[] = [
     description: "تسجيل الدخول عبر GitHub OAuth 2.0",
     setup_url: "https://github.com/settings/developers",
     fields: [
-      { key: "client_id",     label: "Client ID",     isSecret: false, placeholder: "Ov23liXXXXXXXXXX" },
-      { key: "client_secret", label: "Client Secret", isSecret: true,  placeholder: "a1b2c3d4e5f6..." },
+      { key: "client_id", label: "Client ID", isSecret: false, placeholder: "Ov23liXXXXXXXXXX" },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        isSecret: true,
+        placeholder: "a1b2c3d4e5f6...",
+      },
     ],
   },
   {
@@ -79,8 +88,8 @@ export const PROVIDERS: ProviderMeta[] = [
     description: "تسجيل الدخول عبر Facebook Login OAuth 2.0",
     setup_url: "https://developers.facebook.com/apps",
     fields: [
-      { key: "app_id",     label: "App ID",     isSecret: false, placeholder: "1234567890123456" },
-      { key: "app_secret", label: "App Secret", isSecret: true,  placeholder: "abc123def456..." },
+      { key: "app_id", label: "App ID", isSecret: false, placeholder: "1234567890123456" },
+      { key: "app_secret", label: "App Secret", isSecret: true, placeholder: "abc123def456..." },
     ],
   },
   {
@@ -92,8 +101,18 @@ export const PROVIDERS: ProviderMeta[] = [
     description: "تسجيل الدخول عبر Telegram Login Widget",
     setup_url: "https://core.telegram.org/widgets/login",
     fields: [
-      { key: "bot_username", label: "اسم البوت", isSecret: false, placeholder: "MyAppBot (بدون @)" },
-      { key: "bot_token",    label: "Bot Token",  isSecret: true,  placeholder: "1234567890:ABC-DEF..." },
+      {
+        key: "bot_username",
+        label: "اسم البوت",
+        isSecret: false,
+        placeholder: "MyAppBot (بدون @)",
+      },
+      {
+        key: "bot_token",
+        label: "Bot Token",
+        isSecret: true,
+        placeholder: "1234567890:ABC-DEF...",
+      },
     ],
   },
   {
@@ -105,10 +124,20 @@ export const PROVIDERS: ProviderMeta[] = [
     description: "Sign In with Apple — يتطلب Apple Developer Program",
     setup_url: "https://developer.apple.com/account/resources/identifiers",
     fields: [
-      { key: "client_id",   label: "Services ID (Bundle ID)", isSecret: false, placeholder: "com.yourapp.signin" },
-      { key: "team_id",     label: "Team ID",                  isSecret: false, placeholder: "ABCD1234EF" },
-      { key: "key_id",      label: "Key ID",                   isSecret: false, placeholder: "ABCDE12345" },
-      { key: "private_key", label: "Private Key (.p8)",        isSecret: true,  placeholder: "-----BEGIN PRIVATE KEY-----\n..." },
+      {
+        key: "client_id",
+        label: "Services ID (Bundle ID)",
+        isSecret: false,
+        placeholder: "com.yourapp.signin",
+      },
+      { key: "team_id", label: "Team ID", isSecret: false, placeholder: "ABCD1234EF" },
+      { key: "key_id", label: "Key ID", isSecret: false, placeholder: "ABCDE12345" },
+      {
+        key: "private_key",
+        label: "Private Key (.p8)",
+        isSecret: true,
+        placeholder: "-----BEGIN PRIVATE KEY-----\n...",
+      },
     ],
   },
 ];
@@ -116,20 +145,32 @@ export const PROVIDERS: ProviderMeta[] = [
 // ── DB helpers ─────────────────────────────────────────────────────────────────
 
 async function getSetting(key: string): Promise<Record<string, any>> {
-  const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = ${key} LIMIT 1`);
+  const result = await db.execute(
+    sql`SELECT value FROM system_settings WHERE key = ${key} LIMIT 1`,
+  );
   const rows = Array.isArray(result) ? result : ((result as any).rows ?? []);
   const row = rows[0] as any;
   if (!row?.value) return {};
-  try { return JSON.parse(String(row.value)); } catch { return {}; }
+  try {
+    return JSON.parse(String(row.value));
+  } catch {
+    return {};
+  }
 }
 
 async function getAllAuthSettings(): Promise<Map<string, Record<string, any>>> {
-  const result = await db.execute(sql`SELECT key, value FROM system_settings WHERE key LIKE 'auth.%'`);
+  const result = await db.execute(
+    sql`SELECT key, value FROM system_settings WHERE key LIKE 'auth.%'`,
+  );
   const rows = Array.isArray(result) ? result : ((result as any).rows ?? []);
   const map = new Map<string, Record<string, any>>();
   for (const row of rows) {
     const r = row as any;
-    try { map.set(r.key, JSON.parse(String(r.value ?? "{}"))); } catch { map.set(r.key, {}); }
+    try {
+      map.set(r.key, JSON.parse(String(r.value ?? "{}")));
+    } catch {
+      map.set(r.key, {});
+    }
   }
   return map;
 }
@@ -147,7 +188,10 @@ function maskSecret(v: string | undefined): string {
   return v ? "[SET]" : "";
 }
 
-function buildMaskedConfig(meta: ProviderMeta, config: Record<string, any>): Record<string, string> {
+function buildMaskedConfig(
+  meta: ProviderMeta,
+  config: Record<string, any>,
+): Record<string, string> {
   const masked: Record<string, string> = {};
   for (const field of meta.fields) {
     masked[field.key] = field.isSecret ? maskSecret(config[field.key]) : (config[field.key] ?? "");
@@ -181,27 +225,25 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     googleConfig.client_id = process.env.GOOGLE_CLIENT_ID;
   }
 
-  const providers = PROVIDERS
-    .map(meta => {
-      const cfg = meta.id === "google" ? googleConfig : (settingsMap.get(`auth.${meta.id}`) ?? {});
-      const enabled = !!cfg.enabled;
-      // "has_config" = at least one non-secret public field is filled
-      const hasConfig = meta.fields.some(f => !f.isSecret && !!cfg[f.key]);
-      return {
-        id:           meta.id,
-        label:        meta.label,
-        color:        meta.color,
-        icon:         meta.icon,
-        auth_type:    meta.auth_type,
-        enabled,
-        has_config:   hasConfig,
-        // non-secret fields only
-        client_id:    cfg.client_id ?? null,
-        app_id:       cfg.app_id ?? null,
-        bot_username: cfg.bot_username ?? null,
-      };
-    })
-    .filter(p => p.enabled && p.has_config);
+  const providers = PROVIDERS.map((meta) => {
+    const cfg = meta.id === "google" ? googleConfig : (settingsMap.get(`auth.${meta.id}`) ?? {});
+    const enabled = !!cfg.enabled;
+    // "has_config" = at least one non-secret public field is filled
+    const hasConfig = meta.fields.some((f) => !f.isSecret && !!cfg[f.key]);
+    return {
+      id: meta.id,
+      label: meta.label,
+      color: meta.color,
+      icon: meta.icon,
+      auth_type: meta.auth_type,
+      enabled,
+      has_config: hasConfig,
+      // non-secret fields only
+      client_id: cfg.client_id ?? null,
+      app_id: cfg.app_id ?? null,
+      bot_username: cfg.bot_username ?? null,
+    };
+  }).filter((p) => p.enabled && p.has_config);
 
   return res.json({ providers });
 });
@@ -234,27 +276,41 @@ authProviderPublicRouter.get("/github/callback", async (req, res) => {
     const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ client_id: config.client_id, client_secret: config.client_secret, code }),
+      body: JSON.stringify({
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+        code,
+      }),
     });
-    const { access_token } = await tokenRes.json() as any;
+    const { access_token } = (await tokenRes.json()) as any;
     if (!access_token) return res.redirect("/?auth_error=token_failed");
 
     const userRes = await fetch("https://api.github.com/user", {
-      headers: { Authorization: `Bearer ${access_token}`, Accept: "application/vnd.github.v3+json" },
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
     });
-    const ghUser = await userRes.json() as any;
+    const ghUser = (await userRes.json()) as any;
     if (!ghUser.id) return res.redirect("/?auth_error=user_failed");
 
     const githubId = String(ghUser.id);
-    let [user] = await db.select().from(usersTable).where(eq(usersTable.githubId, githubId)).limit(1);
+    let [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.githubId, githubId))
+      .limit(1);
     if (!user) {
-      [user] = await db.insert(usersTable).values({
-        phone: `gh_${githubId}`,
-        passwordHash: "",
-        githubId,
-        referralCode: generateReferralCode(),
-        walletBalance: "0.00",
-      }).returning();
+      [user] = await db
+        .insert(usersTable)
+        .values({
+          phone: `gh_${githubId}`,
+          passwordHash: "",
+          githubId,
+          referralCode: generateReferralCode(),
+          walletBalance: "0.00",
+        })
+        .returning();
     }
 
     const token = signUserToken({ userId: user.id });
@@ -296,24 +352,27 @@ authProviderPublicRouter.get("/facebook/callback", async (req, res) => {
     tokenUrl.searchParams.set("redirect_uri", callbackUrl);
     tokenUrl.searchParams.set("code", String(code));
 
-    const { access_token } = await (await fetch(tokenUrl.toString())).json() as any;
+    const { access_token } = (await (await fetch(tokenUrl.toString())).json()) as any;
     if (!access_token) return res.redirect("/?auth_error=token_failed");
 
-    const fbUser = await (await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${access_token}`
-    )).json() as any;
+    const fbUser = (await (
+      await fetch(`https://graph.facebook.com/me?fields=id,name,email&access_token=${access_token}`)
+    ).json()) as any;
     if (!fbUser.id) return res.redirect("/?auth_error=user_failed");
 
     const fbId = String(fbUser.id);
     let [user] = await db.select().from(usersTable).where(eq(usersTable.facebookId, fbId)).limit(1);
     if (!user) {
-      [user] = await db.insert(usersTable).values({
-        phone: `fb_${fbId}`,
-        passwordHash: "",
-        facebookId: fbId,
-        referralCode: generateReferralCode(),
-        walletBalance: "0.00",
-      }).returning();
+      [user] = await db
+        .insert(usersTable)
+        .values({
+          phone: `fb_${fbId}`,
+          passwordHash: "",
+          facebookId: fbId,
+          referralCode: generateReferralCode(),
+          walletBalance: "0.00",
+        })
+        .returning();
     }
 
     const token = signUserToken({ userId: user.id });
@@ -334,12 +393,17 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
   const { hash, ...fields } = data;
   if (!hash) return res.status(400).json({ error: "بيانات غير صالحة" });
 
-  const checkString = Object.keys(fields).sort().map(k => `${k}=${fields[k]}`).join("\n");
+  const checkString = Object.keys(fields)
+    .sort()
+    .map((k) => `${k}=${fields[k]}`)
+    .join("\n");
   const secretKey = createHash("sha256").update(config.bot_token).digest();
   const expected = createHmac("sha256", secretKey).update(checkString).digest("hex");
 
   let valid = false;
-  try { valid = timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(expected, "hex")); } catch {}
+  try {
+    valid = timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(expected, "hex"));
+  } catch {}
   if (!valid) return res.status(401).json({ error: "فشل التحقق من Telegram" });
 
   const authDate = parseInt(fields.auth_date ?? "0");
@@ -350,13 +414,16 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
   const tgId = String(fields.id);
   let [user] = await db.select().from(usersTable).where(eq(usersTable.telegramId, tgId)).limit(1);
   if (!user) {
-    [user] = await db.insert(usersTable).values({
-      phone: `tg_${tgId}`,
-      passwordHash: "",
-      telegramId: tgId,
-      referralCode: generateReferralCode(),
-      walletBalance: "0.00",
-    }).returning();
+    [user] = await db
+      .insert(usersTable)
+      .values({
+        phone: `tg_${tgId}`,
+        passwordHash: "",
+        telegramId: tgId,
+        referralCode: generateReferralCode(),
+        walletBalance: "0.00",
+      })
+      .returning();
   }
 
   const token = signUserToken({ userId: user.id });
@@ -373,19 +440,19 @@ export const authProviderAdminRouter = Router();
 authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
   const settingsMap = await getAllAuthSettings();
 
-  const providers = PROVIDERS.map(meta => {
+  const providers = PROVIDERS.map((meta) => {
     const config = settingsMap.get(`auth.${meta.id}`) ?? {};
     return {
-      id:          meta.id,
-      label:       meta.label,
-      icon:        meta.icon,
-      color:       meta.color,
-      auth_type:   meta.auth_type,
+      id: meta.id,
+      label: meta.label,
+      icon: meta.icon,
+      color: meta.color,
+      auth_type: meta.auth_type,
       description: meta.description,
-      setup_url:   meta.setup_url,
-      fields:      meta.fields,
-      enabled:     !!config.enabled,
-      config:      buildMaskedConfig(meta, config),
+      setup_url: meta.setup_url,
+      fields: meta.fields,
+      enabled: !!config.enabled,
+      config: buildMaskedConfig(meta, config),
     };
   });
 
@@ -394,7 +461,7 @@ authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
 
 // PATCH /api/admin/settings/auth/:id
 authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
-  const meta = PROVIDERS.find(p => p.id === stringParam(req, "id"));
+  const meta = PROVIDERS.find((p) => p.id === stringParam(req, "id"));
   if (!meta) return res.status(404).json({ error: "مزود غير موجود" });
 
   const key = `auth.${meta.id}`;

@@ -1,5 +1,5 @@
-import { randomBytes, createHash } from "crypto";
 import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
+import { createHash, randomBytes } from "crypto";
 import { eq, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
@@ -13,6 +13,65 @@ export class FirebaseAuthError extends Error {
     super(message);
     this.name = "FirebaseAuthError";
   }
+}
+
+export function getFirebaseErrorMessage(error: any): string {
+  const code = error?.code || "";
+  const message = error?.message || "";
+
+  if (code === "auth/invalid-phone-number") {
+    return "رقم الهاتف غير صالح. تأكد من كتابته بشكل صحيح.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "تم تجاوز عدد المحاولات. انتظر 5 دقائق ثم حاول مجدداً.";
+  }
+  if (code === "auth/code-expired") {
+    return "انتهت صلاحية الكود. اطلب كوداً جديداً.";
+  }
+  if (code === "auth/invalid-verification-code") {
+    return "كود التحقق غير صحيح.";
+  }
+  if (code === "auth/quota-exceeded") {
+    return "تجاوزت الحد اليومي لإرسال الرسائل. حاول غداً.";
+  }
+  if (code === "auth/user-disabled") {
+    return "تم تعطيل هذا الحساب. يرجى التواصل مع الدعم.";
+  }
+  if (code === "auth/captcha-check-failed") {
+    return "فشل التحقق من الكابتشا. حاول مرة أخرى.";
+  }
+  if (code === "auth/internal-error") {
+    return "حدث خطأ داخلي في Firebase. حاول مرة أخرى.";
+  }
+  if (code === "auth/network-request-failed") {
+    return "فشل الاتصال بالشبكة. تحقق من اتصال الإنترنت.";
+  }
+  if (code === "auth/popup-closed-by-user") {
+    return "تم إغلاق نافذة تسجيل الدخول. حاول مرة أخرى.";
+  }
+  if (code === "auth/popup-blocked") {
+    return "تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة.";
+  }
+  if (code === "auth/unauthorized-domain") {
+    return "المجال غير مصرح به. يرجى التواصل مع الدعم.";
+  }
+  if (message.includes("تعارض في بيانات الحساب")) {
+    return message; // Already in Arabic
+  }
+  if (message.includes("هذا الحساب مرتبط")) {
+    return message; // Already in Arabic
+  }
+  if (message.includes("تسجيل الدخول عبر Firebase غير مفعّل")) {
+    return message; // Already in Arabic
+  }
+  if (message.includes("رمز Firebase غير صالح")) {
+    return message; // Already in Arabic
+  }
+  if (message.includes("المستخدم غير موجود")) {
+    return message; // Already in Arabic
+  }
+
+  return message || "حدث خطأ غير متوقع. حاول مرة أخرى.";
 }
 
 export interface FirebaseSessionResult {

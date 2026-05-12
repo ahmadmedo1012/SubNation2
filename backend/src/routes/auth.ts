@@ -2,21 +2,21 @@ import { LoginBody, RegisterBody } from "@workspace/api-zod";
 import { db, otpsTable, referralEventsTable, usersTable } from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { Router } from "express";
-import {
-  generateReferralCode,
-  hashPassword,
-  normalizeLibyanPhone,
-  verifyPassword,
-} from "../lib/crypto";
+import { userAuthIdentitiesTable } from "../../shared/db/src/schema/user_auth_identities";
+import { hashPassword, signUserToken, verifyPassword, verifyUserTokenDetailed } from "../lib/auth";
+import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
-import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
 import {
   FirebaseAuthError,
+  getFirebaseErrorMessage,
   resolveFirebaseSession,
   verifyFirebaseIdToken,
 } from "../services/firebase-auth.service";
 import { notifyNewUser, notifyPasswordResetRequest } from "../telegram";
+
+// Feature flag: Allow new password registrations (set to false to force Firebase only)
+const ALLOW_PASSWORD_REGISTRATION = process.env.ALLOW_PASSWORD_REGISTRATION !== "false";
 
 const router = Router();
 
@@ -26,6 +26,18 @@ router.post("/register", async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   }
   const { phone, password, referral_code } = parse.data;
+
+  // Feature flag: Check if password registration is allowed
+  if (!ALLOW_PASSWORD_REGISTRATION) {
+    return res
+      .status(403)
+      .json(
+        createErrorResponse(
+          "تسجيل الحساب بكلمة المرور غير متاح حالياً. يرجى استخدام تسجيل الدخول عبر Google أو كود الهاتف.",
+          ErrorCode.FEATURE_DISABLED,
+        ),
+      );
+  }
 
   const passwordTrimmed = password.trim();
   if (passwordTrimmed.length < 8 || passwordTrimmed.length > 128) {
@@ -140,7 +152,7 @@ router.post("/login", async (req, res) => {
       .status(403)
       .json(
         createErrorResponse(
-          "تسجيل الدخول بكلمة المرور معطل لهذا الحساب. يرجى الدخول عبر Google أو كود الهاتف.",
+          "تسجيل الدخول بكلمة المرور معطل لهذا الحساب. يرجى الدخول عبر كود الهاتف.",
           ErrorCode.UNAUTHORIZED,
         ),
       );
@@ -488,9 +500,36 @@ router.post("/firebase/session", async (req, res) => {
   } catch (err) {
     if (err instanceof FirebaseAuthError) {
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
-      return res.status(err.statusCode).json(createErrorResponse(err.message, code));
+      return res
+        .status(err.statusCode)
+        .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
     throw err;
+  }
+});
+
+router.post("/firebase/refresh", async (req, res) => {
+  const { id_token } = req.body as { id_token?: string };
+  if (!id_token || typeof id_token !== "string") {
+    return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
+  }
+
+  try {
+    const decoded = await verifyFirebaseIdToken(id_token);
+    const result = await resolveFirebaseSession(decoded);
+    const token = signUserToken({ userId: result.user.id });
+    return res.json({
+      user: formatUser(result.user),
+      token,
+    });
+  } catch (err) {
+    if (err instanceof FirebaseAuthError) {
+      const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
+      return res
+        .status(err.statusCode)
+        .json(createErrorResponse(getFirebaseErrorMessage(err), code));
+    }
+    return res.status(401).json(createErrorResponse("فشل تجديد الجلسة", ErrorCode.INVALID_TOKEN));
   }
 });
 

@@ -6,11 +6,10 @@ import helmet from "helmet";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
+import RedisStore from "rate-limit-redis";
+import { createClient } from "redis";
 import { logger } from "./lib/logger";
 import router from "./routes";
-
-const app: Express = express();
-
 function resolveFrontendDist(): string | null {
   const candidates = [
     process.env.FRONTEND_DIST,
@@ -90,9 +89,6 @@ app.use(
 
 import RedisStore from "rate-limit-redis";
 import { createClient } from "redis";
-
-let redisClient: ReturnType<typeof createClient> | null = null;
-if (process.env.REDIS_URL) {
   redisClient = createClient({ url: process.env.REDIS_URL });
   redisClient.connect().catch((err) => logger.error({ err }, "Redis connection failed"));
 }
@@ -115,6 +111,30 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
+});
+
+// Per-phone rate limiting for Firebase Phone OTP (prevent abuse on single phone)
+const otpPhoneLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // Max 3 OTP sends per phone
+  store: getStore(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const body = req.body as { phone?: string };
+    return body.phone || req.ip || req.socket.remoteAddress || "unknown";
+  },
+  message: { error: "تجاوزت عدد محاولات OTP لهذا الرقم. انتظر 15 دقيقة." },
+});
+
+// Per-IP rate limiting for Firebase Phone OTP (prevent bulk abuse)
+const otpIpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Max 10 OTP sends per IP
+  store: getStore(),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "تجاوزت عدد المحاولات من هذا IP. انتظر ساعة." },
 });
 
 // General API limit
@@ -152,11 +172,10 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-// Auth limiter applies to login/register/google only (NOT /me — it's polled frequently)
+// Auth limiter applies to login/register only (NOT /me — it's polled frequently)
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
-app.use("/api/auth/google", authLimiter);
-app.use("/api/auth/firebase/session", authLimiter);
+app.use("/api/auth/firebase/session", otpPhoneLimiter, otpIpLimiter, authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", router);
@@ -181,13 +200,14 @@ if (frontendDist) {
 }
 
 // ── Global error handler ──────────────────────────────────────────────────────
-app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, req: { method: req.method, url: req.url } }, "Unhandled error");
 
   if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
     res.status(400).json({ error: "بيانات غير صالحة" });
-  } else if (err.name === "ZodError") {
-    res.status(400).json({ error: "بيانات غير صالحة", details: err.errors });
+  } else if ("errors" in err) {
+    const errorWithErrors = err as { errors?: unknown[] };
+    res.status(400).json({ error: "بيانات غير صالحة", details: errorWithErrors.errors });
   } else {
     res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
   }

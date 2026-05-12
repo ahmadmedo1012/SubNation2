@@ -42,6 +42,25 @@ export async function exchangeCurrentFirebaseUser(referralCode?: string) {
   return exchangeFirebaseIdToken(idToken, referralCode);
 }
 
+export async function refreshFirebaseSession(idToken: string) {
+  const res = await fetch("/api/auth/firebase/refresh", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_token: idToken }),
+  });
+  const data = (await res.json()) as { token: string; user: unknown; error?: string };
+  if (!res.ok) throw new Error(data.error ?? "فشل تجديد الجلسة");
+  return data;
+}
+
+export async function refreshCurrentFirebaseSession() {
+  const auth = requireFirebaseAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("لم يتم تسجيل الدخول");
+  const idToken = await user.getIdToken(true); // Force refresh
+  return refreshFirebaseSession(idToken);
+}
+
 export async function resetFirebaseAuth() {
   const auth = getFirebaseAuth();
   if (auth) await signOut(auth);

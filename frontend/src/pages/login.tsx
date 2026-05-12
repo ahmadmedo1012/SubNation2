@@ -59,6 +59,15 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
+          {/* Firebase recommendation banner */}
+          <div className="flex items-start gap-3 bg-primary/5 border border-primary/15 rounded-xl px-4 py-3 mb-5">
+            <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+            <div className="text-xs text-muted-foreground leading-relaxed">
+              <span className="font-bold text-primary">نوصي باستخدام Firebase</span> لتسجيل الدخول
+              عبر Google أو كود الهاتف - أكثر أماناً وأسهل.
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="phone" className="text-sm font-bold">

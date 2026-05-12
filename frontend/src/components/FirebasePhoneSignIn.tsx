@@ -1,10 +1,10 @@
-import { useId, useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth";
+import { isFirebaseAuthConfigured } from "@/lib/firebase";
+import { exchangeCurrentFirebaseUser, requireFirebaseAuth } from "@/lib/firebase-auth";
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { Loader2, Phone, RotateCcw } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
-import { exchangeCurrentFirebaseUser, requireFirebaseAuth } from "@/lib/firebase-auth";
-import { isFirebaseAuthConfigured } from "@/lib/firebase";
 
 interface FirebasePhoneSignInProps {
   dividerLabel?: string;
@@ -41,11 +41,18 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
     if (message.includes("auth/invalid-phone-number"))
       return "رقم الهاتف غير صالح. تأكد من كتابته بشكل صحيح.";
     if (message.includes("auth/too-many-requests"))
-      return "تم إرسال الكثير من الرسائل. انتظر قليلاً ثم حاول مجدداً.";
+      return "تم تجاوز عدد المحاولات. انتظر 5 دقائق ثم حاول مجدداً.";
     if (message.includes("auth/code-expired")) return "انتهت صلاحية الكود. اطلب كوداً جديداً.";
     if (message.includes("auth/invalid-verification-code")) return "كود التحقق غير صحيح.";
     if (message.includes("auth/internal-error"))
       return "حدث خطأ داخلي. تأكد من تفعيل خدمة الهاتف في Firebase.";
+    if (message.includes("auth/quota-exceeded"))
+      return "تجاوزت الحد اليومي لإرسال الرسائل. حاول غداً.";
+    if (message.includes("auth/user-disabled"))
+      return "تم تعطيل هذا الحساب. يرجى التواصل مع الدعم.";
+    if (message.includes("فشل إنشاء جلسة آمنة")) return "تعذّر إنشاء الجلسة. حاول مرة أخرى.";
+    if (message.includes("لم يتم إكمال تسجيل الدخول"))
+      return "لم يتم إكمال تسجيل الدخول. حاول مرة أخرى.";
     return message;
   };
 
