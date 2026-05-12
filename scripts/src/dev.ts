@@ -14,9 +14,7 @@ if (!process.env.SESSION_SECRET && process.env.JWT_SECRET) {
   process.env.SESSION_SECRET = process.env.JWT_SECRET;
 }
 
-const missing = ["DATABASE_URL", "SESSION_SECRET"].filter(
-  (key) => !process.env[key],
-);
+const missing = ["DATABASE_URL", "SESSION_SECRET"].filter((key) => !process.env[key]);
 if (missing.length > 0) {
   throw new Error(
     `Missing required environment variables: ${missing.join(", ")}. Copy config/env.example to .env and fill the values.`,
@@ -24,11 +22,7 @@ if (missing.length > 0) {
 }
 
 const apiPort = await findAvailablePort(
-  parsePreferredPort(
-    process.env.API_PORT ?? process.env.PORT,
-    8080,
-    "API_PORT",
-  ),
+  parsePreferredPort(process.env.API_PORT ?? process.env.PORT, 8080, "API_PORT"),
 );
 
 const frontendPreferredPort = parsePreferredPort(
@@ -64,7 +58,6 @@ const frontend = spawnPnpm(
     NODE_ENV: "development",
     PORT: String(frontendPort),
     FRONTEND_PORT: String(frontendPort),
-    BASE_PATH: process.env.BASE_PATH ?? "/",
     API_PROXY_TARGET: apiOrigin,
   },
   { label: "web", color: "magenta" },
