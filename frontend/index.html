@@ -21,14 +21,23 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Firebase auth preconnect reduces iframe waterfall -->
+    <link rel="preconnect" href="https://apis.google.com" crossorigin />
+    <link rel="dns-prefetch" href="https://subnation-2571e.firebaseapp.com" />
+    <!-- Preload critical font woff2 directly (faster than CSS @import chain) -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://fonts.gstatic.com/s/readexpro/v27/SLXYc1bJ7HE5YDoGPuzj_dh8uc7wUy8ZQQyX2IwwZEzehiB9.woff2"
+      crossorigin
+    />
+    <!-- Non-blocking font stylesheet -->
     <link
       rel="preload"
       as="style"
       href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&display=swap"
-      onload="
-        this.onload = null;
-        this.rel = 'stylesheet';
-      "
+      onload="this.onload=null;this.rel='stylesheet'"
     />
     <noscript
       ><link

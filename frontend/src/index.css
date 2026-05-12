@@ -241,7 +241,7 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
-    scroll-behavior: smooth;
+    /* scroll-behavior: smooth removed — hurts mobile FCP & causes scroll jank */
     overflow-x: clip;
   }
 
@@ -437,17 +437,15 @@
   }
 }
 
-/* Soft blur-in reveal */
+/* Soft reveal — GPU composited (transform + opacity only, no filter:blur) */
 @keyframes reveal-up {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
-    filter: blur(8px);
+    transform: translateY(18px) scale(0.96);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
-    filter: blur(0);
   }
 }
 
@@ -696,12 +694,14 @@
     background-size: 22px 22px;
   }
 
-  /* Ambient floating blobs */
+  /* Ambient floating blobs — GPU composited */
   .blob-drift {
     animation: blob-drift 9s ease-in-out infinite;
+    will-change: transform;
   }
   .blob-drift-slow {
     animation: blob-drift 13s ease-in-out infinite reverse;
+    will-change: transform;
   }
 
   /* Card shine-on-hover */

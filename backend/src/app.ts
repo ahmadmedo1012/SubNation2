@@ -211,13 +211,39 @@ app.use("/api", (_req, res) => {
 const frontendDist = resolveFrontendDist();
 
 if (frontendDist) {
-  app.use(express.static(frontendDist));
+  // Serve hashed assets with 1-year immutable cache (file names change on rebuild)
+  app.use(
+    "/assets",
+    express.static(path.join(frontendDist, "assets"), {
+      maxAge: "1y",
+      immutable: true,
+    }),
+  );
+
+  // Serve other static files (manifest, icons, robots.txt) with short cache
+  app.use(
+    express.static(frontendDist, {
+      maxAge: "1h",
+      setHeaders(res, filePath) {
+        // HTML, SW, and robots must never be cached aggressively
+        if (
+          filePath.endsWith(".html") ||
+          filePath.endsWith("sw.js") ||
+          filePath.endsWith("robots.txt")
+        ) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        }
+      },
+    }),
+  );
+
   app.use((req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
       return;
     }
 
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendFile(path.join(frontendDist, "index.html"));
   });
 }

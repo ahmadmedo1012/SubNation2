@@ -12,10 +12,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
-// Home + NotFound are eagerly loaded for fastest first paint of the primary
-// landing route; all other customer pages are lazily code-split so the initial
-// critical bundle stays minimal.
-import HomePage from "@/pages/home";
+// All pages are lazily code-split to minimize initial bundle weight.
+// The HTML shell + vendor-react chunk are the only critical-path resources.
+const HomePage = lazy(() => import("@/pages/home"));
 import NotFound from "@/pages/not-found";
 
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
@@ -49,7 +48,15 @@ const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, retry: 1 },
+    queries: {
+      // 60 seconds stale time to reduce redundant requests on route changes
+      staleTime: 60_000,
+      // Keep unused data for 5 min before GC to support quick back-navigation
+      gcTime: 5 * 60_000,
+      retry: 1,
+      // Don't refetch on window focus for mobile UX (reduces spinner flashes)
+      refetchOnWindowFocus: false,
+    },
   },
 });
 

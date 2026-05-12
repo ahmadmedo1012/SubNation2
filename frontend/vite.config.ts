@@ -29,6 +29,8 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     sourcemap: false,
+    // Split CSS per chunk so non-critical routes don’t block initial load
+    cssCodeSplit: true,
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
@@ -74,6 +76,14 @@ export default defineConfig({
           }
           if (id.includes("node_modules/wouter") || id.includes("node_modules/regexparam")) {
             return "vendor-router";
+          }
+          // Isolate Firebase into its own async chunk so it never blocks
+          // initial page render — it’s only needed post-auth-check.
+          if (
+            id.includes("node_modules/firebase") ||
+            id.includes("node_modules/@firebase")
+          ) {
+            return "vendor-firebase";
           }
         },
       },
