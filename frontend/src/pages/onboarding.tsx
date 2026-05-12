@@ -184,10 +184,7 @@ export function OnboardingPage() {
           >
             السابق
           </Button>
-          <Button
-            onClick={handleNextStep}
-            className="h-11 px-8 press-spring font-bold"
-          >
+          <Button onClick={handleNextStep} className="h-11 px-8 press-spring font-bold">
             {step === 5 ? "إكمال" : "التالي"}
           </Button>
         </div>
