@@ -6,12 +6,22 @@ import { useEffect } from "react";
 
 export function SocketInitializer() {
   const { token, adminToken } = useAuth();
-  const { data: user } = useGetMe({
+
+  // Only fetch user data when we have a token
+  const { data: user, error: userError } = useGetMe({
     query: {
       queryKey: getGetMeQueryKey(),
       enabled: !!token,
+      retry: 1,
     },
   });
+
+  // Log user fetch errors (non-critical)
+  useEffect(() => {
+    if (userError) {
+      console.warn("Failed to fetch user data (non-critical):", userError);
+    }
+  }, [userError]);
 
   // User Socket
   useSocket(user?.id);
@@ -19,12 +29,13 @@ export function SocketInitializer() {
   // Admin Socket
   useEffect(() => {
     if (adminToken) {
-      connectAdminSocket();
-    } else if (!token) {
-      // If neither token nor adminToken, disconnect
-      // disconnectSocket();
+      try {
+        connectAdminSocket();
+      } catch (err) {
+        console.warn("Admin socket connection failed (non-critical):", err);
+      }
     }
-  }, [adminToken, token]);
+  }, [adminToken]);
 
   return null;
 }

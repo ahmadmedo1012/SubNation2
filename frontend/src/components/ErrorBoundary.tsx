@@ -17,10 +17,21 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    // Log the error for debugging
+    console.error("ErrorBoundary caught an error:", error);
     return { hasError: true, error };
   }
 
-  componentDidCatch() {}
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("React render error:", error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: Props, prevState: State) {
+    // Reset error state when children change
+    if (this.state.hasError && prevProps.children !== this.props.children) {
+      this.setState({ hasError: false, error: undefined });
+    }
+  }
 
   render() {
     if (this.state.hasError) {

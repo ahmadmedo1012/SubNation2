@@ -72,18 +72,32 @@ export async function resetFirebaseAuth() {
   if (auth) await signOut(auth);
 }
 
+// Store for tracking refresh state across component instances
+let lastRefreshTime = 0;
+const REFRESH_COOLDOWN_MS = 30000; // 30 second cooldown to prevent rapid refreshes
+
 // Setup automatic token refresh listener
 export function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => void) {
   const auth = getFirebaseAuth();
   if (!auth) return () => {};
 
   const unsubscribe = onIdTokenChanged(auth, async (user) => {
-    if (user) {
-      try {
-        const idToken = await user.getIdToken(true); // Force refresh
-        const session = await refreshFirebaseSession(idToken);
-        onTokenRefresh(session.token);
-      } catch (err) {
+    if (!user) return;
+
+    // Debounce rapid refreshes
+    const now = Date.now();
+    if (now - lastRefreshTime < REFRESH_COOLDOWN_MS) {
+      return;
+    }
+    lastRefreshTime = now;
+
+    try {
+      const idToken = await user.getIdToken(true); // Force refresh
+      const session = await refreshFirebaseSession(idToken);
+      onTokenRefresh(session.token);
+    } catch (err) {
+      // Only log non-network errors to avoid noise during network issues
+      if (!(err instanceof TypeError && err.message.includes('network'))) {
         console.error("Failed to refresh Firebase session:", err);
       }
     }
