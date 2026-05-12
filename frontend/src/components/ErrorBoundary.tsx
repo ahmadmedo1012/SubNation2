@@ -45,9 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
             {/* Message */}
             <div>
-              <h1 className="text-xl font-black mb-2.5 text-foreground">
-                حدث خطأ غير متوقع
-              </h1>
+              <h1 className="text-xl font-black mb-2.5 text-foreground">حدث خطأ غير متوقع</h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 نعتذر، حدث خطأ في هذه الصفحة.
                 <br />
@@ -75,7 +73,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 إعادة التحميل
               </button>
               <button
-                onClick={() => { window.location.href = "/"; }}
+                onClick={() => {
+                  window.location.href = "/";
+                }}
                 className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-medium px-6 py-3 rounded-xl transition-all w-full sm:w-auto"
               >
                 <Home className="w-4 h-4" />

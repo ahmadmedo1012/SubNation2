@@ -97,7 +97,7 @@ export function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => voi
       onTokenRefresh(session.token);
     } catch (err) {
       // Only log non-network errors to avoid noise during network issues
-      if (!(err instanceof TypeError && err.message.includes('network'))) {
+      if (!(err instanceof TypeError && err.message.includes("network"))) {
         console.error("Failed to refresh Firebase session:", err);
       }
     }
