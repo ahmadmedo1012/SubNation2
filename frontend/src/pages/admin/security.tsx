@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { Shield, CheckCircle, XCircle, Activity, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { Activity, CheckCircle, Download, Shield, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface AuthActivity {
   id: number;
@@ -106,15 +106,8 @@ export function AdminSecurityDashboard() {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `auth-activity-${new Date().toISOString().split("T")[0]}.csv`;
-    if (error) {
-      return (
-        <div className="text-center py-8">
-          <p className="text-destructive">{error}</p>
-        </div>
-      );
-    }
-
     link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   if (loading) {

@@ -1,6 +1,7 @@
 import { AuthProviders } from "@/components/AuthProviders";
 import { CopyButton } from "@/components/CopyButton";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
+import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ import {
   Shield,
   Smartphone,
   Star,
+  Unlink,
   User,
   Wallet,
 } from "lucide-react";
