@@ -47,7 +47,7 @@ export function Navbar() {
           ${
             active
               ? "text-primary font-bold"
-              : "text-muted-foreground/80 hover:text-foreground hover:bg-secondary/60"
+              : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
           }
         `}
         >
@@ -93,7 +93,7 @@ export function Navbar() {
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground/70 hover:text-foreground touch-target flex items-center justify-center"
+            className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground hover:text-foreground touch-target flex items-center justify-center"
             aria-label="تبديل الثيم"
           >
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -102,17 +102,21 @@ export function Navbar() {
           <NotificationBell />
 
           {/* Desktop: user actions */}
-          {token && user ? (
+          {token ? (
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group">
+                <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
                   <Wallet className="w-3.5 h-3.5 text-primary transition-transform group-hover:scale-110 duration-200" />
-                  <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                  {user ? (
+                    <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                  ) : (
+                    <div className="w-10 h-4 rounded skeleton-shimmer" />
+                  )}
                 </div>
               </Link>
               <Link href="/profile">
                 <div
-                  className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground/70 hover:text-foreground cursor-pointer touch-target flex items-center justify-center"
+                  className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
                   title="حسابي"
                 >
                   <User className="w-4 h-4" />
@@ -122,7 +126,7 @@ export function Navbar() {
                 variant="ghost"
                 size="sm"
                 onClick={logout}
-                className="text-muted-foreground/70 hover:text-foreground press-spring transition-all rounded-xl"
+                className="text-muted-foreground hover:text-foreground press-spring transition-all rounded-xl h-9 w-9 p-0 flex items-center justify-center"
                 title="تسجيل الخروج"
               >
                 <LogOut className="w-4 h-4" />
@@ -134,7 +138,7 @@ export function Navbar() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press-spring transition-all font-medium rounded-xl"
+                  className="press-spring transition-all font-medium rounded-xl h-9"
                 >
                   دخول
                 </Button>
@@ -142,7 +146,7 @@ export function Navbar() {
               <Link href="/register">
                 <Button
                   size="sm"
-                  className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl"
+                  className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl h-9"
                 >
                   حساب مجاني
                 </Button>
@@ -162,12 +166,16 @@ export function Navbar() {
           )}
 
           {/* Mobile wallet chip — logged-in */}
-          {token && user && (
+          {token && (
             <div className="md:hidden">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all">
+                <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px] h-8">
                   <Wallet className="w-3 h-3 text-primary" />
-                  <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                  {user ? (
+                    <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                  ) : (
+                    <div className="w-8 h-3 rounded skeleton-shimmer" />
+                  )}
                 </div>
               </Link>
             </div>

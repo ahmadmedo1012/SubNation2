@@ -210,7 +210,11 @@ export default function HomePage() {
     <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
         {/* ── Hero ─────────────────────────────────────────── */}
-        {token && user ? (
+        {token && !user ? (
+          <div className="mb-5 page-in">
+            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15 h-[100px] sm:h-[120px] skeleton-shimmer" />
+          </div>
+        ) : token && user ? (
           <div className="mb-5 page-in">
             {/* Hero banner card */}
             <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15">
@@ -221,7 +225,7 @@ export default function HomePage() {
 
               <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-muted-foreground/60 text-xs mb-0.5 font-medium">
+                  <p className="text-muted-foreground text-xs mb-0.5 font-medium">
                     مرحباً بك مجدداً
                   </p>
                   <h1 className="text-fluid-2xl font-black leading-tight text-gradient-animated">
@@ -235,7 +239,7 @@ export default function HomePage() {
                         <Wallet className="w-3.5 h-3.5 text-primary" />
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
                           المحفظة
                         </div>
                         <div className="font-black text-sm tabular-nums text-foreground">
@@ -250,7 +254,7 @@ export default function HomePage() {
                         <Star className="w-3.5 h-3.5 text-yellow-400" />
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground/60 leading-none mb-0.5 font-medium">
+                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
                           النقاط
                         </div>
                         <div className="font-black text-sm tabular-nums">
@@ -267,7 +271,7 @@ export default function HomePage() {
             {latestOrders.length > 0 && (
               <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm shadow-black/10">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
-                  <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground/80">
+                  <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                     <Clock className="w-3.5 h-3.5" />
                     آخر الطلبات
                   </div>
@@ -290,7 +294,7 @@ export default function HomePage() {
                               className="w-full h-full object-contain p-1"
                             />
                           ) : (
-                            <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
+                            <Package className="w-3.5 h-3.5 text-muted-foreground" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -309,7 +313,7 @@ export default function HomePage() {
                         <div className="text-xs font-black tabular-nums shrink-0">
                           {formatCurrency(order.amount)}
                         </div>
-                        <ChevronLeft className="w-3 h-3 text-muted-foreground/25 group-hover:text-primary transition-colors shrink-0" />
+                        <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                       </div>
                     </Link>
                   ))}
@@ -336,7 +340,7 @@ export default function HomePage() {
                     <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/12 text-primary border border-primary/25 px-2.5 py-1 rounded-full">
                       ليبيا #1
                     </span>
-                    <span className="text-[11px] text-muted-foreground/65 font-medium">
+                    <span className="text-[11px] text-muted-foreground font-medium">
                       سوق الاشتراكات الرقمية
                     </span>
                   </div>
@@ -345,7 +349,7 @@ export default function HomePage() {
                     <br />
                     <span className="text-gradient-animated">بالدينار الليبي</span>
                   </h1>
-                  <p className="text-muted-foreground/75 text-sm leading-relaxed mb-4 max-w-xs">
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-4 max-w-xs">
                     تسليم فوري، دفع آمن، دعم متواصل. كل اشتراكاتك في مكان واحد.
                   </p>
 
@@ -355,12 +359,12 @@ export default function HomePage() {
                       {BRANDS.map((brand, i) => (
                         <span
                           key={brand}
-                          className={`shrink-0 text-[11px] font-bold bg-muted/40 border border-border/40 text-muted-foreground/75 px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
+                          className={`shrink-0 text-[11px] font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
                         >
                           {brand}
                         </span>
                       ))}
-                      <span className="shrink-0 text-[11px] text-muted-foreground/35 px-1 whitespace-nowrap">
+                      <span className="shrink-0 text-[11px] text-muted-foreground px-1 whitespace-nowrap">
                         وأكثر…
                       </span>
                     </div>
@@ -371,7 +375,7 @@ export default function HomePage() {
                     {TRUST_ITEMS.map((item) => (
                       <div
                         key={item.label}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 bg-muted/25 border border-border/30 px-2.5 py-1 rounded-full"
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/25 border border-border/30 px-2.5 py-1 rounded-full"
                       >
                         <item.icon className="w-3 h-3" />
                         {item.label}
@@ -432,7 +436,7 @@ export default function HomePage() {
                         >
                           {s.value}
                         </div>
-                        <div className="text-xs text-muted-foreground/65">{s.label}</div>
+                        <div className="text-xs text-muted-foreground">{s.label}</div>
                       </div>
                     ))}
                   </div>
@@ -461,7 +465,7 @@ export default function HomePage() {
                 <div className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}>
                   {s.value}
                 </div>
-                <div className="text-[10px] text-muted-foreground/65">{s.label}</div>
+                <div className="text-[10px] text-muted-foreground">{s.label}</div>
               </div>
             ))}
           </div>
@@ -472,7 +476,7 @@ export default function HomePage() {
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
             <div className="relative flex-1">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/45 pointer-events-none" />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input
                 type="search"
                 placeholder="ابحث عن اشتراك..."
@@ -489,12 +493,12 @@ export default function HomePage() {
                 <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border/50 rounded-xl shadow-lg shadow-black/20 z-50 overflow-hidden">
                   <div className="p-2">
                     <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-                      <span className="text-xs font-bold text-muted-foreground/70">
+                      <span className="text-xs font-bold text-muted-foreground">
                         عمليات البحث السابقة
                       </span>
                       <button
                         onClick={handleClearHistory}
-                        className="text-xs text-muted-foreground/50 hover:text-destructive transition-colors"
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                       >
                         مسح
                       </button>
@@ -505,7 +509,7 @@ export default function HomePage() {
                         onClick={() => handleSearchHistoryClick(query)}
                         className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
                       >
-                        <Clock className="w-3 h-3 text-muted-foreground/40" />
+                        <Clock className="w-3 h-3 text-muted-foreground" />
                         {query}
                       </button>
                     ))}
@@ -514,7 +518,7 @@ export default function HomePage() {
               )}
             </div>
             <div className="relative shrink-0">
-              <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
+              <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
@@ -528,7 +532,7 @@ export default function HomePage() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none" />
+              <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             </div>
           </div>
 
@@ -547,7 +551,7 @@ export default function HomePage() {
                       ${
                         active
                           ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
-                          : "bg-card border border-border/50 text-muted-foreground/80 hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+                          : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
                       }
                     `}
                   >
@@ -561,7 +565,7 @@ export default function HomePage() {
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold"
-                    : "bg-card border border-border/50 text-muted-foreground/80 hover:text-foreground hover:border-border/80"
+                    : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
                 }`}
               >
                 <Package className="w-3.5 h-3.5" />
@@ -574,14 +578,14 @@ export default function HomePage() {
         {/* Result header */}
         {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
           <div className="flex items-center justify-between mb-3.5">
-            <p className="text-sm text-muted-foreground/70">
+            <p className="text-sm text-muted-foreground">
               <span className="font-bold text-foreground">{products.length}</span> منتج
-              {category && <span className="text-muted-foreground/50"> في هذه الفئة</span>}
+              {category && <span className="text-muted-foreground"> في هذه الفئة</span>}
             </p>
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground/70 hover:text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-medium"
+                className="text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-medium"
               >
                 مسح ({activeFilterCount})
               </button>
@@ -602,7 +606,7 @@ export default function HomePage() {
               <PackageSearch className="w-6 h-6 opacity-35" />
             </div>
             <p className="font-bold text-base mb-1.5">لا توجد منتجات تطابق بحثك</p>
-            <p className="text-sm text-muted-foreground/55 mb-5">جرب تغيير الفلتر أو كلمة البحث</p>
+            <p className="text-sm text-muted-foreground mb-5">جرب تغيير الفلتر أو كلمة البحث</p>
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
@@ -658,7 +662,7 @@ export default function HomePage() {
                   </div>
                   <div>
                     <p className="font-bold text-sm mb-0.5">{item.title}</p>
-                    <p className="text-xs text-muted-foreground/65 leading-relaxed">{item.desc}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
                   </div>
                 </div>
               ))}
