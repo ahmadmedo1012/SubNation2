@@ -121,10 +121,9 @@ const rateLimiterStore = redisClient
     })
   : undefined;
 
-// General API rate limiter
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  limit: 120,
+  limit: 300,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   store: rateLimiterStore,
@@ -138,12 +137,12 @@ const apiLimiter = rateLimit({
 // Strict rate limiter for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 20,
+  limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   store: rateLimiterStore,
-  skipFailedRequests: true, // Don't count failed requests
-  skipSuccessfulRequests: false,
+  skipFailedRequests: false, // CRITICAL: Must count failed requests to stop brute force
+  skipSuccessfulRequests: true, // Allow successful logins without consuming rate limit
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
 });
 

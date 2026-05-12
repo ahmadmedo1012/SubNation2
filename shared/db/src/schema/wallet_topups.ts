@@ -40,6 +40,7 @@ export const walletTopupsTable = pgTable(
   (t) => ({
     userIdx: index("idx_topups_user").on(t.userId),
     statusIdx: index("idx_topups_status").on(t.status),
+    statusCreatedIdx: index("idx_topups_status_created").on(t.status, t.createdAt),
   }),
 );
 

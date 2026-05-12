@@ -65,3 +65,13 @@ services:
         value: "SubNation@2026"
       - key: ADMIN_RESET_PASSWORD
         value: "false"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: subnation-redis
+          property: connectionString
+
+  - type: redis
+    name: subnation-redis
+    plan: free
+    ipAllowList: []

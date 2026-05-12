@@ -5,7 +5,7 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm install for this workspace\" >&2; exit 1 ;; esac'",
     "dev": "pnpm --filter @workspace/scripts dev",
-    "build": "pnpm run typecheck && pnpm --filter @workspace/api-server run build",
+    "build": "pnpm run lint && pnpm run typecheck && pnpm --filter @workspace/api-server run build",
     "start": "pnpm --filter @workspace/scripts start",
     "db:push": "pnpm --filter @workspace/db push",
     "db:seed": "pnpm --filter @workspace/scripts seed",

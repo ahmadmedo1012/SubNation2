@@ -29,6 +29,7 @@ export const inventoryTable = pgTable(
   (t) => ({
     productIdx: index("idx_inventory_product").on(t.productId),
     soldIdx: index("idx_inventory_sold").on(t.isSold),
+    productSoldIdx: index("idx_inventory_product_sold").on(t.productId, t.isSold),
   }),
 );
 

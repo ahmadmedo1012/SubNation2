@@ -62,6 +62,7 @@ export const ordersTable = pgTable(
     productIdx: index("idx_orders_product").on(t.productId),
     statusIdx: index("idx_orders_status").on(t.status),
     createdIdx: index("idx_orders_created").on(t.createdAt),
+    statusCreatedIdx: index("idx_orders_status_created").on(t.status, t.createdAt),
   }),
 );
 
