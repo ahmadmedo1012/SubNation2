@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Setup automatic Firebase token refresh
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    
+
     const init = async () => {
       try {
         const sub = await setupFirebaseTokenRefresh((newToken) => {
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Defer initialization to avoid blocking critical paint
     const timeout = setTimeout(init, 2000);
-    
+
     return () => {
       clearTimeout(timeout);
       if (unsubscribe) unsubscribe();

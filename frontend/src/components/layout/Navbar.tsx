@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { lazy, Suspense } from "react";
 import { Logo } from "./Logo";
 
-const NotificationBell = lazy(() => import("./NotificationBell").then(m => ({ default: m.NotificationBell })));
+const NotificationBell = lazy(() =>
+  import("./NotificationBell").then((m) => ({ default: m.NotificationBell })),
+);
 
 export function Navbar() {
   const { token, logout } = useAuth();

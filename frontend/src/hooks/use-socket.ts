@@ -14,7 +14,7 @@ export function useSocket(userId?: number | string) {
       try {
         const socket = await connectSocket(userId);
         if (!active || !socket) return;
-        
+
         socketRef.current = socket;
 
         socket.on("order-updated", (data: { id: number | string; status: string }) => {
@@ -22,18 +22,18 @@ export function useSocket(userId?: number | string) {
           toast.success(`تم تحديث حالة طلبك #${data.id} إلى ${data.status}`);
         });
 
-      socket.on("topup-updated", (data: { amount: number; status: string }) => {
-        console.log("Topup updated:", data);
-        if (data.status === "approved") {
-          toast.success(`تم شحن محفظتك بـ ${data.amount} د.ل بنجاح!`);
-        } else {
-          toast.error(`تم رفض طلب الشحن الخاص بك`);
-        }
-      });
+        socket.on("topup-updated", (data: { amount: number; status: string }) => {
+          console.log("Topup updated:", data);
+          if (data.status === "approved") {
+            toast.success(`تم شحن محفظتك بـ ${data.amount} د.ل بنجاح!`);
+          } else {
+            toast.error(`تم رفض طلب الشحن الخاص بك`);
+          }
+        });
 
-      socket.on("connect_error", (error: Error) => {
-        console.warn("Socket connection error (non-critical):", error.message);
-      });
+        socket.on("connect_error", (error: Error) => {
+          console.warn("Socket connection error (non-critical):", error.message);
+        });
 
         socket.on("error", (error: Error) => {
           console.warn("Socket error (non-critical):", error.message);

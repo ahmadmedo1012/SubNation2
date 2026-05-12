@@ -12,9 +12,15 @@ import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 import { Navbar } from "@/components/layout/Navbar";
 
 // Non-critical layout deferred
-const FlashSaleBanner = lazy(() => import("@/components/layout/FlashSaleBanner").then(m => ({ default: m.FlashSaleBanner })));
-const Footer = lazy(() => import("@/components/layout/Footer").then(m => ({ default: m.Footer })));
-const MobileNav = lazy(() => import("@/components/layout/MobileNav").then(m => ({ default: m.MobileNav })));
+const FlashSaleBanner = lazy(() =>
+  import("@/components/layout/FlashSaleBanner").then((m) => ({ default: m.FlashSaleBanner })),
+);
+const Footer = lazy(() =>
+  import("@/components/layout/Footer").then((m) => ({ default: m.Footer })),
+);
+const MobileNav = lazy(() =>
+  import("@/components/layout/MobileNav").then((m) => ({ default: m.MobileNav })),
+);
 
 // All pages are lazily code-split to minimize initial bundle weight.
 // The HTML shell + vendor-react chunk are the only critical-path resources.
@@ -196,7 +202,7 @@ const SocketInitializer = lazy(() =>
 
 function DeferredSocketInitializer() {
   const [mounted, setMounted] = useState(false);
-  
+
   useEffect(() => {
     // Wait for initial hydration and paint to settle
     const timeout = setTimeout(() => setMounted(true), 3500);
