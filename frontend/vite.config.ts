@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 
 const rawPort = process.env.PORT ?? process.env.FRONTEND_PORT ?? "5173";
 
+const basePath = "/";
+
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
