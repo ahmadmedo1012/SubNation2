@@ -134,6 +134,18 @@ router.post("/login", async (req, res) => {
         createErrorResponse("رقم الهاتف أو كلمة المرور غير صحيحة", ErrorCode.INVALID_CREDENTIAL),
       );
   }
+
+  if (!user.passwordLoginEnabled) {
+    return res
+      .status(403)
+      .json(
+        createErrorResponse(
+          "تسجيل الدخول بكلمة المرور معطل لهذا الحساب. يرجى الدخول عبر Google أو كود الهاتف.",
+          ErrorCode.UNAUTHORIZED,
+        ),
+      );
+  }
+
   const { valid, needsRehash } = await verifyPassword(password, user.passwordHash);
   if (!valid) {
     await recordFailedAttempt(normalizedPhone);
@@ -369,72 +381,78 @@ router.get("/me", async (req, res) => {
     return res
       .status(401)
       .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
-  return res.json(formatUser(user));
+
+  const identities = await db
+    .select()
+    .from(userAuthIdentitiesTable)
+    .where(eq(userAuthIdentitiesTable.userId, user.id));
+
+  return res.json({
+    ...formatUser(user),
+    linked_identities: identities.map((id) => ({
+      provider: id.provider,
+      provider_uid: id.providerUid,
+      email: id.email,
+      phone: id.phone,
+      linked_at: id.linkedAt,
+      last_seen_at: id.lastSeenAt,
+    })),
+  });
 });
 
-router.post("/google", async (req, res) => {
-  const { credential } = req.body as { credential?: string };
-  if (!credential || typeof credential !== "string") {
-    return res.status(400).json(createErrorResponse("رمز التحقق مطلوب", ErrorCode.INVALID_DATA));
+router.post("/toggle-password-login", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
+  }
+  const tokenResult = verifyUserTokenDetailed(authHeader.slice(7));
+  if (!tokenResult.ok)
+    return res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
+
+  const { enabled } = req.body as { enabled?: boolean };
+  if (typeof enabled !== "boolean") {
+    return res.status(400).json(createErrorResponse("الحالة مطلوبة", ErrorCode.INVALID_DATA));
   }
 
-  let payload: { sub: string; email?: string; name?: string } | null = null;
-  try {
-    const r = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`,
-    );
-    if (!r.ok) throw new Error("invalid token");
-    const data = (await r.json()) as { sub: string; email?: string; name?: string; aud?: string };
-
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (clientId && data.aud !== clientId) {
-      return res
-        .status(401)
-        .json(createErrorResponse("رمز Google غير صالح", ErrorCode.GOOGLE_TOKEN_INVALID));
-    }
-    payload = { sub: data.sub, email: data.email, name: data.name };
-  } catch {
-    return res
-      .status(401)
-      .json(
-        createErrorResponse(
-          "فشل التحقق من Google. حاول مرة أخرى.",
-          ErrorCode.GOOGLE_VERIFICATION_FAILED,
-        ),
-      );
-  }
-
-  if (!payload?.sub) {
-    return res
-      .status(401)
-      .json(createErrorResponse("فشل استرجاع بيانات Google", ErrorCode.GOOGLE_VERIFICATION_FAILED));
-  }
-
-  const [existingByGoogle] = await db
+  const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.googleId, payload.sub))
+    .where(eq(usersTable.id, tokenResult.payload.userId))
     .limit(1);
+  if (!user)
+    return res
+      .status(404)
+      .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
-  if (existingByGoogle) {
-    const token = signUserToken({ userId: existingByGoogle.id });
-    return res.json({ user: formatUser(existingByGoogle), token });
+  // If disabling, ensure they have at least one Firebase identity linked
+  if (!enabled) {
+    const [identity] = await db
+      .select()
+      .from(userAuthIdentitiesTable)
+      .where(eq(userAuthIdentitiesTable.userId, user.id))
+      .limit(1);
+
+    if (!identity && !user.firebaseUid) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "يجب ربط حساب Firebase أولاً لإيقاف كلمة المرور",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
   }
 
-  const placeholderPhone = `g_${payload.sub}`;
-  const [newUser] = await db
-    .insert(usersTable)
-    .values({
-      phone: placeholderPhone,
-      passwordHash: "",
-      googleId: payload.sub,
-      referralCode: generateReferralCode(),
-      walletBalance: "0.00",
+  await db
+    .update(usersTable)
+    .set({
+      passwordLoginEnabled: enabled,
+      legacyPasswordDisabledAt: enabled ? null : new Date(),
     })
-    .returning();
+    .where(eq(usersTable.id, user.id));
 
-  const token = signUserToken({ userId: newUser.id });
-  return res.status(201).json({ user: formatUser(newUser), token, needs_phone: true });
+  return res.json({ success: true, password_login_enabled: enabled });
 });
 
 router.post("/firebase/session", async (req, res) => {
@@ -443,11 +461,20 @@ router.post("/firebase/session", async (req, res) => {
     return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
   }
 
+  // Optional: Check if user is already authenticated (for account linking)
+  let currentUserId: number | undefined;
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const tokenResult = verifyUserTokenDetailed(authHeader.slice(7));
+    if (tokenResult.ok) currentUserId = tokenResult.payload.userId;
+  }
+
   try {
     const decoded = await verifyFirebaseIdToken(id_token);
     const result = await resolveFirebaseSession(
       decoded,
       typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
+      currentUserId,
     );
     if (result.isNewUser) notifyNewUser(result.user.phone, !!result.user.referredBy);
     const token = signUserToken({ userId: result.user.id });

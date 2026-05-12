@@ -106,38 +106,6 @@ function getReferralCodeFromUrl() {
   return new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
 }
 
-// ── Google client-side login helper ───────────────────────────────────────────
-
-function requestGoogleCredential(clientId: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const init = () => {
-      (window as any).google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (response: any) => {
-          if (response.credential) resolve(response.credential);
-          else reject(new Error("لم يتم إكمال تسجيل الدخول"));
-        },
-        cancel_on_tap_outside: true,
-      });
-      (window as any).google.accounts.id.prompt((n: any) => {
-        if (n.isSkippedMoment() || n.isDismissedMoment()) {
-          reject(new Error("تم إلغاء تسجيل الدخول"));
-        }
-      });
-    };
-
-    if ((window as any).google?.accounts?.id) {
-      init();
-    } else {
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.onload = init;
-      script.onerror = () => reject(new Error("تعذّر تحميل مكتبة Google"));
-      document.head.appendChild(script);
-    }
-  });
-}
-
 // ── Telegram Widget helper ─────────────────────────────────────────────────────
 
 function openTelegramLogin(botUsername: string): Promise<Record<string, string>> {
@@ -190,36 +158,20 @@ function ProviderButton({
     setLoading(true);
     try {
       if (provider.auth_type === "oauth_redirect") {
-        // Redirect to backend OAuth start URL — no async needed
         window.location.href = `/api/auth/${provider.id}`;
         return;
       }
 
       if (provider.id === "google") {
-        if (isFirebaseAuthConfigured()) {
-          const credential = await signInWithFirebaseGoogle();
-          const session = await exchangeFirebaseIdToken(
-            await credential.user.getIdToken(),
-            getReferralCodeFromUrl(),
-          );
-          onSuccess(session.token);
+        if (!isFirebaseAuthConfigured()) {
+          onError("خدمة Firebase Google غير مفعلة حالياً");
           return;
         }
 
-        const clientId = provider.client_id ?? import.meta.env.VITE_GOOGLE_CLIENT_ID;
-        if (!clientId) {
-          onError("لم يتم إعداد Google Client ID");
-          return;
-        }
-        const credential = await requestGoogleCredential(clientId);
-        const res = await fetch("/api/auth/google", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "فشل التحقق من Google");
-        onSuccess(data.token);
+        const credential = await signInWithFirebaseGoogle();
+        const idToken = await credential.user.getIdToken();
+        const session = await exchangeFirebaseIdToken(idToken, getReferralCodeFromUrl());
+        onSuccess(session.token);
         return;
       }
 
@@ -282,8 +234,7 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
       .then((r) => r.json())
       .then((d) => setProviders(includeFirebaseGoogleProvider(d.providers ?? [])))
       .catch(() => {
-        // Fallback: if env var is set, show Google
-        if (import.meta.env.VITE_GOOGLE_CLIENT_ID || isFirebaseAuthConfigured()) {
+        if (isFirebaseAuthConfigured()) {
           setProviders([firebaseGoogleProvider()]);
         }
       })

@@ -636,6 +636,37 @@ export async function runMigrations() {
     `);
 
     logger.info("Migrations completed");
+
+    // ── Data Migration: Legacy providers to user_auth_identities ───────────
+    try {
+      const providersToMigrate = [
+        { column: "google_id", provider: "google.com" },
+        { column: "github_id", provider: "github.com" },
+        { column: "facebook_id", provider: "facebook.com" },
+        { column: "telegram_id", provider: "telegram.org" },
+      ];
+
+      for (const { column, provider } of providersToMigrate) {
+        await db.execute(sql`
+          INSERT INTO user_auth_identities (user_id, provider, provider_uid, firebase_uid, email, phone, email_verified, phone_verified)
+          SELECT 
+            id as user_id,
+            ${provider} as provider,
+            ${sql.raw(column)} as provider_uid,
+            firebase_uid,
+            email,
+            phone,
+            email_verified,
+            phone_verified
+          FROM users
+          WHERE ${sql.raw(column)} IS NOT NULL
+          ON CONFLICT (provider, provider_uid) DO NOTHING;
+        `);
+      }
+      logger.info("Legacy provider data migrated to user_auth_identities");
+    } catch (migErr) {
+      logger.error({ err: migErr }, "Data migration failed");
+    }
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

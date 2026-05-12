@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useId, useState, useEffect } from "react";
 import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
-import { Loader2, Phone } from "lucide-react";
+import { Loader2, Phone, RotateCcw } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { exchangeCurrentFirebaseUser, requireFirebaseAuth } from "@/lib/firebase-auth";
@@ -9,6 +9,8 @@ import { isFirebaseAuthConfigured } from "@/lib/firebase";
 interface FirebasePhoneSignInProps {
   dividerLabel?: string;
 }
+
+const COOLDOWN_TIME = 60;
 
 export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) {
   const recaptchaId = useId().replace(/:/g, "");
@@ -19,11 +21,33 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
 
   if (!isFirebaseAuthConfigured()) return null;
 
   const referralCode =
     new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
+
+  const getFriendlyError = (message: string) => {
+    if (message.includes("auth/captcha-check-failed"))
+      return "فشل التحقق من الكابتشا. حاول مرة أخرى.";
+    if (message.includes("auth/invalid-phone-number"))
+      return "رقم الهاتف غير صالح. تأكد من كتابته بشكل صحيح.";
+    if (message.includes("auth/too-many-requests"))
+      return "تم إرسال الكثير من الرسائل. انتظر قليلاً ثم حاول مجدداً.";
+    if (message.includes("auth/code-expired")) return "انتهت صلاحية الكود. اطلب كوداً جديداً.";
+    if (message.includes("auth/invalid-verification-code")) return "كود التحقق غير صحيح.";
+    if (message.includes("auth/internal-error"))
+      return "حدث خطأ داخلي. تأكد من تفعيل خدمة الهاتف في Firebase.";
+    return message;
+  };
 
   const sendCode = async () => {
     setError("");
@@ -33,8 +57,9 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       const appVerifier = new RecaptchaVerifier(auth, recaptchaId, { size: "invisible" });
       const result = await signInWithPhoneNumber(auth, toE164LibyanPhone(phone), appVerifier);
       setConfirmation(result);
+      setCooldown(COOLDOWN_TIME);
     } catch (err: any) {
-      setError(err.message ?? "تعذّر إرسال كود التحقق");
+      setError(getFriendlyError(err.message ?? "تعذّر إرسال كود التحقق"));
     } finally {
       setLoading(false);
     }
@@ -50,10 +75,16 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       setToken(session.token);
       navigate("/");
     } catch (err: any) {
-      setError(err.message ?? "فشل التحقق من الكود");
+      setError(getFriendlyError(err.message ?? "فشل التحقق من الكود"));
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetFlow = () => {
+    setConfirmation(null);
+    setCode("");
+    setError("");
   };
 
   return (
@@ -72,42 +103,64 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
             value={phone}
             onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
             placeholder="091XXXXXXX"
+            disabled={loading}
             dir="ltr"
-            className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50"
+            className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
           />
           <button
             type="button"
             onClick={sendCode}
-            disabled={loading || phone.length < 9}
-            className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2"
+            disabled={loading || phone.length < 9 || cooldown > 0}
+            className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-            إرسال
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : cooldown > 0 ? (
+              <span className="text-xs">{cooldown}s</span>
+            ) : (
+              <Phone className="w-4 h-4" />
+            )}
+            {cooldown > 0 ? "" : "إرسال"}
           </button>
         </div>
       ) : (
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="كود التحقق"
-            dir="ltr"
-            className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-sm outline-none focus:border-primary/50"
-          />
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="كود التحقق"
+              disabled={loading}
+              dir="ltr"
+              className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-sm outline-none focus:border-primary/50 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={verifyCode}
+              disabled={loading || code.length < 6}
+              className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              تحقق
+            </button>
+          </div>
           <button
-            type="button"
-            onClick={verifyCode}
-            disabled={loading || code.length < 6}
-            className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2"
+            onClick={resetFlow}
+            disabled={loading}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            تحقق
+            <RotateCcw className="w-3 h-3" />
+            تغيير الرقم
           </button>
         </div>
       )}
       <div id={recaptchaId} />
-      {error && <p className="text-xs text-destructive text-center pt-1">{error}</p>}
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 animate-in fade-in slide-in-from-top-1">
+          <p className="text-xs text-destructive text-center leading-relaxed">{error}</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,17 +6,36 @@ import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
-  User, Phone, Shield, Star, Wallet, LogOut, Eye, EyeOff,
-  CheckCircle, AlertCircle, Lock, Crown, ChevronLeft, Gift,
+  User,
+  Phone,
+  Shield,
+  Star,
+  Wallet,
+  LogOut,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  AlertCircle,
+  Lock,
+  Crown,
+  ChevronLeft,
+  Gift,
+  Link as LinkIcon,
+  Mail,
+  Smartphone,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CopyButton } from "@/components/CopyButton";
+import { AuthProviders } from "@/components/AuthProviders";
+import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
+import { queryClient } from "@/lib/query";
 
 const TIER_GRADIENTS: Record<string, string> = {
-  bronze:   "from-amber-600/14 via-card to-card border-amber-600/20",
-  silver:   "from-slate-400/14 via-card to-card border-slate-400/20",
-  gold:     "from-yellow-400/14 via-card to-card border-yellow-400/20",
+  bronze: "from-amber-600/14 via-card to-card border-amber-600/20",
+  silver: "from-slate-400/14 via-card to-card border-slate-400/20",
+  gold: "from-yellow-400/14 via-card to-card border-yellow-400/20",
   platinum: "from-cyan-400/14 via-card to-card border-cyan-400/20",
 };
 
@@ -26,33 +45,47 @@ export default function ProfilePage() {
   const { toast } = useToast();
 
   const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword]         = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent]         = useState(false);
-  const [showNew, setShowNew]                 = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [pwError, setPwError]     = useState("");
+  const [pwError, setPwError] = useState("");
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [togglingPassword, setTogglingPassword] = useState(false);
 
-  useEffect(() => { if (!token) navigate("/login"); }, [token]);
+  useEffect(() => {
+    if (!token) navigate("/login");
+  }, [token]);
 
-  const { data: user, isLoading } = useGetMe({
+  const { data: userData, isLoading } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
+
+  const user = userData as any;
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwError("");
     setPwSuccess(false);
 
-    if (!currentPassword.trim())  { setPwError("أدخل كلمة المرور الحالية"); return; }
-    if (newPassword.length < 8)   { setPwError("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل"); return; }
-    if (newPassword !== confirmPassword) { setPwError("كلمتا المرور غير متطابقتين"); return; }
+    if (!currentPassword.trim()) {
+      setPwError("أدخل كلمة المرور الحالية");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPwError("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError("كلمتا المرور غير متطابقتين");
+      return;
+    }
 
     setChangingPassword(true);
     try {
-      const res  = await fetch("/api/auth/change-password", {
+      const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -71,12 +104,42 @@ export default function ProfilePage() {
     }
   };
 
+  const handleTogglePasswordLogin = async (enabled: boolean) => {
+    setTogglingPassword(true);
+    try {
+      const res = await fetch("/api/auth/toggle-password-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "فشل تعديل حالة الدخول");
+
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      toast({
+        title: enabled ? "تم تفعيل كلمة المرور" : "تم إيقاف كلمة المرور",
+        description: enabled
+          ? "يمكنك الآن الدخول باستخدام رقم هاتفك وكلمة المرور."
+          : "يمكنك الآن الدخول فقط عبر Firebase (Google أو كود الهاتف).",
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "خطأ",
+        description: err.message,
+      });
+    } finally {
+      setTogglingPassword(false);
+    }
+  };
+
   const tier = user?.loyalty_tier ?? "bronze";
   if (!token) return null;
 
+  const hasFirebase = user?.linked_identities?.length > 0 || user?.firebase_uid;
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
-
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
@@ -89,12 +152,13 @@ export default function ProfilePage() {
       </div>
 
       <div className="space-y-4">
-
         {/* ── User identity card ──────────────────────────────── */}
         {isLoading ? (
           <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
         ) : user ? (
-          <div className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-lg shadow-black/8 ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}>
+          <div
+            className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-lg shadow-black/8 ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
+          >
             <div className="absolute inset-0 dot-grid opacity-25 pointer-events-none" />
             <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/7 blur-2xl pointer-events-none blob-drift" />
 
@@ -109,8 +173,10 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 {/* Tier badge */}
                 <div className="mb-2">
-                  <span className={`text-[11px] font-black px-2.5 py-1 rounded-full border ${tierColor(tier)} bg-current/8 border-current/18`}
-                    style={{ color: "inherit" }}>
+                  <span
+                    className={`text-[11px] font-black px-2.5 py-1 rounded-full border ${tierColor(tier)} bg-current/8 border-current/18`}
+                    style={{ color: "inherit" }}
+                  >
                     <span className={tierColor(tier)}>{tierLabel(tier)}</span>
                   </span>
                 </div>
@@ -124,11 +190,17 @@ export default function ProfilePage() {
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">الرصيد</div>
-                    <div className="font-black text-sm text-primary tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</div>
+                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">
+                      الرصيد
+                    </div>
+                    <div className="font-black text-sm text-primary tabular-nums">
+                      {formatCurrency(user.wallet_balance ?? 0)}
+                    </div>
                   </div>
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">النقاط</div>
+                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">
+                      النقاط
+                    </div>
                     <div className="font-black text-sm text-yellow-400 tabular-nums flex items-center gap-1">
                       <Star className="w-3 h-3" />
                       {user.loyalty_points ?? 0}
@@ -139,13 +211,17 @@ export default function ProfilePage() {
             </div>
 
             {/* Referral code strip */}
-            {(user as any).referral_code && (
+            {user.referral_code && (
               <div className="relative mt-4 pt-3.5 border-t border-border/20 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] text-muted-foreground/55 font-medium mb-0.5">رمز الإحالة</div>
-                  <div className="font-mono font-black tracking-widest text-sm">{(user as any).referral_code}</div>
+                  <div className="text-[10px] text-muted-foreground/55 font-medium mb-0.5">
+                    رمز الإحالة
+                  </div>
+                  <div className="font-mono font-black tracking-widest text-sm">
+                    {user.referral_code}
+                  </div>
                 </div>
-                <CopyButton text={(user as any).referral_code} label="نسخ" />
+                <CopyButton text={user.referral_code} label="نسخ" />
               </div>
             )}
           </div>
@@ -154,14 +230,46 @@ export default function ProfilePage() {
         {/* ── Quick links ─────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {[
-            { href: "/wallet",   icon: Wallet,  label: "المحفظة",  color: "text-primary",      bg: "bg-primary/10",      border: "border-primary/20"      },
-            { href: "/orders",   icon: Shield,  label: "طلباتي",   color: "text-blue-400",     bg: "bg-blue-400/10",     border: "border-blue-400/20"     },
-            { href: "/loyalty",  icon: Crown,   label: "الولاء",   color: "text-yellow-400",   bg: "bg-yellow-400/10",   border: "border-yellow-400/20"   },
-            { href: "/referrals",icon: Gift,    label: "الإحالات", color: "text-emerald-400",  bg: "bg-emerald-400/10",  border: "border-emerald-400/20"  },
-          ].map(item => (
+            {
+              href: "/wallet",
+              icon: Wallet,
+              label: "المحفظة",
+              color: "text-primary",
+              bg: "bg-primary/10",
+              border: "border-primary/20",
+            },
+            {
+              href: "/orders",
+              icon: Shield,
+              label: "طلباتي",
+              color: "text-blue-400",
+              bg: "bg-blue-400/10",
+              border: "border-blue-400/20",
+            },
+            {
+              href: "/loyalty",
+              icon: Crown,
+              label: "الولاء",
+              color: "text-yellow-400",
+              bg: "bg-yellow-400/10",
+              border: "border-yellow-400/20",
+            },
+            {
+              href: "/referrals",
+              icon: Gift,
+              label: "الإحالات",
+              color: "text-emerald-400",
+              bg: "bg-emerald-400/10",
+              border: "border-emerald-400/20",
+            },
+          ].map((item) => (
             <Link key={item.href} href={item.href}>
-              <div className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border/80 hover:shadow-md hover:shadow-black/8 hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}>
-                <div className={`w-10 h-10 rounded-xl ${item.bg} border ${item.border} flex items-center justify-center group-hover:scale-105 transition-transform duration-200`}>
+              <div
+                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border/80 hover:shadow-md hover:shadow-black/8 hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl ${item.bg} border ${item.border} flex items-center justify-center group-hover:scale-105 transition-transform duration-200`}
+                >
                   <item.icon className={`w-4.5 h-4.5 ${item.color}`} />
                 </div>
                 <span className="text-xs font-bold text-foreground/80">{item.label}</span>
@@ -171,119 +279,242 @@ export default function ProfilePage() {
           ))}
         </div>
 
-        {/* ── Change Password ─────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
+        {/* ── Linked Accounts ─────────────────────────────────── */}
+        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-1">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
-              <Lock className="w-3.5 h-3.5 text-primary" />
+              <LinkIcon className="w-3.5 h-3.5 text-primary" />
             </div>
-            <h2 className="font-black">تغيير كلمة المرور</h2>
+            <h2 className="font-black">الحسابات المرتبطة</h2>
           </div>
 
-          <form onSubmit={handleChangePassword} className="space-y-3.5">
-            {/* Current */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground/75">كلمة المرور الحالية</Label>
-              <div className="relative">
-                <Input
-                  type={showCurrent ? "text" : "password"}
-                  value={currentPassword}
-                  onChange={e => setCurrentPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="pl-10 h-10 text-sm rounded-xl bg-card"
-                  dir="ltr"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrent(v => !v)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
+          <div className="space-y-3">
+            {!isLoading &&
+              user?.linked_identities?.map((id: any) => (
+                <div
+                  key={id.provider}
+                  className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-muted/20"
                 >
-                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* New */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground/75">كلمة المرور الجديدة</Label>
-              <div className="relative">
-                <Input
-                  type={showNew ? "text" : "password"}
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="8 أحرف على الأقل"
-                  className="pl-10 h-10 text-sm rounded-xl bg-card"
-                  dir="ltr"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNew(v => !v)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
-                >
-                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Confirm */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground/75">تأكيد كلمة المرور</Label>
-              <div className="relative">
-                <Input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className={`h-10 text-sm rounded-xl bg-card transition-all ${
-                    confirmPassword && newPassword
-                      ? confirmPassword === newPassword
-                        ? "border-emerald-500/45 focus:border-emerald-500/60"
-                        : "border-destructive/45 focus:border-destructive/60"
-                      : ""
-                  }`}
-                  dir="ltr"
-                />
-                {confirmPassword && newPassword && (
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                    {confirmPassword === newPassword
-                      ? <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      : <AlertCircle className="w-4 h-4 text-destructive" />
-                    }
+                  <div className="flex items-center gap-3">
+                    {id.provider === "google.com" ? (
+                      <Mail className="w-4 h-4 text-blue-400" />
+                    ) : (
+                      <Smartphone className="w-4 h-4 text-emerald-400" />
+                    )}
+                    <div>
+                      <div className="text-xs font-bold">
+                        {id.provider === "google.com" ? "Google" : "رقم الهاتف (Firebase)"}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {id.email || id.phone}
+                      </div>
+                    </div>
                   </div>
-                )}
+                  <div className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
+                    نشط
+                  </div>
+                </div>
+              ))}
+
+            {!isLoading && !hasFirebase && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-black text-primary mb-1">
+                      أمن حسابك مع Firebase
+                    </div>
+                    <div className="text-[10px] text-muted-foreground leading-relaxed">
+                      نوصي بربط حسابك مع Google أو رقم الهاتف عبر نظامنا الجديد لتوفير أقصى درجات
+                      الأمان والسهولة.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <AuthProviders
+                    buttonClassName="w-full h-9 text-xs rounded-lg border border-primary/20 bg-background"
+                    onSuccess={() =>
+                      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() })
+                    }
+                  />
+                  <FirebasePhoneSignIn />
+                </div>
               </div>
+            )}
+
+            {!isLoading && hasFirebase && user?.linked_identities?.length < 2 && (
+              <div className="pt-2">
+                <p className="text-[10px] text-muted-foreground mb-3 px-1 text-center">
+                  يمكنك ربط مزيد من الطرق لتسهيل الدخول
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  {!user.linked_identities.find((i: any) => i.provider === "google.com") && (
+                    <AuthProviders
+                      buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
+                      onSuccess={() =>
+                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() })
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Security Options ────────────────────────────────── */}
+        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
+                <Shield className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <h2 className="font-black">خيارات الأمان</h2>
             </div>
 
-            {/* Feedback */}
-            {pwError && (
-              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/7 border border-destructive/18 px-3.5 py-2.5 rounded-xl shake">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {pwError}
-              </div>
-            )}
-            {pwSuccess && (
-              <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/7 border border-emerald-500/18 px-3.5 py-2.5 rounded-xl">
-                <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                تم تغيير كلمة المرور بنجاح
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-muted-foreground">دخول بكلمة المرور</span>
+              <Switch
+                checked={user?.password_login_enabled}
+                disabled={togglingPassword || !hasFirebase}
+                onCheckedChange={handleTogglePasswordLogin}
+              />
+            </div>
+          </div>
 
-            <Button
-              type="submit"
-              disabled={changingPassword}
-              className="w-full h-10 bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 rounded-xl cta-glow"
-            >
-              {changingPassword ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
-            </Button>
-          </form>
+          {!hasFirebase && (
+            <div className="flex items-center gap-2 text-[10px] text-destructive bg-destructive/5 border border-destructive/15 p-2 rounded-lg mb-4">
+              <AlertCircle className="w-3 h-3" />
+              يجب ربط حساب Google أو هاتف Firebase أولاً لإمكانية إيقاف كلمة المرور.
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                <Lock className="w-3.5 h-3.5 text-primary/70" />
+              </div>
+              <h3 className="text-sm font-bold">تغيير كلمة المرور</h3>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-3.5">
+              {/* Current */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-muted-foreground/75">
+                  كلمة المرور الحالية
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showCurrent ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="pl-10 h-10 text-sm rounded-xl bg-card"
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrent((v) => !v)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
+                  >
+                    {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* New */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-muted-foreground/75">
+                  كلمة المرور الجديدة
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showNew ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="8 أحرف على الأقل"
+                    className="pl-10 h-10 text-sm rounded-xl bg-card"
+                    dir="ltr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNew((v) => !v)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
+                  >
+                    {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-muted-foreground/75">
+                  تأكيد كلمة المرور
+                </Label>
+                <div className="relative">
+                  <Input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={`h-10 text-sm rounded-xl bg-card transition-all ${
+                      confirmPassword && newPassword
+                        ? confirmPassword === newPassword
+                          ? "border-emerald-500/45 focus:border-emerald-500/60"
+                          : "border-destructive/45 focus:border-destructive/60"
+                        : ""
+                    }`}
+                    dir="ltr"
+                  />
+                  {confirmPassword && newPassword && (
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                      {confirmPassword === newPassword ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-destructive" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Feedback */}
+              {pwError && (
+                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/7 border border-destructive/18 px-3.5 py-2.5 rounded-xl shake">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {pwError}
+                </div>
+              )}
+              {pwSuccess && (
+                <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/7 border border-emerald-500/18 px-3.5 py-2.5 rounded-xl">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                  تم تغيير كلمة المرور بنجاح
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                disabled={changingPassword || !user?.password_login_enabled}
+                className="w-full h-10 bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 rounded-xl cta-glow disabled:grayscale"
+              >
+                {changingPassword ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
+              </Button>
+            </form>
+          </div>
         </div>
 
         {/* ── Danger zone ─────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">
-          <h2 className="font-black text-xs text-muted-foreground/50 mb-3 uppercase tracking-wider">خيارات الحساب</h2>
+          <h2 className="font-black text-xs text-muted-foreground/50 mb-3 uppercase tracking-wider">
+            خيارات الحساب
+          </h2>
           <Button
             variant="outline"
-            onClick={() => { logout(); navigate("/"); }}
+            onClick={() => {
+              logout();
+              navigate("/");
+            }}
             className="w-full h-10 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold transition-all rounded-xl gap-2"
           >
             <LogOut className="w-4 h-4" />

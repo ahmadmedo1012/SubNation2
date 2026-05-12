@@ -35,6 +35,7 @@ export async function verifyFirebaseIdToken(idToken: string) {
 export async function resolveFirebaseSession(
   decoded: DecodedIdToken,
   referralCode?: string,
+  currentUserId?: number,
 ): Promise<FirebaseSessionResult> {
   const uid = decoded.uid;
   if (!uid) throw new FirebaseAuthError(401, "رمز Firebase غير صالح");
@@ -49,6 +50,7 @@ export async function resolveFirebaseSession(
   const photoUrl = typeof decoded.picture === "string" ? decoded.picture : null;
   const now = new Date();
 
+  // 1. Check if this Firebase UID is already linked to a user
   const [existingByFirebaseUid] = await db
     .select()
     .from(usersTable)
@@ -56,6 +58,10 @@ export async function resolveFirebaseSession(
     .limit(1);
 
   if (existingByFirebaseUid) {
+    if (currentUserId && existingByFirebaseUid.id !== currentUserId) {
+      throw new FirebaseAuthError(409, "هذا الحساب مرتبط بمستخدم آخر بالفعل");
+    }
+
     const [updated] = await updateUserIdentity(existingByFirebaseUid.id, {
       uid,
       provider,
@@ -82,6 +88,42 @@ export async function resolveFirebaseSession(
     return { user: updated, isNewUser: false, provider };
   }
 
+  // 2. If currentUserId is provided, link this new identity to them
+  if (currentUserId) {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, currentUserId))
+      .limit(1);
+    if (!user) throw new FirebaseAuthError(404, "المستخدم غير موجود");
+
+    const [updated] = await updateUserIdentity(user.id, {
+      uid,
+      provider,
+      providerUid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      displayName,
+      photoUrl,
+      now,
+    });
+    await upsertIdentity(
+      updated.id,
+      provider,
+      providerUid,
+      uid,
+      phone,
+      email,
+      emailVerified,
+      phoneVerified,
+      now,
+    );
+    return { user: updated, isNewUser: false, provider };
+  }
+
+  // 3. Search for existing users that match this identity
   const candidates = await findLinkCandidates(
     uid,
     provider,
@@ -124,6 +166,7 @@ export async function resolveFirebaseSession(
     return { user: updated, isNewUser: false, provider };
   }
 
+  // 4. Create new user if no match found
   let referredById: number | undefined;
   if (referralCode) {
     const [referrer] = await db
@@ -210,18 +253,47 @@ async function findLinkCandidates(
   email: string | null,
   emailVerified: boolean,
 ) {
-  const conditions = [eq(usersTable.firebaseUid, uid)];
-  if (phone) conditions.push(eq(usersTable.phone, phone));
-  if (provider === "google.com") conditions.push(eq(usersTable.googleId, providerUid));
-  if (email && emailVerified) conditions.push(eq(usersTable.email, email));
+  const users = new Map<number, typeof usersTable.$inferSelect>();
 
-  const rows = await db
+  // Match by users table columns
+  const userConditions = [eq(usersTable.firebaseUid, uid)];
+  if (phone) userConditions.push(eq(usersTable.phone, phone));
+  if (provider === "google.com") userConditions.push(eq(usersTable.googleId, providerUid));
+  if (email && emailVerified) userConditions.push(eq(usersTable.email, email));
+
+  const userRows = await db
     .select()
     .from(usersTable)
-    .where(or(...conditions));
-  const map = new Map<number, typeof usersTable.$inferSelect>();
-  for (const row of rows) map.set(row.id, row);
-  return [...map.values()];
+    .where(or(...userConditions));
+  for (const row of userRows) users.set(row.id, row);
+
+  // Match by user_auth_identities table
+  const identityConditions = [
+    eq(userAuthIdentitiesTable.firebaseUid, uid),
+    and(
+      eq(userAuthIdentitiesTable.provider, provider),
+      eq(userAuthIdentitiesTable.providerUid, providerUid),
+    ),
+  ];
+  if (phone) identityConditions.push(eq(userAuthIdentitiesTable.phone, phone));
+  if (email && emailVerified) identityConditions.push(eq(userAuthIdentitiesTable.email, email));
+
+  const identityRows = await db
+    .select({ userId: userAuthIdentitiesTable.userId })
+    .from(userAuthIdentitiesTable)
+    .where(or(...identityConditions));
+
+  if (identityRows.length > 0) {
+    const matchedUserIds = identityRows.map((r) => r.userId);
+    // Use a simpler approach to avoid sql template issues if possible, or just be careful
+    for (const userId of matchedUserIds) {
+      if (users.has(userId)) continue;
+      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (user) users.set(user.id, user);
+    }
+  }
+
+  return [...users.values()];
 }
 
 async function updateUserIdentity(
