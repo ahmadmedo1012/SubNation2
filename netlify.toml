@@ -1,7 +1,0 @@
-[build]
-  command = "pnpm --filter @workspace/subnation... run build"
-  publish = "frontend/dist/public"
-
-[build.environment]
-  # Exclude generated frontend output from secrets scan.
-  SECRETS_SCAN_OMIT_PATHS = "frontend/dist/public"
