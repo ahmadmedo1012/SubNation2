@@ -73,8 +73,20 @@ If the MCP connection fails:
 ## Database Connection
 
 The project uses Neon PostgreSQL:
+
 - Host: ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech
 - Database: neondb
 - User: neondb_owner
 
 This is the same database used by the application backend.
+
+## Next Steps
+
+To complete the setup:
+
+1. Get your Neon API key from the console
+2. Add it to `.env` as `NEON_API_KEY=your_key_here`
+3. Restart your IDE/terminal to load the environment variable
+4. The Neon MCP server will automatically connect
+
+The `.claude/mcp.json` file is gitignored and should be configured locally in your development environment.
