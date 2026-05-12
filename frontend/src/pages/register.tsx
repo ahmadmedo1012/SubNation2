@@ -88,7 +88,7 @@ export default function RegisterPage() {
             <Logo size="lg" />
           </div>
           <h1 className="text-xl font-black tracking-tight">إنشاء حساب جديد</h1>
-          <p className="text-muted-foreground/65 text-sm mt-1.5">
+          <p className="text-muted-foreground text-sm mt-1.5">
             انضم واشترك بأفضل الخدمات الرقمية
           </p>
         </div>
@@ -142,7 +142,7 @@ export default function RegisterPage() {
               {phoneTouched && phoneError ? (
                 <p className="text-xs text-destructive flex items-center gap-1">{phoneError}</p>
               ) : !phoneTouched ? (
-                <p className="text-xs text-muted-foreground/55">
+                <p className="text-xs text-muted-foreground">
                   أرقام ليبيانا (091/093) أو مدار (092/094) — 10 أرقام
                 </p>
               ) : null}
@@ -169,7 +169,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 -m-1 rounded-lg touch-target flex items-center justify-center"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 -m-1 rounded-lg touch-target flex items-center justify-center"
                   aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -202,7 +202,7 @@ export default function RegisterPage() {
             <div className="space-y-1.5">
               <Label htmlFor="referral" className="text-sm font-bold">
                 رمز الإحالة{" "}
-                <span className="text-muted-foreground/50 font-normal text-xs">(اختياري)</span>
+                <span className="text-muted-foreground font-normal text-xs">(اختياري)</span>
               </Label>
               <Input
                 id="referral"
@@ -240,7 +240,7 @@ export default function RegisterPage() {
             <AuthProviders dividerLabel="أو سجل عبر" />
           </div>
 
-          <div className="mt-5 text-center text-sm text-muted-foreground/65">
+          <div className="mt-5 text-center text-sm text-muted-foreground">
             لديك حساب؟{" "}
             <Link
               href="/login"

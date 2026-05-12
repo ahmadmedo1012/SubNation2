@@ -487,7 +487,7 @@ export default function AdminCouponsPage() {
                           <AlertCircle className="w-2.5 h-2.5" /> استُنفد
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/30 text-muted-foreground/60 border border-border/40">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/30 text-muted-foreground border border-border/40">
                           <XCircle className="w-2.5 h-2.5" /> معطل
                         </span>
                       )}

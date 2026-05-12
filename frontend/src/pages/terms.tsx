@@ -70,7 +70,7 @@ function TermsContent() {
         </p>
       </Section>
 
-      <p className="text-xs text-muted-foreground/40 pt-4 border-t border-border/30">
+      <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
         آخر تحديث: مايو ٢٠٢٦
       </p>
     </div>
@@ -117,7 +117,7 @@ function PrivacyContent() {
         </p>
       </Section>
 
-      <p className="text-xs text-muted-foreground/40 pt-4 border-t border-border/30">
+      <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
         آخر تحديث: مايو ٢٠٢٦
       </p>
     </div>
@@ -169,7 +169,7 @@ export default function TermsPage() {
       </div>
 
       {/* Footer note */}
-      <p className="text-center text-xs text-muted-foreground/40 mt-8">
+      <p className="text-center text-xs text-muted-foreground mt-8">
         للاستفسار والتواصل:{" "}
         <Link href="/support">
           <span className="underline underline-offset-2 hover:text-muted-foreground cursor-pointer transition-colors">صفحة الدعم</span>

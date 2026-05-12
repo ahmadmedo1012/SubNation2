@@ -210,7 +210,7 @@ export default function AdminTicketsPage() {
                           )}
                           <span className="font-bold text-sm truncate leading-snug flex-1">{t.title}</span>
                           {(t.last_reply_at || t.created_at) && (
-                            <span className="text-[10px] text-muted-foreground/40 shrink-0 tabular-nums">
+                            <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
                               {formatRelativeTime(t.last_reply_at ?? t.created_at)}
                             </span>
                           )}
@@ -218,17 +218,17 @@ export default function AdminTicketsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">{t.user_phone}</span>
                           {t.category && (
-                            <span className="text-[11px] text-muted-foreground/55 bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
+                            <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
                               {CATEGORIES[t.category] ?? t.category}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`text-[11px] px-2 py-0.5 rounded-full border font-bold ${sc.color}`}>{sc.label}</span>
-                          <span className="text-xs text-muted-foreground/50">{t.reply_count} ردود</span>
+                          <span className="text-xs text-muted-foreground">{t.reply_count} ردود</span>
                         </div>
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-muted-foreground/30 shrink-0 mt-0.5 group-hover:text-muted-foreground transition-colors" />
+                      <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-muted-foreground transition-colors" />
                     </div>
                   </button>
                 );

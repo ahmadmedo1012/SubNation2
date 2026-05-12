@@ -102,7 +102,7 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       {dividerLabel && (
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-border/50" />
-          <span className="text-xs text-muted-foreground/60">{dividerLabel}</span>
+          <span className="text-xs text-muted-foreground">{dividerLabel}</span>
           <div className="flex-1 h-px bg-border/50" />
         </div>
       )}

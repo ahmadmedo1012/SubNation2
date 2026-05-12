@@ -54,7 +54,7 @@ export function MobileNav() {
                     ${
                       active
                         ? "w-[22px] h-[22px] text-primary"
-                        : "w-[20px] h-[20px] text-muted-foreground/70"
+                        : "w-[20px] h-[20px] text-muted-foreground"
                     }
                   `}
                 />
@@ -63,7 +63,7 @@ export function MobileNav() {
                 <span
                   className={`
                   relative z-10 text-[9.5px] leading-none font-semibold transition-all duration-200
-                  ${active ? "text-primary font-bold" : "text-muted-foreground/60"}
+                  ${active ? "text-primary font-bold" : "text-muted-foreground"}
                 `}
                 >
                   {tab.label}

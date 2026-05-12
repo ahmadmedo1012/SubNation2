@@ -11,20 +11,20 @@ export function Footer() {
     <footer
       className={`border-t border-border/25 bg-background mt-12 ${token ? "mb-[72px] md:mb-0" : ""}`}
     >
-      <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground/45">
+      <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="font-medium">
           © {new Date().getFullYear()} SubNation — سوق الاشتراكات الرقمية في ليبيا
         </span>
         <div className="flex items-center gap-4">
           <Link href="/terms">
-            <span className="hover:text-muted-foreground/70 transition-colors cursor-pointer">
+            <span className="hover:text-muted-foreground transition-colors cursor-pointer">
               الشروط والأحكام
             </span>
           </Link>
           <span className="w-px h-3 bg-border/40" />
           <Link href="/terms">
             <span
-              className="hover:text-muted-foreground/70 transition-colors cursor-pointer"
+              className="hover:text-muted-foreground transition-colors cursor-pointer"
               onClick={() =>
                 setTimeout(() => {
                   const el = document.querySelector('[data-tab="privacy"]');
@@ -37,7 +37,7 @@ export function Footer() {
           </Link>
           <span className="w-px h-3 bg-border/40" />
           <Link href="/support">
-            <span className="hover:text-muted-foreground/70 transition-colors cursor-pointer">
+            <span className="hover:text-muted-foreground transition-colors cursor-pointer">
               الدعم
             </span>
           </Link>

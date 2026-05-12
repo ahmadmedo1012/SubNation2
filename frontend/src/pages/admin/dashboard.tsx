@@ -379,7 +379,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {card.sparkKey && <TrendBadge data={chartData} dataKey={card.sparkKey} />}
-                      <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground/20 group-hover:text-primary transition-colors" />
+                      <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
                   </div>
                   <div className="font-black text-xl leading-none mb-0.5 tabular-nums">
@@ -387,7 +387,7 @@ export default function AdminDashboardPage() {
                   </div>
                   <div className="text-[11px] text-muted-foreground">{card.label}</div>
                   {card.sub && (
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">{card.sub}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{card.sub}</div>
                   )}
                   {/* Mini sparkline */}
                   {card.sparkKey && chartData.length >= 3 && (
@@ -404,7 +404,7 @@ export default function AdminDashboardPage() {
         {/* Quick actions strip */}
         {stats && !statsLoading && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-widest hidden sm:inline">
+            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest hidden sm:inline">
               إجراءات:
             </span>
             {(stats.pending_topups ?? 0) > 0 && (
@@ -582,7 +582,7 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
                       قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
                     </p>
                   </div>
@@ -602,7 +602,7 @@ export default function AdminDashboardPage() {
                 ) : displayData.every(
                     (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
                   ) ? (
-                  <div className="h-28 flex items-center justify-center text-muted-foreground/40 text-xs">
+                  <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
                     لا يوجد استخدام كوبونات في هذه الفترة
                   </div>
                 ) : (
@@ -678,7 +678,7 @@ export default function AdminDashboardPage() {
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
-                      className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground/50 hover:text-muted-foreground"
+                      className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-muted-foreground"
                       title="تصدير CSV"
                     >
                       <Download className="w-3 h-3" />
@@ -755,11 +755,11 @@ export default function AdminDashboardPage() {
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-xs truncate">{order.product_name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="font-mono text-[10px] text-muted-foreground/60">
+                        <span className="font-mono text-[10px] text-muted-foreground">
                           {order.user_phone}
                         </span>
                         {order.created_at && (
-                          <span className="text-[10px] text-muted-foreground/35">
+                          <span className="text-[10px] text-muted-foreground">
                             {formatDate(order.created_at)}
                           </span>
                         )}

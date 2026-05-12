@@ -124,7 +124,7 @@ function RejectModal({
 
         <div className="mb-4">
           <label className="text-xs font-bold text-muted-foreground block mb-1.5">
-            سبب الرفض <span className="text-muted-foreground/50">(اختياري)</span>
+            سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
           </label>
           <textarea
             value={note}
@@ -138,7 +138,7 @@ function RejectModal({
               if ((e.ctrlKey || e.metaKey) && e.key === "Enter") onConfirm(note);
             }}
           />
-          <p className="text-[10px] text-muted-foreground/50 mt-1">
+          <p className="text-[10px] text-muted-foreground mt-1">
             <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
             للتأكيد ·
             <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
@@ -238,7 +238,7 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" })
     <button
       onClick={copy}
       title="نسخ"
-      className={`shrink-0 rounded transition-colors ${copied ? "text-emerald-400" : "text-muted-foreground/40 hover:text-muted-foreground"}`}
+      className={`shrink-0 rounded transition-colors ${copied ? "text-emerald-400" : "text-muted-foreground hover:text-muted-foreground"}`}
     >
       {copied ? (
         <Check className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
@@ -566,7 +566,7 @@ export default function AdminTopupsPage() {
                     {s.label}
                     {count > 0 && (
                       <span
-                        className={`text-[10px] font-black ${active ? "text-muted-foreground" : "text-muted-foreground/50"}`}
+                        className={`text-[10px] font-black ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
                       >
                         {count}
                       </span>
@@ -593,7 +593,7 @@ export default function AdminTopupsPage() {
             <p className="font-bold text-sm">
               {statusFilter === "pending" ? "لا توجد طلبات معلقة" : "لا توجد طلبات في هذه الفئة"}
             </p>
-            <p className="text-xs text-muted-foreground/50 mt-1">ستظهر الطلبات هنا عند ورودها</p>
+            <p className="text-xs text-muted-foreground mt-1">ستظهر الطلبات هنا عند ورودها</p>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -640,7 +640,7 @@ export default function AdminTopupsPage() {
                     </span>
                     <MethodBadge method={t.payment_method ?? "mobile_transfer"} />
                     {t.payment_method !== "lypay" && <NetworkBadge net={t.payment_network} />}
-                    <span className="mr-auto text-xs text-muted-foreground/50 tabular-nums flex items-center gap-1">
+                    <span className="mr-auto text-xs text-muted-foreground tabular-nums flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       {t.created_at ? formatDate(t.created_at) : ""}
                     </span>

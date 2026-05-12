@@ -55,7 +55,7 @@ export default function LoginPage() {
             <Logo size="lg" />
           </div>
           <h1 className="text-xl font-black tracking-tight">تسجيل الدخول</h1>
-          <p className="text-muted-foreground/65 text-sm mt-1.5">أدخل بيانات حسابك للمتابعة</p>
+          <p className="text-muted-foreground text-sm mt-1.5">أدخل بيانات حسابك للمتابعة</p>
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
@@ -95,7 +95,7 @@ export default function LoginPage() {
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-muted-foreground/70 hover:text-primary transition-colors"
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
                 >
                   نسيت كلمة المرور؟
                 </Link>
@@ -115,7 +115,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 -m-1 rounded-lg touch-target flex items-center justify-center"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 -m-1 rounded-lg touch-target flex items-center justify-center"
                   aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -159,7 +159,7 @@ export default function LoginPage() {
             <FirebasePhoneSignIn dividerLabel="أو عبر كود الهاتف" />
           </div>
 
-          <div className="mt-5 text-center text-sm text-muted-foreground/65">
+          <div className="mt-5 text-center text-sm text-muted-foreground">
             ليس لديك حساب؟{" "}
             <Link
               href="/register"

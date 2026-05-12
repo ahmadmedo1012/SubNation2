@@ -362,7 +362,7 @@ export default function AdminOrdersPage() {
                     <div className="font-black text-base tabular-nums text-primary">
                       {formatCurrency(totalRevenueAll)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
                       {(allOrders as any[]).length} طلب
                     </div>
                   </div>
@@ -376,7 +376,7 @@ export default function AdminOrdersPage() {
                     <div className="font-black text-base tabular-nums text-emerald-400">
                       {formatCurrency(totalDiscounts)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
                       {totalRevenueAll + totalDiscounts > 0
                         ? `${(((totalDiscounts || 0) / ((totalRevenueAll || 0) + (totalDiscounts || 0))) * 100).toFixed(1)}% من المبيعات`
                         : "—"}
@@ -390,7 +390,7 @@ export default function AdminOrdersPage() {
                       طلبات بكوبون
                     </div>
                     <div className="font-black text-base tabular-nums">{couponOrders.length}</div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
                       {(allOrders as any[]).length > 0
                         ? `${(((couponOrders.length || 0) / (allOrders as any[]).length) * 100).toFixed(0)}% من الكل`
                         : "—"}
@@ -406,7 +406,7 @@ export default function AdminOrdersPage() {
                     <div className="font-black text-base tabular-nums">
                       {Object.keys(couponMap).length}
                     </div>
-                    <div className="text-[10px] text-muted-foreground/50 mt-0.5">كود فريد</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">كود فريد</div>
                   </div>
                 </div>
 
@@ -423,7 +423,7 @@ export default function AdminOrdersPage() {
                         const barWidth = maxUses > 0 ? (c.uses / maxUses) * 100 : 0;
                         return (
                           <div key={c.code} className="flex items-center gap-3 group">
-                            <span className="text-[10px] font-black text-muted-foreground/40 w-4 shrink-0 text-center">
+                            <span className="text-[10px] font-black text-muted-foreground w-4 shrink-0 text-center">
                               {i + 1}
                             </span>
                             <span className="font-mono font-black text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
@@ -451,7 +451,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 {topCoupons.length === 0 && (
-                  <p className="text-xs text-muted-foreground/40 text-center py-2">
+                  <p className="text-xs text-muted-foreground text-center py-2">
                     لم يُستخدم أي كوبون بعد
                   </p>
                 )}
@@ -545,7 +545,7 @@ export default function AdminOrdersPage() {
                   {s.label}
                   {count > 0 && (
                     <span
-                      className={`text-[10px] font-black px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground/60"}`}
+                      className={`text-[10px] font-black px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
                     >
                       {count}
                     </span>
@@ -557,7 +557,7 @@ export default function AdminOrdersPage() {
 
           {/* Date range quick-filter */}
           <div className="flex items-center gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
-            <Calendar className="w-3 h-3 text-muted-foreground/50 mx-1" />
+            <Calendar className="w-3 h-3 text-muted-foreground mx-1" />
             {DATE_RANGES.map((dr) => (
               <button
                 key={dr.days}
@@ -622,7 +622,7 @@ export default function AdminOrdersPage() {
                       <th className="px-4 py-3 w-8">
                         <button
                           onClick={toggleSelectAll}
-                          className="text-muted-foreground/40 hover:text-primary transition-colors"
+                          className="text-muted-foreground hover:text-primary transition-colors"
                         >
                           {allFilteredSelected ? (
                             <CheckSquare className="w-3.5 h-3.5 text-primary" />
@@ -668,7 +668,7 @@ export default function AdminOrdersPage() {
                                   e.stopPropagation();
                                   toggleSelect(order.id);
                                 }}
-                                className="text-muted-foreground/30 hover:text-primary transition-colors"
+                                className="text-muted-foreground hover:text-primary transition-colors"
                               >
                                 {isSelected ? (
                                   <CheckSquare className="w-3.5 h-3.5 text-primary" />
@@ -730,7 +730,7 @@ export default function AdminOrdersPage() {
                               {order.created_at ? formatDate(order.created_at) : "—"}
                             </td>
                             <td
-                              className="px-4 py-2.5 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors"
+                              className="px-4 py-2.5 text-muted-foreground group-hover:text-muted-foreground transition-colors"
                               onClick={() =>
                                 setExpandedRow(expandedRow === order.id ? null : order.id)
                               }
@@ -783,7 +783,7 @@ export default function AdminOrdersPage() {
                                     !order.delivered_password &&
                                     !order.delivered_extra_details &&
                                     !order.coupon_code && (
-                                      <span className="text-muted-foreground/50">
+                                      <span className="text-muted-foreground">
                                         لا توجد بيانات تسليم
                                       </span>
                                     )}
@@ -803,7 +803,7 @@ export default function AdminOrdersPage() {
                   {search && ` · نتائج "${search}"`}
                   {filtered.length > 0 && ` · إجمالي ${formatCurrency(totalRevenue)}`}
                 </span>
-                <span className="hidden sm:inline text-muted-foreground/40">
+                <span className="hidden sm:inline text-muted-foreground">
                   انقر على الصف لعرض بيانات التسليم
                 </span>
               </div>
@@ -825,7 +825,7 @@ export default function AdminOrdersPage() {
                           e.stopPropagation();
                           toggleSelect(order.id);
                         }}
-                        className="mt-0.5 text-muted-foreground/30 hover:text-primary transition-colors shrink-0"
+                        className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
                       >
                         {isSelected ? (
                           <CheckSquare className="w-4 h-4 text-primary" />
@@ -850,7 +850,7 @@ export default function AdminOrdersPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 border-t border-border/30 pt-2">
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2">
                       <span className="font-mono">{order.order_code}</span>
                       {order.created_at && (
                         <>

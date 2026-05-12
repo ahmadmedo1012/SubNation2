@@ -352,7 +352,7 @@ export default function ProductPage() {
               {product.name}
             </h1>
             {product.description && (
-              <p className="text-muted-foreground/80 leading-relaxed text-sm">
+              <p className="text-muted-foreground leading-relaxed text-sm">
                 {product.description}
               </p>
             )}
@@ -365,7 +365,7 @@ export default function ProductPage() {
                 {formatCurrency(displayPrice)}
               </div>
               {product.sale_price && (
-                <div className="text-muted-foreground/40 text-sm line-through mt-1.5 tabular-nums">
+                <div className="text-muted-foreground text-sm line-through mt-1.5 tabular-nums">
                   {formatCurrency(product.price)}
                 </div>
               )}
@@ -374,7 +374,7 @@ export default function ProductPage() {
               className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
                 product.is_available
                   ? "bg-emerald-500/10 border-emerald-500/22 text-emerald-400"
-                  : "bg-muted/50 border-border/50 text-muted-foreground/60"
+                  : "bg-muted/50 border-border/50 text-muted-foreground"
               }`}
             >
               {product.is_available ? (
@@ -416,7 +416,7 @@ export default function ProductPage() {
                 <span className="text-[11px] font-bold text-foreground leading-tight">
                   {item.label}
                 </span>
-                <span className="text-[10px] text-muted-foreground/65 leading-tight">
+                <span className="text-[10px] text-muted-foreground leading-tight">
                   {item.desc}
                 </span>
               </div>
@@ -684,7 +684,7 @@ function CtaBlock({
     return (
       <div className={compact ? "flex items-center gap-3" : ""}>
         {compact && (
-          <div className="flex-1 font-black text-xl text-muted-foreground/55 tabular-nums">
+          <div className="flex-1 font-black text-xl text-muted-foreground tabular-nums">
             {formatCurrency(displayPrice)}
           </div>
         )}

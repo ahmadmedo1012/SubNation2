@@ -221,7 +221,7 @@ export function NotificationBell() {
                 </div>
               </div>
               <p className="text-sm font-bold text-foreground/60 mb-0.5">لا توجد إشعارات</p>
-              <p className="text-xs text-muted-foreground/60">ستظهر هنا آخر التحديثات</p>
+              <p className="text-xs text-muted-foreground">ستظهر هنا آخر التحديثات</p>
             </div>
           ) : (
             <div className="max-h-[440px] overflow-y-auto divide-y divide-border/25 scrollbar-none">
@@ -271,11 +271,11 @@ export function NotificationBell() {
                           )}
                         </div>
                         {n.message && (
-                          <p className="text-xs text-muted-foreground/75 mt-0.5 line-clamp-2 leading-relaxed">
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
                             {n.message}
                           </p>
                         )}
-                        <p className="text-[10px] text-muted-foreground/45 mt-1.5 font-medium">
+                        <p className="text-[10px] text-muted-foreground mt-1.5 font-medium">
                           {formatRelativeTime(n.created_at)}
                         </p>
                       </div>
@@ -296,7 +296,7 @@ export function NotificationBell() {
                         {!n.is_read && (
                           <button
                             onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
-                            className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground px-2 py-1 rounded-lg hover:bg-muted/40 transition-all duration-150"
+                            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2 py-1 rounded-lg hover:bg-muted/40 transition-all duration-150"
                           >
                             <CheckCheck className="w-2.5 h-2.5" />
                             تمييز كمقروء
@@ -313,7 +313,7 @@ export function NotificationBell() {
           {/* Footer */}
           {notifs.length > 0 && (
             <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center">
-              <p className="text-xs text-muted-foreground/50">
+              <p className="text-xs text-muted-foreground">
                 {notifs.length} إشعار
               </p>
             </div>

@@ -244,7 +244,7 @@ export default function AdminReferralsPage() {
               <Gift className="w-6 h-6 opacity-20" />
             </div>
             <p className="font-bold text-foreground/50 text-sm">لا توجد إحالات</p>
-            <p className="text-xs mt-1 text-muted-foreground/60">
+            <p className="text-xs mt-1 text-muted-foreground">
               {search ? `لا نتائج لـ "${search}"` : "لم يتم تسجيل إحالات بعد"}
             </p>
           </div>

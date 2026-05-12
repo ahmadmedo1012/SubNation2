@@ -216,7 +216,7 @@ export default function AdminAlertsPage() {
                 </div>
               ) : (
                 <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteAll(true)}
-                  className="gap-1.5 text-xs h-8 text-muted-foreground/60 hover:text-destructive">
+                  className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive">
                   <Trash2 className="w-3.5 h-3.5" />
                   حذف الكل
                 </Button>
@@ -266,7 +266,7 @@ export default function AdminAlertsPage() {
                 {tab.label}
                 {cnt > 0 && (
                   <span className={`text-[10px] font-black px-1.5 py-px rounded-full ${
-                    filter === tab.value ? "bg-primary/15 text-primary" : "bg-muted/60 text-muted-foreground/70"
+                    filter === tab.value ? "bg-primary/15 text-primary" : "bg-muted/60 text-muted-foreground"
                   }`}>
                     {cnt}
                   </span>
@@ -286,13 +286,13 @@ export default function AdminAlertsPage() {
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
             <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
-              {filter === "unread" ? <Bell className="w-7 h-7 text-muted-foreground/30" /> : <BellOff className="w-7 h-7 text-muted-foreground/30" />}
+              {filter === "unread" ? <Bell className="w-7 h-7 text-muted-foreground" /> : <BellOff className="w-7 h-7 text-muted-foreground" />}
             </div>
             <div className="text-center">
               <div className="font-semibold text-foreground/60">
                 {filter === "unread" ? "لا توجد تنبيهات غير مقروءة" : "لا توجد تنبيهات"}
               </div>
-              <div className="text-xs mt-1 text-muted-foreground/50">
+              <div className="text-xs mt-1 text-muted-foreground">
                 {filter === "unread" ? "أنت على اطلاع كامل بكل شيء ✓" : "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"}
               </div>
             </div>
@@ -303,9 +303,9 @@ export default function AdminAlertsPage() {
               <div key={group.label}>
                 {/* Date group header */}
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-[11px] font-bold text-muted-foreground/50 uppercase tracking-widest">{group.label}</span>
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{group.label}</span>
                   <div className="flex-1 h-px bg-border/40" />
-                  <span className="text-[10px] text-muted-foreground/30">{group.items.length}</span>
+                  <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -347,7 +347,7 @@ export default function AdminAlertsPage() {
                           )}
                           <div className="mt-1">
                             <span
-                              className="text-[11px] text-muted-foreground/50"
+                              className="text-[11px] text-muted-foreground"
                               title={formatDate(alert.createdAt)}
                             >
                               {formatRelativeTime(alert.createdAt)}
@@ -382,7 +382,7 @@ export default function AdminAlertsPage() {
             ))}
 
             {/* Footer summary */}
-            <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground/40">
+            <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
               <Inbox className="w-3.5 h-3.5" />
               <span>{alerts.length} تنبيه إجمالاً · {unreadCount} غير مقروء</span>
             </div>

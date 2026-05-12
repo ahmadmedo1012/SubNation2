@@ -152,13 +152,13 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
 function StepDot({ n, label, active }: { n: number; label: string; active: boolean }) {
   return (
     <div
-      className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground/55"}`}
+      className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground"}`}
     >
       <div
         className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-200 shadow-sm ${
           active
             ? "bg-primary text-white shadow-primary/30"
-            : "bg-muted/50 border border-border/50 text-muted-foreground/40"
+            : "bg-muted/50 border border-border/50 text-muted-foreground"
         }`}
       >
         {n}
@@ -171,7 +171,7 @@ function StepDot({ n, label, active }: { n: number; label: string; active: boole
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[11px] text-muted-foreground/65 mb-0.5 font-medium">{label}</div>
+      <div className="text-[11px] text-muted-foreground mb-0.5 font-medium">{label}</div>
       <div className="font-bold text-sm">{value}</div>
     </div>
   );
@@ -320,7 +320,7 @@ export default function WalletPage() {
         </div>
         <div>
           <h1 className="text-xl font-black">المحفظة</h1>
-          <p className="text-xs text-muted-foreground/70">شحن الرصيد وعرض السجل</p>
+          <p className="text-xs text-muted-foreground">شحن الرصيد وعرض السجل</p>
         </div>
       </div>
 
@@ -358,7 +358,7 @@ export default function WalletPage() {
                                 : "bg-cyan-400"
                         }`}
                       />
-                      <span className="text-muted-foreground/65 text-xs">المستوى:</span>
+                      <span className="text-muted-foreground text-xs">المستوى:</span>
                       <span className={`font-black text-xs ${tierColor(tier)}`}>
                         {tierLabel(tier)}
                       </span>
@@ -368,7 +368,7 @@ export default function WalletPage() {
                       <span className="font-black tabular-nums text-yellow-400">
                         {wallet.loyalty_points ?? 0}
                       </span>
-                      <span className="text-muted-foreground/55">نقطة</span>
+                      <span className="text-muted-foreground">نقطة</span>
                     </div>
                   </div>
                 </div>
@@ -420,7 +420,7 @@ export default function WalletPage() {
 
             {/* Method tabs */}
             <div className="mb-5">
-              <p className="text-xs text-muted-foreground/75 mb-2.5 font-bold">طريقة الدفع</p>
+              <p className="text-xs text-muted-foreground mb-2.5 font-bold">طريقة الدفع</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   {
@@ -449,7 +449,7 @@ export default function WalletPage() {
                       className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${method === m.id ? "bg-primary shadow-sm shadow-primary/30" : "bg-muted/60"}`}
                     >
                       <m.icon
-                        className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground/65"}`}
+                        className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground"}`}
                       />
                     </div>
                     <div className="min-w-0">
@@ -458,7 +458,7 @@ export default function WalletPage() {
                       >
                         <span className="block leading-snug">{m.title}</span>
                       </div>
-                      <div className="text-xs text-muted-foreground/60 leading-snug">{m.sub}</div>
+                      <div className="text-xs text-muted-foreground leading-snug">{m.sub}</div>
                     </div>
                   </button>
                 ))}
@@ -480,7 +480,7 @@ export default function WalletPage() {
                         className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
                           network === n.value
                             ? `${n.border} ${n.bg} ${n.color} shadow-sm`
-                            : "border-border/50 text-muted-foreground/65 hover:text-foreground hover:border-border/80"
+                            : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
                         }`}
                       >
                         {n.label}
@@ -503,7 +503,7 @@ export default function WalletPage() {
                         className={`flex-1 min-w-[52px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
                           amount === String(p)
                             ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
-                            : "border-border/50 bg-muted/40 text-muted-foreground/80 hover:bg-muted/70 hover:text-foreground"
+                            : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                         }`}
                       >
                         {p}
@@ -529,7 +529,7 @@ export default function WalletPage() {
                 {/* Step 3: Phone */}
                 <div>
                   <StepDot n={3} label="رقم هاتف المُرسل" active />
-                  <p className="text-xs text-muted-foreground/60 mt-2 mb-3">
+                  <p className="text-xs text-muted-foreground mt-2 mb-3">
                     حوّل الرصيد إلى:{" "}
                     <span className="font-black text-foreground/80 font-mono">091-3456789</span> ثم
                     أدخل رقمك أدناه
@@ -658,7 +658,7 @@ export default function WalletPage() {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
                       <div className="min-w-0">
-                        <div className="text-[11px] text-muted-foreground/65 mb-0.5 font-medium">
+                        <div className="text-[11px] text-muted-foreground mb-0.5 font-medium">
                           IBAN
                         </div>
                         <div className="font-mono font-bold text-sm break-all">
@@ -684,7 +684,7 @@ export default function WalletPage() {
                           className={`flex-1 min-w-[64px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
                             amount === String(p)
                               ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
-                              : "border-border/50 bg-muted/40 text-muted-foreground/80 hover:bg-muted/70"
+                              : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70"
                           }`}
                         >
                           {p}
@@ -765,10 +765,10 @@ export default function WalletPage() {
         <div className="lg:col-span-2">
           <div className="bg-card border border-border/55 rounded-2xl p-5 lg:sticky lg:top-20">
             <div className="flex items-center gap-2.5 mb-4">
-              <TrendingUp className="w-4 h-4 text-muted-foreground/60" />
+              <TrendingUp className="w-4 h-4 text-muted-foreground" />
               <h2 className="font-black text-sm">سجل الشحن</h2>
               {(topups as any[]).length > 0 && (
-                <span className="mr-auto text-xs text-muted-foreground/55 font-medium">
+                <span className="mr-auto text-xs text-muted-foreground font-medium">
                   {(topups as any[]).length} طلب
                 </span>
               )}
@@ -782,7 +782,7 @@ export default function WalletPage() {
                 <p className="font-black text-base mb-1.5 text-foreground/80">
                   لا توجد طلبات شحن بعد
                 </p>
-                <p className="text-xs text-muted-foreground/65 mb-5 max-w-[200px] mx-auto leading-relaxed">
+                <p className="text-xs text-muted-foreground mb-5 max-w-[200px] mx-auto leading-relaxed">
                   ابدأ بشحن محفظتك لشراء اشتراكاتك المفضلة
                 </p>
               </div>
@@ -800,7 +800,7 @@ export default function WalletPage() {
                           {formatCurrency(t.amount)}
                         </span>
                         {t.payment_network && (
-                          <span className="text-[10px] text-muted-foreground/50 font-medium">
+                          <span className="text-[10px] text-muted-foreground font-medium">
                             · {networkLabel(t.payment_network)}
                           </span>
                         )}
@@ -811,7 +811,7 @@ export default function WalletPage() {
                         >
                           {statusLabel(t.status)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground/40">
+                        <span className="text-[10px] text-muted-foreground">
                           {formatDate(t.created_at)}
                         </span>
                       </div>

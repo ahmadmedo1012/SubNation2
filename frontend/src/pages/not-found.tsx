@@ -43,7 +43,7 @@ export default function NotFound() {
 
         {/* Quick links */}
         <div className="pt-2 border-t border-border/40">
-          <p className="text-[11px] text-muted-foreground/50 mb-3 uppercase tracking-widest">روابط سريعة</p>
+          <p className="text-[11px] text-muted-foreground mb-3 uppercase tracking-widest">روابط سريعة</p>
           <div className="flex flex-wrap justify-center gap-2">
             {[
               { href: "/", label: "المتجر" },

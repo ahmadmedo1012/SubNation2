@@ -204,7 +204,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
           {/* Description */}
           {product.description && (
-            <p className="text-muted-foreground/65 text-[11px] line-clamp-2 leading-relaxed mb-2.5">
+            <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed mb-2.5">
               {product.description}
             </p>
           )}
@@ -216,7 +216,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 {formatCurrency(displayPrice)}
               </span>
               {product.sale_price && (
-                <span className="text-muted-foreground/30 text-[10px] line-through tabular-nums">
+                <span className="text-muted-foreground text-[10px] line-through tabular-nums">
                   {formatCurrency(product.price)}
                 </span>
               )}
@@ -237,7 +237,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 </div>
               )
             ) : (
-              <span className="text-[10px] text-muted-foreground/35">غير متوفر</span>
+              <span className="text-[10px] text-muted-foreground">غير متوفر</span>
             )}
           </div>
 

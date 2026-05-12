@@ -91,7 +91,7 @@ export default function OrdersPage() {
           </div>
           <div>
             <h1 className="text-2xl font-black leading-tight">طلباتي</h1>
-            <p className="text-sm text-muted-foreground/80">سجل مشترياتك ومتابعة حالتها</p>
+            <p className="text-sm text-muted-foreground">سجل مشترياتك ومتابعة حالتها</p>
           </div>
         </div>
         {!isLoading && orders.length > 0 && (
@@ -136,7 +136,7 @@ export default function OrdersPage() {
             </div>
           </div>
           <p className="font-black text-lg mb-1.5 text-foreground/80">لا توجد طلبات بعد</p>
-          <p className="text-sm text-muted-foreground/65 mb-7 max-w-xs mx-auto leading-relaxed">
+          <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
             ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي
           </p>
           <Link href="/">
@@ -184,11 +184,11 @@ export default function OrdersPage() {
                         {order.product_name}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="font-mono text-[11px] bg-muted/50 text-muted-foreground/70 px-1.5 py-0.5 rounded border border-border/30">
+                        <span className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30">
                           {order.order_code}
                         </span>
                         {order.created_at && (
-                          <span className="text-[11px] text-muted-foreground/50">
+                          <span className="text-[11px] text-muted-foreground">
                             {formatDateShort(order.created_at)}
                           </span>
                         )}
@@ -205,7 +205,7 @@ export default function OrdersPage() {
                     <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
                       <div className="text-right min-w-0">
                         {(order as any).discount_amount > 0 && (
-                          <div className="text-[10px] text-muted-foreground/40 line-through tabular-nums">
+                          <div className="text-[10px] text-muted-foreground line-through tabular-nums">
                             {formatCurrency((order.amount ?? 0) + (order as any).discount_amount)}
                           </div>
                         )}
@@ -219,7 +219,7 @@ export default function OrdersPage() {
                           <span>{statusLabel(order.status)}</span>
                         </div>
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-muted-foreground/35 group-hover:text-primary group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
+                      <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
                     </div>
                   </div>
                 </div>

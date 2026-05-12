@@ -36,7 +36,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="group flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-muted/15 transition-colors">
       <div className="min-w-0">
-        <div className="text-[10px] text-muted-foreground/55 font-bold uppercase tracking-wider mb-0.5">
+        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">
           {label}
         </div>
         <div className="font-mono font-bold text-sm break-all leading-snug">{value}</div>
@@ -46,7 +46,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring ${
           copied
             ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/22"
-            : "bg-muted/40 text-muted-foreground/60 border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+            : "bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
         }`}
       >
         {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -82,13 +82,13 @@ function StatusSteps({ status }: { status: string }) {
           className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
             done
               ? "bg-emerald-500/15 border-emerald-500/45 text-emerald-400"
-              : "bg-muted/40 border-border/40 text-muted-foreground/30"
+              : "bg-muted/40 border-border/40 text-muted-foreground"
           }`}
         >
           {done ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
         </div>
         <span
-          className={`text-[10px] font-bold whitespace-nowrap ${done ? "text-emerald-400" : "text-muted-foreground/35"}`}
+          className={`text-[10px] font-bold whitespace-nowrap ${done ? "text-emerald-400" : "text-muted-foreground"}`}
         >
           تم التسليم
         </span>
@@ -135,10 +135,10 @@ export default function OrderDetailPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-24 text-center">
         <div className="w-16 h-16 rounded-2xl bg-muted/55 border border-border/35 mx-auto mb-4 flex items-center justify-center">
-          <Package className="w-7 h-7 text-muted-foreground/30" />
+          <Package className="w-7 h-7 text-muted-foreground" />
         </div>
         <p className="font-bold text-lg mb-1">الطلب غير موجود</p>
-        <p className="text-sm text-muted-foreground/60 mb-5">
+        <p className="text-sm text-muted-foreground mb-5">
           تأكد من رقم الطلب أو عُد لقائمة طلباتك
         </p>
         <Button onClick={() => navigate("/orders")} variant="outline" className="gap-2 rounded-xl">
@@ -207,7 +207,7 @@ export default function OrderDetailPage() {
                   </h1>
                   <button
                     onClick={copyOrderCode}
-                    className="flex items-center gap-1 text-muted-foreground/45 hover:text-primary text-[11px] font-mono transition-colors group/code"
+                    className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[11px] font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
                     <Copy className="w-2.5 h-2.5 opacity-0 group-hover/code:opacity-100 transition-opacity" />
@@ -226,7 +226,7 @@ export default function OrderDetailPage() {
 
             {/* Amount row */}
             <div className="flex items-center justify-between pt-3 border-t border-border/20">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground/55">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="w-3 h-3" />
                 {order.created_at && (
                   <span title={formatDate(order.created_at)}>
@@ -236,7 +236,7 @@ export default function OrderDetailPage() {
               </div>
               <div className="text-right">
                 {originalAmount && (
-                  <div className="text-[11px] text-muted-foreground/35 line-through tabular-nums">
+                  <div className="text-[11px] text-muted-foreground line-through tabular-nums">
                     {formatCurrency(originalAmount)}
                   </div>
                 )}
@@ -270,7 +270,7 @@ export default function OrderDetailPage() {
               </div>
               <div>
                 <div className="font-black text-sm">بيانات الحساب</div>
-                <div className="text-[10px] text-muted-foreground/55">انسخ بياناتك بأمان</div>
+                <div className="text-[10px] text-muted-foreground">انسخ بياناتك بأمان</div>
               </div>
             </div>
             <div className="divide-y divide-border/15">
@@ -281,7 +281,7 @@ export default function OrderDetailPage() {
                 <CopyField label="كلمة المرور" value={order.delivered_password} />
               )}
               {order.delivered_extra_details && (
-                <div className="px-5 py-3.5 text-sm text-muted-foreground/75 leading-relaxed">
+                <div className="px-5 py-3.5 text-sm text-muted-foreground leading-relaxed">
                   {order.delivered_extra_details}
                 </div>
               )}
@@ -300,10 +300,10 @@ export default function OrderDetailPage() {
           order.status !== "refunded" && (
             <div className="bg-card border border-border/50 rounded-2xl p-7 text-center float-in stagger-1">
               <div className="w-12 h-12 rounded-2xl bg-muted/50 border border-border/35 mx-auto mb-3 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-muted-foreground/35 pulse-dot" />
+                <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
               </div>
               <p className="font-bold text-sm mb-1">قيد الإعداد</p>
-              <p className="text-xs text-muted-foreground/55 leading-relaxed max-w-xs mx-auto">
+              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
                 سيتم تسليم بيانات الحساب فور اكتمال الطلب. ستصلك إشعار عند الجاهزية.
               </p>
             </div>
@@ -319,7 +319,7 @@ export default function OrderDetailPage() {
             <p className="font-bold text-sm mb-1 text-red-400">
               {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
             </p>
-            <p className="text-xs text-muted-foreground/55 leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {order.status === "refunded"
                 ? "تم إعادة المبلغ إلى محفظتك تلقائياً"
                 : "يرجى التواصل مع الدعم الفني إن احتجت مساعدة"}
@@ -348,7 +348,7 @@ export default function OrderDetailPage() {
         {/* Support */}
         <div className="text-center py-1 pb-2">
           <Link href="/support">
-            <button className="text-xs text-muted-foreground/45 hover:text-primary/80 transition-colors inline-flex items-center gap-1.5 press-spring">
+            <button className="text-xs text-muted-foreground hover:text-primary/80 transition-colors inline-flex items-center gap-1.5 press-spring">
               <ExternalLink className="w-3 h-3" />
               مشكلة في هذا الطلب؟ تواصل مع الدعم
             </button>

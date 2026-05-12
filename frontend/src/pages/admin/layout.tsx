@@ -165,9 +165,9 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
             placeholder="بحث في الطلبات، المستخدمين، المنتجات..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/45 text-right"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
           />
-          <kbd className="text-[10px] font-mono text-muted-foreground/40 bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
+          <kbd className="text-[10px] font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
             esc
           </kbd>
         </div>
@@ -183,7 +183,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 
             {results.orders.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   الطلبات
                 </div>
                 {results.orders.map((o: any) => (
@@ -211,7 +211,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 
             {results.users.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   المستخدمون
                 </div>
                 {results.users.map((u: any) => (
@@ -236,7 +236,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 
             {results.products.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   المنتجات
                 </div>
                 {results.products.map((p: any) => (
@@ -249,7 +249,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
                       {p.image_url ? (
                         <img src={p.image_url} className="w-full h-full object-contain p-1" />
                       ) : (
-                        <Package className="w-3.5 h-3.5 text-muted-foreground/40" />
+                        <Package className="w-3.5 h-3.5 text-muted-foreground" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -267,13 +267,13 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
 
         {/* Idle hint */}
         {query.length < 2 && (
-          <div className="px-4 py-6 text-center text-xs text-muted-foreground/40">
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">
             ابحث باسم المنتج، رقم الطلب، أو رقم الهاتف
           </div>
         )}
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-border bg-muted/10 flex items-center gap-4 text-[10px] text-muted-foreground/35">
+        <div className="px-4 py-2 border-t border-border bg-muted/10 flex items-center gap-4 text-[10px] text-muted-foreground">
           <span>
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↵</kbd>{" "}
             اختيار
@@ -501,7 +501,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           <div key={section.label}>
             {!collapsed && (
               <div className="px-2 mb-1.5">
-                <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   {section.label}
                 </span>
               </div>

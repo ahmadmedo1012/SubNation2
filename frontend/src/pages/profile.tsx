@@ -202,7 +202,7 @@ export default function ProfilePage() {
         </div>
         <div>
           <h1 className="text-xl font-black">حسابي</h1>
-          <p className="text-xs text-muted-foreground/70">إدارة بيانات ومعلومات حسابك</p>
+          <p className="text-xs text-muted-foreground">إدارة بيانات ومعلومات حسابك</p>
         </div>
       </div>
 
@@ -238,14 +238,14 @@ export default function ProfilePage() {
 
                 {/* Phone */}
                 <div className="flex items-center gap-1.5 text-sm font-bold mb-3" dir="ltr">
-                  <Phone className="w-3.5 h-3.5 text-muted-foreground/50" />
+                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>{user.phone}</span>
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">
+                    <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">
                       الرصيد
                     </div>
                     <div className="font-black text-sm text-primary tabular-nums">
@@ -253,7 +253,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground/60 mb-0.5 font-medium">
+                    <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">
                       النقاط
                     </div>
                     <div className="font-black text-sm text-yellow-400 tabular-nums flex items-center gap-1">
@@ -269,7 +269,7 @@ export default function ProfilePage() {
             {user.referral_code && (
               <div className="relative mt-4 pt-3.5 border-t border-border/20 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] text-muted-foreground/55 font-medium mb-0.5">
+                  <div className="text-[10px] text-muted-foreground font-medium mb-0.5">
                     رمز الإحالة
                   </div>
                   <div className="font-mono font-black tracking-widest text-sm">
@@ -328,7 +328,7 @@ export default function ProfilePage() {
                   <item.icon className={`w-4.5 h-4.5 ${item.color}`} />
                 </div>
                 <span className="text-xs font-bold text-foreground/80">{item.label}</span>
-                <ChevronLeft className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
             </Link>
           ))}
@@ -378,7 +378,7 @@ export default function ProfilePage() {
                     <button
                       onClick={() => handleUnlinkProvider(id.provider, id.providerUid)}
                       disabled={unlinkingProvider === id.providerUid}
-                      className="text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed p-1"
+                      className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed p-1"
                       title="فصل الحساب"
                     >
                       {unlinkingProvider === id.providerUid ? (
@@ -486,7 +486,7 @@ export default function ProfilePage() {
             <form onSubmit={handleChangePassword} className="space-y-3.5">
               {/* Current */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground/75">
+                <Label className="text-xs font-bold text-muted-foreground">
                   كلمة المرور الحالية
                 </Label>
                 <div className="relative">
@@ -501,7 +501,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowCurrent((v) => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
                   >
                     {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -510,7 +510,7 @@ export default function ProfilePage() {
 
               {/* New */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground/75">
+                <Label className="text-xs font-bold text-muted-foreground">
                   كلمة المرور الجديدة
                 </Label>
                 <div className="relative">
@@ -525,7 +525,7 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowNew((v) => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
                   >
                     {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -534,7 +534,7 @@ export default function ProfilePage() {
 
               {/* Confirm */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground/75">
+                <Label className="text-xs font-bold text-muted-foreground">
                   تأكيد كلمة المرور
                 </Label>
                 <div className="relative">
@@ -591,7 +591,7 @@ export default function ProfilePage() {
 
         {/* ── Danger zone ─────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">
-          <h2 className="font-black text-xs text-muted-foreground/50 mb-3 uppercase tracking-wider">
+          <h2 className="font-black text-xs text-muted-foreground mb-3 uppercase tracking-wider">
             خيارات الحساب
           </h2>
           <Button

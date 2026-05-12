@@ -198,7 +198,7 @@ function ProviderCard({
           {enabled ? (
             <ToggleRight className="w-8 h-8 text-primary" />
           ) : (
-            <ToggleLeft className="w-8 h-8 text-muted-foreground/40" />
+            <ToggleLeft className="w-8 h-8 text-muted-foreground" />
           )}
         </button>
 
@@ -239,7 +239,7 @@ function ProviderCard({
                         : (field.placeholder ?? "")
                     }
                     dir="ltr"
-                    className="w-full bg-background border border-border/70 rounded-lg px-3 py-2 text-sm font-mono text-left outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/40 pr-9"
+                    className="w-full bg-background border border-border/70 rounded-lg px-3 py-2 text-sm font-mono text-left outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground pr-9"
                   />
                   {field.isSecret && (
                     <button
@@ -247,7 +247,7 @@ function ProviderCard({
                       onClick={() =>
                         setShowSecret((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                       }
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
                     >
                       {showSecret[field.key] ? (
                         <EyeOff className="w-3.5 h-3.5" />
@@ -684,7 +684,7 @@ export default function AdminSettingsPage() {
                     <>أعد تشغيل السيرفر</>,
                   ].map((step, i) => (
                     <li key={i} className="flex gap-2">
-                      <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground/60 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                      <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
                         {i + 1}
                       </span>
                       <span>{step}</span>
@@ -767,7 +767,7 @@ export default function AdminSettingsPage() {
                       <span className="font-medium text-sm">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-muted-foreground/70">
+                      <span className="text-xs font-mono text-muted-foreground">
                         {item.value}
                       </span>
                       <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />

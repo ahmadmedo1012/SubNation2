@@ -277,7 +277,7 @@ export default function ForgotPasswordPage() {
               </Button>
 
               <button type="button" onClick={() => { setStep("phone"); setOtp(""); setNewPassword(""); setConfirmPassword(""); setResetError(""); }}
-                className="w-full text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors py-1">
+                className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors py-1">
                 ← العودة وتغيير الرقم
               </button>
             </form>

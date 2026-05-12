@@ -204,7 +204,7 @@ export default function SupportPage() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground/70">
+            <p className="text-xs text-muted-foreground">
               {selectedTicket
                 ? `#${selectedTicket.id} · ${formatRelativeTime(selectedTicket.created_at)}`
                 : "نحن هنا للمساعدة على مدار الساعة"}
@@ -257,7 +257,7 @@ export default function SupportPage() {
               {STATUS_CONFIG[selectedTicket.status]?.label}
             </span>
             {selectedTicket.category && (
-              <span className="text-[11px] text-muted-foreground/60 bg-muted/40 border border-border/40 px-2 py-1 rounded-full flex items-center gap-1">
+              <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/40 px-2 py-1 rounded-full flex items-center gap-1">
                 {categoryIcon(selectedTicket.category)} {categoryLabel(selectedTicket.category)}
               </span>
             )}
@@ -266,7 +266,7 @@ export default function SupportPage() {
           {/* Messages */}
           {ticketLoading ? (
             <div className="p-10 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground/50" />
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
             <div
@@ -279,7 +279,7 @@ export default function SupportPage() {
                     <MessageSquare className="w-5 h-5 opacity-20" />
                   </div>
                   <p className="text-sm font-medium">لا توجد رسائل بعد</p>
-                  <p className="text-xs text-muted-foreground/55 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     اكتب ردك أدناه لبدء المحادثة
                   </p>
                 </div>
@@ -328,7 +328,7 @@ export default function SupportPage() {
                           {r.message}
                         </div>
                         <div
-                          className={`flex items-center gap-1 text-[10px] text-muted-foreground/45 px-1 ${isUser ? "flex-row-reverse" : ""}`}
+                          className={`flex items-center gap-1 text-[10px] text-muted-foreground px-1 ${isUser ? "flex-row-reverse" : ""}`}
                         >
                           <Clock className="w-2.5 h-2.5" />
                           <span title={formatDate(r.created_at)}>
@@ -396,7 +396,7 @@ export default function SupportPage() {
           <form onSubmit={handleCreate} className="p-5 space-y-4">
             {/* Category pills */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground/80 mb-2.5 block">
+              <Label className="text-xs font-bold text-muted-foreground mb-2.5 block">
                 الفئة
               </Label>
               <div className="flex flex-wrap gap-2">
@@ -408,7 +408,7 @@ export default function SupportPage() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 press-spring min-h-[36px] ${
                       form.category === c.value
                         ? "bg-primary text-white border-primary shadow-sm shadow-primary/20"
-                        : "bg-muted/35 border-border/50 text-muted-foreground/80 hover:text-foreground hover:border-border/80"
+                        : "bg-muted/35 border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
                     }`}
                   >
                     <span>{c.icon}</span>
@@ -419,7 +419,7 @@ export default function SupportPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground/80">عنوان المشكلة *</Label>
+              <Label className="text-xs font-bold text-muted-foreground">عنوان المشكلة *</Label>
               <Input
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -430,14 +430,14 @@ export default function SupportPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground/80">تفاصيل المشكلة *</Label>
+              <Label className="text-xs font-bold text-muted-foreground">تفاصيل المشكلة *</Label>
               <textarea
                 value={form.message}
                 onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
                 placeholder="اشرح المشكلة بالتفصيل لنتمكن من مساعدتك بشكل أسرع..."
                 required
                 rows={4}
-                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground/45"
+                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground"
                 dir="rtl"
               />
             </div>
@@ -490,7 +490,7 @@ export default function SupportPage() {
               <Headphones className="w-6 h-6 opacity-25" />
             </div>
             <p className="font-bold text-sm mb-1.5">لا توجد تذاكر دعم</p>
-            <p className="text-xs text-muted-foreground/55 mb-5 leading-relaxed max-w-xs mx-auto">
+            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
               أنشئ تذكرة جديدة وسيرد فريقنا خلال دقائق
             </p>
             <Button
@@ -537,11 +537,11 @@ export default function SupportPage() {
                           {s.label}
                         </span>
                         {t.category && (
-                          <span className="text-[11px] text-muted-foreground/50 bg-muted/30 border border-border/35 px-2 py-0.5 rounded-full">
+                          <span className="text-[11px] text-muted-foreground bg-muted/30 border border-border/35 px-2 py-0.5 rounded-full">
                             {categoryIcon(t.category)} {categoryLabel(t.category)}
                           </span>
                         )}
-                        <span className="text-[11px] text-muted-foreground/40">
+                        <span className="text-[11px] text-muted-foreground">
                           {formatRelativeTime(t.created_at)}
                         </span>
                       </div>
@@ -551,7 +551,7 @@ export default function SupportPage() {
                           className={`text-xs px-3 py-1.5 rounded-xl leading-relaxed line-clamp-1 border ${
                             hasAdminReply
                               ? "bg-primary/7 text-primary/75 border-primary/15"
-                              : "bg-muted/35 text-muted-foreground/60 border-border/35"
+                              : "bg-muted/35 text-muted-foreground border-border/35"
                           }`}
                         >
                           <span className="font-bold ml-1">
@@ -562,7 +562,7 @@ export default function SupportPage() {
                       )}
                     </div>
 
-                    <ChevronLeft className="w-4 h-4 text-muted-foreground/25 shrink-0 mt-0.5 group-hover:text-primary group-hover:-translate-x-0.5 transition-all duration-150" />
+                    <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-primary group-hover:-translate-x-0.5 transition-all duration-150" />
                   </div>
                 </button>
               );

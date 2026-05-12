@@ -105,7 +105,7 @@ export function FlashSaleBanner() {
 
           <button
             onClick={() => setDismissed(true)}
-            className="p-1 rounded-md hover:bg-card/60 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            className="p-1 rounded-md hover:bg-card/60 text-muted-foreground hover:text-muted-foreground transition-colors"
             aria-label="إغلاق الشريط"
           >
             <X className="w-3 h-3" />

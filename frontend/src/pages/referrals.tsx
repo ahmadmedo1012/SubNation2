@@ -343,7 +343,7 @@ export default function ReferralsPage() {
               </div>
             </div>
             <p className="text-sm font-bold text-foreground/50 mb-1">لا توجد إحالات بعد</p>
-            <p className="text-xs text-muted-foreground/60 max-w-[220px] mx-auto leading-relaxed">
+            <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
               شارك رابطك مع أصدقائك وابدأ في كسب النقاط
             </p>
           </div>

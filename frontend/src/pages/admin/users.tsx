@@ -287,7 +287,7 @@ export default function AdminUsersPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-wrap gap-6">
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2">
+                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                   مستوى الولاء
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -307,7 +307,7 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2">
+                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
                   الترتيب
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -665,7 +665,7 @@ export default function AdminUsersPage() {
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground flex items-center justify-between">
                 <span>{sorted.length} مستخدم</span>
-                <span className="text-muted-foreground/40">انقر على قلم التحرير للتعديل</span>
+                <span className="text-muted-foreground">انقر على قلم التحرير للتعديل</span>
               </div>
             </div>
 

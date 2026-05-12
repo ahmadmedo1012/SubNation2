@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </p>
               {this.state.error && (
                 <details className="mt-4 text-right">
-                  <summary className="text-xs text-muted-foreground/40 cursor-pointer hover:text-muted-foreground transition-colors">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground transition-colors">
                     تفاصيل الخطأ (للمطورين)
                   </summary>
                   <pre className="mt-2 text-[10px] text-red-400/70 bg-red-500/5 border border-red-500/10 rounded-lg p-3 overflow-auto text-left leading-relaxed">

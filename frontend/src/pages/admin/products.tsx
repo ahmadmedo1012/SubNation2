@@ -289,7 +289,7 @@ export default function AdminProductsPage() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/15">
               <div>
                 <h2 className="font-black text-sm">{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</h2>
-                <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                <p className="text-[10px] text-muted-foreground mt-0.5">
                   <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded">⌘S</kbd> للحفظ ·
                   <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded mr-1">Esc</kbd> للإغلاق
                 </p>
@@ -431,7 +431,7 @@ export default function AdminProductsPage() {
                       {/* Checkbox */}
                       <button
                         onClick={() => toggleSelect(product.id)}
-                        className="mt-0.5 shrink-0 text-muted-foreground/40 hover:text-primary transition-colors"
+                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
                       >
                         {isSelected
                           ? <CheckSquare className="w-4 h-4 text-primary" />
@@ -480,7 +480,7 @@ export default function AdminProductsPage() {
                             {product.stock_count} وحدة
                           </button>
                         )}
-                        <span className="text-muted-foreground/50">·</span>
+                        <span className="text-muted-foreground">·</span>
                         <span className="text-muted-foreground">{product.order_count} طلب</span>
                       </div>
                     </div>
