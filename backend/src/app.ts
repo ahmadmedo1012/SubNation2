@@ -108,8 +108,9 @@ if (process.env.REDIS_URL) {
 
 const getStore = () => {
   if (redisClient) {
+    const client = redisClient;
     return new RedisStore({
-      sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+      sendCommand: (...args: string[]) => client.sendCommand(args),
     });
   }
   return undefined; // Falls back to default memory store
