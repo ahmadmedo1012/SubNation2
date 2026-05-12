@@ -79,10 +79,7 @@ export default defineConfig({
           }
           // Isolate Firebase into its own async chunk so it never blocks
           // initial page render — it’s only needed post-auth-check.
-          if (
-            id.includes("node_modules/firebase") ||
-            id.includes("node_modules/@firebase")
-          ) {
+          if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase")) {
             return "vendor-firebase";
           }
         },
