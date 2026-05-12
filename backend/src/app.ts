@@ -40,14 +40,13 @@ app.use(
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
-          "'unsafe-inline'",
-          "'unsafe-eval'",
+          ...(isProduction ? [] : ["'unsafe-inline'", "'unsafe-eval'"]),
           "https://apis.google.com",
           "https://accounts.google.com",
           "https://www.gstatic.com",
           "https://www.googleapis.com",
         ],
-        scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers (onclick, etc.)
+        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // Tailwind needs inline styles
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
@@ -64,7 +63,14 @@ app.use(
         frameSrc: ["'self'", "https://accounts.google.com", "https://*.firebaseapp.com"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,
+        "trusted-types": ["default", "'allow-duplicates'"],
+        "require-trusted-types-for": ["'script'"],
       },
+    },
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
     },
     crossOriginEmbedderPolicy: false, // Allow external images
     crossOriginOpenerPolicy: { policy: "unsafe-none" },
