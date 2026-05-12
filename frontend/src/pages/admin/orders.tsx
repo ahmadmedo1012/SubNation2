@@ -1,31 +1,31 @@
-import React, { useState, useEffect } from "react";
-import { useListAdminOrders, getListAdminOrdersQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
-import { AdminLayout } from "./layout";
+import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListAdminOrdersQueryKey, useListAdminOrders } from "@workspace/api-client-react";
 import {
-  ShoppingBag,
-  Search,
-  Download,
-  X,
-  ChevronDown,
+  BadgePercent,
+  BarChart2,
   Calendar,
   CheckSquare,
-  Square,
-  Zap,
-  TrendingUp,
-  Tag,
-  BarChart2,
-  ChevronUp,
-  Ticket,
-  BadgePercent,
-  RefreshCw,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
+  Download,
+  RefreshCw,
+  Search,
+  ShoppingBag,
+  Square,
+  Tag,
+  Ticket,
+  TrendingUp,
+  X,
+  Zap,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 const BULK_STATUSES = [
   { value: "completed", label: "مكتمل", color: "text-emerald-400" },
@@ -378,7 +378,7 @@ export default function AdminOrdersPage() {
                     </div>
                     <div className="text-[10px] text-muted-foreground/50 mt-0.5">
                       {totalRevenueAll + totalDiscounts > 0
-                        ? `${((totalDiscounts / (totalRevenueAll + totalDiscounts)) * 100).toFixed(1)}% من المبيعات`
+                        ? `${(((totalDiscounts || 0) / ((totalRevenueAll || 0) + (totalDiscounts || 0))) * 100).toFixed(1)}% من المبيعات`
                         : "—"}
                     </div>
                   </div>
@@ -392,7 +392,7 @@ export default function AdminOrdersPage() {
                     <div className="font-black text-base tabular-nums">{couponOrders.length}</div>
                     <div className="text-[10px] text-muted-foreground/50 mt-0.5">
                       {(allOrders as any[]).length > 0
-                        ? `${((couponOrders.length / (allOrders as any[]).length) * 100).toFixed(0)}% من الكل`
+                        ? `${(((couponOrders.length || 0) / (allOrders as any[]).length) * 100).toFixed(0)}% من الكل`
                         : "—"}
                     </div>
                   </div>

@@ -1,12 +1,13 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number): string {
-  return `${amount.toFixed(2)} د.ل`;
+export function formatCurrency(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || isNaN(amount)) return "0.00 د.ل";
+  return `${Number(amount).toFixed(2)} د.ل`;
 }
 
 export function formatDate(dateStr: string): string {
@@ -20,28 +21,45 @@ export function formatDate(dateStr: string): string {
 }
 
 export function tierLabel(tier: string): string {
-  const labels: Record<string, string> = { bronze: "برونزي", silver: "فضي", gold: "ذهبي", platinum: "بلاتيني" };
+  const labels: Record<string, string> = {
+    bronze: "برونزي",
+    silver: "فضي",
+    gold: "ذهبي",
+    platinum: "بلاتيني",
+  };
   return labels[tier] ?? tier;
 }
 
 export function tierColor(tier: string): string {
   const colors: Record<string, string> = {
-    bronze: "text-amber-600", silver: "text-slate-400", gold: "text-yellow-400", platinum: "text-cyan-400",
+    bronze: "text-amber-600",
+    silver: "text-slate-400",
+    gold: "text-yellow-400",
+    platinum: "text-cyan-400",
   };
   return colors[tier] ?? "text-muted-foreground";
 }
 
 export function categoryLabel(cat: string | null | undefined): string {
-  const labels: Record<string, string> = { streaming: "بث مباشر", music: "موسيقى", gaming: "ألعاب", productivity: "إنتاجية" };
+  const labels: Record<string, string> = {
+    streaming: "بث مباشر",
+    music: "موسيقى",
+    gaming: "ألعاب",
+    productivity: "إنتاجية",
+  };
   return cat ? (labels[cat] ?? cat) : "عام";
 }
 
 export function statusLabel(status: string): string {
   const labels: Record<string, string> = {
-    pending: "قيد الانتظار", processing: "جارٍ التنفيذ",
-    completed: "مكتمل", delivered: "مكتمل",
-    failed: "فشل", refunded: "مسترجع",
-    approved: "موافق عليه", rejected: "مرفوض",
+    pending: "قيد الانتظار",
+    processing: "جارٍ التنفيذ",
+    completed: "مكتمل",
+    delivered: "مكتمل",
+    failed: "فشل",
+    refunded: "مسترجع",
+    approved: "موافق عليه",
+    rejected: "مرفوض",
   };
   return labels[status] ?? status;
 }

@@ -1,27 +1,27 @@
-import { useState } from "react";
-import { useListAdminUsers, getListAdminUsersQueryKey } from "@workspace/api-client-react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatCurrency, formatDate, tierLabel, tierColor } from "@/lib/utils";
-import { AdminLayout } from "./layout";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import {
-  Users,
-  Search,
-  Edit2,
-  X,
-  CheckCircle,
-  Plus,
-  Minus,
-  Wallet,
-  Star,
-  Filter,
-  Download,
-} from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { getListAdminUsersQueryKey, useListAdminUsers } from "@workspace/api-client-react";
+import {
+  CheckCircle,
+  Download,
+  Edit2,
+  Filter,
+  Minus,
+  Plus,
+  Search,
+  Star,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 interface EditUserForm {
   wallet_mode: "set" | "add" | "subtract";
@@ -213,10 +213,10 @@ export default function AdminUsersPage() {
     ];
     const rows = sorted.map((u: any) => [
       u.phone ?? "",
-      (u.wallet_balance ?? 0).toFixed(2),
+      ((u.wallet_balance ?? 0) || 0).toFixed(2),
       tierLabel(u.loyalty_tier ?? ""),
       u.loyalty_points ?? 0,
-      (u.lifetime_spend ?? 0).toFixed(2),
+      ((u.lifetime_spend ?? 0) || 0).toFixed(2),
       u.order_count ?? 0,
       u.created_at ? formatDate(u.created_at) : "",
     ]);

@@ -1,45 +1,45 @@
-import { useState, useEffect } from "react";
-import {
-  useGetAdminStats,
-  useListAdminOrders,
-  getGetAdminStatsQueryKey,
-  getListAdminOrdersQueryKey,
-} from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
-import { useLocation, Link } from "wouter";
-import { formatCurrency, formatDate, statusLabel, statusColor } from "@/lib/utils";
-import {
-  Users,
-  ShoppingBag,
-  TrendingUp,
-  Clock,
-  Package,
-  Wallet,
-  BarChart2,
-  AlertTriangle,
-  ArrowUpRight,
-  CheckCircle,
-  Zap,
-  TrendingDown,
-  Download,
-  Plus,
-  ListOrdered,
-} from "lucide-react";
-import { AdminLayout } from "./layout";
+import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AreaChart,
+  getGetAdminStatsQueryKey,
+  getListAdminOrdersQueryKey,
+  useGetAdminStats,
+  useListAdminOrders,
+} from "@workspace/api-client-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  BarChart2,
+  CheckCircle,
+  Clock,
+  Download,
+  ListOrdered,
+  Package,
+  Plus,
+  ShoppingBag,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Wallet,
+  Zap,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import {
   Area,
-  BarChart,
+  AreaChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
 } from "recharts";
+import { Link, useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 interface ChartDay {
   date: string;
@@ -165,8 +165,8 @@ function exportChartCSV(data: ChartDay[], days: number) {
   const rows = data.map((d) => [
     d.date,
     d.orders,
-    d.revenue.toFixed(2),
-    (d.discounts || 0).toFixed(2),
+    (d.revenue ?? 0).toFixed(2),
+    ((d.discounts ?? 0) || 0).toFixed(2),
     d.coupon_orders || 0,
     d.users,
   ]);

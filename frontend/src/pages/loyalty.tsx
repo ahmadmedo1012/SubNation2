@@ -1,24 +1,24 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation, Link } from "wouter";
-import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
+import { CopyButton } from "@/components/CopyButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import {
-  Star,
-  Gift,
-  Users,
-  TrendingUp,
-  Zap,
-  Share2,
-  ShoppingCart,
-  Crown,
-  Wallet,
   ArrowUpRight,
   ChevronLeft,
+  Crown,
+  Gift,
+  Share2,
+  ShoppingCart,
+  Star,
+  TrendingUp,
+  Users,
+  Wallet,
+  Zap,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { CopyButton } from "@/components/CopyButton";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
 
 interface LoyaltyData {
   points: number;
@@ -337,7 +337,7 @@ export default function LoyaltyPage() {
                   />
                   {convertPoints && parseInt(convertPoints) >= 100 && (
                     <p className="text-xs text-emerald-400 mt-1.5 px-1 font-bold">
-                      ستحصل على {(parseInt(convertPoints) / 100).toFixed(2)} د.ل
+                      ستحصل على {((parseInt(convertPoints) || 0) / 100).toFixed(2)} د.ل
                     </p>
                   )}
                 </div>
