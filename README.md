@@ -14,6 +14,10 @@ Arabic RTL digital subscriptions marketplace for Libya. The workspace is now org
 - pnpm 10+
 - PostgreSQL database
 
+## Development Tools
+
+The `ruflo/` directory contains the Ruflo multi-agent AI orchestration framework (optional development tooling). It is gitignored and not required for SubNation2 application development or deployment.
+
 ## Setup
 
 ```bash
@@ -68,14 +72,14 @@ All runtime configuration flows through a single `.env` file. Copy
 `config/env.example` to `.env` and edit the values. See that file for the
 full annotated reference — the most important keys are:
 
-| Key | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Postgres connection string (required). |
-| `SESSION_SECRET` | JWT signing secret (required in production). |
-| `PORT` / `API_PORT` / `FRONTEND_PORT` | Preferred ports; runner auto-falls back to the next free port. |
-| `APP_URL` / `APP_ORIGINS` | Public origin and CORS allow-list. |
-| `BASE_PATH` | Sub-path the SPA is served under (e.g. `/app/`). |
-| `VITE_API_URL` | Absolute backend origin — only needed for split (frontend-only) deploys. |
+| Key                                   | Purpose                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------ |
+| `DATABASE_URL`                        | Postgres connection string (required).                                   |
+| `SESSION_SECRET`                      | JWT signing secret (required in production).                             |
+| `PORT` / `API_PORT` / `FRONTEND_PORT` | Preferred ports; runner auto-falls back to the next free port.           |
+| `APP_URL` / `APP_ORIGINS`             | Public origin and CORS allow-list.                                       |
+| `BASE_PATH`                           | Sub-path the SPA is served under (e.g. `/app/`).                         |
+| `VITE_API_URL`                        | Absolute backend origin — only needed for split (frontend-only) deploys. |
 
 You should not need to edit code to change hosts, ports or domains.
 
@@ -84,15 +88,25 @@ You should not need to edit code to change hosts, ports or domains.
 The backend already serves the built frontend on the same origin, so the
 simplest deployment is a single Node process.
 
+### Render (Production)
+
+The project is deployed to Render using Docker:
+
+1. Build: `pnpm run build`
+2. Deploy: Push to main branch (auto-deploys via render.yaml)
+3. Environment variables are configured in render.yaml
+
+The application runs at https://subnation2.onrender.com
+
 ### Docker (any VPS / self-hosted)
 
 ```bash
 cp config/env.example .env   # edit values
-docker compose up --build -d
+docker build -t subnation2 .
+docker run -p 8080:8080 --env-file .env subnation2
 ```
 
-The compose file ships a Postgres service; point `DATABASE_URL` at an
-external database if you prefer.
+Point `DATABASE_URL` at an external database if you prefer.
 
 ### VPS / bare metal
 
@@ -103,25 +117,3 @@ pnpm start                   # listens on $PORT (default 8080)
 ```
 
 Run behind nginx / Caddy / a cloud load balancer. Nothing else has to change.
-
-### Vercel / Netlify (frontend only)
-
-1. Set the project root to `frontend/`.
-2. Build command: `pnpm --filter @workspace/subnation... run build`
-3. Publish directory: `frontend/dist/public`.
-4. Set `VITE_API_URL=https://your-api.example.com` in the project env.
-5. Add a rewrite so browser requests to `/api/*` are proxied to your API
-   (Netlify: `_redirects`; Vercel: `vercel.json` rewrites). Not required
-   if you set `VITE_API_URL` — the client will then call the API directly.
-
-### cPanel / shared hosting
-
-1. Upload the repo, run `pnpm install && pnpm run build` (or upload the
-   pre-built `frontend/dist/public` and `backend/dist`).
-2. Set `BASE_PATH=/your-subpath/` if the app lives under a sub-directory.
-3. Start the Node app with `pnpm start`; point the domain at `$PORT`.
-
-### Replit
-
-Add a `.env` with `DATABASE_URL` and `SESSION_SECRET`. Replit injects
-`PORT`; `pnpm start` picks it up automatically.
