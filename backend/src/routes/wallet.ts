@@ -116,6 +116,20 @@ router.post("/topups", requireUser, async (req, res) => {
     });
   }
 
+  const [{ rejectedCount }] = await db
+    .select({ rejectedCount: count() })
+    .from(walletTopupsTable)
+    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
+
+  let initialStatus = "pending";
+  let initialAdminNote = null;
+
+  // Recharge Verification Heuristic: Auto-reject serial abusers
+  if (Number(rejectedCount) >= 3) {
+    initialStatus = "rejected";
+    initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
+  }
+
   const [topup] = await db
     .insert(walletTopupsTable)
     .values({
@@ -126,7 +140,8 @@ router.post("/topups", requireUser, async (req, res) => {
       senderPhone: sender_phone ?? null,
       senderAccount: sender_account ?? null,
       paymentReference: payment_reference ?? null,
-      status: "pending",
+      status: initialStatus as any,
+      adminNote: initialAdminNote,
     })
     .returning();
 

@@ -31,20 +31,10 @@ export class TopupService {
 
       const balanceBefore = parseFloat(String(user.walletBalance));
       const newBalance = +(balanceBefore + amount).toFixed(2);
-      const newLifetime = +(parseFloat(String(user.lifetimeSpend)) + amount).toFixed(2);
-
-      let newTier = user.loyaltyTier;
-      if (newLifetime >= 5000) newTier = "platinum";
-      else if (newLifetime >= 2000) newTier = "gold";
-      else if (newLifetime >= 500) newTier = "silver";
-      else newTier = "bronze";
-
       await tx
         .update(usersTable)
         .set({
           walletBalance: String(newBalance),
-          lifetimeSpend: String(newLifetime),
-          loyaltyTier: newTier,
         })
         .where(eq(usersTable.id, user.id));
 
@@ -115,20 +105,10 @@ export class TopupService {
           const balanceBefore = parseFloat(String(user.walletBalance));
           const topupAmount = parseFloat(String(topup.amount));
           const newBalance = +(balanceBefore + topupAmount).toFixed(2);
-          const newLifetime = +(parseFloat(String(user.lifetimeSpend)) + topupAmount).toFixed(2);
-
-          let newTier = user.loyaltyTier;
-          if (newLifetime >= 5000) newTier = "platinum";
-          else if (newLifetime >= 2000) newTier = "gold";
-          else if (newLifetime >= 500) newTier = "silver";
-          else newTier = "bronze";
-
           await tx
             .update(usersTable)
             .set({
               walletBalance: String(newBalance),
-              lifetimeSpend: String(newLifetime),
-              loyaltyTier: newTier,
             })
             .where(eq(usersTable.id, user.id));
 

@@ -18,6 +18,7 @@ import { stringParam } from "../lib/http";
 import { insertLedgerEntry } from "../lib/ledger";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { isTelegramConfigured, notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
+import { computeTier } from "./loyalty";
 
 const router = Router();
 
@@ -191,12 +192,14 @@ router.post("/", requireUser, async (req, res) => {
         .set({ isSold: true, soldAt: now })
         .where(eq(inventoryTable.id, inventoryItem.id));
 
+      const newLifetimeSpend = +(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2);
       await tx
         .update(usersTable)
         .set({
           walletBalance: String(newBalance),
-          lifetimeSpend: String(+(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2)),
+          lifetimeSpend: String(newLifetimeSpend),
           loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
+          loyaltyTier: computeTier(newLifetimeSpend),
         })
         .where(eq(usersTable.id, userId));
 
