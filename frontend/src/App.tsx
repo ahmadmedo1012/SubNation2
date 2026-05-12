@@ -22,6 +22,7 @@ const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const LoyaltyPage = lazy(() => import("@/pages/loyalty"));
+const OnboardingPage = lazy(() => import("@/pages/onboarding"));
 const OrderDetailPage = lazy(() => import("@/pages/order-detail"));
 const OrdersPage = lazy(() => import("@/pages/orders"));
 const ProductPage = lazy(() => import("@/pages/product"));
