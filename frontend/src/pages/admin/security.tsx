@@ -24,31 +24,35 @@ interface AuthStats {
 }
 
 export function AdminSecurityDashboard() {
-  const { token } = useAuth();
+  const { adminToken } = useAuth();
   const [stats, setStats] = useState<AuthStats | null>(null);
   const [activities, setActivities] = useState<AuthActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     action: "all",
     success: "all",
   });
 
   useEffect(() => {
-    if (token) {
+    if (adminToken) {
       fetchStats();
       fetchActivities();
     }
-  }, [token, filters]);
+  }, [adminToken, filters]);
 
   const fetchStats = async () => {
     try {
       const response = await fetch("/api/admin/auth-stats/summary", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${adminToken}` },
       });
+      if (!response.ok) throw new Error("Failed to fetch stats");
       const data = await response.json();
       setStats(data);
+      setError(null);
     } catch (error) {
       console.error("Failed to fetch stats:", error);
+      setError("فشل في جلب الإحصائيات");
     }
   };
 
@@ -59,12 +63,15 @@ export function AdminSecurityDashboard() {
       if (filters.success !== "all") params.append("success", filters.success);
 
       const response = await fetch(`/api/admin/auth-activity?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${adminToken}` },
       });
+      if (!response.ok) throw new Error("Failed to fetch activities");
       const data = await response.json();
       setActivities(data.activities || []);
+      setError(null);
     } catch (error) {
       console.error("Failed to fetch activities:", error);
+      setError("فشل في جلب سجل النشاط");
     } finally {
       setLoading(false);
     }
@@ -99,6 +106,14 @@ export function AdminSecurityDashboard() {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = `auth-activity-${new Date().toISOString().split("T")[0]}.csv`;
+    if (error) {
+      return (
+        <div className="text-center py-8">
+          <p className="text-destructive">{error}</p>
+        </div>
+      );
+    }
+
     link.click();
   };
 
