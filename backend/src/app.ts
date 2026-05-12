@@ -91,8 +91,20 @@ app.use(
   }),
 );
 
-const redisClient = createClient({ url: process.env.REDIS_URL });
-redisClient.connect().catch((err) => logger.error({ err }, "Redis connection failed"));
+// Redis client (optional - if REDIS_URL is set, use it for rate limiting)
+let redisClient: ReturnType<typeof createClient> | null = null;
+if (process.env.REDIS_URL) {
+  redisClient = createClient({
+    url: process.env.REDIS_URL,
+    socket: {
+      reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+    },
+  });
+  redisClient.connect().catch((err) => {
+    logger.warn({ err }, "Failed to connect to Redis, falling back to memory store");
+    redisClient = null;
+  });
+}
 
 const getStore = () => {
   if (redisClient) {

@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: "postgresql://neondb_owner:npg_ZCsxjW8rQz3o@ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        value: "postgresql://neondb_owner:npg_ZCsxjW8rQz3o@ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=verify-full"
       - key: DB_POOL_MAX
         value: "5"
       - key: DB_IDLE_TIMEOUT_MS
@@ -33,6 +33,8 @@ services:
         value: SubNation
       - key: VITE_GOOGLE_CLIENT_ID
         value: ""
+      - key: FIREBASE_AUTH_ENABLED
+        value: "true"
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: TELEGRAM_BOT_TOKEN
