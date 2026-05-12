@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { Router } from "express";
+import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import {
   generateReferralCode,
   hashPassword,
@@ -378,7 +379,7 @@ router.get("/providers/linked", requireUser, async (req, res) => {
         email: userAuthIdentitiesTable.email,
         emailVerified: userAuthIdentitiesTable.emailVerified,
         phoneVerified: userAuthIdentitiesTable.phoneVerified,
-        createdAt: userAuthIdentitiesTable.createdAt,
+        linkedAt: userAuthIdentitiesTable.linkedAt,
       })
       .from(userAuthIdentitiesTable)
       .where(eq(userAuthIdentitiesTable.userId, userId));

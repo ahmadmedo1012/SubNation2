@@ -6,10 +6,22 @@ export function OnboardingPage() {
   const { token, user } = useAuth();
   const [, navigate] = useLocation();
   const [step, setStep] = useState(1);
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    if (!token) navigate("/login");
-    if (user?.onboardedAt) navigate("/");
+    if (!token) {
+      navigate("/login");
+      setIsChecking(false);
+      return;
+    }
+
+    // Only redirect if user data is loaded and user is onboarded
+    if (user && user.onboardedAt) {
+      navigate("/");
+      return;
+    }
+
+    setIsChecking(false);
   }, [token, user, navigate]);
 
   const handleCompleteOnboarding = async () => {
@@ -35,6 +47,12 @@ export function OnboardingPage() {
     }
   };
 
+  if (isChecking)
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        جاري التحميل...
+      </div>
+    );
   if (!token) return null;
   if (user?.onboardedAt) return null;
 
