@@ -41,6 +41,8 @@ export const usersTable = pgTable(
     referredBy: integer("referred_by").references((): AnyPgColumn => usersTable.id, {
       onDelete: "set null",
     }),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+    onboardingStep: integer("onboarding_step").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

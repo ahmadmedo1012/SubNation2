@@ -40,6 +40,7 @@ const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
 const AdminProductsPage = lazy(() => import("@/pages/admin/products"));
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
+const AdminSecurityPage = lazy(() => import("@/pages/admin/security"));
 const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
 const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
 const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
@@ -108,6 +109,7 @@ function AdminProtectedRoutes() {
         <Route path="/admin/products" component={AdminProductsPage} />
         <Route path="/admin/users" component={AdminUsersPage} />
         <Route path="/admin/settings" component={AdminSettingsPage} />
+        <Route path="/admin/security" component={AdminSecurityPage} />
         <Route path="/admin/tickets" component={AdminTicketsPage} />
         <Route path="/admin/referrals" component={AdminReferralsPage} />
         <Route path="/admin/coupons" component={AdminCouponsPage} />
@@ -136,6 +138,7 @@ function AppRoutes() {
               <Route path="/" component={HomePage} />
               <Route path="/login" component={LoginPage} />
               <Route path="/register" component={RegisterPage} />
+              <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/product/:id" component={ProductPage} />
               <Route path="/wallet" component={WalletPage} />
               <Route path="/orders" component={OrdersPage} />

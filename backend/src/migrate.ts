@@ -56,6 +56,8 @@ export async function runMigrations() {
         lifetime_spend NUMERIC(10,2) NOT NULL DEFAULT 0.00,
         referral_code  VARCHAR(20) UNIQUE,
         referred_by    INTEGER,
+        onboarded_at   TIMESTAMPTZ,
+        onboarding_step INTEGER NOT NULL DEFAULT 1,
         created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -655,6 +657,26 @@ export async function runMigrations() {
     // ── Fix: clear any broken wikimedia image URLs ───────────────────────────
     await db.execute(sql`
       UPDATE products SET image_url = NULL WHERE image_url LIKE '%wikimedia%' OR image_url LIKE '%wikipedia%'
+    `);
+
+    // ── Add onboarding columns to users table if not present ─────────────────
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'onboarded_at'
+        ) THEN
+          ALTER TABLE users ADD COLUMN onboarded_at TIMESTAMPTZ;
+        END IF;
+        
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'users' AND column_name = 'onboarding_step'
+        ) THEN
+          ALTER TABLE users ADD COLUMN onboarding_step INTEGER NOT NULL DEFAULT 1;
+        END IF;
+      END $$;
     `);
 
     logger.info("Migrations completed");

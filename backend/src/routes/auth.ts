@@ -40,9 +40,17 @@ router.post("/register", async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   }
   const { phone, password, referral_code } = parse.data;
+  const clientInfo = getClientInfo(req);
 
   // Feature flag: Check if password registration is allowed
   if (!ALLOW_PASSWORD_REGISTRATION) {
+    await logAuthActivity({
+      identifier: phone,
+      action: "register",
+      success: false,
+      failureReason: "password_registration_disabled",
+      ...clientInfo,
+    });
     return res
       .status(403)
       .json(
@@ -55,6 +63,13 @@ router.post("/register", async (req, res) => {
 
   const passwordTrimmed = password.trim();
   if (passwordTrimmed.length < 8 || passwordTrimmed.length > 128) {
+    await logAuthActivity({
+      identifier: phone,
+      action: "register",
+      success: false,
+      failureReason: "invalid_password_length",
+      ...clientInfo,
+    });
     return res
       .status(400)
       .json(
@@ -67,6 +82,13 @@ router.post("/register", async (req, res) => {
 
   const normalizedPhone = normalizeLibyanPhone(phone);
   if (!normalizedPhone) {
+    await logAuthActivity({
+      identifier: phone,
+      action: "register",
+      success: false,
+      failureReason: "invalid_phone",
+      ...clientInfo,
+    });
     return res
       .status(400)
       .json(
@@ -83,6 +105,13 @@ router.post("/register", async (req, res) => {
     .where(eq(usersTable.phone, normalizedPhone))
     .limit(1);
   if (existing) {
+    await logAuthActivity({
+      identifier: normalizedPhone,
+      action: "register",
+      success: false,
+      failureReason: "phone_already_registered",
+      ...clientInfo,
+    });
     return res
       .status(409)
       .json(createErrorResponse("رقم الهاتف مسجل مسبقاً", ErrorCode.PHONE_ALREADY_REGISTERED));
@@ -122,6 +151,15 @@ router.post("/register", async (req, res) => {
 
   notifyNewUser(normalizedPhone, !!referredById);
 
+  await logAuthActivity({
+    userId: user.id,
+    identifier: normalizedPhone,
+    action: "register",
+    success: true,
+    provider: "password",
+    ...clientInfo,
+  });
+
   const token = signUserToken({ userId: user.id });
   return res.status(201).json({ user: formatUser(user), token });
 });
@@ -133,10 +171,18 @@ router.post("/login", async (req, res) => {
   }
   const { phone, password } = parse.data;
   const normalizedPhone = normalizeLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
+  const clientInfo = getClientInfo(req);
 
   const { locked, lockedUntil } = await checkLockout(normalizedPhone);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    await logAuthActivity({
+      identifier: normalizedPhone,
+      action: "login",
+      success: false,
+      failureReason: "account_locked",
+      ...clientInfo,
+    });
     return res
       .status(429)
       .json(
@@ -154,6 +200,13 @@ router.post("/login", async (req, res) => {
     .limit(1);
   if (!user) {
     await recordFailedAttempt(normalizedPhone);
+    await logAuthActivity({
+      identifier: normalizedPhone,
+      action: "login",
+      success: false,
+      failureReason: "user_not_found",
+      ...clientInfo,
+    });
     return res
       .status(401)
       .json(
@@ -162,6 +215,14 @@ router.post("/login", async (req, res) => {
   }
 
   if (!user.passwordLoginEnabled) {
+    await logAuthActivity({
+      userId: user.id,
+      identifier: normalizedPhone,
+      action: "login",
+      success: false,
+      failureReason: "password_login_disabled",
+      ...clientInfo,
+    });
     return res
       .status(403)
       .json(
@@ -175,6 +236,14 @@ router.post("/login", async (req, res) => {
   const { valid, needsRehash } = await verifyPassword(password, user.passwordHash);
   if (!valid) {
     await recordFailedAttempt(normalizedPhone);
+    await logAuthActivity({
+      userId: user.id,
+      identifier: normalizedPhone,
+      action: "login",
+      success: false,
+      failureReason: "invalid_credentials",
+      ...clientInfo,
+    });
     return res
       .status(401)
       .json(
@@ -190,6 +259,15 @@ router.post("/login", async (req, res) => {
   }
   await resetAttempts(normalizedPhone);
 
+  await logAuthActivity({
+    userId: user.id,
+    identifier: normalizedPhone,
+    action: "login",
+    success: true,
+    provider: "password",
+    ...clientInfo,
+  });
+
   const token = signUserToken({ userId: user.id });
   return res.json({ user: formatUser(user), token });
 });
@@ -197,16 +275,18 @@ router.post("/login", async (req, res) => {
 router.post("/logout", requireUser, async (req, res) => {
   const auth = getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
+  const clientInfo = getClientInfo(req);
+
+  // Get user info for logging
+  const [user] = await db
+    .select({ phone: usersTable.phone, firebaseUid: usersTable.firebaseUid })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
 
   // If user is authenticated and Firebase is enabled, revoke their Firebase refresh tokens
   if (auth && userId) {
     try {
-      const [user] = await db
-        .select({ firebaseUid: usersTable.firebaseUid })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId))
-        .limit(1);
-
       if (user?.firebaseUid) {
         await auth.revokeRefreshTokens(user.firebaseUid);
       }
@@ -216,35 +296,71 @@ router.post("/logout", requireUser, async (req, res) => {
     }
   }
 
+  await logAuthActivity({
+    userId,
+    identifier: user?.phone || `user_${userId}`,
+    action: "logout",
+    success: true,
+    ...clientInfo,
+  });
+
   return res.json({ success: true, message: "تم تسجيل الخروج" });
 });
 
 router.post("/logout-all-devices", requireUser, async (req, res) => {
   const auth = getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
+  const clientInfo = getClientInfo(req);
+
+  // Get user info for logging
+  const [user] = await db
+    .select({ phone: usersTable.phone, firebaseUid: usersTable.firebaseUid })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
 
   // Revoke Firebase refresh tokens to logout from all devices
   if (auth && userId) {
     try {
-      const [user] = await db
-        .select({ firebaseUid: usersTable.firebaseUid })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId))
-        .limit(1);
-
       if (user?.firebaseUid) {
         await auth.revokeRefreshTokens(user.firebaseUid);
+
+        await logAuthActivity({
+          userId,
+          identifier: user.phone || `user_${userId}`,
+          action: "logout_all",
+          success: true,
+          ...clientInfo,
+        });
+
         return res.json({ success: true, message: "تم تسجيل الخروج من جميع الأجهزة" });
       }
     } catch (err) {
       logger.warn({ err, userId }, "Failed to revoke Firebase tokens during logout all devices");
+
+      await logAuthActivity({
+        userId,
+        identifier: user?.phone || `user_${userId}`,
+        action: "logout_all",
+        success: false,
+        failureReason: "firebase_revocation_failed",
+        ...clientInfo,
+      });
+
       return res
         .status(500)
         .json(createErrorResponse("فشل تسجيل الخروج من جميع الأجهزة", ErrorCode.INTERNAL_ERROR));
     }
   }
 
-  // If no Firebase UID, just clear the current session
+  await logAuthActivity({
+    userId,
+    identifier: user?.phone || `user_${userId}`,
+    action: "logout_all",
+    success: true,
+    ...clientInfo,
+  });
+
   return res.json({ success: true, message: "تم تسجيل الخروج من الجهاز الحالي" });
 });
 
@@ -280,6 +396,7 @@ router.get("/providers/linked", requireUser, async (req, res) => {
 router.post("/providers/unlink", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
   const { provider, provider_uid } = req.body as { provider?: string; provider_uid?: string };
+  const clientInfo = getClientInfo(req);
 
   if (!provider || !provider_uid) {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
@@ -288,7 +405,11 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
   try {
     // Check if this is the user's primary auth method (has password)
     const [user] = await db
-      .select({ passwordHash: usersTable.passwordHash, firebaseUid: usersTable.firebaseUid })
+      .select({
+        passwordHash: usersTable.passwordHash,
+        firebaseUid: usersTable.firebaseUid,
+        phone: usersTable.phone,
+      })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);
@@ -309,6 +430,15 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
       identity && (identity.provider !== provider || identity.providerUid !== provider_uid);
 
     if (!hasPassword && !hasOtherIdentity) {
+      await logAuthActivity({
+        userId,
+        identifier: user.phone,
+        action: "provider_unlink",
+        success: false,
+        failureReason: "would_lock_user",
+        provider,
+        ...clientInfo,
+      });
       return res
         .status(400)
         .json(createErrorResponse("لا يمكن فصل آخر طريقة مصادقة", ErrorCode.INVALID_DATA));
@@ -332,6 +462,15 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
           eq(userAuthIdentitiesTable.providerUid, provider_uid),
         ),
       );
+
+    await logAuthActivity({
+      userId,
+      identifier: user.phone,
+      action: "provider_unlink",
+      success: true,
+      provider,
+      ...clientInfo,
+    });
 
     return res.json({ success: true, message: "تم فصل مزود المصادقة" });
   } catch (err) {
@@ -475,6 +614,8 @@ router.post("/change-password", async (req, res) => {
     current_password?: string;
     new_password?: string;
   };
+  const clientInfo = getClientInfo(req);
+
   if (!current_password || !new_password) {
     return res.status(400).json(createErrorResponse("جميع الحقول مطلوبة", ErrorCode.INVALID_DATA));
   }
@@ -505,6 +646,14 @@ router.post("/change-password", async (req, res) => {
     user.passwordHash,
   );
   if (!currentValid) {
+    await logAuthActivity({
+      userId: user.id,
+      identifier: user.phone,
+      action: "password_change",
+      success: false,
+      failureReason: "invalid_current_password",
+      ...clientInfo,
+    });
     return res
       .status(400)
       .json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.INVALID_CREDENTIAL));
@@ -520,6 +669,14 @@ router.post("/change-password", async (req, res) => {
     .update(usersTable)
     .set({ passwordHash: await hashPassword(newTrimmed) })
     .where(eq(usersTable.id, payload.userId));
+
+  await logAuthActivity({
+    userId: user.id,
+    identifier: user.phone,
+    action: "password_change",
+    success: true,
+    ...clientInfo,
+  });
 
   return res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح" });
 });
@@ -671,14 +828,27 @@ router.post("/firebase/session", async (req, res) => {
 
 router.post("/firebase/refresh", async (req, res) => {
   const { id_token } = req.body as { id_token?: string };
+  const clientInfo = getClientInfo(req);
+
   if (!id_token || typeof id_token !== "string") {
-    return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("رمز Firebase ID مطلوب", ErrorCode.INVALID_DATA));
   }
 
   try {
-    // Use checkRevoked to detect revoked sessions during refresh
     const decoded = await verifyFirebaseIdToken(id_token, true);
     const result = await resolveFirebaseSession(decoded);
+
+    await logAuthActivity({
+      userId: result.user.id,
+      identifier: result.user.phone || `firebase_${decoded.uid}`,
+      action: "login",
+      success: true,
+      provider: "firebase",
+      ...clientInfo,
+    });
+
     const token = signUserToken({ userId: result.user.id });
     return res.json({
       user: formatUser(result.user),
@@ -687,12 +857,60 @@ router.post("/firebase/refresh", async (req, res) => {
   } catch (err) {
     if (err instanceof FirebaseAuthError) {
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
+      await logAuthActivity({
+        identifier: `firebase_refresh_error`,
+        action: "login",
+        success: false,
+        failureReason: "firebase_error",
+        provider: "firebase",
+        ...clientInfo,
+      });
       return res
         .status(err.statusCode)
         .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
+    await logAuthActivity({
+      identifier: `firebase_refresh_error`,
+      action: "login",
+      success: false,
+      failureReason: "unknown_error",
+      provider: "firebase",
+      ...clientInfo,
+    });
     return res.status(401).json(createErrorResponse("فشل تجديد الجلسة", ErrorCode.INVALID_TOKEN));
   }
+});
+
+router.get("/sessions", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+
+  const [user] = await db
+    .select({ lastAuthAt: usersTable.lastAuthAt })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  return res.json({
+    sessions: [
+      {
+        id: "current",
+        device: "الجهاز الحالي",
+        lastActive: user?.lastAuthAt?.toISOString() ?? new Date().toISOString(),
+        current: true,
+      },
+    ],
+  });
+});
+
+router.post("/onboarding/complete", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+
+  await db
+    .update(usersTable)
+    .set({ onboardedAt: new Date(), onboardingStep: 5 })
+    .where(eq(usersTable.id, userId));
+
+  return res.json({ success: true });
 });
 
 export function formatUser(user: typeof usersTable.$inferSelect) {
@@ -706,11 +924,13 @@ export function formatUser(user: typeof usersTable.$inferSelect) {
     photo_url: user.photoUrl ?? null,
     auth_provider: user.authProvider,
     password_login_enabled: user.passwordLoginEnabled,
-    wallet_balance: parseFloat(String(user.walletBalance)),
+    wallet_balance: user.walletBalance,
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,
     lifetime_spend: parseFloat(String(user.lifetimeSpend)),
-    referral_code: user.referralCode,
+    referral_code: user.referralCode ?? null,
+    onboarded_at: user.onboardedAt ?? null,
+    onboarding_step: user.onboardingStep,
     created_at: user.createdAt?.toISOString(),
   };
 }

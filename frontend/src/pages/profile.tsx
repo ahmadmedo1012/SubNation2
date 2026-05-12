@@ -443,6 +443,9 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* ── Session Management ───────────────────────────────── */}
+        <SessionManager />
+
         {/* ── Security Options ────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
           <div className="flex items-center justify-between mb-4">

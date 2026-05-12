@@ -73,6 +73,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/referrals": "الإحالات",
   "/admin/coupons": "الكوبونات",
   "/admin/alerts": "صندوق التنبيهات",
+  "/admin/security": "الأمان",
 };
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: any; href: string }[]> = {

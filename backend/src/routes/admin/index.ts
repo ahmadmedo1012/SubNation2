@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { adminAuthRouter } from "./auth";
-import { adminStatsRouter } from "./stats";
-import { adminOrdersRouter } from "./orders";
-import { adminTopupsRouter } from "./topups";
-import { adminProductsRouter } from "./products";
-import { adminUsersRouter } from "./users";
-import { adminTicketsRouter } from "./tickets";
-import { adminReferralsRouter } from "./referrals";
 import { adminAlertsRouter } from "./alerts";
+import { adminAuthRouter } from "./auth";
+import { adminOrdersRouter } from "./orders";
+import { adminProductsRouter } from "./products";
+import { adminReferralsRouter } from "./referrals";
 import { adminSettingsRouter } from "./settings";
+import { adminStatsRouter } from "./stats";
+import { adminTicketsRouter } from "./tickets";
+import { adminTopupsRouter } from "./topups";
+import { adminUsersRouter } from "./users";
 
 const router = Router();
 
@@ -21,6 +21,7 @@ router.use("/", adminProductsRouter); // /products/*
 router.use("/", adminUsersRouter); // /users/*
 router.use("/", adminTicketsRouter); // /tickets/*
 router.use("/", adminReferralsRouter); // /referrals/*
+router.use("/", adminSecurityRouter); // /auth-activity, /auth-stats
 router.use("/alerts", adminAlertsRouter);
 router.use("/settings", adminSettingsRouter);
 
