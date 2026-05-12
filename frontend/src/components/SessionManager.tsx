@@ -1,5 +1,6 @@
 import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface Session {
   id: string;
@@ -87,12 +88,13 @@ export function SessionManager() {
           ))}
         </div>
       )}
-      <button
+      <Button
+        variant="destructive"
         onClick={() => setShowLogoutAllConfirm(true)}
-        className="w-full px-4 py-2 bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
+        className="w-full h-11 press-spring font-bold"
       >
         تسجيل الخروج من جميع الأجهزة
-      </button>
+      </Button>
       {showLogoutAllConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card p-6 rounded-lg max-w-sm w-full space-y-4">
@@ -100,19 +102,21 @@ export function SessionManager() {
             <p className="text-sm text-muted-foreground">
               هل أنت متأكد من رغبتك في تسجيل الخروج من جميع الأجهزة؟
             </p>
-            <div className="flex gap-2 justify-end">
-              <button
+            <div className="flex gap-3 justify-end mt-2">
+              <Button
+                variant="outline"
                 onClick={() => setShowLogoutAllConfirm(false)}
-                className="px-4 py-2 border rounded"
+                className="h-11 px-6 press-spring"
               >
                 إلغاء
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="destructive"
                 onClick={handleLogoutAll}
-                className="px-4 py-2 bg-destructive text-destructive-foreground rounded"
+                className="h-11 px-6 press-spring cta-glow"
               >
                 تأكيد
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -170,11 +170,17 @@ export default function HomePage() {
   if (availableOnly) params.available_only = "true";
 
   const { data: products = [], isLoading } = useListProducts(params, {
-    query: { queryKey: getListProductsQueryKey(params) },
+    query: {
+      queryKey: getListProductsQueryKey(params),
+      staleTime: 3 * 60 * 1000, // 3 minutes for products
+    },
   });
 
   const { data: stats } = useGetCatalogStats({
-    query: { queryKey: getGetCatalogStatsQueryKey() },
+    query: {
+      queryKey: getGetCatalogStatsQueryKey(),
+      staleTime: 10 * 60 * 1000, // 10 minutes for stats
+    },
   });
 
   const { data: user } = useGetMe({

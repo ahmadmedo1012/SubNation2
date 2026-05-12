@@ -606,6 +606,13 @@
   }
 
   /* Stagger delay helpers */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 20px);
+  }
+  
   .stagger-1 {
     animation-delay: 0.04s;
   }

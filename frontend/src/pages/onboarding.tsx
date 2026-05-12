@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
 
 export function OnboardingPage() {
   const { token } = useAuth();
@@ -174,20 +175,21 @@ export function OnboardingPage() {
           </div>
         )}
 
-        <div className="flex justify-between mt-8">
-          <button
+        <div className="flex justify-between mt-8 pt-4 border-t border-border/20">
+          <Button
+            variant="outline"
             onClick={() => setStep(Math.max(1, step - 1))}
             disabled={step === 1}
-            className="px-6 py-2 border rounded disabled:opacity-50"
+            className="h-11 px-8 press-spring font-bold"
           >
             السابق
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleNextStep}
-            className="px-6 py-2 bg-primary text-primary-foreground rounded"
+            className="h-11 px-8 press-spring font-bold"
           >
             {step === 5 ? "إكمال" : "التالي"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
