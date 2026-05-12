@@ -164,7 +164,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               loading="lazy"
               decoding="async"
               className="w-full h-full object-contain p-5 sm:p-6 transition-opacity duration-300 group-hover:scale-[1.08] drop-shadow-xl opacity-0"
-              onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "1"; }}
+              onLoad={(e) => {
+                (e.currentTarget as HTMLImageElement).style.opacity = "1";
+              }}
               onError={(e) => {
                 const el = e.target as HTMLImageElement;
                 el.style.display = "none";
@@ -263,11 +265,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   );
 }
 
-export const ProductCard = memo(ProductCardInner, (prev, next) =>
-  prev.product.id === next.product.id &&
-  prev.product.price === next.product.price &&
-  prev.product.sale_price === next.product.sale_price &&
-  prev.product.stock_count === next.product.stock_count &&
-  prev.product.is_available === next.product.is_available &&
-  prev.index === next.index,
+export const ProductCard = memo(
+  ProductCardInner,
+  (prev, next) =>
+    prev.product.id === next.product.id &&
+    prev.product.price === next.product.price &&
+    prev.product.sale_price === next.product.sale_price &&
+    prev.product.stock_count === next.product.stock_count &&
+    prev.product.is_available === next.product.is_available &&
+    prev.index === next.index,
 );

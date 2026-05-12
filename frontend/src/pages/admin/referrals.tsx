@@ -6,9 +6,18 @@ import { AdminLayout } from "./layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  Gift, Users, CheckCircle, Clock, Star,
-  Search, Trophy, Zap, RefreshCw, Check,
-  AlertCircle, Phone,
+  Gift,
+  Users,
+  CheckCircle,
+  Clock,
+  Star,
+  Search,
+  Trophy,
+  Zap,
+  RefreshCw,
+  Check,
+  AlertCircle,
+  Phone,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -44,9 +53,9 @@ interface ReferralData {
 }
 
 const STATUS_FILTERS = [
-  { value: "",         label: "الكل" },
+  { value: "", label: "الكل" },
   { value: "credited", label: "ناجحة" },
-  { value: "pending",  label: "معلقة" },
+  { value: "pending", label: "معلقة" },
 ];
 
 const MEDAL_COLORS = [
@@ -60,7 +69,10 @@ function TableSkeleton() {
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
       <div className="border-b border-border/60 bg-muted/30 h-11" />
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}>
+        <div
+          key={i}
+          className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
+        >
           <div className="h-4 bg-muted skeleton-shimmer rounded w-28" />
           <div className="h-4 bg-muted skeleton-shimmer rounded w-28" />
           <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14" />
@@ -72,9 +84,18 @@ function TableSkeleton() {
   );
 }
 
-function StatCard({ label, value, icon: Icon, color, bg }: {
-  label: string; value: string | number;
-  icon: React.ElementType; color: string; bg: string;
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+  bg,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+  color: string;
+  bg: string;
 }) {
   return (
     <div className="bg-card border border-border/60 rounded-2xl p-4">
@@ -100,21 +121,29 @@ export default function AdminReferralsPage() {
 
   const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
 
-  const fetchData = useCallback(async (silent = false) => {
-    if (!adminToken) return;
-    if (!silent) setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter) params.set("status", statusFilter);
-      if (search.trim()) params.set("search", search.trim());
-      const r = await fetch(`/api/admin/referrals?${params}`, { headers });
-      if (r.ok) setData(await r.json());
-    } catch {}
-    finally { if (!silent) setLoading(false); }
-  }, [adminToken, statusFilter, search]);
+  const fetchData = useCallback(
+    async (silent = false) => {
+      if (!adminToken) return;
+      if (!silent) setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (statusFilter) params.set("status", statusFilter);
+        if (search.trim()) params.set("search", search.trim());
+        const r = await fetch(`/api/admin/referrals?${params}`, { headers });
+        if (r.ok) setData(await r.json());
+      } catch {
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [adminToken, statusFilter, search],
+  );
 
   useEffect(() => {
-    if (!adminToken) { navigate("/admin/login"); return; }
+    if (!adminToken) {
+      navigate("/admin/login");
+      return;
+    }
     fetchData();
   }, [adminToken, statusFilter]);
 
@@ -132,7 +161,10 @@ export default function AdminReferralsPage() {
       });
       const result = await r.json();
       if (!r.ok) throw new Error(result.error);
-      toast({ title: "تم منح النقاط", description: `تم قيد ${result.points_credited} نقطة للمُحيل` });
+      toast({
+        title: "تم منح النقاط",
+        description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
+      });
       fetchData(true);
     } catch (err: any) {
       toast({ title: "خطأ", description: err.message, variant: "destructive" });
@@ -148,7 +180,6 @@ export default function AdminReferralsPage() {
   return (
     <AdminLayout onRefresh={() => fetchData()}>
       <div className="space-y-5">
-
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -173,10 +204,34 @@ export default function AdminReferralsPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="إجمالي الإحالات"  value={stats?.total ?? "—"}        icon={Users}       color="text-blue-400"    bg="bg-blue-400/10 border-blue-400/15" />
-          <StatCard label="ناجحة (مكتسبة)"   value={stats?.credited ?? "—"}     icon={CheckCircle} color="text-emerald-400" bg="bg-emerald-400/10 border-emerald-400/15" />
-          <StatCard label="قيد الانتظار"      value={stats?.pending ?? "—"}      icon={Clock}       color="text-yellow-400"  bg="bg-yellow-400/10 border-yellow-400/15" />
-          <StatCard label="نقاط ممنوحة إجمالاً" value={stats?.total_points ?? "—"} icon={Star}      color="text-primary"     bg="bg-primary/10 border-primary/15" />
+          <StatCard
+            label="إجمالي الإحالات"
+            value={stats?.total ?? "—"}
+            icon={Users}
+            color="text-blue-400"
+            bg="bg-blue-400/10 border-blue-400/15"
+          />
+          <StatCard
+            label="ناجحة (مكتسبة)"
+            value={stats?.credited ?? "—"}
+            icon={CheckCircle}
+            color="text-emerald-400"
+            bg="bg-emerald-400/10 border-emerald-400/15"
+          />
+          <StatCard
+            label="قيد الانتظار"
+            value={stats?.pending ?? "—"}
+            icon={Clock}
+            color="text-yellow-400"
+            bg="bg-yellow-400/10 border-yellow-400/15"
+          />
+          <StatCard
+            label="نقاط ممنوحة إجمالاً"
+            value={stats?.total_points ?? "—"}
+            icon={Star}
+            color="text-primary"
+            bg="bg-primary/10 border-primary/15"
+          />
         </div>
 
         {/* Top Referrers Leaderboard */}
@@ -192,7 +247,9 @@ export default function AdminReferralsPage() {
                   key={r.id}
                   className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 hover:bg-muted/35 transition-colors"
                 >
-                  <div className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black shrink-0 ${MEDAL_COLORS[i] ?? "text-muted-foreground bg-muted/40 border-border/40"}`}>
+                  <div
+                    className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black shrink-0 ${MEDAL_COLORS[i] ?? "text-muted-foreground bg-muted/40 border-border/40"}`}
+                  >
                     {i + 1}
                   </div>
                   <span className="font-mono text-sm font-bold flex-1 truncate">{r.phone}</span>
@@ -214,12 +271,12 @@ export default function AdminReferralsPage() {
             <Input
               placeholder="بحث برقم المُحيل أو المُحال..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="pr-9 h-9 text-sm"
             />
           </div>
           <div className="flex gap-1.5">
-            {STATUS_FILTERS.map(f => (
+            {STATUS_FILTERS.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setStatusFilter(f.value)}
@@ -272,7 +329,9 @@ export default function AdminReferralsPage() {
                       <div className="w-6 h-6 rounded-lg bg-blue-400/10 border border-blue-400/15 flex items-center justify-center shrink-0">
                         <Phone className="w-2.5 h-2.5 text-blue-400" />
                       </div>
-                      <span className="font-mono text-sm font-bold truncate">{row.referrer_phone}</span>
+                      <span className="font-mono text-sm font-bold truncate">
+                        {row.referrer_phone}
+                      </span>
                     </div>
 
                     {/* Referee */}
@@ -280,7 +339,9 @@ export default function AdminReferralsPage() {
                       <div className="w-6 h-6 rounded-lg bg-muted/50 border border-border/40 flex items-center justify-center shrink-0">
                         <Users className="w-2.5 h-2.5 text-muted-foreground" />
                       </div>
-                      <span className="font-mono text-sm text-muted-foreground truncate">{row.referee_phone}</span>
+                      <span className="font-mono text-sm text-muted-foreground truncate">
+                        {row.referee_phone}
+                      </span>
                     </div>
 
                     {/* Status */}
@@ -310,8 +371,7 @@ export default function AdminReferralsPage() {
                     <div>
                       {credited ? (
                         <div className="flex items-center gap-1 text-xs text-yellow-400 font-black">
-                          <Star className="w-3 h-3" />
-                          +{row.points_earned}
+                          <Star className="w-3 h-3" />+{row.points_earned}
                         </div>
                       ) : (
                         <Button

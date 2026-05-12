@@ -20,7 +20,8 @@ export default function NotFound() {
           <h1 className="text-2xl font-black mb-3">الصفحة غير موجودة</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
             يبدو أن هذه الصفحة لا وجود لها أو ربما تم نقلها.
-            <br />تأكد من الرابط أو عد إلى الرئيسية.
+            <br />
+            تأكد من الرابط أو عد إلى الرئيسية.
           </p>
         </div>
 
@@ -43,14 +44,16 @@ export default function NotFound() {
 
         {/* Quick links */}
         <div className="pt-2 border-t border-border/40">
-          <p className="text-[11px] text-muted-foreground mb-3 uppercase tracking-widest">روابط سريعة</p>
+          <p className="text-[11px] text-muted-foreground mb-3 uppercase tracking-widest">
+            روابط سريعة
+          </p>
           <div className="flex flex-wrap justify-center gap-2">
             {[
               { href: "/", label: "المتجر" },
               { href: "/wallet", label: "المحفظة" },
               { href: "/orders", label: "طلباتي" },
               { href: "/support", label: "الدعم" },
-            ].map(l => (
+            ].map((l) => (
               <Link key={l.href} href={l.href}>
                 <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
                   {l.label}

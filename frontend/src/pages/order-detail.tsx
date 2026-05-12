@@ -138,9 +138,7 @@ export default function OrderDetailPage() {
           <Package className="w-7 h-7 text-muted-foreground" />
         </div>
         <p className="font-bold text-lg mb-1">الطلب غير موجود</p>
-        <p className="text-sm text-muted-foreground mb-5">
-          تأكد من رقم الطلب أو عُد لقائمة طلباتك
-        </p>
+        <p className="text-sm text-muted-foreground mb-5">تأكد من رقم الطلب أو عُد لقائمة طلباتك</p>
         <Button onClick={() => navigate("/orders")} variant="outline" className="gap-2 rounded-xl">
           <ArrowRight className="w-4 h-4" />
           العودة للطلبات

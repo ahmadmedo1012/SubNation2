@@ -88,9 +88,7 @@ export default function RegisterPage() {
             <Logo size="lg" />
           </div>
           <h1 className="text-xl font-black tracking-tight">إنشاء حساب جديد</h1>
-          <p className="text-muted-foreground text-sm mt-1.5">
-            انضم واشترك بأفضل الخدمات الرقمية
-          </p>
+          <p className="text-muted-foreground text-sm mt-1.5">انضم واشترك بأفضل الخدمات الرقمية</p>
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/20 reveal-up stagger-1">

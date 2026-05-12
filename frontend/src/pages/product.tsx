@@ -352,9 +352,7 @@ export default function ProductPage() {
               {product.name}
             </h1>
             {product.description && (
-              <p className="text-muted-foreground leading-relaxed text-sm">
-                {product.description}
-              </p>
+              <p className="text-muted-foreground leading-relaxed text-sm">{product.description}</p>
             )}
           </div>
 
@@ -416,9 +414,7 @@ export default function ProductPage() {
                 <span className="text-[11px] font-bold text-foreground leading-tight">
                   {item.label}
                 </span>
-                <span className="text-[10px] text-muted-foreground leading-tight">
-                  {item.desc}
-                </span>
+                <span className="text-[10px] text-muted-foreground leading-tight">{item.desc}</span>
               </div>
             ))}
           </div>

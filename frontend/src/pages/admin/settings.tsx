@@ -767,9 +767,7 @@ export default function AdminSettingsPage() {
                       <span className="font-medium text-sm">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {item.value}
-                      </span>
+                      <span className="text-xs font-mono text-muted-foreground">{item.value}</span>
                       <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                     </div>
                   </div>

@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  Bell, BellDot, CheckCheck, Wallet, ShoppingBag,
-  MessageSquare, Star, Info, X, Package, ArrowLeft, ExternalLink
+  Bell,
+  BellDot,
+  CheckCheck,
+  Wallet,
+  ShoppingBag,
+  MessageSquare,
+  Star,
+  Info,
+  X,
+  Package,
+  ArrowLeft,
+  ExternalLink,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
@@ -18,37 +28,67 @@ interface Notif {
   created_at: string;
 }
 
-const TYPE_CONFIG: Record<string, {
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-  border: string;
-  actionLabel?: string;
-  actionIcon?: React.ElementType;
-  actionHref?: string;
-}> = {
-  wallet:  {
-    icon: Wallet,        color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20",
-    actionLabel: "المحفظة", actionIcon: ArrowLeft, actionHref: "/wallet",
+const TYPE_CONFIG: Record<
+  string,
+  {
+    icon: React.ElementType;
+    color: string;
+    bg: string;
+    border: string;
+    actionLabel?: string;
+    actionIcon?: React.ElementType;
+    actionHref?: string;
+  }
+> = {
+  wallet: {
+    icon: Wallet,
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/20",
+    actionLabel: "المحفظة",
+    actionIcon: ArrowLeft,
+    actionHref: "/wallet",
   },
-  order:   {
-    icon: ShoppingBag,   color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20",
-    actionLabel: "تفاصيل الطلب", actionIcon: ExternalLink,
+  order: {
+    icon: ShoppingBag,
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+    border: "border-blue-500/20",
+    actionLabel: "تفاصيل الطلب",
+    actionIcon: ExternalLink,
   },
   support: {
-    icon: MessageSquare, color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20",
-    actionLabel: "التذكرة", actionIcon: ArrowLeft, actionHref: "/support",
+    icon: MessageSquare,
+    color: "text-purple-400",
+    bg: "bg-purple-500/10",
+    border: "border-purple-500/20",
+    actionLabel: "التذكرة",
+    actionIcon: ArrowLeft,
+    actionHref: "/support",
   },
   loyalty: {
-    icon: Star,          color: "text-yellow-400",  bg: "bg-yellow-500/10",  border: "border-yellow-500/20",
-    actionLabel: "نقاطي", actionIcon: ArrowLeft, actionHref: "/loyalty",
+    icon: Star,
+    color: "text-yellow-400",
+    bg: "bg-yellow-500/10",
+    border: "border-yellow-500/20",
+    actionLabel: "نقاطي",
+    actionIcon: ArrowLeft,
+    actionHref: "/loyalty",
   },
   product: {
-    icon: Package,       color: "text-primary",     bg: "bg-primary/10",     border: "border-primary/20",
-    actionLabel: "تصفح", actionIcon: ArrowLeft, actionHref: "/",
+    icon: Package,
+    color: "text-primary",
+    bg: "bg-primary/10",
+    border: "border-primary/20",
+    actionLabel: "تصفح",
+    actionIcon: ArrowLeft,
+    actionHref: "/",
   },
-  system:  {
-    icon: Info,          color: "text-muted-foreground", bg: "bg-muted/50",  border: "border-border/40",
+  system: {
+    icon: Info,
+    color: "text-muted-foreground",
+    bg: "bg-muted/50",
+    border: "border-border/40",
   },
 };
 
@@ -63,7 +103,7 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  const unread = notifs.filter(n => !n.is_read).length;
+  const unread = notifs.filter((n) => !n.is_read).length;
   const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
 
   const fetch_ = async () => {
@@ -73,9 +113,9 @@ export function NotificationBell() {
       if (!r.ok) return;
       const data: Notif[] = await r.json();
       setNotifs(data);
-      const newUnreadIds = new Set(data.filter(n => !n.is_read).map(n => n.id));
+      const newUnreadIds = new Set(data.filter((n) => !n.is_read).map((n) => n.id));
       if (initialLoadDone.current) {
-        const brand_new = data.filter(n => !n.is_read && !prevUnreadIds.has(n.id));
+        const brand_new = data.filter((n) => !n.is_read && !prevUnreadIds.has(n.id));
         if (brand_new.length > 0) {
           const latest = brand_new[0];
           toast({ title: latest.title, description: latest.message ?? undefined });
@@ -89,12 +129,12 @@ export function NotificationBell() {
 
   const markAllRead = async () => {
     await fetch("/api/notifications/read-all", { method: "POST", headers });
-    setNotifs(prev => prev.map(n => ({ ...n, is_read: true })));
+    setNotifs((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
   const markRead = async (id: number) => {
     await fetch(`/api/notifications/${id}/read`, { method: "POST", headers });
-    setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
   };
 
   const handleAction = (n: Notif, href: string) => {
@@ -158,7 +198,7 @@ export function NotificationBell() {
     <div className="relative" ref={wrapRef}>
       {/* Bell button */}
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         className={`relative p-2 rounded-lg transition-all duration-150 active:scale-90 ${
           open
             ? "bg-primary/12 text-primary"
@@ -252,18 +292,25 @@ export function NotificationBell() {
                       className="flex items-start gap-3 cursor-pointer hover:opacity-85 transition-opacity"
                       onClick={() => {
                         if (!n.is_read) markRead(n.id);
-                        if (actionHref) { setOpen(false); navigate(actionHref); }
+                        if (actionHref) {
+                          setOpen(false);
+                          navigate(actionHref);
+                        }
                       }}
                     >
                       {/* Icon */}
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${cfg.bg} ${cfg.border}`}>
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 border ${cfg.bg} ${cfg.border}`}
+                      >
                         <IconComp className={`w-3.5 h-3.5 ${cfg.color}`} />
                       </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm font-semibold leading-snug ${!n.is_read ? "text-foreground" : "text-foreground/75"}`}>
+                          <p
+                            className={`text-sm font-semibold leading-snug ${!n.is_read ? "text-foreground" : "text-foreground/75"}`}
+                          >
                             {n.title}
                           </p>
                           {!n.is_read && (
@@ -295,7 +342,10 @@ export function NotificationBell() {
                         )}
                         {!n.is_read && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markRead(n.id);
+                            }}
                             className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2 py-1 rounded-lg hover:bg-muted/40 transition-all duration-150"
                           >
                             <CheckCheck className="w-2.5 h-2.5" />
@@ -313,9 +363,7 @@ export function NotificationBell() {
           {/* Footer */}
           {notifs.length > 0 && (
             <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center">
-              <p className="text-xs text-muted-foreground">
-                {notifs.length} إشعار
-              </p>
+              <p className="text-xs text-muted-foreground">{notifs.length} إشعار</p>
             </div>
           )}
         </div>

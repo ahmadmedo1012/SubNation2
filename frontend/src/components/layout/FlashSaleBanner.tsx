@@ -33,7 +33,10 @@ export function FlashSaleBanner() {
     if (!flashSale) return;
     const update = () => {
       const diff = new Date(flashSale.ends_at).getTime() - Date.now();
-      if (diff <= 0) { setExpired(true); return; }
+      if (diff <= 0) {
+        setExpired(true);
+        return;
+      }
       setTimeLeft({
         h: Math.floor(diff / 3600000),
         m: Math.floor((diff % 3600000) / 60000),
@@ -49,11 +52,13 @@ export function FlashSaleBanner() {
   if (!flashSale || expired || dismissed) return null;
 
   return (
-    <div className={`relative overflow-hidden border-b py-2 px-4 transition-all duration-500 ${
-      urgent
-        ? "bg-gradient-to-l from-primary/25 via-primary/14 to-primary/5 border-primary/35"
-        : "bg-gradient-to-l from-primary/15 via-primary/8 to-transparent border-primary/18"
-    }`}>
+    <div
+      className={`relative overflow-hidden border-b py-2 px-4 transition-all duration-500 ${
+        urgent
+          ? "bg-gradient-to-l from-primary/25 via-primary/14 to-primary/5 border-primary/35"
+          : "bg-gradient-to-l from-primary/15 via-primary/8 to-transparent border-primary/18"
+      }`}
+    >
       {/* Animated glow */}
       {urgent && (
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent animate-pulse pointer-events-none" />
@@ -62,12 +67,18 @@ export function FlashSaleBanner() {
       <div className="relative max-w-6xl mx-auto flex items-center gap-2 sm:gap-3">
         {/* Left: icon + label */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-            urgent ? "bg-primary" : "bg-primary/20 border border-primary/30"
-          }`}>
-            <Zap className={`w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current ${urgent ? "text-white" : "text-primary"}`} />
+          <div
+            className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+              urgent ? "bg-primary" : "bg-primary/20 border border-primary/30"
+            }`}
+          >
+            <Zap
+              className={`w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current ${urgent ? "text-white" : "text-primary"}`}
+            />
           </div>
-          <span className={`text-[11px] sm:text-xs font-black hidden sm:inline ${urgent ? "text-primary" : "text-primary/80"}`}>
+          <span
+            className={`text-[11px] sm:text-xs font-black hidden sm:inline ${urgent ? "text-primary" : "text-primary/80"}`}
+          >
             عرض محدود
           </span>
         </div>
@@ -76,14 +87,18 @@ export function FlashSaleBanner() {
         <Link href="/" className="flex-1 min-w-0">
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
-            <span className="text-primary font-black shrink-0">— {flashSale.discount_percent}% خصم</span>
+            <span className="text-primary font-black shrink-0">
+              — {flashSale.discount_percent}% خصم
+            </span>
             <ArrowLeft className="w-3 h-3 text-primary shrink-0 hidden sm:inline" />
           </div>
         </Link>
 
         {/* Right: countdown + dismiss */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className={`flex items-center gap-0.5 sm:gap-1 ${urgent ? "text-primary" : "text-muted-foreground"}`}>
+          <div
+            className={`flex items-center gap-0.5 sm:gap-1 ${urgent ? "text-primary" : "text-muted-foreground"}`}
+          >
             {[
               { val: timeLeft.h, label: "س" },
               { val: timeLeft.m, label: "د" },
@@ -91,9 +106,11 @@ export function FlashSaleBanner() {
             ].map((seg, i) => (
               <div key={i} className="flex items-center gap-0.5 sm:gap-1">
                 {i > 0 && <span className="font-black opacity-40 text-[10px]">:</span>}
-                <div className={`flex flex-col items-center min-w-[22px] sm:min-w-[26px] px-0.5 sm:px-1 py-0.5 rounded border transition-colors ${
-                  urgent ? "bg-primary/15 border-primary/35" : "bg-card/60 border-border/60"
-                }`}>
+                <div
+                  className={`flex flex-col items-center min-w-[22px] sm:min-w-[26px] px-0.5 sm:px-1 py-0.5 rounded border transition-colors ${
+                    urgent ? "bg-primary/15 border-primary/35" : "bg-card/60 border-border/60"
+                  }`}
+                >
                   <span className="font-black tabular-nums text-[11px] sm:text-xs leading-tight">
                     {String(seg.val).padStart(2, "0")}
                   </span>

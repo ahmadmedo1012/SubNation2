@@ -279,9 +279,7 @@ export default function SupportPage() {
                     <MessageSquare className="w-5 h-5 opacity-20" />
                   </div>
                   <p className="text-sm font-medium">لا توجد رسائل بعد</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    اكتب ردك أدناه لبدء المحادثة
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">اكتب ردك أدناه لبدء المحادثة</p>
                 </div>
               ) : (
                 selectedTicket.replies.map((r, i) => {
@@ -396,9 +394,7 @@ export default function SupportPage() {
           <form onSubmit={handleCreate} className="p-5 space-y-4">
             {/* Category pills */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-2.5 block">
-                الفئة
-              </Label>
+              <Label className="text-xs font-bold text-muted-foreground mb-2.5 block">الفئة</Label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((c) => (
                   <button

@@ -4,8 +4,16 @@ import { AdminLayout } from "./layout";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime, formatDate } from "@/lib/utils";
 import {
-  Bell, BellOff, CheckCheck, Trash2, Tag, Package,
-  AlertTriangle, Info, RefreshCw, Inbox,
+  Bell,
+  BellOff,
+  CheckCheck,
+  Trash2,
+  Tag,
+  Package,
+  AlertTriangle,
+  Info,
+  RefreshCw,
+  Inbox,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -20,23 +28,56 @@ interface AdminAlertItem {
   createdAt: string;
 }
 
-const TYPE_META: Record<AlertType, { icon: any; color: string; bg: string; border: string; label: string }> = {
-  coupon_maxed:    { icon: Tag,           color: "text-amber-400",  bg: "bg-amber-400/10",  border: "border-amber-400/20",  label: "كوبون استُنفد" },
-  coupon_expiring: { icon: Tag,           color: "text-orange-400", bg: "bg-orange-400/10", border: "border-orange-400/20", label: "كوبون منتهٍ" },
-  low_stock:       { icon: Package,       color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20", label: "مخزون منخفض" },
-  no_stock:        { icon: AlertTriangle, color: "text-red-400",    bg: "bg-red-400/10",    border: "border-red-400/20",    label: "نفاد المخزون" },
-  system:          { icon: Info,          color: "text-blue-400",   bg: "bg-blue-400/10",   border: "border-blue-400/20",   label: "نظام" },
+const TYPE_META: Record<
+  AlertType,
+  { icon: any; color: string; bg: string; border: string; label: string }
+> = {
+  coupon_maxed: {
+    icon: Tag,
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    border: "border-amber-400/20",
+    label: "كوبون استُنفد",
+  },
+  coupon_expiring: {
+    icon: Tag,
+    color: "text-orange-400",
+    bg: "bg-orange-400/10",
+    border: "border-orange-400/20",
+    label: "كوبون منتهٍ",
+  },
+  low_stock: {
+    icon: Package,
+    color: "text-yellow-400",
+    bg: "bg-yellow-400/10",
+    border: "border-yellow-400/20",
+    label: "مخزون منخفض",
+  },
+  no_stock: {
+    icon: AlertTriangle,
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+    border: "border-red-400/20",
+    label: "نفاد المخزون",
+  },
+  system: {
+    icon: Info,
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
+    border: "border-blue-400/20",
+    label: "نظام",
+  },
 };
 
 type FilterType = "all" | "unread" | "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock";
 
 const FILTERS: { value: FilterType; label: string }[] = [
-  { value: "all",            label: "الكل" },
-  { value: "unread",         label: "غير مقروء" },
-  { value: "no_stock",       label: "نفاد مخزون" },
-  { value: "low_stock",      label: "مخزون منخفض" },
-  { value: "coupon_maxed",   label: "كوبون استُنفد" },
-  { value: "coupon_expiring",label: "كوبون منتهٍ" },
+  { value: "all", label: "الكل" },
+  { value: "unread", label: "غير مقروء" },
+  { value: "no_stock", label: "نفاد مخزون" },
+  { value: "low_stock", label: "مخزون منخفض" },
+  { value: "coupon_maxed", label: "كوبون استُنفد" },
+  { value: "coupon_expiring", label: "كوبون منتهٍ" },
 ];
 
 function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAlertItem[] }[] {
@@ -60,7 +101,7 @@ function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAle
     else groups[3].items.push(a);
   }
 
-  return groups.filter(g => g.items.length > 0);
+  return groups.filter((g) => g.items.length > 0);
 }
 
 export default function AdminAlertsPage() {
@@ -72,7 +113,7 @@ export default function AdminAlertsPage() {
 
   const { data, isLoading, refetch } = useQuery<{ alerts: AdminAlertItem[]; unreadCount: number }>({
     queryKey: ["admin-alerts"],
-    queryFn: () => fetch("/api/admin/alerts", { headers }).then(r => r.json()),
+    queryFn: () => fetch("/api/admin/alerts", { headers }).then((r) => r.json()),
     refetchInterval: 20_000,
     enabled: !!adminToken,
   });
@@ -84,78 +125,99 @@ export default function AdminAlertsPage() {
 
   const markRead = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/api/admin/alerts/${id}/read`, { method: "PATCH", headers }).then(r => r.json()),
+      fetch(`/api/admin/alerts/${id}/read`, { method: "PATCH", headers }).then((r) => r.json()),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], old =>
-        old ? {
-          alerts: old.alerts.map(a => a.id === id ? { ...a, isRead: true } : a),
-          unreadCount: Math.max(0, old.unreadCount - 1),
-        } : old
+      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
+        "admin-alerts",
+      ]);
+      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], (old) =>
+        old
+          ? {
+              alerts: old.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a)),
+              unreadCount: Math.max(0, old.unreadCount - 1),
+            }
+          : old,
       );
-      qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], old =>
-        old ? { count: Math.max(0, old.count - 1) } : old
+      qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], (old) =>
+        old ? { count: Math.max(0, old.count - 1) } : old,
       );
       return { prev };
     },
-    onError: (_err, _id, ctx) => { if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev); },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    },
     onSettled: () => invalidateAll(),
   });
 
   const markAllRead = useMutation({
     mutationFn: () =>
-      fetch("/api/admin/alerts/read-all", { method: "PATCH", headers }).then(r => r.json()),
+      fetch("/api/admin/alerts/read-all", { method: "PATCH", headers }).then((r) => r.json()),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], old =>
-        old ? { alerts: old.alerts.map(a => ({ ...a, isRead: true })), unreadCount: 0 } : old
+      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
+        "admin-alerts",
+      ]);
+      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], (old) =>
+        old ? { alerts: old.alerts.map((a) => ({ ...a, isRead: true })), unreadCount: 0 } : old,
       );
       qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], { count: 0 });
       return { prev };
     },
-    onError: (_err, _v, ctx) => { if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev); },
+    onError: (_err, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    },
     onSettled: () => invalidateAll(),
   });
 
   const deleteAlert = useMutation({
     mutationFn: (id: number) =>
-      fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers }).then(r => r.json()),
+      fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers }).then((r) => r.json()),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], old => {
-        if (!old) return old;
-        const removed = old.alerts.find(a => a.id === id);
-        return {
-          alerts: old.alerts.filter(a => a.id !== id),
-          unreadCount: removed && !removed.isRead ? Math.max(0, old.unreadCount - 1) : old.unreadCount,
-        };
-      });
+      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
+        "admin-alerts",
+      ]);
+      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(
+        ["admin-alerts"],
+        (old) => {
+          if (!old) return old;
+          const removed = old.alerts.find((a) => a.id === id);
+          return {
+            alerts: old.alerts.filter((a) => a.id !== id),
+            unreadCount:
+              removed && !removed.isRead ? Math.max(0, old.unreadCount - 1) : old.unreadCount,
+          };
+        },
+      );
       return { prev };
     },
-    onError: (_err, _id, ctx) => { if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev); },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: ["admin-alerts"] }),
   });
 
   const deleteRead = useMutation({
     mutationFn: () =>
-      fetch("/api/admin/alerts/read", { method: "DELETE", headers }).then(r => r.json()),
+      fetch("/api/admin/alerts/read", { method: "DELETE", headers }).then((r) => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-alerts"] }),
   });
 
   const deleteAll = useMutation({
     mutationFn: () =>
-      fetch("/api/admin/alerts", { method: "DELETE", headers }).then(r => r.json()),
-    onSuccess: () => { setConfirmDeleteAll(false); qc.invalidateQueries({ queryKey: ["admin-alerts"] }); },
+      fetch("/api/admin/alerts", { method: "DELETE", headers }).then((r) => r.json()),
+    onSuccess: () => {
+      setConfirmDeleteAll(false);
+      qc.invalidateQueries({ queryKey: ["admin-alerts"] });
+    },
   });
 
   const alerts = data?.alerts ?? [];
   const unreadCount = data?.unreadCount ?? 0;
-  const readCount = alerts.filter(a => a.isRead).length;
+  const readCount = alerts.filter((a) => a.isRead).length;
 
-  const displayed = alerts.filter(a => {
+  const displayed = alerts.filter((a) => {
     if (filter === "unread") return !a.isRead;
     if (filter === "all") return true;
     return a.type === filter;
@@ -166,7 +228,6 @@ export default function AdminAlertsPage() {
   return (
     <AdminLayout badges={{ unreadAlerts: unreadCount }}>
       <div className="space-y-5 page-in">
-
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -185,43 +246,60 @@ export default function AdminAlertsPage() {
             </button>
 
             {unreadCount > 0 && (
-              <Button variant="outline" size="sm" onClick={() => markAllRead.mutate()}
-                disabled={markAllRead.isPending} className="gap-1.5 text-xs h-8">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => markAllRead.mutate()}
+                disabled={markAllRead.isPending}
+                className="gap-1.5 text-xs h-8"
+              >
                 <CheckCheck className="w-3.5 h-3.5" />
                 قراءة الكل
               </Button>
             )}
 
             {readCount > 0 && (
-              <Button variant="outline" size="sm" onClick={() => deleteRead.mutate()}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => deleteRead.mutate()}
                 disabled={deleteRead.isPending}
-                className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive hover:border-destructive/30">
+                className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive hover:border-destructive/30"
+              >
                 <Trash2 className="w-3.5 h-3.5" />
                 حذف المقروءة ({readCount})
               </Button>
             )}
 
-            {alerts.length > 0 && (
-              confirmDeleteAll ? (
+            {alerts.length > 0 &&
+              (confirmDeleteAll ? (
                 <div className="flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 rounded-lg px-2.5 py-1.5">
                   <span className="text-xs text-destructive font-medium">تأكيد حذف الكل؟</span>
-                  <button onClick={() => deleteAll.mutate()} disabled={deleteAll.isPending}
-                    className="text-[11px] font-black text-destructive hover:text-destructive/80 transition-colors px-1">
+                  <button
+                    onClick={() => deleteAll.mutate()}
+                    disabled={deleteAll.isPending}
+                    className="text-[11px] font-black text-destructive hover:text-destructive/80 transition-colors px-1"
+                  >
                     نعم
                   </button>
-                  <button onClick={() => setConfirmDeleteAll(false)}
-                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1">
+                  <button
+                    onClick={() => setConfirmDeleteAll(false)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1"
+                  >
                     لا
                   </button>
                 </div>
               ) : (
-                <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteAll(true)}
-                  className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDeleteAll(true)}
+                  className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive"
+                >
                   <Trash2 className="w-3.5 h-3.5" />
                   حذف الكل
                 </Button>
-              )
-            )}
+              ))}
           </div>
         </div>
 
@@ -229,45 +307,67 @@ export default function AdminAlertsPage() {
         {!isLoading && alerts.length > 0 && (
           <div className="flex items-center gap-3 flex-wrap">
             {[
-              { key: "no_stock",    count: alerts.filter(a => a.type === "no_stock").length },
-              { key: "low_stock",   count: alerts.filter(a => a.type === "low_stock").length },
-              { key: "coupon_maxed",count: alerts.filter(a => a.type === "coupon_maxed").length },
-            ].filter(s => s.count > 0).map(s => {
-              const m = TYPE_META[s.key as AlertType];
-              return (
-                <button key={s.key} onClick={() => setFilter(filter === s.key ? "all" : s.key as FilterType)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition-all duration-150 ${
-                    filter === s.key ? `${m.bg} ${m.border} ${m.color}` : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
-                  }`}>
-                  <m.icon className="w-3 h-3" />
-                  {m.label}
-                  <span className={`text-[10px] px-1 rounded-full font-black ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}>
-                    {s.count}
-                  </span>
-                </button>
-              );
-            })}
+              { key: "no_stock", count: alerts.filter((a) => a.type === "no_stock").length },
+              { key: "low_stock", count: alerts.filter((a) => a.type === "low_stock").length },
+              {
+                key: "coupon_maxed",
+                count: alerts.filter((a) => a.type === "coupon_maxed").length,
+              },
+            ]
+              .filter((s) => s.count > 0)
+              .map((s) => {
+                const m = TYPE_META[s.key as AlertType];
+                return (
+                  <button
+                    key={s.key}
+                    onClick={() => setFilter(filter === s.key ? "all" : (s.key as FilterType))}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition-all duration-150 ${
+                      filter === s.key
+                        ? `${m.bg} ${m.border} ${m.color}`
+                        : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <m.icon className="w-3 h-3" />
+                    {m.label}
+                    <span
+                      className={`text-[10px] px-1 rounded-full font-black ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}
+                    >
+                      {s.count}
+                    </span>
+                  </button>
+                );
+              })}
           </div>
         )}
 
         {/* Filter tabs */}
         <div className="flex items-center gap-1 bg-muted/30 border border-border/40 p-1 rounded-2xl overflow-x-auto scrollbar-none w-fit max-w-full">
-          {FILTERS.map(tab => {
-            const cnt = tab.value === "all" ? alerts.length
-              : tab.value === "unread" ? unreadCount
-              : alerts.filter(a => a.type === tab.value).length;
+          {FILTERS.map((tab) => {
+            const cnt =
+              tab.value === "all"
+                ? alerts.length
+                : tab.value === "unread"
+                  ? unreadCount
+                  : alerts.filter((a) => a.type === tab.value).length;
             return (
-              <button key={tab.value} onClick={() => setFilter(tab.value)}
+              <button
+                key={tab.value}
+                onClick={() => setFilter(tab.value)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap shrink-0 ${
                   filter === tab.value
                     ? "bg-card text-foreground shadow-sm font-bold"
                     : "text-muted-foreground hover:text-foreground"
-                }`}>
+                }`}
+              >
                 {tab.label}
                 {cnt > 0 && (
-                  <span className={`text-[10px] font-black px-1.5 py-px rounded-full ${
-                    filter === tab.value ? "bg-primary/15 text-primary" : "bg-muted/60 text-muted-foreground"
-                  }`}>
+                  <span
+                    className={`text-[10px] font-black px-1.5 py-px rounded-full ${
+                      filter === tab.value
+                        ? "bg-primary/15 text-primary"
+                        : "bg-muted/60 text-muted-foreground"
+                    }`}
+                  >
                     {cnt}
                   </span>
                 )}
@@ -286,30 +386,38 @@ export default function AdminAlertsPage() {
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
             <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
-              {filter === "unread" ? <Bell className="w-7 h-7 text-muted-foreground" /> : <BellOff className="w-7 h-7 text-muted-foreground" />}
+              {filter === "unread" ? (
+                <Bell className="w-7 h-7 text-muted-foreground" />
+              ) : (
+                <BellOff className="w-7 h-7 text-muted-foreground" />
+              )}
             </div>
             <div className="text-center">
               <div className="font-semibold text-foreground/60">
                 {filter === "unread" ? "لا توجد تنبيهات غير مقروءة" : "لا توجد تنبيهات"}
               </div>
               <div className="text-xs mt-1 text-muted-foreground">
-                {filter === "unread" ? "أنت على اطلاع كامل بكل شيء ✓" : "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"}
+                {filter === "unread"
+                  ? "أنت على اطلاع كامل بكل شيء ✓"
+                  : "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"}
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-6">
-            {groups.map(group => (
+            {groups.map((group) => (
               <div key={group.label}>
                 {/* Date group header */}
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{group.label}</span>
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
+                    {group.label}
+                  </span>
                   <div className="flex-1 h-px bg-border/40" />
                   <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
                 </div>
 
                 <div className="space-y-1.5">
-                  {group.items.map(alert => {
+                  {group.items.map((alert) => {
                     const meta = TYPE_META[alert.type] ?? TYPE_META.system;
                     const Icon = meta.icon;
                     return (
@@ -324,7 +432,9 @@ export default function AdminAlertsPage() {
                       >
                         {/* Unread dot */}
                         <div className="relative shrink-0 mt-0.5">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${meta.bg}`}>
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center ${meta.bg}`}
+                          >
                             <Icon className={`w-4 h-4 ${meta.color}`} />
                           </div>
                           {!alert.isRead && (
@@ -335,15 +445,21 @@ export default function AdminAlertsPage() {
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className={`text-sm leading-snug ${alert.isRead ? "font-medium text-foreground/70" : "font-bold"}`}>
+                            <span
+                              className={`text-sm leading-snug ${alert.isRead ? "font-medium text-foreground/70" : "font-bold"}`}
+                            >
                               {alert.title}
                             </span>
-                            <span className={`text-[10px] px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}>
+                            <span
+                              className={`text-[10px] px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}
+                            >
                               {meta.label}
                             </span>
                           </div>
                           {alert.message && (
-                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{alert.message}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                              {alert.message}
+                            </p>
                           )}
                           <div className="mt-1">
                             <span
@@ -359,7 +475,10 @@ export default function AdminAlertsPage() {
                         <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                           {!alert.isRead && (
                             <button
-                              onClick={e => { e.stopPropagation(); markRead.mutate(alert.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markRead.mutate(alert.id);
+                              }}
                               className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
                               title="تعيين كمقروء"
                             >
@@ -367,7 +486,10 @@ export default function AdminAlertsPage() {
                             </button>
                           )}
                           <button
-                            onClick={e => { e.stopPropagation(); deleteAlert.mutate(alert.id); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteAlert.mutate(alert.id);
+                            }}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                             title="حذف"
                           >
@@ -384,7 +506,9 @@ export default function AdminAlertsPage() {
             {/* Footer summary */}
             <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
               <Inbox className="w-3.5 h-3.5" />
-              <span>{alerts.length} تنبيه إجمالاً · {unreadCount} غير مقروء</span>
+              <span>
+                {alerts.length} تنبيه إجمالاً · {unreadCount} غير مقروء
+              </span>
             </div>
           </div>
         )}

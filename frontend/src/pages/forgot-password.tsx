@@ -4,7 +4,17 @@ import { Logo } from "@/components/layout/Logo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, Phone, KeyRound, Lock, Eye, EyeOff, ArrowRight, MessageSquare } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Phone,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  MessageSquare,
+} from "lucide-react";
 
 type Step = "phone" | "otp" | "done";
 
@@ -101,13 +111,13 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="text-xl font-black">
             {step === "phone" && "استعادة كلمة المرور"}
-            {step === "otp"   && "إدخال كود التحقق"}
-            {step === "done"  && "تم بنجاح!"}
+            {step === "otp" && "إدخال كود التحقق"}
+            {step === "done" && "تم بنجاح!"}
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             {step === "phone" && "أدخل رقم هاتفك المسجل"}
-            {step === "otp"   && "أدخل الكود الذي وصلك وكلمة المرور الجديدة"}
-            {step === "done"  && "يمكنك الآن تسجيل الدخول"}
+            {step === "otp" && "أدخل الكود الذي وصلك وكلمة المرور الجديدة"}
+            {step === "done" && "يمكنك الآن تسجيل الدخول"}
           </p>
         </div>
 
@@ -116,23 +126,28 @@ export default function ForgotPasswordPage() {
           <div className="flex items-center justify-center gap-2 mb-6">
             {(["phone", "otp"] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                  step === s
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : s === "phone" && step === "otp"
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-secondary/60 text-muted-foreground border border-border"
-                }`}>
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                    step === s
+                      ? "bg-primary text-white shadow-lg shadow-primary/30"
+                      : s === "phone" && step === "otp"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        : "bg-secondary/60 text-muted-foreground border border-border"
+                  }`}
+                >
                   {s === "phone" && step === "otp" ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
                 </div>
-                {i < 1 && <div className={`w-8 h-px transition-all ${step === "otp" ? "bg-emerald-500/40" : "bg-border"}`} />}
+                {i < 1 && (
+                  <div
+                    className={`w-8 h-px transition-all ${step === "otp" ? "bg-emerald-500/40" : "bg-border"}`}
+                  />
+                )}
               </div>
             ))}
           </div>
         )}
 
         <div className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/10">
-
           {/* ── Step 1: Phone ── */}
           {step === "phone" && (
             <form onSubmit={submitPhone} className="space-y-4">
@@ -145,7 +160,7 @@ export default function ForgotPasswordPage() {
                     type="tel"
                     placeholder="091XXXXXXX"
                     value={phone}
-                    onChange={e => handlePhoneChange(e.target.value)}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
                     required
                     dir="ltr"
                     className="h-11 text-left pl-3 pr-10"
@@ -175,7 +190,10 @@ export default function ForgotPasswordPage() {
 
               <div className="text-center text-sm text-muted-foreground">
                 تذكرت كلمة المرور؟{" "}
-                <Link href="/login" className="text-primary font-bold hover:underline underline-offset-2">
+                <Link
+                  href="/login"
+                  className="text-primary font-bold hover:underline underline-offset-2"
+                >
                   تسجيل الدخول
                 </Link>
               </div>
@@ -188,7 +206,9 @@ export default function ForgotPasswordPage() {
               {/* Phone display */}
               <div className="flex items-center justify-between bg-secondary/40 border border-border/50 rounded-xl px-3 py-2.5 text-sm">
                 <span className="text-muted-foreground text-xs">الرقم المُرسل إليه</span>
-                <span className="font-mono font-bold text-foreground text-xs" dir="ltr">{phone}</span>
+                <span className="font-mono font-bold text-foreground text-xs" dir="ltr">
+                  {phone}
+                </span>
               </div>
 
               {/* OTP input */}
@@ -203,7 +223,7 @@ export default function ForgotPasswordPage() {
                     pattern="[0-9]*"
                     placeholder="• • • • • •"
                     value={otp}
-                    onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     required
                     dir="ltr"
                     className="h-11 text-center tracking-[0.5em] text-lg font-black pr-10"
@@ -223,13 +243,16 @@ export default function ForgotPasswordPage() {
                     type={showPass ? "text" : "password"}
                     placeholder="8 أحرف على الأقل"
                     value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
+                    onChange={(e) => setNewPassword(e.target.value)}
                     required
                     className="pr-10 pl-10 h-11"
                     autoComplete="new-password"
                   />
-                  <button type="button" onClick={() => setShowPass(v => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((v) => !v)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
                     {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -245,7 +268,7 @@ export default function ForgotPasswordPage() {
                     type={showConfirm ? "text" : "password"}
                     placeholder="أعد إدخال كلمة المرور"
                     value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     className={`pr-10 pl-10 h-11 transition-all ${
                       confirmPassword && newPassword !== confirmPassword
@@ -256,8 +279,11 @@ export default function ForgotPasswordPage() {
                     }`}
                     autoComplete="new-password"
                   />
-                  <button type="button" onClick={() => setShowConfirm(v => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
                     {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -276,8 +302,17 @@ export default function ForgotPasswordPage() {
                 {resetLoading ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
               </Button>
 
-              <button type="button" onClick={() => { setStep("phone"); setOtp(""); setNewPassword(""); setConfirmPassword(""); setResetError(""); }}
-                className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("phone");
+                  setOtp("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setResetError("");
+                }}
+                className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors py-1"
+              >
                 ← العودة وتغيير الرقم
               </button>
             </form>
@@ -291,7 +326,9 @@ export default function ForgotPasswordPage() {
               </div>
               <div>
                 <p className="font-bold text-foreground mb-1.5">تم تغيير كلمة المرور بنجاح</p>
-                <p className="text-sm text-muted-foreground">يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.</p>
+                <p className="text-sm text-muted-foreground">
+                  يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.
+                </p>
               </div>
               <Button
                 onClick={() => navigate("/login")}

@@ -534,9 +534,7 @@ export default function ProfilePage() {
 
               {/* Confirm */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground">
-                  تأكيد كلمة المرور
-                </Label>
+                <Label className="text-xs font-bold text-muted-foreground">تأكيد كلمة المرور</Label>
                 <div className="relative">
                   <Input
                     type="password"
