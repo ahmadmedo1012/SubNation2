@@ -4,6 +4,7 @@ import { adminAuthRouter } from "./auth";
 import { adminOrdersRouter } from "./orders";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
+import { adminSecurityRouter } from "./security";
 import { adminSettingsRouter } from "./settings";
 import { adminStatsRouter } from "./stats";
 import { adminTicketsRouter } from "./tickets";
