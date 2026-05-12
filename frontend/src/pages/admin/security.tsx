@@ -71,7 +71,17 @@ export function AdminSecurityDashboard() {
   };
 
   const exportToCSV = () => {
-    const headers = ["ID", "User ID", "Identifier", "Action", "Success", "Provider", "Failure Reason", "IP Address", "Created At"];
+    const headers = [
+      "ID",
+      "User ID",
+      "Identifier",
+      "Action",
+      "Success",
+      "Provider",
+      "Failure Reason",
+      "IP Address",
+      "Created At",
+    ];
     const rows = activities.map((a) => [
       a.id,
       a.userId,

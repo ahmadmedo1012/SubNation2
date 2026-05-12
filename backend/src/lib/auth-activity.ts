@@ -4,7 +4,14 @@ import type { Request } from "express";
 export interface AuthActivityParams {
   userId?: number;
   identifier: string;
-  action: "login" | "register" | "logout" | "logout_all" | "provider_link" | "provider_unlink" | "password_change";
+  action:
+    | "login"
+    | "register"
+    | "logout"
+    | "logout_all"
+    | "provider_link"
+    | "provider_unlink"
+    | "password_change";
   provider?: string;
   success: boolean;
   failureReason?: string;

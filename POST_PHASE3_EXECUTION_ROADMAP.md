@@ -12,6 +12,7 @@
 The authentication modernization (Phase 3) has been successfully implemented with Firebase Google auth, Redis rate limiting, auth_activity schema, provider linking, automatic token refresh, and exponential backoff lockout. However, several critical UX gaps and security enhancements remain before production deployment.
 
 **Critical Findings:**
+
 - ✅ Core authentication flow is functional and secure
 - ❌ auth_activity table exists but is **completely unused** (0 records)
 - ❌ No onboarding experience for new users
@@ -30,9 +31,11 @@ The authentication modernization (Phase 3) has been successfully implemented wit
 **Risk:** HIGH - No visibility into authentication events
 
 ### 1.1 Implement auth_activity Logging
+
 **Status:** Schema exists, code missing
 
 **Backend Changes:**
+
 ```typescript
 // backend/src/lib/auth-activity.ts (NEW FILE)
 import { db, authActivityTable } from "@workspace/db";
@@ -42,7 +45,14 @@ import type { Request } from "express";
 export async function logAuthActivity(params: {
   userId?: number;
   identifier: string;
-  action: "login" | "register" | "logout" | "logout_all" | "provider_link" | "provider_unlink" | "password_change";
+  action:
+    | "login"
+    | "register"
+    | "logout"
+    | "logout_all"
+    | "provider_link"
+    | "provider_unlink"
+    | "password_change";
   provider?: string;
   success: boolean;
   failureReason?: string;
@@ -72,6 +82,7 @@ export function getClientInfo(req: Request) {
 ```
 
 **Integration Points:**
+
 - `POST /api/auth/login` - log success/failure
 - `POST /api/auth/register` - log new registrations
 - `POST /api/auth/logout` - log logout events
@@ -80,6 +91,7 @@ export function getClientInfo(req: Request) {
 - Firebase auth routes - log provider-based auth
 
 **Example Integration:**
+
 ```typescript
 // In backend/src/routes/auth.ts
 import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
@@ -87,7 +99,7 @@ import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
 router.post("/login", async (req, res) => {
   // ... existing logic ...
   const clientInfo = getClientInfo(req);
-  
+
   if (!valid) {
     await recordFailedAttempt(normalizedPhone);
     await logAuthActivity({
@@ -99,7 +111,7 @@ router.post("/login", async (req, res) => {
     });
     return res.status(401).json(...);
   }
-  
+
   await logAuthActivity({
     userId: user.id,
     identifier: normalizedPhone,
@@ -108,29 +120,34 @@ router.post("/login", async (req, res) => {
     provider: "password",
     ...clientInfo,
   });
-  
+
   // ... rest of login logic
 });
 ```
 
 ### 1.2 Configure Production Redis
+
 **Status:** Fallback to in-memory (not production-ready)
 
 **Actions:**
+
 1. Add Redis addon to Render (Free tier: Redis Cloud)
 2. Update `REDIS_URL` environment variable in Render dashboard
 3. Test Redis connection health check
 4. Monitor Redis memory usage in production
 
 **Environment Variables:**
+
 ```bash
 REDIS_URL=redis://redis-cloud-url
 ```
 
 ### 1.3 Add Auth Activity Cleanup Job
+
 **Status:** Missing retention policy
 
 **Implementation:**
+
 ```typescript
 // backend/src/jobs/cleanup-auth-activity.ts (NEW FILE)
 import { db, authActivityTable } from "@workspace/db";
@@ -141,11 +158,9 @@ const RETENTION_DAYS = 90;
 export async function cleanupOldAuthActivity() {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - RETENTION_DAYS);
-  
-  await db
-    .delete(authActivityTable)
-    .where(lt(authActivityTable.createdAt, cutoffDate));
-  
+
+  await db.delete(authActivityTable).where(lt(authActivityTable.createdAt, cutoffDate));
+
   console.log(`Cleaned auth_activity records older than ${RETENTION_DAYS} days`);
 }
 
@@ -162,9 +177,11 @@ export async function cleanupOldAuthActivity() {
 **Risk:** MEDIUM - UX gaps affect user trust and retention
 
 ### 2.1 Implement Onboarding Flow
+
 **Status:** Missing - users land directly on home page
 
 **Frontend Changes:**
+
 ```typescript
 // frontend/src/pages/onboarding.tsx (NEW FILE)
 import { useAuth } from "@/lib/auth";
@@ -196,6 +213,7 @@ export function OnboardingPage() {
 ```
 
 **Backend Changes:**
+
 ```sql
 -- Add onboarding columns to users table
 ALTER TABLE users ADD COLUMN onboarded_at TIMESTAMPTZ;
@@ -203,6 +221,7 @@ ALTER TABLE users ADD COLUMN onboarding_step INTEGER DEFAULT 1;
 ```
 
 **Routing:**
+
 ```typescript
 // In frontend/src/App.tsx
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
@@ -214,9 +233,11 @@ const OnboardingPage = lazy(() => import("@/pages/onboarding"));
 ```
 
 ### 2.2 Session & Device Management UI
+
 **Status:** logout-all-devices endpoint exists, no UI
 
 **Frontend Changes:**
+
 ```typescript
 // frontend/src/components/SessionManager.tsx (NEW FILE)
 import { useAuth } from "@/lib/auth";
@@ -246,33 +267,37 @@ export function SessionManager() {
 ```
 
 **Backend Changes:**
+
 ```typescript
 // backend/src/routes/auth.ts (NEW ENDPOINT)
 router.get("/sessions", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
-  
+
   // For now, return limited info (full implementation requires Firebase session management)
   const [user] = await db
     .select({ lastAuthAt: usersTable.lastAuthAt })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
-  
+
   // Future: Query Firebase Admin SDK for active sessions
   // For now: return current session info only
-  
+
   return res.json({
-    sessions: [{
-      id: "current",
-      device: "الجهاز الحالي",
-      lastActive: user?.lastAuthAt,
-      current: true,
-    }],
+    sessions: [
+      {
+        id: "current",
+        device: "الجهاز الحالي",
+        lastActive: user?.lastAuthAt,
+        current: true,
+      },
+    ],
   });
 });
 ```
 
 **Integration in Profile:**
+
 ```typescript
 // In frontend/src/pages/profile.tsx
 import { SessionManager } from "@/components/SessionManager";
@@ -282,9 +307,11 @@ import { SessionManager } from "@/components/SessionManager";
 ```
 
 ### 2.3 Enhance Provider Management UX
+
 **Status:** Basic unlink functionality exists
 
 **Improvements:**
+
 1. Add "Link new provider" modal with clear instructions
 2. Show provider icons and labels in Arabic
 3. Add confirmation dialog before unlinking
@@ -292,6 +319,7 @@ import { SessionManager } from "@/components/SessionManager";
 5. Add "Set as primary" option for password login
 
 **Frontend Changes:**
+
 ```typescript
 // Enhance existing profile.tsx provider section
 <div className="space-y-4">
@@ -302,10 +330,10 @@ import { SessionManager } from "@/components/SessionManager";
       ربط مزود جديد
     </Button>
   </div>
-  
+
   {linkedProviders.map(provider => (
-    <ProviderCard 
-      key={provider.provider} 
+    <ProviderCard
+      key={provider.provider}
       provider={provider}
       onUnlink={handleUnlink}
       onSetPrimary={handleSetPrimary}
@@ -324,9 +352,11 @@ import { SessionManager } from "@/components/SessionManager";
 **Risk:** LOW - Nice-to-have for ops team
 
 ### 3.1 Admin Security Audit Dashboard
+
 **Status:** No visibility into auth events
 
 **Frontend Changes:**
+
 ```typescript
 // frontend/src/pages/admin/security.tsx (NEW FILE)
 import { useState } from "react";
@@ -337,7 +367,7 @@ export function AdminSecurityDashboard() {
     dateRange: "7d",
     success: "all",
   });
-  
+
   const [activities, setActivities] = useState([]);
 
   // Fetch from /api/admin/auth-activity
@@ -352,7 +382,7 @@ export function AdminSecurityDashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">لوحة أمان المصادقة</h1>
-      
+
       <SecurityStats />
       <ActivityFilters filters={filters} onChange={setFilters} />
       <ActivityTimeline activities={activities} />
@@ -362,6 +392,7 @@ export function AdminSecurityDashboard() {
 ```
 
 **Backend Changes:**
+
 ```typescript
 // backend/src/routes/admin/security.ts (NEW FILE)
 import { authActivityTable } from "@workspace/db";
@@ -370,7 +401,7 @@ import { requireAdmin } from "../middlewares/requireAdmin";
 
 router.get("/auth-activity", requireAdmin, async (req, res) => {
   const { action, startDate, endDate, success } = req.query;
-  
+
   let conditions = [];
   if (action && action !== "all") {
     conditions.push(eq(authActivityTable.action, action as string));
@@ -384,14 +415,14 @@ router.get("/auth-activity", requireAdmin, async (req, res) => {
   if (success && success !== "all") {
     conditions.push(eq(authActivityTable.success, success === "true"));
   }
-  
+
   const activities = await db
     .select()
     .from(authActivityTable)
     .where(and(...conditions))
     .orderBy(desc(authActivityTable.createdAt))
     .limit(100);
-  
+
   return res.json({ activities });
 });
 
@@ -405,12 +436,13 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
     })
     .from(authActivityTable)
     .groupBy(authActivityTable.action, authActivityTable.success);
-  
+
   return res.json({ stats });
 });
 ```
 
 **Integration:**
+
 ```typescript
 // In frontend/src/pages/admin/dashboard.tsx
 // Add security link to sidebar
@@ -430,9 +462,11 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
 **Risk:** LOW - Mobile already functional
 
 ### 4.1 Mobile Auth Flow Optimization
+
 **Status:** Mobile nav exists, auth flows usable
 
 **Improvements:**
+
 1. Add swipe gestures to login form
 2. Optimize touch targets (minimum 44px)
 3. Add haptic feedback on button press
@@ -440,6 +474,7 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
 5. Add biometric auth option (future enhancement)
 
 **Frontend Changes:**
+
 ```typescript
 // Enhance existing login.tsx for mobile
 <div className={cn(
@@ -455,9 +490,11 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
 ```
 
 ### 4.2 Mobile Profile Experience
+
 **Status:** Profile page responsive, can be improved
 
 **Improvements:**
+
 1. Collapse sections with accordions on mobile
 2. Add pull-to-refresh on profile
 3. Optimize provider cards for small screens
@@ -473,9 +510,11 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
 **Risk:** LOW - Code is clean
 
 ### 5.1 Remove Unused auth_activity Schema (Alternative to Phase 1.1)
+
 **Decision Point:** If auth_activity logging is deemed unnecessary
 
 **Actions:**
+
 ```sql
 -- If not implementing logging, remove the table
 DROP TABLE IF EXISTS auth_activity;
@@ -488,9 +527,11 @@ DROP INDEX IF EXISTS idx_auth_activity_created;
 **Recommendation:** IMPLEMENT logging (Phase 1.1) instead of removal.
 
 ### 5.2 Consolidate Auth Logic
+
 **Status:** Code is already well-organized
 
 **Actions:**
+
 - Review auth.ts routes for any duplicated logic
 - Ensure consistent error handling across all auth endpoints
 - Verify all Firebase error messages are translated to Arabic
@@ -505,9 +546,11 @@ DROP INDEX IF EXISTS idx_auth_activity_created;
 **Risk:** HIGH - Production readiness
 
 ### 6.1 Environment Configuration Review
+
 **Status:** Some env vars may be missing
 
 **Checklist:**
+
 - [ ] `FIREBASE_AUTH_ENABLED=true` in production
 - [ ] `FIREBASE_PROJECT_ID` configured
 - [ ] `FIREBASE_CLIENT_EMAIL` configured
@@ -519,18 +562,22 @@ DROP INDEX IF EXISTS idx_auth_activity_created;
 - [ ] `JWT_SECRET` is strong random string
 
 ### 6.2 Security Headers Verification
+
 **Status:** Helmet configured, verify production CSP
 
 **Actions:**
+
 1. Test CSP in production with browser dev tools
 2. Verify Firebase domains are whitelisted
 3. Test report-uri for CSP violations
 4. Verify CORS origins are restricted
 
 ### 6.3 Rate Limiting Tuning
+
 **Status:** Default limits may need adjustment
 
 **Actions:**
+
 ```typescript
 // Review and tune rate limits in backend/src/app.ts
 const authLimiter = rateLimit({
@@ -543,9 +590,11 @@ const authLimiter = rateLimit({
 ```
 
 ### 6.4 Firebase Configuration Verification
+
 **Status:** Firebase project needs verification
 
 **Actions:**
+
 1. Verify Firebase project is in production mode
 2. Check Firebase Auth provider settings
 3. Verify authorized domains list
@@ -562,9 +611,11 @@ const authLimiter = rateLimit({
 **Risk:** LOW - Documentation gap
 
 ### 7.1 Auth Architecture Documentation
+
 **Status:** Roadmap exists, need operational docs
 
 **Create:**
+
 1. Authentication flow diagram
 2. Provider linking guide
 3. Session management procedures
@@ -572,9 +623,11 @@ const authLimiter = rateLimit({
 5. Troubleshooting guide for common auth issues
 
 ### 7.2 Admin Training
+
 **Status:** No admin training material
 
 **Create:**
+
 1. Security dashboard usage guide
 2. How to investigate suspicious activity
 3. How to handle account lockouts
@@ -587,6 +640,7 @@ const authLimiter = rateLimit({
 ## Summary of Deliverables
 
 ### Critical (Must Have)
+
 - ✅ auth_activity logging implementation
 - ✅ Production Redis configuration
 - ✅ Onboarding flow for new users
@@ -594,6 +648,7 @@ const authLimiter = rateLimit({
 - ✅ Environment configuration hardening
 
 ### High Priority (Should Have)
+
 - ✅ Admin security dashboard
 - ✅ Mobile auth flow optimization
 - ✅ Provider management UX enhancements
@@ -601,6 +656,7 @@ const authLimiter = rateLimit({
 - ✅ Rate limiting tuning
 
 ### Medium Priority (Nice to Have)
+
 - ✅ Mobile profile experience refinement
 - ✅ Technical debt cleanup
 - ✅ Auth architecture documentation
@@ -610,35 +666,39 @@ const authLimiter = rateLimit({
 
 ## Risk Assessment
 
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| auth_activity not implemented | HIGH | HIGH | Implement in Phase 1.1 |
-| No onboarding affects retention | MEDIUM | MEDIUM | Implement in Phase 2.1 |
-| No session management UI | MEDIUM | MEDIUM | Implement in Phase 2.2 |
-| Production Redis not configured | HIGH | HIGH | Configure in Phase 1.2 |
-| Firebase Phone OTP issues | MEDIUM | HIGH | Test thoroughly in Phase 6.4 |
-| CSP blocks Firebase | LOW | HIGH | Verify in Phase 6.2 |
+| Risk                            | Probability | Impact | Mitigation                   |
+| ------------------------------- | ----------- | ------ | ---------------------------- |
+| auth_activity not implemented   | HIGH        | HIGH   | Implement in Phase 1.1       |
+| No onboarding affects retention | MEDIUM      | MEDIUM | Implement in Phase 2.1       |
+| No session management UI        | MEDIUM      | MEDIUM | Implement in Phase 2.2       |
+| Production Redis not configured | HIGH        | HIGH   | Configure in Phase 1.2       |
+| Firebase Phone OTP issues       | MEDIUM      | HIGH   | Test thoroughly in Phase 6.4 |
+| CSP blocks Firebase             | LOW         | HIGH   | Verify in Phase 6.2          |
 
 ---
 
 ## Success Metrics
 
 ### Security
+
 - auth_activity logging: 100% of auth events logged
 - Rate limiting: < 1% false positives
 - Lockout accuracy: < 0.1% legitimate users locked out
 
 ### UX
+
 - Onboarding completion: > 80% new users complete onboarding
 - Session management: > 50% users access session UI
 - Provider linking: > 30% users link at least 2 providers
 
 ### Performance
+
 - Login latency: < 500ms p95
 - Token refresh: Transparent to users
 - Mobile responsiveness: 100% auth flows work on mobile
 
 ### Operational
+
 - Security dashboard: Daily review by ops team
 - Auth incidents: < 1 per month
 - Documentation: 100% of procedures documented
@@ -663,6 +723,7 @@ const authLimiter = rateLimit({
 ## Approval Required
 
 Before implementing any phase:
+
 1. Review this roadmap with stakeholders
 2. Prioritize phases based on business needs
 3. Allocate resources (frontend, backend, ops)
