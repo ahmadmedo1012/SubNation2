@@ -58,6 +58,7 @@ const frontend = spawnPnpm(
     NODE_ENV: "development",
     PORT: String(frontendPort),
     FRONTEND_PORT: String(frontendPort),
+    BASE_PATH: process.env.BASE_PATH ?? "/",
     API_PROXY_TARGET: apiOrigin,
   },
   { label: "web", color: "magenta" },
