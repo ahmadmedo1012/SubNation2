@@ -8,14 +8,19 @@ export function useSocket(userId?: number | string) {
   useEffect(() => {
     if (!userId) return;
 
-    try {
-      const socket = connectSocket(userId);
-      socketRef.current = socket;
+    let active = true;
 
-      socket.on("order-updated", (data: { id: number | string; status: string }) => {
-        console.log("Order updated:", data);
-        toast.success(`تم تحديث حالة طلبك #${data.id} إلى ${data.status}`);
-      });
+    const init = async () => {
+      try {
+        const socket = await connectSocket(userId);
+        if (!active || !socket) return;
+        
+        socketRef.current = socket;
+
+        socket.on("order-updated", (data: { id: number | string; status: string }) => {
+          console.log("Order updated:", data);
+          toast.success(`تم تحديث حالة طلبك #${data.id} إلى ${data.status}`);
+        });
 
       socket.on("topup-updated", (data: { amount: number; status: string }) => {
         console.log("Topup updated:", data);
@@ -30,14 +35,18 @@ export function useSocket(userId?: number | string) {
         console.warn("Socket connection error (non-critical):", error.message);
       });
 
-      socket.on("error", (error: Error) => {
-        console.warn("Socket error (non-critical):", error.message);
-      });
-    } catch (err) {
-      console.warn("Socket initialization failed (non-critical):", err);
-    }
+        socket.on("error", (error: Error) => {
+          console.warn("Socket error (non-critical):", error.message);
+        });
+      } catch (err) {
+        console.warn("Socket initialization failed (non-critical):", err);
+      }
+    };
+
+    init();
 
     return () => {
+      active = false;
       if (socketRef.current) {
         socketRef.current.off("order-updated");
         socketRef.current.off("topup-updated");

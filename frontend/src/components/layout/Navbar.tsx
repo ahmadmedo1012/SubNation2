@@ -6,8 +6,10 @@ import { formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { NotificationBell } from "./NotificationBell";
+import { lazy, Suspense } from "react";
 import { Logo } from "./Logo";
+
+const NotificationBell = lazy(() => import("./NotificationBell").then(m => ({ default: m.NotificationBell })));
 
 export function Navbar() {
   const { token, logout } = useAuth();
@@ -99,7 +101,9 @@ export function Navbar() {
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          <NotificationBell />
+          <Suspense fallback={<div className="w-8 h-8 rounded-lg bg-secondary/30" />}>
+            <NotificationBell />
+          </Suspense>
 
           {/* Desktop: user actions */}
           {token ? (

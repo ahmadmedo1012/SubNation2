@@ -1,8 +1,5 @@
-import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import { browserLocalPersistence, getAuth, setPersistence, type Auth } from "firebase/auth";
-
-let app: FirebaseApp | null | undefined;
-let auth: Auth | null | undefined;
+let app: any = undefined;
+let auth: any = undefined;
 let persistenceConfigured = false;
 
 export function isFirebaseAuthConfigured() {
@@ -15,33 +12,50 @@ export function isFirebaseAuthConfigured() {
   );
 }
 
-export function getFirebaseApp() {
+export async function getFirebaseApp() {
   if (app !== undefined) return app;
   if (!isFirebaseAuthConfigured()) {
     app = null;
     return app;
   }
 
-  app = getApps().length
-    ? getApp()
-    : initializeApp({
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        appId: import.meta.env.VITE_FIREBASE_APP_ID,
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      });
+  try {
+    const { getApp, getApps, initializeApp } = await import("firebase/app");
+    app = getApps().length
+      ? getApp()
+      : initializeApp({
+          apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+        });
+  } catch (err) {
+    console.error("Firebase app initialization failed:", err);
+    app = null;
+  }
   return app;
 }
 
-export function getFirebaseAuth() {
+export async function getFirebaseAuth() {
   if (auth !== undefined) return auth;
-  const firebaseApp = getFirebaseApp();
-  auth = firebaseApp ? getAuth(firebaseApp) : null;
-  if (auth && !persistenceConfigured) {
-    persistenceConfigured = true;
-    setPersistence(auth, browserLocalPersistence).catch(() => undefined);
+  const firebaseApp = await getFirebaseApp();
+  if (!firebaseApp) {
+    auth = null;
+    return auth;
+  }
+
+  try {
+    const { getAuth, setPersistence, browserLocalPersistence } = await import("firebase/auth");
+    auth = getAuth(firebaseApp);
+    if (auth && !persistenceConfigured) {
+      persistenceConfigured = true;
+      setPersistence(auth, browserLocalPersistence).catch(() => undefined);
+    }
+  } catch (err) {
+    console.error("Firebase auth initialization failed:", err);
+    auth = null;
   }
   return auth;
 }

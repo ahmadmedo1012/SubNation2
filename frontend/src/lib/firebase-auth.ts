@@ -1,10 +1,3 @@
-import {
-  GoogleAuthProvider,
-  onIdTokenChanged,
-  signInWithPopup,
-  signOut,
-  type Auth,
-} from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 
 export interface FirebaseSessionResponse {
@@ -15,14 +8,15 @@ export interface FirebaseSessionResponse {
   needs_phone?: boolean;
 }
 
-export function requireFirebaseAuth(): Auth {
-  const auth = getFirebaseAuth();
+export async function requireFirebaseAuth(): Promise<any> {
+  const auth = await getFirebaseAuth();
   if (!auth) throw new Error("تسجيل الدخول عبر Firebase غير مفعّل حالياً");
   return auth;
 }
 
 export async function signInWithFirebaseGoogle() {
-  const auth = requireFirebaseAuth();
+  const auth = await requireFirebaseAuth();
+  const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
   const provider = new GoogleAuthProvider();
   provider.addScope("profile");
   provider.addScope("email");
@@ -41,7 +35,7 @@ export async function exchangeFirebaseIdToken(idToken: string, referralCode?: st
 }
 
 export async function exchangeCurrentFirebaseUser(referralCode?: string) {
-  const auth = requireFirebaseAuth();
+  const auth = await requireFirebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("لم يتم إكمال تسجيل الدخول");
   const idToken = await user.getIdToken();
@@ -60,7 +54,7 @@ export async function refreshFirebaseSession(idToken: string) {
 }
 
 export async function refreshCurrentFirebaseSession() {
-  const auth = requireFirebaseAuth();
+  const auth = await requireFirebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("لم يتم تسجيل الدخول");
   const idToken = await user.getIdToken(true); // Force refresh
@@ -68,8 +62,11 @@ export async function refreshCurrentFirebaseSession() {
 }
 
 export async function resetFirebaseAuth() {
-  const auth = getFirebaseAuth();
-  if (auth) await signOut(auth);
+  const auth = await getFirebaseAuth();
+  if (auth) {
+    const { signOut } = await import("firebase/auth");
+    await signOut(auth);
+  }
 }
 
 // Store for tracking refresh state across component instances
@@ -77,11 +74,13 @@ let lastRefreshTime = 0;
 const REFRESH_COOLDOWN_MS = 30000; // 30 second cooldown to prevent rapid refreshes
 
 // Setup automatic token refresh listener
-export function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => void) {
-  const auth = getFirebaseAuth();
+export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => void) {
+  const auth = await getFirebaseAuth();
   if (!auth) return () => {};
 
-  const unsubscribe = onIdTokenChanged(auth, async (user) => {
+  const { onIdTokenChanged } = await import("firebase/auth");
+
+  const unsubscribe = onIdTokenChanged(auth, async (user: any) => {
     if (!user) return;
 
     // Debounce rapid refreshes

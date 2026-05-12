@@ -29,11 +29,14 @@ export function SocketInitializer() {
   // Admin Socket
   useEffect(() => {
     if (adminToken) {
-      try {
-        connectAdminSocket();
-      } catch (err) {
-        console.warn("Admin socket connection failed (non-critical):", err);
-      }
+      const init = async () => {
+        try {
+          await connectAdminSocket();
+        } catch (err) {
+          console.warn("Admin socket connection failed (non-critical):", err);
+        }
+      };
+      init();
     }
   }, [adminToken]);
 

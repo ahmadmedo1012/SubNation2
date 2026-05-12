@@ -1,8 +1,4 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { FlashSaleBanner } from "@/components/layout/FlashSaleBanner";
-import { Footer } from "@/components/layout/Footer";
-import { MobileNav } from "@/components/layout/MobileNav";
-import { Navbar } from "@/components/layout/Navbar";
 import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +7,14 @@ import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
+
+// Critical layout
+import { Navbar } from "@/components/layout/Navbar";
+
+// Non-critical layout deferred
+const FlashSaleBanner = lazy(() => import("@/components/layout/FlashSaleBanner").then(m => ({ default: m.FlashSaleBanner })));
+const Footer = lazy(() => import("@/components/layout/Footer").then(m => ({ default: m.Footer })));
+const MobileNav = lazy(() => import("@/components/layout/MobileNav").then(m => ({ default: m.MobileNav })));
 
 // All pages are lazily code-split to minimize initial bundle weight.
 // The HTML shell + vendor-react chunk are the only critical-path resources.
@@ -138,7 +142,11 @@ function AppRoutes() {
     <div className="min-h-screen bg-background text-foreground">
       <RouteLoading />
       {!isAdmin && <Navbar />}
-      {!isAdmin && <FlashSaleBanner />}
+      {!isAdmin && (
+        <Suspense fallback={null}>
+          <FlashSaleBanner />
+        </Suspense>
+      )}
       <main className={!isAdmin && !isAuth && token ? "mobile-nav-safe-pad md:pb-0" : ""}>
         <ErrorBoundary>
           <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
@@ -168,8 +176,16 @@ function AppRoutes() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      {!isAdmin && <Footer />}
-      {!isAdmin && <MobileNav />}
+      {!isAdmin && (
+        <Suspense fallback={null}>
+          <Footer />
+        </Suspense>
+      )}
+      {!isAdmin && (
+        <Suspense fallback={null}>
+          <MobileNav />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -178,14 +194,30 @@ const SocketInitializer = lazy(() =>
   import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
 );
 
+function DeferredSocketInitializer() {
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    // Wait for initial hydration and paint to settle
+    const timeout = setTimeout(() => setMounted(true), 3500);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <SocketInitializer />
+    </Suspense>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <Suspense fallback={null}>
-            <SocketInitializer />
-          </Suspense>
+          <DeferredSocketInitializer />
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <AppRoutes />

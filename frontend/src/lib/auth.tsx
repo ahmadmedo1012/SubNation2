@@ -88,10 +88,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Setup automatic Firebase token refresh
   useEffect(() => {
-    const unsubscribe = setupFirebaseTokenRefresh((newToken) => {
-      setToken(newToken);
-    });
-    return unsubscribe;
+    let unsubscribe: (() => void) | undefined;
+    
+    const init = async () => {
+      try {
+        const sub = await setupFirebaseTokenRefresh((newToken) => {
+          setToken(newToken);
+        });
+        unsubscribe = sub;
+      } catch (err) {
+        console.error("Failed to setup Firebase token refresh:", err);
+      }
+    };
+
+    // Defer initialization to avoid blocking critical paint
+    const timeout = setTimeout(init, 2000);
+    
+    return () => {
+      clearTimeout(timeout);
+      if (unsubscribe) unsubscribe();
+    };
   }, [setToken]);
 
   const value = useMemo(
