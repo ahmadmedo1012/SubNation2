@@ -73,11 +73,11 @@ export function FlashSaleBanner() {
             }`}
           >
             <Zap
-              className={`w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current ${urgent ? "text-white" : "text-primary"}`}
+              className={`w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current ${urgent ? "text-white" : "text-primary-text"}`}
             />
           </div>
           <span
-            className={`text-[11px] sm:text-xs font-black hidden sm:inline ${urgent ? "text-primary" : "text-primary/80"}`}
+            className={`text-[11px] sm:text-xs font-black hidden sm:inline ${urgent ? "text-primary-text" : "text-primary-text/80"}`}
           >
             عرض محدود
           </span>
@@ -85,19 +85,19 @@ export function FlashSaleBanner() {
 
         {/* Center: title — clickable */}
         <Link href="/" className="flex-1 min-w-0">
-          <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary transition-colors flex items-center justify-center gap-1 sm:gap-2">
+          <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
-            <span className="text-primary font-black shrink-0">
+            <span className="text-primary-text font-black shrink-0">
               — {flashSale.discount_percent}% خصم
             </span>
-            <ArrowLeft className="w-3 h-3 text-primary shrink-0 hidden sm:inline" />
+            <ArrowLeft className="w-3 h-3 text-primary-text shrink-0 hidden sm:inline" />
           </div>
         </Link>
 
         {/* Right: countdown + dismiss */}
         <div className="flex items-center gap-1.5 shrink-0">
           <div
-            className={`flex items-center gap-0.5 sm:gap-1 ${urgent ? "text-primary" : "text-muted-foreground"}`}
+            className={`flex items-center gap-0.5 sm:gap-1 ${urgent ? "text-primary-text" : "text-muted-foreground"}`}
           >
             {[
               { val: timeLeft.h, label: "س" },

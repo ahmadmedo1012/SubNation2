@@ -53,7 +53,7 @@ export function MobileNav() {
                     relative z-10 transition-all duration-200 ease-out
                     ${
                       active
-                        ? "w-[22px] h-[22px] text-primary"
+                        ? "w-[22px] h-[22px] text-primary-text"
                         : "w-[20px] h-[20px] text-muted-foreground"
                     }
                   `}
@@ -63,7 +63,7 @@ export function MobileNav() {
                 <span
                   className={`
                   relative z-10 text-[9.5px] leading-none font-semibold transition-all duration-200
-                  ${active ? "text-primary font-bold" : "text-muted-foreground"}
+                  ${active ? "text-primary-text font-bold" : "text-muted-foreground"}
                 `}
                 >
                   {tab.label}

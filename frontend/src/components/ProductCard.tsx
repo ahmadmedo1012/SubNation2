@@ -74,7 +74,7 @@ const CATEGORY_ACCENT: Record<
 
 const DEFAULT_ACCENT = {
   bg: "bg-primary/10",
-  text: "text-primary",
+  text: "text-primary-text",
   border: "border-primary/20",
   gradient: "from-primary/28 via-primary/12 to-transparent",
   imgBg: "bg-card",

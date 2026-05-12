@@ -236,7 +236,7 @@ export default function HomePage() {
                   <Link href="/wallet">
                     <div className="bg-background/50 border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer min-w-[122px]">
                       <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                        <Wallet className="w-3.5 h-3.5 text-primary" />
+                        <Wallet className="w-3.5 h-3.5 text-primary-text" />
                       </div>
                       <div>
                         <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
@@ -276,7 +276,7 @@ export default function HomePage() {
                     آخر الطلبات
                   </div>
                   <Link href="/orders">
-                    <button className="flex items-center gap-0.5 text-xs text-primary hover:text-primary/75 font-bold transition-colors press-spring">
+                    <button className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring">
                       عرض الكل
                       <ChevronLeft className="w-3 h-3" />
                     </button>
@@ -298,7 +298,7 @@ export default function HomePage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold truncate group-hover:text-primary transition-colors duration-150">
+                          <div className="text-xs font-bold truncate group-hover:text-primary-text transition-colors duration-150">
                             {order.product_name}
                           </div>
                           <div className="flex items-center gap-1 mt-0.5">
@@ -313,7 +313,7 @@ export default function HomePage() {
                         <div className="text-xs font-black tabular-nums shrink-0">
                           {formatCurrency(order.amount)}
                         </div>
-                        <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                        <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-text transition-colors shrink-0" />
                       </div>
                     </Link>
                   ))}
@@ -337,7 +337,7 @@ export default function HomePage() {
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-3.5">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/12 text-primary border border-primary/25 px-2.5 py-1 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/12 text-primary-text border border-primary/25 px-2.5 py-1 rounded-full">
                       ليبيا #1
                     </span>
                     <span className="text-[11px] text-muted-foreground font-medium">
@@ -415,7 +415,7 @@ export default function HomePage() {
                       {
                         label: "أقل سعر",
                         value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
-                        color: "text-primary",
+                        color: "text-primary-text",
                         border: "border-primary/18",
                         bg: "bg-primary/7",
                       },
@@ -454,7 +454,7 @@ export default function HomePage() {
               {
                 label: "أقل سعر",
                 value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
-                color: "text-primary",
+                color: "text-primary-text",
               },
               { label: "بالمخزون", value: stats.total_units, color: "text-blue-400" },
             ].map((s) => (
@@ -585,7 +585,7 @@ export default function HomePage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-medium"
+                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-medium"
               >
                 مسح ({activeFilterCount})
               </button>
@@ -610,7 +610,7 @@ export default function HomePage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-sm font-bold text-primary border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+                className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
               >
                 مسح جميع الفلاتر
               </button>

@@ -46,7 +46,7 @@ export function Navbar() {
           relative px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150
           ${
             active
-              ? "text-primary font-bold"
+              ? "text-primary-text font-bold"
               : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
           }
         `}
@@ -106,7 +106,7 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-1.5">
               <Link href="/wallet">
                 <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
-                  <Wallet className="w-3.5 h-3.5 text-primary transition-transform group-hover:scale-110 duration-200" />
+                  <Wallet className="w-3.5 h-3.5 text-primary-text transition-transform group-hover:scale-110 duration-200" />
                   {user ? (
                     <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                   ) : (
@@ -170,7 +170,7 @@ export function Navbar() {
             <div className="md:hidden">
               <Link href="/wallet">
                 <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px] h-8">
-                  <Wallet className="w-3 h-3 text-primary" />
+                  <Wallet className="w-3 h-3 text-primary-text" />
                   {user ? (
                     <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
                   ) : (
@@ -200,7 +200,7 @@ export function Navbar() {
           </Link>
           <Link
             href="/register"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary-text bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]"
           >
             إنشاء حساب مجاني ←
           </Link>
