@@ -1,6 +1,6 @@
 import compression from "compression";
 import cors from "cors";
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { existsSync } from "node:fs";
@@ -10,6 +10,9 @@ import RedisStore from "rate-limit-redis";
 import { createClient } from "redis";
 import { logger } from "./lib/logger";
 import router from "./routes";
+
+const app = express();
+
 function resolveFrontendDist(): string | null {
   const candidates = [
     process.env.FRONTEND_DIST,
@@ -87,16 +90,13 @@ app.use(
   }),
 );
 
-import RedisStore from "rate-limit-redis";
-import { createClient } from "redis";
-  redisClient = createClient({ url: process.env.REDIS_URL });
-  redisClient.connect().catch((err) => logger.error({ err }, "Redis connection failed"));
-}
+const redisClient = createClient({ url: process.env.REDIS_URL });
+redisClient.connect().catch((err) => logger.error({ err }, "Redis connection failed"));
 
 const getStore = () => {
   if (redisClient) {
     return new RedisStore({
-      sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+      sendCommand: (...args: string[]) => redisClient.sendCommand(args),
     });
   }
   return undefined; // Falls back to default memory store
