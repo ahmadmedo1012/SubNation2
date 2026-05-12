@@ -1,11 +1,21 @@
 import { LoginBody, RegisterBody } from "@workspace/api-zod";
-import { db, otpsTable, referralEventsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  otpsTable,
+  referralEventsTable,
+  userAuthIdentitiesTable,
+  usersTable,
+} from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { Router } from "express";
-import { userAuthIdentitiesTable } from "../../shared/db/src/schema/user_auth_identities";
-import { hashPassword, signUserToken, verifyPassword, verifyUserTokenDetailed } from "../lib/auth";
-import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
+import {
+  generateReferralCode,
+  hashPassword,
+  normalizeLibyanPhone,
+  verifyPassword,
+} from "../lib/crypto";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
 import {
   FirebaseAuthError,

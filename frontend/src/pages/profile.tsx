@@ -1,36 +1,36 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation, Link } from "wouter";
-import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
-import { formatCurrency, tierLabel, tierColor } from "@/lib/utils";
+import { AuthProviders } from "@/components/AuthProviders";
+import { CopyButton } from "@/components/CopyButton";
+import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import {
-  User,
-  Phone,
-  Shield,
-  Star,
-  Wallet,
-  LogOut,
+  AlertCircle,
+  CheckCircle,
+  ChevronLeft,
+  Crown,
   Eye,
   EyeOff,
-  CheckCircle,
-  AlertCircle,
-  Lock,
-  Crown,
-  ChevronLeft,
   Gift,
   Link as LinkIcon,
+  Lock,
+  LogOut,
   Mail,
+  Phone,
+  Shield,
   Smartphone,
+  Star,
+  User,
+  Wallet,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { CopyButton } from "@/components/CopyButton";
-import { AuthProviders } from "@/components/AuthProviders";
-import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
-import { queryClient } from "@/lib/query";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
 
 const TIER_GRADIENTS: Record<string, string> = {
   bronze: "from-amber-600/14 via-card to-card border-amber-600/20",
@@ -43,6 +43,7 @@ export default function ProfilePage() {
   const { token, logout } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

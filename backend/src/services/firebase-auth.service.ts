@@ -1,6 +1,6 @@
 import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import { createHash, randomBytes } from "crypto";
-import { eq, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
@@ -15,7 +15,7 @@ export class FirebaseAuthError extends Error {
   }
 }
 
-export function getFirebaseErrorMessage(error: any): string {
+export function getFirebaseErrorMessage(error: { code?: string; message?: string }): string {
   const code = error?.code || "";
   const message = error?.message || "";
 

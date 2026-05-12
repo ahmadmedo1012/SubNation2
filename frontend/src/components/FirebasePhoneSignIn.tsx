@@ -28,6 +28,7 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [cooldown]);
 
   if (!isFirebaseAuthConfigured()) return null;
@@ -65,8 +66,9 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       const result = await signInWithPhoneNumber(auth, toE164LibyanPhone(phone), appVerifier);
       setConfirmation(result);
       setCooldown(COOLDOWN_TIME);
-    } catch (err: any) {
-      setError(getFriendlyError(err.message ?? "تعذّر إرسال كود التحقق"));
+    } catch (err: unknown) {
+      const errorMessage = (err as Error)?.message || "تعذّر إرسال كود التحقق";
+      setError(getFriendlyError(errorMessage));
     } finally {
       setLoading(false);
     }
@@ -81,8 +83,9 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       const session = await exchangeCurrentFirebaseUser(referralCode);
       setToken(session.token);
       navigate("/");
-    } catch (err: any) {
-      setError(getFriendlyError(err.message ?? "فشل التحقق من الكود"));
+    } catch (err: unknown) {
+      const errorMessage = (err as Error)?.message || "فشل التحقق من الكود";
+      setError(getFriendlyError(errorMessage));
     } finally {
       setLoading(false);
     }
