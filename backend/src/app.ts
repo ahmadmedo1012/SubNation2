@@ -47,7 +47,7 @@ app.use(
           "https://www.gstatic.com",
           "https://www.googleapis.com",
         ],
-        scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers like onClick
+        scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers (onclick, etc.)
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // Tailwind needs inline styles
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],

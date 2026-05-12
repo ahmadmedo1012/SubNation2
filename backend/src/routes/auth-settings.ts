@@ -225,6 +225,9 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     googleConfig.client_id = process.env.GOOGLE_CLIENT_ID;
   }
 
+  // Firebase Google: always include if Firebase is enabled (regardless of GOOGLE_CLIENT_ID)
+  const firebaseEnabled = process.env.FIREBASE_AUTH_ENABLED === "true";
+
   const providers = PROVIDERS.map((meta) => {
     const cfg = meta.id === "google" ? googleConfig : (settingsMap.get(`auth.${meta.id}`) ?? {});
     const enabled = !!cfg.enabled;
@@ -244,6 +247,25 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
       bot_username: cfg.bot_username ?? null,
     };
   }).filter((p) => p.enabled && p.has_config);
+
+  // Add Firebase Google provider if Firebase is enabled (even without GOOGLE_CLIENT_ID)
+  if (firebaseEnabled) {
+    const firebaseGoogle = providers.find((p) => p.id === "google");
+    if (!firebaseGoogle) {
+      providers.push({
+        id: "google",
+        label: "Google",
+        color: "#4285F4",
+        icon: "google",
+        auth_type: "client_side",
+        enabled: true,
+        has_config: true,
+        client_id: null,
+        app_id: null,
+        bot_username: null,
+      });
+    }
+  }
 
   return res.json({ providers });
 });
