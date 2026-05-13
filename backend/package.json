@@ -13,8 +13,10 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/instrumentation": "^0.56.0",
     "@opentelemetry/instrumentation-http": "^0.214.0",
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
     "@sentry/node": "^10.53.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",

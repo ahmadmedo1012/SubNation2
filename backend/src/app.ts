@@ -105,7 +105,8 @@ app.use(
   }),
 );
 
-// Redis client (optional - if REDIS_URL is set, use it for rate limiting and session caching)
+import { ipKeyGenerator } from "express-rate-limit";
+
 let redisClient: ReturnType<typeof createClient> | null = null;
 if (process.env.REDIS_URL) {
   redisClient = createClient({
@@ -140,6 +141,7 @@ const apiLimiter = rateLimit({
   limit: 300,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  keyGenerator: ipKeyGenerator,
   store: rateLimiterStore,
   skip: (req) => {
     // Skip rate limiting for health checks and static assets
@@ -148,38 +150,39 @@ const apiLimiter = rateLimit({
   },
 });
 
-// Strict rate limiter for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  keyGenerator: ipKeyGenerator,
   store: rateLimiterStore,
-  skipFailedRequests: false, // CRITICAL: Must count failed requests to stop brute force
-  skipSuccessfulRequests: true, // Allow successful logins without consuming rate limit
+  skipFailedRequests: false,
+  skipSuccessfulRequests: true,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
 });
 
 // Per-phone rate limiting for Firebase Phone OTP (prevent abuse on single phone)
 const otpPhoneLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 3, // Max 3 OTP sends per phone
+  windowMs: 15 * 60 * 1000,
+  limit: 3,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  store: rateLimiterStore,
   keyGenerator: (req) => {
     const body = req.body as { phone?: string };
-    return body.phone || req.ip || req.socket.remoteAddress || "unknown";
+    return body.phone || ipKeyGenerator(req);
   },
+  store: rateLimiterStore,
   message: { error: "تجاوزت عدد محاولات OTP لهذا الرقم. انتظر 15 دقيقة." },
 });
 
 // Per-IP rate limiting for Firebase Phone OTP (prevent bulk abuse)
 const otpIpLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  limit: 10, // Max 10 OTP sends per IP
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  keyGenerator: ipKeyGenerator,
   store: rateLimiterStore,
   message: { error: "تجاوزت عدد المحاولات من هذا IP. انتظر ساعة." },
 });
