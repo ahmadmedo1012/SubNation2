@@ -191,8 +191,8 @@ function ProviderButton({
         onSuccess(data.token);
         return;
       }
-    } catch (err: any) {
-      onError(err.message ?? "حدث خطأ غير متوقع");
+    } catch (err: unknown) {
+      onError(err instanceof Error ? err.message : "حدث خطأ غير متوقع");
     } finally {
       setLoading(false);
     }

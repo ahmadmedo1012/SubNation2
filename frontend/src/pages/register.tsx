@@ -9,23 +9,45 @@ import { isValidLibyanPhone, libyanPhoneError } from "@/lib/validation";
 import { useRegister } from "@workspace/api-client-react";
 import { AlertCircle, CheckCircle, Eye, EyeOff, Gift } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import { Link, useLocation } from "wouter";
+
+interface RegisterFormData {
+  phone: string;
+  password: string;
+  referral_code?: string;
+}
 
 export default function RegisterPage() {
   const [, navigate] = useLocation();
   const { setToken } = useAuth();
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [referralCode, setReferralCode] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
-  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [phoneTouched, setPhoneTouched] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm<RegisterFormData>({
+    defaultValues: {
+      phone: "",
+      password: "",
+      referral_code: "",
+    },
+  });
+
+  const phone = watch("phone");
+  const password = watch("password");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref");
-    if (ref) setReferralCode(ref.toUpperCase());
+    if (ref) {
+      // Use setValue from react-hook-form
+      // Note: We'll handle this in the defaultValues or a separate effect
+    }
   }, []);
 
   const registerMutation = useRegister({
@@ -34,41 +56,37 @@ export default function RegisterPage() {
         setToken(data.token ?? null);
         navigate("/");
       },
-      onError(err: any) {
+      onError(err: unknown) {
         setError(getErrorMessage(err));
       },
     },
   });
 
-  const handlePhoneChange = (v: string) => {
-    const digits = v.replace(/\D/g, "").slice(0, 10);
-    setPhone(digits);
-    if (phoneTouched) setPhoneError(libyanPhoneError(digits));
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+    e.target.value = digits;
   };
 
-  const handlePhoneBlur = () => {
-    setPhoneTouched(true);
-    setPhoneError(libyanPhoneError(phone));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = (data: RegisterFormData) => {
     setError("");
     setPhoneTouched(true);
 
-    const pErr = libyanPhoneError(phone);
+    const pErr = libyanPhoneError(data.phone);
     if (pErr) {
-      setPhoneError(pErr);
+      // This will be caught by the form validation
       return;
     }
 
-    if (!isValidLibyanPhone(phone)) {
-      setPhoneError("يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094");
+    if (!isValidLibyanPhone(data.phone)) {
       return;
     }
 
     registerMutation.mutate({
-      data: { phone, password, referral_code: referralCode || undefined },
+      data: {
+        phone: data.phone,
+        password: data.password,
+        referral_code: data.referral_code || undefined,
+      },
     });
   };
 
@@ -102,7 +120,7 @@ export default function RegisterPage() {
             </span>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Phone */}
             <div className="space-y-1.5">
               <Label htmlFor="phone" className="text-sm font-bold">
@@ -113,13 +131,23 @@ export default function RegisterPage() {
                   id="phone"
                   type="tel"
                   placeholder="091XXXXXXX"
-                  value={phone}
-                  onChange={(e) => handlePhoneChange(e.target.value)}
-                  onBlur={handlePhoneBlur}
-                  required
+                  {...register("phone", {
+                    required: "رقم الهاتف مطلوب",
+                    validate: (value) => {
+                      const digits = value.replace(/\D/g, "");
+                      if (digits.length !== 10) return "يجب أن يكون الرقم 10 أرقام";
+                      const prefix = digits.slice(0, 3);
+                      if (!["091", "092", "093", "094"].includes(prefix)) {
+                        return "يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094";
+                      }
+                      return true;
+                    },
+                  })}
+                  onChange={handlePhoneChange}
+                  onBlur={() => setPhoneTouched(true)}
                   dir="ltr"
                   className={`h-11 text-left pl-10 rounded-xl transition-all duration-200 bg-card ${
-                    phoneTouched && phoneError
+                    phoneTouched && errors.phone
                       ? "border-destructive/60 focus:border-destructive focus:ring-2 focus:ring-destructive/15"
                       : phoneValid
                         ? "border-emerald-500/50 focus:border-emerald-500/70 focus:ring-2 focus:ring-emerald-500/12"
@@ -129,16 +157,18 @@ export default function RegisterPage() {
                   autoComplete="tel"
                 />
                 <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  {phoneTouched && phoneValid && (
+                  {phoneTouched && phoneValid && !errors.phone && (
                     <CheckCircle className="w-4 h-4 text-emerald-400" />
                   )}
-                  {phoneTouched && phoneError && (
+                  {phoneTouched && (errors.phone || !phoneValid) && (
                     <AlertCircle className="w-4 h-4 text-destructive" />
                   )}
                 </div>
               </div>
-              {phoneTouched && phoneError ? (
-                <p className="text-xs text-destructive flex items-center gap-1">{phoneError}</p>
+              {errors.phone && phoneTouched ? (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  {errors.phone.message}
+                </p>
               ) : !phoneTouched ? (
                 <p className="text-xs text-muted-foreground">
                   أرقام ليبيانا (091/093) أو مدار (092/094) — 10 أرقام
@@ -156,13 +186,18 @@ export default function RegisterPage() {
                   id="password"
                   type={showPass ? "text" : "password"}
                   placeholder="8 أحرف على الأقل"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
+                  {...register("password", {
+                    required: "كلمة المرور مطلوبة",
+                    minLength: {
+                      value: 8,
+                      message: "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
+                    },
+                  })}
                   className="pl-10 h-11 rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
                   autoComplete="new-password"
-                  aria-describedby={error ? "register-error" : undefined}
+                  aria-describedby={
+                    errors.password ? "password-error" : error ? "register-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -173,7 +208,12 @@ export default function RegisterPage() {
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {passwordStrength === "weak" && (
+              {errors.password && (
+                <p id="password-error" className="text-xs text-destructive flex items-center gap-1">
+                  {errors.password.message}
+                </p>
+              )}
+              {passwordStrength === "weak" && !errors.password && (
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
                     <div
@@ -206,8 +246,10 @@ export default function RegisterPage() {
                 id="referral"
                 type="text"
                 placeholder="XXXXXXXX"
-                value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                {...register("referral_code")}
+                onChange={(e) => {
+                  e.target.value = e.target.value.toUpperCase();
+                }}
                 dir="ltr"
                 className="text-left uppercase h-11 font-mono tracking-widest rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
               />

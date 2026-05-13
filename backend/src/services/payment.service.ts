@@ -17,7 +17,7 @@ export class PaymentProcessor {
     userId: number,
     amount: number,
     provider: PaymentProvider,
-    providerData: any,
+    providerData: Record<string, unknown>,
   ): Promise<PaymentResult> {
     logger.info({ userId, amount, provider }, "Processing automated payment");
 

@@ -1,27 +1,26 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import {
-  MessageSquare,
-  Plus,
+  AlertCircle,
+  ArrowRight,
+  CheckCircle,
   ChevronLeft,
   Clock,
-  CheckCircle,
-  AlertCircle,
-  Send,
-  X,
+  Headphones,
   Loader2,
+  MessageSquare,
+  Plus,
+  Send,
   Shield,
   User,
-  Tag,
-  ArrowRight,
-  Headphones,
+  X,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 
 const CATEGORIES = [
   { value: "billing", label: "الدفع والفواتير", icon: "💳" },
@@ -146,8 +145,12 @@ export default function SupportPage() {
       setForm({ title: "", message: "", category: "other" });
       setShowCreate(false);
       fetchTickets();
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -167,8 +170,12 @@ export default function SupportPage() {
       if (!res.ok) throw new Error(d.error);
       setReplyText("");
       await openTicket(selectedTicket.id);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setSending(false);
     }
@@ -360,7 +367,7 @@ export default function SupportPage() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      handleReply(e as any);
+                      handleReply(e as React.FormEvent);
                     }
                   }}
                 />

@@ -1,25 +1,24 @@
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { AdminLayout } from "./layout";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatRelativeTime } from "@/lib/utils";
 import {
-  Gift,
-  Users,
+  AlertCircle,
   CheckCircle,
   Clock,
-  Star,
-  Search,
-  Trophy,
-  Zap,
-  RefreshCw,
-  Check,
-  AlertCircle,
+  Gift,
   Phone,
+  RefreshCw,
+  Search,
+  Star,
+  Trophy,
+  Users,
+  Zap,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 interface ReferralStats {
   total: number;
@@ -166,8 +165,12 @@ export default function AdminReferralsPage() {
         description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
       });
       fetchData(true);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setCrediting(null);
     }

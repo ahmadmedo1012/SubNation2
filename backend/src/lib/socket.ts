@@ -50,14 +50,14 @@ export function getIO() {
 }
 
 /** Emit event to a specific user */
-export function emitToUser(userId: string | number, event: string, data: any) {
+export function emitToUser(userId: string | number, event: string, data: unknown) {
   if (io) {
     io.to(`user:${userId}`).emit(event, data);
   }
 }
 
 /** Emit event to all admins */
-export function emitToAdmins(event: string, data: any) {
+export function emitToAdmins(event: string, data: unknown) {
   if (io) {
     io.to("admin-room").emit(event, data);
   }

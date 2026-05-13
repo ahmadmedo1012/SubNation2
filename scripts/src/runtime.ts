@@ -5,21 +5,12 @@ import path from "node:path";
 import { Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-export const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export function loadLocalEnv(): void {
   const protectedKeys = new Set(Object.keys(process.env));
 
-  for (const fileName of [
-    ".env",
-    ".env.local",
-    "config/.env",
-    "config/.env.local",
-  ]) {
+  for (const fileName of [".env", ".env.local", "config/.env", "config/.env.local"]) {
     loadEnvFile(path.join(repoRoot, fileName), protectedKeys);
   }
 }
@@ -34,22 +25,14 @@ export function parsePreferredPort(
   const port = Number(value);
 
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(
-      `${label} must be a number between 1 and 65535. Received: ${value}`,
-    );
+    throw new Error(`${label} must be a number between 1 and 65535. Received: ${value}`);
   }
 
   return port;
 }
 
-export async function findAvailablePort(
-  preferredPort: number,
-): Promise<number> {
-  for (
-    let port = preferredPort;
-    port <= preferredPort + 50 && port <= 65535;
-    port += 1
-  ) {
+export async function findAvailablePort(preferredPort: number): Promise<number> {
+  for (let port = preferredPort; port <= preferredPort + 50 && port <= 65535; port += 1) {
     if (await isPortAvailable(port)) return port;
   }
 

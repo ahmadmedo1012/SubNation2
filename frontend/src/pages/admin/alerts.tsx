@@ -1,21 +1,21 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AdminLayout } from "./layout";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { formatRelativeTime, formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Bell,
   BellOff,
   CheckCheck,
-  Trash2,
-  Tag,
-  Package,
-  AlertTriangle,
-  Info,
-  RefreshCw,
   Inbox,
+  Info,
+  Package,
+  RefreshCw,
+  Tag,
+  Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { AdminLayout } from "./layout";
 
 type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system";
 
@@ -30,7 +30,7 @@ interface AdminAlertItem {
 
 const TYPE_META: Record<
   AlertType,
-  { icon: any; color: string; bg: string; border: string; label: string }
+  { icon: React.ElementType; color: string; bg: string; border: string; label: string }
 > = {
   coupon_maxed: {
     icon: Tag,

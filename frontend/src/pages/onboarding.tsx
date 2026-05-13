@@ -1,8 +1,8 @@
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
 
 export function OnboardingPage() {
   const { token } = useAuth();
@@ -26,7 +26,7 @@ export function OnboardingPage() {
     }
 
     // Only redirect if user data is loaded and user is onboarded
-    if (user && (user as any).onboarded_at) {
+    if (user && (user as { onboarded_at?: string }).onboarded_at) {
       navigate("/");
       return;
     }
@@ -64,7 +64,7 @@ export function OnboardingPage() {
       </div>
     );
   if (!token) return null;
-  if (user && (user as any).onboarded_at) return null;
+  if (user && (user as { onboarded_at?: string }).onboarded_at) return null;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4" dir="rtl">
@@ -114,7 +114,7 @@ export function OnboardingPage() {
                   type="text"
                   className="w-full p-3 border rounded"
                   placeholder="أدخل اسمك"
-                  defaultValue={(user as any)?.display_name || ""}
+                  defaultValue={(user as { display_name?: string })?.display_name || ""}
                 />
               </div>
               <div className="text-sm text-muted-foreground">
@@ -131,7 +131,7 @@ export function OnboardingPage() {
               <div className="p-4 border rounded">
                 <h3 className="font-semibold mb-2">كلمة المرور</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {(user as any)?.password_login_enabled
+                  {(user as { password_login_enabled?: boolean })?.password_login_enabled
                     ? "تم تفعيل تسجيل الدخول بكلمة المرور"
                     : "تسجيل الدخول بكلمة المرور معطل"}
                 </p>

@@ -1,4 +1,5 @@
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -10,8 +11,6 @@ import RedisStore from "rate-limit-redis";
 import { createClient } from "redis";
 import { logger } from "./lib/logger";
 import router from "./routes";
-
-const app = express();
 
 function resolveFrontendDist(): string | null {
   const candidates = [
@@ -74,6 +73,11 @@ app.use(
     },
     crossOriginEmbedderPolicy: false, // Allow external images
     crossOriginOpenerPolicy: { policy: "unsafe-none" },
+    // Additional security headers
+    contentSecurityPolicy: false, // Already configured above
+    xContentTypeOptions: "nosniff",
+    xFrameOptions: "DENY",
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );
 
@@ -197,8 +201,42 @@ app.use(
   }),
 );
 
+app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// ── CSRF Protection for state-changing requests ───────────────────────────────
+// Validate Origin/Referer headers for POST/PUT/DELETE/PATCH requests
+const allowedOrigins = (process.env.APP_ORIGINS || process.env.APP_URL || "")
+  .split(",")
+  .map((o) => o.trim());
+app.use((req, res, next) => {
+  const method = req.method.toUpperCase();
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+
+    // Skip CSRF check for API endpoints that don't need it (auth, webhooks, etc.)
+    const skipPaths = ["/api/auth", "/api/webhook", "/health"];
+    if (skipPaths.some((path) => req.path.startsWith(path))) {
+      return next();
+    }
+
+    // In production, validate Origin or Referer
+    if (process.env.NODE_ENV === "production" && allowedOrigins.length > 0) {
+      const isValid =
+        (origin &&
+          allowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) ||
+        (referer && allowedOrigins.some((allowed) => referer.startsWith(allowed)));
+
+      if (!isValid) {
+        logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
+        return res.status(403).json({ error: "طلب غير مصرح" });
+      }
+    }
+  }
+  next();
+});
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 // Auth limiter applies to login/register only (NOT /me — it's polled frequently)
@@ -257,6 +295,16 @@ if (frontendDist) {
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, req: { method: req.method, url: req.url } }, "Unhandled error");
+
+  // Send error to Sentry in production
+  if (process.env.NODE_ENV === "production") {
+    captureException(err, {
+      method: req.method,
+      url: req.url,
+      body: req.body,
+      userId: (req as Request & { userId?: number }).userId,
+    });
+  }
 
   if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
     res.status(400).json({ error: "بيانات غير صالحة" });

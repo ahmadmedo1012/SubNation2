@@ -56,7 +56,7 @@
     "react": "catalog:",
     "react-day-picker": "^9.11.1",
     "react-dom": "catalog:",
-    "react-hook-form": "^7.55.0",
+    "react-hook-form": "^7.71.2",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
     "sonner": "^2.0.7",
@@ -68,6 +68,7 @@
     "wouter": "^3.3.5"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "firebase": "^12.6.0",
     "qrcode": "^1.5.4",
     "socket.io-client": "^4.8.3"

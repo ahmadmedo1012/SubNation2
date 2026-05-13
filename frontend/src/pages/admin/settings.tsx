@@ -1,31 +1,29 @@
-import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { AdminLayout } from "./layout";
 import {
-  CheckCircle,
-  XCircle,
-  Bot,
-  Key,
-  Hash,
-  Info,
   Bell,
-  Shield,
-  KeyRound,
-  ToggleLeft,
-  ToggleRight,
-  Save,
-  Loader2,
-  Eye,
-  EyeOff,
-  ExternalLink,
+  Bot,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Hash,
+  Info,
+  Key,
+  KeyRound,
+  Loader2,
+  Save,
+  Shield,
+  ToggleLeft,
+  ToggleRight,
+  XCircle,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 interface TelegramSettings {
-  telegram_configured: boolean;
-  telegram_bot_set: boolean;
   telegram_chat_set: boolean;
 }
 
@@ -149,14 +147,17 @@ function ProviderCard({
         },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "فشل الحفظ");
       setConfig(data.config);
       onUpdate({ ...provider, enabled: data.enabled, config: data.config });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
       setEnabled(provider.enabled);
     } finally {
       setSaving(false);
@@ -339,12 +340,12 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
       if (!res.ok) throw new Error(data.error || "حدث خطأ أثناء الإعداد");
 
       import("qrcode").then((QRCode) => {
-        QRCode.default.toDataURL(data.otpauth_url, (err: any, url: string) => {
+        QRCode.default.toDataURL(data.otpauth_url, (err: Error | null, url: string) => {
           if (!err) setSetupData({ ...data, qrCode: url });
         });
       });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "حدث خطأ");
     } finally {
       setLoading(false);
     }
@@ -367,8 +368,8 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
 
       setSuccess(true);
       setSetupData(null);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "حدث خطأ");
     } finally {
       setLoading(false);
     }
@@ -459,7 +460,8 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, setAdminToken } = useAuth();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [providers, setProviders] = useState<AuthProvider[]>([]);

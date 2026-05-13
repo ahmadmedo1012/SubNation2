@@ -16,7 +16,7 @@ export function libyanPhoneError(phone: string): string | null {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 10) return "رقم الهاتف يجب أن يتكون من 10 أرقام";
   if (digits.length > 10) return "رقم الهاتف طويل جداً";
-  if (!["091","092","093","094"].some(p => digits.startsWith(p))) {
+  if (!["091", "092", "093", "094"].some((p) => digits.startsWith(p))) {
     return "يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094";
   }
   return null;

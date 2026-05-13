@@ -141,27 +141,30 @@ export default function AdminOrdersPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const statusCounts = (allOrders as any[]).reduce((acc: Record<string, number>, o: any) => {
-    acc[o.status] = (acc[o.status] ?? 0) + 1;
-    return acc;
-  }, {});
+  const statusCounts = (allOrders as Array<{ status: string }>).reduce(
+    (acc: Record<string, number>, o) => {
+      acc[o.status] = (acc[o.status] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
 
   const byStatus = statusFilter
-    ? (allOrders as any[]).filter((o: any) => o.status === statusFilter)
-    : (allOrders as any[]);
+    ? (allOrders as Array<{ status: string }>).filter((o) => o.status === statusFilter)
+    : allOrders;
   const byDate = dateRange
-    ? byStatus.filter((o: any) => o.created_at && isWithinDays(o.created_at, dateRange))
+    ? byStatus.filter((o) => o.created_at && isWithinDays(o.created_at, dateRange))
     : byStatus;
   const filtered = search
     ? byDate.filter(
-        (o: any) =>
+        (o) =>
           o.order_code?.toLowerCase().includes(search.toLowerCase()) ||
           o.user_phone?.includes(search) ||
           o.product_name?.toLowerCase().includes(search.toLowerCase()),
       )
     : byDate;
 
-  const todayCount = (allOrders as any[]).filter((o: any) => {
+  const todayCount = (allOrders as Array<{ created_at?: string }>).filter((o) => {
     if (!o.created_at) return false;
     const d = new Date(o.created_at);
     const now = new Date();
@@ -172,22 +175,22 @@ export default function AdminOrdersPage() {
     );
   }).length;
 
-  const totalRevenue = filtered.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+  const totalRevenue = filtered.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
 
   // Coupon stats from ALL orders (not filtered) for the overview panel
-  const couponOrders = (allOrders as any[]).filter((o: any) => o.coupon_code);
+  const couponOrders = (allOrders as Array<{ coupon_code?: string }>).filter((o) => o.coupon_code);
   const totalDiscounts = couponOrders.reduce(
-    (sum: number, o: any) => sum + (Number(o.discount_amount) || 0),
+    (sum: number, o) => sum + (Number(o.discount_amount) || 0),
     0,
   );
-  const totalRevenueAll = (allOrders as any[]).reduce(
-    (sum: number, o: any) => sum + (Number(o.amount) || 0),
+  const totalRevenueAll = (allOrders as Array<{ amount?: number }>).reduce(
+    (sum: number, o) => sum + (Number(o.amount) || 0),
     0,
   );
 
   // Top coupon codes: { code, uses, totalDiscount }
   const couponMap = couponOrders.reduce(
-    (acc: Record<string, { uses: number; totalDiscount: number }>, o: any) => {
+    (acc: Record<string, { uses: number; totalDiscount: number }>, o) => {
       const c = o.coupon_code as string;
       if (!acc[c]) acc[c] = { uses: 0, totalDiscount: 0 };
       acc[c].uses++;
@@ -205,7 +208,7 @@ export default function AdminOrdersPage() {
 
   const exportCSV = () => {
     const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
-    const rows = filtered.map((o: any) => [
+    const rows = filtered.map((o) => [
       o.order_code ?? "",
       o.user_phone ?? "",
       (o.product_name ?? "").replace(/,/g, "؛"),
@@ -234,16 +237,15 @@ export default function AdminOrdersPage() {
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((o: any) => o.id)));
+    else setSelectedIds(new Set(filtered.map((o) => o.id)));
   };
 
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((o: any) => selectedIds.has(o.id));
+  const allFilteredSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id));
 
   const exportSelected = () => {
-    const sel = filtered.filter((o: any) => selectedIds.has(o.id));
+    const sel = filtered.filter((o) => selectedIds.has(o.id));
     const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
-    const rows = sel.map((o: any) => [
+    const rows = sel.map((o) => [
       o.order_code ?? "",
       o.user_phone ?? "",
       (o.product_name ?? "").replace(/,/g, "؛"),
@@ -269,14 +271,14 @@ export default function AdminOrdersPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">الطلبات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{(allOrders as any[]).length} طلب إجمالاً</span>
+              <span>{allOrders.length} طلب إجمالاً</span>
               {todayCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                   <span className="text-primary font-bold">{todayCount} اليوم</span>
                 </>
               )}
-              {filtered.length !== (allOrders as any[]).length && (
+              {filtered.length !== allOrders.length && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                   <span className="text-emerald-400 font-bold tabular-nums">
@@ -325,7 +327,7 @@ export default function AdminOrdersPage() {
         </div>
 
         {/* Stats Panel */}
-        {!isLoading && (allOrders as any[]).length > 0 && (
+        {!isLoading && allOrders.length > 0 && (
           <div className="bg-card border border-border/60 rounded-2xl overflow-hidden float-in stagger-1">
             <button
               onClick={() => setShowStats((s) => !s)}
@@ -363,7 +365,7 @@ export default function AdminOrdersPage() {
                       {formatCurrency(totalRevenueAll)}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {(allOrders as any[]).length} طلب
+                      {allOrders.length} طلب
                     </div>
                   </div>
 
@@ -391,8 +393,8 @@ export default function AdminOrdersPage() {
                     </div>
                     <div className="font-black text-base tabular-nums">{couponOrders.length}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {(allOrders as any[]).length > 0
-                        ? `${(((couponOrders.length || 0) / (allOrders as any[]).length) * 100).toFixed(0)}% من الكل`
+                      {allOrders.length > 0
+                        ? `${(((couponOrders.length || 0) / allOrders.length) * 100).toFixed(0)}% من الكل`
                         : "—"}
                     </div>
                   </div>
@@ -530,7 +532,7 @@ export default function AdminOrdersPage() {
           {/* Status filter tabs with counts */}
           <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 overflow-x-auto scrollbar-none">
             {STATUS_FILTERS.map((s) => {
-              const count = s.value ? (statusCounts[s.value] ?? 0) : (allOrders as any[]).length;
+              const count = s.value ? (statusCounts[s.value] ?? 0) : allOrders.length;
               const active = statusFilter === s.value;
               return (
                 <button
@@ -653,7 +655,7 @@ export default function AdminOrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((order: any, idx: number) => {
+                    {filtered.map((order, idx: number) => {
                       const isSelected = selectedIds.has(order.id);
                       return (
                         <React.Fragment key={order.id}>
@@ -811,7 +813,7 @@ export default function AdminOrdersPage() {
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
-              {filtered.map((order: any) => {
+              {filtered.map((order) => {
                 const isSelected = selectedIds.has(order.id);
                 return (
                   <div

@@ -435,7 +435,13 @@ export async function runMigrations() {
       await db.execute(sql`ALTER TABLE inventory ALTER COLUMN account_password TYPE VARCHAR(512)`);
       const rows: Array<{ id: number; account_password: string }> = await db
         .execute(sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`)
-        .then((r: any) => r.rows ?? r);
+        .then(
+          (
+            r:
+              | { rows?: Array<{ id: number; account_password: string }> }
+              | Array<{ id: number; account_password: string }>,
+          ) => r.rows ?? r,
+        );
       let reEncrypted = 0;
       for (const row of rows) {
         if (!isEncrypted(row.account_password)) {
@@ -486,7 +492,8 @@ export async function runMigrations() {
 
     // ── Seed: Products ──────────────────────────────────────────────────────
     const productCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM products`);
-    const productCount = (productCountResult as any).rows?.[0] ?? (productCountResult as any)[0];
+    const productCount =
+      (productCountResult as CountResult).rows?.[0] ?? (productCountResult as CountResult)[0];
     if (Number(productCount?.c ?? productCount?.count ?? 0) < 12) {
       const products = [
         {
@@ -613,15 +620,16 @@ export async function runMigrations() {
             VALUES (${p.name}, ${p.description}, ${p.image_url}, ${p.price}, ${p.category}, true, false, ${p.usage_terms})
             RETURNING id
           `);
-          const insertedRow = (insertedResult as any).rows?.[0] ?? (insertedResult as any)[0];
-          productId = (insertedRow as any).id;
+          const insertedRow =
+            (insertedResult as IdResult).rows?.[0] ?? (insertedResult as IdResult)[0];
+          productId = insertedRow.id;
         }
 
         // Add inventory items if this product has fewer than 5 unsold units
         const invRes = await db.execute(
           sql`SELECT COUNT(*) as c FROM inventory WHERE product_id = ${productId} AND is_sold = false`,
         );
-        const invRow = (invRes as any).rows?.[0] ?? (invRes as any)[0];
+        const invRow = (invRes as CountResult).rows?.[0] ?? (invRes as CountResult)[0];
         const invCount = Number(invRow?.c ?? 0);
 
         if (invCount < 5) {

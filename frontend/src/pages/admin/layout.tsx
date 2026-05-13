@@ -1,33 +1,33 @@
-import { Link, useLocation } from "wouter";
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import {
-  LayoutDashboard,
-  ShoppingBag,
-  Wallet,
-  Package,
-  Users,
-  LogOut,
-  Shield,
-  Settings,
-  RefreshCw,
-  MessageSquare,
-  ChevronRight,
-  Menu,
-  X,
-  Search,
-  Loader2,
-  Plus,
-  Clock,
-  Zap,
-  Gift,
-  Tag,
-  Bell,
-} from "lucide-react";
-import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Bell,
+  ChevronRight,
+  Clock,
+  Gift,
+  LayoutDashboard,
+  Loader2,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  ShoppingBag,
+  Tag,
+  Users,
+  Wallet,
+  X,
+  Zap,
+} from "lucide-react";
 import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "wouter";
 
 const NAV_SECTIONS = [
   {
@@ -76,17 +76,22 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/security": "الأمان",
 };
 
-const CONTEXT_ACTIONS: Record<string, { label: string; icon: any; href: string }[]> = {
-  "/admin/products": [{ label: "إضافة منتج جديد", icon: Plus, href: "/admin/products#new" }],
-  "/admin/topups": [{ label: "المعلقة فقط", icon: Clock, href: "/admin/topups" }],
-  "/admin/orders": [{ label: "آخر الطلبات", icon: Zap, href: "/admin/orders" }],
-};
+const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; href: string }[]> =
+  {
+    "/admin/products": [{ label: "إضافة منتج جديد", icon: Plus, href: "/admin/products#new" }],
+    "/admin/topups": [{ label: "المعلقة فقط", icon: Clock, href: "/admin/topups" }],
+    "/admin/orders": [{ label: "آخر الطلبات", icon: Zap, href: "/admin/orders" }],
+  };
 
 // ── Global search component ──────────────────────────────────────────────────
 
 function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: () => void }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ orders: any[]; users: any[]; products: any[] }>({
+  const [results, setResults] = useState<{
+    orders: Array<{ id: number }>;
+    users: Array<{ id: number }>;
+    products: Array<{ id: number }>;
+  }>({
     orders: [],
     users: [],
     products: [],
@@ -186,7 +191,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   الطلبات
                 </div>
-                {results.orders.map((o: any) => (
+                {results.orders.map((o) => (
                   <button
                     key={o.id}
                     onClick={() => goTo("/admin/orders")}
@@ -214,7 +219,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   المستخدمون
                 </div>
-                {results.users.map((u: any) => (
+                {results.users.map((u) => (
                   <button
                     key={u.id}
                     onClick={() => goTo("/admin/users")}
@@ -239,7 +244,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                   المنتجات
                 </div>
-                {results.products.map((p: any) => (
+                {results.products.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => goTo("/admin/products")}
@@ -401,7 +406,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
   const NavItem = ({ item }: { item: (typeof ALL_NAV)[0] }) => {
     const active = location === item.href;
-    const badge = item.badgeKey ? (mergedBadges as any)?.[item.badgeKey] : undefined;
+    const badge = item.badgeKey
+      ? (mergedBadges as Record<string, number>)?.[item.badgeKey]
+      : undefined;
     return (
       <div>
         <Link href={item.href} onClick={() => setMobileOpen(false)}>

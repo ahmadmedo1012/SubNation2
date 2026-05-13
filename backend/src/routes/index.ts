@@ -17,7 +17,7 @@ router.use(healthRouter);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.use("/auth", authRouter);
-router.use("/auth", authProviderPublicRouter);   // /api/auth/providers, /api/auth/github, etc.
+router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth/github, etc.
 
 // ── Products ──────────────────────────────────────────────────────────────────
 router.use("/products", productsRouter);
@@ -34,6 +34,6 @@ router.use("/coupons", couponsRouter);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 router.use("/admin", adminRouter);
-router.use("/admin/settings", authProviderAdminRouter);  // /api/admin/settings/auth
+router.use("/admin/settings", authProviderAdminRouter); // /api/admin/settings/auth
 
 export default router;

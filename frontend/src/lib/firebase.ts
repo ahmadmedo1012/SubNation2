@@ -1,5 +1,8 @@
-let app: any = undefined;
-let auth: any = undefined;
+import type { FirebaseApp } from "firebase/app";
+import type { Auth } from "firebase/auth";
+
+let app: FirebaseApp | null | undefined = undefined;
+let auth: Auth | null | undefined = undefined;
 let persistenceConfigured = false;
 
 export function isFirebaseAuthConfigured() {

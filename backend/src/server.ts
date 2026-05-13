@@ -5,8 +5,12 @@ import { initCronJobs } from "./jobs/cron";
 import { startOtpCleanup } from "./jobs/otpCleanup";
 import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
+import { initSentry } from "./lib/sentry";
 import { initSocket } from "./lib/socket";
 import { runMigrations } from "./migrate";
+
+// Initialize Sentry error tracking
+initSentry();
 
 const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 

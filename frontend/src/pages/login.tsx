@@ -8,16 +8,31 @@ import { useAuth } from "@/lib/auth";
 import { useLogin } from "@workspace/api-client-react";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Link, useLocation } from "wouter";
 import { getErrorMessage } from "../lib/errors";
+
+interface LoginFormData {
+  phone: string;
+  password: string;
+}
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
   const { setToken } = useAuth();
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    defaultValues: {
+      phone: "",
+      password: "",
+    },
+  });
 
   const loginMutation = useLogin({
     mutation: {
@@ -25,21 +40,20 @@ export default function LoginPage() {
         setToken(data.token ?? null);
         navigate("/");
       },
-      onError(err: any) {
+      onError(err: unknown) {
         setError(getErrorMessage(err));
       },
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = (data: LoginFormData) => {
     setError("");
-    loginMutation.mutate({ data: { phone, password } });
+    loginMutation.mutate({ data });
   };
 
-  const handlePhoneChange = (v: string) => {
-    const digits = v.replace(/\D/g, "").slice(0, 10);
-    setPhone(digits);
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+    e.target.value = digits;
   };
 
   return (
@@ -68,7 +82,19 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div
+              id="login-error"
+              role="alert"
+              aria-live="polite"
+              className={`flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-3.5 py-2.5 rounded-xl ${error ? "shake" : ""}`}
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="phone" className="text-sm font-bold">
                 رقم الهاتف
@@ -77,15 +103,30 @@ export default function LoginPage() {
                 id="phone"
                 type="tel"
                 placeholder="091XXXXXXX"
-                value={phone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                required
+                {...register("phone", {
+                  required: "رقم الهاتف مطلوب",
+                  validate: (value) => {
+                    const digits = value.replace(/\D/g, "");
+                    if (digits.length !== 10) return "يجب أن يكون الرقم 10 أرقام";
+                    const prefix = digits.slice(0, 3);
+                    if (!["091", "092", "093", "094"].includes(prefix)) {
+                      return "يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094";
+                    }
+                    return true;
+                  },
+                })}
+                onChange={handlePhoneChange}
                 dir="ltr"
                 className="h-11 text-left pl-3 rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
                 maxLength={10}
                 autoComplete="tel"
-                aria-describedby={error ? "login-error" : undefined}
+                aria-describedby={errors.phone ? "phone-error" : error ? "login-error" : undefined}
               />
+              {errors.phone && (
+                <p id="phone-error" className="text-xs text-destructive flex items-center gap-1">
+                  {errors.phone.message}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -105,12 +146,18 @@ export default function LoginPage() {
                   id="password"
                   type={showPass ? "text" : "password"}
                   placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  {...register("password", {
+                    required: "كلمة المرور مطلوبة",
+                    minLength: {
+                      value: 8,
+                      message: "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
+                    },
+                  })}
                   className="pl-10 h-11 rounded-xl border-border/55 focus:border-primary/50 focus:ring-2 focus:ring-primary/12 transition-all duration-200 bg-card"
                   autoComplete="current-password"
-                  aria-describedby={error ? "login-error" : undefined}
+                  aria-describedby={
+                    errors.password ? "password-error" : error ? "login-error" : undefined
+                  }
                 />
                 <button
                   type="button"
@@ -121,6 +168,11 @@ export default function LoginPage() {
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {errors.password && (
+                <p id="password-error" className="text-xs text-destructive flex items-center gap-1">
+                  {errors.password.message}
+                </p>
+              )}
             </div>
 
             {error && (

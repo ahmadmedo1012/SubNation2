@@ -1,30 +1,30 @@
-import { useParams, useLocation, Link } from "wouter";
-import { useGetOrder, getGetOrderQueryKey } from "@workspace/api-client-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
   formatCurrency,
   formatDate,
   formatRelativeTime,
-  statusLabel,
   statusColor,
+  statusLabel,
 } from "@/lib/utils";
+import { getGetOrderQueryKey, useGetOrder } from "@workspace/api-client-react";
 import {
-  Package,
   ArrowRight,
-  Copy,
   CheckCircle,
-  Info,
-  ShoppingCart,
   Clock,
-  Tag,
-  ShieldCheck,
+  Copy,
   ExternalLink,
+  Info,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
   Sparkles,
+  Tag,
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { Link, useLocation, useParams } from "wouter";
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -151,8 +151,8 @@ export default function OrderDetailPage() {
     order.delivered_password ||
     order.delivered_extra_details
   );
-  const discountAmount = (order as any).discount_amount;
-  const couponCode = (order as any).coupon_code;
+  const discountAmount = (order as { discount_amount?: number }).discount_amount;
+  const couponCode = (order as { coupon_code?: string }).coupon_code;
   const originalAmount = discountAmount ? (order.amount ?? 0) + discountAmount : null;
 
   return (
@@ -184,10 +184,10 @@ export default function OrderDetailPage() {
             {/* Product + status */}
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex items-center gap-3.5 min-w-0">
-                {(order as any).product_image_url ? (
+                {(order as { product_image_url?: string }).product_image_url ? (
                   <div className="w-12 h-12 rounded-xl bg-muted/45 border border-border/35 overflow-hidden shrink-0">
                     <img
-                      src={(order as any).product_image_url}
+                      src={(order as { product_image_url?: string }).product_image_url}
                       alt={order.product_name ?? ""}
                       className="w-full h-full object-contain p-1.5"
                     />

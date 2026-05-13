@@ -7,12 +7,15 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function requireUser(req: Request, res: Response, next: NextFunction): void {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
+  // Try cookie first, fallback to Authorization header
+  const token = req.cookies?.auth_token || req.headers.authorization?.replace("Bearer ", "");
+
+  if (!token) {
     res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
     return;
   }
-  const result = verifyUserTokenDetailed(auth.slice(7));
+
+  const result = verifyUserTokenDetailed(token);
   if (!result.ok) {
     if (result.reason === "expired") {
       res.status(401).json(createErrorResponse("جلسة منتهية", ErrorCode.SESSION_EXPIRED));

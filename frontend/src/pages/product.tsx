@@ -123,7 +123,7 @@ export default function ProductPage() {
         setOrderResult(data);
         queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
       },
-      onError(err: any) {
+      onError(err: unknown) {
         setError(getErrorMessage(err));
       },
     },
@@ -144,8 +144,12 @@ export default function ProductPage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       setCouponResult(data);
-    } catch (err: any) {
-      setCouponError(err.message);
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setCouponValidating(false);
     }
@@ -457,7 +461,10 @@ export default function ProductPage() {
               onBuy={() => {
                 setError("");
                 createOrderMutation.mutate({
-                  data: { product_id: product.id, coupon_code: couponResult?.code } as any,
+                  data: { product_id: product.id, coupon_code: couponResult?.code } as {
+                    product_id: number;
+                    coupon_code?: string;
+                  },
                 });
               }}
               onLogin={() => navigate("/login")}
@@ -499,7 +506,10 @@ export default function ProductPage() {
           onBuy={() => {
             setError("");
             createOrderMutation.mutate({
-              data: { product_id: product.id, coupon_code: couponResult?.code } as any,
+              data: { product_id: product.id, coupon_code: couponResult?.code } as {
+                product_id: number;
+                coupon_code?: string;
+              },
             });
           }}
           onLogin={() => navigate("/login")}
@@ -637,8 +647,8 @@ function CtaBlock({
   onCouponClear,
 }: {
   token: string | null;
-  product: any;
-  user: any;
+  product: { id: number; name: string; price: number; sale_price?: number };
+  user: { id: number; phone: string; wallet_balance: number };
   displayPrice: number;
   canAfford: boolean;
   shortfall: number;

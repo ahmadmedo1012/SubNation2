@@ -135,7 +135,7 @@ export default function AdminCouponsPage() {
 
     setCreating(true);
     try {
-      const body: any = {
+      const body: Record<string, unknown> = {
         code: form.code.trim().toUpperCase(),
         type: form.type,
         value,
@@ -155,8 +155,12 @@ export default function AdminCouponsPage() {
       setShowCreate(false);
       setForm(EMPTY_FORM);
       fetchCoupons(true);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setCreating(false);
     }
@@ -172,8 +176,12 @@ export default function AdminCouponsPage() {
       });
       if (!r.ok) throw new Error((await r.json()).error);
       fetchCoupons(true);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setToggling(null);
     }

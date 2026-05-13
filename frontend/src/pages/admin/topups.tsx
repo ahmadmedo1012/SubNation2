@@ -91,7 +91,14 @@ function RejectModal({
   onCancel,
   loading,
 }: {
-  topup: any;
+  topup: {
+    id: number;
+    amount: number;
+    user_phone: string;
+    status: string;
+    payment_network?: string;
+    created_at?: string;
+  };
   onConfirm: (note: string) => void;
   onCancel: () => void;
   loading: boolean;
@@ -303,7 +310,9 @@ export default function AdminTopupsPage() {
       onSuccess(_, vars) {
         setProcessingId(null);
         invalidate();
-        const t = (allTopups as any[]).find((x: any) => x.id === vars.id);
+        const t = (allTopups as Array<{ id: number; amount: number; user_phone: string }>).find(
+          (x) => x.id === vars.id,
+        );
         toast({
           title: "✓ تمت الموافقة",
           description: t
@@ -329,7 +338,9 @@ export default function AdminTopupsPage() {
         setProcessingId(null);
         setRejectTarget(null);
         invalidate();
-        const t = (allTopups as any[]).find((x: any) => x.id === vars.id);
+        const t = (allTopups as Array<{ id: number; amount: number; user_phone: string }>).find(
+          (x) => x.id === vars.id,
+        );
         toast({
           title: "تم الرفض",
           description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
@@ -347,20 +358,25 @@ export default function AdminTopupsPage() {
     return null;
   }
 
-  const pendingTopups = (allTopups as any[]).filter((t: any) => t.status === "pending");
+  const pendingTopups = (allTopups as Array<{ status: string; id: number }>).filter(
+    (t) => t.status === "pending",
+  );
   const allPendingSelected =
-    pendingTopups.length > 0 && pendingTopups.every((t: any) => selectedIds.has(t.id));
-  const selectedPendingCount = pendingTopups.filter((t: any) => selectedIds.has(t.id)).length;
+    pendingTopups.length > 0 && pendingTopups.every((t) => selectedIds.has(t.id));
+  const selectedPendingCount = pendingTopups.filter((t) => selectedIds.has(t.id)).length;
 
-  const statusCounts = (allTopups as any[]).reduce((acc: Record<string, number>, t: any) => {
-    acc[t.status] = (acc[t.status] ?? 0) + 1;
-    return acc;
-  }, {});
+  const statusCounts = (allTopups as Array<{ status: string }>).reduce(
+    (acc: Record<string, number>, t) => {
+      acc[t.status] = (acc[t.status] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
 
   const pendingCount = statusCounts["pending"] ?? 0;
   const topups = statusFilter
-    ? (allTopups as any[]).filter((t: any) => t.status === statusFilter)
-    : (allTopups as any[]);
+    ? (allTopups as Array<{ status: string }>).filter((t) => t.status === statusFilter)
+    : allTopups;
 
   const handleApprove = (id: number) => {
     setProcessingId(id);
@@ -383,12 +399,14 @@ export default function AdminTopupsPage() {
   };
 
   const handleSelectAll = () => {
-    const pendingTopups = (allTopups as any[]).filter((t: any) => t.status === "pending");
-    const allSelected = pendingTopups.every((t: any) => selectedIds.has(t.id));
+    const pendingTopups = (allTopups as Array<{ status: string; id: number }>).filter(
+      (t) => t.status === "pending",
+    );
+    const allSelected = pendingTopups.every((t) => selectedIds.has(t.id));
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(pendingTopups.map((t: any) => t.id)));
+      setSelectedIds(new Set(pendingTopups.map((t) => t.id)));
     }
   };
 
@@ -429,7 +447,7 @@ export default function AdminTopupsPage() {
   };
 
   const approveAll = async () => {
-    const pending = (allTopups as any[]).filter((t: any) => t.status === "pending");
+    const pending = (allTopups as Array<{ status: string }>).filter((t) => t.status === "pending");
     for (const t of pending) {
       await fetch(`/api/admin/topups/${t.id}/approve`, {
         method: "POST",
@@ -481,12 +499,12 @@ export default function AdminTopupsPage() {
               )}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{(allTopups as any[]).length} طلب إجمالاً</span>
+              <span>{allTopups.length} طلب إجمالاً</span>
               {pendingCount > 0 &&
                 (() => {
-                  const pendingTotal = (allTopups as any[])
-                    .filter((t: any) => t.status === "pending")
-                    .reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+                  const pendingTotal = (allTopups as Array<{ status: string; amount: number }>)
+                    .filter((t) => t.status === "pending")
+                    .reduce((s: number, t) => s + (Number(t.amount) || 0), 0);
                   return pendingTotal > 0 ? (
                     <>
                       <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
@@ -551,7 +569,7 @@ export default function AdminTopupsPage() {
             {/* Status filter tabs */}
             <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
               {STATUS_FILTERS.map((s) => {
-                const count = s.value ? (statusCounts[s.value] ?? 0) : (allTopups as any[]).length;
+                const count = s.value ? (statusCounts[s.value] ?? 0) : allTopups.length;
                 const active = statusFilter === s.value;
                 return (
                   <button
@@ -597,7 +615,7 @@ export default function AdminTopupsPage() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {topups.map((t: any, i: number) => (
+            {topups.map((t, i: number) => (
               <div
                 key={t.id}
                 className={`float-in stagger-${Math.min(i + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:shadow-black/10 ${

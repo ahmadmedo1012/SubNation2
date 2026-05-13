@@ -13,8 +13,7 @@ export async function sendTelegramMessage(text: string): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: "HTML" }),
     });
-  } catch {
-  }
+  } catch {}
 }
 
 export function notifyNewUser(phone: string, hadReferral: boolean): void {
@@ -55,7 +54,12 @@ export function notifyCouponMaxedOut(code: string, maxUses: number): void {
 
 export function notifyCouponExpiringSoon(code: string, expiresAt: Date, hoursLeft: number): void {
   const timeLabel = hoursLeft <= 1 ? "أقل من ساعة" : `${Math.floor(hoursLeft)} ساعة`;
-  const dateStr = expiresAt.toLocaleDateString("ar-LY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const dateStr = expiresAt.toLocaleDateString("ar-LY", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const msg = `⏰ <b>كوبون يوشك على الانتهاء</b>\n\nالرمز: <code>${code}</code>\nينتهي خلال: <b>${timeLabel}</b>\nوقت الانتهاء: ${dateStr}\n\nيمكنك تمديده أو إيقافه من لوحة الإدارة.`;
   sendTelegramMessage(msg).catch(() => {});
 }

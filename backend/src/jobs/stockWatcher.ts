@@ -27,7 +27,11 @@ async function checkLowStock(): Promise<void> {
 
       if (stock === 0 && !alertedZero.has(product.id)) {
         if (isTelegramConfigured()) notifyLowStock(product.name, 0);
-        await logAdminAlert("no_stock", `نفاد المخزون: ${product.name}`, `المخزون وصل إلى صفر وحدات`);
+        await logAdminAlert(
+          "no_stock",
+          `نفاد المخزون: ${product.name}`,
+          `المخزون وصل إلى صفر وحدات`,
+        );
         alertedZero.add(product.id);
         alertedLow.delete(product.id);
         logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
@@ -36,7 +40,10 @@ async function checkLowStock(): Promise<void> {
         await logAdminAlert("low_stock", `مخزون منخفض: ${product.name}`, `تبقّى ${stock} وحدة فقط`);
         alertedLow.add(product.id);
         alertedZero.delete(product.id);
-        logger.info({ productId: product.id, productName: product.name, stock }, "Low stock alert sent");
+        logger.info(
+          { productId: product.id, productName: product.name, stock },
+          "Low stock alert sent",
+        );
       } else if (stock > LOW_STOCK_THRESHOLD) {
         // Stock recovered — clear alerts so future drops trigger again
         alertedLow.delete(product.id);

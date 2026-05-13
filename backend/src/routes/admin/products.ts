@@ -176,9 +176,14 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       }
     }
   } else if (Array.isArray(entries)) {
+    interface AccountEntry {
+      account_email: string;
+      account_password: string;
+      extra_details?: string;
+    }
     items = entries
-      .filter((e: any) => e.account_email && e.account_password)
-      .map((e: any) => ({
+      .filter((e: AccountEntry) => e.account_email && e.account_password)
+      .map((e: AccountEntry) => ({
         accountEmail: e.account_email,
         accountPassword: e.account_password,
         extraDetails: e.extra_details || undefined,

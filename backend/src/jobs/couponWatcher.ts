@@ -42,7 +42,7 @@ async function checkExpiringCoupons(): Promise<void> {
 
     // Clean up IDs of coupons that have already expired (no need to track them)
     if (alertedExpiring.size > 500) {
-      const activeCouponIds = new Set(expiringSoon.map(c => c.id));
+      const activeCouponIds = new Set(expiringSoon.map((c) => c.id));
       for (const id of alertedExpiring) {
         if (!activeCouponIds.has(id)) alertedExpiring.delete(id);
       }

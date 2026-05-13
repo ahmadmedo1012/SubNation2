@@ -65,6 +65,8 @@ services:
         value: "SubNation@2026"
       - key: ADMIN_RESET_PASSWORD
         value: "false"
+      - key: SENTRY_DSN
+        generateValue: true
       - key: REDIS_URL
         fromService:
           type: redis
@@ -75,3 +77,4 @@ services:
     name: subnation-redis
     plan: free
     ipAllowList: []
+    maxmemoryPolicy: allkeys-lru

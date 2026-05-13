@@ -7,9 +7,13 @@
     "dev": "tsx watch ./src/index.ts",
     "build": "node ./build.mjs && pnpm --dir .. --filter @workspace/subnation run build",
     "start": "node --enable-source-maps ./dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@sentry/node": "^10.53.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "argon2": "^0.44.0",
@@ -40,10 +44,12 @@
     "@types/node": "catalog:",
     "@types/node-cron": "^3.0.11",
     "@types/qrcode": "^1.5.6",
+    "@vitest/ui": "^4.1.6",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13",
     "thread-stream": "3.1.0",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "vitest": "^4.1.6"
   }
 }

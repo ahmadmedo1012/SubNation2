@@ -1,20 +1,20 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
 import { Logo } from "@/components/layout/Logo";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import {
   AlertCircle,
+  ArrowRight,
   CheckCircle2,
-  Phone,
-  KeyRound,
-  Lock,
   Eye,
   EyeOff,
-  ArrowRight,
+  KeyRound,
+  Lock,
   MessageSquare,
+  Phone,
 } from "lucide-react";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
 
 type Step = "phone" | "otp" | "done";
 
@@ -62,8 +62,8 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "حدث خطأ، حاول مرة أخرى");
       setStep("otp");
-    } catch (err: any) {
-      setPhoneError(err.message);
+    } catch (err: unknown) {
+      setPhoneError(err instanceof Error ? err.message : "حدث خطأ");
     } finally {
       setPhoneLoading(false);
     }
@@ -94,8 +94,8 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "فشل تغيير كلمة المرور");
       setStep("done");
-    } catch (err: any) {
-      setResetError(err.message);
+    } catch (err: unknown) {
+      setResetError(err instanceof Error ? err.message : "فشلت العملية");
     } finally {
       setResetLoading(false);
     }

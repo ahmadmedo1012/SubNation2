@@ -80,7 +80,7 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
 
   const { onIdTokenChanged } = await import("firebase/auth");
 
-  const unsubscribe = onIdTokenChanged(auth, async (user: any) => {
+  const unsubscribe = onIdTokenChanged(auth, async (user: { uid: string } | null) => {
     if (!user) return;
 
     // Debounce rapid refreshes

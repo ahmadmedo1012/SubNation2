@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  backend-typecheck:
+    name: Backend Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  backend-test:
+    name: Backend Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test --run
+
+  frontend-typecheck:
+    name: Frontend Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build

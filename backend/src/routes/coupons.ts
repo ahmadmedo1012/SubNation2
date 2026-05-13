@@ -32,8 +32,11 @@ router.post("/validate", requireUser, async (req, res) => {
     return res.status(400).json({ error: "مبلغ الطلب غير صالح" });
   }
 
-  const [coupon] = await db.select().from(couponsTable)
-    .where(eq(couponsTable.code, code.trim().toUpperCase())).limit(1);
+  const [coupon] = await db
+    .select()
+    .from(couponsTable)
+    .where(eq(couponsTable.code, code.trim().toUpperCase()))
+    .limit(1);
 
   if (!coupon) return res.status(404).json({ error: "كوبون غير موجود" });
   if (!coupon.isActive) return res.status(400).json({ error: "هذا الكوبون غير نشط" });
@@ -53,7 +56,7 @@ router.post("/validate", requireUser, async (req, res) => {
 
   let discountAmount: number;
   if (coupon.type === "percentage") {
-    discountAmount = +(order_amount * parseFloat(String(coupon.value)) / 100).toFixed(2);
+    discountAmount = +((order_amount * parseFloat(String(coupon.value))) / 100).toFixed(2);
   } else {
     discountAmount = +Math.min(parseFloat(String(coupon.value)), order_amount).toFixed(2);
   }
@@ -83,24 +86,34 @@ router.get("/admin", requireAdmin, async (_req, res) => {
 router.post("/admin", requireAdmin, async (req, res) => {
   const { code, type, value, min_order_amount, max_uses, expires_at, description } = req.body ?? {};
   if (!code?.trim()) return res.status(400).json({ error: "رمز الكوبون مطلوب" });
-  if (!["percentage", "fixed"].includes(type)) return res.status(400).json({ error: "نوع الخصم غير صالح" });
-  if (typeof value !== "number" || value <= 0) return res.status(400).json({ error: "قيمة الخصم غير صالحة" });
-  if (type === "percentage" && value > 100) return res.status(400).json({ error: "نسبة الخصم لا يمكن أن تتجاوز 100%" });
+  if (!["percentage", "fixed"].includes(type))
+    return res.status(400).json({ error: "نوع الخصم غير صالح" });
+  if (typeof value !== "number" || value <= 0)
+    return res.status(400).json({ error: "قيمة الخصم غير صالحة" });
+  if (type === "percentage" && value > 100)
+    return res.status(400).json({ error: "نسبة الخصم لا يمكن أن تتجاوز 100%" });
 
   const upperCode = code.trim().toUpperCase();
-  const existing = await db.select().from(couponsTable).where(eq(couponsTable.code, upperCode)).limit(1);
+  const existing = await db
+    .select()
+    .from(couponsTable)
+    .where(eq(couponsTable.code, upperCode))
+    .limit(1);
   if (existing.length > 0) return res.status(409).json({ error: "رمز الكوبون موجود مسبقاً" });
 
-  const [coupon] = await db.insert(couponsTable).values({
-    code: upperCode,
-    type,
-    value: String(value),
-    minOrderAmount: String(min_order_amount ?? 0),
-    maxUses: max_uses ?? null,
-    expiresAt: expires_at ? new Date(expires_at) : null,
-    description: description?.trim() || null,
-    isActive: true,
-  }).returning();
+  const [coupon] = await db
+    .insert(couponsTable)
+    .values({
+      code: upperCode,
+      type,
+      value: String(value),
+      minOrderAmount: String(min_order_amount ?? 0),
+      maxUses: max_uses ?? null,
+      expiresAt: expires_at ? new Date(expires_at) : null,
+      description: description?.trim() || null,
+      isActive: true,
+    })
+    .returning();
 
   return res.status(201).json(formatCoupon(coupon));
 });
@@ -122,7 +135,11 @@ router.patch("/admin/:id", requireAdmin, async (req, res) => {
   if (expires_at !== undefined) updates.expiresAt = expires_at ? new Date(expires_at) : null;
   if (description !== undefined) updates.description = description?.trim() || null;
 
-  const [updated] = await db.update(couponsTable).set(updates).where(eq(couponsTable.id, id)).returning();
+  const [updated] = await db
+    .update(couponsTable)
+    .set(updates)
+    .where(eq(couponsTable.id, id))
+    .returning();
   return res.json(formatCoupon(updated));
 });
 

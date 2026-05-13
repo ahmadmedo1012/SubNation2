@@ -222,7 +222,9 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const pendingCount = (topups as any[]).filter((t: any) => t.status === "pending").length;
+  const pendingCount = (topups as Array<{ status: string }>).filter(
+    (t) => t.status === "pending",
+  ).length;
   const pendingBlocked = pendingCount >= MAX_PENDING;
 
   const topupMutation = useCreateTopup({
@@ -245,7 +247,7 @@ export default function WalletPage() {
         setTimeout(() => setSuccess(false), 7000);
         toast({ title: "تم إرسال الطلب ✓", description: "سيتم مراجعة طلب الشحن خلال دقائق." });
       },
-      onError(err: any) {
+      onError(err: unknown) {
         setError(getErrorMessage(err));
       },
       onSettled() {
@@ -767,14 +769,14 @@ export default function WalletPage() {
             <div className="flex items-center gap-2.5 mb-4">
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
               <h2 className="font-black text-sm">سجل الشحن</h2>
-              {(topups as any[]).length > 0 && (
+              {topups.length > 0 && (
                 <span className="mr-auto text-xs text-muted-foreground font-medium">
-                  {(topups as any[]).length} طلب
+                  {topups.length} طلب
                 </span>
               )}
             </div>
 
-            {(topups as any[]).length === 0 ? (
+            {topups.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-7 h-7 opacity-25" />
@@ -788,7 +790,15 @@ export default function WalletPage() {
               </div>
             ) : (
               <div className="space-y-2.5 lg:max-h-[480px] overflow-y-auto scrollbar-none">
-                {(topups as any[]).map((t: any, i: number) => (
+                {(
+                  topups as Array<{
+                    id: number;
+                    status: string;
+                    amount: number;
+                    payment_network: string;
+                    created_at: string;
+                  }>
+                ).map((t, i: number) => (
                   <div
                     key={t.id}
                     className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}

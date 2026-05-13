@@ -1,18 +1,18 @@
-import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { useLocation, Link } from "wouter";
-import { formatCurrency, formatDateShort, statusLabel, statusColor } from "@/lib/utils";
+import { formatCurrency, formatDateShort, statusColor, statusLabel } from "@/lib/utils";
+import { getListOrdersQueryKey, useListOrders } from "@workspace/api-client-react";
 import {
-  Package,
-  ChevronLeft,
-  ShoppingBag,
-  Clock,
   CheckCircle,
-  XCircle,
+  ChevronLeft,
+  Clock,
+  Package,
+  ShoppingBag,
   Sparkles,
   Tag,
+  XCircle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Link, useLocation } from "wouter";
 
 const STAGGER = [
   "",
@@ -78,8 +78,8 @@ export default function OrdersPage() {
     return null;
   }
 
-  const pending = orders.filter((o: any) => o.status === "pending");
-  const completed = orders.filter((o: any) => o.status === "completed");
+  const pending = orders.filter((o) => o.status === "pending");
+  const completed = orders.filter((o) => o.status === "completed");
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -149,7 +149,7 @@ export default function OrdersPage() {
       ) : (
         /* Orders list */
         <div className="space-y-2.5">
-          {orders.map((order: any, i: number) => {
+          {orders.map((order, i: number) => {
             const staggerClass = STAGGER[Math.min(i, 12)] ?? "";
             return (
               <Link key={order.id} href={`/orders/${order.order_code}`}>
@@ -192,10 +192,10 @@ export default function OrdersPage() {
                             {formatDateShort(order.created_at)}
                           </span>
                         )}
-                        {(order as any).coupon_code && (
+                        {(order as { coupon_code?: string }).coupon_code && (
                           <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
                             <Tag className="w-2.5 h-2.5" />
-                            {(order as any).coupon_code}
+                            {(order as { coupon_code?: string }).coupon_code}
                           </span>
                         )}
                       </div>
@@ -204,9 +204,12 @@ export default function OrdersPage() {
                     {/* Right side */}
                     <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
                       <div className="text-right min-w-0">
-                        {(order as any).discount_amount > 0 && (
+                        {((order as { discount_amount?: number }).discount_amount ?? 0) > 0 && (
                           <div className="text-[10px] text-muted-foreground line-through tabular-nums">
-                            {formatCurrency((order.amount ?? 0) + (order as any).discount_amount)}
+                            {formatCurrency(
+                              (order.amount ?? 0) +
+                                ((order as { discount_amount?: number }).discount_amount ?? 0),
+                            )}
                           </div>
                         )}
                         <div className="font-black text-sm tabular-nums">

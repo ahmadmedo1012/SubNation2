@@ -1,23 +1,23 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import {
+  AlertCircle,
+  CheckCircle,
+  ChevronLeft,
+  Clock,
+  Loader2,
   MessageSquare,
   Send,
-  CheckCircle,
-  Loader2,
-  X,
-  Clock,
-  AlertCircle,
-  ChevronLeft,
-  User,
   Shield,
+  User,
+  X,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   open: {
@@ -139,8 +139,12 @@ export default function AdminTicketsPage() {
       setReplyText("");
       await openTicket(selected.id);
       fetchTickets();
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setSending(false);
     }

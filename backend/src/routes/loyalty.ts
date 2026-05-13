@@ -17,9 +17,12 @@ export function computeTier(lifetimeSpend: number): string {
 }
 
 function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
-  if (spend < TIER_THRESHOLDS.silver) return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
-  if (spend < TIER_THRESHOLDS.gold) return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
-  if (spend < TIER_THRESHOLDS.platinum) return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - spend };
+  if (spend < TIER_THRESHOLDS.silver)
+    return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
+  if (spend < TIER_THRESHOLDS.gold)
+    return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
+  if (spend < TIER_THRESHOLDS.platinum)
+    return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - spend };
   return null;
 }
 
@@ -29,12 +32,14 @@ router.get("/", requireUser, async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
 
-  const referrals = await db.select().from(referralEventsTable)
+  const referrals = await db
+    .select()
+    .from(referralEventsTable)
     .where(eq(referralEventsTable.referrerId, userId))
     .orderBy(desc(referralEventsTable.createdAt));
 
-  const creditedCount = referrals.filter(r => r.status === "credited").length;
-  const pendingCount = referrals.filter(r => r.status === "pending").length;
+  const creditedCount = referrals.filter((r) => r.status === "credited").length;
+  const pendingCount = referrals.filter((r) => r.status === "pending").length;
 
   const nextTier = computeNextTier(parseFloat(String(user.lifetimeSpend)));
 
@@ -79,10 +84,13 @@ router.post("/convert-points", requireUser, async (req, res) => {
   const newPoints = user.loyaltyPoints - pointsToConvert;
   const newBalance = (parseFloat(String(user.walletBalance)) + lydValue).toFixed(2);
 
-  await db.update(usersTable).set({
-    loyaltyPoints: newPoints,
-    walletBalance: newBalance,
-  }).where(eq(usersTable.id, userId));
+  await db
+    .update(usersTable)
+    .set({
+      loyaltyPoints: newPoints,
+      walletBalance: newBalance,
+    })
+    .where(eq(usersTable.id, userId));
 
   return res.json({
     success: true,
@@ -110,18 +118,17 @@ router.get("/referrals", requireUser, async (req, res) => {
     .where(eq(referralEventsTable.referrerId, userId))
     .orderBy(desc(referralEventsTable.createdAt));
 
-  const maskPhone = (p: string) =>
-    p.length >= 7 ? p.slice(0, 3) + "****" + p.slice(-3) : p;
+  const maskPhone = (p: string) => (p.length >= 7 ? p.slice(0, 3) + "****" + p.slice(-3) : p);
 
   return res.json(
-    events.map(e => ({
+    events.map((e) => ({
       id: e.id,
       status: e.status,
       phone_masked: maskPhone(e.phone),
       created_at: e.createdAt.toISOString(),
       credited_at: e.creditedAt?.toISOString() ?? null,
       points_earned: e.status === "credited" ? POINTS_PER_REFERRAL : 0,
-    }))
+    })),
   );
 });
 

@@ -69,7 +69,12 @@ export default function ProfilePage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const user = userData as any;
+  const user = userData as {
+    phone?: string;
+    wallet_balance?: number;
+    loyalty_points?: number;
+    referral_code?: string;
+  };
 
   // Fetch linked providers
   useEffect(() => {
@@ -109,11 +114,11 @@ export default function ProfilePage() {
       toast({ title: "تم فصل الحساب", description: "تم فصل مزود المصادقة بنجاح." });
       await fetchLinkedProviders();
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
-        variant: "destructive",
         title: "خطأ",
-        description: err.message,
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
       });
     } finally {
       setUnlinkingProvider(null);
@@ -152,8 +157,8 @@ export default function ProfilePage() {
       setNewPassword("");
       setConfirmPassword("");
       toast({ title: "تم تغيير كلمة المرور", description: "تم تحديث كلمة مرورك بنجاح." });
-    } catch (err: any) {
-      setPwError(err.message);
+    } catch (err: unknown) {
+      setPwError(err instanceof Error ? err.message : "فشلت العملية");
     } finally {
       setChangingPassword(false);
     }
@@ -177,11 +182,11 @@ export default function ProfilePage() {
           ? "يمكنك الآن الدخول باستخدام رقم هاتفك وكلمة المرور."
           : "يمكنك الآن الدخول فقط عبر Firebase (Google أو كود الهاتف).",
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast({
-        variant: "destructive",
         title: "خطأ",
-        description: err.message,
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
       });
     } finally {
       setTogglingPassword(false);

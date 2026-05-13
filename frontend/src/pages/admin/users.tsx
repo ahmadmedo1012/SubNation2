@@ -122,21 +122,21 @@ export default function AdminUsersPage() {
     return null;
   }
 
-  const totalWallet = (users as any[]).reduce(
-    (sum: number, u: any) => sum + (u.wallet_balance ?? 0),
+  const totalWallet = (users as Array<{ wallet_balance?: number }>).reduce(
+    (sum: number, u) => sum + (u.wallet_balance ?? 0),
     0,
   );
-  const totalSpend = (users as any[]).reduce(
-    (sum: number, u: any) => sum + (u.lifetime_spend ?? 0),
+  const totalSpend = (users as Array<{ lifetime_spend?: number }>).reduce(
+    (sum: number, u) => sum + (u.lifetime_spend ?? 0),
     0,
   );
 
   // Client-side tier filter + sort
   const tierFiltered = tierFilter
-    ? (users as any[]).filter((u: any) => u.loyalty_tier === tierFilter)
-    : (users as any[]);
+    ? (users as Array<{ loyalty_tier?: string }>).filter((u) => u.loyalty_tier === tierFilter)
+    : users;
 
-  const sorted = [...tierFiltered].sort((a: any, b: any) => {
+  const sorted = [...tierFiltered].sort((a, b) => {
     switch (sortBy) {
       case "wallet_desc":
         return (b.wallet_balance ?? 0) - (a.wallet_balance ?? 0);
@@ -153,7 +153,12 @@ export default function AdminUsersPage() {
     }
   });
 
-  function openEdit(user: any) {
+  function openEdit(user: {
+    id: number;
+    loyalty_points?: number;
+    loyalty_tier?: string;
+    wallet_balance?: number;
+  }) {
     setEditingUser(user);
     setForm({
       wallet_mode: "add",
@@ -167,7 +172,7 @@ export default function AdminUsersPage() {
     e.preventDefault();
     if (!editingUser || !adminToken) return;
     setSaving(true);
-    const body: Record<string, any> = {};
+    const body: Record<string, number | string> = {};
     if (form.wallet_value !== "") {
       const val = parseFloat(form.wallet_value);
       if (!isNaN(val)) {
@@ -192,8 +197,12 @@ export default function AdminUsersPage() {
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey(params) });
       setEditingUser(null);
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -211,7 +220,7 @@ export default function AdminUsersPage() {
       "الطلبات",
       "تاريخ التسجيل",
     ];
-    const rows = sorted.map((u: any) => [
+    const rows = sorted.map((u) => [
       u.phone ?? "",
       ((u.wallet_balance ?? 0) || 0).toFixed(2),
       tierLabel(u.loyalty_tier ?? ""),
@@ -238,8 +247,8 @@ export default function AdminUsersPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">المستخدمون</h1>
             <p className="text-xs text-muted-foreground">
-              {(users as any[]).length > 0
-                ? `${sorted.length} / ${(users as any[]).length} مستخدم`
+              {users.length > 0
+                ? `${sorted.length} / ${users.length} مستخدم`
                 : "إدارة حسابات المستخدمين"}
               {tierFilter && ` · فلتر: ${tierLabel(tierFilter)}`}
             </p>
@@ -344,12 +353,12 @@ export default function AdminUsersPage() {
         )}
 
         {/* Summary stats strip */}
-        {!isLoading && (users as any[]).length > 0 && !search && (
+        {!isLoading && users.length > 0 && !search && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               {
                 label: "إجمالي المستخدمين",
-                value: (users as any[]).length,
+                value: users.length,
                 icon: Users,
                 color: "text-blue-400",
                 bg: "bg-blue-400/10",
@@ -373,9 +382,7 @@ export default function AdminUsersPage() {
               },
               {
                 label: "متوسط الإنفاق",
-                value: formatCurrency(
-                  (users as any[]).length > 0 ? totalSpend / (users as any[]).length : 0,
-                ),
+                value: formatCurrency(users.length > 0 ? totalSpend / users.length : 0),
                 icon: Star,
                 color: "text-purple-400",
                 bg: "bg-purple-400/10",
@@ -479,7 +486,9 @@ export default function AdminUsersPage() {
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setForm((f) => ({ ...f, wallet_mode: opt.value as any }))}
+                        onClick={() =>
+                          setForm((f) => ({ ...f, wallet_mode: opt.value as "manual" | "auto" }))
+                        }
                         className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                       >
                         {opt.icon && <opt.icon className="w-3 h-3" />}
@@ -614,7 +623,7 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map((user: any, idx: number) => (
+                    {sorted.map((user, idx: number) => (
                       <tr
                         key={user.id}
                         className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
@@ -671,7 +680,7 @@ export default function AdminUsersPage() {
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
-              {sorted.map((user: any) => (
+              {sorted.map((user) => (
                 <div
                   key={user.id}
                   className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all"

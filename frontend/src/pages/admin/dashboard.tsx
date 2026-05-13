@@ -52,12 +52,18 @@ interface ChartDay {
 
 const CURRENCY_KEYS = new Set(["الإيرادات", "الخصومات"]);
 
-const ChartTooltip = ({ active, payload, label }: any) => {
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: Array<{ value: number; name: string; color: string }>;
+  label?: string;
+}
+
+const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border rounded-xl p-3 shadow-2xl text-xs min-w-[150px]">
       <p className="font-bold text-muted-foreground mb-2">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p: { value: number; name: string; color: string }) => (
         <div key={p.name} className="flex items-center justify-between gap-4 mb-1 last:mb-0">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
@@ -463,7 +469,7 @@ export default function AdminDashboardPage() {
                       {GRANULARITY_OPTIONS.map((g) => (
                         <button
                           key={g.value}
-                          onClick={() => setGranularity(g.value as any)}
+                          onClick={() => setGranularity(g.value as "day" | "week" | "month")}
                           className={`px-2 py-1 rounded text-[10px] font-bold transition-all duration-150 ${
                             granularity === g.value
                               ? "bg-card shadow-sm text-foreground"
@@ -741,44 +747,64 @@ export default function AdminDashboardPage() {
               </Link>
             </div>
             <div className="flex-1 divide-y divide-border/40 overflow-y-auto">
-              {(recentOrders as any[]).length === 0 ? (
+              {(
+                recentOrders as Array<{
+                  id: number;
+                  user_phone: string;
+                  total: number;
+                  status: string;
+                  created_at: string;
+                  product_name: string;
+                }>
+              ).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ShoppingBag className="w-8 h-8 mb-2 opacity-20" />
                   <p className="text-sm">لا توجد طلبات بعد</p>
                 </div>
               ) : (
-                (recentOrders as any[]).slice(0, 8).map((order: any) => (
-                  <div
-                    key={order.id}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-xs truncate">{order.product_name}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {order.user_phone}
-                        </span>
-                        {order.created_at && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {formatDate(order.created_at)}
+                (
+                  recentOrders as Array<{
+                    id: number;
+                    user_phone: string;
+                    total: number;
+                    status: string;
+                    created_at: string;
+                    product_name: string;
+                  }>
+                )
+                  .slice(0, 8)
+                  .map((order) => (
+                    <div
+                      key={order.id}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-xs truncate">{order.product_name}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {order.user_phone}
                           </span>
-                        )}
+                          {order.created_at && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDate(order.created_at)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-black text-xs text-primary tabular-nums">
+                          {formatCurrency(order.amount)}
+                        </div>
+                        <div className="mt-0.5">
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                          >
+                            {statusLabel(order.status)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <div className="font-black text-xs text-primary tabular-nums">
-                        {formatCurrency(order.amount)}
-                      </div>
-                      <div className="mt-0.5">
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
-                        >
-                          {statusLabel(order.status)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                  ))
               )}
             </div>
           </div>

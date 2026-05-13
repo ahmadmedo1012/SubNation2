@@ -192,7 +192,7 @@ export default function HomePage() {
     query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
-  const latestOrders = (recentOrders as any[]).slice(0, 4);
+  const latestOrders = recentOrders.slice(0, 4);
 
   const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(
     Boolean,
@@ -283,7 +283,7 @@ export default function HomePage() {
                   </Link>
                 </div>
                 <div className="divide-y divide-border/15">
-                  {latestOrders.map((order: any) => (
+                  {latestOrders.map((order) => (
                     <Link key={order.id} href={`/orders/${order.order_code}`}>
                       <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
                         <div className="w-8 h-8 rounded-xl bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/25">
@@ -620,7 +620,22 @@ export default function HomePage() {
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {products.map((product, i) => (
               <div key={product.id} className={i >= 4 ? "cv-card" : undefined}>
-                <ProductCard product={product as any} index={i} />
+                <ProductCard
+                  product={
+                    product as {
+                      id: number;
+                      name: string;
+                      description?: string | null;
+                      image_url?: string | null;
+                      price: number;
+                      category?: string | null;
+                      is_available: boolean;
+                      stock_count: number;
+                      sale_price?: number | null;
+                    }
+                  }
+                  index={i}
+                />
               </div>
             ))}
           </div>

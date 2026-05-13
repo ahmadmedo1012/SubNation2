@@ -86,8 +86,12 @@ export default function LoyaltyPage() {
       toast({ title: "تم التحويل", description: result.message });
       setConvertPoints("");
       fetchData();
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setConverting(false);
     }

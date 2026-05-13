@@ -1,37 +1,37 @@
-import { useState, useEffect } from "react";
-import {
-  useListAdminProducts,
-  useCreateProduct,
-  useUpdateProduct,
-  useDeleteProduct,
-  getListAdminProductsQueryKey,
-} from "@workspace/api-client-react";
-import { useAuth } from "@/lib/auth";
-import { useLocation } from "wouter";
-import { formatCurrency, categoryLabel } from "@/lib/utils";
-import { AdminLayout } from "./layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Plus,
-  Edit2,
-  Trash2,
-  Package,
-  X,
-  CheckCircle,
-  Upload,
-  Search,
-  Archive,
-  AlertTriangle,
-  CheckSquare,
-  Square,
-  Zap,
-  EyeOff,
-  Eye,
-} from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { categoryLabel, formatCurrency } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getListAdminProductsQueryKey,
+  useCreateProduct,
+  useDeleteProduct,
+  useListAdminProducts,
+  useUpdateProduct,
+} from "@workspace/api-client-react";
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle,
+  CheckSquare,
+  Edit2,
+  Eye,
+  EyeOff,
+  Package,
+  Plus,
+  Search,
+  Square,
+  Trash2,
+  Upload,
+  X,
+  Zap,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { AdminLayout } from "./layout";
 
 const EMPTY_FORM = {
   name: "",
@@ -233,7 +233,18 @@ export default function AdminProductsPage() {
     else createMutation.mutate({ data });
   };
 
-  const startEdit = (product: any) => {
+  const startEdit = (product: {
+    id: number;
+    name: string;
+    price: number;
+    sale_price?: number;
+    is_active: boolean;
+    stock: number;
+    description?: string;
+    image_url?: string;
+    category?: string;
+    usage_terms?: string;
+  }) => {
     setEditingId(product.id);
     setForm({
       name: product.name,
@@ -270,14 +281,18 @@ export default function AdminProductsPage() {
       setBulkText("");
       setInventoryProductId(null);
       invalidate();
-    } catch (err: any) {
-      toast({ title: "خطأ", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setUploadLoading(false);
     }
   };
 
-  const filtered = (products as any[]).filter((p) => {
+  const filtered = products.filter((p) => {
     const matchSearch =
       !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -286,9 +301,7 @@ export default function AdminProductsPage() {
     return matchSearch && matchCategory;
   });
 
-  const lowStockCount = (products as any[]).filter(
-    (p) => p.stock_count === 0 && p.is_active,
-  ).length;
+  const lowStockCount = products.filter((p) => p.stock_count === 0 && p.is_active).length;
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -301,7 +314,7 @@ export default function AdminProductsPage() {
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((p: any) => p.id)));
+    else setSelectedIds(new Set(filtered.map((p) => p.id)));
   };
 
   const bulkDelete = async () => {
@@ -320,7 +333,7 @@ export default function AdminProductsPage() {
     if (!selectedIds.size) return;
     setBulkProcessing(true);
     for (const id of selectedIds) {
-      const p = (products as any[]).find((pr: any) => pr.id === id);
+      const p = (products as Array<{ id: number }>).find((pr) => pr.id === id);
       if (!p) continue;
       await fetch(`/api/admin/products/${id}`, {
         method: "PATCH",
@@ -334,8 +347,7 @@ export default function AdminProductsPage() {
     setBulkProcessing(false);
   };
 
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((p: any) => selectedIds.has(p.id));
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
 
   return (
     <AdminLayout onRefresh={() => refetch()}>
@@ -345,7 +357,7 @@ export default function AdminProductsPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">المنتجات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{(products as any[]).length} منتج في الكتالوج</span>
+              <span>{products.length} منتج في الكتالوج</span>
               {lowStockCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
@@ -638,7 +650,7 @@ export default function AdminProductsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((product: any) => {
+            {filtered.map((product) => {
               const isSelected = selectedIds.has(product.id);
               return (
                 <div

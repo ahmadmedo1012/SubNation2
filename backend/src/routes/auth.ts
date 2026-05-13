@@ -362,6 +362,14 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
     ...clientInfo,
   });
 
+  // Clear httpOnly cookie
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+  });
+
   return res.json({ success: true, message: "تم تسجيل الخروج من الجهاز الحالي" });
 });
 
@@ -590,7 +598,17 @@ router.post("/reset-password", async (req, res) => {
     .where(and(eq(otpsTable.phone, normalizedPhone), lt(otpsTable.expiresAt, now)));
   await db.delete(otpsTable).where(eq(otpsTable.id, otpRecord.id));
   const token = signUserToken({ userId: user.id });
-  return res.json({ success: true, token });
+
+  // Set httpOnly cookie for better security
+  res.cookie("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    path: "/",
+  });
+
+  return res.json({ success: true });
 });
 
 router.post("/change-password", async (req, res) => {

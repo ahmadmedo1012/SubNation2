@@ -7,12 +7,15 @@ export interface AdminAuthenticatedRequest extends Request {
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) {
+  // Try cookie first, fallback to Authorization header
+  const token = req.cookies?.admin_token || req.headers.authorization?.replace("Bearer ", "");
+
+  if (!token) {
     res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
     return;
   }
-  const result = verifyAdminTokenDetailed(auth.slice(7));
+
+  const result = verifyAdminTokenDetailed(token);
   if (!result.ok) {
     if (result.reason === "expired") {
       res.status(401).json(createErrorResponse("جلسة الإدارة منتهية", ErrorCode.SESSION_EXPIRED));

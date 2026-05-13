@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/lib/auth";
-import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/hooks/use-toast";
 import { useAdminLogin } from "@workspace/api-client-react";
 import { AlertCircle, Eye, EyeOff, KeyRound, Shield } from "lucide-react";
 import { useState } from "react";
@@ -11,6 +10,7 @@ import { useLocation } from "wouter";
 export default function AdminLoginPage() {
   const [, navigate] = useLocation();
   const { setAdminToken } = useAuth();
+  const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -32,8 +32,8 @@ export default function AdminLoginPage() {
         setAdminToken(data.token ?? null);
         navigate("/admin");
       },
-      onError(err: any) {
-        setError(getErrorMessage(err));
+      onError(err: unknown) {
+        setError(err instanceof Error ? err.message : "حدث خطأ");
       },
     },
   });
@@ -61,8 +61,12 @@ export default function AdminLoginPage() {
 
       setAdminToken(data.token);
       navigate("/admin");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشلت العملية",
+        variant: "destructive",
+      });
     } finally {
       setIsVerifying(false);
     }

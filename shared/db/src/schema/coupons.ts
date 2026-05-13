@@ -1,4 +1,13 @@
-import { pgTable, serial, varchar, numeric, integer, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  varchar,
+  numeric,
+  integer,
+  boolean,
+  timestamp,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 
 export const couponTypeEnum = pgEnum("coupon_type", ["percentage", "fixed"]);
 
@@ -7,7 +16,9 @@ export const couponsTable = pgTable("coupons", {
   code: varchar("code", { length: 50 }).notNull().unique(),
   type: couponTypeEnum("type").notNull().default("percentage"),
   value: numeric("value", { precision: 10, scale: 2 }).notNull(),
-  minOrderAmount: numeric("min_order_amount", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  minOrderAmount: numeric("min_order_amount", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0.00"),
   maxUses: integer("max_uses"),
   usedCount: integer("used_count").notNull().default(0),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
