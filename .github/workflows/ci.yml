@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
@@ -36,6 +37,7 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
       - run: pnpm install --frozen-lockfile
       - run: pnpm test --run
 
@@ -52,6 +54,7 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
@@ -68,5 +71,6 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
