@@ -6,71 +6,35 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Single root install; matches pnpm monorepo guidance (pnpm.io).
 jobs:
-  backend-typecheck:
-    name: Backend Type Check
+  quality:
+    name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: "pnpm-lock.yaml"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
 
-  backend-test:
-    name: Backend Test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-    steps:
-      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: "pnpm-lock.yaml"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm test --run
+          version: 10
 
-  frontend-typecheck:
-    name: Frontend Type Check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: "pnpm-lock.yaml"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
-  frontend-build:
-    name: Frontend Build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "pnpm"
-          cache-dependency-path: "pnpm-lock.yaml"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck (project references + packages)
+        run: pnpm run typecheck
+
+      - name: Backend unit tests
+        run: pnpm --filter @workspace/api-server exec vitest run
+
+      - name: Production build (API + Vite SPA)
+        run: pnpm --filter @workspace/api-server run build

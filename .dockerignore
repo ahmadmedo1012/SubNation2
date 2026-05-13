@@ -2,6 +2,10 @@
 .gitignore
 .gitattributes
 .github
+
+# Optional local tooling clone (multi-GB); never send to Docker build context.
+ruflo
+ruflo/
 .vscode
 .idea
 .cache
