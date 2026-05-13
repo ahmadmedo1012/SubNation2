@@ -30,6 +30,9 @@ const allowedOrigins = process.env.APP_ORIGINS
       .filter(Boolean)
   : [];
 const isProduction = process.env.NODE_ENV === "production";
+const csrfAllowedOrigins = (process.env.APP_ORIGINS || process.env.APP_URL || "")
+  .split(",")
+  .map((o) => o.trim());
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 app.use(
@@ -74,7 +77,6 @@ app.use(
     crossOriginEmbedderPolicy: false, // Allow external images
     crossOriginOpenerPolicy: { policy: "unsafe-none" },
     // Additional security headers
-    contentSecurityPolicy: false, // Already configured above
     xContentTypeOptions: "nosniff",
     xFrameOptions: "DENY",
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
@@ -207,9 +209,6 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // ── CSRF Protection for state-changing requests ───────────────────────────────
 // Validate Origin/Referer headers for POST/PUT/DELETE/PATCH requests
-const allowedOrigins = (process.env.APP_ORIGINS || process.env.APP_URL || "")
-  .split(",")
-  .map((o) => o.trim());
 app.use((req, res, next) => {
   const method = req.method.toUpperCase();
   if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
@@ -223,11 +222,11 @@ app.use((req, res, next) => {
     }
 
     // In production, validate Origin or Referer
-    if (process.env.NODE_ENV === "production" && allowedOrigins.length > 0) {
+    if (process.env.NODE_ENV === "production" && csrfAllowedOrigins.length > 0) {
       const isValid =
         (origin &&
-          allowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) ||
-        (referer && allowedOrigins.some((allowed) => referer.startsWith(allowed)));
+          csrfAllowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) ||
+        (referer && csrfAllowedOrigins.some((allowed) => referer.startsWith(allowed)));
 
       if (!isValid) {
         logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
