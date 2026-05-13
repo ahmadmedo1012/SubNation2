@@ -437,8 +437,8 @@ export async function runMigrations() {
         sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`,
       );
       const rows: Array<{ id: number; account_password: string }> = Array.isArray(result)
-        ? result
-        : (result.rows ?? []);
+        ? (result as Array<{ id: number; account_password: string }>)
+        : ((result.rows as Array<{ id: number; account_password: string }>) ?? []);
       let reEncrypted = 0;
       for (const row of rows) {
         if (!isEncrypted(row.account_password)) {

@@ -105,7 +105,16 @@ app.use(
   }),
 );
 
-import { ipKeyGenerator } from "express-rate-limit";
+// Custom IP key generator that handles IPv6 subnets
+const ipKeyGenerator = (req: Request) => {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  // For IPv6, use /64 subnet to reduce false positives from dynamic suffixes
+  if (ip.includes(":")) {
+    const parts = ip.split(":");
+    return parts.slice(0, 4).join(":") + "::/64";
+  }
+  return ip;
+};
 
 let redisClient: ReturnType<typeof createClient> | null = null;
 if (process.env.REDIS_URL) {
