@@ -31,12 +31,16 @@ node_modules
 !.vscode/extensions.json
 
 # misc
+/.env
+/.env.*
+!/.env.example
 /.env.local
 !/config/env.example
 # Per-package envs (Vite auto-loads frontend/.env*)
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+backend/.env
 backend/.env.local
 !backend/.env.example
 /.sass-cache
@@ -56,8 +60,10 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Local/generated state
-.cache/
+# Vite / tooling caches
+frontend/.vite/
+.turbo/
+
 .local/
 .agents/
 .claude/

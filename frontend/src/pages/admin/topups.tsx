@@ -364,18 +364,13 @@ export default function AdminTopupsPage() {
     pendingTopups.length > 0 && pendingTopups.every((t) => selectedIds.has(t.id));
   const selectedPendingCount = pendingTopups.filter((t) => selectedIds.has(t.id)).length;
 
-  const statusCounts = allTopups.reduce(
-    (acc: Record<string, number>, t) => {
-      acc[t.status] = (acc[t.status] ?? 0) + 1;
-      return acc;
-    },
-    {},
-  );
+  const statusCounts = allTopups.reduce((acc: Record<string, number>, t) => {
+    acc[t.status] = (acc[t.status] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const pendingCount = statusCounts["pending"] ?? 0;
-  const topups = statusFilter
-    ? allTopups.filter((t) => t.status === statusFilter)
-    : allTopups;
+  const topups = statusFilter ? allTopups.filter((t) => t.status === statusFilter) : allTopups;
 
   const handleApprove = (id: number) => {
     setProcessingId(id);
@@ -398,9 +393,7 @@ export default function AdminTopupsPage() {
   };
 
   const handleSelectAll = () => {
-    const pendingTopups = allTopups.filter(
-      (t) => t.status === "pending",
-    );
+    const pendingTopups = allTopups.filter((t) => t.status === "pending");
     const allSelected = pendingTopups.every((t) => selectedIds.has(t.id));
     if (allSelected) {
       setSelectedIds(new Set());

@@ -754,37 +754,37 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 recentOrders.slice(0, 8).map((order) => (
-                    <div
-                      key={order.id}
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-xs truncate">{order.product_name}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {order.user_phone}
+                  <div
+                    key={order.id}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-xs truncate">{order.product_name}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {order.user_phone}
+                        </span>
+                        {order.created_at && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {formatDate(order.created_at)}
                           </span>
-                          {order.created_at && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDate(order.created_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-black text-xs text-primary tabular-nums">
-                          {formatCurrency(order.amount)}
-                        </div>
-                        <div className="mt-0.5">
-                          <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
-                          >
-                            {statusLabel(order.status)}
-                          </span>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  ))
+                    <div className="shrink-0 text-right">
+                      <div className="font-black text-xs text-primary tabular-nums">
+                        {formatCurrency(order.amount)}
+                      </div>
+                      <div className="mt-0.5">
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                        >
+                          {statusLabel(order.status)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>

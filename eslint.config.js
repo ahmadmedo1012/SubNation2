@@ -9,6 +9,8 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
+      "**/ruflo/**",
+      "**/.claude-flow/**",
       "**/*.config.*",
       "**/generated/**",
       "frontend/src/components/ui/**",
