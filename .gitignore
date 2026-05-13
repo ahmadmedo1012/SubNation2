@@ -31,8 +31,8 @@ node_modules
 !.vscode/extensions.json
 
 # misc
-/.env
-/.env.*
+#/.env
+#/.env.*
 !/.env.example
 /.env.local
 !/config/env.example
