@@ -10,7 +10,10 @@ import pinoHttp from "pino-http";
 import RedisStore from "rate-limit-redis";
 import { createClient } from "redis";
 import { logger } from "./lib/logger";
+import { captureException } from "./lib/sentry";
 import router from "./routes";
+
+const app = express();
 
 function resolveFrontendDist(): string | null {
   const candidates = [
@@ -74,11 +77,10 @@ app.use(
       includeSubDomains: true,
       preload: true,
     },
-    crossOriginEmbedderPolicy: false, // Allow external images
+    crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: { policy: "unsafe-none" },
-    // Additional security headers
-    xContentTypeOptions: "nosniff",
-    xFrameOptions: "DENY",
+    xContentTypeOptions: true,
+    xFrameOptions: true,
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );

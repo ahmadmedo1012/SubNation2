@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@opentelemetry/instrumentation": "^0.56.0",
+    "@opentelemetry/instrumentation-http": "^0.214.0",
     "@sentry/node": "^10.53.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
