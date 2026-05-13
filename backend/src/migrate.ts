@@ -433,8 +433,12 @@ export async function runMigrations() {
     // ── Encrypt existing plaintext account_passwords ─────────────────────────
     if (process.env.ENCRYPTION_KEY) {
       await db.execute(sql`ALTER TABLE inventory ALTER COLUMN account_password TYPE VARCHAR(512)`);
-      const result = await db.execute(sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`);
-      const rows: Array<{ id: number; account_password: string }> = Array.isArray(result) ? result : (result.rows ?? []);
+      const result = await db.execute(
+        sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`,
+      );
+      const rows: Array<{ id: number; account_password: string }> = Array.isArray(result)
+        ? result
+        : (result.rows ?? []);
       let reEncrypted = 0;
       for (const row of rows) {
         if (!isEncrypted(row.account_password)) {
