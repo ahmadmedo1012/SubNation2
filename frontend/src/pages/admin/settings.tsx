@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 import {
   Bell,
   Bot,
@@ -25,6 +26,9 @@ import { AdminLayout } from "./layout";
 
 interface TelegramSettings {
   telegram_chat_set: boolean;
+  /** Present when API exposes aggregate Telegram readiness */
+  telegram_configured?: boolean;
+  telegram_bot_set?: boolean;
 }
 
 interface ProviderField {
@@ -116,6 +120,7 @@ function ProviderCard({
   adminToken: string;
   onUpdate: (updated: AuthProvider) => void;
 }) {
+  const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [enabled, setEnabled] = useState(provider.enabled);
   const [config, setConfig] = useState<Record<string, string>>(provider.config);
@@ -147,9 +152,16 @@ function ProviderCard({
         },
         body: JSON.stringify(body),
       });
+      const data = (await res.json()) as {
+        error?: string;
+        enabled?: boolean;
+        config?: Record<string, string>;
+      };
       if (!res.ok) throw new Error(data.error ?? "فشل الحفظ");
-      setConfig(data.config);
-      onUpdate({ ...provider, enabled: data.enabled, config: data.config });
+      const nextConfig = data.config ?? config;
+      const nextEnabled = data.enabled ?? enabled;
+      setConfig(nextConfig);
+      onUpdate({ ...provider, enabled: nextEnabled, config: nextConfig });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: unknown) {
@@ -460,8 +472,7 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
-  const { adminToken, setAdminToken } = useAuth();
-  const { toast } = useToast();
+  const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [providers, setProviders] = useState<AuthProvider[]>([]);

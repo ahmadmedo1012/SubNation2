@@ -1,9 +1,10 @@
+import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { connectSocket, getSocket } from "../lib/socket";
+import { connectSocket } from "../lib/socket";
 
 export function useSocket(userId?: number | string) {
-  const socketRef = useRef<ReturnType<typeof connectSocket> | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!userId) return;

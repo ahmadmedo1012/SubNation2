@@ -3,7 +3,11 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { getListAdminOrdersQueryKey, useListAdminOrders } from "@workspace/api-client-react";
+import {
+  getListAdminOrdersQueryKey,
+  type AdminOrder,
+  useListAdminOrders,
+} from "@workspace/api-client-react";
 import {
   BadgePercent,
   BarChart2,
@@ -26,6 +30,13 @@ import {
 import React, { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+
+/** API may return extra delivery / coupon fields */
+type AdminOrderRow = AdminOrder & {
+  coupon_code?: string;
+  discount_amount?: number;
+  delivered_extra_details?: string | null;
+};
 
 const BULK_STATUSES = [
   { value: "completed", label: "مكتمل", color: "text-emerald-400" },
@@ -92,7 +103,7 @@ export default function AdminOrdersPage() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const {
-    data: allOrders = [],
+    data: allOrdersRaw = [],
     isLoading,
     refetch,
   } = useListAdminOrders(
@@ -106,6 +117,8 @@ export default function AdminOrdersPage() {
       request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
     },
   );
+
+  const allOrders = allOrdersRaw as AdminOrderRow[];
 
   if (!adminToken) {
     navigate("/admin/login");
@@ -141,17 +154,12 @@ export default function AdminOrdersPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const statusCounts = (allOrders as Array<{ status: string }>).reduce(
-    (acc: Record<string, number>, o) => {
-      acc[o.status] = (acc[o.status] ?? 0) + 1;
-      return acc;
-    },
-    {},
-  );
+  const statusCounts = allOrders.reduce((acc: Record<string, number>, o) => {
+    acc[o.status] = (acc[o.status] ?? 0) + 1;
+    return acc;
+  }, {});
 
-  const byStatus = statusFilter
-    ? (allOrders as Array<{ status: string }>).filter((o) => o.status === statusFilter)
-    : allOrders;
+  const byStatus = statusFilter ? allOrders.filter((o) => o.status === statusFilter) : allOrders;
   const byDate = dateRange
     ? byStatus.filter((o) => o.created_at && isWithinDays(o.created_at, dateRange))
     : byStatus;
@@ -164,7 +172,7 @@ export default function AdminOrdersPage() {
       )
     : byDate;
 
-  const todayCount = (allOrders as Array<{ created_at?: string }>).filter((o) => {
+  const todayCount = allOrders.filter((o) => {
     if (!o.created_at) return false;
     const d = new Date(o.created_at);
     const now = new Date();
@@ -178,15 +186,12 @@ export default function AdminOrdersPage() {
   const totalRevenue = filtered.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
 
   // Coupon stats from ALL orders (not filtered) for the overview panel
-  const couponOrders = (allOrders as Array<{ coupon_code?: string }>).filter((o) => o.coupon_code);
+  const couponOrders = allOrders.filter((o) => o.coupon_code);
   const totalDiscounts = couponOrders.reduce(
     (sum: number, o) => sum + (Number(o.discount_amount) || 0),
     0,
   );
-  const totalRevenueAll = (allOrders as Array<{ amount?: number }>).reduce(
-    (sum: number, o) => sum + (Number(o.amount) || 0),
-    0,
-  );
+  const totalRevenueAll = allOrders.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
 
   // Top coupon codes: { code, uses, totalDiscount }
   const couponMap = couponOrders.reduce(
@@ -774,9 +779,9 @@ export default function AdminOrdersPage() {
                                       <span className="font-mono font-bold text-emerald-400">
                                         {order.coupon_code}
                                       </span>
-                                      {order.discount_amount > 0 && (
+                                      {(order.discount_amount ?? 0) > 0 && (
                                         <span className="text-muted-foreground mr-1">
-                                          (خصم {formatCurrency(order.discount_amount)})
+                                          (خصم {formatCurrency(order.discount_amount ?? 0)})
                                         </span>
                                       )}
                                     </div>

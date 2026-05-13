@@ -2,6 +2,7 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
 import {
   Bell,
   ChevronRight,
@@ -88,9 +89,9 @@ const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; 
 function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{
-    orders: Array<{ id: number }>;
-    users: Array<{ id: number }>;
-    products: Array<{ id: number }>;
+    orders: AdminOrder[];
+    users: AdminUser[];
+    products: AdminProduct[];
   }>({
     orders: [],
     users: [],

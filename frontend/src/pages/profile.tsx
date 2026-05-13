@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
+import { getGetMeQueryKey, type User as MeUser, useGetMe } from "@workspace/api-client-react";
 import {
   AlertCircle,
   CheckCircle,
@@ -41,6 +41,12 @@ const TIER_GRADIENTS: Record<string, string> = {
   platinum: "from-cyan-400/14 via-card to-card border-cyan-400/20",
 };
 
+type ProfileUser = MeUser & {
+  linked_identities?: Array<{ provider: string; provider_uid?: string }>;
+  firebase_uid?: string | null;
+  password_login_enabled?: boolean;
+};
+
 export default function ProfilePage() {
   const { token, logout } = useAuth();
   const [, navigate] = useLocation();
@@ -69,12 +75,7 @@ export default function ProfilePage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const user = userData as {
-    phone?: string;
-    wallet_balance?: number;
-    loyalty_points?: number;
-    referral_code?: string;
-  };
+  const user = userData as ProfileUser | undefined;
 
   // Fetch linked providers
   useEffect(() => {
@@ -196,7 +197,7 @@ export default function ProfilePage() {
   const tier = user?.loyalty_tier ?? "bronze";
   if (!token) return null;
 
-  const hasFirebase = user?.linked_identities?.length > 0 || user?.firebase_uid;
+  const hasFirebase = (user?.linked_identities?.length ?? 0) > 0 || Boolean(user?.firebase_uid);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">

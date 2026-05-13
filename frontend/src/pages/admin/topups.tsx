@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/util
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminTopupsQueryKey,
+  type AdminTopup,
   useApproveTopup,
   useListAdminTopups,
   useRejectTopup,
@@ -31,6 +32,8 @@ import {
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+
+type AdminTopupRow = AdminTopup & { payment_method?: string; sender_account?: string };
 
 function MethodBadge({ method }: { method: string }) {
   if (method === "lypay")
@@ -286,7 +289,7 @@ export default function AdminTopupsPage() {
   ]);
 
   const {
-    data: allTopups = [],
+    data: allTopupsRaw = [],
     isLoading,
     refetch,
   } = useListAdminTopups(
@@ -301,6 +304,8 @@ export default function AdminTopupsPage() {
     },
   );
 
+  const allTopups: AdminTopupRow[] = allTopupsRaw as AdminTopupRow[];
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
 
@@ -310,9 +315,7 @@ export default function AdminTopupsPage() {
       onSuccess(_, vars) {
         setProcessingId(null);
         invalidate();
-        const t = (allTopups as Array<{ id: number; amount: number; user_phone: string }>).find(
-          (x) => x.id === vars.id,
-        );
+        const t = allTopups.find((x) => x.id === vars.id);
         toast({
           title: "✓ تمت الموافقة",
           description: t
@@ -338,9 +341,7 @@ export default function AdminTopupsPage() {
         setProcessingId(null);
         setRejectTarget(null);
         invalidate();
-        const t = (allTopups as Array<{ id: number; amount: number; user_phone: string }>).find(
-          (x) => x.id === vars.id,
-        );
+        const t = allTopups.find((x) => x.id === vars.id);
         toast({
           title: "تم الرفض",
           description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
@@ -358,14 +359,12 @@ export default function AdminTopupsPage() {
     return null;
   }
 
-  const pendingTopups = (allTopups as Array<{ status: string; id: number }>).filter(
-    (t) => t.status === "pending",
-  );
+  const pendingTopups = allTopups.filter((t) => t.status === "pending");
   const allPendingSelected =
     pendingTopups.length > 0 && pendingTopups.every((t) => selectedIds.has(t.id));
   const selectedPendingCount = pendingTopups.filter((t) => selectedIds.has(t.id)).length;
 
-  const statusCounts = (allTopups as Array<{ status: string }>).reduce(
+  const statusCounts = allTopups.reduce(
     (acc: Record<string, number>, t) => {
       acc[t.status] = (acc[t.status] ?? 0) + 1;
       return acc;
@@ -375,7 +374,7 @@ export default function AdminTopupsPage() {
 
   const pendingCount = statusCounts["pending"] ?? 0;
   const topups = statusFilter
-    ? (allTopups as Array<{ status: string }>).filter((t) => t.status === statusFilter)
+    ? allTopups.filter((t) => t.status === statusFilter)
     : allTopups;
 
   const handleApprove = (id: number) => {
@@ -399,7 +398,7 @@ export default function AdminTopupsPage() {
   };
 
   const handleSelectAll = () => {
-    const pendingTopups = (allTopups as Array<{ status: string; id: number }>).filter(
+    const pendingTopups = allTopups.filter(
       (t) => t.status === "pending",
     );
     const allSelected = pendingTopups.every((t) => selectedIds.has(t.id));
@@ -447,7 +446,7 @@ export default function AdminTopupsPage() {
   };
 
   const approveAll = async () => {
-    const pending = (allTopups as Array<{ status: string }>).filter((t) => t.status === "pending");
+    const pending = allTopups.filter((t) => t.status === "pending");
     for (const t of pending) {
       await fetch(`/api/admin/topups/${t.id}/approve`, {
         method: "POST",
@@ -502,7 +501,7 @@ export default function AdminTopupsPage() {
               <span>{allTopups.length} طلب إجمالاً</span>
               {pendingCount > 0 &&
                 (() => {
-                  const pendingTotal = (allTopups as Array<{ status: string; amount: number }>)
+                  const pendingTotal = allTopups
                     .filter((t) => t.status === "pending")
                     .reduce((s: number, t) => s + (Number(t.amount) || 0), 0);
                   return pendingTotal > 0 ? (

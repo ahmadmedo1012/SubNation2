@@ -1,3 +1,4 @@
+import type { Auth, User } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 
 export interface FirebaseSessionResponse {
@@ -8,7 +9,7 @@ export interface FirebaseSessionResponse {
   needs_phone?: boolean;
 }
 
-export async function requireFirebaseAuth(): Promise<any> {
+export async function requireFirebaseAuth(): Promise<Auth> {
   const auth = await getFirebaseAuth();
   if (!auth) throw new Error("تسجيل الدخول عبر Firebase غير مفعّل حالياً");
   return auth;
@@ -80,7 +81,7 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
 
   const { onIdTokenChanged } = await import("firebase/auth");
 
-  const unsubscribe = onIdTokenChanged(auth, async (user: { uid: string } | null) => {
+  const unsubscribe = onIdTokenChanged(auth, async (user: User | null) => {
     if (!user) return;
 
     // Debounce rapid refreshes

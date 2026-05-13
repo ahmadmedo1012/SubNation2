@@ -8,6 +8,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetMeQueryKey,
   getGetProductQueryKey,
+  type Product,
+  type User,
   useCreateOrder,
   useGetMe,
   useGetProduct,
@@ -647,8 +649,8 @@ function CtaBlock({
   onCouponClear,
 }: {
   token: string | null;
-  product: { id: number; name: string; price: number; sale_price?: number };
-  user: { id: number; phone: string; wallet_balance: number };
+  product: Product;
+  user?: User;
   displayPrice: number;
   canAfford: boolean;
   shortfall: number;

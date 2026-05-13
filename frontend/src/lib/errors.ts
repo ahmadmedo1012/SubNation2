@@ -90,30 +90,60 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.SERVICE_UNAVAILABLE]: "الخدمة غير متاحة حالياً. حاول لاحقاً",
 };
 
-// Helper function to get error message from error code
-export function getErrorMessage(error: {
+type ErrorLike = {
   code?: string;
   error?: string;
+  message?: string;
   response?: { data?: { error?: string; code?: string } };
-}): string {
+  data?: { error?: string; code?: string } | null;
+};
+
+function asErrorLike(error: unknown): ErrorLike | null {
+  if (typeof error !== "object" || error === null) return null;
+  return error as ErrorLike;
+}
+
+// Helper function to get error message from error code
+export function getErrorMessage(error: unknown): string {
+  const err = asErrorLike(error);
+  if (!err) return "حدث خطأ. حاول مرة أخرى";
+
   // If error has a code, map it to Arabic message
-  if (error?.code && errorMessages[error.code as ErrorCode]) {
-    return errorMessages[error.code as ErrorCode];
+  if (err.code && errorMessages[err.code as ErrorCode]) {
+    return errorMessages[err.code as ErrorCode];
   }
 
   // Check if error is from axios with response data
-  if (error?.response?.data?.code && errorMessages[error.response.data.code as ErrorCode]) {
-    return errorMessages[error.response.data.code as ErrorCode];
+  if (err.response?.data?.code && errorMessages[err.response.data.code as ErrorCode]) {
+    return errorMessages[err.response.data.code as ErrorCode];
+  }
+
+  // ApiError-style payloads (customFetch)
+  if (err.data?.code && errorMessages[err.data.code as ErrorCode]) {
+    return errorMessages[err.data.code as ErrorCode];
   }
 
   // If error has an error field, use it directly (for backward compatibility)
-  if (error?.error) {
-    return error.error;
+  if (err.error) {
+    return err.error;
+  }
+
+  if (err.data && typeof err.data === "object" && "error" in err.data) {
+    const d = (err.data as { error?: string }).error;
+    if (typeof d === "string" && d) return d;
   }
 
   // Check if error is from axios with response data
-  if (error?.response?.data?.error) {
-    return error.response.data.error;
+  if (err.response?.data?.error) {
+    return err.response.data.error;
+  }
+
+  if (typeof err.message === "string" && err.message.trim()) {
+    return err.message;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
 
   // Fallback to generic error
@@ -121,9 +151,8 @@ export function getErrorMessage(error: {
 }
 
 // Helper function to check if error is a specific type
-export function isErrorCode(
-  error: { code?: string; response?: { data?: { code?: string } } },
-  code: ErrorCode,
-): boolean {
-  return error?.code === code || error?.response?.data?.code === code;
+export function isErrorCode(error: unknown, code: ErrorCode): boolean {
+  const err = asErrorLike(error);
+  if (!err) return false;
+  return err.code === code || err.response?.data?.code === code || err.data?.code === code;
 }

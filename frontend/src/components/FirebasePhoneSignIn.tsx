@@ -61,7 +61,7 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
     setError("");
     setLoading(true);
     try {
-      const auth = requireFirebaseAuth();
+      const auth = await requireFirebaseAuth();
       const appVerifier = new RecaptchaVerifier(auth, recaptchaId, { size: "invisible" });
       const result = await signInWithPhoneNumber(auth, toE164LibyanPhone(phone), appVerifier);
       setConfirmation(result);

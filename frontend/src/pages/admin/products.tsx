@@ -7,6 +7,7 @@ import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminProductsQueryKey,
+  type AdminProduct,
   useCreateProduct,
   useDeleteProduct,
   useListAdminProducts,
@@ -233,18 +234,7 @@ export default function AdminProductsPage() {
     else createMutation.mutate({ data });
   };
 
-  const startEdit = (product: {
-    id: number;
-    name: string;
-    price: number;
-    sale_price?: number;
-    is_active: boolean;
-    stock: number;
-    description?: string;
-    image_url?: string;
-    category?: string;
-    usage_terms?: string;
-  }) => {
+  const startEdit = (product: AdminProduct) => {
     setEditingId(product.id);
     setForm({
       name: product.name,
@@ -333,7 +323,7 @@ export default function AdminProductsPage() {
     if (!selectedIds.size) return;
     setBulkProcessing(true);
     for (const id of selectedIds) {
-      const p = (products as Array<{ id: number }>).find((pr) => pr.id === id);
+      const p = products.find((pr) => pr.id === id);
       if (!p) continue;
       await fetch(`/api/admin/products/${id}`, {
         method: "PATCH",
@@ -680,7 +670,7 @@ export default function AdminProductsPage() {
                         )}
                       </button>
                       <div
-                        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category] ?? "bg-muted") : "bg-muted"}`}
+                        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted") : "bg-muted"}`}
                       >
                         {product.image_url ? (
                           <img
@@ -690,7 +680,7 @@ export default function AdminProductsPage() {
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
                               e.currentTarget.parentElement!.classList.add(
-                                CATEGORY_INITIAL_COLOR[product.category]?.split(" ")[0] ??
+                                CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ??
                                   "bg-muted",
                               );
                             }}

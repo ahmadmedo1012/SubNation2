@@ -89,7 +89,7 @@ const GRANULARITY_OPTIONS = [
   { label: "يومي", value: "daily" },
   { label: "أسبوعي", value: "weekly" },
   { label: "شهري", value: "monthly" },
-];
+] as const;
 
 // Aggregate chart data into weekly or monthly buckets
 function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
@@ -469,7 +469,7 @@ export default function AdminDashboardPage() {
                       {GRANULARITY_OPTIONS.map((g) => (
                         <button
                           key={g.value}
-                          onClick={() => setGranularity(g.value as "day" | "week" | "month")}
+                          onClick={() => setGranularity(g.value)}
                           className={`px-2 py-1 rounded text-[10px] font-bold transition-all duration-150 ${
                             granularity === g.value
                               ? "bg-card shadow-sm text-foreground"
@@ -747,33 +747,13 @@ export default function AdminDashboardPage() {
               </Link>
             </div>
             <div className="flex-1 divide-y divide-border/40 overflow-y-auto">
-              {(
-                recentOrders as Array<{
-                  id: number;
-                  user_phone: string;
-                  total: number;
-                  status: string;
-                  created_at: string;
-                  product_name: string;
-                }>
-              ).length === 0 ? (
+              {recentOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ShoppingBag className="w-8 h-8 mb-2 opacity-20" />
                   <p className="text-sm">لا توجد طلبات بعد</p>
                 </div>
               ) : (
-                (
-                  recentOrders as Array<{
-                    id: number;
-                    user_phone: string;
-                    total: number;
-                    status: string;
-                    created_at: string;
-                    product_name: string;
-                  }>
-                )
-                  .slice(0, 8)
-                  .map((order) => (
+                recentOrders.slice(0, 8).map((order) => (
                     <div
                       key={order.id}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"

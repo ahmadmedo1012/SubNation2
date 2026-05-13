@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import { useAdminLogin } from "@workspace/api-client-react";
 import { AlertCircle, Eye, EyeOff, KeyRound, Shield } from "lucide-react";
 import { useState } from "react";

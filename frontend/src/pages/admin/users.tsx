@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { getListAdminUsersQueryKey, useListAdminUsers } from "@workspace/api-client-react";
+import { getListAdminUsersQueryKey, type AdminUser, useListAdminUsers } from "@workspace/api-client-react";
 import {
   CheckCircle,
   Download,
@@ -92,7 +92,7 @@ export default function AdminUsersPage() {
   const [tierFilter, setTierFilter] = useState("");
   const [sortBy, setSortBy] = useState("wallet_desc");
   const [showFilters, setShowFilters] = useState(false);
-  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditUserForm>({
     wallet_mode: "add",
@@ -105,7 +105,7 @@ export default function AdminUsersPage() {
   if (search) params.search = search;
 
   const {
-    data: users = [],
+    data: usersRaw = [],
     isLoading,
     refetch,
   } = useListAdminUsers(params, {
@@ -117,24 +117,18 @@ export default function AdminUsersPage() {
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
   });
 
+  const users: AdminUser[] = usersRaw;
+
   if (!adminToken) {
     navigate("/admin/login");
     return null;
   }
 
-  const totalWallet = (users as Array<{ wallet_balance?: number }>).reduce(
-    (sum: number, u) => sum + (u.wallet_balance ?? 0),
-    0,
-  );
-  const totalSpend = (users as Array<{ lifetime_spend?: number }>).reduce(
-    (sum: number, u) => sum + (u.lifetime_spend ?? 0),
-    0,
-  );
+  const totalWallet = users.reduce((sum: number, u) => sum + (u.wallet_balance ?? 0), 0);
+  const totalSpend = users.reduce((sum: number, u) => sum + (u.lifetime_spend ?? 0), 0);
 
   // Client-side tier filter + sort
-  const tierFiltered = tierFilter
-    ? (users as Array<{ loyalty_tier?: string }>).filter((u) => u.loyalty_tier === tierFilter)
-    : users;
+  const tierFiltered = tierFilter ? users.filter((u) => u.loyalty_tier === tierFilter) : users;
 
   const sorted = [...tierFiltered].sort((a, b) => {
     switch (sortBy) {
@@ -153,12 +147,7 @@ export default function AdminUsersPage() {
     }
   });
 
-  function openEdit(user: {
-    id: number;
-    loyalty_points?: number;
-    loyalty_tier?: string;
-    wallet_balance?: number;
-  }) {
+  function openEdit(user: AdminUser) {
     setEditingUser(user);
     setForm({
       wallet_mode: "add",
@@ -487,7 +476,10 @@ export default function AdminUsersPage() {
                         key={opt.value}
                         type="button"
                         onClick={() =>
-                          setForm((f) => ({ ...f, wallet_mode: opt.value as "manual" | "auto" }))
+                          setForm((f) => ({
+                            ...f,
+                            wallet_mode: opt.value as EditUserForm["wallet_mode"],
+                          }))
                         }
                         className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                       >
