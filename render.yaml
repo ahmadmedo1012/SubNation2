@@ -9,8 +9,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Set in the Render Dashboard (Neon / Postgres connection string). Do not commit secrets.
       - key: DATABASE_URL
-        value: "postgresql://neondb_owner:npg_ZCsxjW8rQz3o@ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=verify-full"
+        sync: false
       - key: DB_POOL_MAX
         value: "5"
       - key: DB_IDLE_TIMEOUT_MS
@@ -18,9 +19,9 @@ services:
       - key: DB_CONNECTION_TIMEOUT_MS
         value: "10000"
       - key: SESSION_SECRET
-        value: "46d26db992e448684077528ca2b74a77ffc22c83d627b9ea3ef302772617bec6ee1815db9e0c84e2e9d2171e4933e9191e252d01481cd8b893fc841f9cedd69d"
+        sync: false
       - key: ENCRYPTION_KEY
-        value: "f83bbca6bf3099c727185a23eee27c4e67e6af8eb09ef56a147965784fb221bb"
+        sync: false
       - key: APP_URL
         value: "https://subnation2.onrender.com"
       - key: APP_ORIGINS
@@ -31,38 +32,39 @@ services:
         value: /
       - key: VITE_APP_NAME
         value: SubNation
+      - key: GOOGLE_CLIENT_ID
+        value: ""
       - key: VITE_GOOGLE_CLIENT_ID
         value: ""
       - key: FIREBASE_AUTH_ENABLED
         value: "true"
       - key: VITE_FIREBASE_AUTH_ENABLED
         value: "true"
+      # Firebase web client config: set in Dashboard (same values as local .env / Vite).
       - key: VITE_FIREBASE_API_KEY
-        value: "AIzaSyDoQhcUbqwr0E6qws5vj2vwBNyDEq1EMsQ"
+        sync: false
       - key: VITE_FIREBASE_AUTH_DOMAIN
-        value: "subnation-2571e.firebaseapp.com"
+        sync: false
       - key: VITE_FIREBASE_PROJECT_ID
-        value: "subnation-2571e"
+        sync: false
       - key: VITE_FIREBASE_APP_ID
-        value: "1:288562976125:web:4ebf25358e603c3d4ea814"
+        sync: false
       - key: VITE_FIREBASE_STORAGE_BUCKET
-        value: "subnation-2571e.firebasestorage.app"
+        sync: false
       - key: VITE_FIREBASE_MESSAGING_SENDER_ID
-        value: "288562976125"
+        sync: false
       - key: VITE_FIREBASE_MEASUREMENT_ID
-        value: "G-RKRV3ZC3MF"
+        sync: false
       - key: VITE_FIREBASE_DATABASE_URL
-        value: "https://subnation-2571e-default-rtdb.firebaseio.com"
-      - key: GOOGLE_CLIENT_ID
-        value: ""
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
-        value: "8710813831:AAFaP7BvesYP_OSE_utqwXO69Lugm5_ghS0"
+        sync: false
       - key: TELEGRAM_CHAT_ID
-        value: "-1003878819089"
+        sync: false
       - key: ADMIN_USERNAME
-        value: "admin"
+        sync: false
       - key: ADMIN_PASSWORD
-        value: "SubNation@2026"
+        sync: false
       - key: ADMIN_RESET_PASSWORD
         value: "false"
       - key: SENTRY_DSN
