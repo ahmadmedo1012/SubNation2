@@ -201,4 +201,44 @@ router.get("/:id", async (req, res) => {
   });
 });
 
+router.get("/:id/recommendations", async (req, res) => {
+  const id = intParam(req, "id");
+  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+
+  const [product] = await db
+    .select({ category: productsTable.category })
+    .from(productsTable)
+    .where(eq(productsTable.id, id))
+    .limit(1);
+
+  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+
+  const recommendations = await db
+    .select({
+      id: productsTable.id,
+      name: productsTable.name,
+      imageUrl: productsTable.imageUrl,
+      price: productsTable.price,
+    })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.category, product.category as string),
+        eq(productsTable.isActive, true),
+        eq(productsTable.isArchived, false),
+        sql`${productsTable.id} != ${id}`,
+      ),
+    )
+    .limit(4);
+
+  return res.json(
+    recommendations.map((r) => ({
+      id: r.id,
+      name: r.name,
+      image_url: r.imageUrl,
+      price: parseFloat(String(r.price)),
+    })),
+  );
+});
+
 export { router as productsRouter };

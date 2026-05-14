@@ -126,6 +126,21 @@ export const GetProductResponse = zod.object({
 });
 
 /**
+ * @summary Get recommended products related to a product
+ */
+export const GetProductRecommendationsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetProductRecommendationsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  image_url: zod.string().nullish(),
+  price: zod.number(),
+});
+export const GetProductRecommendationsResponse = zod.array(GetProductRecommendationsResponseItem);
+
+/**
  * @summary Get catalog summary stats
  */
 export const GetCatalogStatsResponse = zod.object({

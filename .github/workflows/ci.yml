@@ -11,6 +11,9 @@ jobs:
   quality:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://ci:ci@localhost/ci
+      SESSION_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
 

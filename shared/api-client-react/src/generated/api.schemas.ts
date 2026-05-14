@@ -69,6 +69,14 @@ export interface Product {
   order_count: number;
 }
 
+export interface ProductRecommendation {
+  id: number;
+  name: string;
+  /** @nullable */
+  image_url?: string | null;
+  price: number;
+}
+
 export interface CatalogStats {
   total_products: number;
   available_products: number;

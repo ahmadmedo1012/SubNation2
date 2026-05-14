@@ -9,11 +9,5 @@ jobs:
     name: Deploy to Render
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Render
-        uses: johnbeynon/render-deploy@v2.6.0
-        with:
-          service-id: ${{ secrets.RENDER_SERVICE_ID }}
-          render-api-key: ${{ secrets.RENDER_API_KEY }}
-          wait-for-success: true
+      - name: Trigger Render Deploy Hook
+        run: curl -sf "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

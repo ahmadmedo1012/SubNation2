@@ -40,6 +40,7 @@ import type {
   LoginBody,
   Order,
   Product,
+  ProductRecommendation,
   RegisterBody,
   SuccessResponse,
   Topup,
@@ -520,6 +521,78 @@ export function useGetProduct<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetProductQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get recommended products related to a product
+ */
+export const getGetProductRecommendationsUrl = (id: number) => {
+  return `/api/products/${id}/recommendations`;
+};
+
+export const getProductRecommendations = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProductRecommendation[]> => {
+  return customFetch<ProductRecommendation[]>(getGetProductRecommendationsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetProductRecommendationsQueryKey = (id: number) => {
+  return [`/api/products/${id}/recommendations`] as const;
+};
+
+export const getGetProductRecommendationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getProductRecommendations>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getProductRecommendations>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetProductRecommendationsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getProductRecommendations>>> = ({
+    signal,
+  }) => getProductRecommendations(id, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getProductRecommendations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetProductRecommendationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getProductRecommendations>>
+>;
+export type GetProductRecommendationsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get recommended products related to a product
+ */
+
+export function useGetProductRecommendations<
+  TData = Awaited<ReturnType<typeof getProductRecommendations>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getProductRecommendations>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetProductRecommendationsQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

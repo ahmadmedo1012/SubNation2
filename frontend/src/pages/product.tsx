@@ -8,11 +8,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetMeQueryKey,
   getGetProductQueryKey,
+  getGetProductRecommendationsQueryKey,
   type Product,
   type User,
   useCreateOrder,
   useGetMe,
   useGetProduct,
+  useGetProductRecommendations,
 } from "@workspace/api-client-react";
 import {
   AlertCircle,
@@ -483,6 +485,9 @@ export default function ProductPage() {
         </div>
       </div>
 
+      {/* Recommendations Section */}
+      <RecommendationsSection numericId={numericId} />
+
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
         className={`sm:hidden fixed left-0 right-0 z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
@@ -794,6 +799,64 @@ function CtaBlock({
             ? "اشترِ"
             : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
       </Button>
+    </div>
+  );
+}
+
+function RecommendationsSection({ numericId }: { numericId: number }) {
+  const [, navigate] = useLocation();
+  const { data: recommendations = [], isLoading } = useGetProductRecommendations(numericId, {
+    query: {
+      queryKey: getGetProductRecommendationsQueryKey(numericId),
+      enabled: !!numericId,
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+
+  if (!isLoading && recommendations.length === 0) return null;
+
+  return (
+    <div className="mt-8 space-y-4">
+      <h3 className="text-lg font-black pr-1">قد يعجبك أيضاً</h3>
+      <div className="grid grid-cols-2 gap-3">
+        {isLoading
+          ? Array.from({ length: 2 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-card border border-border/50 rounded-xl h-48 skeleton-shimmer"
+              />
+            ))
+          : recommendations.map((r) => (
+              <div
+                key={r.id}
+                onClick={() => {
+                  navigate(`/product/${r.id}`);
+                  window.scrollTo(0, 0);
+                }}
+                className="bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
+              >
+                <div className="aspect-[4/3] bg-muted/30 rounded-xl overflow-hidden relative">
+                  {r.image_url ? (
+                    <img
+                      src={r.image_url}
+                      alt={r.name}
+                      className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-2xl font-black text-muted-foreground/30">
+                      {r.name[0]}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold truncate mb-1">{r.name}</h4>
+                  <div className="text-primary font-black tabular-nums">
+                    {formatCurrency(r.price)}
+                  </div>
+                </div>
+              </div>
+            ))}
+      </div>
     </div>
   );
 }
