@@ -4,6 +4,7 @@ import { and, eq, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
+import { logger } from "../lib/logger";
 
 export class FirebaseAuthError extends Error {
   constructor(

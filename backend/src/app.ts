@@ -87,7 +87,7 @@ app.use(
       preload: true,
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: false, // Fully disable COOP to ensure popups work
+    crossOriginOpenerPolicy: { policy: "unsafe-none" },
     xContentTypeOptions: true,
     xFrameOptions: { action: "sameorigin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },

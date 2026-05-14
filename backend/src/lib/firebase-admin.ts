@@ -43,10 +43,12 @@ export function getFirebaseAdminApp(): App | null {
   }
 
   if (projectId) {
+    logger.info({ projectId }, "Initializing Firebase Admin with Project ID");
     app = initializeApp({ projectId });
     return app;
   }
 
+  logger.warn("Firebase Admin NOT initialized - missing both Service Account and Project ID");
   app = null;
   return app;
 }
