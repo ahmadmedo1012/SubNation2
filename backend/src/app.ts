@@ -126,14 +126,25 @@ if (process.env.REDIS_URL) {
   });
 
   redisClient.on("error", (err) => {
+    if (isProduction) {
+      logger.fatal({ err }, "Redis client error - required for production");
+      process.exit(1);
+    }
     logger.warn({ err }, "Redis client error - falling back to in-memory rate limiting");
     redisClient = null;
   });
 
   redisClient.connect().catch((err) => {
+    if (isProduction) {
+      logger.fatal({ err }, "Failed to connect to Redis - required for production");
+      process.exit(1);
+    }
     logger.warn({ err }, "Failed to connect to Redis - falling back to in-memory rate limiting");
     redisClient = null;
   });
+} else if (isProduction) {
+  logger.fatal("REDIS_URL is required in production");
+  process.exit(1);
 }
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────

@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck (project references + packages)
         run: pnpm run typecheck
 
+      - name: Migration check
+        run: pnpm --filter @workspace/db exec drizzle-kit generate && git diff --exit-code
+
       - name: Backend unit tests
         run: pnpm --filter @workspace/api-server exec vitest run
 

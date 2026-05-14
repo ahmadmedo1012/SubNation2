@@ -1,4 +1,6 @@
+import { createAdapter } from "@socket.io/redis-adapter";
 import { Server as HttpServer } from "http";
+import { createClient } from "redis";
 import { Server as SocketServer } from "socket.io";
 import { logger } from "./logger";
 
@@ -19,6 +21,16 @@ export function initSocket(server: HttpServer) {
       methods: ["GET", "POST"],
     },
   });
+
+  if (process.env.REDIS_URL) {
+    const pubClient = createClient({ url: process.env.REDIS_URL });
+    const subClient = pubClient.duplicate();
+
+    Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
+      io!.adapter(createAdapter(pubClient, subClient));
+      logger.info("Socket.IO Redis adapter configured");
+    }).catch((err) => logger.error({ err }, "Redis adapter connection failed"));
+  }
 
   io.on("connection", (socket) => {
     logger.info({ socketId: socket.id }, "Socket client connected");

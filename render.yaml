@@ -80,3 +80,21 @@ services:
     plan: free
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
+
+  - type: worker
+    name: subnation-worker
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerCommand: "pnpm --filter @workspace/api-server start:worker"
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: subnation-redis
+          property: connectionString

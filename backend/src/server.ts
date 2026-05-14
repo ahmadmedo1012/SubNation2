@@ -1,9 +1,6 @@
 import { createServer } from "http";
 import app from "./app";
-import { startCouponWatcher } from "./jobs/couponWatcher";
-import { initCronJobs } from "./jobs/cron";
-import { startOtpCleanup } from "./jobs/otpCleanup";
-import { startStockWatcher } from "./jobs/stockWatcher";
+// Background jobs moved to worker.ts
 import { logger } from "./lib/logger";
 import { initSentry } from "./lib/sentry";
 import { initSocket } from "./lib/socket";
@@ -29,7 +26,6 @@ function parsePort(value: string): number {
 function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): void {
   const httpServer = createServer(app);
   initSocket(httpServer);
-  initCronJobs();
 
   httpServer.listen(port, () => {
     const address = httpServer.address();
@@ -59,9 +55,6 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): vo
 }
 
 async function bootstrap(): Promise<void> {
-  startCouponWatcher();
-  startStockWatcher();
-  startOtpCleanup();
   listen(parsePort(rawPort), process.env.NODE_ENV === "production" ? 0 : DEFAULT_FALLBACK_ATTEMPTS);
 }
 

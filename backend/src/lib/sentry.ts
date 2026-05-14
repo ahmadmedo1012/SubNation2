@@ -5,6 +5,7 @@ export function initSentry() {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       environment: process.env.NODE_ENV || "development",
+      release: process.env.RENDER_GIT_COMMIT || "unknown",
       tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 0,
       profilesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 0,
       beforeSend(event, hint) {
