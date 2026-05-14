@@ -85,10 +85,18 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
   if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
 
   try {
-    // Use checkRevoked to detect revoked Firebase sessions (e.g., after logout all devices)
-    return await auth.verifyIdToken(idToken, checkRevoked);
+    // Only check for revoked tokens if we have a service account configured.
+    // verifyIdToken(..., true) requires a service account and can fail on some platforms if not set.
+    const isServiceAccountConfigured = !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON || 
+      (!!process.env.FIREBASE_CLIENT_EMAIL && !!process.env.FIREBASE_PRIVATE_KEY);
+      
+    const shouldCheckRevoked = checkRevoked && isServiceAccountConfigured;
+
+    return await auth.verifyIdToken(idToken, shouldCheckRevoked);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string };
+    logger.warn({ err: error, checkRevoked }, "Firebase ID token verification failed");
+    
     // Handle specific Firebase revoked token error
     if (error.code === "auth/id-token-revoked") {
       throw new FirebaseAuthError(401, "تم إبطال جلسة Firebase. يرجى تسجيل الدخول مرة أخرى");

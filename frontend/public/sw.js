@@ -35,31 +35,38 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network First strategy for navigation requests (index.html)
+  // to ensure users always get the latest version with new asset hashes.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          return networkResponse;
+        })
+        .catch(() => caches.match(OFFLINE_URL)),
+    );
+    return;
+  }
+
+  // Cache First strategy for assets and other static files
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      // 1. Return cached response immediately if available
       if (cachedResponse) {
         return cachedResponse;
       }
 
-      // 2. Otherwise fetch from network
-      return fetch(event.request)
-        .then((networkResponse) => {
-          // Cache valid origin responses on the fly
-          if (networkResponse.ok && event.request.url.startsWith(self.location.origin)) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          // 3. Fallback to index if navigation fails (offline SPA routing)
-          if (event.request.mode === "navigate") {
-            return caches.match(OFFLINE_URL);
-          }
-        });
+      return fetch(event.request).then((networkResponse) => {
+        // Cache valid origin responses on the fly
+        if (networkResponse.ok && event.request.url.startsWith(self.location.origin)) {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return networkResponse;
+      });
     }),
   );
 });
