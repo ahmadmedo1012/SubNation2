@@ -24,20 +24,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 function readStoredToken(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function writeStoredToken(key: string, token: string | null): void {
-  try {
-    if (token) localStorage.setItem(key, token);
-    else localStorage.removeItem(key);
-  } catch {
-    // Keep the in-memory session usable when browser storage is unavailable.
-  }
+  // No-op: handled by HttpOnly cookies now
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

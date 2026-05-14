@@ -5,7 +5,7 @@ export const otpsTable = pgTable(
   {
     id: serial("id").primaryKey(),
     phone: varchar("phone", { length: 20 }).notNull(),
-    code: varchar("code", { length: 10 }).notNull(),
+    codeHash: varchar("code_hash", { length: 255 }).notNull(),
     attempts: integer("attempts").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

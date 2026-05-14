@@ -59,7 +59,6 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): vo
 }
 
 async function bootstrap(): Promise<void> {
-  await runMigrations();
   startCouponWatcher();
   startStockWatcher();
   startOtpCleanup();

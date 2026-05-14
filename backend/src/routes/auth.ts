@@ -162,6 +162,13 @@ router.post("/register", async (req, res) => {
   });
 
   const token = signUserToken({ userId: user.id });
+  res.cookie("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: "/",
+  });
   return res.status(201).json({ user: formatUser(user), token });
 });
 
@@ -270,6 +277,13 @@ router.post("/login", async (req, res) => {
   });
 
   const token = signUserToken({ userId: user.id });
+  res.cookie("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    path: "/",
+  });
   return res.json({ user: formatUser(user), token });
 });
 
@@ -512,9 +526,10 @@ router.post("/forgot-password", async (req, res) => {
   if (user) {
     const code = Math.floor(100_000 + Math.random() * 900_000).toString();
     const expiresAt = new Date(Date.now() + 30 * 60_000);
+    const codeHash = await hashPassword(code);
     await db.insert(otpsTable).values({
       phone: normalizedPhone,
-      code,
+      codeHash,
       expiresAt,
     });
     notifyPasswordResetRequest(normalizedPhone, code);
@@ -533,6 +548,19 @@ router.post("/reset-password", async (req, res) => {
     return res.status(400).json(createErrorResponse("جميع الحقول مطلوبة", ErrorCode.INVALID_DATA));
   }
   const normalizedPhone = normalizeLibyanPhone(phone) ?? phone.replace(/\D/g, "").slice(-9);
+
+  const { locked, lockedUntil } = await checkLockout(`reset_${normalizedPhone}`);
+  if (locked) {
+    const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    return res
+      .status(429)
+      .json(
+        createErrorResponse(
+          `تم قفل محاولات إعادة التعيين مؤقتاً. حاول بعد ${mins} دقيقة.`,
+          ErrorCode.ACCOUNT_LOCKED,
+        ),
+      );
+  }
 
   const passwordTrimmed = newPassword.trim();
   if (passwordTrimmed.length < 8 || passwordTrimmed.length > 128) {
@@ -571,11 +599,13 @@ router.post("/reset-password", async (req, res) => {
       );
   }
 
-  if (otpRecord.code !== otp.trim()) {
+  const { valid } = await verifyPassword(otp.trim(), otpRecord.codeHash);
+  if (!valid) {
     await db
       .update(otpsTable)
       .set({ attempts: otpRecord.attempts + 1 })
       .where(eq(otpsTable.id, otpRecord.id));
+    await recordFailedAttempt(`reset_${normalizedPhone}`);
     return res
       .status(400)
       .json(createErrorResponse("كود التحقق غير صحيح أو منتهي الصلاحية", ErrorCode.INVALID_OTP));
@@ -597,6 +627,7 @@ router.post("/reset-password", async (req, res) => {
     .delete(otpsTable)
     .where(and(eq(otpsTable.phone, normalizedPhone), lt(otpsTable.expiresAt, now)));
   await db.delete(otpsTable).where(eq(otpsTable.id, otpRecord.id));
+  await resetAttempts(`reset_${normalizedPhone}`);
   const token = signUserToken({ userId: user.id });
 
   // Set httpOnly cookie for better security

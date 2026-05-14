@@ -22,9 +22,7 @@ ruflo/
 **/coverage
 
 # local env overrides
-.env.local
-config/.env
-config/.env.*
+.env*
 !config/env.example
 
 # misc

@@ -179,21 +179,16 @@ router.post("/", requireUser, async (req, res) => {
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
   const order = await db
     .transaction(async (tx) => {
-      // Re-verify inventory inside transaction to prevent race conditions
+      // Atomic inventory claim inside transaction to prevent race conditions
       const [inv] = await tx
-        .select()
-        .from(inventoryTable)
-        .where(and(eq(inventoryTable.id, inventoryItem.id), eq(inventoryTable.isSold, false)))
-        .limit(1);
-      if (!inv) throw new Error("INVENTORY_CLAIMED");
-
-      await tx
         .update(inventoryTable)
         .set({ isSold: true, soldAt: now })
-        .where(eq(inventoryTable.id, inventoryItem.id));
+        .where(and(eq(inventoryTable.id, inventoryItem.id), eq(inventoryTable.isSold, false)))
+        .returning();
+      if (!inv) throw new Error("INVENTORY_CLAIMED");
 
       const newLifetimeSpend = +(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2);
-      await tx
+      const [updatedUser] = await tx
         .update(usersTable)
         .set({
           walletBalance: String(newBalance),
@@ -201,7 +196,9 @@ router.post("/", requireUser, async (req, res) => {
           loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
           loyaltyTier: computeTier(newLifetimeSpend),
         })
-        .where(eq(usersTable.id, userId));
+        .where(and(eq(usersTable.id, userId), eq(usersTable.walletBalance, String(currentBalance))))
+        .returning();
+      if (!updatedUser) throw new Error("CONCURRENCY_ERROR");
 
       if (appliedCoupon) {
         const newUsedCount = appliedCoupon.usedCount + 1;

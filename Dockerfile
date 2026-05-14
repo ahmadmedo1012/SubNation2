@@ -42,7 +42,6 @@ COPY --from=build /app/package.json         ./package.json
 COPY --from=build /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
 COPY --from=build /app/pnpm-lock.yaml       ./pnpm-lock.yaml
 COPY --from=build /app/.npmrc               ./.npmrc
-COPY --from=build /app/.env                 ./.env
 COPY --from=build /app/backend              ./backend
 COPY --from=build /app/frontend/dist        ./frontend/dist
 COPY --from=build /app/shared               ./shared
