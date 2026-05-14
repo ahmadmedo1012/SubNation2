@@ -143,7 +143,9 @@ if (process.env.REDIS_URL) {
     redisClient = null;
   });
 } else if (isProduction) {
-  logger.warn("REDIS_URL is missing in production. Falling back to in-memory stores. This is NOT recommended for production scaling.");
+  logger.warn(
+    "REDIS_URL is missing in production. Falling back to in-memory stores. This is NOT recommended for production scaling.",
+  );
   redisClient = null;
 }
 
