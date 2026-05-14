@@ -26,10 +26,12 @@ export function initSocket(server: HttpServer) {
     const pubClient = createClient({ url: process.env.REDIS_URL });
     const subClient = pubClient.duplicate();
 
-    Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
-      io!.adapter(createAdapter(pubClient, subClient));
-      logger.info("Socket.IO Redis adapter configured");
-    }).catch((err) => logger.error({ err }, "Redis adapter connection failed"));
+    Promise.all([pubClient.connect(), subClient.connect()])
+      .then(() => {
+        io!.adapter(createAdapter(pubClient, subClient));
+        logger.info("Socket.IO Redis adapter configured");
+      })
+      .catch((err) => logger.error({ err }, "Redis adapter connection failed"));
   }
 
   io.on("connection", (socket) => {
