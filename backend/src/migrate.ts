@@ -349,6 +349,49 @@ export async function runMigrations() {
     `);
 
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
+    // Organizations table + users.organization_id (added in drizzle migration 0001)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id         SERIAL PRIMARY KEY,
+        name       VARCHAR(255) NOT NULL,
+        slug       VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT organizations_slug_unique UNIQUE (slug)
+      );
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INTEGER;
+    `);
+
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'users_organization_id_organizations_id_fk'
+        ) THEN
+          ALTER TABLE users
+            ADD CONSTRAINT users_organization_id_organizations_id_fk
+            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL;
+        END IF;
+      END $$;
+    `);
+
+    // Sessions table (server-side session tracking, referenced by JWT sessionId)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id         VARCHAR(255) PRIMARY KEY,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_agent VARCHAR(255),
+        ip_address VARCHAR(45),
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+    `);
+
     await db.execute(sql`
       ALTER TABLE orders
         ADD COLUMN IF NOT EXISTS coupon_code     VARCHAR(50),

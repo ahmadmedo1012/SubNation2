@@ -97,11 +97,21 @@ let lastRefreshTime = 0;
 const REFRESH_COOLDOWN_MS = 30000; // 30 second cooldown to prevent rapid refreshes
 let suppressNextRefresh = false;
 
+// Circuit breaker: after N consecutive refresh failures, back off for a longer
+// period to avoid hammering a broken backend. Resets on first successful refresh.
+let consecutiveFailures = 0;
+const CIRCUIT_BREAK_THRESHOLD = 3;
+const CIRCUIT_BREAK_BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
+let circuitBreakUntil = 0;
+
 /** Call this immediately after a successful exchange to prevent the listener
  *  from racing the just-created session by re-calling /refresh. */
 export function suppressNextTokenRefresh() {
   suppressNextRefresh = true;
   lastRefreshTime = Date.now();
+  // A fresh exchange means the bridge is healthy — reset the circuit breaker.
+  consecutiveFailures = 0;
+  circuitBreakUntil = 0;
 }
 
 // Setup automatic token refresh listener
@@ -122,8 +132,15 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
       return;
     }
 
-    // Debounce rapid refreshes
+    // Circuit breaker: if backend has been failing, back off for 5 minutes
+    // before trying again. This prevents an infinite refresh loop when the
+    // backend session bridge is broken (e.g. schema drift, DB outage).
     const now = Date.now();
+    if (circuitBreakUntil > now) {
+      return;
+    }
+
+    // Debounce rapid refreshes
     if (now - lastRefreshTime < REFRESH_COOLDOWN_MS) {
       return;
     }
@@ -133,7 +150,18 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
       const idToken = await user.getIdToken(true); // Force refresh
       const session = await refreshFirebaseSession(idToken);
       onTokenRefresh(session.token);
+      // Success — reset failure counter.
+      consecutiveFailures = 0;
+      circuitBreakUntil = 0;
     } catch (err) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CIRCUIT_BREAK_THRESHOLD) {
+        circuitBreakUntil = Date.now() + CIRCUIT_BREAK_BACKOFF_MS;
+        console.warn(
+          `Firebase refresh failed ${consecutiveFailures} times. ` +
+            `Backing off for ${CIRCUIT_BREAK_BACKOFF_MS / 1000}s.`,
+        );
+      }
       // Suppress noisy errors when the user simply hasn't completed the
       // session exchange yet (transient 401 on first popup-success event).
       if (err instanceof Error && err.message.includes("فشل تجديد الجلسة")) {

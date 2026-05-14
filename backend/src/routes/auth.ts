@@ -3,8 +3,8 @@ import {
   db,
   otpsTable,
   referralEventsTable,
-  userAuthIdentitiesTable,
   sessionsTable,
+  userAuthIdentitiesTable,
   usersTable,
 } from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
@@ -18,10 +18,10 @@ import {
   verifyPassword,
 } from "../lib/crypto";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
-import { logger } from "../lib/logger";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../lib/lockout";
+import { logger } from "../lib/logger";
 import type { AuthenticatedRequest } from "../middlewares/requireUser";
 import { requireUser } from "../middlewares/requireUser";
 import {
@@ -925,9 +925,17 @@ router.post("/firebase/session", async (req, res) => {
         .status(err.statusCode)
         .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
+    // Non-Firebase error (database, network, etc.) — return 500, not 401.
+    // A 401 here would cause the frontend to enter an infinite refresh loop
+    // because it would interpret it as "session invalid, retry".
     return res
-      .status(401)
-      .json(createErrorResponse("فشل إنشاء جلسة آمنة", ErrorCode.INVALID_TOKEN));
+      .status(500)
+      .json(
+        createErrorResponse(
+          "تعذّر إنشاء الجلسة بسبب خطأ في الخادم. يرجى المحاولة مرة أخرى.",
+          ErrorCode.INTERNAL_ERROR,
+        ),
+      );
   }
 });
 
@@ -1005,7 +1013,17 @@ router.post("/firebase/refresh", async (req, res) => {
       provider: "firebase",
       ...clientInfo,
     });
-    return res.status(401).json(createErrorResponse("فشل تجديد الجلسة", ErrorCode.INVALID_TOKEN));
+    // Non-Firebase error (database, network, etc.) — return 500, not 401.
+    // A 401 here would trigger the frontend's onIdTokenChanged listener to
+    // retry indefinitely, creating an infinite refresh loop.
+    return res
+      .status(500)
+      .json(
+        createErrorResponse(
+          "تعذّر تجديد الجلسة بسبب خطأ في الخادم. يرجى المحاولة لاحقاً.",
+          ErrorCode.INTERNAL_ERROR,
+        ),
+      );
   }
 });
 
