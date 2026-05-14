@@ -40,6 +40,9 @@ export async function exchangeFirebaseIdToken(idToken: string, referralCode?: st
   });
   const data = (await res.json()) as FirebaseSessionResponse & { error?: string };
   if (!res.ok) throw new Error(data.error ?? "فشل إنشاء جلسة آمنة");
+  // Tell the auth listener to skip the immediate post-sign-in onIdTokenChanged
+  // event so it doesn't race this just-created session with a refresh call.
+  suppressNextTokenRefresh();
   return data;
 }
 
@@ -83,6 +86,14 @@ export async function resetFirebaseAuth() {
 // Store for tracking refresh state across component instances
 let lastRefreshTime = 0;
 const REFRESH_COOLDOWN_MS = 30000; // 30 second cooldown to prevent rapid refreshes
+let suppressNextRefresh = false;
+
+/** Call this immediately after a successful exchange to prevent the listener
+ *  from racing the just-created session by re-calling /refresh. */
+export function suppressNextTokenRefresh() {
+  suppressNextRefresh = true;
+  lastRefreshTime = Date.now();
+}
 
 // Setup automatic token refresh listener
 export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) => void) {
@@ -93,6 +104,14 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
 
   const unsubscribe = onIdTokenChanged(auth, async (user: User | null) => {
     if (!user) return;
+
+    // Skip the very next event after a fresh sign-in to avoid a refresh race
+    // (the session was just created — no need to immediately refresh it).
+    if (suppressNextRefresh) {
+      suppressNextRefresh = false;
+      lastRefreshTime = Date.now();
+      return;
+    }
 
     // Debounce rapid refreshes
     const now = Date.now();
@@ -106,7 +125,12 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
       const session = await refreshFirebaseSession(idToken);
       onTokenRefresh(session.token);
     } catch (err) {
-      // Only log non-network errors to avoid noise during network issues
+      // Suppress noisy errors when the user simply hasn't completed the
+      // session exchange yet (transient 401 on first popup-success event).
+      if (err instanceof Error && err.message.includes("فشل تجديد الجلسة")) {
+        // Session bridge not yet established — quiet log.
+        return;
+      }
       if (!(err instanceof TypeError && err.message.includes("network"))) {
         console.error("Failed to refresh Firebase session:", err);
       }

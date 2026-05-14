@@ -94,32 +94,82 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
     );
   }
 
-  try {
-    // Debug: log token header and payload (non-sensitive fields) to trace issues
-    const decoded = jwt.decode(idToken, { complete: true }) as any;
-    if (decoded) {
-      logger.info(
-        {
-          kid: decoded.header?.kid,
-          aud: decoded.payload?.aud,
-          iss: decoded.payload?.iss,
-          sub: decoded.payload?.sub,
-          exp: decoded.payload?.exp,
-        },
-        "Firebase ID token trace",
+  // Decode token (without verifying) to log non-sensitive metadata for diagnostics.
+  // This helps us catch project-mismatch issues (token aud != backend project_id).
+  const decoded = jwt.decode(idToken, { complete: true }) as {
+    header?: { kid?: string; alg?: string };
+    payload?: Record<string, unknown>;
+  } | null;
+  const expectedProjectId = process.env.FIREBASE_PROJECT_ID;
+
+  if (decoded?.payload) {
+    const tokenAud = decoded.payload.aud as string | undefined;
+    const tokenIss = decoded.payload.iss as string | undefined;
+    logger.info(
+      {
+        kid: decoded.header?.kid,
+        alg: decoded.header?.alg,
+        aud: tokenAud,
+        iss: tokenIss,
+        sub: decoded.payload.sub,
+        exp: decoded.payload.exp,
+        firebase_provider: (decoded.payload.firebase as { sign_in_provider?: string } | undefined)
+          ?.sign_in_provider,
+        expected_project_id: expectedProjectId,
+        project_match: tokenAud === expectedProjectId,
+      },
+      "Firebase ID token trace",
+    );
+
+    // Early diagnostic: if the token's audience doesn't match our expected project,
+    // surface a clear error instead of a generic 401.
+    if (expectedProjectId && tokenAud && tokenAud !== expectedProjectId) {
+      logger.error(
+        { tokenAud, expectedProjectId },
+        "Token project mismatch - frontend Firebase project differs from backend project",
+      );
+      throw new FirebaseAuthError(
+        401,
+        `عدم تطابق مشروع Firebase: المتوقع "${expectedProjectId}" والمستلم "${tokenAud}". تحقق من إعدادات Firebase.`,
       );
     }
+  }
 
+  try {
     // Disable checkRevoked entirely to ensure maximum compatibility and avoid 401s
     // unless explicitly required and service account is confirmed working.
     return await auth.verifyIdToken(idToken, false);
   } catch (err: unknown) {
-    const error = err as { code?: string; message?: string };
-    logger.warn({ err: error, checkRevoked }, "Firebase ID token verification failed");
+    const error = err as { code?: string; message?: string; errorInfo?: { code?: string } };
+    const errorCode = error.code || error.errorInfo?.code;
+    logger.error(
+      {
+        err: { code: errorCode, message: error.message },
+        checkRevoked,
+        token_kid: decoded?.header?.kid,
+        token_aud: decoded?.payload?.aud,
+        expected_project_id: expectedProjectId,
+      },
+      "Firebase ID token verification failed",
+    );
 
-    // Handle specific Firebase revoked token error
-    if (error.code === "auth/id-token-revoked") {
+    // Handle specific Firebase admin error codes for clearer diagnostics
+    if (errorCode === "auth/id-token-revoked") {
       throw new FirebaseAuthError(401, "تم إبطال جلسة Firebase. يرجى تسجيل الدخول مرة أخرى");
+    }
+    if (errorCode === "auth/id-token-expired") {
+      throw new FirebaseAuthError(401, "انتهت صلاحية الرمز. يرجى تسجيل الدخول مرة أخرى");
+    }
+    if (errorCode === "auth/argument-error") {
+      throw new FirebaseAuthError(400, "تنسيق الرمز غير صحيح");
+    }
+    if (errorCode === "auth/invalid-credential" || errorCode === "auth/internal-error") {
+      // This typically means Firebase Admin couldn't authenticate to Google's
+      // public-key servers — almost always a service-account misconfig.
+      throw new FirebaseAuthError(
+        503,
+        "تعذّر التحقق من الرمز بسبب خطأ في إعدادات الخادم. يرجى التواصل مع الدعم.",
+      );
     }
     throw new FirebaseAuthError(401, "رمز Firebase غير صالح أو منتهي الصلاحية");
   }

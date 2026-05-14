@@ -87,7 +87,12 @@ app.use(
       preload: true,
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: false,
+    // Use 'same-origin-allow-popups' so Firebase Google sign-in popup can
+    // communicate back via postMessage / window.close without browser warnings.
+    // Setting to `false` lets the browser apply its default which on Chrome
+    // emits "would block" warnings; explicit value silences the warning AND
+    // keeps cross-origin isolation guarantees for non-popup contexts.
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     xContentTypeOptions: true,
     xFrameOptions: { action: "sameorigin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
