@@ -50,9 +50,10 @@ app.use(
           "https://accounts.google.com",
           "https://www.gstatic.com",
           "https://www.googleapis.com",
+          "https://*.firebaseapp.com",
         ],
         scriptSrcAttr: ["'none'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // Tailwind needs inline styles
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
         connectSrc: [
@@ -68,7 +69,7 @@ app.use(
         frameSrc: ["'self'", "https://accounts.google.com", "https://*.firebaseapp.com"],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,
-        "trusted-types": ["default", "'allow-duplicates'"],
+        "trusted-types": ["default", "'allow-duplicates'", "gapi#gapi", "goog#html", "firebasejs#*"],
         "require-trusted-types-for": ["'script'"],
       },
     },
@@ -78,9 +79,9 @@ app.use(
       preload: true,
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: { policy: "unsafe-none" },
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     xContentTypeOptions: true,
-    xFrameOptions: true,
+    xFrameOptions: { action: "sameorigin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );

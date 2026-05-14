@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { Router } from "express";
+import crypto from "node:crypto";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import {
   generateReferralCode,
@@ -886,7 +887,29 @@ router.post("/firebase/session", async (req, res) => {
       currentUserId,
     );
     if (result.isNewUser) notifyNewUser(result.user.phone, !!result.user.referredBy);
-    const token = signUserToken({ userId: result.user.id });
+
+    const sessionId = crypto.randomUUID();
+    const uaHeader = req.headers["user-agent"];
+    const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
+    await db.insert(sessionsTable).values({
+      id: sessionId,
+      userId: result.user.id,
+      userAgent: ua?.substring(0, 255),
+      ipAddress: req.ip?.substring(0, 45),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    const token = signUserToken({ userId: result.user.id, sessionId });
+
+    // Set httpOnly cookie for better security
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax", // Lax for OAuth redirects
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+
     return res.status(result.isNewUser ? 201 : 200).json({
       user: formatUser(result.user),
       token,
@@ -930,7 +953,29 @@ router.post("/firebase/refresh", async (req, res) => {
       ...clientInfo,
     });
 
-    const token = signUserToken({ userId: result.user.id });
+    const sessionId = crypto.randomUUID();
+    const ua = Array.isArray(req.headers["user-agent"])
+      ? req.headers["user-agent"][0]
+      : req.headers["user-agent"];
+    await db.insert(sessionsTable).values({
+      id: sessionId,
+      userId: result.user.id,
+      userAgent: ua?.substring(0, 255),
+      ipAddress: req.ip?.substring(0, 45),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+
+    const token = signUserToken({ userId: result.user.id, sessionId });
+
+    // Set httpOnly cookie
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+
     return res.json({
       user: formatUser(result.user),
       token,
