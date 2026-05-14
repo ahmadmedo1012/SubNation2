@@ -13,10 +13,13 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+import { organizationsTable } from "./organizations";
+
 export const usersTable = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
+    organizationId: integer("organization_id").references(() => organizationsTable.id, { onDelete: "set null" }),
     phone: varchar("phone", { length: 20 }).notNull().unique(),
     passwordHash: varchar("password_hash", { length: 255 }).notNull().default(""),
     googleId: varchar("google_id", { length: 255 }).unique(),

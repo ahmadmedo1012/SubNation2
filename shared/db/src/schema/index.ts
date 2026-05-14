@@ -16,5 +16,7 @@ export * from "./ticket_replies";
 export * from "./user_auth_identities";
 export * from "./users";
 export * from "./wallet_ledger";
+export * from "./wallet_ledger";
 export * from "./wallet_topups";
 export * from "./sessions";
+export * from "./organizations";

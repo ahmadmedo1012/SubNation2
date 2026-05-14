@@ -4,6 +4,7 @@ import {
   otpsTable,
   referralEventsTable,
   userAuthIdentitiesTable,
+  sessionsTable,
   usersTable,
 } from "@workspace/db";
 import { and, eq, gt, lt } from "drizzle-orm";
@@ -161,7 +162,17 @@ router.post("/register", async (req, res) => {
     ...clientInfo,
   });
 
-  const token = signUserToken({ userId: user.id });
+  const sessionId = crypto.randomUUID();
+  const uaHeader = req.headers["user-agent"];
+  const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
+  await db.insert(sessionsTable).values({
+    id: sessionId,
+    userId: user.id,
+    userAgent: ua?.substring(0, 255),
+    ipAddress: req.ip?.substring(0, 45),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  const token = signUserToken({ userId: user.id, sessionId });
   res.cookie("auth_token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -276,7 +287,17 @@ router.post("/login", async (req, res) => {
     ...clientInfo,
   });
 
-  const token = signUserToken({ userId: user.id });
+  const sessionId = crypto.randomUUID();
+  const uaHeader = req.headers["user-agent"];
+  const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
+  await db.insert(sessionsTable).values({
+    id: sessionId,
+    userId: user.id,
+    userAgent: ua?.substring(0, 255),
+    ipAddress: req.ip?.substring(0, 45),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  const token = signUserToken({ userId: user.id, sessionId });
   res.cookie("auth_token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -628,7 +649,17 @@ router.post("/reset-password", async (req, res) => {
     .where(and(eq(otpsTable.phone, normalizedPhone), lt(otpsTable.expiresAt, now)));
   await db.delete(otpsTable).where(eq(otpsTable.id, otpRecord.id));
   await resetAttempts(`reset_${normalizedPhone}`);
-  const token = signUserToken({ userId: user.id });
+  const sessionId = crypto.randomUUID();
+  const uaHeader = req.headers["user-agent"];
+  const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
+  await db.insert(sessionsTable).values({
+    id: sessionId,
+    userId: user.id,
+    userAgent: ua?.substring(0, 255),
+    ipAddress: req.ip?.substring(0, 45),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  });
+  const token = signUserToken({ userId: user.id, sessionId });
 
   // Set httpOnly cookie for better security
   res.cookie("auth_token", token, {
@@ -984,5 +1015,28 @@ export function formatUser(user: typeof usersTable.$inferSelect) {
     created_at: user.createdAt?.toISOString(),
   };
 }
+
+router.get("/sessions", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+  const sessions = await db
+    .select({
+      id: sessionsTable.id,
+      userAgent: sessionsTable.userAgent,
+      ipAddress: sessionsTable.ipAddress,
+      createdAt: sessionsTable.createdAt,
+    })
+    .from(sessionsTable)
+    .where(eq(sessionsTable.userId, userId));
+  res.json({ sessions });
+});
+
+router.delete("/sessions/:id", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
+  const sessionId = req.params.id;
+  await db
+    .delete(sessionsTable)
+    .where(and(eq(sessionsTable.id, String(sessionId)), eq(sessionsTable.userId, userId)));
+  res.json({ success: true });
+});
 
 export { router as authRouter };

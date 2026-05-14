@@ -9,7 +9,7 @@ if (!sessionSecret) {
 export const JWT_SECRET: string = sessionSecret;
 export const ADMIN_JWT_SECRET: string = JWT_SECRET + "_admin";
 
-export function signUserToken(payload: object): string {
+export function signUserToken(payload: Record<string, unknown>): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
 }
 
@@ -34,21 +34,21 @@ export function verifyUserTokenDetailed(token: string): VerifyResult<{ userId: n
   }
 }
 
-export function signAdminToken(payload: object): string {
+export function signAdminToken(payload: Record<string, unknown>): string {
   return jwt.sign(payload, ADMIN_JWT_SECRET, { expiresIn: "8h" });
 }
 
-export function verifyAdminToken(token: string): { adminId: number } | null {
+export function verifyAdminToken(token: string): { adminId: number; role: string } | null {
   try {
-    return jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number };
+    return jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number; role: string };
   } catch {
     return null;
   }
 }
 
-export function verifyAdminTokenDetailed(token: string): VerifyResult<{ adminId: number }> {
+export function verifyAdminTokenDetailed(token: string): VerifyResult<{ adminId: number; role: string }> {
   try {
-    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number };
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number; role: string };
     return { ok: true, payload };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };

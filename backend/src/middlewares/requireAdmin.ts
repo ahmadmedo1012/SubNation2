@@ -4,6 +4,7 @@ import { verifyAdminTokenDetailed } from "../lib/jwt";
 
 export interface AdminAuthenticatedRequest extends Request {
   adminId: number;
+  role: string;
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -27,5 +28,18 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     return;
   }
   (req as AdminAuthenticatedRequest).adminId = result.payload.adminId;
+  (req as AdminAuthenticatedRequest).role = result.payload.role;
   next();
+}
+
+export function requireRole(allowedRoles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    requireAdmin(req, res, () => {
+      const adminReq = req as AdminAuthenticatedRequest;
+      if (adminReq.role === "super_admin" || allowedRoles.includes(adminReq.role)) {
+        return next();
+      }
+      res.status(403).json(createErrorResponse("صلاحيات غير كافية", ErrorCode.FORBIDDEN));
+    });
+  };
 }

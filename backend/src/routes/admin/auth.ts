@@ -48,11 +48,11 @@ router.post("/login", async (req, res) => {
   await resetAttempts(lockoutKey);
 
   if (admin.totpEnabled && admin.totpSecret) {
-    const tempToken = signAdminToken({ adminId: admin.id, isTemp: true });
+    const tempToken = signAdminToken({ adminId: admin.id, role: admin.role, isTemp: true });
     return res.json({ requires_2fa: true, temp_token: tempToken });
   }
 
-  const token = signAdminToken({ adminId: admin.id });
+  const token = signAdminToken({ adminId: admin.id, role: admin.role });
   return res.json({ token, display_name: admin.displayName });
 });
 
@@ -85,7 +85,7 @@ router.post("/login/verify-2fa", async (req, res) => {
       return res.status(401).json({ error: "رمز التحقق غير صحيح" });
     }
 
-    const token = signAdminToken({ adminId: admin.id });
+    const token = signAdminToken({ adminId: admin.id, role: admin.role });
     return res.json({ token, display_name: admin.displayName });
   } catch (err) {
     return res.status(401).json({ error: "جلسة غير صالحة أو منتهية الصلاحية" });
