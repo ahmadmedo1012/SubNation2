@@ -2,6 +2,7 @@ import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@w
 import { createHash, randomBytes } from "crypto";
 import { and, eq, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
+import jwt from "jsonwebtoken";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { logger } from "../lib/logger";
@@ -86,6 +87,18 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
   if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
 
   try {
+    // Debug: log token header and payload (non-sensitive fields) to trace issues
+    const decoded = jwt.decode(idToken, { complete: true }) as any;
+    if (decoded) {
+      logger.info({ 
+        kid: decoded.header?.kid, 
+        aud: decoded.payload?.aud, 
+        iss: decoded.payload?.iss,
+        sub: decoded.payload?.sub,
+        exp: decoded.payload?.exp 
+      }, "Firebase ID token trace");
+    }
+
     // Disable checkRevoked entirely to ensure maximum compatibility and avoid 401s
     // unless explicitly required and service account is confirmed working.
     return await auth.verifyIdToken(idToken, false);

@@ -1,20 +1,30 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
+import { logger } from "./logger";
 
 let app: App | null | undefined;
 
 function parseServiceAccount() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    if (parsed.private_key) parsed.private_key = String(parsed.private_key).replace(/\\n/g, "\n");
-    return parsed;
+    try {
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (parsed.private_key) parsed.private_key = String(parsed.private_key).replace(/\\n/g, "\n");
+      return parsed;
+    } catch (err) {
+      logger.error({ err }, "Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON");
+      return null;
+    }
   }
 
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!projectId || !clientEmail || !privateKey) return null;
-  return { projectId, clientEmail, privateKey };
+  
+  if (projectId && clientEmail && privateKey) {
+    return { projectId, clientEmail, privateKey };
+  }
+
+  return null;
 }
 
 export function getFirebaseAdminApp(): App | null {

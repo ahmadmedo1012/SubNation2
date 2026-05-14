@@ -87,7 +87,7 @@ app.use(
       preload: true,
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: { policy: "unsafe-none" },
+    crossOriginOpenerPolicy: false,
     xContentTypeOptions: true,
     xFrameOptions: { action: "sameorigin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
