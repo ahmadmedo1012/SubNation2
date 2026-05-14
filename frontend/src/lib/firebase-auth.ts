@@ -31,6 +31,15 @@ export async function signInWithFirebaseGoogle() {
 }
 
 export async function exchangeFirebaseIdToken(idToken: string, referralCode?: string) {
+  // Guard: a real Firebase ID token is a 3-segment JWT, typically 900+ chars.
+  // If the popup communication was broken by CSP/COOP, getIdToken() may return
+  // a garbage/empty string. Fail fast with a clear error instead of a confusing 400.
+  if (!idToken || idToken.length < 100) {
+    throw new Error(
+      "لم تكتمل عملية تسجيل الدخول. يبدو أن النافذة المنبثقة أُغلقت قبل الانتهاء. حاول مرة أخرى.",
+    );
+  }
+
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/api/auth/firebase/session`, {
     method: "POST",

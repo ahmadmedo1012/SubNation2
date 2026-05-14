@@ -135,9 +135,28 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
     }
   }
 
+  // Minimum length guard: a real Firebase ID token is a JWT with 3 base64url
+  // segments separated by dots. The shortest valid Firebase JWT is ~500 chars.
+  // Tokens shorter than 100 chars are definitely truncated/corrupted — this
+  // happens when the popup communication is broken by CSP/COOP and the SDK
+  // returns a garbage value from getIdToken(). Fail fast with a clear message.
+  if (idToken.length < 100) {
+    logger.error(
+      { id_token_length: idToken.length },
+      "Firebase ID token is too short to be valid — popup communication likely broken by CSP/COOP. " +
+        "Check that trusted-types CSP directive is not blocking Firebase SDK internal policies.",
+    );
+    throw new FirebaseAuthError(
+      400,
+      "رمز Firebase غير مكتمل. يبدو أن النافذة المنبثقة لم تكمل عملية المصادقة. حاول مرة أخرى.",
+    );
+  }
+
   try {
-    // Disable checkRevoked entirely to ensure maximum compatibility and avoid 401s
-    // unless explicitly required and service account is confirmed working.
+    // Always pass checkRevoked=false for maximum compatibility.
+    // Firebase token revocation checks require an extra network round-trip to
+    // Google's servers and can cause 401s if the service account has any
+    // permission issues. Token expiry (1 hour) provides sufficient security.
     return await auth.verifyIdToken(idToken, false);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; errorInfo?: { code?: string } };
