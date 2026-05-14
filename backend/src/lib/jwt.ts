@@ -46,7 +46,9 @@ export function verifyAdminToken(token: string): { adminId: number; role: string
   }
 }
 
-export function verifyAdminTokenDetailed(token: string): VerifyResult<{ adminId: number; role: string }> {
+export function verifyAdminTokenDetailed(
+  token: string,
+): VerifyResult<{ adminId: number; role: string }> {
   try {
     const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number; role: string };
     return { ok: true, payload };
