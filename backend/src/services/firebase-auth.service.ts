@@ -90,13 +90,16 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
     // Debug: log token header and payload (non-sensitive fields) to trace issues
     const decoded = jwt.decode(idToken, { complete: true }) as any;
     if (decoded) {
-      logger.info({ 
-        kid: decoded.header?.kid, 
-        aud: decoded.payload?.aud, 
-        iss: decoded.payload?.iss,
-        sub: decoded.payload?.sub,
-        exp: decoded.payload?.exp 
-      }, "Firebase ID token trace");
+      logger.info(
+        {
+          kid: decoded.header?.kid,
+          aud: decoded.payload?.aud,
+          iss: decoded.payload?.iss,
+          sub: decoded.payload?.sub,
+          exp: decoded.payload?.exp,
+        },
+        "Firebase ID token trace",
+      );
     }
 
     // Disable checkRevoked entirely to ensure maximum compatibility and avoid 401s

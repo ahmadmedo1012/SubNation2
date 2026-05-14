@@ -917,7 +917,7 @@ router.post("/firebase/session", async (req, res) => {
       is_new_user: result.isNewUser,
       needs_phone: !result.user.phoneVerified,
     });
-    } catch (err) {
+  } catch (err) {
     logger.error({ err, id_token_length: id_token?.length }, "Firebase session creation failed");
     if (err instanceof FirebaseAuthError) {
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
@@ -928,20 +928,20 @@ router.post("/firebase/session", async (req, res) => {
     return res
       .status(401)
       .json(createErrorResponse("فشل إنشاء جلسة آمنة", ErrorCode.INVALID_TOKEN));
-    }
-    });
+  }
+});
 
-    router.post("/firebase/refresh", async (req, res) => {
-    const { id_token } = req.body as { id_token?: string };
-    const clientInfo = getClientInfo(req);
+router.post("/firebase/refresh", async (req, res) => {
+  const { id_token } = req.body as { id_token?: string };
+  const clientInfo = getClientInfo(req);
 
-    if (!id_token || typeof id_token !== "string") {
+  if (!id_token || typeof id_token !== "string") {
     return res
       .status(400)
       .json(createErrorResponse("رمز Firebase ID مطلوب", ErrorCode.INVALID_DATA));
-    }
+  }
 
-    try {
+  try {
     const decoded = await verifyFirebaseIdToken(id_token, true);
     const result = await resolveFirebaseSession(decoded);
 
@@ -981,7 +981,7 @@ router.post("/firebase/session", async (req, res) => {
       user: formatUser(result.user),
       token,
     });
-    } catch (err) {
+  } catch (err) {
     logger.error({ err, id_token_length: id_token?.length }, "Firebase session refresh failed");
     if (err instanceof FirebaseAuthError) {
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
@@ -1005,11 +1005,9 @@ router.post("/firebase/session", async (req, res) => {
       provider: "firebase",
       ...clientInfo,
     });
-    return res
-      .status(401)
-      .json(createErrorResponse("فشل تجديد الجلسة", ErrorCode.INVALID_TOKEN));
-    }
-    });
+    return res.status(401).json(createErrorResponse("فشل تجديد الجلسة", ErrorCode.INVALID_TOKEN));
+  }
+});
 
 router.get("/sessions", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
