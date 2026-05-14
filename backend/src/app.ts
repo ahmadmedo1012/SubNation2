@@ -77,7 +77,8 @@ app.use(
           "gapi#gapi",
           "goog#html",
         ],
-        "require-trusted-types-for": ["'script'"],
+        // Disable strict requirement for workers/scripts to prevent sw.js blocks
+        // "require-trusted-types-for": ["'script'"],
       },
     },
     hsts: {
@@ -86,7 +87,7 @@ app.use(
       preload: true,
     },
     crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: { policy: "unsafe-none" },
+    crossOriginOpenerPolicy: false, // Fully disable COOP to ensure popups work
     xContentTypeOptions: true,
     xFrameOptions: { action: "sameorigin" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },

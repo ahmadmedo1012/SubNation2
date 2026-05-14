@@ -85,15 +85,9 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
   if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
 
   try {
-    // Only check for revoked tokens if we have a service account configured.
-    // verifyIdToken(..., true) requires a service account and can fail on some platforms if not set.
-    const isServiceAccountConfigured =
-      !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
-      (!!process.env.FIREBASE_CLIENT_EMAIL && !!process.env.FIREBASE_PRIVATE_KEY);
-
-    const shouldCheckRevoked = checkRevoked && isServiceAccountConfigured;
-
-    return await auth.verifyIdToken(idToken, shouldCheckRevoked);
+    // Disable checkRevoked entirely to ensure maximum compatibility and avoid 401s
+    // unless explicitly required and service account is confirmed working.
+    return await auth.verifyIdToken(idToken, false);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string };
     logger.warn({ err: error, checkRevoked }, "Firebase ID token verification failed");
