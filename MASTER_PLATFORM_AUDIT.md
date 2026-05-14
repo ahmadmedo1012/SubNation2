@@ -3,7 +3,7 @@
 **Audit date:** 2026-05-13  
 **Audited workspace:** `/home/ahmed/Downloads/SubNation2zipاخر_موديل/SubNation2zip`  
 **Platform type:** Arabic RTL digital subscriptions marketplace for Libya  
-**Primary stack observed:** pnpm monorepo, Vite, React, Express, Drizzle, PostgreSQL/Neon, Firebase Authentication, Redis rate limiting, Socket.IO, Render Docker deployment  
+**Primary stack observed:** pnpm monorepo, Vite, React, Express, Drizzle, PostgreSQL/Neon, Firebase Authentication, Redis rate limiting, Socket.IO, Render Docker deployment
 
 ---
 
@@ -168,12 +168,12 @@ The frontend is a Vite + React SPA using Wouter routing, TanStack Query, Radix U
 
 ## Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| CLS from footer/content shifts | Lazy footer and content layout reserve insufficient stable space | Existing report shows CLS 0.125, above ideal target | Medium | Reserve dimensions for footer/content grids, avoid late-loading layout-affecting elements, use skeletons with exact final dimensions | Medium | Medium |
-| Color contrast failures | Primary red/pink text and muted text on dark/translucent surfaces fail WCAG in reports | Accessibility and trust degradation, potential compliance risk | Medium | Run token-level contrast audit and adjust `--primary-text`, muted foreground, hero badges, header text | Low | Low |
-| Mobile-heavy animation density | Many animated elements and backdrop blur/glass effects | Jank on mid/low-end Android devices | Medium | Respect `prefers-reduced-motion`, reduce non-composited animations, minimize blur layers | Medium | Low |
-| No install/onboarding UX for PWA | Manifest and SW exist, but no app install prompt strategy or offline UX beyond fallback | App-readiness is partial | Low | Add offline page, install prompt handling, cache strategy by route/resource class | Medium | Low |
+| Issue                            | Root Cause                                                                              |                                                         Impact | Severity | Recommended Solution                                                                                                                 | Complexity | Risk   |
+| -------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------: | -------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------ |
+| CLS from footer/content shifts   | Lazy footer and content layout reserve insufficient stable space                        |            Existing report shows CLS 0.125, above ideal target | Medium   | Reserve dimensions for footer/content grids, avoid late-loading layout-affecting elements, use skeletons with exact final dimensions | Medium     | Medium |
+| Color contrast failures          | Primary red/pink text and muted text on dark/translucent surfaces fail WCAG in reports  | Accessibility and trust degradation, potential compliance risk | Medium   | Run token-level contrast audit and adjust `--primary-text`, muted foreground, hero badges, header text                               | Low        | Low    |
+| Mobile-heavy animation density   | Many animated elements and backdrop blur/glass effects                                  |                            Jank on mid/low-end Android devices | Medium   | Respect `prefers-reduced-motion`, reduce non-composited animations, minimize blur layers                                             | Medium     | Low    |
+| No install/onboarding UX for PWA | Manifest and SW exist, but no app install prompt strategy or offline UX beyond fallback |                                       App-readiness is partial | Low      | Add offline page, install prompt handling, cache strategy by route/resource class                                                    | Medium     | Low    |
 
 ---
 
@@ -202,15 +202,15 @@ Authentication supports:
 
 ## Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| JWTs stored in localStorage | `frontend/src/lib/auth.tsx` reads/writes `auth_token` and `admin_token` to localStorage | XSS can steal user/admin sessions | Critical | Move app sessions to HttpOnly, Secure, SameSite cookies or a BFF session table; keep Firebase token client-side only as needed | Medium | High |
-| App JWTs have no server-side revocation | `signUserToken` creates 30-day stateless JWTs; logout-all revokes Firebase refresh tokens only | Password login sessions and existing app JWTs remain valid until expiry | High | Add `sessions` table with token IDs, rotation, revocation, device metadata, and short-lived access tokens | High | High |
-| `/me` and some auth routes require Authorization header only | `requireUser` supports cookies, but `/me`, `change-password`, and toggle routes manually parse headers | Inconsistent auth model blocks cookie-only migration and duplicates logic | Medium | Refactor all protected routes through `requireUser` and standardize token/cookie handling | Medium | Medium |
-| Password reset OTP stored plaintext | `otps.code` stores raw OTP and compares directly | DB read exposure can reset accounts before expiry | High | Store hashed OTPs with pepper, one active OTP per phone, constant-time comparison | Medium | Medium |
-| OTP reset route has no dedicated per-phone limiter | `/reset-password` is not covered by the OTP phone/IP limiters used for Firebase session route | Brute force pressure shifts to reset endpoint | High | Apply per-phone and per-IP reset limiters; track failed reset attempts separately | Low | Medium |
-| Admin TOTP secret stored plaintext | `admin_users.totp_secret` is stored directly | DB disclosure compromises second factor | High | Encrypt TOTP secret using `ENCRYPTION_KEY` or KMS; require recovery codes | Medium | Medium |
-| Admin token is localStorage-based | Admin auth shares localStorage token pattern | Admin compromise risk is higher than customer compromise | Critical | Use HttpOnly admin session cookies, short idle timeout, step-up auth for sensitive operations | Medium | High |
+| Issue                                                        | Root Cause                                                                                             |                                                                    Impact | Severity | Recommended Solution                                                                                                           | Complexity | Risk   |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------: | -------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------ |
+| JWTs stored in localStorage                                  | `frontend/src/lib/auth.tsx` reads/writes `auth_token` and `admin_token` to localStorage                |                                         XSS can steal user/admin sessions | Critical | Move app sessions to HttpOnly, Secure, SameSite cookies or a BFF session table; keep Firebase token client-side only as needed | Medium     | High   |
+| App JWTs have no server-side revocation                      | `signUserToken` creates 30-day stateless JWTs; logout-all revokes Firebase refresh tokens only         |   Password login sessions and existing app JWTs remain valid until expiry | High     | Add `sessions` table with token IDs, rotation, revocation, device metadata, and short-lived access tokens                      | High       | High   |
+| `/me` and some auth routes require Authorization header only | `requireUser` supports cookies, but `/me`, `change-password`, and toggle routes manually parse headers | Inconsistent auth model blocks cookie-only migration and duplicates logic | Medium   | Refactor all protected routes through `requireUser` and standardize token/cookie handling                                      | Medium     | Medium |
+| Password reset OTP stored plaintext                          | `otps.code` stores raw OTP and compares directly                                                       |                         DB read exposure can reset accounts before expiry | High     | Store hashed OTPs with pepper, one active OTP per phone, constant-time comparison                                              | Medium     | Medium |
+| OTP reset route has no dedicated per-phone limiter           | `/reset-password` is not covered by the OTP phone/IP limiters used for Firebase session route          |                             Brute force pressure shifts to reset endpoint | High     | Apply per-phone and per-IP reset limiters; track failed reset attempts separately                                              | Low        | Medium |
+| Admin TOTP secret stored plaintext                           | `admin_users.totp_secret` is stored directly                                                           |                                   DB disclosure compromises second factor | High     | Encrypt TOTP secret using `ENCRYPTION_KEY` or KMS; require recovery codes                                                      | Medium     | Medium |
+| Admin token is localStorage-based                            | Admin auth shares localStorage token pattern                                                           |                  Admin compromise risk is higher than customer compromise | Critical | Use HttpOnly admin session cookies, short idle timeout, step-up auth for sensitive operations                                  | Medium     | High   |
 
 ---
 
@@ -229,13 +229,13 @@ Authentication supports:
 
 ## Critical Security Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| Docker image copies `.env` into runtime | `Dockerfile` line 45 copies `/app/.env` into the final image | Secrets can be embedded into image layers/artifacts | Critical | Remove `.env` copy from Dockerfile; inject secrets only through Render env vars; add `.dockerignore` to exclude `.env` | Low | High |
-| Permissive Trusted Types default policy | `init.js` creates default policy returning raw strings | Weakens Trusted Types as XSS mitigation | High | Remove permissive default policy; use named narrow policies only where required | Medium | Medium |
-| CSP is host-allowlist based | `scriptSrc` allows several hosts and no nonce/hash model | Host allowlists are weaker against script injection | High | Move to nonce or hash-based CSP with `strict-dynamic`; keep third-party scripts minimized | Medium | Medium |
-| Redis fallback silently weakens rate limiting | Redis errors set client to null and use in-memory limiter | Multi-instance deployments lose shared abuse limits | High | Fail closed for sensitive limiters or expose degraded mode alerts; require Redis for production auth/admin routes | Medium | Medium |
-| In-process notifications and Telegram calls not consistently isolated | Notification calls occur near request paths | External service latency/failure can affect user operations | Medium | Queue external notifications and retries outside request transaction | Medium | Medium |
+| Issue                                                                 | Root Cause                                                   |                                                      Impact | Severity | Recommended Solution                                                                                                   | Complexity | Risk   |
+| --------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------: | -------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- | ------ |
+| Docker image copies `.env` into runtime                               | `Dockerfile` line 45 copies `/app/.env` into the final image |         Secrets can be embedded into image layers/artifacts | Critical | Remove `.env` copy from Dockerfile; inject secrets only through Render env vars; add `.dockerignore` to exclude `.env` | Low        | High   |
+| Permissive Trusted Types default policy                               | `init.js` creates default policy returning raw strings       |                     Weakens Trusted Types as XSS mitigation | High     | Remove permissive default policy; use named narrow policies only where required                                        | Medium     | Medium |
+| CSP is host-allowlist based                                           | `scriptSrc` allows several hosts and no nonce/hash model     |         Host allowlists are weaker against script injection | High     | Move to nonce or hash-based CSP with `strict-dynamic`; keep third-party scripts minimized                              | Medium     | Medium |
+| Redis fallback silently weakens rate limiting                         | Redis errors set client to null and use in-memory limiter    |         Multi-instance deployments lose shared abuse limits | High     | Fail closed for sensitive limiters or expose degraded mode alerts; require Redis for production auth/admin routes      | Medium     | Medium |
+| In-process notifications and Telegram calls not consistently isolated | Notification calls occur near request paths                  | External service latency/failure can affect user operations | Medium   | Queue external notifications and retries outside request transaction                                                   | Medium     | Medium |
 
 ## Additional Security Findings
 
@@ -271,13 +271,13 @@ The live database reported:
 
 ## Major Database Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| Source/live schema drift | Runtime migrations and Drizzle schema are not a single source of truth | Future deploys can miss indexes/constraints or create inconsistent environments | High | Replace startup DDL with versioned Drizzle migrations; run migration diff against live DB; document external auth tables | High | High |
-| Missing source-declared indexes in live DB | Drizzle schema declares indexes such as product active/category and composite status-created, but live DB does not show all of them | Query plans can degrade as product/order/topup volumes grow | Medium | Generate and apply migration to reconcile source schema indexes | Medium | Medium |
-| Extra live tables unmanaged by source | External/legacy auth tables exist in public schema | Backup, migration, and retention ownership is unclear | Medium | Classify tables as managed/unmanaged; move external tables to separate schema or add source definitions | Medium | Medium |
-| No migration ledger in repo | `backend/src/migrate.ts` performs idempotent DDL on startup | Hard to audit, rollback, review, or stage schema changes | High | Adopt versioned migrations and disable automatic production DDL from web startup | High | High |
-| Numeric balances updated with read-then-write | Wallet balance is read into app memory and written back | Concurrent topups/orders/admin adjustments can lose updates | Critical | Use row locks or atomic SQL updates with conditions and returning rows | High | High |
+| Issue                                         | Root Cause                                                                                                                          |                                                                          Impact | Severity | Recommended Solution                                                                                                     | Complexity | Risk   |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------: | -------- | ------------------------------------------------------------------------------------------------------------------------ | ---------- | ------ |
+| Source/live schema drift                      | Runtime migrations and Drizzle schema are not a single source of truth                                                              | Future deploys can miss indexes/constraints or create inconsistent environments | High     | Replace startup DDL with versioned Drizzle migrations; run migration diff against live DB; document external auth tables | High       | High   |
+| Missing source-declared indexes in live DB    | Drizzle schema declares indexes such as product active/category and composite status-created, but live DB does not show all of them |                     Query plans can degrade as product/order/topup volumes grow | Medium   | Generate and apply migration to reconcile source schema indexes                                                          | Medium     | Medium |
+| Extra live tables unmanaged by source         | External/legacy auth tables exist in public schema                                                                                  |                           Backup, migration, and retention ownership is unclear | Medium   | Classify tables as managed/unmanaged; move external tables to separate schema or add source definitions                  | Medium     | Medium |
+| No migration ledger in repo                   | `backend/src/migrate.ts` performs idempotent DDL on startup                                                                         |                        Hard to audit, rollback, review, or stage schema changes | High     | Adopt versioned migrations and disable automatic production DDL from web startup                                         | High       | High   |
+| Numeric balances updated with read-then-write | Wallet balance is read into app memory and written back                                                                             |                     Concurrent topups/orders/admin adjustments can lose updates | Critical | Use row locks or atomic SQL updates with conditions and returning rows                                                   | High       | High   |
 
 ---
 
@@ -295,15 +295,15 @@ The live database reported:
 
 ## Backend Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| Inventory claim race | Order flow re-selects unsold inventory, then updates by `id` only | Two concurrent orders can claim the same inventory item or corrupt delivery flow | Critical | Use `UPDATE inventory SET is_sold=true ... WHERE id=? AND is_sold=false RETURNING *` inside transaction, or `SELECT ... FOR UPDATE SKIP LOCKED` | Medium | High |
-| Wallet balance lost-update risk | User balance is read before transaction and updated without row lock/condition | Concurrent purchases/topups/admin edits can create incorrect balances | Critical | Lock user row with `FOR UPDATE`, or use atomic balance update with invariant check | High | High |
-| Coupon max-use race | Coupon `usedCount` is checked before transaction and incremented later | Max uses can be exceeded under concurrent orders | High | Conditional update `WHERE used_count < max_uses` with returning row; lock coupon row | Medium | Medium |
-| Topup approve race | Re-checks status inside transaction but does not lock row before update | Two admins/processes can race on same topup under read committed | High | Conditional `UPDATE ... WHERE status='pending' RETURNING` and lock user row | Medium | High |
-| Reject route race | Reject updates without transactional status condition | Approve/reject race can produce inconsistent notifications/status | Medium | Conditional update on pending status and return conflict when zero rows updated | Low | Medium |
-| Payment processor is mock | Automated payment randomly succeeds | Cannot support real payment production | High | Integrate real provider APIs, signed webhooks, idempotency keys, reconciliation jobs | High | High |
-| In-process cron/watchers | Watchers start with API process | Duplicate jobs when scaled horizontally; web process owns background duties | High | Move jobs to worker service with leader election or durable queue | High | High |
+| Issue                           | Root Cause                                                                     |                                                                           Impact | Severity | Recommended Solution                                                                                                                            | Complexity | Risk   |
+| ------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------: | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------ |
+| Inventory claim race            | Order flow re-selects unsold inventory, then updates by `id` only              | Two concurrent orders can claim the same inventory item or corrupt delivery flow | Critical | Use `UPDATE inventory SET is_sold=true ... WHERE id=? AND is_sold=false RETURNING *` inside transaction, or `SELECT ... FOR UPDATE SKIP LOCKED` | Medium     | High   |
+| Wallet balance lost-update risk | User balance is read before transaction and updated without row lock/condition |            Concurrent purchases/topups/admin edits can create incorrect balances | Critical | Lock user row with `FOR UPDATE`, or use atomic balance update with invariant check                                                              | High       | High   |
+| Coupon max-use race             | Coupon `usedCount` is checked before transaction and incremented later         |                                 Max uses can be exceeded under concurrent orders | High     | Conditional update `WHERE used_count < max_uses` with returning row; lock coupon row                                                            | Medium     | Medium |
+| Topup approve race              | Re-checks status inside transaction but does not lock row before update        |                 Two admins/processes can race on same topup under read committed | High     | Conditional `UPDATE ... WHERE status='pending' RETURNING` and lock user row                                                                     | Medium     | High   |
+| Reject route race               | Reject updates without transactional status condition                          |                Approve/reject race can produce inconsistent notifications/status | Medium   | Conditional update on pending status and return conflict when zero rows updated                                                                 | Low        | Medium |
+| Payment processor is mock       | Automated payment randomly succeeds                                            |                                           Cannot support real payment production | High     | Integrate real provider APIs, signed webhooks, idempotency keys, reconciliation jobs                                                            | High       | High   |
+| In-process cron/watchers        | Watchers start with API process                                                |      Duplicate jobs when scaled horizontally; web process owns background duties | High     | Move jobs to worker service with leader election or durable queue                                                                               | High       | High   |
 
 ---
 
@@ -331,12 +331,12 @@ The live database reported:
 
 ## Infrastructure Concerns
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| Starter single web instance | Render plan and process model are minimal | Cold starts, limited CPU/memory, no HA | High | Move to paid instance, add autoscaling strategy, separate worker process | Medium | High |
-| Redis free tier and `allkeys-lru` | Rate-limit keys can be evicted under memory pressure | Abuse limits can disappear unexpectedly | High | Use production Redis, reserved memory, no-eviction or monitored eviction policy for security keys | Low | Medium |
-| Migrations run during web startup | `bootstrap()` calls `runMigrations()` before listen | Deploy can fail or mutate DB at runtime; multiple instances can race migrations | High | Run migrations as release step/job with lock and rollback plan | Medium | High |
-| No explicit zero-downtime release design | Single process deploy with startup migrations | User-visible downtime or partial release state | Medium | Add release pipeline, migration compatibility windows, smoke tests | Medium | Medium |
+| Issue                                    | Root Cause                                           |                                                                          Impact | Severity | Recommended Solution                                                                              | Complexity | Risk   |
+| ---------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------: | -------- | ------------------------------------------------------------------------------------------------- | ---------- | ------ |
+| Starter single web instance              | Render plan and process model are minimal            |                                          Cold starts, limited CPU/memory, no HA | High     | Move to paid instance, add autoscaling strategy, separate worker process                          | Medium     | High   |
+| Redis free tier and `allkeys-lru`        | Rate-limit keys can be evicted under memory pressure |                                         Abuse limits can disappear unexpectedly | High     | Use production Redis, reserved memory, no-eviction or monitored eviction policy for security keys | Low        | Medium |
+| Migrations run during web startup        | `bootstrap()` calls `runMigrations()` before listen  | Deploy can fail or mutate DB at runtime; multiple instances can race migrations | High     | Run migrations as release step/job with lock and rollback plan                                    | Medium     | High   |
+| No explicit zero-downtime release design | Single process deploy with startup migrations        |                                  User-visible downtime or partial release state | Medium   | Add release pipeline, migration compatibility windows, smoke tests                                | Medium     | Medium |
 
 ---
 
@@ -351,11 +351,11 @@ The live database reported:
 
 ## Deployment Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| `.env` copied into runtime image | Dockerfile copies build `.env` into runtime layer | Secret leakage through image artifact | Critical | Remove the copy and add `.dockerignore` for `.env*` | Low | High |
-| Build uses root `pnpm run build` which runs `lint --fix` | Build script can mutate files during build | CI/build reproducibility risk | Medium | Split `lint:check` from `lint:fix`; production build should not write source | Low | Medium |
-| No GitHub repo available to MCP | GitHub MCP returned no repos | CI/PR/deployment audit could not verify repository automation | Medium | Connect the repo to GitHub MCP and document CI checks | Low | Low |
+| Issue                                                    | Root Cause                                        |                                                        Impact | Severity | Recommended Solution                                                         | Complexity | Risk   |
+| -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------: | -------- | ---------------------------------------------------------------------------- | ---------- | ------ |
+| `.env` copied into runtime image                         | Dockerfile copies build `.env` into runtime layer |                         Secret leakage through image artifact | Critical | Remove the copy and add `.dockerignore` for `.env*`                          | Low        | High   |
+| Build uses root `pnpm run build` which runs `lint --fix` | Build script can mutate files during build        |                                 CI/build reproducibility risk | Medium   | Split `lint:check` from `lint:fix`; production build should not write source | Low        | Medium |
+| No GitHub repo available to MCP                          | GitHub MCP returned no repos                      | CI/PR/deployment audit could not verify repository automation | Medium   | Connect the repo to GitHub MCP and document CI checks                        | Low        | Low    |
 
 ---
 
@@ -395,12 +395,12 @@ TypeScript is stable but not yet enterprise-strict. The project should move towa
 
 ## Issues
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| Untracked workspace artifacts | Git status shows `.aider.*`, `.aider.tags.cache.v4/`, and `deepseek-r1:free` untracked | Repo hygiene and accidental commit risk | Low | Add ignore rules or remove local artifacts after confirming ownership | Low | Low |
-| Build artifacts present in source tree | `shared/db/dist`, `frontend/dist/public` exist locally | Can obscure source/live state if committed or stale | Medium | Ensure build outputs are ignored and regenerated in CI | Low | Low |
-| Local Ruflo directory is large and gitignored | Development tooling sits inside app workspace | Audit/search noise and accidental coupling risk | Low | Keep tooling external or clearly excluded from app scans | Low | Low |
-| Migration logic lives in application code | `backend/src/migrate.ts` mixes DDL, seed, repair, and data migration | Hard to review and rollback | High | Split into versioned migrations, seeds, and repair scripts | High | High |
+| Issue                                         | Root Cause                                                                             |                                              Impact | Severity | Recommended Solution                                                  | Complexity | Risk |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------: | -------- | --------------------------------------------------------------------- | ---------- | ---- |
+| Untracked workspace artifacts                 | Git status shows `.aider.*`, `.aider.tags.cache.v4/`, and `deepseek-r1:free` untracked |             Repo hygiene and accidental commit risk | Low      | Add ignore rules or remove local artifacts after confirming ownership | Low        | Low  |
+| Build artifacts present in source tree        | `shared/db/dist`, `frontend/dist/public` exist locally                                 | Can obscure source/live state if committed or stale | Medium   | Ensure build outputs are ignored and regenerated in CI                | Low        | Low  |
+| Local Ruflo directory is large and gitignored | Development tooling sits inside app workspace                                          |     Audit/search noise and accidental coupling risk | Low      | Keep tooling external or clearly excluded from app scans              | Low        | Low  |
+| Migration logic lives in application code     | `backend/src/migrate.ts` mixes DDL, seed, repair, and data migration                   |                         Hard to review and rollback | High     | Split into versioned migrations, seeds, and repair scripts            | High       | High |
 
 ---
 
@@ -438,13 +438,13 @@ From current `frontend/dist/public/assets`:
 
 ## Bottlenecks
 
-| Issue | Root Cause | Impact | Severity | Recommended Solution | Complexity | Risk |
-|---|---|---:|---|---|---|---|
-| LCP above target | Render starter latency, CSS size, font load, route JS waterfall | Slower first impression and conversion loss | Medium | Optimize critical CSS, self-host fonts, preload route chunks, upgrade Render plan | Medium | Medium |
-| CLS 0.125 | Late footer/content/layout shifts | Fails ideal Core Web Vitals target | Medium | Reserve layout dimensions, reduce late lazy layout changes | Medium | Low |
-| Large CSS bundle | Broad utility/component CSS and animations | Slower CSS parse/render | Medium | Audit generated CSS, reduce global animation utilities, split admin CSS if possible | Medium | Low |
-| Admin chart bundle large | Recharts/D3 chunk is heavy | Admin dashboard cost acceptable, but should stay isolated | Low | Confirm chart bundle is never preloaded for customers; consider lightweight charts | Low | Low |
-| Console logging in production frontend | Debug logs remain in socket/auth/admin paths | Noise and potential data leakage | Low | Gate logs behind dev flag or logger abstraction | Low | Low |
+| Issue                                  | Root Cause                                                      |                                                    Impact | Severity | Recommended Solution                                                                | Complexity | Risk   |
+| -------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------: | -------- | ----------------------------------------------------------------------------------- | ---------- | ------ |
+| LCP above target                       | Render starter latency, CSS size, font load, route JS waterfall |               Slower first impression and conversion loss | Medium   | Optimize critical CSS, self-host fonts, preload route chunks, upgrade Render plan   | Medium     | Medium |
+| CLS 0.125                              | Late footer/content/layout shifts                               |                        Fails ideal Core Web Vitals target | Medium   | Reserve layout dimensions, reduce late lazy layout changes                          | Medium     | Low    |
+| Large CSS bundle                       | Broad utility/component CSS and animations                      |                                   Slower CSS parse/render | Medium   | Audit generated CSS, reduce global animation utilities, split admin CSS if possible | Medium     | Low    |
+| Admin chart bundle large               | Recharts/D3 chunk is heavy                                      | Admin dashboard cost acceptable, but should stay isolated | Low      | Confirm chart bundle is never preloaded for customers; consider lightweight charts  | Low        | Low    |
+| Console logging in production frontend | Debug logs remain in socket/auth/admin paths                    |                          Noise and potential data leakage | Low      | Gate logs behind dev flag or logger abstraction                                     | Low        | Low    |
 
 ---
 
