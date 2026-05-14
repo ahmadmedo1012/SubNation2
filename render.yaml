@@ -40,6 +40,8 @@ services:
         value: "subnation-2571e"
       - key: FIREBASE_AUTH_ENABLED
         value: "true"
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
       - key: VITE_FIREBASE_AUTH_ENABLED
         value: "true"
       # Firebase web client config: set in Dashboard (same values as local .env / Vite).

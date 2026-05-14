@@ -277,7 +277,7 @@ app.use((req, res, next) => {
 // Auth limiter applies to login/register only (NOT /me — it's polled frequently)
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
-app.use("/api/auth/firebase/session", otpPhoneLimiter, otpIpLimiter, authLimiter);
+app.use("/api/auth/firebase/session", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", router);

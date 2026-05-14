@@ -84,7 +84,15 @@ export interface FirebaseSessionResult {
 
 export async function verifyFirebaseIdToken(idToken: string, checkRevoked = false) {
   const auth = getFirebaseAdminAuth();
-  if (!auth) throw new FirebaseAuthError(503, "تسجيل الدخول عبر Firebase غير مفعّل");
+  if (!auth) {
+    logger.error(
+      "Firebase Admin Auth is null - service account credentials are missing or invalid",
+    );
+    throw new FirebaseAuthError(
+      503,
+      "خدمة Firebase غير مهيأة بشكل صحيح على الخادم. يرجى التواصل مع الدعم.",
+    );
+  }
 
   try {
     // Debug: log token header and payload (non-sensitive fields) to trace issues

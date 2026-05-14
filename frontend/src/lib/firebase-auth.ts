@@ -9,6 +9,12 @@ export interface FirebaseSessionResponse {
   needs_phone?: boolean;
 }
 
+/** Get the API base URL (handles split deployments where frontend != backend) */
+function getApiBaseUrl(): string {
+  const base = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
+  return base;
+}
+
 export async function requireFirebaseAuth(): Promise<Auth> {
   const auth = await getFirebaseAuth();
   if (!auth) throw new Error("تسجيل الدخول عبر Firebase غير مفعّل حالياً");
@@ -25,9 +31,11 @@ export async function signInWithFirebaseGoogle() {
 }
 
 export async function exchangeFirebaseIdToken(idToken: string, referralCode?: string) {
-  const res = await fetch("/api/auth/firebase/session", {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/auth/firebase/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ id_token: idToken, referral_code: referralCode || undefined }),
   });
   const data = (await res.json()) as FirebaseSessionResponse & { error?: string };
@@ -44,9 +52,11 @@ export async function exchangeCurrentFirebaseUser(referralCode?: string) {
 }
 
 export async function refreshFirebaseSession(idToken: string) {
-  const res = await fetch("/api/auth/firebase/refresh", {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/auth/firebase/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ id_token: idToken }),
   });
   const data = (await res.json()) as { token: string; user: unknown; error?: string };

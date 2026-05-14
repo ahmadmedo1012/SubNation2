@@ -53,8 +53,24 @@ export function getFirebaseAdminApp(): App | null {
   }
 
   if (projectId) {
-    logger.info({ projectId }, "Initializing Firebase Admin with Project ID");
-    app = initializeApp({ projectId });
+    // WARNING: Initializing without service account credentials means
+    // verifyIdToken will fail. Only proceed if running in Google Cloud
+    // environment where Application Default Credentials are available.
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCLOUD_PROJECT) {
+      logger.info(
+        { projectId },
+        "Initializing Firebase Admin with ADC (no explicit service account)",
+      );
+      app = initializeApp({ projectId });
+      return app;
+    }
+    logger.error(
+      { projectId },
+      "Firebase Admin: FIREBASE_PROJECT_ID is set but no service account credentials found. " +
+        "Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY. " +
+        "Token verification will NOT work without credentials.",
+    );
+    app = null;
     return app;
   }
 
