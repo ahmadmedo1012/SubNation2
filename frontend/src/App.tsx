@@ -62,6 +62,9 @@ const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
 const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
 const AdminSystemPage = lazy(() => import("@/pages/admin/system"));
 
+// Public pages without customer chrome
+const StatusPage = lazy(() => import("@/pages/status"));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -150,17 +153,25 @@ function AppRoutes() {
   const { token } = useAuth();
   const isAdmin = location.startsWith("/admin");
   const isAuth = location === "/login" || location === "/register";
+  // /status is a public chromeless page (no Navbar/Footer/MobileNav)
+  // — meant to be a quick "is the platform up?" view that loads even
+  // when most of the SPA's state is broken.
+  const isChromeless = location === "/status";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <RouteLoading />
-      {!isAdmin && <Navbar />}
-      {!isAdmin && (
+      {!isAdmin && !isChromeless && <Navbar />}
+      {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>
           <FlashSaleBanner />
         </Suspense>
       )}
-      <main className={!isAdmin && !isAuth && token ? "mobile-nav-safe-pad md:pb-0" : ""}>
+      <main
+        className={
+          !isAdmin && !isAuth && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""
+        }
+      >
         <ErrorBoundary>
           <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
             <Switch>
@@ -175,6 +186,7 @@ function AppRoutes() {
               <Route path="/loyalty" component={LoyaltyPage} />
               <Route path="/referrals" component={ReferralsPage} />
               <Route path="/support" component={SupportPage} />
+              <Route path="/status" component={StatusPage} />
               <Route path="/terms" component={TermsPage} />
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/profile" component={ProfilePage} />
@@ -189,12 +201,12 @@ function AppRoutes() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      {!isAdmin && (
+      {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>
           <Footer />
         </Suspense>
       )}
-      {!isAdmin && (
+      {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>
           <MobileNav />
         </Suspense>
