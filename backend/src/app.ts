@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
 import RedisStore from "rate-limit-redis";
+import * as Sentry from "@sentry/node";
 import { getCorrelationId } from "./lib/correlation";
 import { logger } from "./lib/logger";
 import { getRedisClient } from "./lib/redis-client";
@@ -363,6 +364,15 @@ if (frontendDist) {
     res.sendFile(path.join(frontendDist, "index.html"));
   });
 }
+
+// ── Sentry Express error handler ────────────────────────────────────────────
+//
+// Per the official @sentry/node v10 skill, this MUST be registered after all
+// routes and BEFORE any custom error-handling middleware. It captures the
+// error to Sentry (5xx by default) with the full request context, then
+// calls next(err) so our localized handler below still produces the
+// Arabic-text user-facing response.
+Sentry.setupExpressErrorHandler(app);
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

@@ -1,14 +1,14 @@
+// IMPORTANT: First import — see ./instrument for rationale.
+import "./instrument";
+
 import { startCouponWatcher } from "./jobs/couponWatcher";
 import { initCronJobs } from "./jobs/cron";
 import { startOtpCleanup } from "./jobs/otpCleanup";
 import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient, requireRedisClient } from "./lib/redis-client";
-import { initSentry } from "./lib/sentry";
 import { alertingService } from "./services/alerting.service";
 import { startHeartbeat } from "./worker/heartbeat";
-
-initSentry();
 
 async function startWorker() {
   logger.info("Starting background worker");

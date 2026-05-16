@@ -1,9 +1,10 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, readdir, unlink } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -120,6 +121,49 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // ── Sentry CLI source-map upload (gated) ────────────────────────────────────
+  //
+  // Active only when SENTRY_AUTH_TOKEN + SENTRY_ORG + SENTRY_PROJECT are
+  // present. After uploading, we delete the `.map` files from the deploy
+  // artefact so end users never receive them — Sentry retains the maps and
+  // resolves stack traces server-side via the release identifier.
+  const release = (process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7);
+  if (
+    process.env.SENTRY_AUTH_TOKEN &&
+    process.env.SENTRY_ORG &&
+    process.env.SENTRY_PROJECT &&
+    release !== "unknown"
+  ) {
+    try {
+      console.log(`[sentry] uploading source maps for release ${release}`);
+      execSync(
+        `pnpm exec sentry-cli sourcemaps inject ./dist && ` +
+          `pnpm exec sentry-cli sourcemaps upload --release="${release}" ./dist`,
+        { cwd: artifactDir, stdio: "inherit" },
+      );
+      console.log("[sentry] source-map upload complete");
+    } catch (err) {
+      // Don't block the deploy on a Sentry upload hiccup.
+      console.warn("[sentry] source-map upload failed (continuing build):", err?.message ?? err);
+    }
+
+    // Strip .map files from the deploy artefact regardless of whether the
+    // upload succeeded — we don't want maps to ship to end users.
+    try {
+      const entries = await readdir(distDir);
+      for (const entry of entries) {
+        if (entry.endsWith(".map")) {
+          await unlink(path.join(distDir, entry));
+        }
+      }
+      console.log("[sentry] stripped .map files from dist");
+    } catch (err) {
+      console.warn("[sentry] could not strip .map files:", err?.message ?? err);
+    }
+  } else {
+    console.log("[sentry] source-map upload skipped (SENTRY_AUTH_TOKEN/ORG/PROJECT not set)");
+  }
 }
 
 buildAll().catch((err) => {

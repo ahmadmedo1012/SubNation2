@@ -1,4 +1,6 @@
 import { HealthCheckResponse } from "@workspace/api-zod";
+import { db as neonDb } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { getRedisClient } from "../lib/redis-client";
@@ -109,11 +111,11 @@ async function checkRedis(redis: any): Promise<CheckResult> {
   }
 }
 
-async function checkNeon(db: any): Promise<CheckResult> {
+async function checkNeon(): Promise<CheckResult> {
   const start = Date.now();
   try {
     const result = await Promise.race([
-      db.execute("SELECT 1"),
+      neonDb.execute(sql`SELECT 1`),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Neon query timeout")), CHECK_TIMEOUT_MS),
       ),
@@ -121,16 +123,18 @@ async function checkNeon(db: any): Promise<CheckResult> {
     const latencyMs = Date.now() - start;
 
     if (result) {
-      // Reset failure counter on success
-      await clearFailureCounter(db, "neon");
+      // Reset failure counter on success — keyed by check name on Redis if available.
+      const redis = getRedisClient();
+      if (redis) await clearFailureCounter(redis, "neon");
       return {
         status: latencyMs > 500 ? "degraded" : "ok",
         latencyMs,
         lastCheckedAt: new Date().toISOString(),
       };
     } else {
-      await incrementFailureCounter(db, "neon");
-      const failures = await getFailureCount(db, "neon");
+      const redis = getRedisClient();
+      if (redis) await incrementFailureCounter(redis, "neon");
+      const failures = redis ? await getFailureCount(redis, "neon") : 0;
       return {
         status: failures >= 2 ? "failing" : "degraded",
         latencyMs,
@@ -139,8 +143,9 @@ async function checkNeon(db: any): Promise<CheckResult> {
       };
     }
   } catch (err) {
-    await incrementFailureCounter(db, "neon");
-    const failures = await getFailureCount(db, "neon");
+    const redis = getRedisClient();
+    if (redis) await incrementFailureCounter(redis, "neon");
+    const failures = redis ? await getFailureCount(redis, "neon") : 0;
     return {
       status: failures >= 2 ? "failing" : "degraded",
       latencyMs: Date.now() - start,
@@ -303,9 +308,8 @@ router.get("/healthz/firebase", (_req, res) => {
 });
 
 // Ready endpoint - aggregates all health checks
-router.get("/healthz/ready", async (req, res) => {
+router.get("/healthz/ready", async (_req, res) => {
   const redis = getRedisClient();
-  const db = (req as any).db; // Neon database client injected by middleware
   const io = getIO();
 
   const checks: Record<string, CheckResult> = {};
@@ -326,19 +330,12 @@ router.get("/healthz/ready", async (req, res) => {
     overallStatus = "failing";
   }
 
-  // Check Neon
-  if (db) {
-    const result = await checkNeon(db);
+  // Check Neon — singleton from @workspace/db
+  {
+    const result = await checkNeon();
     checks.neon = result;
     if (result.status === "failing") overallStatus = "failing";
     else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
-  } else {
-    checks.neon = {
-      status: "failing",
-      error: "Neon database not configured",
-      lastCheckedAt: new Date().toISOString(),
-    };
-    overallStatus = "failing";
   }
 
   // Check Worker
@@ -402,19 +399,8 @@ router.get("/healthz/redis", async (_req, res): Promise<void> => {
 });
 
 // Neon health check
-router.get("/healthz/neon", async (req, res): Promise<void> => {
-  const db = (req as any).db;
-
-  if (!db) {
-    res.status(503).json({
-      status: "failing",
-      error: "Neon database not configured",
-      lastCheckedAt: new Date().toISOString(),
-    });
-    return;
-  }
-
-  const result = await checkNeon(db);
+router.get("/healthz/neon", async (_req, res): Promise<void> => {
+  const result = await checkNeon();
   res.status(result.status === "failing" ? 503 : 200).json(result);
 });
 

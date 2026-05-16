@@ -89,6 +89,12 @@ services:
         sync: false
       - key: GENERIC_ALERT_WEBHOOK_URL
         sync: false
+      # Migration switch for the worker tier. Today the web process runs
+      # the heartbeat + alerting evaluator + cron under a Redis-backed
+      # leader lock. Once `subnation-worker` is provisioned, set this to
+      # `true` so the web tier stops running them and the worker takes over.
+      - key: DISABLE_WEB_SCHEDULERS
+        value: "false"
       - key: REDIS_URL
         fromService:
           type: redis

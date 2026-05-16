@@ -194,15 +194,162 @@ export class AlertingService {
   }
 
   /**
-   * Hook for production rule evaluation.
+   * Real production rule evaluators. Each rule reads its signal from either
+   * Redis directly (worker heartbeat) or from the prom-client registry by
+   * comparing the current counter value to the value captured at the last
+   * evaluation tick (signal = delta over the 60 s evaluator window).
    *
-   * The default implementation returns false. Subclasses (or a future
-   * `setRuleCheckers(...)` extension) can plug in concrete metric reads.
-   * Until those wirings exist, rules are exercised exclusively via the admin
-   * test endpoint, which calls `dispatchAlert` directly.
+   * Rules without a real evaluator return false — they are a no-op and need
+   * concrete metric reads in a future iteration. They are documented as
+   * "P2-pending" in OBSERVABILITY_SETUP.md / ALERTING_ARCHITECTURE.md.
    */
-  protected async checkRuleCondition(_rule: AlertRuleSpec): Promise<boolean> {
-    return false;
+  protected async checkRuleCondition(rule: AlertRuleSpec): Promise<boolean> {
+    try {
+      switch (rule.name) {
+        case "worker_heartbeat_missing":
+          return await this.evalWorkerHeartbeatMissing(rule);
+        case "redis_disconnect":
+          return this.evalCounterDelta("redis_errors_total", 1, rule);
+        case "neon_connection_failure":
+          return this.evalCounterDelta("redis_errors_total", 1, rule);
+        case "auth_failure_rate_high":
+          // 20+ auth failures in the last evaluator tick (60 s).
+          // Threshold tunable via ALERT_AUTH_FAILURE_DELTA env.
+          return this.evalCounterDeltaByLabel(
+            "auth_outcomes_total",
+            { outcome: "failure" },
+            Number(process.env.ALERT_AUTH_FAILURE_DELTA ?? 20),
+            rule,
+          );
+        case "abnormal_lockouts":
+          // ≥10 lockouts in the eval window — same delta-by-label pattern.
+          return this.evalCounterDeltaByLabel(
+            "auth_outcomes_total",
+            { outcome: "lockout" },
+            Number(process.env.ALERT_LOCKOUT_DELTA ?? 10),
+            rule,
+          );
+        case "firebase_verifyidtoken_failures":
+          // >5 firebase failures in the eval window.
+          return this.evalCounterDeltaByLabel(
+            "auth_outcomes_total",
+            { method: "firebase", outcome: "failure" },
+            Number(process.env.ALERT_FIREBASE_FAIL_DELTA ?? 5),
+            rule,
+          );
+        // Other rules are gated until their signals are concretely
+        // populated. See ALERTING_ARCHITECTURE.md §2 for the roadmap.
+        default:
+          return false;
+      }
+    } catch (err) {
+      this.incrementMonitoringError("alerting");
+      alertingLogger().error({ err, rule: rule.name }, "Rule evaluation threw");
+      return false;
+    }
+  }
+
+  /**
+   * Worker-heartbeat freshness check. Reads the `worker:heartbeat` Redis
+   * key (written every 15 s by `backend/src/worker/heartbeat.ts`) and fires
+   * when the heartbeat is older than `rule.windowSec` seconds (default
+   * 120 s = "no heartbeat 2 min").
+   */
+  private async evalWorkerHeartbeatMissing(rule: AlertRuleSpec): Promise<boolean> {
+    const redis = getRedisClient();
+    if (!redis) return false; // can't evaluate without Redis; fail safe (no alert)
+    const raw = await redis.get("worker:heartbeat");
+    if (!raw) return true; // no heartbeat at all → fire
+    try {
+      const parsed = JSON.parse(raw) as { ts: number };
+      const ageSec = (Date.now() - Number(parsed.ts)) / 1000;
+      return ageSec > rule.windowSec;
+    } catch {
+      // malformed payload — treat as missing
+      return true;
+    }
+  }
+
+  /**
+   * Counter-delta check. Reads the named counter from prom-client and
+   * compares to the value captured at the previous evaluator tick. If the
+   * delta over the last 60 s window is `>= threshold`, fire.
+   *
+   * Counters are monotonically increasing across the process lifetime, so
+   * we keep a small per-rule baseline map.
+   */
+  private readonly counterBaseline = new Map<string, number>();
+  private evalCounterDelta(
+    counterName: string,
+    threshold: number,
+    rule: AlertRuleSpec,
+  ): boolean {
+    try {
+      const counter = getRegistry().getSingleMetric(counterName) as
+        | import("prom-client").Counter<string>
+        | undefined;
+      if (!counter) return false;
+
+      // Aggregate across all label combinations.
+      const collected = counter.get?.() as
+        | { values?: Array<{ value: number }> }
+        | undefined;
+      const total = (collected?.values ?? []).reduce((sum, v) => sum + Number(v.value || 0), 0);
+
+      const baseline = this.counterBaseline.get(rule.name) ?? total;
+      const delta = total - baseline;
+      this.counterBaseline.set(rule.name, total);
+
+      return delta >= threshold;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Counter-delta check filtered by a label subset. The label match is an
+   * AND across the provided keys — a sample matches if every requested
+   * label/value pair appears in its labels object.
+   *
+   * Used for `auth_failure_rate_high` (filter `outcome=failure`),
+   * `abnormal_lockouts` (filter `outcome=lockout`), and
+   * `firebase_verifyidtoken_failures` (filter `method=firebase, outcome=failure`).
+   */
+  private evalCounterDeltaByLabel(
+    counterName: string,
+    labelMatch: Record<string, string>,
+    threshold: number,
+    rule: AlertRuleSpec,
+  ): boolean {
+    try {
+      const counter = getRegistry().getSingleMetric(counterName) as
+        | import("prom-client").Counter<string>
+        | undefined;
+      if (!counter) return false;
+
+      const collected = counter.get?.() as
+        | { values?: Array<{ value: number; labels?: Record<string, string> }> }
+        | undefined;
+      const matchEntry = (entryLabels: Record<string, string> | undefined): boolean => {
+        if (!entryLabels) return false;
+        for (const [k, v] of Object.entries(labelMatch)) {
+          if (entryLabels[k] !== v) return false;
+        }
+        return true;
+      };
+
+      const total = (collected?.values ?? [])
+        .filter((entry) => matchEntry(entry.labels))
+        .reduce((sum, v) => sum + Number(v.value || 0), 0);
+
+      const baseline = this.counterBaseline.get(rule.name) ?? total;
+      const delta = total - baseline;
+      this.counterBaseline.set(rule.name, total);
+
+      return delta >= threshold;
+    } catch {
+      return false;
+    }
   }
 
   /** Public: dispatch an alert through every configured channel. */

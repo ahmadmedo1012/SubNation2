@@ -1,12 +1,15 @@
+// IMPORTANT: This must be the very first import — Sentry auto-instruments
+// Express / HTTP / fs by patching modules at require time. Loading
+// `instrument.ts` first ensures handlers registered later in `./app`
+// are observable in traces.
+import "./instrument";
+
 import { createServer } from "http";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { initRedisClient } from "./lib/redis-client";
-import { initSentry } from "./lib/sentry";
+import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { initSocket } from "./lib/socket";
-
-// Initialize Sentry error tracking before anything that might throw at boot.
-initSentry();
+import { startWebSchedulers } from "./lib/web-scheduler";
 
 const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 
@@ -58,6 +61,24 @@ async function bootstrap(): Promise<void> {
   // In production, failure here exits the process (per redis-client policy);
   // in dev we fall back to in-memory rate-limiting and degraded health checks.
   await initRedisClient();
+
+  // Activate worker-tier loops inside this web process when no dedicated
+  // worker service is provisioned. Gated by DISABLE_WEB_SCHEDULERS=true
+  // (operator flips this once a real worker exists) plus a Redis-backed
+  // leader lock that only one instance can hold at a time.
+  const schedulers = await startWebSchedulers(getRedisClient());
+
+  // Graceful shutdown — release the leader lock so the next instance can
+  // pick up immediately instead of waiting for the 60 s TTL.
+  const handleSignal = (signal: string) => {
+    logger.info({ signal }, "[server] received shutdown signal");
+    schedulers
+      .stop()
+      .catch((err) => logger.error({ err }, "[server] scheduler stop error"))
+      .finally(() => process.exit(0));
+  };
+  process.on("SIGTERM", () => handleSignal("SIGTERM"));
+  process.on("SIGINT", () => handleSignal("SIGINT"));
 
   listen(parsePort(rawPort), process.env.NODE_ENV === "production" ? 0 : DEFAULT_FALLBACK_ATTEMPTS);
 }
