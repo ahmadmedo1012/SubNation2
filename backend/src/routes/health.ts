@@ -1,8 +1,256 @@
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { Router, type IRouter } from "express";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
+import { getRedisClient } from "../lib/redis-client";
+import { getIO } from "../lib/socket";
 
 const router: IRouter = Router();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Health check types and interfaces
+// ──────────────────────────────────────────────────────────────────────────────
+
+type CheckStatus = "ok" | "degraded" | "failing";
+
+interface CheckResult {
+  status: CheckStatus;
+  latencyMs?: number;
+  error?: string;
+  lastCheckedAt: string;
+}
+
+interface HealthCheckResponseExtended {
+  status: CheckStatus;
+  checks: Record<string, CheckResult>;
+  version: string;
+  uptimeSec: number;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Failure counter helpers (Redis-backed)
+// ──────────────────────────────────────────────────────────────────────────────
+
+const FAILURE_COUNTER_PREFIX = "health:fail:";
+const FAILURE_WINDOW_MS = 30_000; // 30 seconds
+
+async function getFailureCount(redis: any, checkName: string): Promise<number> {
+  try {
+    const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
+    const value = await redis.get(key);
+    return parseInt(value || "0", 10);
+  } catch {
+    return 0;
+  }
+}
+
+async function incrementFailureCounter(redis: any, checkName: string): Promise<void> {
+  try {
+    const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
+    await redis.incr(key);
+    await redis.expire(key, Math.ceil(FAILURE_WINDOW_MS / 1000));
+  } catch {
+    // Silently fail - health check should not crash due to Redis issues
+  }
+}
+
+async function clearFailureCounter(redis: any, checkName: string): Promise<void> {
+  try {
+    const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
+    await redis.del(key);
+  } catch {
+    // Silently fail
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Health check implementations
+// ──────────────────────────────────────────────────────────────────────────────
+
+const CHECK_TIMEOUT_MS = 5000;
+
+async function checkRedis(redis: any): Promise<CheckResult> {
+  const start = Date.now();
+  try {
+    const result = await Promise.race([
+      redis.ping(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Redis ping timeout")), CHECK_TIMEOUT_MS),
+      ),
+    ]);
+    const latencyMs = Date.now() - start;
+
+    if (result === "PONG") {
+      // Reset failure counter on success
+      await clearFailureCounter(redis, "redis");
+      return {
+        status: latencyMs > 200 ? "degraded" : "ok",
+        latencyMs,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    } else {
+      await incrementFailureCounter(redis, "redis");
+      const failures = await getFailureCount(redis, "redis");
+      return {
+        status: failures >= 3 ? "failing" : "degraded",
+        latencyMs,
+        error: `Unexpected response: ${result}`,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    await incrementFailureCounter(redis, "redis");
+    const failures = await getFailureCount(redis, "redis");
+    return {
+      status: failures >= 3 ? "failing" : "degraded",
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkNeon(db: any): Promise<CheckResult> {
+  const start = Date.now();
+  try {
+    const result = await Promise.race([
+      db.execute("SELECT 1"),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Neon query timeout")), CHECK_TIMEOUT_MS),
+      ),
+    ]);
+    const latencyMs = Date.now() - start;
+
+    if (result) {
+      // Reset failure counter on success
+      await clearFailureCounter(db, "neon");
+      return {
+        status: latencyMs > 500 ? "degraded" : "ok",
+        latencyMs,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    } else {
+      await incrementFailureCounter(db, "neon");
+      const failures = await getFailureCount(db, "neon");
+      return {
+        status: failures >= 2 ? "failing" : "degraded",
+        latencyMs,
+        error: "Query returned no result",
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    await incrementFailureCounter(db, "neon");
+    const failures = await getFailureCount(db, "neon");
+    return {
+      status: failures >= 2 ? "failing" : "degraded",
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkWorker(redis: any): Promise<CheckResult> {
+  const start = Date.now();
+  const now = Date.now();
+  try {
+    const heartbeat = await Promise.race([
+      redis.get("worker:heartbeat"),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Worker heartbeat timeout")), CHECK_TIMEOUT_MS),
+      ),
+    ]);
+
+    if (!heartbeat) {
+      return {
+        status: "failing",
+        latencyMs: Date.now() - start,
+        error: "No heartbeat found",
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+
+    const parsed = JSON.parse(heartbeat);
+    const ageSec = (now - parsed.ts) / 1000;
+
+    if (ageSec > 180) {
+      return {
+        status: "failing",
+        latencyMs: Date.now() - start,
+        error: `Worker heartbeat too old: ${ageSec.toFixed(1)}s`,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    } else if (ageSec > 60) {
+      return {
+        status: "degraded",
+        latencyMs: Date.now() - start,
+        error: `Worker heartbeat age: ${ageSec.toFixed(1)}s`,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    } else {
+      return {
+        status: "ok",
+        latencyMs: Date.now() - start,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    return {
+      status: "failing",
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+}
+
+async function checkSocket(io: any, redis: any): Promise<CheckResult> {
+  const start = Date.now();
+  try {
+    if (!io || !io.adapter) {
+      return {
+        status: "failing",
+        latencyMs: Date.now() - start,
+        error: "Socket.IO not initialized or no adapter",
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+
+    // Use Redis pub/sub ping to check Socket.IO adapter reachability
+    const result = await Promise.race([
+      redis.ping(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Socket.IO adapter timeout")), CHECK_TIMEOUT_MS),
+      ),
+    ]);
+
+    if (result === "PONG") {
+      return {
+        status: "ok",
+        latencyMs: Date.now() - start,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    } else {
+      return {
+        status: "degraded",
+        latencyMs: Date.now() - start,
+        error: `Unexpected Redis response: ${result}`,
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    return {
+      status: "failing",
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Route handlers
+// ──────────────────────────────────────────────────────────────────────────────
 
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });
@@ -52,6 +300,157 @@ router.get("/healthz/firebase", (_req, res) => {
     admin_app_initialized: app !== null,
     admin_auth_initialized: auth !== null,
   });
+});
+
+// Ready endpoint - aggregates all health checks
+router.get("/healthz/ready", async (req, res) => {
+  const redis = getRedisClient();
+  const db = (req as any).db; // Neon database client injected by middleware
+  const io = getIO();
+
+  const checks: Record<string, CheckResult> = {};
+  let overallStatus: CheckStatus = "ok";
+
+  // Check Redis
+  if (redis) {
+    const result = await checkRedis(redis);
+    checks.redis = result;
+    if (result.status === "failing") overallStatus = "failing";
+    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+  } else {
+    checks.redis = {
+      status: "failing",
+      error: "Redis not configured",
+      lastCheckedAt: new Date().toISOString(),
+    };
+    overallStatus = "failing";
+  }
+
+  // Check Neon
+  if (db) {
+    const result = await checkNeon(db);
+    checks.neon = result;
+    if (result.status === "failing") overallStatus = "failing";
+    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+  } else {
+    checks.neon = {
+      status: "failing",
+      error: "Neon database not configured",
+      lastCheckedAt: new Date().toISOString(),
+    };
+    overallStatus = "failing";
+  }
+
+  // Check Worker
+  if (redis) {
+    const result = await checkWorker(redis);
+    checks.worker = result;
+    if (result.status === "failing") overallStatus = "failing";
+    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+  } else {
+    checks.worker = {
+      status: "failing",
+      error: "Redis not configured (needed for worker check)",
+      lastCheckedAt: new Date().toISOString(),
+    };
+    overallStatus = "failing";
+  }
+
+  // Check Socket.IO
+  if (io && redis) {
+    const result = await checkSocket(io, redis);
+    checks.socket = result;
+    if (result.status === "failing") overallStatus = "failing";
+    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+  } else {
+    checks.socket = {
+      status: "failing",
+      error: "Socket.IO not initialized or Redis not configured",
+      lastCheckedAt: new Date().toISOString(),
+    };
+    overallStatus = "failing";
+  }
+
+  const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
+  const uptimeSec = Math.floor(process.uptime());
+
+  const response: HealthCheckResponseExtended = {
+    status: overallStatus,
+    checks,
+    version,
+    uptimeSec,
+  };
+
+  res.status(overallStatus === "failing" ? 503 : 200).json(response);
+});
+
+// Redis health check
+router.get("/healthz/redis", async (_req, res): Promise<void> => {
+  const redis = getRedisClient();
+
+  if (!redis) {
+    res.status(503).json({
+      status: "failing",
+      error: "Redis not configured",
+      lastCheckedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const result = await checkRedis(redis);
+  res.status(result.status === "failing" ? 503 : 200).json(result);
+});
+
+// Neon health check
+router.get("/healthz/neon", async (req, res): Promise<void> => {
+  const db = (req as any).db;
+
+  if (!db) {
+    res.status(503).json({
+      status: "failing",
+      error: "Neon database not configured",
+      lastCheckedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const result = await checkNeon(db);
+  res.status(result.status === "failing" ? 503 : 200).json(result);
+});
+
+// Worker health check
+router.get("/healthz/worker", async (_req, res): Promise<void> => {
+  const redis = getRedisClient();
+
+  if (!redis) {
+    res.status(503).json({
+      status: "failing",
+      error: "Redis not configured (needed for worker heartbeat check)",
+      lastCheckedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const result = await checkWorker(redis);
+  res.status(result.status === "failing" ? 503 : 200).json(result);
+});
+
+// Socket.IO health check
+router.get("/healthz/socket", async (_req, res): Promise<void> => {
+  const io = getIO();
+  const redis = getRedisClient();
+
+  if (!io || !redis) {
+    res.status(503).json({
+      status: "failing",
+      error: !io ? "Socket.IO not initialized" : "Redis not configured (needed for adapter check)",
+      lastCheckedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const result = await checkSocket(io, redis);
+  res.status(result.status === "failing" ? 503 : 200).json(result);
 });
 
 export default router;

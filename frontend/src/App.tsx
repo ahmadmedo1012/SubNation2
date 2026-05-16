@@ -5,11 +5,16 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
+
+// HelmetProvider is mounted once at the very top of the tree in main.tsx.
+// Mounting it again here would create a second context and silently break
+// the merging react-helmet-async does across nested components.
 
 // Critical layout
 import { Navbar } from "@/components/layout/Navbar";
+import NotFound from "@/pages/not-found";
 
 // Non-critical layout deferred
 const FlashSaleBanner = lazy(() =>
@@ -25,7 +30,6 @@ const MobileNav = lazy(() =>
 // All pages are lazily code-split to minimize initial bundle weight.
 // The HTML shell + vendor-react chunk are the only critical-path resources.
 const HomePage = lazy(() => import("@/pages/home"));
-import NotFound from "@/pages/not-found";
 
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password"));
@@ -55,6 +59,12 @@ const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
 const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
 const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
 const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
+
+// Sentry verification surface — kept lazy so it costs nothing on the critical
+// path; reachable at /__sentry-test for operators to confirm SDK delivery.
+const SentryTestPage = lazy(() =>
+  import("@/components/SentryTest").then((m) => ({ default: m.SentryTest })),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -172,6 +182,7 @@ function AppRoutes() {
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/profile" component={ProfilePage} />
               <Route path="/auth/callback" component={AuthCallbackPage} />
+              <Route path="/__sentry-test" component={SentryTestPage} />
 
               <Route path="/admin/login" component={AdminLoginPage} />
               <Route path="/admin" component={AdminProtectedRoutes} />

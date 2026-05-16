@@ -1,0 +1,80 @@
+# Gitleaks configuration for SubNation
+# Validates: Requirements 9.5 (No-committed-secrets invariant)
+
+title = "SubNation Secret Detection Rules"
+
+[extend]
+# Use the default gitleaks rules as a base
+useDefault = true
+
+[[rules]]
+id = "sentry-dsn-backend"
+description = "Sentry DSN Backend"
+regex = '''SENTRY_DSN_BACKEND\s*=\s*['"]?https://[a-f0-9]+@[a-f0-9]+\.ingest\.sentry\.io/\d+['"]?'''
+tags = ["sentry", "dsn", "backend"]
+severity = "critical"
+
+[[rules]]
+id = "sentry-dsn-frontend"
+description = "Sentry DSN Frontend"
+regex = '''SENTRY_DSN_FRONTEND\s*=\s*['"]?https://[a-f0-9]+@[a-f0-9]+\.ingest\.sentry\.io/\d+['"]?'''
+tags = ["sentry", "dsn", "frontend"]
+severity = "critical"
+
+[[rules]]
+id = "sentry-auth-token"
+description = "Sentry Auth Token"
+regex = '''SENTRY_AUTH_TOKEN\s*=\s*['"]?[a-f0-9]{64}['"]?'''
+tags = ["sentry", "token", "auth"]
+severity = "critical"
+
+[[rules]]
+id = "discord-webhook-url"
+description = "Discord Webhook URL"
+regex = '''DISCORD_WEBHOOK_URL\s*=\s*['"]?https://discord\.com/api/webhooks/\d+/[a-zA-Z0-9_-]+['"]?'''
+tags = ["discord", "webhook"]
+severity = "critical"
+
+[[rules]]
+id = "generic-alert-webhook-url"
+description = "Generic Alert Webhook URL"
+regex = '''GENERIC_ALERT_WEBHOOK_URL\s*=\s*['"]?https://[^\s'"]+['"]?'''
+tags = ["webhook", "alert"]
+severity = "critical"
+
+[[rules]]
+id = "metrics-admin-token"
+description = "Metrics Admin Token"
+regex = '''METRICS_ADMIN_TOKEN\s*=\s*['"]?[a-zA-Z0-9_-]{16,}['"]?'''
+tags = ["metrics", "admin", "token"]
+severity = "critical"
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram Bot Token"
+regex = '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?\d+:[a-zA-Z0-9_-]{35}['"]?'''
+tags = ["telegram", "bot", "token"]
+severity = "critical"
+
+# Allowlist for false positives
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''\.gitleaks\.toml''',
+  '''\.kiro/specs/observability-seo-cwv-maturity/(requirements|design|tasks)\.md''',
+  '''node_modules/.*''',
+  '''pnpm-lock\.yaml''',
+  '''\.env\.example''',
+]
+
+[[allowlist]]
+description = "Allow placeholder values in documentation and examples"
+regexes = [
+  '''SENTRY_DSN_BACKEND\s*=\s*['"]?your-sentry-dsn-here['"]?''',
+  '''SENTRY_DSN_FRONTEND\s*=\s*['"]?your-sentry-dsn-here['"]?''',
+  '''SENTRY_AUTH_TOKEN\s*=\s*['"]?your-sentry-auth-token['"]?''',
+  '''DISCORD_WEBHOOK_URL\s*=\s*['"]?https://discord\.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN['"]?''',
+  '''GENERIC_ALERT_WEBHOOK_URL\s*=\s*['"]?your-webhook-url['"]?''',
+  '''METRICS_ADMIN_TOKEN\s*=\s*['"]?your-metrics-token['"]?''',
+  '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?your-telegram-bot-token['"]?''',
+]

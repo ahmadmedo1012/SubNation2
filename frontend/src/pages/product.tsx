@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { buildBreadcrumbLd, buildProductLd } from "@/lib/seo-builders";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -211,6 +213,35 @@ export default function ProductPage() {
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
     "from-primary/20 via-primary/8 to-transparent";
   const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
+
+  const seoBlock = useSeo({
+    title: `${product.name} — ${formatCurrency(displayPrice)}`,
+    description:
+      (product.description ?? `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`).slice(
+        0,
+        160,
+      ),
+    image: product.image_url ?? undefined,
+    type: "product",
+    path: `/product/${product.id}`,
+    locale: "ar",
+    jsonLd: [
+      buildProductLd({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        imageUrl: product.image_url,
+        price: displayPrice,
+        category: product.category,
+        isActive: product.is_active ?? true,
+      }),
+      buildBreadcrumbLd([
+        { name: "الرئيسية", href: "/" },
+        { name: categoryLabel(product.category ?? "") || "المنتجات", href: "/" },
+        { name: product.name, href: `/product/${product.id}` },
+      ]),
+    ],
+  });
   const shortfall = displayPrice - (user?.wallet_balance ?? 0);
 
   // ── Order success ─────────────────────────────────────────────────────────
@@ -307,6 +338,7 @@ export default function ProductPage() {
 
   return (
     <div className={`max-w-xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>
+      {seoBlock}
       {/* Back link */}
       <button
         onClick={() => navigate("/")}

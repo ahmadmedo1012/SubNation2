@@ -82,3 +82,7 @@ PageSpeed Insights.html
 # Firebase service account (sensitive credentials)
 *.firebase-adminsdk*.json
 ruflo
+.kiro/settings/mcp.json
+.kiro
+.vscode
+.husky

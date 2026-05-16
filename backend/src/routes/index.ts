@@ -10,10 +10,14 @@ import { loyaltyRouter } from "./loyalty";
 import { notificationsRouter } from "./notifications";
 import { couponsRouter } from "./coupons";
 import { authProviderPublicRouter, authProviderAdminRouter } from "./auth-settings";
+import metricsRouter from "./metrics";
+import cwvRouter from "./cwv";
 
 const router = Router();
 
 router.use(healthRouter);
+router.use(metricsRouter);
+router.use(cwvRouter);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.use("/auth", authRouter);

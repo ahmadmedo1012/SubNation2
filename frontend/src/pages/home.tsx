@@ -1,7 +1,9 @@
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
+import { buildOrganizationLd } from "@/lib/seo-builders";
 import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
@@ -206,8 +208,19 @@ export default function HomePage() {
     setAvailableOnly(false);
   };
 
+  const seoBlock = useSeo({
+    title: "SubNation — سوق الاشتراكات الرقمية في ليبيا",
+    description:
+      "اشترك في Netflix وSpotify وPS Plus وDisney+ والمزيد بالدينار الليبي. تسليم فوري ودفع آمن.",
+    path: "/",
+    locale: "ar",
+    type: "website",
+    jsonLd: [buildOrganizationLd()],
+  });
+
   return (
     <div className="min-h-screen">
+      {seoBlock}
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
         {/* ── Hero ─────────────────────────────────────────── */}
         {token && !user ? (

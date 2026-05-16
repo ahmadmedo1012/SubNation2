@@ -1,12 +1,11 @@
 import { createServer } from "http";
 import app from "./app";
-// Background jobs moved to worker.ts
 import { logger } from "./lib/logger";
+import { initRedisClient } from "./lib/redis-client";
 import { initSentry } from "./lib/sentry";
 import { initSocket } from "./lib/socket";
-import { runMigrations } from "./migrate";
 
-// Initialize Sentry error tracking
+// Initialize Sentry error tracking before anything that might throw at boot.
 initSentry();
 
 const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
@@ -55,6 +54,11 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): vo
 }
 
 async function bootstrap(): Promise<void> {
+  // Connect the Redis singleton before app.use(...) runs any code that needs it.
+  // In production, failure here exits the process (per redis-client policy);
+  // in dev we fall back to in-memory rate-limiting and degraded health checks.
+  await initRedisClient();
+
   listen(parsePort(rawPort), process.env.NODE_ENV === "production" ? 0 : DEFAULT_FALLBACK_ATTEMPTS);
 }
 

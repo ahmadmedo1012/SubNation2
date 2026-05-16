@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { adminAlertsRouter } from "./alerts";
 import { adminAuthRouter } from "./auth";
+import { adminDiagnosticsRouter } from "./diagnostics";
+import { adminObservabilityRouter } from "./observability";
 import { adminOrdersRouter } from "./orders";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
@@ -25,5 +27,7 @@ router.use("/", adminReferralsRouter); // /referrals/*
 router.use("/", adminSecurityRouter); // /auth-activity, /auth-stats
 router.use("/alerts", adminAlertsRouter);
 router.use("/settings", adminSettingsRouter);
+router.use("/observability", adminObservabilityRouter);
+router.use("/diagnostics", adminDiagnosticsRouter);
 
 export { router as adminRouter };

@@ -5,6 +5,7 @@ import { Router } from "express";
 import { encrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { bumpSitemapCache } from "../seo";
 
 const router = Router();
 
@@ -67,6 +68,8 @@ router.post("/products", requireAdmin, async (req, res) => {
     })
     .returning();
 
+  bumpSitemapCache();
+
   return res.status(201).json({
     id: product.id,
     name: product.name,
@@ -107,6 +110,8 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     .returning();
   if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
 
+  bumpSitemapCache();
+
   const [[stockResult], [orderResult]] = await Promise.all([
     db
       .select({ count: count() })
@@ -142,6 +147,7 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
     .update(productsTable)
     .set({ isArchived: true, isActive: false })
     .where(eq(productsTable.id, id));
+  bumpSitemapCache();
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 

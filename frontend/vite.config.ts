@@ -1,10 +1,71 @@
 import tailwindcss from "@tailwindcss/vite";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react";
+import { createReadStream, existsSync, readdirSync } from "fs";
 import path from "path";
-import { defineConfig } from "vite";
+import { pipeline } from "stream/promises";
+import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { createGzip } from "zlib";
 
-const rawPort = process.env.PORT ?? process.env.FRONTEND_PORT ?? "5173";
+/**
+ * Bundle budget plugin that checks gzip size of the main index JS bundle.
+ * - Exits non-zero if size > 56320 bytes (55 KiB)
+ * - Warns if 47120 < size ≤ 56320 bytes
+ * - Exits 0 silently if size ≤ 47120 bytes
+ */
+function bundleBudgetPlugin(): Plugin {
+  return {
+    name: "bundle-budget",
+    apply: "build",
+    closeBundle: async () => {
+      const outDir = path.resolve(import.meta.dirname, "dist/public/assets");
+      if (!existsSync(outDir)) {
+        console.error("[bundle-budget] Output directory not found:", outDir);
+        process.exit(1);
+      }
+
+      // Find index-*.js file
+      const files = readdirSync(outDir);
+      const indexFile = files.find((f) => /^index-[A-Za-z0-9-_]+\.js$/.test(f));
+      if (!indexFile) {
+        console.error("[bundle-budget] No index-*.js file found in", outDir);
+        process.exit(1);
+      }
+
+      const filePath = path.join(outDir, indexFile);
+
+      // Calculate gzip size
+      let gzipSize = 0;
+      const gzip = createGzip();
+      gzip.on("data", (chunk) => {
+        gzipSize += chunk.length;
+      });
+
+      const source = createReadStream(filePath);
+      await pipeline(source, gzip);
+
+      const GZIP_LIMIT_ERROR = 56320; // 55 KiB
+      const GZIP_LIMIT_WARN = 47120; // ~46 KiB
+
+      console.log(`[bundle-budget] ${indexFile}: ${gzipSize} bytes (gzip)`);
+
+      if (gzipSize > GZIP_LIMIT_ERROR) {
+        console.error(
+          `[bundle-budget] ERROR: Gzip size ${gzipSize} bytes exceeds limit of ${GZIP_LIMIT_ERROR} bytes (55 KiB)`,
+        );
+        process.exit(1);
+      } else if (gzipSize > GZIP_LIMIT_WARN) {
+        console.warn(
+          `[bundle-budget] WARNING: Gzip size ${gzipSize} bytes is close to limit of ${GZIP_LIMIT_ERROR} bytes (55 KiB)`,
+        );
+      }
+      // Otherwise exit 0 silently
+    },
+  };
+}
+
+const rawPort = process.env.PORT?.trim() || process.env.FRONTEND_PORT?.trim() || "5173";
 
 const port = Number(rawPort);
 
@@ -21,6 +82,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    bundleBudgetPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
@@ -64,6 +126,21 @@ export default defineConfig({
         ],
       },
     }),
+    // Sentry source-map upload — only active when SENTRY_AUTH_TOKEN is set
+    // (so local + unprovisioned CI builds skip cleanly). With sourcemap:
+    // "hidden" below, maps are produced + uploaded but never linked from
+    // the production bundle, so end users can't fetch them.
+    ...(process.env.SENTRY_AUTH_TOKEN
+      ? [
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            telemetry: false,
+            silent: false,
+          }),
+        ]
+      : []),
   ],
   resolve: {
     alias: {
@@ -75,7 +152,10 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    sourcemap: false,
+    // "hidden" = produce source maps but don't reference them from the bundle.
+    // Sentry's vite plugin uploads them by hash, so issues get readable stack
+    // traces while end users can't fetch the maps.
+    sourcemap: "hidden",
     // Split CSS per chunk so non-critical routes don’t block initial load
     cssCodeSplit: true,
     chunkSizeWarningLimit: 600,
@@ -128,6 +208,13 @@ export default defineConfig({
           // initial page render — it’s only needed post-auth-check.
           if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase")) {
             return "vendor-firebase";
+          }
+          // Sentry is on the critical path (instrument.ts is the first
+          // import in main.tsx) but should not bloat the index entry. By
+          // chunking it separately, the main bundle stays tiny while Sentry
+          // is still preloaded in parallel via Vite's module preload.
+          if (id.includes("node_modules/@sentry/")) {
+            return "vendor-sentry";
           }
         },
       },

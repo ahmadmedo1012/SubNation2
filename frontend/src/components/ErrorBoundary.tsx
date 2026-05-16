@@ -1,4 +1,5 @@
 import { Component, ReactNode } from "react";
+import * as Sentry from "@sentry/react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 
 interface Props {
@@ -24,6 +25,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("React render error:", error, errorInfo);
+    // Forward to Sentry with the React component stack as additional context
+    // so the issue page shows the same tree React itself sees.
+    Sentry.withScope((scope) => {
+      scope.setContext("react", {
+        componentStack: errorInfo.componentStack,
+      });
+      Sentry.captureException(error);
+    });
   }
 
   componentDidUpdate(prevProps: Props, prevState: State) {

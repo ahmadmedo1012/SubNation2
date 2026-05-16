@@ -1,6 +1,7 @@
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
@@ -8,10 +9,15 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
 import RedisStore from "rate-limit-redis";
-import { createClient } from "redis";
+import { getCorrelationId } from "./lib/correlation";
 import { logger } from "./lib/logger";
+import { getRedisClient } from "./lib/redis-client";
 import { captureException } from "./lib/sentry";
+import { correlationMiddleware } from "./middlewares/correlation";
+import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
+import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
+import seoRouter from "./routes/seo";
 
 const app = express();
 
@@ -94,10 +100,21 @@ app.use(
           // Firebase Auth REST API
           "https://identitytoolkit.googleapis.com",
           "https://securetoken.googleapis.com",
+          // Sentry ingest (DSNs are public by design — see Sentry docs).
+          // Wildcards cover .sentry.io, .ingest.sentry.io, .ingest.de.sentry.io,
+          // and Replay's separate sub-domains.
+          "https://*.sentry.io",
+          "https://*.ingest.sentry.io",
+          "https://*.ingest.de.sentry.io",
+          "https://*.ingest.us.sentry.io",
           ...(allowedOrigins.length || isProduction
             ? allowedOrigins
             : ["http://localhost:*", "http://127.0.0.1:*"]),
         ],
+        // Sentry Session Replay records DOM mutations off the main thread
+        // using a Web Worker created from a blob: URL. Without this directive,
+        // Replay silently fails to record.
+        workerSrc: ["'self'", "blob:"],
         // frameSrc: Firebase uses a hidden iframe at *.firebaseapp.com/__/auth/iframe
         // for cross-origin session persistence. accounts.google.com is the OAuth popup.
         frameSrc: [
@@ -170,44 +187,14 @@ const ipKeyGenerator = (req: Request) => {
   return ip;
 };
 
-let redisClient: ReturnType<typeof createClient> | null = null;
-if (process.env.REDIS_URL) {
-  redisClient = createClient({
-    url: process.env.REDIS_URL,
-    socket: {
-      reconnectStrategy: (retries) => Math.min(retries * 50, 500),
-    },
-  });
-
-  redisClient.on("error", (err) => {
-    if (isProduction) {
-      logger.fatal({ err }, "Redis client error - required for production");
-      process.exit(1);
-    }
-    logger.warn({ err }, "Redis client error - falling back to in-memory rate limiting");
-    redisClient = null;
-  });
-
-  redisClient.connect().catch((err) => {
-    if (isProduction) {
-      logger.fatal({ err }, "Failed to connect to Redis - required for production");
-      process.exit(1);
-    }
-    logger.warn({ err }, "Failed to connect to Redis - falling back to in-memory rate limiting");
-    redisClient = null;
-  });
-} else if (isProduction) {
-  logger.warn(
-    "REDIS_URL is missing in production. Falling back to in-memory stores. This is NOT recommended for production scaling.",
-  );
-  redisClient = null;
-}
+// ── Redis singleton (initialised in server.ts before app.listen) ─────────────
+const redisClient = getRedisClient();
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 // Use Redis store if available, otherwise fall back to in-memory store
 const rateLimiterStore = redisClient
   ? new RedisStore({
-      sendCommand: (...args: string[]) => redisClient!.sendCommand(args),
+      sendCommand: (...args: string[]) => redisClient.sendCommand(args),
       prefix: "rl:",
     })
   : undefined;
@@ -238,35 +225,33 @@ const authLimiter = rateLimit({
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
 });
 
-// Per-phone rate limiting for Firebase Phone OTP (prevent abuse on single phone)
-const otpPhoneLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 3,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const body = req.body as { phone?: string };
-    return body.phone || ipKeyGenerator(req);
-  },
-  store: rateLimiterStore,
-  message: { error: "تجاوزت عدد محاولات OTP لهذا الرقم. انتظر 15 دقيقة." },
-});
-
-// Per-IP rate limiting for Firebase Phone OTP (prevent bulk abuse)
-const otpIpLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 10,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  keyGenerator: ipKeyGenerator,
-  store: rateLimiterStore,
-  message: { error: "تجاوزت عدد المحاولات من هذا IP. انتظر ساعة." },
-});
+// ── Phase 2 instrumentation pipeline ─────────────────────────────────────────
+//
+// Order matters:
+//   1. correlation — establishes the AsyncLocalStorage context with a UUID v4
+//      request id and echoes it back as `x-request-id`. Every downstream
+//      middleware can call getCorrelationId().
+//   2. instrumentationIsolation — guards downstream middleware so a failure in
+//      metrics or pinoHttp can never crash the request handler.
+//   3. pinoHttp — bound to the same correlation id via genReqId so log lines
+//      carry the request id the caller will see on the response and in Sentry.
+//   4. metricsMiddleware — observes http_request_duration_seconds and
+//      increments http_requests_total on res.finish.
+//
+// Additive only — no behaviour change to existing CSP, COOP, scriptSrc,
+// scriptSrcAttr, HSTS configuration above.
+app.use(correlationMiddleware);
+app.use(instrumentationIsolation);
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 app.use(
   pinoHttp({
     logger,
+    // Use the correlation id as the pino-http request id so logs and the
+    // x-request-id response header agree. Falls back to a fresh UUID v4 if
+    // the correlation context is somehow missing (defensive).
+    genReqId: () => getCorrelationId() ?? randomUUID(),
+    customAttributeKeys: { reqId: "correlation_id" },
     serializers: {
       req(req) {
         return {
@@ -284,6 +269,8 @@ app.use(
   }),
 );
 
+app.use(metricsMiddleware);
+
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
@@ -297,7 +284,7 @@ app.use((req, res, next) => {
     const referer = req.headers.referer;
 
     // Skip CSRF check for API endpoints that don't need it (auth, webhooks, etc.)
-    const skipPaths = ["/api/auth", "/api/webhook", "/health"];
+    const skipPaths = ["/api/auth", "/api/webhook", "/api/cwv", "/health"];
     if (skipPaths.some((path) => req.path.startsWith(path))) {
       return next();
     }
@@ -331,6 +318,11 @@ app.use("/api", router);
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "المسار غير موجود", code: "NOT_FOUND" });
 });
+
+// ── SEO routes (root-level) ──────────────────────────────────────────────────
+// /robots.txt and /sitemap.xml live at the app root, not under /api, so search
+// engines crawling the apex find them where they expect.
+app.use(seoRouter);
 
 const frontendDist = resolveFrontendDist();
 
@@ -383,6 +375,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       url: req.url,
       body: req.body,
       userId: (req as Request & { userId?: number }).userId,
+      correlation_id: getCorrelationId(),
     });
   }
 

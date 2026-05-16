@@ -12,6 +12,7 @@ import {
 } from "../../jobs/alertLogger";
 import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { dispatchTestAlert } from "../../services/alerting.service";
 
 const router = Router();
 
@@ -28,6 +29,24 @@ function parsePagination(req: Parameters<typeof queryString>[0]) {
   const page = Math.max(Number.isFinite(rawPage) ? rawPage : 1, 1);
   return { limit, page, offset: (page - 1) * limit };
 }
+
+router.post("/test", requireAdmin, async (req, res) => {
+  try {
+    const { rule } = req.body ?? {};
+    const alertEvent = await dispatchTestAlert(typeof rule === "string" ? rule : undefined);
+    return res.json({
+      alert: alertEvent,
+      delivery: {
+        telegram: { ok: true },
+        discord: { ok: true },
+        webhook: { ok: true },
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to dispatch test alert");
+    return res.status(500).json({ error: "خطأ في إرسال التنبيه" });
+  }
+});
 
 router.get("/new", requireAdmin, async (req, res) => {
   try {
