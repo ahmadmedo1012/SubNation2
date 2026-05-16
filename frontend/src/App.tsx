@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RouteLoading } from "@/components/RouteLoading";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useDocumentDirection } from "@/lib/direction";
