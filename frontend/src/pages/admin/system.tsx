@@ -147,7 +147,7 @@ interface MetricsSnapshot {
   worker: {
     jobsTotal: Record<string, number>;
   };
-  cwv: { samples: Record<string, number> };
+  cwv: { samples: Record<string, number>; p75: Record<string, number | null> };
   alerts: { dispatchedTotal: Record<string, number> };
   monitoringErrors: number;
 }
@@ -1060,6 +1060,71 @@ export default function AdminSystemPage(): ReactElement | null {
                     })}
                 </div>
               )}
+            </div>
+          </section>
+        )}
+
+        {/* ── Panel 7.5: Core Web Vitals p75 ── */}
+        {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
+          <section className="space-y-3 float-in stagger-7">
+            <h2 className="text-sm font-bold flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-primary" />
+              Core Web Vitals (p75)
+            </h2>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              {(
+                [
+                  { key: "lcp", label: "LCP", good: 2500, poor: 4000, unit: "ms" as const },
+                  { key: "fcp", label: "FCP", good: 1800, poor: 3000, unit: "ms" as const },
+                  { key: "inp", label: "INP", good: 200, poor: 500, unit: "ms" as const },
+                  { key: "cls", label: "CLS", good: 0.1, poor: 0.25, unit: "" as const },
+                  { key: "ttfb", label: "TTFB", good: 800, poor: 1800, unit: "ms" as const },
+                ] as const
+              ).map(({ key, label, good, poor, unit }) => {
+                const p75 = metrics.cwv.p75[key];
+                const samples = metrics.cwv.samples[key] ?? 0;
+                let tone: "ok" | "degraded" | "failing" = "ok";
+                let display = "—";
+                if (p75 !== null && p75 !== undefined) {
+                  if (p75 > poor) tone = "failing";
+                  else if (p75 > good) tone = "degraded";
+                  display =
+                    unit === "ms"
+                      ? p75 < 1000
+                        ? `${Math.round(p75)}ms`
+                        : `${(p75 / 1000).toFixed(2)}s`
+                      : p75.toFixed(3);
+                } else if (samples === 0) {
+                  display = "بدون عيّنات";
+                }
+                const meta = STATUS_META[tone];
+                return (
+                  <div
+                    key={key}
+                    className={`bg-card border ${meta.border} rounded-2xl p-4`}
+                    title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                        {label}
+                      </span>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          tone === "ok"
+                            ? "bg-emerald-400"
+                            : tone === "degraded"
+                              ? "bg-yellow-400"
+                              : "bg-red-400"
+                        }`}
+                      />
+                    </div>
+                    <div className={`font-black text-base leading-none tabular-nums ${meta.color}`}>
+                      {display}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{samples} عيّنة</div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

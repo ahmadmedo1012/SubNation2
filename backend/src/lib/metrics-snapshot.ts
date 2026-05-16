@@ -71,6 +71,7 @@ export interface MetricsSnapshot {
 
   cwv: {
     samples: Record<string, number>; // metric name -> sample count
+    p75: Record<string, number | null>; // metric name -> p75 (ms for time, unit-less for cls)
   };
 
   alerts: {
@@ -365,6 +366,33 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
     }
   }
 
+  // CWV p75 — aggregate cwv_sample_value histogram across all
+  // routes/viewports, grouped by `name`. p75 is the standard CWV
+  // reporting percentile (Google's "Good" thresholds are p75-based).
+  const cwvSampleValue = findMetric(metrics, "cwv_sample_value");
+  const cwvP75: Record<string, number | null> = {};
+  if (cwvSampleValue) {
+    const byName = new Map<string, Map<number, number>>();
+    for (const raw of cwvSampleValue.values as RawBucket[]) {
+      const sourceName = (raw as RawBucket & { metricName?: string }).metricName ?? "";
+      if (sourceName.endsWith("_count") || sourceName.endsWith("_sum")) continue;
+      const name = raw.labels.name ?? "?";
+      const le = raw.bucket ?? Number(raw.labels.le ?? Number.POSITIVE_INFINITY);
+      let buckets = byName.get(name);
+      if (!buckets) {
+        buckets = new Map();
+        byName.set(name, buckets);
+      }
+      buckets.set(le, (buckets.get(le) ?? 0) + raw.value);
+    }
+    for (const [name, bucketMap] of byName.entries()) {
+      const sorted = Array.from(bucketMap.entries())
+        .map(([le, value]) => ({ le, value }))
+        .sort((a, b) => a.le - b.le);
+      cwvP75[name] = estimateQuantile(sorted, 0.75);
+    }
+  }
+
   // ── Alerts ──
   const alertsDispatched = findMetric(metrics, "alerts_dispatched_total");
   const alertsRecord = alertsDispatched
@@ -410,7 +438,7 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
       jobsTotal: workerJobs ? toRecord(workerJobs.values, ["job", "status"]) : {},
     },
 
-    cwv: { samples: cwvByName },
+    cwv: { samples: cwvByName, p75: cwvP75 },
 
     alerts: { dispatchedTotal: alertsRecord },
 
