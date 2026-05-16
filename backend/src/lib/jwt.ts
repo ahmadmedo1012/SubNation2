@@ -1,9 +1,21 @@
 import jwt from "jsonwebtoken";
 
-const sessionSecret = process.env.SESSION_SECRET ?? process.env.JWT_SECRET;
+const sessionSecret = process.env.SESSION_SECRET;
 
 if (!sessionSecret) {
-  throw new Error("SESSION_SECRET environment variable is required");
+  throw new Error(
+    "SESSION_SECRET environment variable is required. Set it in your host's environment " +
+      "(e.g. Render Dashboard → Environment → SESSION_SECRET). Generate with " +
+      "`openssl rand -base64 64 | tr -d '\\n'`.",
+  );
+}
+
+if (sessionSecret.length < 32) {
+  throw new Error(
+    `SESSION_SECRET must be at least 32 characters (256 bits) of entropy; ` +
+      `current value is ${sessionSecret.length} chars. Generate a new one with ` +
+      `\`openssl rand -base64 64 | tr -d '\\n'\` and update it on the host.`,
+  );
 }
 
 export const JWT_SECRET: string = sessionSecret;

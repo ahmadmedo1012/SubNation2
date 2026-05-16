@@ -1081,20 +1081,6 @@ export function formatUser(user: typeof usersTable.$inferSelect) {
   };
 }
 
-router.get("/sessions", requireUser, async (req, res) => {
-  const userId = (req as AuthenticatedRequest).userId;
-  const sessions = await db
-    .select({
-      id: sessionsTable.id,
-      userAgent: sessionsTable.userAgent,
-      ipAddress: sessionsTable.ipAddress,
-      createdAt: sessionsTable.createdAt,
-    })
-    .from(sessionsTable)
-    .where(eq(sessionsTable.userId, userId));
-  res.json({ sessions });
-});
-
 router.delete("/sessions/:id", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
   const sessionId = req.params.id;

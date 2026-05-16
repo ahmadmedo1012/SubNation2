@@ -13,11 +13,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: DB_POOL_MAX
-        value: "5"
+        value: "15"
       - key: DB_IDLE_TIMEOUT_MS
-        value: "30000"
-      - key: DB_CONNECTION_TIMEOUT_MS
         value: "10000"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "30000"
       - key: SESSION_SECRET
         sync: false
       - key: ENCRYPTION_KEY

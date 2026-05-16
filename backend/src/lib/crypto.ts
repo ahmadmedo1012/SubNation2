@@ -1,8 +1,22 @@
 import argon2 from "argon2";
 import { createHash, randomBytes } from "crypto";
 
+// OWASP 2024 recommended argon2id parameters:
+//   memoryCost: 65536 KiB (64 MiB) — defends against GPU/ASIC cracking
+//   timeCost:   3 iterations
+//   parallelism: 1
+// argon2.needsRehash() (called from verifyPassword) automatically detects
+// hashes generated with weaker parameters and flags them for re-hashing on
+// next successful login, so a parameter bump self-migrates over time.
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 65_536,
+  timeCost: 3,
+  parallelism: 1,
+};
+
 export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, { type: argon2.argon2id });
+  return argon2.hash(password, ARGON2_OPTIONS);
 }
 
 const LEGACY_PREFIX = "$argon2";
@@ -14,7 +28,7 @@ export async function verifyPassword(
   // Argon2id hash — verify natively
   if (hash.startsWith(LEGACY_PREFIX)) {
     const valid = await argon2.verify(hash, password);
-    const needsRehash = valid && argon2.needsRehash(hash);
+    const needsRehash = valid && argon2.needsRehash(hash, ARGON2_OPTIONS);
     return { valid, needsRehash };
   }
   // Legacy SHA-256 hash — verify and flag for migration

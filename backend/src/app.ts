@@ -168,17 +168,26 @@ app.use(
 // Trust the first reverse proxy hop when deployed behind one.
 app.set("trust proxy", 1);
 
-// ── Canonical-host redirect (www → apex) ────────────────────────────────────
+// ── Canonical-host redirect ────────────────────────────────────────────────
 // Render's edge already redirects www.subnation.ly → subnation.ly when both
-// custom domains are bound to the service. This app-level guard is a
-// defence-in-depth in case the edge config is ever changed. Skips
-// /api/healthz/* so probes never get a 301. Production-only.
+// custom domains are bound to the service.
+//
+// However, Render auto-binds the service's onrender.com subdomain
+// (subnation2.onrender.com) and there's no way to unbind it. Without this
+// guard, the legacy host serves the same app as the canonical, creating
+// duplicate-content drag for SEO and inconsistent cookies (the canonical
+// origin's cookies don't apply to the onrender hostname).
+//
+// Skips /api/healthz/* so Render's own probes (which always hit the onrender
+// hostname internally) never get a 301. Production-only.
 const CANONICAL_HOST = "subnation.ly";
+const LEGACY_HOSTS = new Set(["www.subnation.ly", "subnation2.onrender.com"]);
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== "production") return next();
   if (req.path === "/api/healthz" || req.path.startsWith("/api/healthz/")) return next();
 
-  if ((req.hostname || "").toLowerCase() === "www.subnation.ly") {
+  const hostname = (req.hostname || "").toLowerCase();
+  if (LEGACY_HOSTS.has(hostname)) {
     res.set("Cache-Control", "max-age=86400");
     return res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
   }
@@ -309,8 +318,27 @@ app.use((req, res, next) => {
     const origin = req.headers.origin;
     const referer = req.headers.referer;
 
-    // Skip CSRF check for API endpoints that don't need it (auth, webhooks, etc.)
-    const skipPaths = ["/api/auth", "/api/webhook", "/api/cwv", "/health"];
+    // Skip CSRF check ONLY for endpoints where the browser legitimately omits
+    // Origin/Referer:
+    //   - /api/auth/firebase/session, /api/auth/firebase/refresh: Firebase
+    //     popup auth round-trips can land here without a valid Referer in
+    //     some COOP-isolated configurations. The ID-token signature is the
+    //     real auth; Origin is belt+suspenders.
+    //   - /api/cwv: navigator.sendBeacon does not set Origin on most browsers.
+    //   - /api/webhook/*: third-party callbacks (Telegram, Stripe-style) sign
+    //     their bodies; Origin from a different host is expected.
+    //   - /health: ops probes from outside the app.
+    //
+    // Login / register / forgot-password / reset-password / change-password /
+    // toggle-password-login / sessions / logout / providers — ALL inside the
+    // CSRF gate. SameSite=strict cookies remain the second layer.
+    const skipPaths = [
+      "/api/auth/firebase/session",
+      "/api/auth/firebase/refresh",
+      "/api/cwv",
+      "/api/webhook",
+      "/health",
+    ];
     if (skipPaths.some((path) => req.path.startsWith(path))) {
       return next();
     }
