@@ -97,14 +97,18 @@ If used, allows posting to one Discord channel.
 
 ### 8. Firebase Web API Key — **NO ACTION**
 
-`VITE_FIREBASE_API_KEY = AIzaSyDoQhcUbqwr0E6qws5vj2vwBNyDEq1EMsQ` is **public
-by design** in Firebase. It's embedded in every browser bundle on subnation.ly.
-Security comes from the **Authorized domains** list (Firebase Console →
-Authentication → Settings) plus reCAPTCHA on phone auth, NOT from key
-secrecy. See https://firebase.google.com/docs/projects/api-keys.
+`VITE_FIREBASE_API_KEY` is **public by design** in Firebase. It's embedded
+in every browser bundle on subnation.ly. Security comes from the
+**Authorized domains** list (Firebase Console → Authentication → Settings)
+plus reCAPTCHA on phone auth, NOT from key secrecy. See
+https://firebase.google.com/docs/projects/api-keys.
 
-This key is already explicitly allowlisted in `.gitleaks.toml` as a known
-public value.
+The current value is allowlisted in `.gitleaks.toml` under
+`targetRules = ["gcp-api-key"]`. If the key is ever rotated:
+1. Update `VITE_FIREBASE_API_KEY` in the Render environment.
+2. Update the regex in `.gitleaks.toml`'s Firebase allowlist with the new
+   value (read it from `frontend/src/lib/firebase.ts` runtime config or
+   from the deployed SPA bundle — never paste it into prose docs).
 
 ---
 

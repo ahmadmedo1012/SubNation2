@@ -122,16 +122,23 @@ regexes = [
 # and flags any 35+ char alphanumeric string starting with a Firebase-style
 # project ID. The Firebase *project ID* (public) and other public IDs must
 # not be flagged.
+#
+# `targetRules` scopes this allowlist to the specific built-in rules.
+# Without it, gitleaks v8.18.x–v8.26.x ignored top-level `[[allowlists]]`
+# when matching default rules loaded via `[extend] useDefault = true`.
+# v8.27+ propagates global allowlists correctly. Adding `targetRules`
+# works in BOTH version ranges.
 [[allowlists]]
 description = "Public-by-design Firebase identifiers (project ID, app ID, web API key)"
+targetRules = ["gcp-api-key", "generic-api-key"]
 regexes = [
   # Firebase project ID (public — appears in render.yaml, vite.config.ts, browser bundle)
   '''subnation-2571e''',
   # Firebase app ID (public)
   '''1:\d+:web:[a-f0-9]+''',
   # Firebase Web API key — public-by-design per Firebase security policy.
-  # It's gated by the Authorized Domains allow-list and reCAPTCHA challenges,
-  # NOT by key secrecy. Embedded in the client SPA bundle. Documented in
+  # Gated by the Authorized Domains allow-list and reCAPTCHA challenges,
+  # NOT by key secrecy. Embedded in the client SPA bundle.
   # https://firebase.google.com/docs/projects/api-keys
   # If this key is rotated, replace the literal below with the new value.
   '''AIzaSyDoQhcUbqwr0E6qws5vj2vwBNyDEq1EMsQ''',
