@@ -9,15 +9,6 @@
 import * as Sentry from "@sentry/react";
 
 /**
- * @deprecated kept for backwards compatibility — Sentry now initialises in
- * instrument.ts. Call sites should be migrated to remove this; until then,
- * the function is a no-op (returning immediately) so nothing breaks.
- */
-export function initFrontendSentry(_opts?: unknown): void {
-  // intentional no-op — see instrument.ts
-}
-
-/**
  * Capture a custom error with optional context (tags, extra, user).
  */
 export function captureError(
@@ -46,11 +37,13 @@ export function captureError(
 
 /** Set user context for Sentry events (id required, email/username optional). */
 export function setSentryUser(
-  user: {
-    id: string | number;
-    email?: string;
-    username?: string;
-  } | null,
+  user:
+    | {
+        id: string | number;
+        email?: string;
+        username?: string;
+      }
+    | null,
 ): void {
   if (user) {
     Sentry.setUser(user);

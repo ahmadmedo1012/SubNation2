@@ -61,12 +61,6 @@ const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
 const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
 const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
 
-// Sentry verification surface — kept lazy so it costs nothing on the critical
-// path; reachable at /__sentry-test for operators to confirm SDK delivery.
-const SentryTestPage = lazy(() =>
-  import("@/components/SentryTest").then((m) => ({ default: m.SentryTest })),
-);
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -183,7 +177,6 @@ function AppRoutes() {
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/profile" component={ProfilePage} />
               <Route path="/auth/callback" component={AuthCallbackPage} />
-              <Route path="/__sentry-test" component={SentryTestPage} />
 
               <Route path="/admin/login" component={AdminLoginPage} />
               <Route path="/admin" component={AdminProtectedRoutes} />

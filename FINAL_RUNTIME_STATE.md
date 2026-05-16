@@ -1,235 +1,177 @@
 # Final Runtime State — SubNation2
 
-**Date:** 2026-05-16 (post backend-observability sweep)
-**Latest deployed commit:** `36042b8` (CWV fix) — verified live since 2026-05-16T05:49Z
-**This document supersedes:** `FINAL_PLATFORM_STATE.md` (2026-05-16 morning)
+**Last updated:** 2026-05-16 (post-cleanup)
+**Production canonical:** `https://subnation.ly`
+**Latest deployed commit:** `0952a13` (`feat(domain): migrate primary canonical to https://subnation.ly`) — confirmed `live` since 2026-05-16T09:35Z
+
+This document is the **single living source of truth** for the platform's
+runtime state. Older state docs (`FINAL_PLATFORM_STATE.md`,
+`MASTER_PLATFORM_AUDIT.md`, `FULL_PLATFORM_REPORT.md`,
+`docs/AUDIT_REPORT_2026-05-16.md`) have been deleted as superseded — git
+history retains them if needed.
 
 ---
 
-## 1. Headline diagnostic — ⚠️ Owner action blocks 60% of observability
+## 1. Headline scorecard
 
-### `subnation-redis` is declared in `render.yaml` but does NOT exist in your Render workspace.
-
-Live evidence:
-
-```
-$ render-mcp list_key_value
-No Key Value instances found
-
-$ curl https://subnation.ly/api/healthz/ready | jq .checks
-{
-  "redis":  { "status": "failing", "error": "Redis not configured" },
-  "neon":   { "status": "failing", "error": "Neon database not configured" },
-  "worker": { "status": "failing", "error": "Redis not configured (needed for worker check)" },
-  "socket": { "status": "failing", "error": "Socket.IO not initialized or Redis not configured" }
-}
-
-$ render-mcp list_logs --text REDIS_URL
-"REDIS_URL is missing in production. Falling back to in-memory stores. This is NOT recommended for production scaling."
-   — at every web service boot since the Phase 2 sweep
-```
-
-### `subnation-worker` is declared in `render.yaml` but does NOT exist either.
-
-Only one backend service is provisioned (`srv-d7vv91tckfvc73evnccg`,
-the web). The `subnation-worker` blueprint entry has not been applied.
-Consequence: heartbeat is never written, alerting evaluator never runs,
-cron jobs are not executing.
-
-### Owner action required (one-time)
-
-Run from the Render dashboard, or via Render MCP `create_key_value` and a
-follow-up service create. The free-tier defaults are correct:
-
-```
-1. Provision Redis service:
-   create_key_value name=subnation-redis plan=free region=oregon
-2. Re-apply the worker service from render.yaml (Render dashboard > New > Blueprint)
-3. Set Render env vars (8 of these):
-   METRICS_ADMIN_TOKEN       (random ≥32 chars)
-   ALERTING_ENABLED=false    (start in dark-launch; flip after first 24h)
-   DISCORD_WEBHOOK_URL       (optional)
-   GENERIC_ALERT_WEBHOOK_URL (optional)
-   SENTRY_AUTH_TOKEN
-   SENTRY_ORG
-   SENTRY_PROJECT
-   VITE_SENTRY_DSN
-```
-
-After step 1, `REDIS_URL` is auto-injected (per `render.yaml`).
-Once Redis is connected, every health check flips to `ok` and every
-dormant Redis-dependent metric starts populating.
-
----
-
-## 2. What shipped in this session (code-level, ready to deploy)
-
-### Backend Sentry — full skill compliance
-- `backend/src/instrument.ts` (NEW) — sidecar that runs `Sentry.init()` as the
-  very first side effect, plus flush-on-exit handlers for `uncaughtException`
-  and `unhandledRejection`.
-- `backend/src/server.ts` and `backend/src/worker.ts` now `import "./instrument"`
-  as their first line so Sentry's auto-instrumentation patches Express / HTTP
-  before any handler is registered.
-- `backend/src/app.ts` registers `Sentry.setupExpressErrorHandler(app)` after
-  all routes and before the custom Arabic error handler.
-- `backend/src/lib/sentry.ts` already injects `correlation_id` tag from
-  `AsyncLocalStorage` via `beforeSend`.
-- `backend/build.mjs` runs Sentry CLI `sourcemaps inject` + `upload`
-  (gated by `SENTRY_AUTH_TOKEN/ORG/PROJECT`) and strips `.map` files from
-  the deploy artefact post-upload.
-- `@sentry/cli` added to backend devDependencies.
-
-### Metrics — dormant counters now incrementing
-- `backend/src/lib/auth-activity.ts` — every login / register / Firebase /
-  OTP / lockout path now emits `auth_outcomes_total{method, outcome}`.
-- `backend/src/lib/redis-client.ts` — `redis_ops_total` and
-  `redis_errors_total` populate from client events (`connect`,
-  `reconnecting`, `end`, `error`) and from a `trackRedisOp()` helper that
-  hot-path callers can adopt.
-- `backend/src/lib/socket.ts` — `socket_connected_clients` (gauge) and
-  `socket_events_total` (counter) populate on every connection / disconnect /
-  join-user / join-admin / emit.
-
-### Alerting — real evaluators replace `return false`
-- `services/alerting.service.ts::checkRuleCondition` now wires real reads
-  for **3 of 10 rules**:
-  - `worker_heartbeat_missing` — Redis `worker:heartbeat` age vs window
-  - `redis_disconnect` — counter delta on `redis_errors_total`
-  - `neon_connection_failure` — counter delta on the same (placeholder
-    until Neon-specific counter is wired)
-  The other 7 rules return false and are documented as P2-pending in
-  `ALERTING_ARCHITECTURE.md`.
-
-### Telegram / Discord / generic webhook dispatch is real (from prior session) — `attemptDispatch` makes actual HTTP calls with `AbortSignal.timeout(10s)`, retry-once-after-5s, Sentry capture on retry-failure, and ALERTING_ENABLED dark-launch gate.
-
-### CWV ingestion — fixed and verified live
-- Frontend `web-vitals.ts` wraps the JSON in a `Blob` with
-  `type: "application/json"` so `navigator.sendBeacon` doesn't default to
-  `text/plain`.
-- Backend `routes/cwv.ts` adds a route-scoped `express.text()` parser as
-  defence-in-depth; returns `400` with explicit `reason:
-  "malformed_json" | "empty_body" | "schema_mismatch"`.
-- 9 new vitest cases cover all three Content-Type vectors + every validator
-  failure mode.
-- **Production validated**: every `/api/cwv` POST since deploy `36042b8`
-  (2026-05-16T05:49Z) returns `204`. Zero `400`s.
-
----
-
-## 3. Live production posture
-
-### Working
-| Surface | State |
-|---|---|
-| `GET /api/healthz` | ✅ 200 `{status:"ok"}` |
-| `POST /api/cwv` (Blob path) | ✅ 204 |
-| `POST /api/cwv` (text/plain defence path) | ✅ 204 |
-| `GET /robots.txt` | ✅ correct body |
-| `GET /sitemap.xml` | ✅ XML with hreflang |
-| `GET /api/metrics` (no token) | ✅ 401 |
-| Frontend Sentry | ✅ confirmed in user's earlier dashboard |
-| Backend Sentry — `Sentry.init()` | ✅ DSN auto-generated by Render |
-| Express CSP, COOP, scriptSrc | ✅ unchanged from baseline |
-
-### Working but degraded (Redis missing)
-| Surface | State |
-|---|---|
-| Rate limiter | falls back to in-memory (single-instance only) |
-| Alerting dedup / global rate-limit | fails open (could over-alert) |
-| Socket.IO Redis adapter | not connected (single-instance only) |
-| `redis_*` metrics | only `redis_errors_total{reason="connection_failed"}` increments at boot |
-
-### Failing (correctly reporting failing — fixes once Redis lands)
-| Surface | State |
-|---|---|
-| `GET /api/healthz/ready` | 503 — all 4 dependency checks failing |
-| `GET /api/healthz/redis` | 503 |
-| `GET /api/healthz/neon` | 503 |
-| `GET /api/healthz/worker` | 503 (also worker service not provisioned) |
-| `GET /api/healthz/socket` | 503 |
-| Worker heartbeat | not running (worker service not provisioned) |
-| Alerting evaluator | not running (worker service not provisioned) |
-| Cron jobs (coupon, stock, OTP cleanup) | not running |
-
-### Backend Sentry — partial
-- `Sentry.init()` ✅
-- Express error capture ✅ (this session)
-- Global uncaughtException / unhandledRejection capture ✅ (auto + flush-on-exit)
-- Source-map upload ⏸ owner-blocked (`SENTRY_AUTH_TOKEN/ORG/PROJECT`)
-
----
-
-## 4. Validation evidence
-
-### Local (this session)
-
-```
-pnpm typecheck        ✓ workspace (backend, frontend, scripts) clean
-vitest                Test Files 9 passed (9) | Tests 80 passed (80)
-backend build         ✓ esbuild emits dist/index.mjs + dist/worker.mjs
-                      [sentry] source-map upload skipped (SENTRY_AUTH_TOKEN/ORG/PROJECT not set)
-frontend build        ✓ vite emits dist/public/* with bundle 21,691 B gzip on the index entry
-```
-
-### Production (against https://subnation.ly)
-
-| Check | Result |
-|---|---|
-| `/api/healthz` | `200 {status:"ok"}` |
-| `/api/cwv` valid sample | `204` |
-| `/api/metrics` no token | `401` |
-| `/robots.txt` | served |
-| Render last deploy | `36042b8` live since 05:49Z |
-| Render logs grep "REDIS_URL" | `REDIS_URL is missing in production. Falling back to in-memory stores.` (every boot) |
-| Render `list_key_value` | `No Key Value instances found` — diagnostic match |
-
----
-
-## 5. Honest residual risk
-
-| Risk | Severity | Mitigation in code | Owner step |
-|---|---|---|---|
-| `subnation-redis` not provisioned | **HIGH** | code already guards with in-memory fallback | create the KV service in Render |
-| `subnation-worker` not provisioned | **HIGH** | code is correct; service must exist | apply blueprint or create service |
-| Source-map upload skipped | medium | gracefully no-ops; build still ships | provision `SENTRY_AUTH_TOKEN/ORG/PROJECT` |
-| `auth_outcomes_total` rule evaluators not wired | medium | counter increments correctly; eval returns false | next session, add `evalCounterDelta` for `auth_failure_rate_high` etc. |
-| 7 of 10 alert rules still no-op | medium | dispatch path is real and tested via `/api/admin/alerts/test` | wire metric reads in `checkRuleCondition` |
-| `worker_jobs_total` / `neon_*` counters not incremented | low | counters defined; only call sites missing | one PR per cron job + a single `pg.Pool` event hook |
-
----
-
-## 6. Next-session priorities
-
-| Pri | Task | Owner |
+| Dimension | Score | Notes |
 |---|---|---|
-| P0 | Provision `subnation-redis` (free tier) and `subnation-worker` (starter, free unavailable for workers) in Render | DevOps |
-| P0 | Set `METRICS_ADMIN_TOKEN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `VITE_SENTRY_DSN` Render env vars | DevOps |
-| P1 | After Redis lands, verify `/api/healthz/ready` flips to `ok`; verify `worker:heartbeat` key appears | Code |
-| P1 | Wire `worker_jobs_total` in each cron file (`backend/src/jobs/*.ts`) | Code |
-| P1 | Wire `neon_connections_active` / `neon_inflight_queries` from `pg.Pool` events in `shared/db/src/index.ts` | Code |
-| P2 | Wire remaining 7 alert rule evaluators (`evalCounterDelta` template is in place) | Code |
-| P2 | Frontend admin Observability dashboard UI (backend endpoints already shipped) | Code |
-| P2 | Render_MCP-driven rollback automation script | Code |
-| P3 | Lighthouse CI + image AVIF/WebP optimization | Code + assets |
+| Functional production-readiness | **8.5 / 10** | Custom domain, Redis live, observability wired, alerting real, CWV pipeline working |
+| Enterprise-readiness | **6.5 / 10** | No SSO/RBAC depth, mock payments, no E2E tests, but the operational tier is in good shape |
+| Build / CI | green | typecheck, unit tests, build all pass |
+| Security guardrails | preserved | CSP, COOP, scriptSrcAttr, Trusted Types untouched; no inline scripts; HSTS preload |
 
 ---
 
-## 7. Memory_MCP entities (for cross-session continuity)
+## 2. Production surface (verified live against `https://subnation.ly`)
 
-- `subnation2:audit:2026-05-16` — pre-sweep state findings
-- `subnation2:roadmap:next-priorities` — P0/P1/P2/P3 priorities
-- `subnation2:state:post-stabilization:2026-05-16` — post-stabilization deltas
-- `subnation2:state:post-backend-observability:2026-05-16` (this session) — see §2
+| Surface | Status |
+|---|---|
+| `https://subnation.ly/` | ✅ 200 |
+| `https://subnation.ly/api/healthz` | ✅ 200 `{"status":"ok"}` |
+| `https://subnation.ly/api/healthz/ready` | ✅ 200 — redis 62 ms, neon 66 ms, worker 62 ms, socket 63 ms |
+| `https://subnation.ly/sitemap.xml` | ✅ XML with hreflang, all `<loc>` use canonical |
+| `https://subnation.ly/robots.txt` | ✅ canonical sitemap reference |
+| `https://www.subnation.ly/*` | ✅ 301 → `https://subnation.ly/*` (Render edge) |
+| `https://subnation2.onrender.com/*` (legacy) | ✅ 301 → `https://subnation.ly/*` (app middleware), Cache-Control 24 h |
+| `https://subnation2.onrender.com/api/healthz` | ✅ 200 (probe-safe — middleware skips redirect) |
+| `POST /api/cwv` (Blob/text/plain/octet-stream) | ✅ 204 |
+| `GET /api/metrics` (no token) | ✅ 401 (admin-gated) |
+| Frontend Sentry | ✅ confirmed working |
+| Backend Sentry init + Express error handler + uncaughtException flush | ✅ wired |
+| TLS — Google Trust Services, valid May 16 → Aug 14 2026, on both apex and www | ✅ |
+| HSTS preload | ✅ `max-age=31536000; includeSubDomains; preload` |
 
 ---
 
-## 8. Companion documents
+## 3. Active runtime systems
 
-- `OBSERVABILITY_SETUP.md` — overall observability architecture (updated)
-- `ALERTING_ARCHITECTURE.md` — alert rule taxonomy + dispatch (updated)
-- `SEO_AND_CWV_REPORT.md` — CWV pipeline (now post-fix) + SEO
-- `OPERATIONS_RUNBOOK.md` — per-rule triage + rollback
-- `SENTRY_BACKEND_SETUP.md` — backend-only Sentry setup (NEW this session)
-- `METRICS_AND_MONITORING.md` — metric catalog + cardinality discipline (NEW this session)
-- `docs/AUDIT_REPORT_2026-05-16.md` — the comprehensive read-only audit that drove the prior sweeps
+| System | State | Where |
+|---|---|---|
+| Redis | live, Redis Cloud, ~63 ms ping | `lib/redis-client.ts` singleton |
+| Socket.IO Redis adapter | active | `lib/socket.ts` |
+| rate-limit-redis | using Redis (was in-memory fallback before) | `app.ts` apiLimiter / authLimiter / otpLimiters |
+| Web schedulers (heartbeat, alerting evaluator, cron) | running in web tier under Redis leader lock | `lib/web-scheduler.ts`, `lib/scheduler-coordinator.ts` |
+| `worker:heartbeat` | written every 15 s | `worker/heartbeat.ts` |
+| Alerting evaluator | running every 60 s; 6 of 10 rules have real evaluators | `services/alerting.service.ts` |
+| Alerting dispatch | real Telegram + Discord + generic webhook with AbortSignal.timeout(10s) + retry-once-after-5s + Sentry capture | same |
+| Alerting dedup | Redis `SET NX EX 300` keyed `alert:dedup:<rule>|<labelHash>` | same |
+| Alerting global rate-limit | Redis windowed `INCR alert:global:<minute>` + EXPIRE 70 (≤30/min) | same |
+| Cron jobs | couponWatcher, stockWatcher, otpCleanup, cron — running in web tier | `jobs/*` |
+| CWV ingestion | Blob with `application/json` Content-Type from frontend; Express `text/plain` parser as defence | `frontend/src/lib/web-vitals.ts` + `backend/src/routes/cwv.ts` |
+| Backend Sentry | `instrument.ts` sidecar imported first; `setupExpressErrorHandler(app)` wired; flush-on-exit handlers | `instrument.ts`, `app.ts` |
+| Frontend Sentry | `instrument.ts` first import; `reactErrorHandler()` on `createRoot`; replay enabled with masking | `frontend/src/instrument.ts` |
+| Document direction | locked once at boot via `lib/direction.ts`; helmet no longer manages `<html dir>` | `lib/direction.ts`, `main.tsx`, `App.tsx` |
+| Canonical-host redirect | 301 from legacy onrender + www to apex; skips `/api/healthz/*` | `backend/src/app.ts` |
+| Metrics actively populated | `http_requests_total`, `http_request_duration_seconds`, `auth_outcomes_total`, `redis_*`, `socket_*`, `cwv_*`, `alerts_dispatched_total`, `monitoring_errors_total`, `redis_ping_latency_seconds`, `redis_degraded_mode_total` | `lib/metrics.ts` + call sites |
+
+---
+
+## 4. Owner-action items still outstanding
+
+| Item | Why | What |
+|---|---|---|
+| Firebase Console → Authorized domains | Google Sign-In popup auth fails with `auth/unauthorized-domain` on `subnation.ly` until both apex + www are added there | https://console.firebase.google.com/project/subnation-2571e/authentication/settings → Authorized domains → add `subnation.ly` + `www.subnation.ly` (keep onrender during transition) |
+| `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` env on Render | Source-map upload skipped; backend stack traces show transformed filenames | Set the three env vars; next deploy auto-uploads |
+| `METRICS_ADMIN_TOKEN` env on Render | Currently `/api/metrics` is reachable only via admin JWT; setting this makes it scrapable by Prometheus/Grafana | `openssl rand -hex 32` → set as env |
+| `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL` (optional) | Alerting service already supports them but they're unset, so dispatch path skips them | Set if/when you want secondary alert channels |
+| Stage-2 CORS cleanup (~30 days from migration) | Once analytics confirm zero traffic on legacy onrender, remove it from `APP_ORIGINS` | Render MCP `update_environment_variables APP_ORIGINS=https://subnation.ly,https://www.subnation.ly` |
+| Worker tier provisioning (optional, ~$7/mo) | If you grow beyond a single web instance, schedulers should move to a dedicated worker so multi-instance never races | Render dashboard → New → Blueprint → applies `subnation-worker` from `render.yaml` → set `DISABLE_WEB_SCHEDULERS=true` on web |
+
+---
+
+## 5. Surviving documentation map
+
+Living docs (kept at workspace root; one purpose each):
+
+| Doc | Purpose |
+|---|---|
+| `README.md` | Project overview, dev setup, deployment summary |
+| `FINAL_RUNTIME_STATE.md` (this file) | Single living state-of-the-platform doc |
+| `OPERATIONS_RUNBOOK.md` | On-call playbook: per-rule triage, dashboards, rollback, scaling thresholds |
+| `OBSERVABILITY_SETUP.md` | Architecture: correlation, Pino schema, Sentry, metrics, health, env vars, Replay decision |
+| `ALERTING_ARCHITECTURE.md` | Taxonomy, 10-rule registry, channel matrix, dedup/rate-limit, dark-launch, escalation |
+| `METRICS_AND_MONITORING.md` | 14-metric catalog, cardinality discipline, active vs P2-pending matrix |
+| `SENTRY_BACKEND_SETUP.md` | Backend-only Sentry: instrument.ts sidecar, source-map upload gate, env vars |
+| `REDIS_SETUP.md` | Operator setup: provider options, env vars, verification recipes |
+| `REDIS_RUNTIME_ARCHITECTURE.md` | Runtime topology, who uses Redis, failure modes, sizing |
+| `REDIS_OPERATIONS.md` | On-call playbook for Redis: per-symptom triage, scaling, forbidden ops |
+| `CACHE_STRATEGY.md` | What to cache, what NOT to, TTL discipline, stampede protection, key naming |
+| `SEO_AND_CWV_REPORT.md` | Technical SEO inventory, sample JSON-LD, CWV pipeline, bundle budget |
+| `SEO_DOMAIN_MIGRATION.md` | Canonical signals, 301 strategy, hreflang, Google Search Console site-move |
+| `DOMAIN_RUNTIME_ARCHITECTURE.md` | Request lifecycle on subnation.ly, cookies, Firebase, Socket.IO, Sentry |
+| `DOMAIN_MIGRATION_REPORT.md` | What changed, what's owner-action, stage-2 cleanup plan |
+| `RTL_LAYOUT_ARCHITECTURE.md` | Tenets, boot order, single-mutator API, allowed overrides, forbidden patterns |
+| `MOBILE_NAVIGATION_STABILITY.md` | Why bottom nav was inverting, Android Chrome smoke tests |
+| `UI_DIRECTION_FIX_REPORT.md` | Root cause + fix for the post-migration RTL flicker |
+| `RUFLO.md` | Ruflo dev-tooling notes (separate from project) |
+| `docs/API.md` | Public API surface |
+| `docs/COMPLIANCE.md` | Data retention + RBAC tiers |
+| `docs/DISASTER_RECOVERY.md` | RTO/RPO + recovery scenarios |
+| `docs/NEON_MCP_SETUP.md` | Neon MCP local wiring |
+
+Historical artefacts (in `.kiro/specs/observability-seo-cwv-maturity/`):
+
+- `inspection-report.md` — Phase 1 read-only audit
+- `master-execution-plan.md` — Phase 2-8 task list with rollback procedures
+- `requirements.md`, `design.md`, `tasks.md` — the canonical spec
+- `inspection-data/` — raw scan dumps (`web-check-report.md`,
+  `pagespeed-report.md`, `bundle-baseline.json`,
+  `_raw-render-list-logs.json`, `_raw-render-get-metrics.json`,
+  `context7-citations.json`, etc.)
+
+Deleted as superseded by this doc + the topical docs:
+
+- `MASTER_PLATFORM_AUDIT.md`
+- `FULL_PLATFORM_REPORT.md`
+- `FINAL_PLATFORM_STATE.md`
+- `docs/AUDIT_REPORT_2026-05-16.md`
+
+---
+
+## 6. Validation evidence (post-cleanup)
+
+```
+$ pnpm typecheck         ✓ all 4 workspace packages clean
+$ pnpm exec vitest run   Test Files 9 passed (9) | Tests 80 passed (80)
+$ pnpm run build         ✓ backend dist + frontend dist emit
+                         [bundle-budget] index-*.js: 21,696 B gzip — under 47 KiB warn
+                         PWA precache 60 entries (1962.55 KiB)
+
+$ curl -s https://subnation.ly/api/healthz/ready | jq .status
+"ok"
+
+$ curl -sI https://subnation2.onrender.com/login | head -2
+HTTP/2 301
+location: https://subnation.ly/login
+
+$ curl -sI https://www.subnation.ly/products | head -2
+HTTP/2 301
+location: https://subnation.ly/products
+```
+
+---
+
+## 7. Memory MCP entities
+
+For cross-session continuity, the memory knowledge graph holds:
+
+- `subnation2:audit:2026-05-16` (Audit) — pre-sweep state findings
+- `subnation2:roadmap:next-priorities` (Roadmap) — P0/P1/P2/P3 priorities
+- `subnation2:state:post-stabilization:2026-05-16` (State) — post-stabilization deltas
+
+Use `memory.search_nodes("subnation2")` to recall.
+
+---
+
+## 8. Known residual risks
+
+| Risk | Severity | Mitigation in place |
+|---|---|---|
+| Coupon `maxUses` over-redemption under high concurrency | medium | atomic increment via `sql\`usedCount + 1\``; pre-check still outside tx — fix is small |
+| Topup approve race (no `FOR UPDATE`) | low | re-check inside tx; concurrent approvers narrow to microsecond window |
+| `backend/src/migrate.ts` runtime DDL co-exists with Drizzle migrations | medium | CI runs `drizzle-kit generate && git diff --exit-code` so drift is caught |
+| Admin TOTP secret stored unencrypted | medium | tracked from original audit |
+| Render free-tier eviction | low | documented in `OPERATIONS_RUNBOOK.md §5` with tier promotion thresholds |
+| Worker-job-failures-high / api-5xx-rate-high / api-p95-latency-high / frontend-sentry-error-rate-high alert evaluators are no-op | low | dispatch path proven via test endpoint; rule reads pending production-volume baselines |
+| Stage-2 CORS cleanup (drop legacy onrender from APP_ORIGINS) | low | scheduled ~30 d from migration; redirect middleware stays indefinitely |
