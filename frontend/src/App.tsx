@@ -60,6 +60,7 @@ const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
 const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
 const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
 const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
+const AdminSystemPage = lazy(() => import("@/pages/admin/system"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +138,7 @@ function AdminProtectedRoutes() {
         <Route path="/admin/referrals" component={AdminReferralsPage} />
         <Route path="/admin/coupons" component={AdminCouponsPage} />
         <Route path="/admin/alerts" component={AdminAlertsPage} />
+        <Route path="/admin/system" component={AdminSystemPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

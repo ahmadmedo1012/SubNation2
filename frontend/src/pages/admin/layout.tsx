@@ -4,6 +4,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
 import {
+  Activity,
   Bell,
   ChevronRight,
   Clock,
@@ -57,7 +58,10 @@ const NAV_SECTIONS = [
   },
   {
     label: "النظام",
-    items: [{ href: "/admin/settings", label: "الإعدادات", icon: Settings }],
+    items: [
+      { href: "/admin/system", label: "حالة النظام", icon: Activity },
+      { href: "/admin/settings", label: "الإعدادات", icon: Settings },
+    ],
   },
 ];
 
@@ -75,6 +79,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/coupons": "الكوبونات",
   "/admin/alerts": "صندوق التنبيهات",
   "/admin/security": "الأمان",
+  "/admin/system": "حالة النظام",
 };
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; href: string }[]> =
