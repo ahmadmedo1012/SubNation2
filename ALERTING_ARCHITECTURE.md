@@ -8,26 +8,26 @@ not in every web instance.
 
 ## 1. Taxonomy
 
-| Severity | Meaning | Default channels |
-|---|---|---|
-| `info` | informational, includes resolution events | Telegram, Discord |
-| `warning` | service degraded, customer impact possible | Telegram, Discord, generic webhook |
-| `critical` | customer-facing outage or data risk | all channels, on-call paged |
+| Severity   | Meaning                                    | Default channels                   |
+| ---------- | ------------------------------------------ | ---------------------------------- |
+| `info`     | informational, includes resolution events  | Telegram, Discord                  |
+| `warning`  | service degraded, customer impact possible | Telegram, Discord, generic webhook |
+| `critical` | customer-facing outage or data risk        | all channels, on-call paged        |
 
 ## 2. Rules (10 total)
 
-| # | Name | Severity | Window | Threshold | Runbook anchor |
-|---|---|---|---|---|---|
-| 1 | `api_5xx_rate_high` | warning | 5 min | > 5% | `#api-5xx` |
-| 2 | `auth_failure_rate_high` | warning | 5 min | > 20% | `#auth-failure` |
-| 3 | `firebase_verifyidtoken_failures` | critical | 5 min | > 5 | `#firebase-verify` |
-| 4 | `frontend_sentry_error_rate_high` | warning | 1 min | > 10/min | `#fe-sentry` |
-| 5 | `redis_disconnect` | info | 60 s | ≥ 1 event | `#redis` |
-| 6 | `neon_connection_failure` | critical | 60 s | ≥ 1 failure | `#neon` |
-| 7 | `worker_heartbeat_missing` | critical | 2 min | no heartbeat | `#worker` |
-| 8 | `api_p95_latency_high` | critical | 5 min | p95 > 1500 ms | `#latency` |
-| 9 | `worker_job_failures_high` | warning | 5 min | > 3 fails | `#jobs` |
-| 10 | `abnormal_lockouts` | warning | 5 min | ≥ 10 lockouts | `#lockouts` |
+| #   | Name                              | Severity | Window | Threshold     | Runbook anchor     |
+| --- | --------------------------------- | -------- | ------ | ------------- | ------------------ |
+| 1   | `api_5xx_rate_high`               | warning  | 5 min  | > 5%          | `#api-5xx`         |
+| 2   | `auth_failure_rate_high`          | warning  | 5 min  | > 20%         | `#auth-failure`    |
+| 3   | `firebase_verifyidtoken_failures` | critical | 5 min  | > 5           | `#firebase-verify` |
+| 4   | `frontend_sentry_error_rate_high` | warning  | 1 min  | > 10/min      | `#fe-sentry`       |
+| 5   | `redis_disconnect`                | info     | 60 s   | ≥ 1 event     | `#redis`           |
+| 6   | `neon_connection_failure`         | critical | 60 s   | ≥ 1 failure   | `#neon`            |
+| 7   | `worker_heartbeat_missing`        | critical | 2 min  | no heartbeat  | `#worker`          |
+| 8   | `api_p95_latency_high`            | critical | 5 min  | p95 > 1500 ms | `#latency`         |
+| 9   | `worker_job_failures_high`        | warning  | 5 min  | > 3 fails     | `#jobs`            |
+| 10  | `abnormal_lockouts`               | warning  | 5 min  | ≥ 10 lockouts | `#lockouts`        |
 
 The rule registry is exported as `ALERT_RULES` from
 `backend/src/services/alerting.service.ts`.
@@ -39,11 +39,11 @@ The rule registry is exported as `ALERT_RULES` from
 
 ## 3. Channels
 
-| Channel | Implementation | Required env |
-|---|---|---|
-| Telegram (primary) | `POST https://api.telegram.org/bot{TOKEN}/sendMessage` with `disable_web_page_preview: false` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| Discord webhook (secondary) | `POST {DISCORD_WEBHOOK_URL}` with `embeds` payload, severity-coloured | `DISCORD_WEBHOOK_URL` |
-| Generic webhook (secondary) | `POST {GENERIC_ALERT_WEBHOOK_URL}` with raw `AlertEvent` JSON | `GENERIC_ALERT_WEBHOOK_URL` |
+| Channel                     | Implementation                                                                                | Required env                             |
+| --------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Telegram (primary)          | `POST https://api.telegram.org/bot{TOKEN}/sendMessage` with `disable_web_page_preview: false` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| Discord webhook (secondary) | `POST {DISCORD_WEBHOOK_URL}` with `embeds` payload, severity-coloured                         | `DISCORD_WEBHOOK_URL`                    |
+| Generic webhook (secondary) | `POST {GENERIC_ALERT_WEBHOOK_URL}` with raw `AlertEvent` JSON                                 | `GENERIC_ALERT_WEBHOOK_URL`              |
 
 A channel without configured credentials short-circuits as `outcome:"skipped"`
 and is **not** counted against the rate limit.
@@ -70,10 +70,10 @@ block Discord.
 
 ## 5. Production-Safe rate limit & dedup
 
-| Mechanism | Storage | Window | Behaviour |
-|---|---|---|---|
-| Per-key dedup | Redis `SET alert:dedup:${rule}|${stableHash(labels)} NX EX 300` | 5 min | second invocation within window → `outcome:"deduped"` |
-| Global rate limit | Redis `INCR alert:global:${minute}` + `EXPIRE 70` | rolling 60 s | > 30/min → `outcome:"rate-limited"` |
+| Mechanism         | Storage                                           | Window                           | Behaviour                           |
+| ----------------- | ------------------------------------------------- | -------------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| Per-key dedup     | Redis `SET alert:dedup:${rule}                    | ${stableHash(labels)} NX EX 300` | 5 min                               | second invocation within window → `outcome:"deduped"` |
+| Global rate limit | Redis `INCR alert:global:${minute}` + `EXPIRE 70` | rolling 60 s                     | > 30/min → `outcome:"rate-limited"` |
 
 Both fail open if Redis is unavailable: better to over-alert than to silently
 drop critical events.
@@ -123,10 +123,10 @@ repeated invocations during validation are not silently suppressed.
 
 ## 9. Escalation policy
 
-| Severity | First responder | Escalate after |
-|---|---|---|
-| `info` | none — log only | n/a |
-| `warning` | on-call eng. via Telegram | 30 min unacked → Discord channel |
+| Severity   | First responder                     | Escalate after                      |
+| ---------- | ----------------------------------- | ----------------------------------- |
+| `info`     | none — log only                     | n/a                                 |
+| `warning`  | on-call eng. via Telegram           | 30 min unacked → Discord channel    |
 | `critical` | on-call eng. via Telegram + Discord | 10 min unacked → escalation contact |
 
 Escalation contacts and rotations live in `OPERATIONS_RUNBOOK.md` (per-rule

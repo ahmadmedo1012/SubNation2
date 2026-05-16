@@ -36,14 +36,16 @@ class CachedValue<T> {
       this.value = v;
       this.builtAt = now;
       this.lastKnownGoodAt = now;
-      return { value: v, lastKnownGoodAt: new Date(this.lastKnownGoodAt).toISOString(), stale: false };
+      return {
+        value: v,
+        lastKnownGoodAt: new Date(this.lastKnownGoodAt).toISOString(),
+        stale: false,
+      };
     } catch {
       // Return last-known-good with stale flag
       return {
         value: this.value,
-        lastKnownGoodAt: this.lastKnownGoodAt
-          ? new Date(this.lastKnownGoodAt).toISOString()
-          : null,
+        lastKnownGoodAt: this.lastKnownGoodAt ? new Date(this.lastKnownGoodAt).toISOString() : null,
         stale: true,
       };
     }

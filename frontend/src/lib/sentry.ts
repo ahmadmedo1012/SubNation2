@@ -46,13 +46,11 @@ export function captureError(
 
 /** Set user context for Sentry events (id required, email/username optional). */
 export function setSentryUser(
-  user:
-    | {
-        id: string | number;
-        email?: string;
-        username?: string;
-      }
-    | null,
+  user: {
+    id: string | number;
+    email?: string;
+    username?: string;
+  } | null,
 ): void {
   if (user) {
     Sentry.setUser(user);

@@ -216,11 +216,10 @@ export default function ProductPage() {
 
   const seoBlock = useSeo({
     title: `${product.name} — ${formatCurrency(displayPrice)}`,
-    description:
-      (product.description ?? `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`).slice(
-        0,
-        160,
-      ),
+    description: (
+      product.description ??
+      `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
+    ).slice(0, 160),
     image: product.image_url ?? undefined,
     type: "product",
     path: `/product/${product.id}`,

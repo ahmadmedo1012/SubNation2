@@ -30,7 +30,8 @@ export function buildOrganizationLd() {
       "@type": "PostalAddress",
       addressCountry: "LY",
     },
-    description: "سوق الاشتراكات الرقمية في ليبيا — Netflix، Spotify، PS Plus، Disney+ بالدينار الليبي.",
+    description:
+      "سوق الاشتراكات الرقمية في ليبيا — Netflix، Spotify، PS Plus، Disney+ بالدينار الليبي.",
   };
 }
 
@@ -66,9 +67,7 @@ export function buildProductLd(p: ProductLdInput) {
       priceCurrency: "LYD",
       url: `${origin}/product/${p.id}`,
       availability:
-        p.isActive === false
-          ? "https://schema.org/OutOfStock"
-          : "https://schema.org/InStock",
+        p.isActive === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
     },
   };
 }
@@ -90,7 +89,9 @@ export function buildBreadcrumbLd(items: BreadcrumbItem[]) {
       "@type": "ListItem",
       position: idx + 1,
       name: item.name,
-      item: item.href.startsWith("http") ? item.href : `${origin}${item.href.startsWith("/") ? item.href : "/" + item.href}`,
+      item: item.href.startsWith("http")
+        ? item.href
+        : `${origin}${item.href.startsWith("/") ? item.href : "/" + item.href}`,
     })),
   };
 }

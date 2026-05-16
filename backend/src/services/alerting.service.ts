@@ -66,23 +66,83 @@ export interface ChannelDeliveryResult {
 // ── Rule registry ────────────────────────────────────────────────────────────
 
 export const ALERT_RULES: AlertRuleSpec[] = [
-  { name: "api_5xx_rate_high",            severity: "warning",  windowSec: 300, threshold: "> 5%",                          runbookSection: "#api-5xx" },
-  { name: "auth_failure_rate_high",       severity: "warning",  windowSec: 300, threshold: "> 20%",                         runbookSection: "#auth-failure" },
-  { name: "firebase_verifyidtoken_failures", severity: "critical", windowSec: 300, threshold: "> 5",                        runbookSection: "#firebase-verify" },
-  { name: "frontend_sentry_error_rate_high", severity: "warning", windowSec: 60,  threshold: "> 10/min",                    runbookSection: "#fe-sentry" },
-  { name: "redis_disconnect",             severity: "info",     windowSec: 60,  threshold: "≥ 1 event",                     runbookSection: "#redis" },
-  { name: "neon_connection_failure",      severity: "critical", windowSec: 60,  threshold: "≥ 1 failure",                   runbookSection: "#neon" },
-  { name: "worker_heartbeat_missing",     severity: "critical", windowSec: 120, threshold: "no heartbeat 2 min",            runbookSection: "#worker" },
-  { name: "api_p95_latency_high",         severity: "critical", windowSec: 300, threshold: "p95 > 1500ms",                  runbookSection: "#latency" },
-  { name: "worker_job_failures_high",     severity: "warning",  windowSec: 300, threshold: "> 3 fails",                     runbookSection: "#jobs" },
-  { name: "abnormal_lockouts",            severity: "warning",  windowSec: 300, threshold: "≥ 10 lockouts (per IP or global)", runbookSection: "#lockouts" },
+  {
+    name: "api_5xx_rate_high",
+    severity: "warning",
+    windowSec: 300,
+    threshold: "> 5%",
+    runbookSection: "#api-5xx",
+  },
+  {
+    name: "auth_failure_rate_high",
+    severity: "warning",
+    windowSec: 300,
+    threshold: "> 20%",
+    runbookSection: "#auth-failure",
+  },
+  {
+    name: "firebase_verifyidtoken_failures",
+    severity: "critical",
+    windowSec: 300,
+    threshold: "> 5",
+    runbookSection: "#firebase-verify",
+  },
+  {
+    name: "frontend_sentry_error_rate_high",
+    severity: "warning",
+    windowSec: 60,
+    threshold: "> 10/min",
+    runbookSection: "#fe-sentry",
+  },
+  {
+    name: "redis_disconnect",
+    severity: "info",
+    windowSec: 60,
+    threshold: "≥ 1 event",
+    runbookSection: "#redis",
+  },
+  {
+    name: "neon_connection_failure",
+    severity: "critical",
+    windowSec: 60,
+    threshold: "≥ 1 failure",
+    runbookSection: "#neon",
+  },
+  {
+    name: "worker_heartbeat_missing",
+    severity: "critical",
+    windowSec: 120,
+    threshold: "no heartbeat 2 min",
+    runbookSection: "#worker",
+  },
+  {
+    name: "api_p95_latency_high",
+    severity: "critical",
+    windowSec: 300,
+    threshold: "p95 > 1500ms",
+    runbookSection: "#latency",
+  },
+  {
+    name: "worker_job_failures_high",
+    severity: "warning",
+    windowSec: 300,
+    threshold: "> 3 fails",
+    runbookSection: "#jobs",
+  },
+  {
+    name: "abnormal_lockouts",
+    severity: "warning",
+    windowSec: 300,
+    threshold: "≥ 10 lockouts (per IP or global)",
+    runbookSection: "#lockouts",
+  },
 ];
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-const DEDUP_TTL_SEC = 300;          // 5 minute dedup window
-const GLOBAL_RATE_LIMIT = 30;        // ≤ 30 dispatches per 60 s
-const GLOBAL_WINDOW_TTL_SEC = 70;    // outlasts the 60 s window so we never lose state
+const DEDUP_TTL_SEC = 300; // 5 minute dedup window
+const GLOBAL_RATE_LIMIT = 30; // ≤ 30 dispatches per 60 s
+const GLOBAL_WINDOW_TTL_SEC = 70; // outlasts the 60 s window so we never lose state
 const HTTP_TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 5_000;
 
@@ -150,16 +210,18 @@ export class AlertingService {
     const results: ChannelDeliveryResult[] = [];
     const correlationId = getCorrelationId();
 
-    alertingLogger().info(
-      { alertEvent, correlationId },
-      "Dispatching alert",
-    );
+    alertingLogger().info({ alertEvent, correlationId }, "Dispatching alert");
 
     // Dark-launch gate
     if (process.env.ALERTING_ENABLED === "false") {
       const outcome: ChannelDeliveryResult["outcome"] = "would-dispatch";
       for (const channel of ["telegram", "discord", "webhook"] as AlertChannel[]) {
-        this.incrementAlertsDispatched(alertEvent.rule, alertEvent.severity, channel, "rate-limited");
+        this.incrementAlertsDispatched(
+          alertEvent.rule,
+          alertEvent.severity,
+          channel,
+          "rate-limited",
+        );
         results.push({ channel, outcome, attempts: 0 });
       }
       alertingLogger().info({ rule: alertEvent.rule }, "Alerting disabled — would-dispatch only");
@@ -414,7 +476,8 @@ function buildRunbookUrl(section: string): string {
 }
 
 function formatTelegramMessage(event: AlertEvent): string {
-  const sevEmoji = event.severity === "critical" ? "🔴" : event.severity === "warning" ? "🟡" : "🔵";
+  const sevEmoji =
+    event.severity === "critical" ? "🔴" : event.severity === "warning" ? "🟡" : "🔵";
   const lines = [
     `${sevEmoji} *${event.severity.toUpperCase()}* — ${event.rule}`,
     "",
@@ -468,9 +531,11 @@ export async function dispatchTestAlert(
 
   // Build with private buildAlertEvent — exposed via a short shim so we don't
   // expose the whole class API.
-  const alert: AlertEvent = (alertingService as unknown as {
-    buildAlertEvent(r: AlertRuleSpec): AlertEvent;
-  }).buildAlertEvent(rule);
+  const alert: AlertEvent = (
+    alertingService as unknown as {
+      buildAlertEvent(r: AlertRuleSpec): AlertEvent;
+    }
+  ).buildAlertEvent(rule);
 
   // Stamp the test events with a uniquifier so dedup doesn't suppress repeated
   // /test calls during validation.

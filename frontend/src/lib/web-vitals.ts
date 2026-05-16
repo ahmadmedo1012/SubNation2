@@ -146,10 +146,7 @@ function rate(
   return "poor";
 }
 
-function buildSample(
-  name: "LCP" | "FCP" | "INP" | "CLS" | "TTFB",
-  value: number,
-): CWVSample {
+function buildSample(name: "LCP" | "FCP" | "INP" | "CLS" | "TTFB", value: number): CWVSample {
   const sample: CWVSample = {
     name,
     value,

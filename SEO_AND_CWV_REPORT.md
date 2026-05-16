@@ -2,13 +2,13 @@
 
 ## 1. Technical SEO
 
-| Asset | Implementation | Where |
-|---|---|---|
-| `robots.txt` | static, generated at boot from `APP_URL` | `backend/src/routes/seo.ts::ROBOTS_BODY` |
-| `sitemap.xml` | dynamic XML, 60 s in-memory cache, hreflang `ar` / `en` / `x-default` | `backend/src/routes/seo.ts::buildSitemap` |
-| Canonical URL | absolute, per route | `frontend/src/components/seo/MetaTags.tsx::link rel="canonical"` |
-| Mobile viewport | `width=device-width, initial-scale=1, viewport-fit=cover` | both `index.html` and `MetaTags.tsx` |
-| `<html lang dir>` | `ar/rtl` for Arabic routes, `en/ltr` for English | injected by `MetaTags.tsx` via `react-helmet-async` |
+| Asset             | Implementation                                                        | Where                                                            |
+| ----------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `robots.txt`      | static, generated at boot from `APP_URL`                              | `backend/src/routes/seo.ts::ROBOTS_BODY`                         |
+| `sitemap.xml`     | dynamic XML, 60 s in-memory cache, hreflang `ar` / `en` / `x-default` | `backend/src/routes/seo.ts::buildSitemap`                        |
+| Canonical URL     | absolute, per route                                                   | `frontend/src/components/seo/MetaTags.tsx::link rel="canonical"` |
+| Mobile viewport   | `width=device-width, initial-scale=1, viewport-fit=cover`             | both `index.html` and `MetaTags.tsx`                             |
+| `<html lang dir>` | `ar/rtl` for Arabic routes, `en/ltr` for English                      | injected by `MetaTags.tsx` via `react-helmet-async`              |
 
 ### `sitemap.xml` freshness invariant
 
@@ -31,12 +31,12 @@ Sitemap: https://subnation2.onrender.com/sitemap.xml
 
 `frontend/src/lib/seo-builders.ts` provides four schema.org generators:
 
-| Builder | Output type | Applied to |
-|---|---|---|
-| `buildOrganizationLd()` | `Organization` | home (`/`) |
-| `buildProductLd(product)` | `Product` + nested `Offer` | product detail (`/product/:id`) |
-| `buildBreadcrumbLd(items)` | `BreadcrumbList` | product detail |
-| `buildFaqLd(items)` | `FAQPage` | (helper available; FAQ page wiring is a follow-up) |
+| Builder                    | Output type                | Applied to                                         |
+| -------------------------- | -------------------------- | -------------------------------------------------- |
+| `buildOrganizationLd()`    | `Organization`             | home (`/`)                                         |
+| `buildProductLd(product)`  | `Product` + nested `Offer` | product detail (`/product/:id`)                    |
+| `buildBreadcrumbLd(items)` | `BreadcrumbList`           | product detail                                     |
+| `buildFaqLd(items)`        | `FAQPage`                  | (helper available; FAQ page wiring is a follow-up) |
 
 ### Sample: Organization LD (rendered on every page)
 
@@ -77,10 +77,10 @@ Sitemap: https://subnation2.onrender.com/sitemap.xml
 
 ## 3. Social SEO
 
-| Tag family | Coverage |
-|---|---|
-| OpenGraph | `og:title`, `og:description`, `og:type`, `og:url`, `og:image`, `og:locale`, `og:locale:alternate`, `og:site_name` — all rendered by `MetaTags.tsx` |
-| Twitter Card | `twitter:card="summary_large_image"`, `twitter:title`, `twitter:description`, `twitter:image` |
+| Tag family   | Coverage                                                                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenGraph    | `og:title`, `og:description`, `og:type`, `og:url`, `og:image`, `og:locale`, `og:locale:alternate`, `og:site_name` — all rendered by `MetaTags.tsx` |
+| Twitter Card | `twitter:card="summary_large_image"`, `twitter:title`, `twitter:description`, `twitter:image`                                                      |
 
 `og:image` defaults to `/subnation-logo.png` per route until per-route hero
 images are added.
@@ -139,11 +139,11 @@ Latest measured size (this session): **21,729 bytes gzip** → silent OK.
 ### Live targets (R4.3)
 
 | Metric | Mobile p75 | Desktop p75 |
-|---|---|---|
-| LCP | ≤ 2.5 s | ≤ 2.0 s |
-| FCP | ≤ 1.8 s | ≤ 1.2 s |
-| INP | ≤ 200 ms | ≤ 200 ms |
-| CLS | ≤ 0.1 | ≤ 0.1 |
+| ------ | ---------- | ----------- |
+| LCP    | ≤ 2.5 s    | ≤ 2.0 s     |
+| FCP    | ≤ 1.8 s    | ≤ 1.2 s     |
+| INP    | ≤ 200 ms   | ≤ 200 ms    |
+| CLS    | ≤ 0.1      | ≤ 0.1       |
 
 Pre-initiative baselines (from `web-check-report.md`): FCP 2.9 s, LCP 3.3 s,
 CLS 0.125, total transfer 441,580 B. The baselines do not yet include the

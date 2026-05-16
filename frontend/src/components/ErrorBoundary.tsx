@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
     });
   }
 
-  componentDidUpdate(prevProps: Props, prevState: State) {
+  componentDidUpdate(prevProps: Props, _prevState: State) {
     // Reset error state when children change
     if (this.state.hasError && prevProps.children !== this.props.children) {
       this.setState({ hasError: false, error: undefined });

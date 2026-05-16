@@ -11,24 +11,24 @@ preserved historically but reflect a state earlier than this sweep.
 
 ## 1. Headline scorecard
 
-| Dimension | Score | Notes |
-|---|---|---|
-| Functional production-readiness | **8.0 / 10** | up from 7.0 — race conditions fixed, observability wired, alerting real |
-| Enterprise-readiness | **6.0 / 10** | up from 5.0 — full health surface, admin observability, real alerting, but mock payments and no SSO/E2E yet |
-| Build / CI | green | typecheck, unit tests, build all pass |
-| Security guardrails | preserved | CSP, COOP, scriptSrcAttr, Trusted Types untouched; no inline scripts added |
+| Dimension                       | Score        | Notes                                                                                                       |
+| ------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| Functional production-readiness | **8.0 / 10** | up from 7.0 — race conditions fixed, observability wired, alerting real                                     |
+| Enterprise-readiness            | **6.0 / 10** | up from 5.0 — full health surface, admin observability, real alerting, but mock payments and no SSO/E2E yet |
+| Build / CI                      | green        | typecheck, unit tests, build all pass                                                                       |
+| Security guardrails             | preserved    | CSP, COOP, scriptSrcAttr, Trusted Types untouched; no inline scripts added                                  |
 
 ## 2. What shipped this sweep
 
 ### 2.1 P0 runtime bugs (5 fixes)
 
-| Fix | File | Outcome |
-|---|---|---|
-| `web-vitals` v4 API drift | `frontend/src/lib/web-vitals.ts` | switched `getX` → `onX`, removed Node-only `process.on()` footer |
-| `isolate()` undefined ref | `backend/src/worker/heartbeat.ts` | imported from `middlewares/instrumentation-isolation` |
-| Redis client never inited | `backend/src/lib/redis-client.ts`, `server.ts`, `worker.ts`, `app.ts` | one singleton, `await initRedisClient()` at bootstrap, prod-fatal-on-fail / dev-fallback |
-| Middleware not wired | `backend/src/app.ts` | correlation → pino-http (genReqId + customAttributeKeys) → metrics → instrumentation-isolation, all live |
-| Duplicate `<HelmetProvider>` | `frontend/src/App.tsx` | dropped inner provider; kept the one in `main.tsx` |
+| Fix                          | File                                                                  | Outcome                                                                                                  |
+| ---------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `web-vitals` v4 API drift    | `frontend/src/lib/web-vitals.ts`                                      | switched `getX` → `onX`, removed Node-only `process.on()` footer                                         |
+| `isolate()` undefined ref    | `backend/src/worker/heartbeat.ts`                                     | imported from `middlewares/instrumentation-isolation`                                                    |
+| Redis client never inited    | `backend/src/lib/redis-client.ts`, `server.ts`, `worker.ts`, `app.ts` | one singleton, `await initRedisClient()` at bootstrap, prod-fatal-on-fail / dev-fallback                 |
+| Middleware not wired         | `backend/src/app.ts`                                                  | correlation → pino-http (genReqId + customAttributeKeys) → metrics → instrumentation-isolation, all live |
+| Duplicate `<HelmetProvider>` | `frontend/src/App.tsx`                                                | dropped inner provider; kept the one in `main.tsx`                                                       |
 
 ### 2.2 Phase 2 — Observability
 
@@ -89,48 +89,48 @@ preserved historically but reflect a state earlier than this sweep.
 
 ## 3. What changed since the prior audit
 
-| Area | Before (`MASTER_PLATFORM_AUDIT.md` 2026-05-13) | Now |
-|---|---|---|
-| Wallet / inventory / coupon races | 4 confirmed race conditions | atomic `UPDATE … RETURNING` with conditional `WHERE`, throws on 0 rows |
-| Tokens in localStorage | XSS exposure | HttpOnly cookies; `auth.tsx` storage helpers are no-ops |
-| OTP plaintext | `otps.code` plaintext | `otps.code_hash` |
-| Docker `.env` leak | copied into image | `.dockerignore` excludes `.env*` |
-| In-process cron / migrations | web service does it all | dedicated `subnation-worker` service in `render.yaml` |
-| Sessions / organizations schema drift | external DB tables, no source | now in `shared/db/src/schema/`, migrations 0000+0001 in repo |
-| Observability | none | full Phase 2 stack live (correlation, metrics, health, Sentry, heartbeat) |
-| Alerting | none | real Telegram + Discord + webhook with dedup/rate-limit |
-| SEO | none | `useSeo` hook + JSON-LD + dynamic sitemap with freshness invariant |
-| Admin observability | none | summary / alerts / diagnostics JSON endpoints |
-| Build mutates source | `lint --fix` | clean `lint` (no `--fix`) |
-| 5 P0 runtime bugs | broken | fixed |
+| Area                                  | Before (`MASTER_PLATFORM_AUDIT.md` 2026-05-13) | Now                                                                       |
+| ------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------- |
+| Wallet / inventory / coupon races     | 4 confirmed race conditions                    | atomic `UPDATE … RETURNING` with conditional `WHERE`, throws on 0 rows    |
+| Tokens in localStorage                | XSS exposure                                   | HttpOnly cookies; `auth.tsx` storage helpers are no-ops                   |
+| OTP plaintext                         | `otps.code` plaintext                          | `otps.code_hash`                                                          |
+| Docker `.env` leak                    | copied into image                              | `.dockerignore` excludes `.env*`                                          |
+| In-process cron / migrations          | web service does it all                        | dedicated `subnation-worker` service in `render.yaml`                     |
+| Sessions / organizations schema drift | external DB tables, no source                  | now in `shared/db/src/schema/`, migrations 0000+0001 in repo              |
+| Observability                         | none                                           | full Phase 2 stack live (correlation, metrics, health, Sentry, heartbeat) |
+| Alerting                              | none                                           | real Telegram + Discord + webhook with dedup/rate-limit                   |
+| SEO                                   | none                                           | `useSeo` hook + JSON-LD + dynamic sitemap with freshness invariant        |
+| Admin observability                   | none                                           | summary / alerts / diagnostics JSON endpoints                             |
+| Build mutates source                  | `lint --fix`                                   | clean `lint` (no `--fix`)                                                 |
+| 5 P0 runtime bugs                     | broken                                         | fixed                                                                     |
 
 ## 4. Owner-blocked / out-of-scope this sweep
 
 These items require credentials, owner approval, or substantial new work
 that is not appropriate to ship in a stabilization sweep:
 
-| Item | Why blocked | Action |
-|---|---|---|
-| Render env vars (`METRICS_ADMIN_TOKEN`, `ALERTING_ENABLED`, `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `VITE_SENTRY_DSN`, `RENDER_API_KEY`) | needs DevOps to set in Render dashboard or via Render MCP `update_environment_variables` | provision per `OBSERVABILITY_SETUP.md §8` |
-| Sentry source-map upload | needs `SENTRY_AUTH_TOKEN` | add `sentry-cli` step to `backend/build.mjs` and `@sentry/vite-plugin` to `frontend/vite.config.ts` once token is provisioned |
-| Lighthouse CI | needs deployable URL or local Chromium runner | add `lighthouserc.cjs` + CI job after staging URL is stable |
-| Image AVIF/WebP optimisation | needs re-encoded asset binaries | encode / commit; then drop into `<picture>` blocks on home + product list |
-| Frontend admin Observability page UI | 4-8 h of focused UX work | next session: implement the 12-widget dashboard against the now-ready backend endpoints |
-| Real payment processor (Almadar / Libyana / Sadad) | needs gateway credentials & contract | follow-up project; current `services/payment.service.ts` is a 1.4 KB mock |
-| End-to-end Playwright suite | not in deps; would need fresh install + writing | follow-up project; current coverage is unit only |
-| `checkRuleCondition()` production reads | each rule needs an aggregation source (Prometheus query / Redis time-series) | wire after metrics have ≥ 24 h of production data to baseline thresholds |
-| Render_MCP rollback automation | needs `RENDER_API_KEY` + `scripts/rollback.ts` | scoped for next sprint |
+| Item                                                                                                                                                                                                      | Why blocked                                                                              | Action                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Render env vars (`METRICS_ADMIN_TOKEN`, `ALERTING_ENABLED`, `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `VITE_SENTRY_DSN`, `RENDER_API_KEY`) | needs DevOps to set in Render dashboard or via Render MCP `update_environment_variables` | provision per `OBSERVABILITY_SETUP.md §8`                                                                                     |
+| Sentry source-map upload                                                                                                                                                                                  | needs `SENTRY_AUTH_TOKEN`                                                                | add `sentry-cli` step to `backend/build.mjs` and `@sentry/vite-plugin` to `frontend/vite.config.ts` once token is provisioned |
+| Lighthouse CI                                                                                                                                                                                             | needs deployable URL or local Chromium runner                                            | add `lighthouserc.cjs` + CI job after staging URL is stable                                                                   |
+| Image AVIF/WebP optimisation                                                                                                                                                                              | needs re-encoded asset binaries                                                          | encode / commit; then drop into `<picture>` blocks on home + product list                                                     |
+| Frontend admin Observability page UI                                                                                                                                                                      | 4-8 h of focused UX work                                                                 | next session: implement the 12-widget dashboard against the now-ready backend endpoints                                       |
+| Real payment processor (Almadar / Libyana / Sadad)                                                                                                                                                        | needs gateway credentials & contract                                                     | follow-up project; current `services/payment.service.ts` is a 1.4 KB mock                                                     |
+| End-to-end Playwright suite                                                                                                                                                                               | not in deps; would need fresh install + writing                                          | follow-up project; current coverage is unit only                                                                              |
+| `checkRuleCondition()` production reads                                                                                                                                                                   | each rule needs an aggregation source (Prometheus query / Redis time-series)             | wire after metrics have ≥ 24 h of production data to baseline thresholds                                                      |
+| Render_MCP rollback automation                                                                                                                                                                            | needs `RENDER_API_KEY` + `scripts/rollback.ts`                                           | scoped for next sprint                                                                                                        |
 
 ## 5. Remaining residual risk
 
-| Risk | Severity | Mitigation in place |
-|---|---|---|
-| Coupon `maxUses` over-redemption under concurrent load | medium | atomic `usedCount` increment; pre-check still runs outside tx — fix is small (move check into conditional `WHERE`) |
-| Topup approve race (no `FOR UPDATE`) | low | re-check inside tx — concurrent approvers narrow to a microsecond window |
-| `migrate.ts` runtime DDL co-exists with Drizzle migrations | medium | CI runs `drizzle-kit generate && git diff --exit-code`; long-term, delete DDL paths from `migrate.ts` |
-| Admin TOTP secret stored unencrypted | medium | tracked in original audit; encrypt with `ENCRYPTION_KEY` |
-| Render free-tier eviction (web + Redis) | low | documented in `OPERATIONS_RUNBOOK.md §5` with promote thresholds |
-| `ruflo-audit.test.ts` skipped | trivial | rewrite against current `runRufloAudit` API surface; not customer-facing |
+| Risk                                                       | Severity | Mitigation in place                                                                                                |
+| ---------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| Coupon `maxUses` over-redemption under concurrent load     | medium   | atomic `usedCount` increment; pre-check still runs outside tx — fix is small (move check into conditional `WHERE`) |
+| Topup approve race (no `FOR UPDATE`)                       | low      | re-check inside tx — concurrent approvers narrow to a microsecond window                                           |
+| `migrate.ts` runtime DDL co-exists with Drizzle migrations | medium   | CI runs `drizzle-kit generate && git diff --exit-code`; long-term, delete DDL paths from `migrate.ts`              |
+| Admin TOTP secret stored unencrypted                       | medium   | tracked in original audit; encrypt with `ENCRYPTION_KEY`                                                           |
+| Render free-tier eviction (web + Redis)                    | low      | documented in `OPERATIONS_RUNBOOK.md §5` with promote thresholds                                                   |
+| `ruflo-audit.test.ts` skipped                              | trivial  | rewrite against current `runRufloAudit` API surface; not customer-facing                                           |
 
 ## 6. Validation evidence (this sweep)
 
@@ -155,16 +155,16 @@ $ pnpm --filter @workspace/subnation run build
 
 ## 7. Next-session priorities
 
-| Pri | Task | Owner |
-|---|---|---|
-| P1 | Provision the 9 Render env vars (see §4) and verify alerting end-to-end | DevOps |
-| P1 | Wire `@sentry/vite-plugin` + `backend/build.mjs` source-map upload | code |
-| P2 | Coupon `maxUses` → conditional `UPDATE`; topup approve `FOR UPDATE` | code |
-| P2 | Frontend admin Observability page (12-widget dashboard) | code |
-| P2 | Render_MCP rollback automation script | code |
-| P3 | Lighthouse CI + image / font optimisation | code + assets |
-| P3 | Delete runtime DDL paths from `migrate.ts` after Drizzle migrations are verified end-to-end on a Neon dev branch | code |
-| P3 | Real payment processor integration | product |
+| Pri | Task                                                                                                             | Owner         |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------------- |
+| P1  | Provision the 9 Render env vars (see §4) and verify alerting end-to-end                                          | DevOps        |
+| P1  | Wire `@sentry/vite-plugin` + `backend/build.mjs` source-map upload                                               | code          |
+| P2  | Coupon `maxUses` → conditional `UPDATE`; topup approve `FOR UPDATE`                                              | code          |
+| P2  | Frontend admin Observability page (12-widget dashboard)                                                          | code          |
+| P2  | Render_MCP rollback automation script                                                                            | code          |
+| P3  | Lighthouse CI + image / font optimisation                                                                        | code + assets |
+| P3  | Delete runtime DDL paths from `migrate.ts` after Drizzle migrations are verified end-to-end on a Neon dev branch | code          |
+| P3  | Real payment processor integration                                                                               | product       |
 
 ## 8. Memory_MCP entities (for cross-session continuity)
 

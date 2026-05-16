@@ -1,9 +1,6 @@
 import { performance } from "node:perf_hooks";
 import type { RequestHandler } from "express";
-import {
-  createCorrelationContextFromHeader,
-  runWithCorrelationContext,
-} from "../lib/correlation";
+import { createCorrelationContextFromHeader, runWithCorrelationContext } from "../lib/correlation";
 
 const REQUEST_ID_HEADER = "x-request-id";
 

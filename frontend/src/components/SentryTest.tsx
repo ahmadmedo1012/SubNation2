@@ -21,8 +21,8 @@ export function SentryTest() {
     <div className="max-w-md mx-auto p-6 space-y-4 text-foreground" dir="ltr">
       <h1 className="text-xl font-bold">Sentry verification</h1>
       <p className="text-sm text-muted-foreground">
-        Use these to confirm errors and messages are reaching Sentry. Each
-        click should show up in the dashboard within seconds.
+        Use these to confirm errors and messages are reaching Sentry. Each click should show up in
+        the dashboard within seconds.
       </p>
 
       <div className="flex flex-col gap-3">

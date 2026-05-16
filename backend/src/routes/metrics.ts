@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { verifyAdminTokenDetailed } from "../lib/jwt";
+import { logger } from "../lib/logger";
 import { getMetrics } from "../lib/metrics";
 
 const router: IRouter = Router();
@@ -58,6 +59,7 @@ router.get("/metrics", requireMetricsAuth, async (_req, res) => {
     res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(body);
   } catch (err) {
+    logger.error({ err, category: "monitoring" }, "Failed to render Prometheus metrics");
     res.status(500).json({ error: "metrics_unavailable" });
   }
 });

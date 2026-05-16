@@ -5,12 +5,12 @@ section anchored to its `runbookSection` value in `ALERT_RULES`.
 
 ## 1. Dashboards
 
-| Surface | URL | What it shows |
-|---|---|---|
-| Render | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars |
-| Sentry | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`) | unresolved issues, traces, performance |
-| Neon | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`) | slow queries, indexes, connections |
-| Internal admin observability | `/admin/observability` (admin JWT required) | summary, alerts, deploys, sentry placeholder |
+| Surface                      | URL                                                         | What it shows                                |
+| ---------------------------- | ----------------------------------------------------------- | -------------------------------------------- |
+| Render                       | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars  |
+| Sentry                       | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`)        | unresolved issues, traces, performance       |
+| Neon                         | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`)  | slow queries, indexes, connections           |
+| Internal admin observability | `/admin/observability` (admin JWT required)                 | summary, alerts, deploys, sentry placeholder |
 
 CLI helpers via Render MCP / Neon MCP:
 
@@ -25,6 +25,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 ## 2. Per-rule triage
 
 ### #api-5xx — `api_5xx_rate_high`
+
 - **Threshold:** 5xx rate > 5% over 5 min.
 - **Triage:**
   1. Check Sentry: filter `event.tags.correlation_id` matching the most
@@ -36,6 +37,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 - **Mitigation:** rollback to last-known-good deploy via Render dashboard.
 
 ### #auth-failure — `auth_failure_rate_high`
+
 - **Threshold:** auth failure rate > 20% over 5 min.
 - **Triage:**
   1. Check `auth_outcomes_total{outcome="failure"}` per `method`.
@@ -45,6 +47,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
      compensating).
 
 ### #firebase-verify — `firebase_verifyidtoken_failures`
+
 - **Threshold:** > 5 verifyIdToken failures in 5 min.
 - **Triage:**
   1. `GET /api/healthz/firebase` — confirm `service_account_parse_ok=true`
@@ -54,12 +57,14 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
   3. Recent service-account rotation? Re-paste the JSON, redeploy.
 
 ### #fe-sentry — `frontend_sentry_error_rate_high`
+
 - **Threshold:** > 10 frontend events / min.
 - **Triage:** open Sentry, group by browser / route — usually a regression
   on a specific lazy chunk. Check that the `release` tag matches the latest
   deploy commit SHA (else source-map upload missed).
 
 ### #redis — `redis_disconnect`
+
 - **Threshold:** ≥ 1 disconnect event in 60 s.
 - **Triage:**
   1. `GET /api/healthz/redis` — current latency + failure counter.
@@ -68,6 +73,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
   3. If transient (< 30 s) and self-recovering, alert is informational.
 
 ### #neon — `neon_connection_failure`
+
 - **Threshold:** ≥ 1 connection failure in 60 s.
 - **Triage:**
   1. `GET /api/healthz/neon` and `GET /api/admin/diagnostics`.
@@ -77,6 +83,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
      redeploy needed).
 
 ### #worker — `worker_heartbeat_missing`
+
 - **Threshold:** no `worker:heartbeat` Redis key for 2 min.
 - **Triage:**
   1. Render worker service status (`subnation-worker`). Free-tier worker
@@ -85,6 +92,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
      `Redis client error`.
 
 ### #latency — `api_p95_latency_high`
+
 - **Threshold:** p95 > 1500 ms over 5 min.
 - **Triage:**
   1. Open `/api/metrics` (admin-gated): inspect
@@ -94,10 +102,12 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
      the alert window.
 
 ### #jobs — `worker_job_failures_high`
+
 - **Threshold:** > 3 failed background jobs in 5 min.
 - **Triage:** worker logs filtered by `category:"worker" outcome:"failed"`.
 
 ### #lockouts — `abnormal_lockouts`
+
 - **Threshold:** ≥ 10 lockouts in 5 min (per IP or globally).
 - **Triage:** `auth_activity` and `login_attempts` tables — group by
   `ipAddress`. Coordinated brute force → consider Cloudflare/WAF.
@@ -107,6 +117,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 ### Render logs (last hour, web service)
 
 Render MCP:
+
 ```
 list_logs resource=srv-d7vv91tckfvc73evnccg \
   startTime=2026-05-16T03:00:00Z direction=backward limit=100
@@ -150,13 +161,13 @@ ORDER BY duration DESC;
 
 ## 5. Scaling thresholds
 
-| Resource | Free / current | Watch | Promote when |
-|---|---|---|---|
-| Render web | starter | CPU > 70% sustained 30 min, memory > 400 MB, p95 > 1.5 s | move to `pro_max` and add a second instance |
-| Render Redis | free, `allkeys-lru` | maxmemory eviction events | move to `starter` (no eviction surprises for rate-limit / dedup) |
-| Neon | free | active connections > 50, `pg_stat_activity` shows queue | scale plan |
-| Sentry | free 5K events/mo | events > 4K/mo | upgrade or sample harder |
-| Telegram bot | bot API rate limit (~30/sec) | global rate-limit > 25/min | already capped at 30/min in alerting service |
+| Resource     | Free / current               | Watch                                                    | Promote when                                                     |
+| ------------ | ---------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| Render web   | starter                      | CPU > 70% sustained 30 min, memory > 400 MB, p95 > 1.5 s | move to `pro_max` and add a second instance                      |
+| Render Redis | free, `allkeys-lru`          | maxmemory eviction events                                | move to `starter` (no eviction surprises for rate-limit / dedup) |
+| Neon         | free                         | active connections > 50, `pg_stat_activity` shows queue  | scale plan                                                       |
+| Sentry       | free 5K events/mo            | events > 4K/mo                                           | upgrade or sample harder                                         |
+| Telegram bot | bot API rate limit (~30/sec) | global rate-limit > 25/min                               | already capped at 30/min in alerting service                     |
 
 Every tier change must be recorded in
 `observability-seo-cwv-maturity:tier-decisions` Memory_MCP entry per the
