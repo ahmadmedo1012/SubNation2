@@ -73,10 +73,25 @@ function getCurrentRoute(): string {
 
 // ── Beacon transmission ──────────────────────────────────────────────────────
 
+/**
+ * Serialise the sample for transport. We always send `application/json` so
+ * the backend's `express.json()` parser handles the body uniformly across
+ * the `sendBeacon` and `fetch keepalive` paths.
+ *
+ * `navigator.sendBeacon` deduces the request `Content-Type` from the body
+ * argument: a plain string becomes `text/plain;charset=UTF-8`, which
+ * `express.json()` ignores — leaving `req.body` undefined and the route
+ * rejecting every beacon as `400 invalid_cwv_sample`. Wrapping the JSON in
+ * a `Blob` with an explicit MIME type fixes that.
+ */
+function toBeaconBody(sample: CWVSample): Blob {
+  return new Blob([JSON.stringify(sample)], { type: "application/json" });
+}
+
 function sendBeaconSync(sample: CWVSample): boolean {
   try {
-    const payload = JSON.stringify(sample);
-    return navigator.sendBeacon?.(BEACON_ENDPOINT, payload) ?? false;
+    const body = toBeaconBody(sample);
+    return navigator.sendBeacon?.(BEACON_ENDPOINT, body) ?? false;
   } catch {
     return false;
   }

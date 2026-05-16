@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import express, { Router, type IRouter } from "express";
 import { cwvLogger } from "../lib/logger";
 import { cwvSampleValue, cwvSamplesTotal, safeInc, safeObserve } from "../lib/metrics";
 
@@ -73,16 +73,56 @@ setInterval(() => {
   }
 }, SESSION_WINDOW_MS).unref?.();
 
+// ── Body parsing (defensive) ─────────────────────────────────────────────────
+//
+// `navigator.sendBeacon` defaults the Content-Type to `text/plain;charset=UTF-8`
+// when called with a plain string body. The top-level `express.json()`
+// middleware ignores text/plain bodies, leaving `req.body` undefined and
+// every beacon failing validation with 400.
+//
+// The frontend has been updated to wrap the payload in a `Blob` with
+// type:"application/json", which restores the json parser path. We ALSO
+// install a route-scoped `express.text()` parser here as a defence in depth
+// so that any future caller (third-party script, vendor SDK, retro bug)
+// using the default `sendBeacon(url, "<string>")` form still ingests
+// successfully.
+//
+// Limit kept tight (8 KiB) so this route can never be used for large
+// payload abuse.
+const cwvBodyParser = express.text({
+  type: ["text/plain", "application/x-www-form-urlencoded", "application/octet-stream"],
+  limit: "8kb",
+});
+
 // ── Route handler ────────────────────────────────────────────────────────────
 
-router.post("/cwv", (req, res) => {
-  if (!isCWVSample(req.body)) {
-    res.status(400).json({ error: "invalid_cwv_sample" });
+router.post("/cwv", cwvBodyParser, (req, res) => {
+  // Normalise: when sent via the defensive text parser above, req.body is
+  // a string; JSON.parse it. When sent via express.json() upstream, req.body
+  // is already an object.
+  let body: unknown = req.body;
+  if (typeof body === "string") {
+    if (body.length === 0) {
+      res.status(400).json({ error: "invalid_cwv_sample", reason: "empty_body" });
+      return;
+    }
+    try {
+      body = JSON.parse(body);
+    } catch {
+      res.status(400).json({ error: "invalid_cwv_sample", reason: "malformed_json" });
+      return;
+    }
+  }
+
+  if (!isCWVSample(body)) {
+    res.status(400).json({ error: "invalid_cwv_sample", reason: "schema_mismatch" });
     return;
   }
-  const sample = req.body;
+  const sample = body;
 
   if (isOverSessionCap(sample.sessionId)) {
+    // Silently drop — the client must not retry, but the rate-limit must
+    // not be observable as an error.
     res.status(204).end();
     return;
   }
