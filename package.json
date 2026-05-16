@@ -9,6 +9,7 @@
     "start": "pnpm --filter @workspace/scripts start",
     "db:push": "pnpm --filter @workspace/db push",
     "db:seed": "pnpm --filter @workspace/scripts seed",
+    "db:backup": "pnpm --filter @workspace/scripts backup",
     "codegen": "pnpm --filter @workspace/api-spec codegen",
     "lint": "eslint backend frontend shared scripts",
     "lint:fix": "eslint backend frontend shared scripts --fix",
