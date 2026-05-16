@@ -1,9 +1,14 @@
 import { useAuth } from "@/lib/auth";
 import { isFirebaseAuthConfigured } from "@/lib/firebase";
 import { exchangeCurrentFirebaseUser, requireFirebaseAuth } from "@/lib/firebase-auth";
-import { ConfirmationResult, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import {
+  type Auth,
+  type ConfirmationResult,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+} from "firebase/auth";
 import { Loader2, Phone, RotateCcw } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 interface FirebasePhoneSignInProps {
@@ -12,7 +17,21 @@ interface FirebasePhoneSignInProps {
 
 const COOLDOWN_TIME = 60;
 
+/**
+ * Errors that indicate the current `RecaptchaVerifier` instance is in a
+ * poisoned state and must be cleared + rebuilt before the user can retry.
+ */
+function isVerifierPoisonedError(message: string): boolean {
+  return (
+    message.includes("auth/captcha-check-failed") ||
+    message.includes("auth/code-expired") ||
+    message.includes("auth/expired-recaptcha-token") ||
+    message.includes("recaptcha-not-enabled")
+  );
+}
+
 export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) {
+  // Stable id for the recaptcha container, scoped to this component instance.
   const recaptchaId = useId().replace(/:/g, "");
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
@@ -23,6 +42,87 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
 
+  // ── Verifier lifecycle ─────────────────────────────────────────────────────
+  //
+  // The RecaptchaVerifier owns a DOM widget. We must:
+  //  - Create exactly ONE per component mount (avoid stacking widgets).
+  //  - Clean it up when the component unmounts (avoid leak / stale handle).
+  //  - Rebuild it after an auth/captcha-check-failed or expired-recaptcha-token
+  //    error, because the underlying widget is now in a poisoned state.
+  //  - Rebuild it when the user resets the phone-input flow (defensive — the
+  //    verifier itself doesn't strictly require this, but it keeps the
+  //    surface predictable).
+
+  const verifierRef = useRef<RecaptchaVerifier | null>(null);
+  const authRef = useRef<Auth | null>(null);
+
+  /** Build a fresh RecaptchaVerifier targeting our container id. */
+  const buildVerifier = useCallback((auth: Auth): RecaptchaVerifier => {
+    return new RecaptchaVerifier(auth, recaptchaId, {
+      size: "invisible",
+      callback: () => {
+        // reCAPTCHA solved automatically (invisible mode). No-op — Firebase
+        // proceeds with signInWithPhoneNumber once verify() resolves.
+      },
+      "expired-callback": () => {
+        // The widget's token expired before we used it. Mark the verifier as
+        // null so the next sendCode rebuilds it.
+        try {
+          verifierRef.current?.clear();
+        } catch {
+          // ignore — clear() can throw if the widget is already gone
+        }
+        verifierRef.current = null;
+      },
+    });
+  }, [recaptchaId]);
+
+  /** Get a working verifier — building one on first use, reusing afterwards. */
+  const getOrBuildVerifier = useCallback(
+    async (): Promise<RecaptchaVerifier> => {
+      const auth = authRef.current ?? (await requireFirebaseAuth());
+      authRef.current = auth;
+      if (!verifierRef.current) {
+        verifierRef.current = buildVerifier(auth);
+      }
+      return verifierRef.current;
+    },
+    [buildVerifier],
+  );
+
+  // Eager initialisation — build the verifier as soon as the container exists.
+  // This warms up reCAPTCHA so the first sendCode click feels instant.
+  useEffect(() => {
+    if (!isFirebaseAuthConfigured()) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const auth = await requireFirebaseAuth();
+        if (cancelled) return;
+        authRef.current = auth;
+        // Don't overwrite an existing verifier (StrictMode mounts twice in dev).
+        if (!verifierRef.current && document.getElementById(recaptchaId)) {
+          verifierRef.current = buildVerifier(auth);
+        }
+      } catch {
+        // Defer error reporting until the user actually tries to send.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        verifierRef.current?.clear();
+      } catch {
+        // ignore — widget may have already been removed from the DOM
+      }
+      verifierRef.current = null;
+      authRef.current = null;
+    };
+  }, [recaptchaId, buildVerifier]);
+
+  // Cooldown timer for resend.
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
@@ -51,6 +151,10 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
       return "تجاوزت الحد اليومي لإرسال الرسائل. حاول غداً.";
     if (message.includes("auth/user-disabled"))
       return "تم تعطيل هذا الحساب. يرجى التواصل مع الدعم.";
+    if (message.includes("auth/network-request-failed"))
+      return "تعذّر الاتصال بالشبكة. تحقق من اتصالك ثم أعد المحاولة.";
+    if (message.includes("recaptcha-not-enabled"))
+      return "خدمة الكابتشا غير مفعّلة. تواصل مع الدعم.";
     if (message.includes("فشل إنشاء جلسة آمنة")) return "تعذّر إنشاء الجلسة. حاول مرة أخرى.";
     if (message.includes("لم يتم إكمال تسجيل الدخول"))
       return "لم يتم إكمال تسجيل الدخول. حاول مرة أخرى.";
@@ -61,14 +165,24 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
     setError("");
     setLoading(true);
     try {
-      const auth = await requireFirebaseAuth();
-      const appVerifier = new RecaptchaVerifier(auth, recaptchaId, { size: "invisible" });
-      const result = await signInWithPhoneNumber(auth, toE164LibyanPhone(phone), appVerifier);
+      const verifier = await getOrBuildVerifier();
+      const auth = authRef.current!;
+      const result = await signInWithPhoneNumber(auth, toE164LibyanPhone(phone), verifier);
       setConfirmation(result);
       setCooldown(COOLDOWN_TIME);
     } catch (err: unknown) {
       const errorMessage = (err as Error)?.message || "تعذّر إرسال كود التحقق";
       setError(getFriendlyError(errorMessage));
+      // If the verifier is in a poisoned state, clear it so the next attempt
+      // rebuilds a fresh widget.
+      if (isVerifierPoisonedError(errorMessage)) {
+        try {
+          verifierRef.current?.clear();
+        } catch {
+          // ignore
+        }
+        verifierRef.current = null;
+      }
     } finally {
       setLoading(false);
     }
@@ -86,6 +200,16 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
     } catch (err: unknown) {
       const errorMessage = (err as Error)?.message || "فشل التحقق من الكود";
       setError(getFriendlyError(errorMessage));
+      // Verification failure (wrong code, expired) doesn't poison the
+      // verifier, but if the code expired we rebuild on next sendCode.
+      if (errorMessage.includes("auth/code-expired")) {
+        try {
+          verifierRef.current?.clear();
+        } catch {
+          // ignore
+        }
+        verifierRef.current = null;
+      }
     } finally {
       setLoading(false);
     }
@@ -95,6 +219,13 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
     setConfirmation(null);
     setCode("");
     setError("");
+    // Rebuild the verifier proactively so the next sendCode is fresh.
+    try {
+      verifierRef.current?.clear();
+    } catch {
+      // ignore
+    }
+    verifierRef.current = null;
   };
 
   return (
@@ -138,6 +269,8 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
           <div className="flex gap-2">
             <input
               type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="كود التحقق"
@@ -165,7 +298,12 @@ export function FirebasePhoneSignIn({ dividerLabel }: FirebasePhoneSignInProps) 
           </button>
         </div>
       )}
-      <div id={recaptchaId} />
+      {/*
+        reCAPTCHA container. Must remain in the DOM throughout the component's
+        lifetime — the RecaptchaVerifier renders an invisible widget inside it
+        on first verify(). Removing/re-keying this node would orphan the widget.
+      */}
+      <div id={recaptchaId} aria-hidden="true" />
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 animate-in fade-in slide-in-from-top-1">
           <p className="text-xs text-destructive text-center leading-relaxed">{error}</p>

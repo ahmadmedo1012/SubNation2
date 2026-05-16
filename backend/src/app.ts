@@ -82,6 +82,9 @@ app.use(
           "https://www.gstatic.com",
           "https://www.googleapis.com",
           "https://*.firebaseapp.com",
+          // Firebase Phone Auth uses reCAPTCHA loaded from these origins
+          "https://www.google.com",
+          "https://www.recaptcha.net",
         ],
         // Do NOT set scriptSrcAttr to 'none' — Firebase SDK injects inline
         // event handlers in the popup/iframe auth flow.
@@ -118,11 +121,16 @@ app.use(
         workerSrc: ["'self'", "blob:"],
         // frameSrc: Firebase uses a hidden iframe at *.firebaseapp.com/__/auth/iframe
         // for cross-origin session persistence. accounts.google.com is the OAuth popup.
+        // Phone Auth's reCAPTCHA challenge renders in an iframe under
+        // www.google.com/recaptcha (with www.recaptcha.net as the fallback origin
+        // for clients in regions where google.com is blocked).
         frameSrc: [
           "'self'",
           "https://accounts.google.com",
           "https://*.firebaseapp.com",
           "https://*.firebase.com",
+          "https://www.google.com",
+          "https://www.recaptcha.net",
         ],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,
