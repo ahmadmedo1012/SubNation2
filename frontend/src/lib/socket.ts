@@ -27,7 +27,6 @@ export async function connectSocket(userId?: number | string) {
   s.connect();
 
   s.on("connect", () => {
-    console.log("Connected to WebSocket");
     if (userId) {
       s.emit("join-user", userId);
     }
@@ -44,7 +43,6 @@ export async function connectAdminSocket() {
   s.connect();
 
   s.on("connect", () => {
-    console.log("Connected to Admin WebSocket");
     s.emit("join-admin");
   });
 

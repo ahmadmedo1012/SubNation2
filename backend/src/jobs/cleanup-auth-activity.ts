@@ -1,11 +1,16 @@
 import { db, authActivityTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
+import { fileURLToPath } from "node:url";
+import { logger } from "../lib/logger";
 
 const RETENTION_DAYS = 90;
 
 /**
- * Cleanup old auth_activity records older than RETENTION_DAYS
- * This should be scheduled to run daily (e.g., via node-cron or external scheduler)
+ * Delete auth_activity rows older than RETENTION_DAYS.
+ *
+ * Scheduled by `lib/web-scheduler.ts` (or a dedicated worker tier when
+ * provisioned). The function is also runnable as a one-shot from the
+ * CLI for manual cleanup — see the bottom of this file.
  */
 export async function cleanupOldAuthActivity(): Promise<void> {
   const cutoffDate = new Date();
@@ -16,20 +21,31 @@ export async function cleanupOldAuthActivity(): Promise<void> {
     .where(lt(authActivityTable.createdAt, cutoffDate))
     .returning();
 
-  console.log(
-    `[cleanup-auth-activity] Cleaned ${result.length} auth_activity records older than ${RETENTION_DAYS} days`,
+  logger.info(
+    { category: "monitoring", deleted: result.length, retentionDays: RETENTION_DAYS },
+    `[cleanup-auth-activity] cleaned ${result.length} rows older than ${RETENTION_DAYS} days`,
   );
 }
 
-// For manual testing or one-time execution
-if (require.main === module) {
+// ── Manual one-shot ─────────────────────────────────────────────────────────
+//
+// `require.main === module` is the CJS idiom for "is this file being run
+// directly?". This workspace is `"type": "module"` so that pattern silently
+// never fires. The ESM equivalent compares the resolved module URL to the
+// process entry point.
+const isMainModule =
+  typeof process !== "undefined" &&
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMainModule) {
   cleanupOldAuthActivity()
     .then(() => {
-      console.log("Cleanup completed successfully");
+      logger.info({ category: "monitoring" }, "cleanup-auth-activity: completed");
       process.exit(0);
     })
     .catch((err) => {
-      console.error("Cleanup failed:", err);
+      logger.error({ err, category: "monitoring" }, "cleanup-auth-activity: failed");
       process.exit(1);
     });
 }

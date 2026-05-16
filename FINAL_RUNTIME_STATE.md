@@ -1,11 +1,30 @@
 # Final Runtime State — SubNation2
 
-**Last updated:** 2026-05-16 (post-cleanup)
+**Last updated:** 2026-05-17 (post-cleanup pass)
 **Production canonical:** `https://subnation.ly`
-**State:** pre-launch hardening — no legacy compatibility, single canonical domain, all observability and runtime systems live.
+**State:** launch-ready hardening complete — Production Readiness Master Plan Phases 1–5 shipped, dependency graph trimmed, debug logs removed, env reference synced with `render.yaml`.
 
 This document is the **single living source of truth** for the platform's
-runtime state.
+runtime state. The detailed phased roadmap and audit findings live in
+`PRODUCTION_READINESS_MASTER.md`.
+
+---
+
+## 0. What landed in the May 2026 hardening pass
+
+Across 14 commits between `3a62b81` and the latest:
+
+- **Domain migration** to `subnation.ly` (canonical), `www.subnation.ly` 301 → apex, legacy `subnation2.onrender.com` 301 → apex (via app-level redirect)
+- **Firebase Phone Auth** + reCAPTCHA lifecycle correctness — invisible reCAPTCHA, single verifier per mount, expired-callback recovery, CSP allowlist for `www.google.com` + `www.recaptcha.net`
+- **CI/CD repair** — gitleaks v8 schema rebuilt, SARIF upload to GitHub Security tab wired, deploy hook hardened (POST + retry + fail-with-body)
+- **Phase 1 security** — CSRF gate covers `/api/auth/*`, argon2id at OWASP-2024 params, SESSION_SECRET length assertion, audit log on admin write actions, Sentry DSN env-only
+- **Phase 2 backups** — `pnpm run db:backup` (pg_dump + optional presigned PUT upload) + platform-specific DR runbook with 5 named recovery scenarios
+- **Phase 3 performance** — DB pool 5 → 15, edge cache headers on catalog endpoints, CWV p75 panel on /admin/system
+- **Phase 4 UX** — mobile bottom-nav active state matcher, Input focus rings, `min-h-[100dvh]` on auth pages
+- **Phase 5 launch** — public `/status` page, legacy onrender redirect verified
+- **Toast unification** — replaced shadcn's broken Radix toast (TOAST_REMOVE_DELAY=16min bug → stuck toasts) with Sonner across the codebase. NotificationBell duplicate-fire bug fixed (state → useRef in polling closure). Mobile panel positioning via portal + fixed CSS — no overflow.
+- **Auth UX hierarchy** — login + register restructured: tabs at top, primary phone OTP, single divider, secondary Google, password collapsed under disclosure
+- **Final cleanup** — 7 unused deps removed (frontend `@radix-ui/react-toast` + `@hookform/resolvers` + `lodash-es`; backend `qrcode` + `@types/qrcode` + 4 `@opentelemetry/*` packages), debug `console.log` removed from socket paths, `cleanup-auth-activity.ts` migrated from console to pino logger, env example synced to render.yaml
 
 ---
 

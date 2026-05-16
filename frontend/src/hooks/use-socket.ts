@@ -1,8 +1,22 @@
 import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
-import { toast } from "sonner";
+import { toast } from "@/hooks/use-toast";
 import { connectSocket } from "../lib/socket";
 
+/**
+ * Subscribe to user-scoped Socket.IO events.
+ *
+ * Emits:
+ *   - order-updated → toast "تم تحديث حالة طلبك …"
+ *   - topup-updated → toast (success or destructive based on status)
+ *
+ * All toasts route through the unified `@/hooks/use-toast` shim (Sonner
+ * under the hood) so a single Toaster instance owns the stack — no
+ * duplicates, no stuck-on-screen failures.
+ *
+ * Errors from the socket transport are warned to the console but never
+ * surfaced to the user; the Socket.IO adapter retries automatically.
+ */
 export function useSocket(userId?: number | string) {
   const socketRef = useRef<Socket | null>(null);
 
@@ -19,32 +33,44 @@ export function useSocket(userId?: number | string) {
         socketRef.current = socket;
 
         socket.on("order-updated", (data: { id: number | string; status: string }) => {
-          console.log("Order updated:", data);
-          toast.success(`تم تحديث حالة طلبك #${data.id} إلى ${data.status}`);
+          toast({
+            title: `تم تحديث حالة طلبك #${data.id}`,
+            description: `الحالة الجديدة: ${data.status}`,
+            id: `order-${data.id}-${data.status}`,
+          });
         });
 
         socket.on("topup-updated", (data: { amount: number; status: string }) => {
-          console.log("Topup updated:", data);
           if (data.status === "approved") {
-            toast.success(`تم شحن محفظتك بـ ${data.amount} د.ل بنجاح!`);
+            toast({
+              title: `تم شحن المحفظة`,
+              description: `${data.amount} د.ل أُضيفت إلى رصيدك`,
+              id: `topup-${data.amount}-approved`,
+            });
           } else {
-            toast.error(`تم رفض طلب الشحن الخاص بك`);
+            toast({
+              title: `تم رفض طلب الشحن`,
+              variant: "destructive",
+              id: `topup-${data.amount}-${data.status}`,
+            });
           }
         });
 
         socket.on("connect_error", (error: Error) => {
-          console.warn("Socket connection error (non-critical):", error.message);
+          // Non-critical: Socket.IO retries automatically. Surface in DevTools
+          // for debugging without disturbing the user.
+          console.warn("[socket] connect_error:", error.message);
         });
 
         socket.on("error", (error: Error) => {
-          console.warn("Socket error (non-critical):", error.message);
+          console.warn("[socket] error:", error.message);
         });
       } catch (err) {
-        console.warn("Socket initialization failed (non-critical):", err);
+        console.warn("[socket] initialization failed (non-critical):", err);
       }
     };
 
-    init();
+    void init();
 
     return () => {
       active = false;
