@@ -3,6 +3,7 @@ import { RouteLoading } from "@/components/RouteLoading";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useDocumentDirection } from "@/lib/direction";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -230,6 +231,11 @@ function DeferredSocketInitializer() {
 }
 
 function App() {
+  // Lock document direction once at boot. Defends against any descendant
+  // (e.g. a route-level Helmet block flushing on unmount) that might
+  // otherwise clear `<html dir>` and cause a momentary RTL→LTR flip.
+  useDocumentDirection("ar");
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

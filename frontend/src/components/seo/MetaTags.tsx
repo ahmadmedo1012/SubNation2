@@ -54,7 +54,15 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): ReactElement {
 
   return (
     <Helmet>
-      <html lang={lang} dir={dir} />
+      {/*
+        NOTE: We intentionally do NOT declare `<html lang dir>` here.
+        react-helmet-async strips attributes it declared on unmount,
+        which caused the document direction to flip on every route
+        change that left a SEO-aware page. Document direction is now
+        locked once at App boot via `lib/direction.ts`. The static
+        `<html lang="ar" dir="rtl">` from index.html provides the
+        baseline; the boot effect re-confirms it.
+      */}
       <title>{title}</title>
       <meta name="description" content={description} />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

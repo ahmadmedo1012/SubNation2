@@ -9,7 +9,14 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
 import "./index.css";
+import { applyDocumentDirection } from "./lib/direction";
 import { initWebVitals } from "./lib/web-vitals";
+
+// Lock document direction synchronously, before React renders. The static
+// index.html already declares <html lang="ar" dir="rtl">; this re-affirms
+// it so any race between the document parser and our boot path can't leave
+// us with a stripped/mirrored direction.
+applyDocumentDirection("ar");
 
 // Configure API base URL from Vite env.
 // Empty / unset => same-origin (relative /api paths). Set VITE_API_URL to an
