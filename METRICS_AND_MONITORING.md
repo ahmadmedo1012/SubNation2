@@ -71,12 +71,12 @@ chokepoint) is the recommended template for the worker-jobs work.
 
 ```bash
 # 1. /api/metrics requires admin auth
-curl -i https://subnation2.onrender.com/api/metrics
+curl -i https://subnation.ly/api/metrics
 # → HTTP 401
 
 # 2. With METRICS_ADMIN_TOKEN
 curl -H "Authorization: Bearer $METRICS_ADMIN_TOKEN" \
-  https://subnation2.onrender.com/api/metrics | head -40
+  https://subnation.ly/api/metrics | head -40
 # → text/plain Prometheus exposition; first lines include
 #   # HELP http_requests_total Total number of HTTP requests
 #   # TYPE http_requests_total counter

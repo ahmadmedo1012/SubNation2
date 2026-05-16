@@ -2,7 +2,7 @@
 
 ## Base URL
 
-- Production: `https://subnation2.onrender.com/api`
+- Production: `https://subnation.ly/api`
 - Development: `http://localhost:3001/api`
 
 ## Authentication

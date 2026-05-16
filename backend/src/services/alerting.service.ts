@@ -618,7 +618,7 @@ function parseThreshold(threshold: string): number {
 function buildRunbookUrl(section: string): string {
   const base =
     process.env.ALERTING_RUNBOOK_URL ??
-    `${(process.env.APP_URL || "https://subnation2.onrender.com").replace(/\/$/, "")}/OPERATIONS_RUNBOOK.md`;
+    `${(process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "")}/OPERATIONS_RUNBOOK.md`;
   return `${base}${section}`;
 }
 

@@ -7,7 +7,7 @@
  * identical hashes — useful for caching and Lighthouse comparison.
  */
 
-const DEFAULT_ORIGIN = "https://subnation2.onrender.com";
+const DEFAULT_ORIGIN = "https://subnation.ly";
 
 function getOrigin(): string {
   const fromEnv = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim();

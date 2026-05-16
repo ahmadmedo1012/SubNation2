@@ -5,7 +5,7 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-const APP_ORIGIN = (process.env.APP_URL || "https://subnation2.onrender.com").replace(/\/$/, "");
+const APP_ORIGIN = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
 
 // ── robots.txt (static) ──────────────────────────────────────────────────────
 

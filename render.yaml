@@ -23,11 +23,16 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
       - key: APP_URL
-        value: "https://subnation2.onrender.com"
+        value: "https://subnation.ly"
       - key: APP_ORIGINS
-        value: "https://subnation2.onrender.com"
+        # Canonical first; legacy onrender origin kept during DNS / SEO migration
+        # so old links + indexed traffic still passes CORS. Remove the onrender
+        # entry once analytics confirm zero traffic on the legacy domain.
+        value: "https://subnation.ly,https://www.subnation.ly,https://subnation2.onrender.com"
       - key: VITE_API_URL
-        value: "https://subnation2.onrender.com"
+        value: "https://subnation.ly"
+      - key: VITE_APP_ORIGIN
+        value: "https://subnation.ly"
       - key: BASE_PATH
         value: /
       - key: VITE_APP_NAME

@@ -16,7 +16,7 @@ Live evidence:
 $ render-mcp list_key_value
 No Key Value instances found
 
-$ curl https://subnation2.onrender.com/api/healthz/ready | jq .checks
+$ curl https://subnation.ly/api/healthz/ready | jq .checks
 {
   "redis":  { "status": "failing", "error": "Redis not configured" },
   "neon":   { "status": "failing", "error": "Neon database not configured" },
@@ -172,7 +172,7 @@ backend build         ✓ esbuild emits dist/index.mjs + dist/worker.mjs
 frontend build        ✓ vite emits dist/public/* with bundle 21,691 B gzip on the index entry
 ```
 
-### Production (against https://subnation2.onrender.com)
+### Production (against https://subnation.ly)
 
 | Check | Result |
 |---|---|

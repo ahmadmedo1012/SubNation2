@@ -160,6 +160,26 @@ app.use(
 // Trust the first reverse proxy hop when deployed behind one.
 app.set("trust proxy", 1);
 
+// ── Canonical-host redirects ─────────────────────────────────────────────────
+// Production canonical = https://subnation.ly. Two redirects:
+//   - subnation2.onrender.com → subnation.ly (legacy origin during/after migration)
+//   - www.subnation.ly        → subnation.ly (apex preferred)
+// Skips /api/healthz/* so Render's health probes never get a 301. Also skipped
+// outside production so dev / preview deploys aren't affected.
+const CANONICAL_HOST = "subnation.ly";
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV !== "production") return next();
+  if (req.path === "/api/healthz" || req.path.startsWith("/api/healthz/")) return next();
+
+  const host = (req.hostname || "").toLowerCase();
+  const shouldRedirect = host === "subnation2.onrender.com" || host === "www.subnation.ly";
+  if (shouldRedirect) {
+    res.set("Cache-Control", "max-age=86400");
+    return res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
+  }
+  return next();
+});
+
 // ── Compression ─────────────────────────────────────────────────────────────
 app.use(compression());
 

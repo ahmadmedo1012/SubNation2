@@ -117,12 +117,12 @@ After deploy with `SENTRY_AUTH_TOKEN` set:
 ```bash
 # 1. Synthetic 500 on a non-existent route to confirm error capture
 curl -i -X POST -H "x-test-token: bogus" \
-  https://subnation2.onrender.com/api/_test/error-synthetic
+  https://subnation.ly/api/_test/error-synthetic
 # → expect 500 in Sentry dashboard within ~5s, with source-mapped frame
 
 # 2. Confirm correlation_id round-trip
 RID=$(uuidgen | tr 'A-Z' 'a-z')
-curl -H "x-request-id: $RID" https://subnation2.onrender.com/api/healthz -i \
+curl -H "x-request-id: $RID" https://subnation.ly/api/healthz -i \
   | grep -i x-request-id
 # → response carries the same RID
 

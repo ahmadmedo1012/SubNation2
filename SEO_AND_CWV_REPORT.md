@@ -24,7 +24,7 @@ Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-Sitemap: https://subnation2.onrender.com/sitemap.xml
+Sitemap: https://subnation.ly/sitemap.xml
 ```
 
 ## 2. Structured data inventory
@@ -46,8 +46,8 @@ Sitemap: https://subnation2.onrender.com/sitemap.xml
   "@type": "Organization",
   "name": "SubNation",
   "alternateName": "سَب نيشن",
-  "url": "https://subnation2.onrender.com",
-  "logo": "https://subnation2.onrender.com/subnation-logo.png",
+  "url": "https://subnation.ly",
+  "logo": "https://subnation.ly/subnation-logo.png",
   "address": { "@type": "PostalAddress", "addressCountry": "LY" },
   "description": "سوق الاشتراكات الرقمية في ليبيا — Netflix، Spotify، PS Plus، Disney+ بالدينار الليبي."
 }
@@ -59,7 +59,7 @@ Sitemap: https://subnation2.onrender.com/sitemap.xml
 {
   "@context": "https://schema.org",
   "@type": "Product",
-  "@id": "https://subnation2.onrender.com/product/42",
+  "@id": "https://subnation.ly/product/42",
   "name": "Netflix Premium",
   "description": "Netflix Premium 1 month",
   "image": "https://…/netflix.png",
@@ -69,7 +69,7 @@ Sitemap: https://subnation2.onrender.com/sitemap.xml
     "@type": "Offer",
     "price": "32.00",
     "priceCurrency": "LYD",
-    "url": "https://subnation2.onrender.com/product/42",
+    "url": "https://subnation.ly/product/42",
     "availability": "https://schema.org/InStock"
   }
 }

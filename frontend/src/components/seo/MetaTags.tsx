@@ -27,7 +27,7 @@ function getAppOrigin(): string {
   const fromEnv = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   if (typeof window !== "undefined" && window.location) return window.location.origin;
-  return "https://subnation2.onrender.com";
+  return "https://subnation.ly";
 }
 
 function clamp(text: string, max: number): string {

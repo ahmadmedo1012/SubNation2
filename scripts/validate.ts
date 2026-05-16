@@ -185,7 +185,7 @@ async function checkLighthouse(): Promise<ValidationResult> {
   const start = performance.now();
 
   try {
-    const appOrigin = process.env.APP_ORIGIN || "https://subnation2.onrender.com";
+    const appOrigin = process.env.APP_ORIGIN || "https://subnation.ly";
 
     // Check if Lighthouse is installed
     try {
@@ -248,7 +248,7 @@ async function checkSitemap(): Promise<ValidationResult> {
   const start = performance.now();
 
   try {
-    const appOrigin = process.env.APP_ORIGIN || "https://subnation2.onrender.com";
+    const appOrigin = process.env.APP_ORIGIN || "https://subnation.ly";
     const sitemapUrl = `${appOrigin}/sitemap.xml`;
 
     // Ensure HTTPS
@@ -293,7 +293,7 @@ async function checkRobots(): Promise<ValidationResult> {
   const start = performance.now();
 
   try {
-    const appOrigin = process.env.APP_ORIGIN || "https://subnation2.onrender.com";
+    const appOrigin = process.env.APP_ORIGIN || "https://subnation.ly";
     const robotsUrl = `${appOrigin}/robots.txt`;
 
     // Ensure HTTPS

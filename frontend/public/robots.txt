@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://subnation2.onrender.com/sitemap.xml
+Sitemap: https://subnation.ly/sitemap.xml

@@ -96,7 +96,7 @@ The project is deployed to Render using Docker:
 2. Deploy: Push to main branch (auto-deploys via render.yaml)
 3. Environment variables are configured in render.yaml
 
-The application runs at https://subnation2.onrender.com
+The application runs at https://subnation.ly
 
 ### Docker (any VPS / self-hosted)
 

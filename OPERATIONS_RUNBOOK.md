@@ -211,13 +211,13 @@ Append observation to `:incidents` entity.
 ## 7. Health endpoint quick reference
 
 ```
-$ curl https://subnation2.onrender.com/api/healthz
+$ curl https://subnation.ly/api/healthz
 {"status":"ok"}
 
-$ curl https://subnation2.onrender.com/api/healthz/ready
+$ curl https://subnation.ly/api/healthz/ready
 {"status":"ok","checks":{"redis":{...},"neon":{...},"worker":{...},"socket":{...}},"version":"abc1234","uptimeSec":12345}
 
-$ curl https://subnation2.onrender.com/api/healthz/firebase
+$ curl https://subnation.ly/api/healthz/firebase
 {"auth_enabled_flag":true,"project_id_env":"subnation-2571e","admin_app_initialized":true,...}
 ```
 
@@ -228,12 +228,12 @@ $ curl https://subnation2.onrender.com/api/healthz/firebase
 curl -X POST -H "Authorization: Bearer $ADMIN_JWT" \
   -H "Content-Type: application/json" \
   -d '{"rule":"api_5xx_rate_high"}' \
-  https://subnation2.onrender.com/api/admin/alerts/test
+  https://subnation.ly/api/admin/alerts/test
 # Expected: Telegram message in chat -1003878819089 within 60 s.
 
 # CWV beacon
 curl -X POST -H "Content-Type: application/json" \
   -d '{"name":"LCP","value":2400,"route":"/","viewportClass":"mobile","sessionId":"00000000-0000-4000-8000-000000000001","timestamp":1778900000000}' \
-  https://subnation2.onrender.com/api/cwv
+  https://subnation.ly/api/cwv
 # Expected: 204
 ```

@@ -98,15 +98,15 @@ env vars are preserved.
 
 ```bash
 # 1. Health endpoints all flip to "ok"
-curl https://subnation2.onrender.com/api/healthz/ready | jq '.checks'
+curl https://subnation.ly/api/healthz/ready | jq '.checks'
 # expect: redis.status="ok", neon.status="ok", worker.status="ok", socket.status="ok"
 
 # 2. Redis ping latency surfaces on /api/metrics
 curl -H "Authorization: Bearer $METRICS_ADMIN_TOKEN" \
-  https://subnation2.onrender.com/api/metrics | grep redis_ping_latency_seconds
+  https://subnation.ly/api/metrics | grep redis_ping_latency_seconds
 
 # 3. Worker heartbeat freshness
-curl https://subnation2.onrender.com/api/healthz/worker | jq '.'
+curl https://subnation.ly/api/healthz/worker | jq '.'
 # expect: status="ok", lastCheckedAt within last 60s
 
 # 4. No more "REDIS_URL is missing" log lines
