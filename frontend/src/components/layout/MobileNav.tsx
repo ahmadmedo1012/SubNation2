@@ -29,7 +29,13 @@ export function MobileNav() {
 
       <div className="relative grid h-[60px] grid-cols-5">
         {TABS.map((tab) => {
-          const active = location === tab.href;
+          // Match "/" exactly (otherwise every route would highlight it).
+          // For other tabs, match either the exact path or a deeper path
+          // segment ("/profile" matches "/profile/edit" but not "/profile2").
+          const active =
+            tab.href === "/"
+              ? location === "/"
+              : location === tab.href || location.startsWith(`${tab.href}/`);
           return (
             <Link key={tab.href} href={tab.href} className="min-w-0" aria-label={tab.label}>
               <div
