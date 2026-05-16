@@ -2,6 +2,7 @@ import { CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
 import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
 import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
+import { writeAuditLog } from "../../lib/audit";
 import { encrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -69,6 +70,11 @@ router.post("/products", requireAdmin, async (req, res) => {
     .returning();
 
   bumpSitemapCache();
+  void writeAuditLog(req, "product.create", "product", product.id, {
+    name: data.name,
+    price: data.price,
+    category: data.category,
+  });
 
   return res.status(201).json({
     id: product.id,
@@ -123,6 +129,10 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
       .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed"))),
   ]);
 
+  void writeAuditLog(req, "product.update", "product", id, {
+    fields_changed: Object.keys(updateData),
+  });
+
   return res.json({
     id: product.id,
     name: product.name,
@@ -148,6 +158,7 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
     .set({ isArchived: true, isActive: false })
     .where(eq(productsTable.id, id));
   bumpSitemapCache();
+  void writeAuditLog(req, "product.archive", "product", id);
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 

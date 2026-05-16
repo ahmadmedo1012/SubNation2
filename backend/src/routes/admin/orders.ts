@@ -1,6 +1,7 @@
 import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
+import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
 import { queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -78,6 +79,12 @@ router.patch("/orders/bulk-status", requireAdmin, async (req, res) => {
   }
   import("../../lib/socket").then(({ emitToAdmins }) => {
     emitToAdmins("admin-stats-update", { type: "order-bulk-update", status });
+  });
+
+  void writeAuditLog(req, "order.bulk_status_update", "order", null, {
+    ids: numIds,
+    new_status: status,
+    count: numIds.length,
   });
 
   return res.json({ success: true, updated: numIds.length });

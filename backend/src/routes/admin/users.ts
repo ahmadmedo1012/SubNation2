@@ -1,6 +1,7 @@
 import { db, ordersTable, usersTable } from "@workspace/db";
 import { count, desc, eq, like } from "drizzle-orm";
 import { Router } from "express";
+import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
@@ -77,6 +78,11 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
     .set(updates)
     .where(eq(usersTable.id, id))
     .returning();
+
+  void writeAuditLog(req, "user.update", "user", id, {
+    fields_changed: Object.keys(updates),
+  });
+
   return res.json({
     id: updated.id,
     phone: updated.phone,

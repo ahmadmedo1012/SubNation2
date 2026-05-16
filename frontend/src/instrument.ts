@@ -20,12 +20,25 @@
 
 import * as Sentry from "@sentry/react";
 
-const FALLBACK_DSN =
-  "https://e2c1152a3dff5af381277e1c57a7ea3e@o4511397349097472.ingest.de.sentry.io/4511397448581200";
-
-const dsn = (import.meta.env.VITE_SENTRY_DSN as string | undefined)?.trim() || FALLBACK_DSN;
+const dsn = (import.meta.env.VITE_SENTRY_DSN as string | undefined)?.trim();
 
 const isProduction = import.meta.env.MODE === "production";
+
+if (!dsn) {
+  if (isProduction) {
+    // Public DSN was previously hard-coded as a fallback. We removed it so
+    // each Sentry project's DSN is exclusively env-controlled. Production
+    // builds without the env are misconfigured — log loudly so it's caught
+    // before traffic exposes the gap.
+    // eslint-disable-next-line no-console
+    console.error(
+      "[sentry] VITE_SENTRY_DSN is not set in production. Frontend errors will not be reported.",
+    );
+  } else {
+    // eslint-disable-next-line no-console
+    console.info("[sentry] VITE_SENTRY_DSN not set — Sentry disabled in dev.");
+  }
+}
 
 const release =
   (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim() ||

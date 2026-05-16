@@ -1,6 +1,7 @@
 import { db, usersTable, walletTopupsTable } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
+import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
@@ -47,6 +48,9 @@ router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
 
   try {
     const result = await TopupService.approve(id, req.body?.admin_note ?? null);
+    void writeAuditLog(req, "topup.approve", "topup", id, {
+      admin_note: req.body?.admin_note ?? null,
+    });
     return res.json(result);
   } catch (err) {
     if (err instanceof ServiceError) {
@@ -62,6 +66,9 @@ router.post("/topups/:id/reject", requireAdmin, async (req, res) => {
 
   try {
     const result = await TopupService.reject(id, req.body?.admin_note ?? null);
+    void writeAuditLog(req, "topup.reject", "topup", id, {
+      admin_note: req.body?.admin_note ?? null,
+    });
     return res.json(result);
   } catch (err) {
     if (err instanceof ServiceError) {
