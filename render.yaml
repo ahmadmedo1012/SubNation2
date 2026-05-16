@@ -25,10 +25,9 @@ services:
       - key: APP_URL
         value: "https://subnation.ly"
       - key: APP_ORIGINS
-        # Canonical first; legacy onrender origin kept during DNS / SEO migration
-        # so old links + indexed traffic still passes CORS. Remove the onrender
-        # entry once analytics confirm zero traffic on the legacy domain.
-        value: "https://subnation.ly,https://www.subnation.ly,https://subnation2.onrender.com"
+        # Canonical apex + www. Pre-launch state: no legacy origin
+        # compatibility — the platform is still in development.
+        value: "https://subnation.ly,https://www.subnation.ly"
       - key: VITE_API_URL
         value: "https://subnation.ly"
       - key: VITE_APP_ORIGIN

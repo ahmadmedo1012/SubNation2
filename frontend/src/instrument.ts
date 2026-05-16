@@ -38,7 +38,6 @@ const tracePropagationTargets: (string | RegExp)[] = [
   "localhost",
   /^https?:\/\/127\.0\.0\.1/,
   /^https?:\/\/(?:[a-z0-9-]+\.)?subnation\.ly/i,
-  /^https?:\/\/(?:[a-z0-9-]+\.)?subnation2\.onrender\.com/i,
 ];
 
 const appOrigin = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim();
