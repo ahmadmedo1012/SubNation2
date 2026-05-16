@@ -31,17 +31,17 @@ node_modules
 !.vscode/extensions.json
 
 # misc
-#/.env
-#/.env.*
+# Env files — never commit real env values. Only .example templates may be committed.
+/.env
+/.env.*
 !/.env.example
-/.env.local
 !/config/env.example
 # Per-package envs (Vite auto-loads frontend/.env*)
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
 backend/.env
-backend/.env.local
+backend/.env.*
 !backend/.env.example
 /.sass-cache
 /connect.lock

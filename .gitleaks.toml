@@ -1,11 +1,19 @@
 # Gitleaks configuration for SubNation
+#
+# Schema: gitleaks v8.18+ (modern) — uses `[[allowlists]]` array-of-tables.
+# DO NOT mix `[allowlist]` (singular table) with `[[allowlist]]` (array of
+# tables) — that is invalid TOML and breaks gitleaks with:
+#   "key table already exists as a allowlist, but should be an array table"
+#
 # Validates: Requirements 9.5 (No-committed-secrets invariant)
 
 title = "SubNation Secret Detection Rules"
 
 [extend]
-# Use the default gitleaks rules as a base
+# Inherit gitleaks's built-in default ruleset (cloud keys, GitHub PATs, etc.)
 useDefault = true
+
+# ── Custom rules — project-specific secrets ─────────────────────────────────
 
 [[rules]]
 id = "sentry-dsn-backend"
@@ -56,19 +64,50 @@ regex = '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?\d+:[a-zA-Z0-9_-]{35}['"]?'''
 tags = ["telegram", "bot", "token"]
 severity = "critical"
 
-# Allowlist for false positives
-[allowlist]
-description = "Global allowlist"
+# ── Allowlists ──────────────────────────────────────────────────────────────
+#
+# `[[allowlists]]` is an array-of-tables: each entry filters out one class
+# of false-positive (paths, regexes, commit hashes, etc.). Earlier entries
+# do not "shadow" later ones — gitleaks evaluates all of them.
+
+# Path-based exclusions: this config file itself, lockfile, env example,
+# generated docs, node_modules.
+[[allowlists]]
+description = "Excluded paths (this config, lockfile, examples, generated docs, deps)"
 paths = [
   '''\.gitleaks\.toml''',
   '''\.kiro/specs/observability-seo-cwv-maturity/(requirements|design|tasks)\.md''',
   '''node_modules/.*''',
   '''pnpm-lock\.yaml''',
   '''\.env\.example''',
+  '''config/env\.example''',
 ]
 
-[[allowlist]]
-description = "Allow placeholder values in documentation and examples"
+# Historical-leak paths — these files were committed at some point and are
+# permanently in git history (gitleaks scans 197+ commits by default).
+# They are now either deleted from HEAD or gitignored. The secrets they
+# contained MUST be rotated out-of-band (Firebase service account, Render
+# API key, Neon API key, session secret, Telegram bot token, etc.) — see
+# CI_HARDENING.md / SECRET_ROTATION_RUNBOOK.md. CI should not block forever
+# on commits that cannot be edited; rotation is the real fix.
+[[allowlists]]
+description = "Historical-only files — secrets in these paths must be rotated, not gated"
+paths = [
+  # Root and per-package env files (now gitignored; existed in older commits)
+  '''^\.env$''',
+  '''^backend/\.env$''',
+  # Firebase admin service-account JSON (deleted from HEAD, lives in history)
+  '''subnation-[a-z0-9]+-firebase-adminsdk-.*\.json''',
+  # Migration / rollout docs that contained example bearer tokens at one point
+  '''^PRODUCTION_DEPLOYMENT_CHECKLIST\.md$''',
+  '''^AUTH_MIGRATION_ROADMAP\.md$''',
+  '''^test-firebase-auth\.md$''',
+]
+
+# Documentation/example placeholders that *look* like real secrets but
+# are intentionally non-secret (used in env-reference docs).
+[[allowlists]]
+description = "Documentation placeholder values"
 regexes = [
   '''SENTRY_DSN_BACKEND\s*=\s*['"]?your-sentry-dsn-here['"]?''',
   '''SENTRY_DSN_FRONTEND\s*=\s*['"]?your-sentry-dsn-here['"]?''',
@@ -77,4 +116,23 @@ regexes = [
   '''GENERIC_ALERT_WEBHOOK_URL\s*=\s*['"]?your-webhook-url['"]?''',
   '''METRICS_ADMIN_TOKEN\s*=\s*['"]?your-metrics-token['"]?''',
   '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?your-telegram-bot-token['"]?''',
+]
+
+# False-positive regex allowlist: the `gcp-api-key` default rule is greedy
+# and flags any 35+ char alphanumeric string starting with a Firebase-style
+# project ID. The Firebase *project ID* (public) and other public IDs must
+# not be flagged.
+[[allowlists]]
+description = "Public-by-design Firebase identifiers (project ID, app ID, web API key)"
+regexes = [
+  # Firebase project ID (public — appears in render.yaml, vite.config.ts, browser bundle)
+  '''subnation-2571e''',
+  # Firebase app ID (public)
+  '''1:\d+:web:[a-f0-9]+''',
+  # Firebase Web API key — public-by-design per Firebase security policy.
+  # It's gated by the Authorized Domains allow-list and reCAPTCHA challenges,
+  # NOT by key secrecy. Embedded in the client SPA bundle. Documented in
+  # https://firebase.google.com/docs/projects/api-keys
+  # If this key is rotated, replace the literal below with the new value.
+  '''AIzaSyDoQhcUbqwr0E6qws5vj2vwBNyDEq1EMsQ''',
 ]

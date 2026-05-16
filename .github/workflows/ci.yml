@@ -6,37 +6,104 @@ on:
   pull_request:
     branches: [main, develop]
 
-# Single root install; matches pnpm monorepo guidance (pnpm.io).
+# Cancel in-progress runs for the same ref when a newer push lands.
+# Saves runner time and prevents stale results from racing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to read-only. Each job opts-in to anything stronger.
+permissions:
+  contents: read
+
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Secret scanning — gitleaks v8 with SARIF upload to the GitHub Security tab
+  # ─────────────────────────────────────────────────────────────────────────
   secret-scan:
     name: Secret scanning (gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Required for github/codeql-action/upload-sarif to publish findings
+      # to the repo's Security → Code scanning tab.
+      security-events: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (full history for diff scanning)
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Scan for secrets with gitleaks
+      - name: Validate gitleaks config syntax
+        run: |
+          # Catch TOML parse errors (e.g. mixing [allowlist] with [[allowlist]])
+          # before invoking gitleaks itself, so the failure message is obvious.
+          python3 - <<'PY'
+          import sys, tomllib
+          try:
+              with open(".gitleaks.toml", "rb") as f:
+                  tomllib.load(f)
+              print("✓ .gitleaks.toml parses as valid TOML")
+          except Exception as e:
+              print(f"::error file=.gitleaks.toml::Invalid TOML: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Scan with gitleaks
+        id: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
-          GITLEAKS_LICENSE: "MIT" # gitleaks is MIT licensed
+          # Action is MIT-licensed; this opts out of the (paid) Pro tier prompts.
+          GITLEAKS_LICENSE: "MIT"
+          # Always emit a SARIF report — even when no leaks found — so the
+          # Security tab upload step has a file to publish.
+          GITLEAKS_ENABLE_SUMMARY: "true"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
 
+      - name: Upload SARIF to GitHub Security tab
+        # Run even if the previous step failed — a "leaks found" failure must
+        # still produce a Security-tab entry. The codeql-action gracefully
+        # tolerates a missing or empty SARIF file.
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+        # Don't fail the whole workflow if the upload service is briefly
+        # unavailable — the scan itself is the source of truth.
+        continue-on-error: true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Quality — lint, typecheck, migration drift, tests, full build
+  # ─────────────────────────────────────────────────────────────────────────
   quality:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: secret-scan
+    permissions:
+      contents: read
     env:
+      # Synthetic values — the test suite stubs all DB/auth interactions.
       DATABASE_URL: postgres://ci:ci@localhost/ci
       SESSION_SECRET: ci-test-secret
+      # Quiets the husky `prepare` script that runs on `pnpm install`.
+      HUSKY: "0"
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # pnpm version comes from root package.json "packageManager" (pnpm@10.0.0) only.
-      - uses: pnpm/action-setup@v4
+      - name: Setup pnpm
+        # Version pinned via package.json `packageManager` field (pnpm@10.0.0).
+        uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
@@ -48,14 +115,27 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      - name: Typecheck (project references + packages)
+      - name: Typecheck (project references + per-package)
         run: pnpm run typecheck
 
-      - name: Migration check
-        run: pnpm --filter @workspace/db exec drizzle-kit generate && git diff --exit-code
+      - name: Migration drift check
+        # Regenerates Drizzle migrations from the schema, then verifies the
+        # working tree is unchanged. If a dev edited the schema without
+        # committing the regenerated SQL, this fails CI loudly. The diff
+        # output is preserved on stderr so failures are debuggable.
+        run: |
+          set -euo pipefail
+          pnpm --filter @workspace/db exec drizzle-kit generate
+          if ! git diff --exit-code -- shared/db; then
+            echo "::error::Drizzle migration drift detected. Run \`pnpm --filter @workspace/db exec drizzle-kit generate\` locally and commit the result."
+            exit 1
+          fi
 
       - name: Backend unit tests
         run: pnpm --filter @workspace/api-server exec vitest run
 
       - name: Production build (API + Vite SPA)
+        # The api-server build script chains the frontend build via
+        # `pnpm --dir .. --filter @workspace/subnation run build`,
+        # so this single command builds the full deployable artifact.
         run: pnpm --filter @workspace/api-server run build

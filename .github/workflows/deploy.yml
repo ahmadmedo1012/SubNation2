@@ -4,10 +4,81 @@ on:
   push:
     branches: [main]
 
+# Serialise deploys by main: a second push waits for the first deploy hook
+# to complete instead of racing it. We do NOT cancel-in-progress here —
+# every commit on main should reach Render in order.
+concurrency:
+  group: deploy-render-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    name: Deploy to Render
+    name: Trigger Render Deploy Hook
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
-      - name: Trigger Render Deploy Hook
-        run: curl -sf "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+      - name: Announce deploy intent
+        run: |
+          echo "::notice::Triggering Render deploy"
+          echo "  ref:    $GITHUB_REF"
+          echo "  sha:    $GITHUB_SHA"
+          echo "  actor:  $GITHUB_ACTOR"
+          echo "  run_id: $GITHUB_RUN_ID"
+
+      - name: Validate RENDER_DEPLOY_HOOK_URL secret presence
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOOK_URL:-}" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL is not configured for this repository or environment."
+            echo "Set it under: Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+          # Sanity-check shape without ever logging the secret itself.
+          case "$HOOK_URL" in
+            https://api.render.com/deploy/srv-*)
+              echo "✓ RENDER_DEPLOY_HOOK_URL is configured (length ${#HOOK_URL} chars, host matches Render)."
+              ;;
+            *)
+              echo "::warning::RENDER_DEPLOY_HOOK_URL is set but does not match the expected Render shape (https://api.render.com/deploy/srv-…). Proceeding anyway."
+              ;;
+          esac
+
+      - name: POST to Render deploy hook
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          # `--fail-with-body` surfaces the actual error JSON when the hook
+          # rejects (e.g. blueprint locked, plan exceeded). `--max-time 30`
+          # bounds slow DNS / TLS handshakes. `--retry 3 --retry-delay 5
+          # --retry-connrefused` rides through transient 5xx without manually
+          # re-running the workflow.
+          response=$(
+            curl -fS \
+              --max-time 30 \
+              --retry 3 --retry-delay 5 --retry-connrefused \
+              --fail-with-body \
+              -X POST \
+              -H "Accept: application/json" \
+              "$HOOK_URL"
+          )
+
+          # Render returns: {"deploy":{"id":"dep-...","status":"created", ...}}
+          if echo "$response" | grep -q '"id"'; then
+            deploy_id=$(echo "$response" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
+            echo "::notice::Deploy triggered: $deploy_id"
+            echo "Track progress: https://dashboard.render.com/web/srv-…/deploys/$deploy_id"
+          else
+            # Hook returned 2xx but no deploy ID — still a success path
+            # (some Render service types return empty 2xx). Log the body
+            # so on-call has context if a follow-up doesn't appear.
+            echo "::notice::Deploy hook accepted (no deploy ID in response body)."
+            echo "Response (first 200 bytes): $(echo "$response" | head -c 200)"
+          fi
