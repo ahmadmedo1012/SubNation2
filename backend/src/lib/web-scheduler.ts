@@ -32,6 +32,7 @@ import { startStockWatcher } from "../jobs/stockWatcher";
 import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
 import { acquireSchedulerLeadership, type SchedulerLeadership } from "./scheduler-coordinator";
+import { setSchedulerState } from "./scheduler-state";
 
 export interface WebSchedulerHandle {
   /** Whether the schedulers are actually running in this process. */
@@ -53,11 +54,27 @@ export async function startWebSchedulers(
       { category: "monitoring" },
       "[scheduler] DISABLE_WEB_SCHEDULERS=true — web process will not run heartbeat / alerting / cron. A dedicated worker service is expected to own them.",
     );
+    setSchedulerState({
+      mode: "dedicated",
+      active: false,
+      isLeader: false,
+      instanceId: null,
+      reason: "disabled_by_env",
+      startedAt: null,
+    });
     return { active: false, reason: "disabled_by_env", stop: async () => {} };
   }
 
   const leadership = await acquireSchedulerLeadership(redis);
   if (!leadership.isLeader) {
+    setSchedulerState({
+      mode: "embedded",
+      active: false,
+      isLeader: false,
+      instanceId: leadership.instanceId,
+      reason: "not_leader",
+      startedAt: null,
+    });
     return { active: false, reason: "not_leader", leadership, stop: leadership.release };
   }
 
@@ -91,6 +108,15 @@ export async function startWebSchedulers(
     { category: "monitoring", instanceId: leadership.instanceId },
     "[scheduler] cron + watchers started (couponWatcher, stockWatcher, otpCleanup, cron)",
   );
+
+  setSchedulerState({
+    mode: "embedded",
+    active: true,
+    isLeader: true,
+    instanceId: leadership.instanceId,
+    reason: "active",
+    startedAt: new Date().toISOString(),
+  });
 
   let stopped = false;
   const stop = async (): Promise<void> => {
