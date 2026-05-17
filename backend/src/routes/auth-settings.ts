@@ -245,6 +245,18 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     const enabled = !!cfg.enabled;
     // "has_config" = at least one non-secret public field is filled
     const hasConfig = meta.fields.some((f) => !f.isSecret && !!cfg[f.key]);
+
+    // Telegram needs a numeric bot_id (the prefix of bot_token) to
+    // build the redirect URL on the client. Parse it server-side so
+    // we never expose the full bot_token to the browser. The full
+    // token stays in the database and is only used by the verify
+    // handler to compute the HMAC.
+    let bot_id: string | null = null;
+    if (meta.id === "telegram" && typeof cfg.bot_token === "string") {
+      const prefix = cfg.bot_token.split(":")[0];
+      if (/^\d{6,}$/.test(prefix)) bot_id = prefix;
+    }
+
     return {
       id: meta.id,
       label: meta.label,
@@ -257,8 +269,16 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
       client_id: cfg.client_id ?? null,
       app_id: cfg.app_id ?? null,
       bot_username: cfg.bot_username ?? null,
+      bot_id,
     };
-  }).filter((p) => p.enabled && p.has_config);
+  }).filter((p) => {
+    if (!p.enabled || !p.has_config) return false;
+    // Telegram is only usable when BOTH bot_username AND a derivable
+    // bot_id are present. Skip the entry otherwise — surfacing it
+    // would render a button that 404s on click.
+    if (p.id === "telegram" && (!p.bot_username || !p.bot_id)) return false;
+    return true;
+  });
 
   // Add Firebase Google provider if Firebase is enabled (even without GOOGLE_CLIENT_ID)
   if (firebaseEnabled) {
@@ -275,6 +295,7 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
         client_id: null,
         app_id: null,
         bot_username: null,
+        bot_id: null,
       });
     }
   }
@@ -677,17 +698,36 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
   }
 });
 
-// GET /api/auth/telegram/callback (redirect mode — mobile / in-app browsers)
+// GET /api/auth/telegram/callback (redirect mode — primary transport)
 //
-// Telegram redirects here when the widget's `data-auth-url` attribute
-// is set. We verify exactly the same payload as POST mode, then 302
-// the user to /auth/callback?token=… (the existing AuthCallbackPage
+// Telegram redirects here after auth with the signed payload appended
+// as URL query params. We verify the same payload as POST mode, then
+// 302 the user to /auth/callback?token=… (the existing AuthCallbackPage
 // stores the JWT and lands them on /). On failure we 302 to /login
-// with an error code.
+// with an error code that the LoginPage maps to a localised banner.
+//
+// Cancellation: when the user dismisses the Telegram auth screen
+// (closes the tab, taps "Cancel"), Telegram redirects back to
+// return_to with NO auth payload. We detect that empty redirect
+// here and surface a dedicated `cancelled` reason so the user sees
+// "تم إلغاء تسجيل الدخول" instead of the technical "missing_hash".
 authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
   try {
-    const { ref, ...query } = req.query as Record<string, string>;
-    const payload: Record<string, unknown> = { ...query };
+    const query = req.query as Record<string, string | undefined>;
+
+    // Telegram never appends `?error=` itself — but if a relay or
+    // proxy injected one, forward it transparently.
+    if (typeof query.error === "string" && query.error) {
+      return res.redirect(`/login?error=${encodeURIComponent(query.error)}`);
+    }
+
+    // Empty / cancelled redirect: no signed payload at all.
+    if (!query.hash && !query.auth_date) {
+      return res.redirect("/login?error=cancelled");
+    }
+
+    const { ref, ...rest } = query;
+    const payload: Record<string, unknown> = { ...rest };
     if (ref) payload.referralCode = ref;
 
     const result = await handleTelegramAuth(payload, getClientInfo(req));

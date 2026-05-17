@@ -17,6 +17,9 @@ export interface Provider {
   client_id?: string;
   app_id?: string;
   bot_username?: string;
+  /** Numeric prefix of the bot token, parsed server-side. Required to
+   *  build the OAuth redirect URL without exposing the full token. */
+  bot_id?: string | null;
 }
 
 // ── Provider Icons ─────────────────────────────────────────────────────────────
@@ -214,10 +217,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         </div>
       )}
       {providers.map((provider) => {
-        if (provider.id === "telegram" && provider.bot_username) {
+        if (provider.id === "telegram" && provider.bot_id) {
           return (
             <TelegramLoginButton
               key={provider.id}
+              botId={provider.bot_id}
               botUsername={provider.bot_username}
               onSuccess={handleSuccess}
               onError={setError}

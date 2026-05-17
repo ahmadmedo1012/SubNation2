@@ -1,3 +1,4 @@
+import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
@@ -61,6 +62,8 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
+          <AuthErrorBanner />
+
           {/* PRIMARY: Phone OTP */}
           <div className="space-y-2">
             <div className="text-center">

@@ -85,8 +85,6 @@ app.use(
           // Firebase Phone Auth uses reCAPTCHA loaded from these origins
           "https://www.google.com",
           "https://www.recaptcha.net",
-          // Telegram Login Widget — loads telegram-widget.js from telegram.org.
-          "https://telegram.org",
         ],
         // Do NOT set scriptSrcAttr to 'none' — Firebase SDK injects inline
         // event handlers in the popup/iframe auth flow.
@@ -133,10 +131,6 @@ app.use(
           "https://*.firebase.com",
           "https://www.google.com",
           "https://www.recaptcha.net",
-          // Telegram Login Widget renders the button and the auth popup
-          // from these origins.
-          "https://oauth.telegram.org",
-          "https://telegram.org",
         ],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: null,

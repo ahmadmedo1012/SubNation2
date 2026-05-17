@@ -1,3 +1,4 @@
+import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
@@ -62,6 +63,8 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/20 reveal-up stagger-2">
+          <AuthErrorBanner />
+
           {/* Referral context banner — emerald + check when applied,
               soft tip when no ?ref= in URL. Both auth paths read the
               URL ref independently, so this is purely for user feedback. */}

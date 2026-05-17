@@ -1,55 +1,75 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 
 /**
- * Official Telegram Login Widget integration.
+ * Telegram Login — CSP-safe redirect flow.
  *
- * Spec: https://core.telegram.org/widgets/login
+ * BACKGROUND
+ * ----------
+ * The official `telegram-widget.js` script (loaded from telegram.org) uses
+ * `eval()` internally for popup-message dispatch. Production CSP correctly
+ * blocks `unsafe-eval`, which kills the widget. Adding `unsafe-eval`
+ * globally would weaken the security posture for ALL scripts on the
+ * page — unacceptable.
  *
- * The legacy widget (which is the de-facto Telegram Login since 2018)
- * works as follows:
+ * SOLUTION
+ * --------
+ * Bypass the widget script entirely. Telegram's auth itself is just a
+ * standard OAuth-style redirect. The widget is a convenience renderer;
+ * the underlying flow is:
  *
- *   1. We inject `https://telegram.org/js/telegram-widget.js?22` into a
- *      visible container. The script reads its own `data-*` attributes
- *      and renders a real Telegram-branded button into the same
- *      container.
- *   2. When the user clicks the button, Telegram opens a popup that
- *      asks them to confirm the login on telegram.org.
- *   3. On confirmation, the popup posts auth data back to the parent
- *      window which calls our `data-onauth` callback with the user
- *      object: `{ id, first_name, last_name, username, photo_url,
- *      auth_date, hash }`.
- *   4. We POST that payload to `/api/auth/telegram` where the backend
- *      verifies the HMAC-SHA256 hash using the bot token, checks
- *      auth_date freshness, applies replay protection, and issues a
- *      JWT — same pattern as Phone OTP and Google.
+ *   1. Client redirects (top-level navigation) to:
+ *        https://oauth.telegram.org/auth?
+ *          bot_id={BOT_ID}&
+ *          origin={ORIGIN}&
+ *          embed=0&
+ *          request_access=write&
+ *          return_to={CALLBACK_URL}
  *
- * Owner setup (one-time, in @BotFather):
+ *   2. Telegram authenticates the user on its own domain (no iframe,
+ *      no postMessage, runs in Telegram's CSP context).
  *
- *   /setdomain → choose bot → enter `subnation.ly`
+ *   3. Telegram redirects the browser to {CALLBACK_URL} with the
+ *      signed payload appended as URL query params:
+ *        ?id=…&first_name=…&last_name=…&username=…&photo_url=…
+ *        &auth_date=…&hash=…
  *
- * Then in /admin/settings:
+ *   4. Our backend GET /api/auth/telegram/callback verifies the HMAC,
+ *      runs replay protection, finds-or-creates the user, signs a
+ *      JWT, and 302s the browser to /auth/callback?token=… which
+ *      stores the JWT and lands on /.
  *
- *   Auth providers → Telegram → bot_username + bot_token + enable
+ * Top-level navigations are NOT controlled by `script-src`,
+ * `frame-src`, `connect-src`, or `form-action` CSP directives, so this
+ * flow is fully compatible with our hardened CSP — no allowances
+ * needed for telegram.org or oauth.telegram.org.
  *
- * That's it. No env vars, no redeploys.
+ * It also works:
+ *   ✓ on desktop (full-page redirect, no popup blocker)
+ *   ✓ on mobile (no postMessage / popup needed)
+ *   ✓ in WebViews and in-app browsers
+ *   ✓ under COOP: same-origin-allow-popups
+ *   ✓ in Safari with strict ITP (no third-party storage)
  */
 
 interface TelegramLoginButtonProps {
-  botUsername: string;
-  /** Called with the backend-issued JWT after a successful exchange. */
-  onSuccess: (token: string) => void;
-  /** Called with a localised, user-safe message on any failure. */
+  /**
+   * Numeric Telegram bot ID — the part of the bot token before the
+   * colon. Exposed by /api/auth/providers (the backend parses
+   * `bot_token` and surfaces only the numeric prefix; the full token
+   * is never sent to the browser).
+   */
+  botId: string;
+  /** Bot username (without the `@`). Currently unused for redirect flow
+   *  but kept for diagnostics + future popup-mode fallback. */
+  botUsername?: string;
+  /** No-op in redirect flow — the backend handles success and ends up
+   *  on /auth/callback. Kept to preserve the AuthProviders contract. */
+  onSuccess?: (token: string) => void;
+  /** Synchronous error display (for pre-redirect validation only).
+   *  Errors that happen during the redirect cycle are surfaced via
+   *  ?error= query params on /login (handled by LoginPage). */
   onError: (message: string) => void;
-}
-
-declare global {
-  interface Window {
-    /** Per-instance callback registered by the widget script. */
-    [key: `__tgLogin_${string}`]:
-      | ((data: Record<string, string | number>) => void)
-      | undefined;
-  }
 }
 
 function readReferralFromUrl(): string | undefined {
@@ -60,115 +80,64 @@ function readReferralFromUrl(): string | undefined {
   return trimmed || undefined;
 }
 
-export function TelegramLoginButton({
-  botUsername,
-  onSuccess,
-  onError,
-}: TelegramLoginButtonProps) {
-  // Stable per-instance callback name. We use a unique ID so multiple
-  // mounts (StrictMode dev double-invoke, two pages mounted in transition)
-  // never overwrite each other.
-  const reactId = useId();
-  const callbackName = `__tgLogin_${reactId.replace(/[^a-zA-Z0-9]/g, "")}` as const;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [exchanging, setExchanging] = useState(false);
-  const [scriptFailed, setScriptFailed] = useState(false);
+function TelegramIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#2AABEE" aria-hidden="true">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z" />
+    </svg>
+  );
+}
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps) {
+  const [loading, setLoading] = useState(false);
 
-    // 1. Register the auth callback on `window` under the unique name.
-    //    The widget will look up `window[callbackName]` after auth.
-    window[callbackName] = async (data) => {
-      setExchanging(true);
-      try {
-        const referral = readReferralFromUrl();
-        const res = await fetch("/api/auth/telegram", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...data, referralCode: referral }),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          token?: string;
-          error?: string;
-        };
-        if (!res.ok || !json.token) {
-          throw new Error(json.error ?? "فشل تسجيل الدخول عبر Telegram");
-        }
-        onSuccess(json.token);
-      } catch (err: unknown) {
-        onError(
-          err instanceof Error ? err.message : "تعذّر إكمال تسجيل الدخول عبر Telegram",
-        );
-      } finally {
-        setExchanging(false);
-      }
-    };
+  const handleClick = () => {
+    if (!botId) {
+      onError("لم يتم إعداد بوت Telegram");
+      return;
+    }
 
-    // 2. Inject the official widget script. The script reads its own
-    //    data-* attributes and renders the Telegram button into the
-    //    same parent element.
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.dataset.telegramLogin = botUsername;
-    script.dataset.size = "large";
-    script.dataset.radius = "12";
-    script.dataset.requestAccess = "write";
-    script.dataset.userpic = "false";
-    script.dataset.onauth = `${callbackName}(user)`;
-    script.onerror = () => setScriptFailed(true);
+    try {
+      setLoading(true);
 
-    container.appendChild(script);
+      const origin = window.location.origin;
+      const referral = readReferralFromUrl();
 
-    // 3. Cleanup: remove the script + button + global callback so a
-    //    later remount doesn't leak handlers.
-    return () => {
-      try {
-        delete window[callbackName];
-      } catch {
-        window[callbackName] = undefined;
-      }
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
-      }
-    };
-  }, [botUsername, callbackName, onSuccess, onError]);
+      // Build the return URL with the referral code preserved so the
+      // backend can apply it on signup (mirrors Phone OTP + Google).
+      const returnUrl = new URL("/api/auth/telegram/callback", origin);
+      if (referral) returnUrl.searchParams.set("ref", referral);
 
-  if (scriptFailed) {
-    return (
-      <div className="text-xs text-destructive text-center bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2.5">
-        تعذّر تحميل أداة Telegram — تحقق من الاتصال أو حاول لاحقاً
-      </div>
-    );
-  }
+      // Build the official Telegram OAuth URL.
+      const authUrl = new URL("https://oauth.telegram.org/auth");
+      authUrl.searchParams.set("bot_id", botId);
+      authUrl.searchParams.set("origin", origin);
+      authUrl.searchParams.set("embed", "0"); // 0 = redirect mode (no popup)
+      authUrl.searchParams.set("request_access", "write");
+      authUrl.searchParams.set("return_to", returnUrl.toString());
+
+      // Top-level navigation — NOT subject to script-src / frame-src CSP.
+      // Browser leaves our origin; Telegram authenticates; user comes
+      // back to our backend with the signed payload.
+      window.location.href = authUrl.toString();
+    } catch (err) {
+      setLoading(false);
+      onError(
+        err instanceof Error ? err.message : "تعذّر فتح صفحة Telegram، حاول مجدداً",
+      );
+    }
+  };
 
   return (
-    <div className="relative" dir="ltr">
-      {/* Container the widget script renders into. The widget produces
-          its own pixel-perfect button styled per Telegram brand
-          guidelines — we DON'T style it ourselves, only ensure
-          centering and consistent height with the other buttons. */}
-      <div
-        ref={containerRef}
-        className="flex items-center justify-center min-h-[44px] [&>iframe]:!rounded-xl [&>iframe]:!w-full"
-        aria-label="تسجيل الدخول عبر Telegram"
-      />
-
-      {/* Subtle skeleton while the script downloads + iframe paints —
-          replaced atomically by the real Telegram button. */}
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-muted-foreground text-xs opacity-60 [div:has(>iframe)+&]:hidden">
-        <div className="h-11 w-full bg-muted/40 animate-pulse rounded-xl" />
-      </div>
-
-      {/* In-flight overlay shown while we POST to /api/auth/telegram. */}
-      {exchanging && (
-        <div className="absolute inset-0 bg-background/85 backdrop-blur-[2px] rounded-xl flex items-center justify-center gap-2 text-sm text-foreground">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>جارٍ التحقق...</span>
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={loading || !botId}
+      className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm disabled:opacity-60 press-spring"
+      aria-label="المتابعة عبر Telegram"
+    >
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TelegramIcon />}
+      {loading ? "جارٍ التحويل..." : "المتابعة عبر Telegram"}
+    </button>
   );
 }
