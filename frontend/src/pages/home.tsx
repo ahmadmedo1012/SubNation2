@@ -55,12 +55,6 @@ const SORTS = [
   { value: "price_desc", label: "السعر: الأعلى" },
 ];
 
-const TRUST_ITEMS = [
-  { icon: Truck, label: "تسليم فوري" },
-  { icon: ShieldCheck, label: "دفع آمن" },
-  { icon: Headphones, label: "دعم مستمر" },
-];
-
 const BRANDS = [
   "Netflix",
   "Spotify",
@@ -367,7 +361,7 @@ export default function HomePage() {
                   </p>
 
                   {/* Brand chips */}
-                  <div className="relative overflow-hidden mb-4">
+                  <div className="relative overflow-hidden mb-5">
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
                       {BRANDS.map((brand, i) => (
                         <span
@@ -383,31 +377,19 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Trust pills */}
-                  <div className="flex flex-wrap gap-2 mb-5">
-                    {TRUST_ITEMS.map((item) => (
-                      <div
-                        key={item.label}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/25 border border-border/30 px-2.5 py-1 rounded-full"
-                      >
-                        <item.icon className="w-3 h-3" />
-                        {item.label}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2.5 flex-wrap">
-                    <Link href="/register">
-                      <Button className="bg-primary hover:bg-primary/90 shadow-xl shadow-primary/28 active:scale-[0.97] h-11 px-7 font-bold transition-all cta-glow text-sm rounded-xl">
+                  {/* CTAs — mobile: stacked with primary dominant; desktop: inline */}
+                  <div className="flex flex-col sm:flex-row gap-2.5 sm:flex-wrap">
+                    <Link href="/register" className="contents sm:block">
+                      <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 shadow-xl shadow-primary/28 active:scale-[0.97] h-12 sm:h-11 px-7 font-bold transition-all cta-glow text-sm rounded-xl">
                         إنشاء حساب مجاني
                       </Button>
                     </Link>
-                    <Link href="/login">
+                    <Link href="/login" className="contents sm:block">
                       <Button
-                        variant="outline"
-                        className="active:scale-[0.97] h-11 px-4 transition-all text-sm gap-1.5 hover:bg-muted/40 rounded-xl"
+                        variant="ghost"
+                        className="w-full sm:w-auto active:scale-[0.97] h-11 sm:h-11 sm:px-4 transition-all text-sm gap-1.5 hover:bg-muted/40 rounded-xl text-muted-foreground hover:text-foreground"
                       >
-                        تسجيل الدخول
+                        لدي حساب — تسجيل الدخول
                         <ArrowLeft className="w-3.5 h-3.5 opacity-40" />
                       </Button>
                     </Link>

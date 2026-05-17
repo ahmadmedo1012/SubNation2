@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Shield, FileText, ChevronLeft } from "lucide-react";
 import { Link } from "wouter";
 
@@ -8,6 +8,16 @@ const TABS: { id: Tab; label: string; Icon: typeof FileText }[] = [
   { id: "terms", label: "الشروط والأحكام", Icon: FileText },
   { id: "privacy", label: "سياسة الخصوصية", Icon: Shield },
 ];
+
+/**
+ * Read the active tab from `window.location.hash`. Defaults to "terms".
+ * Used so deep-links like `/terms#privacy` open directly on the privacy tab,
+ * which the Footer relies on for its "سياسة الخصوصية" link.
+ */
+function tabFromHash(hash: string): Tab {
+  const id = (hash || "").replace(/^#/, "").toLowerCase();
+  return id === "privacy" ? "privacy" : "terms";
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -141,7 +151,28 @@ function PrivacyContent() {
 }
 
 export default function TermsPage() {
-  const [tab, setTab] = useState<Tab>("terms");
+  const [tab, setTab] = useState<Tab>(() =>
+    typeof window !== "undefined" ? tabFromHash(window.location.hash) : "terms",
+  );
+
+  // Sync the active tab when the hash changes (back/forward, or another
+  // intra-app link to /terms#privacy). Push a new hash when the user
+  // clicks a tab so deep-links stay shareable.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHashChange = () => setTab(tabFromHash(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const handleTabClick = (next: Tab) => {
+    setTab(next);
+    if (typeof window !== "undefined") {
+      // Use replaceState so back-button still leaves /terms cleanly.
+      const newUrl = `${window.location.pathname}#${next}`;
+      window.history.replaceState(null, "", newUrl);
+    }
+  };
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
@@ -165,7 +196,7 @@ export default function TermsPage() {
         {TABS.map(({ id, label, Icon }) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() => handleTabClick(id)}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
               tab === id
                 ? "bg-card shadow-sm text-foreground font-bold"
