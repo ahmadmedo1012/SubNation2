@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { SystemStatusPill } from "./SystemStatusPill";
 
 export function Footer() {
   const [location] = useLocation();
@@ -14,9 +15,18 @@ export function Footer() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="font-medium">
-          © {new Date().getFullYear()} SubNation — سوق الاشتراكات الرقمية في ليبيا
-        </span>
+        {/* Left: copyright + system status pill */}
+        <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
+          <span className="font-medium text-center sm:text-right">
+            © {new Date().getFullYear()} SubNation — سوق الاشتراكات الرقمية في ليبيا
+          </span>
+          {/* Tiny operational-transparency pill — polls /api/healthz/ready
+              every 60 s, renders nothing on first error so we don't flash
+              a misleading red dot during a deploy/blip. */}
+          <SystemStatusPill />
+        </div>
+
+        {/* Right: legal + support */}
         <div className="flex items-center gap-4">
           <Link href="/terms#terms">
             <span className="hover:text-foreground transition-colors cursor-pointer">
@@ -24,13 +34,10 @@ export function Footer() {
             </span>
           </Link>
           <span className="w-px h-3 bg-border/40" />
-          {/*
-            Hash-based deep-link to the privacy tab. TermsPage reads
-            `window.location.hash` on mount (and on hash change) and
-            switches the active tab accordingly. Replaces a previous
-            setTimeout + DOM-query hack that silently broke when the
-            terms route hadn't finished mounting.
-          */}
+          {/* Hash-based deep-link to the privacy tab. TermsPage reads
+              `window.location.hash` on mount + on hashchange and switches
+              the active tab. Replaces a previous setTimeout + DOM-query
+              hack that silently broke when terms hadn't finished mounting. */}
           <Link href="/terms#privacy">
             <span className="hover:text-foreground transition-colors cursor-pointer">
               سياسة الخصوصية
@@ -38,9 +45,7 @@ export function Footer() {
           </Link>
           <span className="w-px h-3 bg-border/40" />
           <Link href="/support">
-            <span className="hover:text-foreground transition-colors cursor-pointer">
-              الدعم
-            </span>
+            <span className="hover:text-foreground transition-colors cursor-pointer">الدعم</span>
           </Link>
         </div>
       </div>
