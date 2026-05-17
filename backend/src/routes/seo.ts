@@ -5,15 +5,84 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+/**
+ * Authoritative production SEO origin.
+ *
+ * Resolved ONCE at module load from `APP_URL`. We strip any trailing slash
+ * so concatenations like `${APP_ORIGIN}/foo` never produce `//foo`. If the
+ * env is unset we fall back to the canonical production origin — never to
+ * the legacy onrender hostname or to a localhost URL, since this module is
+ * SEO-critical and a wrong origin in prod means Google indexes the wrong
+ * canonical.
+ */
 const APP_ORIGIN = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
 
-// ── robots.txt (static) ──────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// /robots.txt
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Disallow list covers EVERY non-public route the SPA exposes:
+//
+//   • Auth flow                    /login, /register, /forgot-password,
+//                                    /onboarding, /auth/, /auth/callback
+//   • User-private pages           /wallet, /orders, /loyalty, /referrals,
+//                                    /profile  (these render user-state-
+//                                    dependent content that's empty for an
+//                                    anonymous crawler — bad for SEO)
+//   • Admin                        /admin, /admin/*
+//   • Internal observability       /status   (operational view; no
+//                                    customer-facing value)
+//   • API surface                  /api/
+//
+// Public crawlable routes (allowed):
+//   • /                            home / catalog
+//   • /product/:id                 individual product pages (anonymous-
+//                                    renderable; the catalog data is public)
+//   • /support                     help center (mostly static)
+//   • /terms                       legal
+//
+// Sitemap reference points at the dynamic /sitemap.xml below (not a static
+// file). Cache-Control max-age=300 so crawlers revisit hourly-ish without
+// hammering the origin.
 
 const ROBOTS_BODY = [
+  "# subnation.ly — robots.txt",
+  "# Authoritative source: backend/src/routes/seo.ts",
+  "",
   "User-agent: *",
+  "",
+  "# Public crawlable surface",
   "Allow: /",
+  "Allow: /product/",
+  "Allow: /support",
+  "Allow: /terms",
+  "",
+  "# Auth flow — never index",
+  "Disallow: /login",
+  "Disallow: /register",
+  "Disallow: /forgot-password",
+  "Disallow: /onboarding",
+  "Disallow: /auth/",
+  "",
+  "# User-private pages (anonymous crawlers see redirects / empty state)",
+  "Disallow: /wallet",
+  "Disallow: /orders",
+  "Disallow: /loyalty",
+  "Disallow: /referrals",
+  "Disallow: /profile",
+  "",
+  "# Admin + internal observability",
+  "Disallow: /admin",
   "Disallow: /admin/",
+  "Disallow: /status",
+  "",
+  "# API surface",
   "Disallow: /api/",
+  "",
+  // Crawl-delay is a soft hint; modern Googlebot/Bingbot ignore it but other
+  // crawlers (Yandex, Baidu) honour it. 1s gives small crawlers air without
+  // affecting SEO speed.
+  "Crawl-delay: 1",
   "",
   `Sitemap: ${APP_ORIGIN}/sitemap.xml`,
   "",
@@ -21,11 +90,22 @@ const ROBOTS_BODY = [
 
 router.get("/robots.txt", (_req, res) => {
   res.set("Content-Type", "text/plain; charset=utf-8");
-  res.set("Cache-Control", "public, max-age=300");
+  res.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
   res.send(ROBOTS_BODY);
 });
 
-// ── sitemap.xml (dynamic, cached) ────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// /sitemap.xml
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Public, anonymous-renderable, SEO-relevant routes ONLY. User-state-
+// dependent routes (/loyalty, /referrals, /profile, /wallet, /orders) are
+// EXCLUDED — Googlebot doesn't sign in, so those URLs would be indexed as
+// empty pages, diluting the index.
+//
+// In-memory cache (60 s) avoids hammering Postgres on every crawler hit.
+// `bumpSitemapCache()` is called by admin product CRUD so the next request
+// after a product change rebuilds.
 
 interface SitemapCacheEntry {
   body: string;
@@ -33,17 +113,12 @@ interface SitemapCacheEntry {
 }
 
 const SITEMAP_TTL_MS = 60_000;
+const SITEMAP_MAX_URLS = 50_000; // sitemap.org spec cap per file
 let sitemapCache: SitemapCacheEntry | null = null;
 
-/**
- * Static (non-product) public routes. Each entry produces one <url> with
- * Arabic + English `xhtml:link rel="alternate" hreflang=…` siblings.
- */
 const STATIC_ROUTES: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/", changefreq: "daily", priority: "1.0" },
-  { path: "/loyalty", changefreq: "weekly", priority: "0.6" },
-  { path: "/referrals", changefreq: "weekly", priority: "0.6" },
-  { path: "/support", changefreq: "monthly", priority: "0.5" },
+  { path: "/support", changefreq: "monthly", priority: "0.4" },
   { path: "/terms", changefreq: "yearly", priority: "0.3" },
 ];
 
@@ -72,7 +147,8 @@ function urlEntry(loc: string, lastmod: string, changefreq: string, priority: st
 }
 
 async function buildSitemap(): Promise<string> {
-  // Static routes use the most recent product update as a loose lastmod proxy.
+  // Static-route lastmod uses MAX(updatedAt) of active products as a loose
+  // proxy: when products change, the catalog (homepage) effectively did too.
   const [{ maxUpdated }] = await db
     .select({ maxUpdated: sql<string | null>`MAX(${productsTable.updatedAt})` })
     .from(productsTable)
@@ -88,7 +164,7 @@ async function buildSitemap(): Promise<string> {
     })
     .from(productsTable)
     .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)))
-    .limit(50_000); // sitemap.org limit is 50k urls per file
+    .limit(SITEMAP_MAX_URLS - STATIC_ROUTES.length);
 
   const staticEntries = STATIC_ROUTES.map((r) =>
     urlEntry(`${APP_ORIGIN}${r.path}`, globalLastmod, r.changefreq, r.priority),
@@ -121,17 +197,18 @@ router.get("/sitemap.xml", async (_req, res) => {
       sitemapCache = { body, builtAt: now };
     }
     res.set("Content-Type", "application/xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=60");
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
     res.send(sitemapCache.body);
   } catch (err) {
-    logger.error({ err }, "sitemap build failed");
+    logger.error({ err, category: "seo" }, "sitemap build failed");
     res.status(500).set("Content-Type", "text/plain").send("sitemap_unavailable");
   }
 });
 
 /**
- * Invalidate the in-memory sitemap cache. Product create / update / delete
- * handlers should call this so the next sitemap.xml request rebuilds.
+ * Invalidate the in-memory sitemap cache. Admin product create / update /
+ * delete handlers call this so the next /sitemap.xml request rebuilds and
+ * reflects the latest product set.
  */
 export function bumpSitemapCache(): void {
   sitemapCache = null;
