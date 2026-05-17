@@ -16,8 +16,21 @@ type CheckStatus = "ok" | "degraded" | "failing";
 
 interface CheckResult {
   status: CheckStatus;
+  /**
+   * `true` if this subsystem is informational only — its failure does NOT
+   * block readiness. Surfaced so the frontend can render optional
+   * failures without an alarming red state.
+   *
+   * Critical checks (default `false` / unset): neon (DB), redis.
+   * Optional checks (`true`): worker, socket — single-tier deployments
+   * and early boot can legitimately leave these absent without breaking
+   * the app.
+   */
+  optional?: boolean;
   latencyMs?: number;
   error?: string;
+  /** Friendly note for operators (e.g. "single-tier deployment"). */
+  note?: string;
   lastCheckedAt: string;
 }
 
@@ -158,6 +171,13 @@ async function checkNeon(): Promise<CheckResult> {
 async function checkWorker(redis: any): Promise<CheckResult> {
   const start = Date.now();
   const now = Date.now();
+  // Worker is OPTIONAL — single-tier deployments don't run a separate
+  // worker process, and the web tier handles schedulers via the
+  // Redis-backed leader lock. An absent worker is by-design, not an
+  // error. Only escalate to "failing" if a heartbeat exists but is
+  // very stale (~3 minutes), indicating a crashed/lagging worker.
+  const optional = true;
+
   try {
     const heartbeat = await Promise.race([
       redis.get("worker:heartbeat"),
@@ -168,9 +188,10 @@ async function checkWorker(redis: any): Promise<CheckResult> {
 
     if (!heartbeat) {
       return {
-        status: "failing",
+        status: "degraded",
+        optional,
         latencyMs: Date.now() - start,
-        error: "No heartbeat found",
+        note: "single-tier deployment (no separate worker process)",
         lastCheckedAt: new Date().toISOString(),
       };
     }
@@ -181,6 +202,7 @@ async function checkWorker(redis: any): Promise<CheckResult> {
     if (ageSec > 180) {
       return {
         status: "failing",
+        optional,
         latencyMs: Date.now() - start,
         error: `Worker heartbeat too old: ${ageSec.toFixed(1)}s`,
         lastCheckedAt: new Date().toISOString(),
@@ -188,6 +210,7 @@ async function checkWorker(redis: any): Promise<CheckResult> {
     } else if (ageSec > 60) {
       return {
         status: "degraded",
+        optional,
         latencyMs: Date.now() - start,
         error: `Worker heartbeat age: ${ageSec.toFixed(1)}s`,
         lastCheckedAt: new Date().toISOString(),
@@ -195,13 +218,15 @@ async function checkWorker(redis: any): Promise<CheckResult> {
     } else {
       return {
         status: "ok",
+        optional,
         latencyMs: Date.now() - start,
         lastCheckedAt: new Date().toISOString(),
       };
     }
   } catch (err) {
     return {
-      status: "failing",
+      status: "degraded",
+      optional,
       latencyMs: Date.now() - start,
       error: err instanceof Error ? err.message : "Unknown error",
       lastCheckedAt: new Date().toISOString(),
@@ -211,12 +236,18 @@ async function checkWorker(redis: any): Promise<CheckResult> {
 
 async function checkSocket(io: any, redis: any): Promise<CheckResult> {
   const start = Date.now();
+  // Socket.IO is OPTIONAL — its absence degrades realtime UX (live order
+  // / topup notifications) but every critical request path (HTTP API,
+  // auth, orders, wallet) functions fine without it.
+  const optional = true;
+
   try {
     if (!io || !io.adapter) {
       return {
-        status: "failing",
+        status: "degraded",
+        optional,
         latencyMs: Date.now() - start,
-        error: "Socket.IO not initialized or no adapter",
+        note: "Socket.IO not initialized — realtime updates may not be delivered",
         lastCheckedAt: new Date().toISOString(),
       };
     }
@@ -232,12 +263,14 @@ async function checkSocket(io: any, redis: any): Promise<CheckResult> {
     if (result === "PONG") {
       return {
         status: "ok",
+        optional,
         latencyMs: Date.now() - start,
         lastCheckedAt: new Date().toISOString(),
       };
     } else {
       return {
         status: "degraded",
+        optional,
         latencyMs: Date.now() - start,
         error: `Unexpected Redis response: ${result}`,
         lastCheckedAt: new Date().toISOString(),
@@ -245,7 +278,8 @@ async function checkSocket(io: any, redis: any): Promise<CheckResult> {
     }
   } catch (err) {
     return {
-      status: "failing",
+      status: "degraded",
+      optional,
       latencyMs: Date.now() - start,
       error: err instanceof Error ? err.message : "Unknown error",
       lastCheckedAt: new Date().toISOString(),
@@ -307,7 +341,21 @@ router.get("/healthz/firebase", (_req, res) => {
   });
 });
 
-// Ready endpoint - aggregates all health checks
+// Ready endpoint — aggregates health checks with critical/optional semantics.
+//
+// Status escalation rules:
+//   - "failing": ANY non-optional check is failing → HTTP 503
+//   - "degraded": ANY check (incl. optional) is failing OR degraded → HTTP 200
+//   - "ok": all checks pass → HTTP 200
+//
+// Critical checks (block readiness): neon (DB), redis.
+// Optional checks (informational): worker, socket.
+//
+// This separation kills the false-positive 503s that the previous
+// blanket policy produced in single-tier deployments (no separate
+// worker process) and during transient Socket.IO blips. The platform
+// is "ready" if it can serve user-facing traffic — auth, orders,
+// wallet, etc. — which only requires DB + Redis.
 router.get("/healthz/ready", async (_req, res) => {
   const redis = getRedisClient();
   const io = getIO();
@@ -315,57 +363,72 @@ router.get("/healthz/ready", async (_req, res) => {
   const checks: Record<string, CheckResult> = {};
   let overallStatus: CheckStatus = "ok";
 
-  // Check Redis
+  // Helper: fold one check result into overallStatus, respecting `optional`.
+  const fold = (result: CheckResult) => {
+    if (result.status === "failing") {
+      // Optional failures cap overall at "degraded"; critical failures escalate.
+      if (result.optional === true) {
+        if (overallStatus === "ok") overallStatus = "degraded";
+      } else {
+        overallStatus = "failing";
+      }
+    } else if (result.status === "degraded" && overallStatus === "ok") {
+      overallStatus = "degraded";
+    }
+  };
+
+  // Check Redis (critical)
   if (redis) {
     const result = await checkRedis(redis);
     checks.redis = result;
-    if (result.status === "failing") overallStatus = "failing";
-    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+    fold(result);
   } else {
     checks.redis = {
       status: "failing",
       error: "Redis not configured",
       lastCheckedAt: new Date().toISOString(),
     };
-    overallStatus = "failing";
+    fold(checks.redis);
   }
 
-  // Check Neon — singleton from @workspace/db
+  // Check Neon (critical) — singleton from @workspace/db
   {
     const result = await checkNeon();
     checks.neon = result;
-    if (result.status === "failing") overallStatus = "failing";
-    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+    fold(result);
   }
 
-  // Check Worker
+  // Check Worker (optional) — single-tier deployments are valid
   if (redis) {
     const result = await checkWorker(redis);
     checks.worker = result;
-    if (result.status === "failing") overallStatus = "failing";
-    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+    fold(result);
   } else {
+    // Without Redis we can't check worker heartbeat. Emit a degraded
+    // optional result so the panel still shows the row but readiness
+    // doesn't fail twice for the same root cause.
     checks.worker = {
-      status: "failing",
-      error: "Redis not configured (needed for worker check)",
+      status: "degraded",
+      optional: true,
+      note: "Redis unavailable — worker heartbeat not checked",
       lastCheckedAt: new Date().toISOString(),
     };
-    overallStatus = "failing";
+    fold(checks.worker);
   }
 
-  // Check Socket.IO
+  // Check Socket.IO (optional) — realtime is degraded UX, not critical path
   if (io && redis) {
     const result = await checkSocket(io, redis);
     checks.socket = result;
-    if (result.status === "failing") overallStatus = "failing";
-    else if (result.status === "degraded" && overallStatus === "ok") overallStatus = "degraded";
+    fold(result);
   } else {
     checks.socket = {
-      status: "failing",
-      error: "Socket.IO not initialized or Redis not configured",
+      status: "degraded",
+      optional: true,
+      note: !io ? "Socket.IO not initialized" : "Redis unavailable — adapter not checked",
       lastCheckedAt: new Date().toISOString(),
     };
-    overallStatus = "failing";
+    fold(checks.socket);
   }
 
   const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
@@ -378,7 +441,7 @@ router.get("/healthz/ready", async (_req, res) => {
     uptimeSec,
   };
 
-  res.status(overallStatus === "failing" ? 503 : 200).json(response);
+  res.status((overallStatus as CheckStatus) === "failing" ? 503 : 200).json(response);
 });
 
 // Redis health check

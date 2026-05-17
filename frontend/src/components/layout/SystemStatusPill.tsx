@@ -1,11 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-
-type CheckStatus = "ok" | "degraded" | "failing";
-
-interface HealthzReadyResponse {
-  status: CheckStatus;
-}
+import { fetchHealthzReady, type CheckStatus, type HealthzReadyResponse } from "@/lib/healthz";
 
 const STATUS_META: Record<
   CheckStatus,
@@ -37,25 +32,24 @@ const STATUS_META: Record<
  * data arrives so the footer doesn't flash "خلل" before knowing — same
  * graceful-degrade pattern used by the admin observability panel.
  *
- * Why not load a heavier component:
- *   - 50-byte JSON payload, 60 s cadence — negligible cost
- *   - same React Query key as the admin status page so the cache is
- *     shared on logged-in pages
- *   - no portal, no listeners, no DOM mutation — single <Link> render
+ * Uses the shared robust fetcher (lib/healthz) which never throws —
+ * 503 responses become "degraded" yellow dots (not errors) and
+ * network failures hide the pill entirely. No console spam, no
+ * Sentry network breadcrumbs.
  */
 export function SystemStatusPill() {
-  const { data, isError } = useQuery<HealthzReadyResponse>({
+  const { data } = useQuery<HealthzReadyResponse>({
     queryKey: ["healthz-ready"],
-    queryFn: () => fetch("/api/healthz/ready").then((r) => r.json()),
+    queryFn: fetchHealthzReady,
     refetchInterval: 60_000,
     staleTime: 30_000,
-    // If the very first probe fails (network blip, deploy in progress),
-    // hide the pill rather than display a misleading red dot. React
-    // Query will keep retrying in the background.
-    retry: 1,
+    // Fetcher already absorbs errors and synthesises a degraded
+    // payload — React Query never enters error state, so retries
+    // are unnecessary.
+    retry: false,
   });
 
-  if (isError || !data) return null;
+  if (!data) return null;
 
   const meta = STATUS_META[data.status] ?? STATUS_META.degraded;
 

@@ -41,21 +41,16 @@ import { AdminLayout } from "./layout";
 
 // ── Backend response shapes (mirror what the deployed API returns) ─────────
 
-type CheckStatus = "ok" | "degraded" | "failing";
+import {
+  fetchHealthzReady,
+  type CheckStatus,
+  type HealthCheck,
+  type HealthzReadyResponse,
+} from "@/lib/healthz";
 
-interface HealthCheck {
-  status: CheckStatus;
-  latencyMs?: number;
-  error?: string;
-  lastCheckedAt: string;
-}
-
-interface HealthzReadyResponse {
-  status: CheckStatus;
-  checks: Record<string, HealthCheck>;
-  version: string;
-  uptimeSec: number;
-}
+// Re-export the shared types under their existing local names so the rest
+// of this large file's prop signatures remain unchanged.
+export type { CheckStatus, HealthCheck, HealthzReadyResponse };
 
 interface DiagnosticsResponse {
   node: { version: string; platform: string; arch: string; pid: number };
@@ -350,9 +345,10 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const healthQ = useQuery<HealthzReadyResponse>({
     queryKey: ["healthz-ready"],
-    queryFn: () => fetch("/api/healthz/ready").then((r) => r.json()),
+    queryFn: fetchHealthzReady,
     refetchInterval: 30_000,
     staleTime: 15_000,
+    retry: false,
   });
 
   const diagQ = useQuery<DiagnosticsResponse>({

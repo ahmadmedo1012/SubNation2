@@ -1,22 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Activity } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
-
-type CheckStatus = "ok" | "degraded" | "failing";
-
-interface HealthCheck {
-  status: CheckStatus;
-  latencyMs?: number;
-  error?: string;
-  lastCheckedAt: string;
-}
-
-interface HealthzReadyResponse {
-  status: CheckStatus;
-  checks: Record<string, HealthCheck>;
-  version: string;
-  uptimeSec: number;
-}
+import {
+  fetchHealthzReady,
+  type CheckStatus,
+  type HealthzReadyResponse,
+} from "@/lib/healthz";
 
 const STATUS_META: Record<
   CheckStatus,
@@ -69,12 +58,19 @@ export default function StatusPage(): ReactElement {
     return () => clearInterval(t);
   }, []);
 
-  const { data, isLoading, isError, refetch } = useQuery<HealthzReadyResponse>({
+  const { data, isLoading, refetch } = useQuery<HealthzReadyResponse>({
     queryKey: ["public-status"],
-    queryFn: () => fetch("/api/healthz/ready").then((r) => r.json()),
+    queryFn: fetchHealthzReady,
     refetchInterval: 30_000,
     staleTime: 15_000,
+    // Robust fetcher absorbs all error paths into a synthesised
+    // degraded payload — React Query never enters error state.
+    retry: false,
   });
+
+  // The fetcher never throws, so `isError` is structurally always false.
+  // Keep an explicit `false` here so the JSX below stays readable.
+  const isError = false;
 
   const aggregate = data?.status ?? "degraded";
   const aggregateMeta = STATUS_META[aggregate];
