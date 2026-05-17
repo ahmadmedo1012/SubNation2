@@ -4,6 +4,7 @@ import { exchangeFirebaseIdToken, signInWithFirebaseGoogle } from "@/lib/firebas
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useLocation } from "wouter";
+import { TelegramLoginButton } from "./TelegramLoginButton";
 
 export interface Provider {
   id: string;
@@ -106,38 +107,6 @@ function getReferralCodeFromUrl() {
   return new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
 }
 
-// ── Telegram Widget helper ─────────────────────────────────────────────────────
-
-function openTelegramLogin(botUsername: string): Promise<Record<string, string>> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("انتهت مهلة تسجيل Telegram")), 120_000);
-
-    (window as any).__tgLoginCallback = (data: Record<string, string>) => {
-      clearTimeout(timeout);
-      delete (window as any).__tgLoginCallback;
-      resolve(data);
-    };
-
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.dataset.telegramLogin = botUsername;
-    script.dataset.size = "large";
-    script.dataset.onauth = "__tgLoginCallback(user)";
-    script.dataset.requestAccess = "write";
-    script.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error("تعذّر تحميل مكتبة Telegram"));
-    };
-
-    const container = document.createElement("div");
-    container.style.cssText = "position:fixed;opacity:0;pointer-events:none";
-    container.appendChild(script);
-    document.body.appendChild(container);
-    setTimeout(() => document.body.removeChild(container), 5000);
-  });
-}
-
 // ── Single provider button ─────────────────────────────────────────────────────
 
 function ProviderButton({
@@ -172,23 +141,6 @@ function ProviderButton({
         const idToken = await credential.user.getIdToken();
         const session = await exchangeFirebaseIdToken(idToken, getReferralCodeFromUrl());
         onSuccess(session.token);
-        return;
-      }
-
-      if (provider.id === "telegram") {
-        if (!provider.bot_username) {
-          onError("لم يتم إعداد بوت Telegram");
-          return;
-        }
-        const userData = await openTelegramLogin(provider.bot_username);
-        const res = await fetch("/api/auth/telegram", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(userData),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "فشل تسجيل الدخول عبر Telegram");
-        onSuccess(data.token);
         return;
       }
     } catch (err: unknown) {
@@ -261,15 +213,27 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
           <div className="flex-1 h-px bg-border/50" />
         </div>
       )}
-      {providers.map((provider) => (
-        <ProviderButton
-          key={provider.id}
-          provider={provider}
-          onSuccess={handleSuccess}
-          onError={setError}
-          className={buttonClassName}
-        />
-      ))}
+      {providers.map((provider) => {
+        if (provider.id === "telegram" && provider.bot_username) {
+          return (
+            <TelegramLoginButton
+              key={provider.id}
+              botUsername={provider.bot_username}
+              onSuccess={handleSuccess}
+              onError={setError}
+            />
+          );
+        }
+        return (
+          <ProviderButton
+            key={provider.id}
+            provider={provider}
+            onSuccess={handleSuccess}
+            onError={setError}
+            className={buttonClassName}
+          />
+        );
+      })}
       {error && <p className="text-xs text-destructive text-center pt-1">{error}</p>}
     </div>
   );
