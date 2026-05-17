@@ -28,6 +28,11 @@ import { signUserToken } from "../lib/jwt";
 import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
 import { getRedisClient } from "../lib/redis-client";
+import {
+  TELEGRAM_AUTH_FRESHNESS_SEC,
+  type TelegramAuthFields,
+  verifyTelegramAuth,
+} from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
@@ -424,92 +429,11 @@ authProviderPublicRouter.get("/facebook/callback", async (req, res) => {
 // Owner setup, in @BotFather:  /setdomain → bot → "subnation.ly"
 // Owner setup, in admin UI:    /admin/settings → Telegram → bot_username +
 //                                                 bot_token + enable
+//
+// The hash-verification algorithm itself lives in lib/telegram-auth.ts so
+// it can be unit-tested in isolation without standing up Express + the DB.
 
-const TELEGRAM_AUTH_FRESHNESS_SEC = 30 * 60; // 30 minutes — tight window
 const TELEGRAM_REPLAY_TTL_SEC = TELEGRAM_AUTH_FRESHNESS_SEC; // mirror freshness
-
-interface TelegramAuthFields {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: string;
-  hash: string;
-}
-
-/**
- * Verify the Telegram widget payload against the bot token using the
- * exact algorithm in https://core.telegram.org/widgets/login#checking-authorization.
- *
- * Returns `{ ok: true, fields }` on success or `{ ok: false, reason }`
- * with a stable string code that maps to the user-facing error / metric
- * label. The `reason` is logged server-side but the user only ever sees
- * a localised generic message.
- */
-function verifyTelegramAuth(
-  data: Record<string, unknown>,
-  botToken: string,
-):
-  | { ok: true; fields: TelegramAuthFields }
-  | { ok: false; reason: "missing_hash" | "missing_id" | "bad_signature" | "stale_auth_date" } {
-  if (!data || typeof data !== "object") return { ok: false, reason: "missing_hash" };
-  const hash = typeof data.hash === "string" ? data.hash : "";
-  if (!hash) return { ok: false, reason: "missing_hash" };
-  if (data.id === undefined || data.id === null || data.id === "") {
-    return { ok: false, reason: "missing_id" };
-  }
-
-  // Build the data-check string per spec: every key (excluding hash),
-  // sorted alphabetically, joined as `key=value\n…`.
-  const entries: string[] = [];
-  for (const key of Object.keys(data).sort()) {
-    if (key === "hash" || key === "referralCode") continue;
-    const value = data[key];
-    if (value === undefined || value === null) continue;
-    entries.push(`${key}=${String(value)}`);
-  }
-  const checkString = entries.join("\n");
-
-  const secretKey = createHash("sha256").update(botToken).digest();
-  const expected = createHmac("sha256", secretKey).update(checkString).digest("hex");
-
-  let valid = false;
-  try {
-    const got = Buffer.from(hash, "hex");
-    const want = Buffer.from(expected, "hex");
-    if (got.length === want.length) valid = timingSafeEqual(got, want);
-  } catch {
-    valid = false;
-  }
-  if (!valid) return { ok: false, reason: "bad_signature" };
-
-  // Auth-date freshness — Telegram's official sample uses 86400s (1 day).
-  // We use 30 minutes since this is a federated session bootstrap (the
-  // user is in front of their device right now) — the tighter window
-  // reduces replay surface significantly with no UX cost.
-  const authDate = parseInt(String(data.auth_date ?? "0"), 10);
-  if (!Number.isFinite(authDate) || authDate <= 0) {
-    return { ok: false, reason: "stale_auth_date" };
-  }
-  const ageSec = Math.floor(Date.now() / 1000) - authDate;
-  if (ageSec > TELEGRAM_AUTH_FRESHNESS_SEC) {
-    return { ok: false, reason: "stale_auth_date" };
-  }
-
-  return {
-    ok: true,
-    fields: {
-      id: String(data.id),
-      first_name: typeof data.first_name === "string" ? data.first_name : undefined,
-      last_name: typeof data.last_name === "string" ? data.last_name : undefined,
-      username: typeof data.username === "string" ? data.username : undefined,
-      photo_url: typeof data.photo_url === "string" ? data.photo_url : undefined,
-      auth_date: String(authDate),
-      hash,
-    },
-  };
-}
 
 /**
  * Single-use replay protection. Record the hash in Redis with TTL
