@@ -61,7 +61,7 @@ jobs:
           # --retry-connrefused` rides through transient 5xx without manually
           # re-running the workflow.
           response=$(
-            curl -fS \
+            curl -S \
               --max-time 30 \
               --retry 3 --retry-delay 5 --retry-connrefused \
               --fail-with-body \
