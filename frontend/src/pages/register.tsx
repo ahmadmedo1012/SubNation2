@@ -9,7 +9,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { isValidLibyanPhone, libyanPhoneError } from "@/lib/validation";
 import { useRegister } from "@workspace/api-client-react";
 import { AlertCircle, CheckCircle, ChevronDown, Eye, EyeOff, Gift, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useLocation } from "wouter";
 
@@ -19,10 +19,27 @@ interface RegisterFormData {
   referral_code?: string;
 }
 
+/**
+ * Read `?ref=…` from the URL once at module evaluation (or first
+ * render) — it doesn't change while the user is on the page. Uppercased
+ * so the user's input format matches the field's `text-transform: uppercase`.
+ */
+function readReferralFromUrl(): string {
+  if (typeof window === "undefined") return "";
+  const ref = new URLSearchParams(window.location.search).get("ref");
+  return (ref ?? "").trim().toUpperCase().slice(0, 16);
+}
+
 export default function RegisterPage() {
   const [, navigate] = useLocation();
   const { setToken } = useAuth();
   const [showPass, setShowPass] = useState(false);
+  // Auto-expand the password disclosure if a referral code is present —
+  // the user can still collapse it, but the field is now reachable
+  // without a hidden click. (Previously the referral input was buried
+  // inside a closed disclosure even when /register?ref=ABC123 was the
+  // landing URL.)
+  const initialReferral = useMemo(() => readReferralFromUrl(), []);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [error, setError] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -33,7 +50,7 @@ export default function RegisterPage() {
     watch,
     formState: { errors },
   } = useForm<RegisterFormData>({
-    defaultValues: { phone: "", password: "", referral_code: "" },
+    defaultValues: { phone: "", password: "", referral_code: initialReferral },
   });
 
   const phone = watch("phone");
@@ -106,13 +123,37 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/20 reveal-up stagger-2">
-          {/* Referral bonus banner — small, always visible */}
-          <div className="mb-4 p-2.5 bg-emerald-500/8 border border-emerald-500/18 rounded-xl text-xs text-emerald-400 flex items-center gap-2">
-            <Gift className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              استخدم رمز إحالة واحصل على <span className="font-bold">5 د.ل</span> مجاناً
-            </span>
-          </div>
+          {/* Referral context banner — content depends on whether the
+              user landed via /register?ref=CODE or a fresh URL. The
+              applied state uses emerald + a checkmark so users have
+              clear visual feedback that the code was registered. */}
+          {initialReferral ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-4 p-3 bg-emerald-500/8 border border-emerald-500/22 rounded-xl text-sm text-emerald-400 flex items-center gap-2.5"
+            >
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-3.5 h-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold leading-tight">
+                  تم تطبيق رمز الإحالة:{" "}
+                  <span className="font-mono tracking-wider">{initialReferral}</span>
+                </p>
+                <p className="text-[11px] text-emerald-400/80 mt-0.5">
+                  ستحصل على <span className="font-bold">5 د.ل</span> مجاناً عند الشحن الأول
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-4 p-2.5 bg-emerald-500/8 border border-emerald-500/18 rounded-xl text-xs text-emerald-400 flex items-center gap-2">
+              <Gift className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                استخدم رمز إحالة واحصل على <span className="font-bold">5 د.ل</span> مجاناً
+              </span>
+            </div>
+          )}
 
           {/* Top-of-card error banner — always visible when set */}
           {error && (

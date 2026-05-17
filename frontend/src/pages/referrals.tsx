@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
-import { formatRelativeTime, formatDate } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import {
   Users,
   Copy,
@@ -90,33 +91,57 @@ export default function ReferralsPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  const [overview, setOverview] = useState<LoyaltyOverview | null>(null);
-  const [events, setEvents] = useState<ReferralEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Redirect to login if not authenticated. Doing this in render rather
+  // than an effect avoids a flash of "loading" state on a guest user.
+  if (!token && typeof window !== "undefined") {
+    navigate("/login");
+  }
 
-  const headers = { Authorization: token ? `Bearer ${token}` : "" };
+  const headers: HeadersInit = { Authorization: token ? `Bearer ${token}` : "" };
+
+  // Two coupled queries with shared queryKey scoping. Both:
+  //   - run only when authenticated
+  //   - 60s staleTime matches the rest of the app (home, navbar, etc.)
+  //   - refetchOnWindowFocus picks up fresh referral credits when the
+  //     user returns to the tab after a friend completes signup
+  // Replaces the previous fetch+useState+useEffect-on-mount pattern
+  // which never refreshed unless the user reloaded the page — that
+  // was the source of the "data feels stale" complaint.
+  const overviewQ = useQuery<LoyaltyOverview>({
+    queryKey: ["loyalty-overview", token],
+    queryFn: () => fetch("/api/loyalty", { headers }).then((r) => r.json()),
+    enabled: !!token,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const eventsQ = useQuery<ReferralEvent[]>({
+    queryKey: ["loyalty-referrals", token],
+    queryFn: () =>
+      fetch("/api/loyalty/referrals", { headers })
+        .then((r) => r.json())
+        .then((d) => (Array.isArray(d) ? d : [])),
+    enabled: !!token,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const overview = overviewQ.data ?? null;
+  const events = eventsQ.data ?? [];
+  const loading = overviewQ.isLoading || eventsQ.isLoading;
+
+  // Surface a toast on the very first error of either query (not on
+  // background refetch errors — those should be silent retries).
+  if (
+    (overviewQ.isError && overviewQ.failureCount === 1) ||
+    (eventsQ.isError && eventsQ.failureCount === 1)
+  ) {
+    toast({ title: "خطأ في التحميل", variant: "destructive" });
+  }
+
   const referralLink = overview
     ? `${window.location.origin}/register?ref=${overview.referral_code}`
     : "";
-
-  useEffect(() => {
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-    Promise.all([
-      fetch("/api/loyalty", { headers }).then((r) => r.json()),
-      fetch("/api/loyalty/referrals", { headers }).then((r) => r.json()),
-    ])
-      .then(([ov, evs]) => {
-        setOverview(ov);
-        setEvents(Array.isArray(evs) ? evs : []);
-      })
-      .catch(() => {
-        toast({ title: "خطأ في التحميل", variant: "destructive" });
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
 
   const handleShare = async () => {
     if (!overview) return;
