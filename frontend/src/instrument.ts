@@ -109,3 +109,62 @@ Sentry.init({
   ],
   denyUrls: [/extensions\//i, /^chrome:\/\//i, /^chrome-extension:\/\//i, /moz-extension:\/\//i],
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Production debug surface.
+//
+// Modern @sentry/react (v7+) does NOT attach the SDK to `window` by default,
+// which is correct for tree-shaking but makes production verification hard:
+// operators have no way to confirm init succeeded or to fire a test event
+// from DevTools without redeploying.
+//
+// We attach two controlled handles. DSNs are public-by-design (they're
+// embedded in the bundle anyway — see
+// https://docs.sentry.io/platforms/javascript/configuration/options/#dsn) and
+// the @sentry/react module is already loaded, so exposing the namespace is
+// not a privilege boundary.
+//
+//   window.Sentry            — full SDK namespace, for ad-hoc debugging
+//   window.__sentryTest()    — sends a labelled test event so operators can
+//                              verify the Sentry → Discord pipeline end-to-end
+//                              from any production browser tab
+//   window.__sentryStatus()  — returns whether init ran with a real DSN
+//
+// To verify in production:
+//   1. Open DevTools console on the live site.
+//   2. `window.__sentryStatus()` → expect `{ initialized: true, dsn: "https://…@…" }`
+//   3. `window.__sentryTest()`   → expect a Sentry event in the dashboard
+//                                  AND a Discord notification in the alerts
+//                                  channel within ~30s.
+// ─────────────────────────────────────────────────────────────────────────────
+
+declare global {
+  interface Window {
+    Sentry?: typeof Sentry;
+    __sentryTest?: (label?: string) => string;
+    __sentryStatus?: () => { initialized: boolean; environment: string; release: string; dsn: string | null };
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.Sentry = Sentry;
+
+  window.__sentryTest = (label?: string) => {
+    const tag = label ?? "manual-debug";
+    const eventId = Sentry.captureMessage(
+      `[sentry-test] ${tag} — fired from window.__sentryTest()`,
+      "warning",
+    );
+    return eventId ?? "no-event-id";
+  };
+
+  window.__sentryStatus = () => ({
+    initialized: !!dsn,
+    environment: import.meta.env.MODE,
+    release,
+    // Show only the public host segment; never the project key. Lets
+    // operators verify the right project is targeted without leaking
+    // the full DSN to anyone glancing at the screen.
+    dsn: dsn ? dsn.replace(/^https:\/\/[^@]+@/, "https://[redacted]@") : null,
+  });
+}
