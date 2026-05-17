@@ -1,59 +1,33 @@
 import { AuthProviders } from "@/components/AuthProviders";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useAuth } from "@/lib/auth";
-import { useLogin } from "@workspace/api-client-react";
-import { AlertCircle, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { Link, useLocation } from "wouter";
-import { getErrorMessage } from "../lib/errors";
+import { Link } from "wouter";
 
-interface LoginFormData {
-  phone: string;
-  password: string;
-}
-
+/**
+ * Public login page — passwordless.
+ *
+ * Available auth methods:
+ *   1. Phone OTP (Firebase) — primary, biggest CTA
+ *   2. Google Sign-In        — via AuthProviders (Firebase popup)
+ *   3. Telegram              — via AuthProviders (when enabled in
+ *                              `auth.telegram` admin setting + a real
+ *                              TELEGRAM_BOT_TOKEN is provisioned)
+ *
+ * Password-first UX has been removed from the public flow as the
+ * platform moves to a passwordless model. The backend `/api/auth/login`
+ * + `/api/auth/forgot-password` + `/api/auth/reset-password` endpoints
+ * are unchanged so legacy users with passwords can still recover via
+ * the existing `/forgot-password` deep link, and `/api/auth/change-password`
+ * + `/api/auth/toggle-password-login` continue to power the
+ * profile-page "set / disable password" controls.
+ *
+ * Bug-fix benefit: removing the react-hook-form-driven phone field
+ * eliminates the `{...register("phone")} onChange={handlePhoneChange}`
+ * override that was silently breaking validation ("phone appears
+ * filled but validator says required"). FirebasePhoneSignIn uses pure
+ * controlled state with no equivalent issue.
+ */
 export default function LoginPage() {
-  const [, navigate] = useLocation();
-  const { setToken } = useAuth();
-  const [showPass, setShowPass] = useState(false);
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [error, setError] = useState("");
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    defaultValues: { phone: "", password: "" },
-  });
-
-  const loginMutation = useLogin({
-    mutation: {
-      onSuccess(data) {
-        setToken(data.token ?? null);
-        navigate("/");
-      },
-      onError(err: unknown) {
-        setError(getErrorMessage(err));
-      },
-    },
-  });
-
-  const onSubmit = (data: LoginFormData) => {
-    setError("");
-    loginMutation.mutate({ data });
-  };
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
-    e.target.value = digits;
-  };
-
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -87,25 +61,12 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
-          {/* Top-of-card error banner — always visible when set */}
-          {error && (
-            <div
-              id="login-error"
-              role="alert"
-              aria-live="polite"
-              className="flex items-start gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-3.5 py-2.5 rounded-xl shake mb-4"
-            >
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{error}</span>
-            </div>
-          )}
-
-          {/* PRIMARY: Phone OTP — recommended path */}
+          {/* PRIMARY: Phone OTP */}
           <div className="space-y-2">
             <div className="text-center">
               <p className="text-sm font-bold">تسجيل الدخول برقم الهاتف</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                نرسل لك رمز تحقق عبر رسالة نصية — لا تحتاج كلمة مرور
+                نرسل لك رمز تحقق عبر رسالة نصية
               </p>
             </div>
             <FirebasePhoneSignIn />
@@ -118,117 +79,8 @@ export default function LoginPage() {
             <div className="flex-1 h-px bg-border/50" />
           </div>
 
-          {/* SECONDARY: Google */}
+          {/* SECONDARY: Google + Telegram (when enabled in admin settings) */}
           <AuthProviders />
-
-          {/* TERTIARY: Password fallback (collapsed by default) */}
-          <div className="mt-4 border-t border-border/30 pt-4">
-            <button
-              type="button"
-              onClick={() => setShowPasswordForm((v) => !v)}
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1.5 rounded-lg"
-              aria-expanded={showPasswordForm}
-              aria-controls="password-login-form"
-            >
-              <span>لدي حساب بكلمة مرور</span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-150 ${showPasswordForm ? "rotate-180" : ""}`}
-              />
-            </button>
-
-            {showPasswordForm && (
-              <form
-                id="password-login-form"
-                onSubmit={handleSubmit(onSubmit)}
-                className="space-y-3 mt-3 animate-in fade-in slide-in-from-top-1 duration-150"
-              >
-                <div className="space-y-1.5">
-                  <Label htmlFor="phone" className="text-xs font-bold">
-                    رقم الهاتف
-                  </Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="091XXXXXXX"
-                    {...register("phone", {
-                      required: "رقم الهاتف مطلوب",
-                      validate: (value) => {
-                        const digits = value.replace(/\D/g, "");
-                        if (digits.length !== 10) return "يجب أن يكون الرقم 10 أرقام";
-                        const prefix = digits.slice(0, 3);
-                        if (!["091", "092", "093", "094"].includes(prefix)) {
-                          return "يجب أن يبدأ الرقم بـ 091 أو 092 أو 093 أو 094";
-                        }
-                        return true;
-                      },
-                    })}
-                    onChange={handlePhoneChange}
-                    dir="ltr"
-                    className="h-11 text-left pl-3 rounded-xl bg-card"
-                    maxLength={10}
-                    autoComplete="tel"
-                  />
-                  {errors.phone && (
-                    <p className="text-[11px] text-destructive">{errors.phone.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-xs font-bold">
-                      كلمة المرور
-                    </Label>
-                    <Link
-                      href="/forgot-password"
-                      className="text-[11px] text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      نسيت كلمة المرور؟
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPass ? "text" : "password"}
-                      placeholder="••••••••"
-                      {...register("password", {
-                        required: "كلمة المرور مطلوبة",
-                        minLength: { value: 8, message: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" },
-                      })}
-                      className="pl-10 h-11 rounded-xl bg-card"
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 -m-1 rounded-lg"
-                      aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-                    >
-                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {errors.password && (
-                    <p className="text-[11px] text-destructive">{errors.password.message}</p>
-                  )}
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="outline"
-                  className="w-full h-10 rounded-xl text-sm"
-                  disabled={loginMutation.isPending}
-                >
-                  {loginMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      جارٍ تسجيل الدخول...
-                    </>
-                  ) : (
-                    "تسجيل الدخول بكلمة المرور"
-                  )}
-                </Button>
-              </form>
-            )}
-          </div>
         </div>
 
         {/* Footer link to register */}
