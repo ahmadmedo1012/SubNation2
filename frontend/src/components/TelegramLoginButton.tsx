@@ -103,9 +103,14 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       const origin = window.location.origin;
       const referral = readReferralFromUrl();
 
-      // Build the return URL with the referral code preserved so the
-      // backend can apply it on signup (mirrors Phone OTP + Google).
-      const returnUrl = new URL("/api/auth/telegram/callback", origin);
+      // Build the return URL pointing at the FRONTEND callback page.
+      //
+      // Telegram appends the signed payload as a URL fragment
+      // (#tgAuthResult=<base64>) — which is invisible to the server.
+      // So the callback MUST be a SPA route that can read
+      // window.location.hash. The SPA page POSTs the decoded payload
+      // to /api/auth/telegram for verification + JWT issuance.
+      const returnUrl = new URL("/auth/telegram-callback", origin);
       if (referral) returnUrl.searchParams.set("ref", referral);
 
       // Build the official Telegram OAuth URL.

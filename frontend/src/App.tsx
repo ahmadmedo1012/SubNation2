@@ -33,6 +33,7 @@ const MobileNav = lazy(() =>
 const HomePage = lazy(() => import("@/pages/home"));
 
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
+const TelegramCallbackPage = lazy(() => import("@/pages/telegram-callback"));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const LoyaltyPage = lazy(() => import("@/pages/loyalty"));
@@ -155,8 +156,10 @@ function AppRoutes() {
   const isAuth = location === "/login" || location === "/register";
   // /status is a public chromeless page (no Navbar/Footer/MobileNav)
   // — meant to be a quick "is the platform up?" view that loads even
-  // when most of the SPA's state is broken.
-  const isChromeless = location === "/status";
+  // when most of the SPA's state is broken. /auth/telegram-callback
+  // is also chromeless: a transient fragment-handling page that just
+  // POSTs the auth payload and redirects to / on success.
+  const isChromeless = location === "/status" || location === "/auth/telegram-callback";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -191,6 +194,7 @@ function AppRoutes() {
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/profile" component={ProfilePage} />
               <Route path="/auth/callback" component={AuthCallbackPage} />
+              <Route path="/auth/telegram-callback" component={TelegramCallbackPage} />
 
               <Route path="/admin/login" component={AdminLoginPage} />
               <Route path="/admin" component={AdminProtectedRoutes} />

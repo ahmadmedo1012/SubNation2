@@ -677,7 +677,9 @@ async function handleTelegramAuth(
   return { ok: true, token, isNewUser };
 }
 
-// POST /api/auth/telegram (callback mode — desktop)
+// POST /api/auth/telegram (callback mode — primary, called from the
+//                          frontend telegram-callback page after it
+//                          decodes the redirect fragment)
 authProviderPublicRouter.post("/telegram", async (req, res) => {
   try {
     const result = await handleTelegramAuth(
@@ -685,7 +687,7 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       getClientInfo(req),
     );
     if (!result.ok) {
-      return res.status(result.status).json({ error: result.error });
+      return res.status(result.status).json({ error: result.error, reason: result.reason });
     }
     return res.json({ token: result.token, is_new_user: result.isNewUser });
   } catch (err) {
@@ -694,7 +696,7 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       { category: "auth", err: err instanceof Error ? err.message : String(err) },
       "[telegram-auth] internal error",
     );
-    return res.status(500).json({ error: "حدث خطأ، حاول مجدداً" });
+    return res.status(500).json({ error: "حدث خطأ، حاول مجدداً", reason: "server_error" });
   }
 });
 

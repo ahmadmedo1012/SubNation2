@@ -96,26 +96,25 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* PRIMARY: Phone OTP */}
-          <div className="space-y-2">
-            <div className="text-center">
-              <p className="text-sm font-bold">إنشاء حساب برقم الهاتف</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                نرسل لك رمز تحقق — يتم إنشاء الحساب تلقائياً عند تأكيد الرمز
-              </p>
-            </div>
-            <FirebasePhoneSignIn />
-          </div>
+          {/* PRIMARY: One-click providers (Google + Telegram when enabled).
+              Each is fully independent — no shared state, no shared form,
+              no implicit dependency on the phone OTP path below. */}
+          <AuthProviders />
 
-          {/* Single divider */}
+          {/* Single divider — phone form is a peer option, not a fallback. */}
           <div className="flex items-center gap-3 my-5">
             <div className="flex-1 h-px bg-border/50" />
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">أو</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
+              أو سجّل برقم الهاتف
+            </span>
             <div className="flex-1 h-px bg-border/50" />
           </div>
 
-          {/* SECONDARY: Google + Telegram (when enabled in admin settings) */}
-          <AuthProviders />
+          {/* Phone OTP — multi-step flow, kept inline since it's the most
+              common path in Libya. Independent component; no state shared
+              with the providers above. The phone OTP path also reads ?ref=
+              independently — no coupling. */}
+          <FirebasePhoneSignIn />
         </div>
 
         {/* Footer link to login */}

@@ -64,26 +64,25 @@ export default function LoginPage() {
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
           <AuthErrorBanner />
 
-          {/* PRIMARY: Phone OTP */}
-          <div className="space-y-2">
-            <div className="text-center">
-              <p className="text-sm font-bold">تسجيل الدخول برقم الهاتف</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                نرسل لك رمز تحقق عبر رسالة نصية
-              </p>
-            </div>
-            <FirebasePhoneSignIn />
-          </div>
+          {/* PRIMARY: One-click providers (Google + Telegram when enabled).
+              Each is fully independent — no shared state, no shared form,
+              no implicit dependency on the phone OTP path below. */}
+          <AuthProviders />
 
-          {/* Single divider */}
+          {/* Single divider — the phone form is a peer option, not a
+              fallback. Wording makes the independence explicit. */}
           <div className="flex items-center gap-3 my-5">
             <div className="flex-1 h-px bg-border/50" />
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">أو</span>
+            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
+              أو سجّل برقم الهاتف
+            </span>
             <div className="flex-1 h-px bg-border/50" />
           </div>
 
-          {/* SECONDARY: Google + Telegram (when enabled in admin settings) */}
-          <AuthProviders />
+          {/* Phone OTP — multi-step flow, kept inline since it's the most
+              common path in Libya. Independent component; no state shared
+              with the providers above. */}
+          <FirebasePhoneSignIn />
         </div>
 
         {/* Footer link to register */}
