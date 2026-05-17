@@ -2,6 +2,13 @@
 
 Arabic RTL digital subscriptions marketplace for Libya. The workspace is now organized as a local-first pnpm monorepo:
 
+> 📋 **Looking for the platform state, production readiness, or roadmap?**
+> See **[`PLATFORM.md`](./PLATFORM.md)** — single authoritative document
+> covering current state, security posture, scaling roadmap, operational
+> strategy, and maintenance cadence. Topical references in
+> `OPERATIONS_RUNBOOK.md`, `OBSERVABILITY_SETUP.md`, and
+> `docs/DISASTER_RECOVERY.md`.
+
 - `frontend/` - Vite + React + Tailwind application
 - `backend/` - Express API, auth, jobs, migrations, and static frontend serving after build
 - `shared/` - OpenAPI spec, generated clients, zod contracts, and Drizzle database package
