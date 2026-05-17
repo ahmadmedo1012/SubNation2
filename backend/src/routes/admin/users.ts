@@ -31,6 +31,22 @@ router.get("/users", requireAdmin, async (req, res) => {
     users.map((u) => ({
       id: u.id,
       phone: u.phone,
+      // Display name (from Firebase / Telegram / Google) for admin
+      // search + visual identification when phone is a placeholder
+      // (e.g. tg_<id> for Telegram-first accounts).
+      display_name: u.displayName ?? null,
+      email: u.email ?? null,
+      photo_url: u.photoUrl ?? null,
+      // Self-reported auth provider — values: "firebase_phone" |
+      // "firebase_google" | "firebase" | "telegram" | "legacy_password"
+      auth_provider: u.authProvider ?? "legacy_password",
+      // Boolean flags — let the frontend render Provider badges
+      // without parsing auth_provider strings.
+      has_google: !!u.googleId,
+      has_telegram: !!u.telegramId,
+      has_firebase: !!u.firebaseUid,
+      has_password: !!u.passwordHash && u.passwordHash !== "",
+      last_auth_at: u.lastAuthAt?.toISOString() ?? null,
       wallet_balance: parseFloat(String(u.walletBalance)),
       loyalty_points: u.loyaltyPoints,
       loyalty_tier: u.loyaltyTier,

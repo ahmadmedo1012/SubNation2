@@ -88,8 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           Authorization: `Bearer ${token}`,
         },
       });
-    } catch (err) {
-      console.error("Failed to logout from all devices:", err);
+    } catch {
+      // Best-effort — local logout still happens in the finally block.
+      // Sentry's network instrumentation captures the actual error.
     } finally {
       logout();
     }
@@ -121,8 +122,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         unsubscribe = sub;
-      } catch (err) {
-        console.error("Failed to setup Firebase token refresh:", err);
+      } catch {
+        // setupFirebaseTokenRefresh has its own internal error handling
+        // and Sentry instrumentation. A failure here just means we
+        // won't auto-rotate the JWT (the user can still re-auth
+        // manually); it is not a runtime crash.
       }
     };
 

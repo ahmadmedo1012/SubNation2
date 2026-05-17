@@ -45,6 +45,7 @@ type ProfileUser = MeUser & {
   linked_identities?: Array<{ provider: string; provider_uid?: string }>;
   firebase_uid?: string | null;
   password_login_enabled?: boolean;
+  display_name?: string | null;
 };
 
 export default function ProfilePage() {
@@ -242,10 +243,22 @@ export default function ProfilePage() {
                   </span>
                 </div>
 
-                {/* Phone */}
-                <div className="flex items-center gap-1.5 text-sm font-bold mb-3" dir="ltr">
-                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span>{user.phone}</span>
+                {/* Identity — display name OR phone OR provider label */}
+                {user.display_name && (
+                  <div className="text-sm font-bold mb-1.5 truncate">{user.display_name}</div>
+                )}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3" dir="ltr">
+                  {user.phone?.startsWith("tg_") ? (
+                    <>
+                      <Smartphone className="w-3 h-3" />
+                      <span>حساب Telegram</span>
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="w-3 h-3" />
+                      <span>{user.phone}</span>
+                    </>
+                  )}
                 </div>
 
                 {/* Stats */}
@@ -361,6 +374,16 @@ export default function ProfilePage() {
                       <Mail className="w-4 h-4 text-blue-400" />
                     ) : id.provider === "firebase.com" ? (
                       <Smartphone className="w-4 h-4 text-emerald-400" />
+                    ) : id.provider === "telegram.org" ? (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="#2AABEE"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z" />
+                      </svg>
                     ) : (
                       <User className="w-4 h-4 text-muted-foreground" />
                     )}
@@ -369,8 +392,10 @@ export default function ProfilePage() {
                         {id.provider === "google.com"
                           ? "Google"
                           : id.provider === "firebase.com"
-                            ? "Firebase"
-                            : id.provider}
+                            ? "رقم الهاتف"
+                            : id.provider === "telegram.org"
+                              ? "Telegram"
+                              : id.provider}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
                         {id.email || id.phone || id.providerUid}

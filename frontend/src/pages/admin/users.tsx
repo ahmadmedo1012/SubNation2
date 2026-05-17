@@ -64,6 +64,90 @@ const SORT_OPTIONS = [
   { value: "created_asc", label: "الأقدم" },
 ];
 
+/**
+ * Compact pill row showing which auth providers are linked to a given
+ * user. Backed by the boolean flags surfaced in /api/admin/users
+ * (has_google / has_telegram / has_firebase / has_password).
+ *
+ * If multiple are linked, all show — admins can quickly see merged
+ * accounts. If none are linked AND legacy password is set, shows a
+ * "كلمة مرور" badge so legacy accounts are visible.
+ *
+ * Uses the relaxed `Record<string, unknown>` pattern because the
+ * generated AdminUser type doesn't yet include the new fields. We
+ * read them via bracket access + `Boolean(…)` so a missing field is
+ * silently treated as absent rather than throwing a TS error.
+ */
+function ProviderBadges({ user }: { user: Record<string, unknown> }) {
+  const hasGoogle = Boolean(user.has_google);
+  const hasTelegram = Boolean(user.has_telegram);
+  // Phone OTP via Firebase. Distinguished from Google by has_google flag.
+  const hasFirebasePhone = Boolean(user.has_firebase) && !hasGoogle;
+  const hasPassword = Boolean(user.has_password);
+
+  const badges: Array<{ label: string; className: string }> = [];
+  if (hasFirebasePhone) {
+    badges.push({
+      label: "هاتف",
+      className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+    });
+  }
+  if (hasGoogle) {
+    badges.push({
+      label: "Google",
+      className: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+    });
+  }
+  if (hasTelegram) {
+    badges.push({
+      label: "Telegram",
+      className: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+    });
+  }
+  if (badges.length === 0 && hasPassword) {
+    badges.push({
+      label: "كلمة مرور",
+      className: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    });
+  }
+  if (badges.length === 0) {
+    badges.push({
+      label: "—",
+      className: "text-muted-foreground bg-muted/30 border-border/40",
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {badges.map((b) => (
+        <span
+          key={b.label}
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${b.className}`}
+        >
+          {b.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Best-effort identity label for a user row. Telegram-first accounts
+ * have phone="tg_<id>" — show the display_name (or "Telegram") instead
+ * of the placeholder. Same idea for fb_/gh_ prefixes (legacy).
+ */
+function userIdentityLabel(user: Record<string, unknown>): string {
+  const phone = typeof user.phone === "string" ? user.phone : "";
+  const displayName =
+    typeof user.display_name === "string" && user.display_name.trim()
+      ? user.display_name.trim()
+      : null;
+  if (phone.startsWith("tg_")) return displayName ?? "حساب Telegram";
+  if (phone.startsWith("fb_")) return displayName ?? "حساب Facebook";
+  if (phone.startsWith("gh_")) return displayName ?? "حساب GitHub";
+  return phone;
+}
+
 function TableSkeleton() {
   return (
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
@@ -595,7 +679,10 @@ export default function AdminUsersPage() {
                   <thead>
                     <tr className="border-b border-border bg-muted/25">
                       <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
-                        رقم الهاتف
+                        المستخدم
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                        المصدر
                       </th>
                       <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
                         الرصيد
@@ -624,7 +711,12 @@ export default function AdminUsersPage() {
                         key={user.id}
                         className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
                       >
-                        <td className="px-4 py-2.5 font-mono font-bold text-sm">{user.phone}</td>
+                        <td className="px-4 py-2.5 font-mono font-bold text-sm">
+                          {userIdentityLabel(user as unknown as Record<string, unknown>)}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <ProviderBadges user={user as unknown as Record<string, unknown>} />
+                        </td>
                         <td className="px-4 py-2.5 font-black text-primary tabular-nums">
                           {formatCurrency(user.wallet_balance)}
                         </td>
@@ -682,8 +774,13 @@ export default function AdminUsersPage() {
                   className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="font-mono font-bold text-sm">{user.phone}</div>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                    <div className="font-mono font-bold text-sm truncate">
+                      {userIdentityLabel(user as unknown as Record<string, unknown>)}
+                    </div>
+                    <div className="mt-1">
+                      <ProviderBadges user={user as unknown as Record<string, unknown>} />
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
                       <span className={tierColor(user.loyalty_tier)}>
                         {tierLabel(user.loyalty_tier)}
                       </span>

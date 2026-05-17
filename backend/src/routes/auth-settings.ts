@@ -17,7 +17,7 @@
  *   PATCH /auth/:id          → update provider config
  */
 
-import { db, referralEventsTable, usersTable } from "@workspace/db";
+import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import * as Sentry from "@sentry/node";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { eq, sql } from "drizzle-orm";
@@ -497,12 +497,30 @@ async function findOrCreateTelegramUser(
   referralCode: string | undefined,
 ): Promise<{ user: typeof usersTable.$inferSelect; isNewUser: boolean }> {
   const tgId = fields.id;
+  const now = new Date();
   const [existing] = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.telegramId, tgId))
     .limit(1);
   if (existing) {
+    // Refresh the identity row's last_seen_at so admins see recent
+    // Telegram activity in /admin/security and the profile page's
+    // linked-accounts list reflects it.
+    await db
+      .insert(userAuthIdentitiesTable)
+      .values({
+        userId: existing.id,
+        provider: "telegram.org",
+        providerUid: tgId,
+        phone: existing.phone,
+        email: existing.email,
+        lastSeenAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [userAuthIdentitiesTable.provider, userAuthIdentitiesTable.providerUid],
+        set: { userId: existing.id, lastSeenAt: now },
+      });
     return { user: existing, isNewUser: false };
   }
 
@@ -534,9 +552,24 @@ async function findOrCreateTelegramUser(
       referralCode: generateReferralCode(),
       referredBy: referredById,
       walletBalance: referredById ? "5.00" : "0.00",
-      lastAuthAt: new Date(),
+      lastAuthAt: now,
     })
     .returning();
+
+  // Mirror the user into user_auth_identities so /api/auth/providers/linked
+  // surfaces Telegram alongside Google and Phone OTP. Provider string
+  // matches migrate.ts's seeded mapping at line 736.
+  await db
+    .insert(userAuthIdentitiesTable)
+    .values({
+      userId: created.id,
+      provider: "telegram.org",
+      providerUid: tgId,
+      phone: created.phone,
+      email: created.email,
+      lastSeenAt: now,
+    })
+    .onConflictDoNothing();
 
   if (referredById && referredById !== created.id) {
     await db
