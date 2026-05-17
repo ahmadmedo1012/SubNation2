@@ -182,7 +182,7 @@ export default function ProfilePage() {
         title: enabled ? "تم تفعيل كلمة المرور" : "تم إيقاف كلمة المرور",
         description: enabled
           ? "يمكنك الآن الدخول باستخدام رقم هاتفك وكلمة المرور."
-          : "يمكنك الآن الدخول فقط عبر Firebase (Google أو كود الهاتف).",
+          : "يمكنك الآن الدخول عبر رقم الهاتف، Google، أو Telegram.",
       });
     } catch (err: unknown) {
       toast({
@@ -228,7 +228,16 @@ export default function ProfilePage() {
               {/* Avatar */}
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/8 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
                 <span className="text-2xl font-black text-primary select-none">
-                  {user.phone?.slice(-2) ?? "U"}
+                  {/* Prefer first character of display_name (Telegram /
+                      Google users). Fall back to last 2 phone digits
+                      for legacy phone-only accounts. Avoid the literal
+                      "tg_" prefix from showing through. */}
+                  {user.display_name?.trim()?.charAt(0)?.toUpperCase() ||
+                    (!user.phone?.startsWith("tg_") &&
+                    !user.phone?.startsWith("fb_") &&
+                    !user.phone?.startsWith("gh_")
+                      ? (user.phone?.slice(-2) ?? "U")
+                      : "U")}
                 </span>
               </div>
 
@@ -425,52 +434,38 @@ export default function ProfilePage() {
             {!loadingProviders &&
               linkedProviders.length === 0 &&
               !user?.linked_identities?.length && (
-                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-3">
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <div className="text-xs font-black text-primary mb-1">
-                        أمن حسابك مع Firebase
-                      </div>
+                      <div className="text-xs font-black text-primary mb-1">حماية حسابك</div>
                       <div className="text-[10px] text-muted-foreground leading-relaxed">
-                        نوصي بربط حسابك مع Google أو رقم الهاتف عبر نظامنا الجديد لتوفير أقصى درجات
-                        الأمان والسهولة.
+                        اربط حسابك بطريقة دخول إضافية (Google، رقم الهاتف، أو Telegram) لتسهيل
+                        الوصول وحماية حسابك إذا فقدت إحدى الطرق.
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2 pt-1">
-                    <AuthProviders
-                      buttonClassName="w-full h-9 text-xs rounded-lg border border-primary/20 bg-background"
-                      onSuccess={() => {
-                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-                        fetchLinkedProviders();
-                      }}
-                    />
-                    <FirebasePhoneSignIn />
                   </div>
                 </div>
               )}
 
+            {/* Link-more block — single source of truth. Renders the
+                provider link buttons that aren't already in the
+                linkedProviders list. Telegram appears automatically
+                via AuthProviders when admin enables it. */}
             {!loadingProviders && linkedProviders.length < 2 && (
-              <div className="pt-2">
-                <p className="text-[10px] text-muted-foreground mb-3 px-1 text-center">
-                  يمكنك ربط مزيد من الطرق لتسهيل الدخول
-                </p>
-                <div className="grid grid-cols-1 gap-2">
-                  {!linkedProviders.find((i) => i.provider === "google.com") && (
-                    <AuthProviders
-                      buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
-                      onSuccess={() => {
-                        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-                        fetchLinkedProviders();
-                      }}
-                    />
-                  )}
-                  {!linkedProviders.find((i) => i.provider === "firebase.com") && (
-                    <FirebasePhoneSignIn />
-                  )}
-                </div>
+              <div className="pt-1 space-y-2">
+                {!linkedProviders.find((i) => i.provider === "google.com") && (
+                  <AuthProviders
+                    buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
+                    onSuccess={() => {
+                      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+                      fetchLinkedProviders();
+                    }}
+                  />
+                )}
+                {!linkedProviders.find((i) => i.provider === "firebase.com") && (
+                  <FirebasePhoneSignIn />
+                )}
               </div>
             )}
           </div>
@@ -480,31 +475,42 @@ export default function ProfilePage() {
         <SessionManager />
 
         {/* ── Security Options ────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
-                <Shield className="w-3.5 h-3.5 text-primary" />
+        {/* Visible ONLY for legacy users who still have password
+            login enabled. New signups via Telegram / Google / Phone
+            OTP have password_login_enabled=false from creation, so
+            they never see this section. Legacy users keep access to
+            "disable password" + "change password" controls until
+            they switch off — at which point the section disappears.
+            The /forgot-password flow remains the recovery path
+            and works regardless. */}
+        {user?.password_login_enabled === true && (
+          <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
+                  <Shield className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <h2 className="font-black">خيارات الأمان</h2>
               </div>
-              <h2 className="font-black">خيارات الأمان</h2>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-muted-foreground">
+                  دخول بكلمة المرور
+                </span>
+                <Switch
+                  checked={user?.password_login_enabled}
+                  disabled={togglingPassword || !hasFirebase}
+                  onCheckedChange={handleTogglePasswordLogin}
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-muted-foreground">دخول بكلمة المرور</span>
-              <Switch
-                checked={user?.password_login_enabled}
-                disabled={togglingPassword || !hasFirebase}
-                onCheckedChange={handleTogglePasswordLogin}
-              />
-            </div>
-          </div>
-
-          {!hasFirebase && (
-            <div className="flex items-center gap-2 text-[10px] text-destructive bg-destructive/5 border border-destructive/15 p-2 rounded-lg mb-4">
-              <AlertCircle className="w-3 h-3" />
-              يجب ربط حساب Google أو هاتف Firebase أولاً لإمكانية إيقاف كلمة المرور.
-            </div>
-          )}
+            {!hasFirebase && (
+              <div className="flex items-center gap-2 text-[10px] text-destructive bg-destructive/5 border border-destructive/15 p-2 rounded-lg mb-4">
+                <AlertCircle className="w-3 h-3" />
+                اربط حسابك بطريقة دخول حديثة (Google، رقم الهاتف، أو Telegram) قبل إيقاف كلمة المرور.
+              </div>
+            )}
 
           <div className="space-y-4">
             <div className="flex items-center gap-2.5 mb-2">
@@ -617,6 +623,7 @@ export default function ProfilePage() {
             </form>
           </div>
         </div>
+        )}
 
         {/* ── Danger zone ─────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">
