@@ -99,6 +99,15 @@ services:
       # `true` so the web tier stops running them and the worker takes over.
       - key: DISABLE_WEB_SCHEDULERS
         value: "false"
+      # Operator escape hatch for the boot-time migration runner. When
+      # `true`, server.ts skips runMigrations() entirely on cold start.
+      # Use ONLY for emergency rollbacks where the migration shipped in
+      # a release is broken and you need to bring up the previous binary
+      # against the newer schema. Default `false` — every cold start
+      # reconciles schema (idempotent, lock-protected). Owner sets this
+      # transiently in the dashboard, redeploys, then unsets it.
+      - key: DISABLE_BOOT_MIGRATIONS
+        value: "false"
       - key: REDIS_URL
         fromService:
           type: redis

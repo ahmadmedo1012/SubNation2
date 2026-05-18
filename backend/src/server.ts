@@ -6,6 +6,7 @@ import "./instrument";
 
 import { createServer } from "http";
 import app from "./app";
+import { bootMigrations } from "./lib/boot-migrations";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { initSocket } from "./lib/socket";
@@ -61,6 +62,39 @@ async function bootstrap(): Promise<void> {
   // In production, failure here exits the process (per redis-client policy);
   // in dev we fall back to in-memory rate-limiting and degraded health checks.
   await initRedisClient();
+
+  // Boot-time schema migrations. Runs ONCE per cluster cold start via a
+  // Redis NX EX lock; subsequent instances wait for the leader. All
+  // statements in migrate.ts are idempotent (IF NOT EXISTS / IF EXISTS
+  // / DROP NOT NULL guards). On critical failure (anything other than
+  // a known "already exists" Postgres error), production refuses to
+  // start — better to surface a deploy-time alert than serve traffic
+  // against a half-migrated schema. Operator escape hatch:
+  // DISABLE_BOOT_MIGRATIONS=true.
+  const migrationResult = await bootMigrations();
+  if (!migrationResult.ok) {
+    if (process.env.NODE_ENV === "production") {
+      logger.error(
+        {
+          category: "monitoring",
+          outcome: migrationResult.outcome,
+          err: migrationResult.error,
+          code: migrationResult.errorCode,
+        },
+        "[boot] aborting startup — critical migration failure in production",
+      );
+      // Sentry already captured the exception inside bootMigrations.
+      process.exit(1);
+    }
+    logger.warn(
+      {
+        category: "monitoring",
+        outcome: migrationResult.outcome,
+        err: migrationResult.error,
+      },
+      "[boot] migration failed in non-production — continuing with degraded schema",
+    );
+  }
 
   // Activate worker-tier loops inside this web process when no dedicated
   // worker service is provisioned. Gated by DISABLE_WEB_SCHEDULERS=true

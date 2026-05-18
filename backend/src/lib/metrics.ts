@@ -85,6 +85,44 @@ export const authOutcomesTotal = new Counter({
 });
 
 // ============================================================================
+// Boot Migration Metrics
+// ============================================================================
+
+/**
+ * Boot-time schema migration outcomes.
+ *
+ * outcome:
+ *   - "ok"          — migration ran cleanly
+ *   - "idempotent"  — migration ran but a non-fatal "already exists"
+ *                     style error was swallowed (legacy schema reconcile)
+ *   - "skipped_lock"— another instance already running migrations (fine)
+ *   - "skipped_disabled" — DISABLE_BOOT_MIGRATIONS=true (operator override)
+ *   - "critical"    — migration failed with a real schema-corrupting
+ *                     error; production process should refuse to start
+ */
+export const migrationsRunsTotal = new Counter({
+  name: "migrations_runs_total",
+  help: "Total boot-time schema migration runs by outcome",
+  labelNames: ["outcome"] as const,
+  registers: [getRegistry()],
+});
+
+/**
+ * Boot-time schema migration duration in seconds.
+ *
+ * Buckets cover sub-100 ms (already-up-to-date schema) through 30+ s
+ * (large migration on cold cache). Useful for tracking schema-drift
+ * accumulation: migrations should normally take < 1 s once the
+ * database is in sync.
+ */
+export const migrationDurationSeconds = new Histogram({
+  name: "migration_duration_seconds",
+  help: "Boot-time schema migration duration in seconds",
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+  registers: [getRegistry()],
+});
+
+// ============================================================================
 // Redis Metrics
 // ============================================================================
 
