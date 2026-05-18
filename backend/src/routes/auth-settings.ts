@@ -369,6 +369,13 @@ authProviderPublicRouter.get("/github/callback", async (req, res) => {
     }
 
     const token = signUserToken({ userId: user.id });
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
     return res.redirect(`/auth/callback?token=${encodeURIComponent(token)}`);
   } catch {
     return res.redirect("/?auth_error=server_error");
@@ -431,6 +438,13 @@ authProviderPublicRouter.get("/facebook/callback", async (req, res) => {
     }
 
     const token = signUserToken({ userId: user.id });
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
     return res.redirect(`/auth/callback?token=${encodeURIComponent(token)}`);
   } catch {
     return res.redirect("/?auth_error=server_error");
@@ -722,6 +736,20 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error, reason: result.reason });
     }
+    // Set httpOnly cookie so the session survives page refresh. Same
+    // config as /api/auth/firebase/session (auth.ts line ~915):
+    //   sameSite="lax" — required for cross-site OAuth redirect flows;
+    //                    "strict" would drop the cookie on the redirect
+    //                    back from oauth.telegram.org.
+    //   secure — prod only (Render terminates TLS, browser sees https).
+    //   maxAge — 30 days, matches the JWT expiry signed in signUserToken.
+    res.cookie("auth_token", result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
     return res.json({ token: result.token, is_new_user: result.isNewUser });
   } catch (err) {
     Sentry.captureException(err);
@@ -769,6 +797,18 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
     if (!result.ok) {
       return res.redirect(`/login?error=${encodeURIComponent(result.reason)}`);
     }
+    // Set httpOnly cookie so the session survives page refresh. The
+    // browser carries this cookie on the 302 to /auth/callback and on
+    // every subsequent request. Same config as the Firebase session
+    // route. The URL token in the redirect is kept for backward
+    // compatibility but is no longer the only persistence mechanism.
+    res.cookie("auth_token", result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
     return res.redirect(`/auth/callback?token=${encodeURIComponent(result.token)}`);
   } catch (err) {
     Sentry.captureException(err);

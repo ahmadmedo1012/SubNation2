@@ -763,28 +763,21 @@ router.post("/change-password", async (req, res) => {
   return res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح" });
 });
 
-router.get("/me", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
-  }
-  const tokenResult = verifyUserTokenDetailed(authHeader.slice(7));
-  if (!tokenResult.ok) {
-    return res
-      .status(401)
-      .json(
-        createErrorResponse(
-          tokenResult.reason === "expired" ? "جلسة منتهية" : "رمز الجلسة غير صالح",
-          tokenResult.reason === "expired" ? ErrorCode.SESSION_EXPIRED : ErrorCode.INVALID_TOKEN,
-        ),
-      );
-  }
-  const payload = tokenResult.payload;
+// /api/auth/me — uses `requireUser` middleware which reads from
+//   req.cookies.auth_token  (httpOnly cookie set on every auth path)
+// or
+//   req.headers.authorization (Bearer token from React state during the
+//                              same SPA session)
+// whichever is present first. This is what makes refresh "remember"
+// the user: the React state is gone, but the cookie is still there,
+// and requireUser picks it up transparently.
+router.get("/me", requireUser, async (req, res) => {
+  const userId = (req as AuthenticatedRequest).userId;
 
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.id, payload.userId))
+    .where(eq(usersTable.id, userId))
     .limit(1);
   if (!user)
     return res
