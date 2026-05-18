@@ -1,3 +1,44 @@
+export interface HealthzSummary {
+  status: CheckStatus;
+}
+
+const SUMMARY_FALLBACK: HealthzSummary = { status: "degraded" };
+
+/**
+ * Public-safe health fetcher. Hits /api/healthz/summary which returns
+ * ONLY the aggregate status discriminator — no per-check details, no
+ * version, no uptime, no infrastructure info. Used by the public
+ * /status page and the (now removed) footer pill.
+ *
+ * Like fetchHealthzReady, never throws — degrades to "degraded" on any
+ * error so React Query never enters an error state.
+ */
+export async function fetchHealthzSummary(): Promise<HealthzSummary> {
+  let res: Response;
+  try {
+    res = await fetch("/api/healthz/summary");
+  } catch {
+    return SUMMARY_FALLBACK;
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return SUMMARY_FALLBACK;
+  }
+
+  if (
+    !body ||
+    typeof body !== "object" ||
+    typeof (body as HealthzSummary).status !== "string"
+  ) {
+    return SUMMARY_FALLBACK;
+  }
+
+  return body as HealthzSummary;
+}
+
 /**
  * Robust /api/healthz/ready fetcher.
  *

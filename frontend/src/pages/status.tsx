@@ -1,129 +1,129 @@
+import { fetchHealthzSummary, type CheckStatus, type HealthzSummary } from "@/lib/healthz";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Activity } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
-import {
-  fetchHealthzReady,
-  type CheckStatus,
-  type HealthzReadyResponse,
-} from "@/lib/healthz";
+
+/**
+ * Public status page.
+ *
+ * Shows ONLY the aggregate platform status — no per-subsystem
+ * details, no infrastructure information, no uptime, no version.
+ * Operator-grade observability lives behind admin auth at
+ * `/admin/system`.
+ *
+ * Polls /api/healthz/summary at 90 s. Backend caches the aggregate
+ * at 15 s, so even at 200 concurrent visitors this collapses to
+ * roughly 1 actual check per 15 s on the server.
+ */
 
 const STATUS_META: Record<
   CheckStatus,
-  { color: string; bg: string; border: string; label: string; icon: typeof CheckCircle2 }
+  {
+    color: string;
+    bg: string;
+    border: string;
+    label: string;
+    description: string;
+    icon: typeof CheckCircle2;
+  }
 > = {
   ok: {
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
     border: "border-emerald-400/30",
-    label: "متاح",
+    label: "جميع الخدمات تعمل بشكل طبيعي",
+    description: "المنصة تعمل بشكل كامل وجميع العمليات متاحة.",
     icon: CheckCircle2,
   },
   degraded: {
     color: "text-yellow-400",
     bg: "bg-yellow-400/10",
     border: "border-yellow-400/30",
-    label: "أداء متدنٍ",
+    label: "أداء متدنٍ في بعض الخدمات",
+    description: "المنصة تعمل لكن قد تلاحظ بطئاً أو تأخراً في بعض الميزات.",
     icon: AlertTriangle,
   },
   failing: {
     color: "text-red-400",
     bg: "bg-red-400/10",
     border: "border-red-400/30",
-    label: "خلل",
+    label: "هناك خلل في الخدمة",
+    description: "نعمل حالياً على إصلاح المشكلة. يرجى المحاولة لاحقاً.",
     icon: XCircle,
   },
 };
 
-const SERVICE_LABELS: Record<string, string> = {
-  redis: "Redis",
-  neon: "قاعدة البيانات",
-  socket: "Socket.IO",
-  // worker handled separately — running embedded with the web tier
-  worker: "خدمة الجدولة",
-};
-
-function formatRelative(ts: string): string {
-  const date = new Date(ts);
-  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diffSec < 5) return "الآن";
-  if (diffSec < 60) return `منذ ${diffSec}ث`;
-  if (diffSec < 3600) return `منذ ${Math.floor(diffSec / 60)}د`;
-  return `منذ ${Math.floor(diffSec / 3600)}س`;
-}
-
 export default function StatusPage(): ReactElement {
-  const [now, setNow] = useState(Date.now());
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 5_000);
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(t);
   }, []);
+  void tick;
 
-  const { data, isLoading, refetch } = useQuery<HealthzReadyResponse>({
-    queryKey: ["public-status"],
-    queryFn: fetchHealthzReady,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-    // Robust fetcher absorbs all error paths into a synthesised
-    // degraded payload — React Query never enters error state.
+  const { data, isLoading, refetch, dataUpdatedAt } = useQuery<HealthzSummary>({
+    queryKey: ["public-status-summary"],
+    queryFn: fetchHealthzSummary,
+    // 90 s in the client. Backend cache at 15 s. Net effect: at most
+    // a few clients trigger an actual aggregation per minute even at
+    // moderate concurrent visitor counts.
+    refetchInterval: 90_000,
+    staleTime: 60_000,
     retry: false,
   });
 
-  // The fetcher never throws, so `isError` is structurally always false.
-  // Keep an explicit `false` here so the JSX below stays readable.
-  const isError = false;
+  const aggregate = data?.status ?? "ok";
+  const meta = STATUS_META[aggregate];
+  const Icon = meta.icon;
 
-  const aggregate = data?.status ?? "degraded";
-  const aggregateMeta = STATUS_META[aggregate];
-
-  // Suppress the unused `now` warning — it forces the relative-time labels
-  // to refresh on the 5s tick even when the query data hasn't changed.
-  void now;
+  const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+  const lastUpdatedLabel = lastUpdated
+    ? lastUpdated.toLocaleTimeString("ar-LY", { hour: "2-digit", minute: "2-digit" })
+    : "—";
 
   return (
     <div className="min-h-[100dvh] bg-background">
-      <div className="max-w-2xl mx-auto px-4 py-12">
+      <div className="max-w-xl mx-auto px-4 py-16">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
             <Activity className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h1 className="text-2xl font-black">حالة المنصة</h1>
             <p className="text-xs text-muted-foreground">
-              تحديث تلقائي كل 30 ثانية ·{" "}
               <a href="https://subnation.ly" className="text-primary hover:underline">
                 subnation.ly
-              </a>
+              </a>{" "}
+              · تحديث تلقائي كل دقيقة ونصف
             </p>
           </div>
         </div>
 
+        {/* Loading */}
+        {isLoading && <div className="h-[120px] rounded-2xl skeleton-shimmer" />}
+
         {/* Aggregate banner */}
-        {data && !isLoading && !isError && (
+        {!isLoading && (
           <div
-            className={`mt-6 flex items-center justify-between gap-4 p-5 rounded-2xl border ${aggregateMeta.bg} ${aggregateMeta.border}`}
+            className={`flex items-start gap-4 p-6 rounded-2xl border ${meta.bg} ${meta.border}`}
           >
-            <div className="flex items-center gap-3">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  aggregate === "ok"
-                    ? "bg-emerald-400 animate-pulse"
-                    : aggregate === "degraded"
-                      ? "bg-yellow-400"
-                      : "bg-red-400 animate-pulse"
-                }`}
-              />
-              <span className={`font-bold ${aggregateMeta.color}`}>
-                {aggregate === "ok"
-                  ? "جميع الخدمات تعمل بشكل طبيعي"
-                  : aggregate === "degraded"
-                    ? "بعض الخدمات تعاني من أداء متدنٍ"
-                    : "هناك خلل في إحدى الخدمات"}
-              </span>
+            <div
+              className={`w-12 h-12 rounded-xl flex items-center justify-center ${meta.bg} border ${meta.border}`}
+            >
+              <Icon className={`w-6 h-6 ${meta.color}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className={`text-base font-bold ${meta.color}`}>{meta.label}</div>
+              <div className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                {meta.description}
+              </div>
             </div>
             <button
+              type="button"
               onClick={() => refetch()}
               className="p-2 rounded-lg hover:bg-card transition-colors text-muted-foreground hover:text-foreground"
+              aria-label="تحديث"
               title="تحديث"
             >
               <RefreshCw className="w-4 h-4" />
@@ -131,82 +131,19 @@ export default function StatusPage(): ReactElement {
           </div>
         )}
 
-        {/* Loading skeleton */}
-        {isLoading && (
-          <div className="mt-6 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[68px] rounded-2xl skeleton-shimmer" />
-            ))}
-          </div>
-        )}
-
-        {/* Error state */}
-        {isError && (
-          <div className="mt-6 p-5 bg-red-400/10 border border-red-400/30 rounded-2xl">
-            <p className="text-sm text-red-400 font-bold">تعذّر الاتصال بالخادم</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              قد يكون هناك انقطاع مؤقت في الشبكة. سنحاول مجدداً تلقائياً.
-            </p>
-          </div>
-        )}
-
-        {/* Per-service rows */}
-        {data && !isLoading && !isError && (
-          <div className="mt-6 space-y-2">
-            {Object.entries(data.checks)
-              .filter(([key]) => key !== "worker") // embedded scheduler runs in web tier
-              .map(([service, check]) => {
-                const meta = STATUS_META[check.status];
-                const Icon = meta.icon;
-                const label = SERVICE_LABELS[service] ?? service;
-                return (
-                  <div
-                    key={service}
-                    className={`flex items-center gap-4 p-4 rounded-2xl border bg-card ${meta.border}`}
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${meta.bg}`}
-                    >
-                      <Icon className={`w-5 h-5 ${meta.color}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm">{label}</div>
-                      <div className={`text-xs mt-0.5 ${meta.color}`}>
-                        {meta.label}
-                        {check.latencyMs != null && (
-                          <span className="text-muted-foreground"> · {check.latencyMs}ms</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                      {formatRelative(check.lastCheckedAt)}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-
-        {/* Footer info */}
-        {data && !isLoading && !isError && (
-          <div className="mt-6 flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-4">
-            <span>
-              مدة التشغيل: {Math.floor(data.uptimeSec / 3600)}س{" "}
-              {Math.floor((data.uptimeSec % 3600) / 60)}د
-            </span>
-            <span className="font-mono">{data.version}</span>
-          </div>
+        {/* Footer line — non-sensitive metadata only */}
+        {!isLoading && (
+          <p className="mt-6 text-xs text-muted-foreground text-center">
+            آخر تحديث: {lastUpdatedLabel}
+          </p>
         )}
 
         {/* Help link */}
-        <div className="mt-12 text-center text-xs text-muted-foreground">
-          <p>
-            للإبلاغ عن مشاكل أو الحصول على المساعدة، يرجى{" "}
-            <a href="/support" className="text-primary hover:underline">
-              التواصل مع الدعم الفني
-            </a>
-            .
-          </p>
+        <div className="mt-10 text-center text-xs text-muted-foreground">
+          هل تواجه مشكلة لم تظهر هنا؟{" "}
+          <a href="/support" className="text-primary hover:underline">
+            تواصل مع فريق الدعم
+          </a>
         </div>
       </div>
     </div>

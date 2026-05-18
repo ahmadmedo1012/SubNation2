@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { SystemStatusPill } from "./SystemStatusPill";
 
 export function Footer() {
   const [location] = useLocation();
@@ -15,15 +14,11 @@ export function Footer() {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
-        {/* Left: copyright + system status pill */}
+        {/* Left: copyright */}
         <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
           <span className="font-medium text-center sm:text-right">
             © {new Date().getFullYear()} SubNation — سوق الاشتراكات الرقمية في ليبيا
           </span>
-          {/* Tiny operational-transparency pill — polls /api/healthz/ready
-              every 60 s, renders nothing on first error so we don't flash
-              a misleading red dot during a deploy/blip. */}
-          <SystemStatusPill />
         </div>
 
         {/* Right: legal + support */}

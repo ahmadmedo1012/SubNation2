@@ -5,8 +5,27 @@ import { Router, type IRouter } from "express";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { getRedisClient } from "../lib/redis-client";
 import { getIO } from "../lib/socket";
+import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Aggregate readiness cache.
+//
+// 75 concurrent users polling /healthz/summary every 30-60 s would otherwise
+// trigger a fresh Redis ping + Neon SELECT 1 + worker heartbeat read +
+// Socket.IO check on every request — saturating the event loop on a
+// 0.5-CPU starter dyno. We compute the aggregate at most once per
+// CACHE_TTL_MS and serve every other request from the in-memory cache.
+//
+// The cache is process-local. With multiple web instances the cache
+// fans out per-instance, which is correct: each instance reports its
+// own readiness, and the load multiplier is bounded by N_instances
+// rather than N_concurrent_users.
+// ──────────────────────────────────────────────────────────────────────────────
+const CACHE_TTL_MS = 15_000;
+let cachedResponse: { value: HealthCheckResponseExtended; expiresAt: number } | null = null;
+let inflight: Promise<HealthCheckResponseExtended> | null = null;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Health check types and interfaces
@@ -296,9 +315,10 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
-// Diagnostic endpoint - reports Firebase Admin initialization state without
-// exposing any secrets. Use this to debug 401 issues in production.
-router.get("/healthz/firebase", (_req, res) => {
+// Diagnostic endpoint — admin-gated. Leaks deployment config (Firebase
+// project id, service-account-JSON shape, env presence) so MUST NOT be
+// exposed to public users.
+router.get("/healthz/firebase", requireAdmin, (_req, res) => {
   const flagEnabled = process.env.FIREBASE_AUTH_ENABLED === "true";
   const projectIdEnv = process.env.FIREBASE_PROJECT_ID || null;
   const hasServiceAccountJson = !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -356,96 +376,148 @@ router.get("/healthz/firebase", (_req, res) => {
 // worker process) and during transient Socket.IO blips. The platform
 // is "ready" if it can serve user-facing traffic — auth, orders,
 // wallet, etc. — which only requires DB + Redis.
-router.get("/healthz/ready", async (_req, res) => {
-  const redis = getRedisClient();
-  const io = getIO();
+//
+// IMPORTANT: This endpoint is admin-gated (`requireAdmin`). The full
+// per-check breakdown exposes infrastructure details that are not
+// safe to surface to public users. The public-safe surface is
+// `/api/healthz/summary` which returns only the status discriminator.
 
-  const checks: Record<string, CheckResult> = {};
-  let overallStatus: CheckStatus = "ok";
+async function computeReadyState(): Promise<HealthCheckResponseExtended> {
+  // De-dup concurrent computations — if N requests miss the cache at
+  // the same time we run the aggregate ONCE, not N times.
+  if (inflight) return inflight;
 
-  // Helper: fold one check result into overallStatus, respecting `optional`.
-  const fold = (result: CheckResult) => {
-    if (result.status === "failing") {
-      // Optional failures cap overall at "degraded"; critical failures escalate.
-      if (result.optional === true) {
-        if (overallStatus === "ok") overallStatus = "degraded";
-      } else {
-        overallStatus = "failing";
+  inflight = (async () => {
+    const redis = getRedisClient();
+    const io = getIO();
+
+    const checks: Record<string, CheckResult> = {};
+    let overallStatus: CheckStatus = "ok";
+
+    const fold = (result: CheckResult) => {
+      if (result.status === "failing") {
+        if (result.optional === true) {
+          if (overallStatus === "ok") overallStatus = "degraded";
+        } else {
+          overallStatus = "failing";
+        }
+      } else if (result.status === "degraded" && overallStatus === "ok") {
+        overallStatus = "degraded";
       }
-    } else if (result.status === "degraded" && overallStatus === "ok") {
-      overallStatus = "degraded";
+    };
+
+    if (redis) {
+      const result = await checkRedis(redis);
+      checks.redis = result;
+      fold(result);
+    } else {
+      checks.redis = {
+        status: "failing",
+        error: "Redis not configured",
+        lastCheckedAt: new Date().toISOString(),
+      };
+      fold(checks.redis);
     }
-  };
 
-  // Check Redis (critical)
-  if (redis) {
-    const result = await checkRedis(redis);
-    checks.redis = result;
-    fold(result);
-  } else {
-    checks.redis = {
-      status: "failing",
-      error: "Redis not configured",
-      lastCheckedAt: new Date().toISOString(),
+    {
+      const result = await checkNeon();
+      checks.neon = result;
+      fold(result);
+    }
+
+    if (redis) {
+      const result = await checkWorker(redis);
+      checks.worker = result;
+      fold(result);
+    } else {
+      checks.worker = {
+        status: "degraded",
+        optional: true,
+        note: "Redis unavailable — worker heartbeat not checked",
+        lastCheckedAt: new Date().toISOString(),
+      };
+      fold(checks.worker);
+    }
+
+    if (io && redis) {
+      const result = await checkSocket(io, redis);
+      checks.socket = result;
+      fold(result);
+    } else {
+      checks.socket = {
+        status: "degraded",
+        optional: true,
+        note: !io ? "Socket.IO not initialized" : "Redis unavailable — adapter not checked",
+        lastCheckedAt: new Date().toISOString(),
+      };
+      fold(checks.socket);
+    }
+
+    const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
+    const uptimeSec = Math.floor(process.uptime());
+
+    return {
+      status: overallStatus as CheckStatus,
+      checks,
+      version,
+      uptimeSec,
     };
-    fold(checks.redis);
+  })();
+
+  try {
+    const value = await inflight;
+    cachedResponse = { value, expiresAt: Date.now() + CACHE_TTL_MS };
+    return value;
+  } finally {
+    inflight = null;
   }
+}
 
-  // Check Neon (critical) — singleton from @workspace/db
-  {
-    const result = await checkNeon();
-    checks.neon = result;
-    fold(result);
+async function getReadyState(): Promise<HealthCheckResponseExtended> {
+  if (cachedResponse && Date.now() < cachedResponse.expiresAt) {
+    return cachedResponse.value;
   }
+  return computeReadyState();
+}
 
-  // Check Worker (optional) — single-tier deployments are valid
-  if (redis) {
-    const result = await checkWorker(redis);
-    checks.worker = result;
-    fold(result);
-  } else {
-    // Without Redis we can't check worker heartbeat. Emit a degraded
-    // optional result so the panel still shows the row but readiness
-    // doesn't fail twice for the same root cause.
-    checks.worker = {
-      status: "degraded",
-      optional: true,
-      note: "Redis unavailable — worker heartbeat not checked",
-      lastCheckedAt: new Date().toISOString(),
-    };
-    fold(checks.worker);
+// Public summary — status-only. Safe to expose to anonymous users:
+// no per-check details, no version, no uptime, no infrastructure
+// information. Used by the public /status page and any future
+// operational-transparency surface.
+router.get("/healthz/summary", async (_req, res) => {
+  try {
+    const state = await getReadyState();
+    res.set("Cache-Control", "public, max-age=15");
+    res.status((state.status as CheckStatus) === "failing" ? 503 : 200).json({
+      status: state.status,
+    });
+  } catch {
+    // Fail-open with degraded status — the platform itself isn't broken,
+    // we just couldn't aggregate. Public users see a yellow indicator,
+    // not an error.
+    res.status(200).json({ status: "degraded" });
   }
-
-  // Check Socket.IO (optional) — realtime is degraded UX, not critical path
-  if (io && redis) {
-    const result = await checkSocket(io, redis);
-    checks.socket = result;
-    fold(result);
-  } else {
-    checks.socket = {
-      status: "degraded",
-      optional: true,
-      note: !io ? "Socket.IO not initialized" : "Redis unavailable — adapter not checked",
-      lastCheckedAt: new Date().toISOString(),
-    };
-    fold(checks.socket);
-  }
-
-  const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
-  const uptimeSec = Math.floor(process.uptime());
-
-  const response: HealthCheckResponseExtended = {
-    status: overallStatus,
-    checks,
-    version,
-    uptimeSec,
-  };
-
-  res.status((overallStatus as CheckStatus) === "failing" ? 503 : 200).json(response);
 });
 
-// Redis health check
-router.get("/healthz/redis", async (_req, res): Promise<void> => {
+// Admin-gated detailed readiness. Returns the full per-check breakdown
+// for operators on /admin/system. Cached aggregate so even admin
+// polling at 30 s × N admins doesn't dominate the event loop.
+router.get("/healthz/ready", requireAdmin, async (_req, res) => {
+  try {
+    const state = await getReadyState();
+    res.status((state.status as CheckStatus) === "failing" ? 503 : 200).json(state);
+  } catch (err) {
+    res.status(500).json({
+      status: "failing",
+      error: err instanceof Error ? err.message : "aggregation failed",
+    });
+  }
+});
+
+// Per-subsystem health endpoints — admin-gated. Each leaks latency +
+// error messages + state details that are not safe to expose
+// publicly. The public surface is /healthz/summary.
+router.get("/healthz/redis", requireAdmin, async (_req, res): Promise<void> => {
   const redis = getRedisClient();
 
   if (!redis) {
@@ -461,14 +533,12 @@ router.get("/healthz/redis", async (_req, res): Promise<void> => {
   res.status(result.status === "failing" ? 503 : 200).json(result);
 });
 
-// Neon health check
-router.get("/healthz/neon", async (_req, res): Promise<void> => {
+router.get("/healthz/neon", requireAdmin, async (_req, res): Promise<void> => {
   const result = await checkNeon();
   res.status(result.status === "failing" ? 503 : 200).json(result);
 });
 
-// Worker health check
-router.get("/healthz/worker", async (_req, res): Promise<void> => {
+router.get("/healthz/worker", requireAdmin, async (_req, res): Promise<void> => {
   const redis = getRedisClient();
 
   if (!redis) {
@@ -484,8 +554,7 @@ router.get("/healthz/worker", async (_req, res): Promise<void> => {
   res.status(result.status === "failing" ? 503 : 200).json(result);
 });
 
-// Socket.IO health check
-router.get("/healthz/socket", async (_req, res): Promise<void> => {
+router.get("/healthz/socket", requireAdmin, async (_req, res): Promise<void> => {
   const io = getIO();
   const redis = getRedisClient();
 

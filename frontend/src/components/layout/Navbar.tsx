@@ -36,7 +36,13 @@ export function Navbar() {
       queryKey: getGetMeQueryKey(),
       enabled: !!token,
       retry: false,
-      refetchInterval: 30_000,
+      // No refetchInterval — the 30 s baseline polling was the single
+      // largest source of /api/auth/me load (with 75 concurrent users
+      // it produced 2.5 RPS just from this component alone). The
+      // shared queryKey means sign-in / sign-out events already
+      // invalidate this query across all consumers, and the
+      // queryClient default staleTime of 60 s + on-mount refetch
+      // gives a 60 s freshness ceiling on navigation.
     },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });

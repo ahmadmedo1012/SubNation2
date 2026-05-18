@@ -341,21 +341,41 @@ export default function AdminSystemPage(): ReactElement | null {
   const [, navigate] = useLocation();
   const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
 
+  // /api/healthz/ready is now admin-gated. Build an admin-aware fetcher
+  // wrapping the shared robust pattern from lib/healthz.
+  async function fetchAdminHealthReady(): Promise<HealthzReadyResponse> {
+    try {
+      const res = await fetch("/api/healthz/ready", { headers });
+      if (!res.ok && res.status !== 503) {
+        // 401/403 here means token expired — treat as degraded silently.
+        return { status: "degraded", checks: {}, version: "unknown", uptimeSec: 0 };
+      }
+      const body = await res.json();
+      return body as HealthzReadyResponse;
+    } catch {
+      return { status: "degraded", checks: {}, version: "unknown", uptimeSec: 0 };
+    }
+  }
+
   // Existing queries (unchanged) ───────────────────────────────────────────
 
   const healthQ = useQuery<HealthzReadyResponse>({
     queryKey: ["healthz-ready"],
-    queryFn: fetchHealthzReady,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    queryFn: fetchAdminHealthReady,
+    // Reduced 30 s → 60 s. Backend cache is 15 s; admin doesn't need
+    // sub-30 s granularity on health.
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     retry: false,
+    enabled: !!adminToken,
   });
 
   const diagQ = useQuery<DiagnosticsResponse>({
     queryKey: ["admin-diagnostics"],
     queryFn: () => fetch("/api/admin/diagnostics", { headers }).then((r) => r.json()),
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    // 30 s → 60 s. Memory + CPU + event-loop p99 don't need 30 s precision.
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     enabled: !!adminToken,
   });
 
@@ -363,8 +383,9 @@ export default function AdminSystemPage(): ReactElement | null {
     queryKey: ["admin-observability-summary"],
     queryFn: () =>
       fetch("/api/admin/observability/summary", { headers }).then((r) => r.json()),
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    // 30 s → 60 s. Aggregate counters update slowly.
+    refetchInterval: 60_000,
+    staleTime: 30_000,
     enabled: !!adminToken,
   });
 
@@ -372,8 +393,10 @@ export default function AdminSystemPage(): ReactElement | null {
     queryKey: ["admin-observability-alerts-recent"],
     queryFn: () =>
       fetch("/api/admin/observability/alerts/recent", { headers }).then((r) => r.json()),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    // 60 s → 90 s. Alerts already trigger Discord pushes; this panel is
+    // a historical view, not real-time.
+    refetchInterval: 90_000,
+    staleTime: 45_000,
     enabled: !!adminToken,
   });
 
@@ -383,6 +406,8 @@ export default function AdminSystemPage(): ReactElement | null {
     queryKey: ["admin-observability-metrics"],
     queryFn: () =>
       fetch("/api/admin/observability/metrics", { headers }).then((r) => r.json()),
+    // Kept at 15 s — realtime CWV + event-loop is the highest-value
+    // panel for live operator triage.
     refetchInterval: 15_000,
     staleTime: 7_000,
     enabled: !!adminToken,
@@ -392,8 +417,10 @@ export default function AdminSystemPage(): ReactElement | null {
     queryKey: ["admin-observability-scheduler"],
     queryFn: () =>
       fetch("/api/admin/observability/scheduler", { headers }).then((r) => r.json()),
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    // 30 s → 90 s. Scheduler state changes slowly (leader rotation,
+    // worker heartbeat). Sub-minute precision is unnecessary.
+    refetchInterval: 90_000,
+    staleTime: 45_000,
     enabled: !!adminToken,
   });
 
