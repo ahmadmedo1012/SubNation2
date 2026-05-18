@@ -270,6 +270,28 @@ export async function runMigrations() {
       );
     `);
 
+    // ── otps schema drift reconcile ─────────────────────────────────────
+    // The OTP design migrated from plaintext (column `code`) to argon2
+    // hashed (column `code_hash`) plus per-row attempt counter. Production
+    // tables created by the original CREATE TABLE above don't have the
+    // new columns. This reconciliation is idempotent and non-destructive:
+    //
+    //   1. Add code_hash + attempts columns (IF NOT EXISTS).
+    //   2. Make legacy `code` nullable so new INSERTs don't violate
+    //      NOT NULL on a column the runtime no longer writes.
+    //
+    // Existing rows with plaintext `code` are kept; they expire naturally
+    // via the cleanupExpiredOtps job (which deletes by expires_at, no
+    // schema dependency on which column has the value).
+    await db.execute(sql`
+      ALTER TABLE otps
+        ADD COLUMN IF NOT EXISTS code_hash VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS attempts  INTEGER NOT NULL DEFAULT 0;
+    `);
+    await db.execute(sql`
+      ALTER TABLE otps ALTER COLUMN code DROP NOT NULL;
+    `);
+
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_otps_phone ON otps(phone);
       CREATE INDEX IF NOT EXISTS idx_otps_expires ON otps(expires_at);

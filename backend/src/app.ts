@@ -223,22 +223,22 @@ app.use(
   }),
 );
 
-// Custom IP key generator that handles IPv6 subnets
-const ipKeyGenerator = (req: Request) => {
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  // For IPv6, use /64 subnet to reduce false positives from dynamic suffixes
-  if (ip.includes(":")) {
-    const parts = ip.split(":");
-    return parts.slice(0, 4).join(":") + "::/64";
-  }
-  return ip;
-};
-
 // ── Redis singleton (initialised in server.ts before app.listen) ─────────────
 const redisClient = getRedisClient();
 
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
-// Use Redis store if available, otherwise fall back to in-memory store
+// Use Redis store if available, otherwise fall back to in-memory store.
+//
+// Key generator: NONE specified — we use express-rate-limit v8's default
+// `ipKeyGenerator()` which:
+//   1. Is IPv6-safe (uses /64 subnet to prevent address-cycling abuse).
+//   2. Reads `req.ip` — which our `cloudflareClientIp` middleware
+//      transparently overrides with the real client IP from the
+//      CF-Connecting-IP header when behind Cloudflare.
+//
+// Specifying a custom keyGenerator that handled IPv6 manually triggered
+// ERR_ERL_KEY_GEN_IPV6 in production (the library validates that custom
+// keyGenerators handle IPv6 correctly). The default is the right tool.
 const rateLimiterStore = redisClient
   ? new RedisStore({
       sendCommand: (...args: string[]) => redisClient.sendCommand(args),
@@ -251,7 +251,6 @@ const apiLimiter = rateLimit({
   limit: 300,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  keyGenerator: ipKeyGenerator,
   store: rateLimiterStore,
   skip: (req) => {
     // Skip rate limiting for health checks and static assets
@@ -265,7 +264,6 @@ const authLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  keyGenerator: ipKeyGenerator,
   store: rateLimiterStore,
   skipFailedRequests: false,
   skipSuccessfulRequests: true,

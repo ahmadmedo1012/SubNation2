@@ -228,6 +228,63 @@ curl -sIL https://www.subnation.ly | grep -c '^HTTP'
 
 Render's internal health check pings `/api/healthz` on the onrender hostname (which bypasses CF). Should still return 200. Check Render dashboard → service → Events for any probe failures during the cutover window.
 
+### 8.9 DNS resolution stability (debugging "ERR_NAME_NOT_RESOLVED for some clients")
+
+DNS propagation is asynchronous and inconsistent across resolvers. Globally:
+- Cloudflare's `1.1.1.1` resolves new records within minutes.
+- Google's `8.8.8.8` typically within 1-15 minutes.
+- ISP / mobile-carrier resolvers can lag **24-48 hours** with cached negative results.
+- Some misconfigured corporate / ISP DNS still cache the old record's TTL.
+
+If users report `ERR_NAME_NOT_RESOLVED` while others reach the site fine, this is propagation lag, not a Cloudflare bug.
+
+**Verify DNS health:**
+
+```bash
+# Should return Cloudflare IPs from MULTIPLE public resolvers
+dig +short subnation.ly @1.1.1.1
+dig +short subnation.ly @8.8.8.8
+dig +short subnation.ly @9.9.9.9
+
+# AAAA (IPv6) record — should ALSO resolve to CF IPv6
+dig +short AAAA subnation.ly @1.1.1.1
+
+# DNSSEC chain — should be SECURE if you enabled it on CF
+dig +dnssec subnation.ly @1.1.1.1 | grep -E '^(;; flags|;; ANSWER|RRSIG)'
+```
+
+**Cloudflare-side checks** (Dashboard → DNS):
+
+| Setting | Required value |
+|---|---|
+| `subnation.ly` A record | Proxied (orange cloud) — CF will return CF anycast IPs |
+| `subnation.ly` AAAA record | Should auto-exist if you set "AAAA records" mode to enabled |
+| **CNAME flattening at apex** | ON (Cloudflare → DNS → Settings → "CNAME Flattening" → "Flatten all CNAMEs") — required because we're CNAMEing the apex to Render's onrender.com hostname |
+| **DNSSEC** | Optional. If ON, you must publish the DS record at the registrar. If only PARTIALLY ON (CF says enabled but registrar hasn't published the DS), some validating resolvers will refuse to resolve. Either fully complete or fully disable. |
+| **Record TTL** | Auto (CF manages, ~5 min) — DON'T set very long manual TTLs during propagation |
+
+**Render-side** (only relevant if DNS is partial):
+
+- Render dashboard → service → Custom Domains → both `subnation.ly` and `www.subnation.ly` should show "Verified" with a green checkmark.
+- If "Awaiting DNS" → the apex CNAME flattening hasn't activated yet; wait or re-verify.
+
+**If a specific client can't resolve:**
+
+```bash
+# From their machine:
+nslookup subnation.ly                 # check their resolver result
+nslookup subnation.ly 1.1.1.1         # check Cloudflare resolver result
+
+# If the second one resolves but the first doesn't:
+# → their ISP/corporate DNS is caching stale data. Will clear within 24-48h.
+# → as a workaround, they can switch to 1.1.1.1 or 8.8.8.8.
+```
+
+**Don't:**
+- Don't change the TTL repeatedly mid-propagation.
+- Don't toggle CF proxied/grey-cloud during propagation — it just adds another wave of caching.
+- Don't disable DNSSEC after registrar published the DS without removing the DS first; same for vice-versa.
+
 ---
 
 ## 9. Rollback (if anything is broken)
