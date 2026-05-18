@@ -1,5 +1,6 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RouteLoading } from "@/components/RouteLoading";
+import { AppSplashScreen } from "@/components/AppSplashScreen";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -259,17 +260,47 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <DeferredSocketInitializer />
-          <TooltipProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <AppRoutes />
-            </WouterRouter>
-            <Toaster />
-          </TooltipProvider>
+          <AuthGate>
+            <DeferredSocketInitializer />
+            <TooltipProvider>
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <AppRoutes />
+              </WouterRouter>
+              <Toaster />
+            </TooltipProvider>
+          </AuthGate>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * Auth hydration gate. Holds the entire app tree (including the
+ * router, the socket initializer, and every lazy-imported page)
+ * behind the splash screen until `AuthProvider` finishes its
+ * `/api/auth/me` cookie probe.
+ *
+ * This prevents the "logout flicker" sequence:
+ *   1. App mounts with token=null
+ *   2. Routes render unauthenticated UI
+ *   3. /api/auth/me probe completes
+ *   4. Token state flips to authenticated
+ *   5. Routes re-render — visible flash
+ *
+ * With this gate, steps 2-5 collapse into a single transition: the
+ * splash holds, the probe resolves, the routes render with the
+ * correct auth state immediately.
+ *
+ * Cost: one ~50-300ms splash on cold boot / refresh / PWA resume.
+ * Benefit: stable, consistent first paint regardless of auth state.
+ */
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { initializing } = useAuth();
+  if (initializing) {
+    return <AppSplashScreen />;
+  }
+  return <>{children}</>;
 }
 
 export default App;

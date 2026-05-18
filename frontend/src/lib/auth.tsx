@@ -15,6 +15,17 @@ import { setupFirebaseTokenRefresh } from "./firebase-auth";
 interface AuthContextType {
   token: string | null;
   adminToken: string | null;
+  /**
+   * `true` during the brief boot window while we probe `/api/auth/me`
+   * to determine whether the httpOnly auth_token cookie carries a
+   * valid backend session. The app shell renders `<AppSplashScreen />`
+   * during this window so users never see a flash of unauthenticated
+   * UI on refresh / cold start / PWA resume.
+   *
+   * Always becomes `false` within ~50-300 ms of mount (one same-origin
+   * /api/auth/me round-trip), regardless of authentication outcome.
+   */
+  initializing: boolean;
   setToken: (token: string | null) => void;
   setAdminToken: (token: string | null) => void;
   logout: () => void;
@@ -24,18 +35,28 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function readStoredToken(_key: string): string | null {
-  // Tokens are now in HttpOnly cookies; this is a placeholder for the
-  // initial-render value. The Authorization header value used by the
-  // typed clients is set when /api/auth/login etc. responds.
-  return null;
-}
+/**
+ * Sentinel value placed in `token` state when the user is authenticated
+ * via the httpOnly `auth_token` cookie but the actual JWT is not
+ * accessible to JavaScript (which is the desired security property).
+ *
+ * Effects:
+ *   - `!!token` checks across the codebase resolve truthy (so
+ *     `enabled: !!token`, `if (token) ...`, etc. work unchanged).
+ *   - `Authorization: Bearer ${token}` headers send a useless string,
+ *     but the backend's `requireUser` middleware reads `req.cookies.
+ *     auth_token` FIRST and ignores invalid Authorization headers, so
+ *     this is harmless. (verified in middlewares/requireUser.ts)
+ *   - On real sign-in (Telegram, Google, Phone OTP), `setToken(realJwt)`
+ *     replaces the sentinel with the actual JWT so subsequent requests
+ *     send a valid Authorization header.
+ */
+const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(() => readStoredToken("auth_token"));
-  const [adminToken, setAdminTokenState] = useState<string | null>(() =>
-    readStoredToken("admin_token"),
-  );
+  const [token, setTokenState] = useState<string | null>(null);
+  const [adminToken, setAdminTokenState] = useState<string | null>(null);
+  const [initializing, setInitializing] = useState(true);
   const queryClient = useQueryClient();
 
   /**
@@ -96,6 +117,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token, logout]);
 
+  // ── Auth hydration probe ─────────────────────────────────────────────
+  //
+  // On every mount (cold boot, refresh, PWA resume), check whether the
+  // httpOnly auth_token cookie carries a valid backend session. The
+  // cookie is invisible to JavaScript by design, so the only way to
+  // tell is to call /api/auth/me with credentials:"include". The
+  // browser attaches the cookie automatically.
+  //
+  //   200 → user has a live session. Set `token` to the sentinel so
+  //         every `!!token` check across the codebase resolves truthy,
+  //         AND seed React Query's cache with the user data so
+  //         useGetMe consumers (Navbar, profile, etc.) get instant
+  //         results without a duplicate request.
+  //
+  //   401 → no session. Leave token null.
+  //
+  //   network error → leave token null. The app renders unauthenticated;
+  //                   user can sign in normally.
+  //
+  // Either way we set `initializing = false` so the splash screen
+  // dismisses and routes start rendering. Typical wall-clock duration
+  // is 50-300 ms (one same-origin round-trip + 30 s browser cache from
+  // /api/auth/me's `Cache-Control: private, max-age=30` header on hot
+  // paths).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && !cancelled) {
+            setTokenState(COOKIE_AUTH_SENTINEL);
+            queryClient.setQueryData(getGetMeQueryKey(), data);
+          }
+        }
+        // 401 / 4xx / 5xx → unauthenticated, nothing to do.
+      })
+      .catch(() => {
+        // Network error → unauthenticated. Real errors are reported
+        // by Sentry's network instrumentation elsewhere.
+      })
+      .finally(() => {
+        if (!cancelled) setInitializing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Empty dep array: this effect intentionally runs ONCE per
+    // AuthProvider lifetime. queryClient is stable across the
+    // lifetime of the QueryClientProvider so omitting it is safe.
+  }, []);
+
   // ── Firebase token-refresh listener ───────────────────────────────────
   //
   // Wired exactly once. The 2-second delay is intentional: it pushes the
@@ -146,8 +223,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ token, adminToken, setToken, setAdminToken, logout, adminLogout, logoutAllDevices }),
-    [token, adminToken, setToken, setAdminToken, logout, adminLogout, logoutAllDevices],
+    () => ({
+      token,
+      adminToken,
+      initializing,
+      setToken,
+      setAdminToken,
+      logout,
+      adminLogout,
+      logoutAllDevices,
+    }),
+    [
+      token,
+      adminToken,
+      initializing,
+      setToken,
+      setAdminToken,
+      logout,
+      adminLogout,
+      logoutAllDevices,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
