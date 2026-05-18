@@ -21,13 +21,23 @@ const requiresSsl =
   sslMode === "verify-ca" ||
   sslMode === "verify-full" ||
   parsedDatabaseUrl.hostname.endsWith(".neon.tech");
-const poolMax = Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 5 : 10));
+// Default pool sizes:
+//   - production: 15  (matches render.yaml; sized for one starter dyno
+//                       under moderate concurrency. With Neon pooler the
+//                       upstream limit is much higher, so this is the
+//                       per-instance bound.)
+//   - dev:        10
+// The env var DB_POOL_MAX always wins. The default exists only as a
+// safety net so a missing/typo'd env doesn't silently cap us at 5
+// connections (which causes connection-starvation under ~50 concurrent
+// users — that was the symptom the May 2026 load test surfaced).
+const poolMax = Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 15 : 10));
 const idleTimeoutMillis = Number(process.env.DB_IDLE_TIMEOUT_MS ?? 30_000);
 const connectionTimeoutMillis = Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 10_000);
 
 const poolConfig: pg.PoolConfig & { enableChannelBinding?: boolean } = {
   connectionString: databaseUrl,
-  max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 5,
+  max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 15,
   idleTimeoutMillis: Number.isFinite(idleTimeoutMillis) ? idleTimeoutMillis : 30_000,
   connectionTimeoutMillis: Number.isFinite(connectionTimeoutMillis)
     ? connectionTimeoutMillis

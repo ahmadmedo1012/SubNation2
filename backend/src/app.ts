@@ -287,6 +287,21 @@ app.use(
     // the correlation context is somehow missing (defensive).
     genReqId: () => getCorrelationId() ?? randomUUID(),
     customAttributeKeys: { reqId: "correlation_id" },
+    // Skip request-completed logs for high-frequency, low-information
+    // routes. /healthz hit by Render edge probes every 30s and by admin
+    // polling at minute cadence; logging them just inflates the log
+    // stream without diagnostic value. /api/cwv beacons are similar —
+    // many small POSTs per page-load.
+    autoLogging: {
+      ignore: (req) => {
+        const url = req.url ?? "";
+        return (
+          url === "/api/healthz" ||
+          url.startsWith("/api/healthz/") ||
+          url === "/api/cwv"
+        );
+      },
+    },
     serializers: {
       req(req) {
         return {

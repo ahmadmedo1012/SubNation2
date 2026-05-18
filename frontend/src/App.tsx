@@ -76,6 +76,14 @@ const queryClient = new QueryClient({
       retry: 1,
       // Don't refetch on window focus for mobile UX (reduces spinner flashes)
       refetchOnWindowFocus: false,
+      // Don't refetch on network reconnect either. Default is "always",
+      // which means a single network blip (mobile WiFi → cellular
+      // handoff, brief offline) triggers ALL active queries to refetch
+      // simultaneously across every connected client — a textbook DB
+      // pool storm under any non-trivial concurrency. The existing
+      // staleTime + on-mount + on-event refetch logic is sufficient
+      // for freshness; reconnect storms are pure waste.
+      refetchOnReconnect: false,
     },
   },
 });

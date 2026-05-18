@@ -796,6 +796,16 @@ router.get("/me", async (req, res) => {
     .from(userAuthIdentitiesTable)
     .where(eq(userAuthIdentitiesTable.userId, user.id));
 
+  // 30 s private browser cache. Concurrency win: 6 components on the
+  // page (Navbar, Footer, profile, product, home, SocketInitializer)
+  // share the same React Query queryKey so client-side they already
+  // dedupe. The browser-cache layer additionally absorbs page
+  // navigations and back-button revisits, so /api/auth/me hits the
+  // origin at most twice per minute per user under steady-state
+  // navigation. `private` keeps it out of any CDN — the response is
+  // user-specific.
+  res.set("Cache-Control", "private, max-age=30");
+
   return res.json({
     ...formatUser(user),
     linked_identities: identities.map((id) => ({
