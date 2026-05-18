@@ -122,6 +122,26 @@ export const migrationDurationSeconds = new Histogram({
   registers: [getRegistry()],
 });
 
+/**
+ * Body-parser recovery outcomes.
+ *
+ * reason:
+ *   - "salvaged_urlencoded" — client sent form-urlencoded body with
+ *                             wrong Content-Type (application/json);
+ *                             we recovered via URLSearchParams.
+ *   - "invalid_json"        — body could not be parsed as JSON or as
+ *                             URL-encoded; returned clean 400.
+ *
+ * Volume here tracks bot-probe traffic + legitimate client
+ * misconfigurations. Visible on /admin/system observability surface.
+ */
+export const bodyParseErrorsTotal = new Counter({
+  name: "body_parse_errors_total",
+  help: "Total body-parser error-recovery events by reason",
+  labelNames: ["reason"] as const,
+  registers: [getRegistry()],
+});
+
 // ============================================================================
 // Redis Metrics
 // ============================================================================

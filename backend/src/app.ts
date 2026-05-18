@@ -11,6 +11,7 @@ import pinoHttp from "pino-http";
 import RedisStore from "rate-limit-redis";
 import * as Sentry from "@sentry/node";
 import { getCorrelationId } from "./lib/correlation";
+import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
 import { getRedisClient } from "./lib/redis-client";
 import { captureException } from "./lib/sentry";
@@ -334,6 +335,14 @@ app.use(metricsMiddleware);
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Defensive recovery for malformed JSON bodies. Catches express.json()
+// SyntaxErrors (predominantly bot probes hitting /api/auth/login with
+// form-encoded credential-stuffing payloads, plus the occasional
+// misconfigured client). Salvages URL-encoded bodies sent with the
+// wrong Content-Type, returns clean 400 otherwise. Does NOT capture
+// in Sentry — see backend/src/lib/body-parser-recovery.ts.
+app.use(bodyParserRecovery);
 
 // ── CSRF Protection for state-changing requests ───────────────────────────────
 // Validate Origin/Referer headers for POST/PUT/DELETE/PATCH requests
