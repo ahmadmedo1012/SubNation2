@@ -14,6 +14,7 @@ import { getCorrelationId } from "./lib/correlation";
 import { logger } from "./lib/logger";
 import { getRedisClient } from "./lib/redis-client";
 import { captureException } from "./lib/sentry";
+import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
 import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
 import { metricsMiddleware } from "./middlewares/metrics";
@@ -167,6 +168,17 @@ app.use(
 
 // Trust the first reverse proxy hop when deployed behind one.
 app.set("trust proxy", 1);
+
+// ── Cloudflare-aware client-IP resolution ──────────────────────────────────
+// When the request flows through Cloudflare (→ Render → app), Express's
+// `trust proxy = 1` resolves req.ip to Cloudflare's edge IP, not the
+// real client. cloudflareClientIp() reads the CF-Connecting-IP header
+// (which only Cloudflare can set) and overrides req.ip transparently.
+//
+// Mounted EARLY — before rate-limit-redis, CSRF, pino-http, and the
+// route handlers — so every downstream consumer of req.ip sees the
+// correct value automatically. No-op when CF isn't in front.
+app.use(cloudflareClientIp);
 
 // ── Canonical-host redirect ────────────────────────────────────────────────
 // Render's edge already redirects www.subnation.ly → subnation.ly when both
