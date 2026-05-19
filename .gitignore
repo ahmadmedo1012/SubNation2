@@ -86,3 +86,20 @@ ruflo
 .kiro
 .vscode
 .husky
+
+# Load-test exports / audit dumps (operator-local, never commit)
+report*.json
+report (*).json
+*.har
+PageSpeed*.json
+
+# AI coding tools — local config, never commit
+.aider*/
+.cursor/
+.windsurf/
+.continue/
+.codex/
+
+# Local SQLite databases (e.g. ruvector.db)
+*.sqlite
+*.sqlite3
