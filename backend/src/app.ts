@@ -1,3 +1,6 @@
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import cors from "cors";
