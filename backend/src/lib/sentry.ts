@@ -255,30 +255,58 @@ let initialised = false;
  * Behaviour when SENTRY_DSN is unset:
  *   The SDK is a quiet no-op. captureException / captureMessage etc.
  *   simply don't do anything. This is the dev-without-Sentry path.
+ *
+ * Diagnostic logging:
+ *   We log to STDOUT (not the pino logger — pino isn't loaded yet at this
+ *   point in the boot sequence) so operators can SEE in Render logs
+ *   whether init ran. Three distinct outcomes:
+ *     - "[sentry] NOT initialized — SENTRY_DSN env var is unset"
+ *     - "[sentry] initialized: host=… env=… release=…"
+ *     - "[sentry] init FAILED: <error>"
+ *
+ * Set SENTRY_DEBUG=1 to enable @sentry/node's own verbose logging
+ * (useful for diagnosing transport / DSN parse failures).
  */
-export function initSentry() {
-  if (initialised) return;
+export function initSentry(): ReturnType<typeof Sentry.init> {
+  if (initialised) return Sentry.getClient();
   initialised = true;
 
   if (!process.env.SENTRY_DSN) {
-    // Silent in dev; production should have caught this in the env check.
-    return;
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[sentry] NOT initialized — SENTRY_DSN env var is unset. " +
+        "Backend Sentry capture is DISABLED. Set SENTRY_DSN in Render Dashboard → Environment.",
+    );
+    return undefined;
   }
 
   const tags = readProcessTags();
+  let dsnHost = "(unparsable)";
+  try {
+    dsnHost = new URL(process.env.SENTRY_DSN).host;
+  } catch {
+    // fall through with placeholder
+  }
 
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || "development",
-    release: tags.git_commit,
-    // Auto-enable Express, HTTP, Redis, Postgres integrations from
-    // @sentry/node v10+. We don't pass `integrations: [...]` so the
-    // defaults stay applied; explicit overrides go in beforeSend.
-    tracesSampler: makeTracesSampler(),
-    profilesSampleRate:
-      process.env.NODE_ENV === "production"
-        ? Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1)
-        : 0,
+  let client: ReturnType<typeof Sentry.init>;
+  try {
+    client = Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.NODE_ENV || "development",
+      release: tags.git_commit,
+      // Surface SDK-internal logs when SENTRY_DEBUG=1 is set. This
+      // makes "DSN parsed OK", "transport queued event", "rate-
+      // limited" etc. visible in stdout. Off by default to avoid
+      // production log spam.
+      debug: process.env.SENTRY_DEBUG === "1",
+      // Auto-enable Express, HTTP, Redis, Postgres integrations from
+      // @sentry/node v10+. We don't pass `integrations: [...]` so the
+      // defaults stay applied; explicit overrides go in beforeSend.
+      tracesSampler: makeTracesSampler(),
+      profilesSampleRate:
+        process.env.NODE_ENV === "production"
+          ? Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1)
+          : 0,
     // PII sanitization. Order matters: first strip headers Sentry
     // attached automatically, then deep-walk request body / extras,
     // then add our correlation_id tag.
@@ -350,6 +378,24 @@ export function initSentry() {
   // Set every event's baseline tags. setTags() applies to the global
   // scope so per-call captures inherit.
   Sentry.setTags(tags);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[sentry] init FAILED — backend Sentry capture is DISABLED:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return undefined;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[sentry] initialized — host=${dsnHost} env=${process.env.NODE_ENV || "development"} ` +
+      `release=${tags.git_commit} traces=${process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"} ` +
+      `profiles=${process.env.SENTRY_PROFILES_SAMPLE_RATE ?? "0.1"} ` +
+      `debug=${process.env.SENTRY_DEBUG === "1"}`,
+  );
+
+  return client;
 }
 
 // ─────────────────────────────────────────────────────────────────────
