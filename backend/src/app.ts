@@ -561,18 +561,5 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
   }
 });
-import * as Sentry from "@sentry/node";
 
-app.get("/api/debug-sentry", async (_req, res) => {
-  const eventId = Sentry.captureException(
-    new Error("Manual Sentry Backend Test")
-  );
-
-  await Sentry.flush(5000);
-
-  res.json({
-    ok: true,
-    eventId,
-  });
-});
 export default app;
