@@ -3,10 +3,6 @@
  *
  * Public (mount at /auth):
  *   GET  /providers          → /api/auth/providers
- *   GET  /github             → start GitHub OAuth
- *   GET  /github/callback    → GitHub OAuth callback
- *   GET  /facebook           → start Facebook OAuth
- *   GET  /facebook/callback  → Facebook OAuth callback
  *   POST /telegram           → verify Telegram widget data (callback mode)
  *   GET  /telegram/callback  → verify Telegram widget data (redirect mode,
  *                              for mobile / in-app browsers where popups
@@ -71,37 +67,6 @@ export const PROVIDERS: ProviderMeta[] = [
         isSecret: false,
         placeholder: "true/false",
       },
-    ],
-  },
-  {
-    id: "github",
-    label: "GitHub",
-    color: "#24292e",
-    icon: "github",
-    auth_type: "oauth_redirect",
-    description: "تسجيل الدخول عبر GitHub OAuth 2.0",
-    setup_url: "https://github.com/settings/developers",
-    fields: [
-      { key: "client_id", label: "Client ID", isSecret: false, placeholder: "Ov23liXXXXXXXXXX" },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        isSecret: true,
-        placeholder: "a1b2c3d4e5f6...",
-      },
-    ],
-  },
-  {
-    id: "facebook",
-    label: "Facebook",
-    color: "#1877F2",
-    icon: "facebook",
-    auth_type: "oauth_redirect",
-    description: "تسجيل الدخول عبر Facebook Login OAuth 2.0",
-    setup_url: "https://developers.facebook.com/apps",
-    fields: [
-      { key: "app_id", label: "App ID", isSecret: false, placeholder: "1234567890123456" },
-      { key: "app_secret", label: "App Secret", isSecret: true, placeholder: "abc123def456..." },
     ],
   },
   {
@@ -301,154 +266,6 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
   }
 
   return res.json({ providers });
-});
-
-// GET /api/auth/github  — redirect to GitHub
-authProviderPublicRouter.get("/github", async (_req, res) => {
-  const config = await getSetting("auth.github");
-  if (!config.enabled || !config.client_id) {
-    return res.redirect("/?auth_error=provider_disabled");
-  }
-  const callbackUrl = `${getAppUrl()}/api/auth/github/callback`;
-  const url = new URL("https://github.com/login/oauth/authorize");
-  url.searchParams.set("client_id", config.client_id);
-  url.searchParams.set("redirect_uri", callbackUrl);
-  url.searchParams.set("scope", "read:user user:email");
-  return res.redirect(url.toString());
-});
-
-// GET /api/auth/github/callback
-authProviderPublicRouter.get("/github/callback", async (req, res) => {
-  const { code } = req.query as { code?: string };
-  if (!code) return res.redirect("/?auth_error=missing_code");
-
-  const config = await getSetting("auth.github");
-  if (!config.enabled || !config.client_id || !config.client_secret) {
-    return res.redirect("/?auth_error=provider_disabled");
-  }
-
-  try {
-    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        client_id: config.client_id,
-        client_secret: config.client_secret,
-        code,
-      }),
-    });
-    const { access_token } = (await tokenRes.json()) as any;
-    if (!access_token) return res.redirect("/?auth_error=token_failed");
-
-    const userRes = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    });
-    const ghUser = (await userRes.json()) as any;
-    if (!ghUser.id) return res.redirect("/?auth_error=user_failed");
-
-    const githubId = String(ghUser.id);
-    let [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.githubId, githubId))
-      .limit(1);
-    if (!user) {
-      [user] = await db
-        .insert(usersTable)
-        .values({
-          phone: `gh_${githubId}`,
-          passwordHash: "",
-          githubId,
-          referralCode: generateReferralCode(),
-          walletBalance: "0.00",
-        })
-        .returning();
-    }
-
-    const token = signUserToken({ userId: user.id });
-    res.cookie("auth_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
-    return res.redirect(`/auth/callback?token=${encodeURIComponent(token)}`);
-  } catch {
-    return res.redirect("/?auth_error=server_error");
-  }
-});
-
-// GET /api/auth/facebook  — redirect to Facebook
-authProviderPublicRouter.get("/facebook", async (_req, res) => {
-  const config = await getSetting("auth.facebook");
-  if (!config.enabled || !config.app_id) {
-    return res.redirect("/?auth_error=provider_disabled");
-  }
-  const callbackUrl = `${getAppUrl()}/api/auth/facebook/callback`;
-  const url = new URL("https://www.facebook.com/v19.0/dialog/oauth");
-  url.searchParams.set("client_id", config.app_id);
-  url.searchParams.set("redirect_uri", callbackUrl);
-  url.searchParams.set("scope", "email,public_profile");
-  return res.redirect(url.toString());
-});
-
-// GET /api/auth/facebook/callback
-authProviderPublicRouter.get("/facebook/callback", async (req, res) => {
-  const { code } = req.query as { code?: string };
-  if (!code) return res.redirect("/?auth_error=missing_code");
-
-  const config = await getSetting("auth.facebook");
-  if (!config.enabled || !config.app_id || !config.app_secret) {
-    return res.redirect("/?auth_error=provider_disabled");
-  }
-
-  try {
-    const callbackUrl = `${getAppUrl()}/api/auth/facebook/callback`;
-    const tokenUrl = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
-    tokenUrl.searchParams.set("client_id", config.app_id);
-    tokenUrl.searchParams.set("client_secret", config.app_secret);
-    tokenUrl.searchParams.set("redirect_uri", callbackUrl);
-    tokenUrl.searchParams.set("code", String(code));
-
-    const { access_token } = (await (await fetch(tokenUrl.toString())).json()) as any;
-    if (!access_token) return res.redirect("/?auth_error=token_failed");
-
-    const fbUser = (await (
-      await fetch(`https://graph.facebook.com/me?fields=id,name,email&access_token=${access_token}`)
-    ).json()) as any;
-    if (!fbUser.id) return res.redirect("/?auth_error=user_failed");
-
-    const fbId = String(fbUser.id);
-    let [user] = await db.select().from(usersTable).where(eq(usersTable.facebookId, fbId)).limit(1);
-    if (!user) {
-      [user] = await db
-        .insert(usersTable)
-        .values({
-          phone: `fb_${fbId}`,
-          passwordHash: "",
-          facebookId: fbId,
-          referralCode: generateReferralCode(),
-          walletBalance: "0.00",
-        })
-        .returning();
-    }
-
-    const token = signUserToken({ userId: user.id });
-    res.cookie("auth_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
-    });
-    return res.redirect(`/auth/callback?token=${encodeURIComponent(token)}`);
-  } catch {
-    return res.redirect("/?auth_error=server_error");
-  }
 });
 
 // ── Telegram Login (legacy widget) ─────────────────────────────────────────────

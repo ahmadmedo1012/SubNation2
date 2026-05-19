@@ -34,62 +34,6 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 
   # ── Auth ────────────────────────────────────────────────────────────────────
-  /auth/register:
-    post:
-      operationId: register
-      tags: [auth]
-      summary: Register a new user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterBody"
-      responses:
-        "201":
-          description: Registered successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Phone already registered
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /auth/login:
-    post:
-      operationId: login
-      tags: [auth]
-      summary: Login with phone and password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginBody"
-      responses:
-        "200":
-          description: Logged in successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthResponse"
-        "401":
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /auth/logout:
     post:
       operationId: logout

@@ -25,7 +25,6 @@ import type {
   AdminTopup,
   AdminTopupActionBody,
   AdminUser,
-  AuthResponse,
   CatalogStats,
   CreateOrderBody,
   CreateProductBody,
@@ -37,11 +36,9 @@ import type {
   ListAdminTopupsParams,
   ListAdminUsersParams,
   ListProductsParams,
-  LoginBody,
   Order,
   Product,
   ProductRecommendation,
-  RegisterBody,
   SuccessResponse,
   Topup,
   UpdateProductBody,
@@ -117,161 +114,6 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
-/**
- * @summary Register a new user
- */
-export const getRegisterUrl = () => {
-  return `/api/auth/register`;
-};
-
-export const register = async (
-  registerBody: RegisterBody,
-  options?: RequestInit,
-): Promise<AuthResponse> => {
-  return customFetch<AuthResponse>(getRegisterUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(registerBody),
-  });
-};
-
-export const getRegisterMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof register>>,
-    TError,
-    { data: BodyType<RegisterBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof register>>,
-  TError,
-  { data: BodyType<RegisterBody> },
-  TContext
-> => {
-  const mutationKey = ["register"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof register>>,
-    { data: BodyType<RegisterBody> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return register(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type RegisterMutationResult = NonNullable<Awaited<ReturnType<typeof register>>>;
-export type RegisterMutationBody = BodyType<RegisterBody>;
-export type RegisterMutationError = ErrorType<ErrorResponse>;
-
-/**
- * @summary Register a new user
- */
-export const useRegister = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof register>>,
-    TError,
-    { data: BodyType<RegisterBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof register>>,
-  TError,
-  { data: BodyType<RegisterBody> },
-  TContext
-> => {
-  return useMutation(getRegisterMutationOptions(options));
-};
-
-/**
- * @summary Login with phone and password
- */
-export const getLoginUrl = () => {
-  return `/api/auth/login`;
-};
-
-export const login = async (loginBody: LoginBody, options?: RequestInit): Promise<AuthResponse> => {
-  return customFetch<AuthResponse>(getLoginUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(loginBody),
-  });
-};
-
-export const getLoginMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof login>>,
-    TError,
-    { data: BodyType<LoginBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof login>>,
-  TError,
-  { data: BodyType<LoginBody> },
-  TContext
-> => {
-  const mutationKey = ["login"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof login>>,
-    { data: BodyType<LoginBody> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return login(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type LoginMutationResult = NonNullable<Awaited<ReturnType<typeof login>>>;
-export type LoginMutationBody = BodyType<LoginBody>;
-export type LoginMutationError = ErrorType<ErrorResponse>;
-
-/**
- * @summary Login with phone and password
- */
-export const useLogin = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof login>>,
-    TError,
-    { data: BodyType<LoginBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof login>>,
-  TError,
-  { data: BodyType<LoginBody> },
-  TContext
-> => {
-  return useMutation(getLoginMutationOptions(options));
-};
 
 /**
  * @summary Logout current user

@@ -15,37 +15,6 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * @summary Register a new user
- */
-export const RegisterBody = zod.object({
-  phone: zod.string(),
-  password: zod.string(),
-  referral_code: zod.string().nullish(),
-});
-
-/**
- * @summary Login with phone and password
- */
-export const LoginBody = zod.object({
-  phone: zod.string(),
-  password: zod.string(),
-});
-
-export const LoginResponse = zod.object({
-  user: zod.object({
-    id: zod.number(),
-    phone: zod.string(),
-    wallet_balance: zod.number(),
-    loyalty_points: zod.number(),
-    loyalty_tier: zod.string(),
-    lifetime_spend: zod.number(),
-    referral_code: zod.string().nullish(),
-    created_at: zod.string().optional(),
-  }),
-  token: zod.string(),
-});
-
-/**
  * @summary Logout current user
  */
 export const LogoutResponse = zod.object({
