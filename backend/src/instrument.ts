@@ -44,8 +44,12 @@ process.on("uncaughtException", async (err: Error) => {
 });
 
 process.on("unhandledRejection", async (reason: unknown) => {
+  // Sentry's default onUnhandledRejectionIntegration has ALREADY captured
+  // this rejection. We just flush the queue so the event reaches the
+  // backend before the process is potentially terminated by other handlers.
+  // Do NOT call Sentry.captureException(reason) here — it would double
+  // every event and burn quota.
   try {
-    Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
     await Sentry.flush(FLUSH_TIMEOUT_MS);
   } catch {
     // ignore

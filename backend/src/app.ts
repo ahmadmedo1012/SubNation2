@@ -15,7 +15,6 @@ import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
 import { verifyUserToken } from "./lib/jwt";
 import { getRedisClient } from "./lib/redis-client";
-import { captureException } from "./lib/sentry";
 import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
 import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
@@ -478,29 +477,6 @@ app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);
 
-// ── TEMPORARY: Public Sentry verification route ──────────────────────────────
-// Bypasses ALL auth (no requireUser, no requireAdmin) to verify event
-// delivery end-to-end without needing an admin session. REMOVE after
-// successful verification per the operator runbook (see commit message).
-//
-// Position: registered AFTER the /api router (so the router gets first
-// match priority for any future real route at this path) and BEFORE the
-// /api 404 handler (so this route actually executes instead of returning
-// 404 like the prior /api/debug-sentry attempts did).
-app.get("/api/debug-sentry-public", async (_req, res) => {
-  try {
-    throw new Error("Public Backend Sentry Test");
-  } catch (err) {
-    const eventId = Sentry.captureException(err);
-    await Sentry.flush(5000);
-    res.status(200).json({
-      ok: true,
-      eventId,
-      sentryInitialized: !!Sentry.getClient(),
-    });
-  }
-});
-
 // JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "المسار غير موجود", code: "NOT_FOUND" });
@@ -561,19 +537,14 @@ if (frontendDist) {
 Sentry.setupExpressErrorHandler(app);
 
 // ── Global error handler ──────────────────────────────────────────────────────
+//
+// NOTE: Sentry.setupExpressErrorHandler(app) above has ALREADY captured
+// any error reaching this point with full request context + correlation_id.
+// We therefore do NOT call captureException here — doing so would double-
+// fire every 5xx event and double our Sentry quota burn. This handler is
+// purely for shaping the user-facing Arabic error response.
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, req: { method: req.method, url: req.url } }, "Unhandled error");
-
-  // Send error to Sentry in production
-  if (process.env.NODE_ENV === "production") {
-    captureException(err, {
-      method: req.method,
-      url: req.url,
-      body: req.body,
-      userId: (req as Request & { userId?: number }).userId,
-      correlation_id: getCorrelationId(),
-    });
-  }
 
   if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
     res.status(400).json({ error: "بيانات غير صالحة" });
