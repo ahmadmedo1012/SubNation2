@@ -1,34 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { signAdminToken, signUserToken } from "../jwt";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import jwt from "jsonwebtoken";
+import { JWT_SECRET, signAdminToken, signUserToken } from "../jwt";
 import {
   authenticateSocketHandshake,
   authorizeJoinAdmin,
   authorizeJoinUser,
+  isOriginAllowed,
   parseCookieHeader,
   type SocketIdentity,
 } from "../socket";
 
 // ─────────────────────────────────────────────────────────────────────
-// SECURITY TEST SUITE for Socket.IO auth gate (audit P0-1).
+// SECURITY TEST SUITE for Socket.IO auth gate (audit P0-1 + P0-2).
 //
-// These tests exercise the pure functions that the io.use middleware
-// + the join-user / join-admin handlers delegate to. They prove:
+// Pure-function coverage. The middleware and event handlers in
+// initSocket() delegate to these helpers; testing them in isolation
+// gives us deterministic, fast assertions without spinning up a real
+// socket.io server.
 //
-//   1. Connections without ANY valid token are rejected.
-//   2. Connections with a malformed/expired token are rejected.
-//   3. A valid user token CANNOT be used to forge a join-user with a
-//      different userId.
-//   4. A user-only socket CANNOT join the admin room by emitting
-//      join-admin.
-//   5. A valid admin token CAN join the admin room.
-//   6. A socket holding BOTH tokens gets BOTH capabilities (rare,
-//      but legitimate when an admin is also browsing as a user).
-//   7. Cookie parsing tolerates malformed input (no DoS).
-//
-// Tests use the real signUserToken / signAdminToken — no mocks. The
-// JWT secrets are loaded from process.env.SESSION_SECRET in the
-// vitest setup; the test runner sets it the same way the runtime
-// does.
+// What is NOT tested here, by design:
+//   - Reconnect persistence — io.use runs per connection by socket.io
+//     contract, so reconnect = re-auth. Library behavior, not ours.
+//   - Concurrent socket isolation — each socket has its own
+//     socket.data; library guarantee.
+//   - Disconnect cleanup — socket.io handles room cleanup on
+//     disconnect; library guarantee.
+//   These would need a full integration harness (real http server +
+//   real socket.io-client). Tracked separately if behavior ever
+//   differs from the library's documented invariants.
 // ─────────────────────────────────────────────────────────────────────
 
 describe("parseCookieHeader", () => {
@@ -54,21 +53,45 @@ describe("parseCookieHeader", () => {
   });
 
   it("tolerates malformed pieces without throwing (DoS defense)", () => {
-    // Trailing semicolons, missing equals, empty names, lone =, all
-    // safely ignored.
     const parsed = parseCookieHeader(";;;abc;auth_token=valid;=lone;extra==double");
     expect(parsed.auth_token).toBe("valid");
     expect(parsed.extra).toBe("=double");
-    // No crash, no key for "abc" (no equals), no key for "" (empty name)
     expect(parsed[""]).toBeUndefined();
   });
 
   it("handles undecodable percent escapes by falling back to raw", () => {
-    // %ZZ is not a valid percent-encoding. decodeURIComponent throws.
-    // Parser must NOT propagate the error.
     expect(() => parseCookieHeader("k=%ZZ")).not.toThrow();
     const parsed = parseCookieHeader("k=%ZZ");
     expect(parsed.k).toBe("%ZZ");
+  });
+});
+
+describe("isOriginAllowed (P0-2)", () => {
+  it("permissive in dev (empty allowlist) — all origins pass", () => {
+    expect(isOriginAllowed("https://random.example.com", [])).toBe(true);
+    expect(isOriginAllowed(undefined, [])).toBe(true);
+    expect(isOriginAllowed("", [])).toBe(true);
+  });
+
+  it("strict in prod — only listed origins pass", () => {
+    const list = ["https://subnation.ly", "https://www.subnation.ly"];
+    expect(isOriginAllowed("https://subnation.ly", list)).toBe(true);
+    expect(isOriginAllowed("https://www.subnation.ly", list)).toBe(true);
+    expect(isOriginAllowed("https://evil.com", list)).toBe(false);
+    expect(isOriginAllowed("https://subnation.ly.evil.com", list)).toBe(false);
+    expect(isOriginAllowed("https://SUBNATION.LY", list)).toBe(false); // case-strict
+  });
+
+  it("strict mode rejects missing/empty origin", () => {
+    const list = ["https://subnation.ly"];
+    expect(isOriginAllowed(undefined, list)).toBe(false);
+    expect(isOriginAllowed("", list)).toBe(false);
+  });
+
+  it("rejects non-string origin (defense vs. malformed proxy headers)", () => {
+    const list = ["https://subnation.ly"];
+    expect(isOriginAllowed(null as unknown as string, list)).toBe(false);
+    expect(isOriginAllowed(123 as unknown as string, list)).toBe(false);
   });
 });
 
@@ -92,9 +115,34 @@ describe("authenticateSocketHandshake", () => {
   });
 
   it("returns null when auth_token has the wrong signature", () => {
-    // Token signed with admin secret should NOT verify as a user token.
     const adminSigned = signAdminToken({ adminId: 1, role: "super_admin" });
     const handshake = { headers: { cookie: `auth_token=${adminSigned}` } };
+    expect(authenticateSocketHandshake(handshake)).toBeNull();
+  });
+
+  it("rejects an EXPIRED user token (P0-2 — explicit expiry test)", () => {
+    // Create a token that expired 10 seconds ago. jsonwebtoken's
+    // numeric expiresIn is seconds-from-now; negative = already
+    // expired. verifyUserTokenDetailed must surface this via its
+    // "expired" reason path, and authenticateSocketHandshake treats
+    // any verify-failure as "no identity" → null.
+    const expired = jwt.sign({ userId: 42 }, JWT_SECRET, { expiresIn: -10 });
+    const handshake = { headers: { cookie: `auth_token=${expired}` } };
+    expect(authenticateSocketHandshake(handshake)).toBeNull();
+  });
+
+  it("rejects a tampered user token (signature mutated)", () => {
+    const valid = signUserToken({ userId: 42 });
+    // Flip the last character of the signature segment.
+    const segments = valid.split(".");
+    const tampered =
+      segments[0] +
+      "." +
+      segments[1] +
+      "." +
+      segments[2].slice(0, -1) +
+      (segments[2].endsWith("A") ? "B" : "A");
+    const handshake = { headers: { cookie: `auth_token=${tampered}` } };
     expect(authenticateSocketHandshake(handshake)).toBeNull();
   });
 
@@ -139,9 +187,6 @@ describe("authenticateSocketHandshake", () => {
   });
 
   it("prefers cookie over handshake.auth when both supplied", () => {
-    // Cookie holds userId=10, handshake.auth holds a token for userId=20.
-    // The cookie path is checked first; once it succeeds, the auth
-    // fallback is not consulted for the same slot.
     const cookieToken = signUserToken({ userId: 10 });
     const authToken = signUserToken({ userId: 20 });
     const handshake = {
@@ -153,7 +198,7 @@ describe("authenticateSocketHandshake", () => {
   });
 });
 
-describe("authorizeJoinUser — forgery defense", () => {
+describe("authorizeJoinUser — forgery defense (legacy event compat)", () => {
   function makeIdentity(overrides: Partial<SocketIdentity> = {}): SocketIdentity {
     return { userId: 42, isAdmin: false, ...overrides };
   }
@@ -168,8 +213,6 @@ describe("authorizeJoinUser — forgery defense", () => {
   });
 
   it("returns null when requested userId differs from verified userId", () => {
-    // THE CORE FORGERY CASE: an attacker holds a valid token for
-    // userId=42 but tries to join user:99. Must be rejected.
     expect(authorizeJoinUser(makeIdentity(), 99)).toBeNull();
     expect(authorizeJoinUser(makeIdentity(), "99")).toBeNull();
     expect(authorizeJoinUser(makeIdentity(), 0)).toBeNull();
@@ -188,7 +231,6 @@ describe("authorizeJoinUser — forgery defense", () => {
 
   it("returns the verified userId when the requested id matches", () => {
     expect(authorizeJoinUser(makeIdentity({ userId: 42 }), 42)).toBe(42);
-    // String coercion is fine — frontend sometimes sends as string.
     expect(authorizeJoinUser(makeIdentity({ userId: 42 }), "42")).toBe(42);
   });
 });
@@ -204,10 +246,6 @@ describe("authorizeJoinAdmin — forgery defense", () => {
   });
 
   it("rejects identity where isAdmin is anything other than true", () => {
-    // Defense in depth: even if a user-controlled JSON ever leaked
-    // truthy-but-not-`true` into socket.data.identity.isAdmin (e.g. a
-    // string "true" from a misuse of JSON.parse), the strict equality
-    // check rejects it.
     expect(
       authorizeJoinAdmin({ userId: 1, isAdmin: 1 as unknown as boolean }),
     ).toBe(false);
@@ -219,5 +257,32 @@ describe("authorizeJoinAdmin — forgery defense", () => {
   it("accepts admin identity with isAdmin === true", () => {
     const identity: SocketIdentity = { adminId: 1, role: "super_admin", isAdmin: true };
     expect(authorizeJoinAdmin(identity)).toBe(true);
+  });
+});
+
+describe("identity isolation (P0-2 — concurrent connection semantics)", () => {
+  // Each call to authenticateSocketHandshake builds a fresh
+  // SocketIdentity object. There is no cross-handshake state. This
+  // is what guarantees concurrent connections cannot cross-pollute.
+  it("two independent handshakes return distinct identity objects", () => {
+    const tokA = signUserToken({ userId: 100 });
+    const tokB = signUserToken({ userId: 200 });
+    const idA = authenticateSocketHandshake({ headers: { cookie: `auth_token=${tokA}` } });
+    const idB = authenticateSocketHandshake({ headers: { cookie: `auth_token=${tokB}` } });
+    expect(idA).not.toBe(idB);
+    expect(idA!.userId).toBe(100);
+    expect(idB!.userId).toBe(200);
+    // Mutating one MUST NOT affect the other.
+    idA!.userId = 999;
+    expect(idB!.userId).toBe(200);
+  });
+
+  it("the same handshake invoked twice returns separately-allocated objects", () => {
+    const tok = signUserToken({ userId: 7 });
+    const h = { headers: { cookie: `auth_token=${tok}` } };
+    const id1 = authenticateSocketHandshake(h);
+    const id2 = authenticateSocketHandshake(h);
+    expect(id1).not.toBe(id2);
+    expect(id1!.userId).toBe(id2!.userId);
   });
 });

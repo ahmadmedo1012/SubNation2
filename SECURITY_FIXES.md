@@ -8,6 +8,156 @@ without reading the commits.
 
 ---
 
+## 2026-05-19 — P0-2 — Socket.IO defense-in-depth hardening pass
+
+**Severity:** Hardening (no exploitable defect introduced — the P0-1
+fix below already stopped the original attack)
+**Status:** Fixed
+**Commit:** _pending push at time of writing — see `git log` for hash_
+**Files touched:**
+- `backend/src/lib/socket.ts` (rewritten with the full defense stack)
+- `backend/src/lib/__tests__/socket-auth.test.ts` (24 → 32 cases)
+
+### Why a second pass
+
+The P0-1 fix (below) closed the critical leak: every connection now
+verifies a token, and `join-user`/`join-admin` reject forged room
+ids. After that landed, an explicit hardening review surfaced four
+defense-in-depth gaps that any production realtime layer should
+cover even when the primary gate is correct:
+
+1. **Client-payload trust surface still existed.** The `join-user`
+   handler READ the requested userId before validating it. Even
+   though it rejected mismatches, the comparison itself was the
+   gate — anyone reading the code had to believe the gate was
+   correct to believe the system was correct. Better: ignore the
+   payload entirely and join the room directly from the verified
+   identity.
+
+2. **No origin allowlist at handshake time.** Socket.IO's CORS
+   check applies to the polling transport. WebSocket-only deployments
+   (or clients that skip the polling negotiation) could bypass it.
+
+3. **Rejections logged but not breadcrumbed.** Pino + the Prom
+   counter recorded every attempt; Sentry did not. A captured
+   exception elsewhere in the same session lacked the audit trail.
+
+4. **Library-default ping/timeout config.** Defaults work, but they
+   change between socket.io minor versions. Production should pin
+   them.
+
+### Fix design
+
+5 layers, defense in depth:
+
+1. **Server-driven auto-join on connect.** The new `io.on("connection",
+   …)` handler joins `user:<verified-userId>` AND/OR `admin-room`
+   immediately based on `socket.data.identity`. The client never
+   needs to emit anything. The legacy `join-user` / `join-admin`
+   handlers remain in place as defensive idempotent NO-OPs that
+   re-validate the identity match — a forged payload triggers a
+   warn-log + Sentry breadcrumb but never affects room membership.
+
+2. **Origin allowlist in `io.use`.** `isOriginAllowed(origin,
+   allowedOrigins)` rejects handshakes whose `Origin` header is not
+   in `APP_ORIGINS`. Empty allowlist = dev mode (permissive). Strict
+   exact-match in production — case-sensitive, no wildcard subdomains.
+
+3. **Sentry breadcrumbs.** Every rejection (`bad_origin`, `no_token`,
+   `forged_user`, `forged_admin`, `anon_join_user`, `anon_join_admin`)
+   adds a `category: "socket-auth"` breadcrumb. NOT a captured
+   message — that would generate Sentry noise from automated probe
+   traffic.
+
+4. **Explicit ping/timeout/maxHttpBufferSize config:**
+   - `pingInterval: 25_000` ms (server pings client)
+   - `pingTimeout: 20_000` ms (declares socket dead after no ack)
+   - `connectTimeout: 30_000` ms (handshake deadline)
+   - `maxHttpBufferSize: 64 * 1024` (64KB cap on inbound payloads;
+     defense vs memory exhaustion via oversized join payloads)
+
+5. **Disconnect + error hooks emit structured logs** with the
+   socket id, disconnect reason, and (if known) the userId — for
+   forensic review.
+
+### Regression protections
+
+- **Pure-function additions exported for tests.**
+  `isOriginAllowed(origin, allowedOrigins)` joins
+  `parseCookieHeader`, `authenticateSocketHandshake`,
+  `authorizeJoinUser`, `authorizeJoinAdmin` as deterministically
+  testable units.
+
+- **32-case vitest suite** at `lib/__tests__/socket-auth.test.ts`
+  (was 24; added 8). The new cases:
+  - Origin allowlist permissive mode (empty allowlist)
+  - Origin allowlist strict mode — listed origin passes, evil origin
+    rejected, suffix-spoof (`subnation.ly.evil.com`) rejected,
+    case-strict
+  - Origin allowlist strict mode rejects missing/empty/non-string
+  - Expired user token (real expiry via `jwt.sign({...}, secret,
+    { expiresIn: -10 })`) — verifies that the `expired` reason from
+    `verifyUserTokenDetailed` propagates as null identity
+  - Tampered token — signature segment last-char-flip → null
+  - Concurrent identity isolation — two handshakes return distinct
+    objects; mutating one does not affect the other
+  - Same handshake re-invoked returns separately-allocated objects
+
+- **Sentry breadcrumb assertion** (not a vitest case — verifiable
+  in production via Sentry session viewer, since adding a breadcrumb
+  without a captured event is invisible to unit tests).
+
+### What this commit does NOT do
+
+Three items remain explicitly out of scope (tracked in the
+"Forward-looking recommendations" of P0-1 below):
+
+1. **Token revocation.** A stolen valid JWT remains valid until
+   30-day expiry. Mitigation = periodic re-verification mid-session
+   or short-lived refresh-rotation tokens. Significant design work.
+
+2. **Admin namespace separation.** `admin-room` is a room inside
+   the default namespace. Migration to `io.of("/admin")` with its
+   own `io.use(...)` gate would guarantee admin events flow only
+   over admin-authenticated sockets. Defer until admin-token
+   rotation is in place.
+
+3. **Per-user connection limits.** A single userId can open
+   unbounded sockets today. Add a Redis-counter cap (e.g. 10/user)
+   if abuse pattern emerges.
+
+### How to verify the deeper pass is live (post-deploy)
+
+```bash
+# 1. Foreign Origin must fail.
+node -e '
+const { io } = require("socket.io-client");
+const s = io("wss://subnation.ly", {
+  withCredentials: false,
+  extraHeaders: { Origin: "https://evil.example.com" },
+});
+s.on("connect_error", (err) => { console.log("rejected:", err.message); process.exit(0); });
+'
+
+# 2. Authenticated connect immediately joins the user's room WITHOUT
+#    the client emitting join-user.
+#    Backend can emitToUser(verifiedId, "test:ping", {}) and the
+#    client will receive it.
+
+# 3. Forged join-user with a different id does NOT change room
+#    membership and adds a Sentry breadcrumb.
+
+# 4. /api/metrics shows new labels:
+#    socket_auth_rejected_total{reason="bad_origin"}
+#    socket_auth_rejected_total{reason="anon_join_user"}
+#    socket_auth_rejected_total{reason="anon_join_admin"}
+
+# 5. Server logs ping config on first connection at info level via
+#    the socket.io transport.
+```
+
+---
+
 ## 2026-05-19 — P0-1 — Socket.IO realtime channel was unauthenticated
 
 **Severity:** Critical (data exposure / privacy violation)
