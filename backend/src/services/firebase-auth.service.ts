@@ -344,7 +344,6 @@ export async function resolveFirebaseSession(
     .insert(usersTable)
     .values({
       phone: phoneValue,
-      passwordHash: "",
       firebaseUid: uid,
       googleId: provider === "google.com" ? providerUid : undefined,
       email,
@@ -358,7 +357,6 @@ export async function resolveFirebaseSession(
           : provider === "google.com"
             ? "firebase_google"
             : "firebase",
-      passwordLoginEnabled: false,
       lastAuthAt: now,
       referralCode: generateReferralCode(),
       referredBy: referredById,

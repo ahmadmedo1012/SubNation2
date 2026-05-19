@@ -3,7 +3,6 @@ import "./instrument";
 
 import { startCouponWatcher } from "./jobs/couponWatcher";
 import { initCronJobs } from "./jobs/cron";
-import { startOtpCleanup } from "./jobs/otpCleanup";
 import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient, requireRedisClient } from "./lib/redis-client";
@@ -31,7 +30,6 @@ async function startWorker() {
 
   startCouponWatcher();
   startStockWatcher();
-  startOtpCleanup();
   initCronJobs();
 
   logger.info("Background worker started");

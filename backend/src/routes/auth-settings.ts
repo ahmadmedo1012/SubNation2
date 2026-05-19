@@ -374,12 +374,10 @@ async function findOrCreateTelegramUser(
       // Placeholder phone — Telegram doesn't expose phone via the widget.
       // Profile flow can later let the user add a real phone & link OTP.
       phone: `tg_${tgId}`,
-      passwordHash: "",
       telegramId: tgId,
       displayName: displayName || undefined,
       photoUrl: fields.photo_url ?? undefined,
       authProvider: "telegram",
-      passwordLoginEnabled: false,
       referralCode: generateReferralCode(),
       referredBy: referredById,
       walletBalance: referredById ? "5.00" : "0.00",

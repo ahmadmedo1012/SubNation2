@@ -42,11 +42,6 @@ export function notifyNewOrder(phone: string, productName: string, amount: numbe
   sendTelegramMessage(msg).catch(() => {});
 }
 
-export function notifyPasswordResetRequest(phone: string, code: string): void {
-  const msg = `🔑 <b>طلب إعادة تعيين كلمة المرور</b>\n\nالهاتف: <code>${phone}</code>\nكود التحقق: <b>${code}</b>\n⏳ ينتهي خلال 30 دقيقة\n\n<i>أرسل هذا الكود للمستخدم عبر أي وسيلة تواصل.</i>`;
-  sendTelegramMessage(msg).catch(() => {});
-}
-
 export function notifyCouponMaxedOut(code: string, maxUses: number): void {
   const msg = `🎟️ <b>كوبون استُنفد بالكامل</b>\n\nالرمز: <code>${code}</code>\nتم استخدامه <b>${maxUses} مرة</b> (الحد الأقصى)\n\nℹ️ الكوبون لا يزال نشطاً ولكنه لن يقبل استخدامات جديدة.`;
   sendTelegramMessage(msg).catch(() => {});

@@ -45,7 +45,6 @@ router.get("/users", requireAdmin, async (req, res) => {
       has_google: !!u.googleId,
       has_telegram: !!u.telegramId,
       has_firebase: !!u.firebaseUid,
-      has_password: !!u.passwordHash && u.passwordHash !== "",
       last_auth_at: u.lastAuthAt?.toISOString() ?? null,
       wallet_balance: parseFloat(String(u.walletBalance)),
       loyalty_points: u.loyaltyPoints,

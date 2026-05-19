@@ -44,7 +44,6 @@ const TIER_GRADIENTS: Record<string, string> = {
 type ProfileUser = MeUser & {
   linked_identities?: Array<{ provider: string; provider_uid?: string }>;
   firebase_uid?: string | null;
-  password_login_enabled?: boolean;
   display_name?: string | null;
 };
 
@@ -54,15 +53,6 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [pwError, setPwError] = useState("");
-  const [pwSuccess, setPwSuccess] = useState(false);
-  const [togglingPassword, setTogglingPassword] = useState(false);
   const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
@@ -127,78 +117,8 @@ export default function ProfilePage() {
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwError("");
-    setPwSuccess(false);
-
-    if (!currentPassword.trim()) {
-      setPwError("أدخل كلمة المرور الحالية");
-      return;
-    }
-    if (newPassword.length < 8) {
-      setPwError("كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPwError("كلمتا المرور غير متطابقتين");
-      return;
-    }
-
-    setChangingPassword(true);
-    try {
-      const res = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "فشل تغيير كلمة المرور");
-      setPwSuccess(true);
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      toast({ title: "تم تغيير كلمة المرور", description: "تم تحديث كلمة مرورك بنجاح." });
-    } catch (err: unknown) {
-      setPwError(err instanceof Error ? err.message : "فشلت العملية");
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
-  const handleTogglePasswordLogin = async (enabled: boolean) => {
-    setTogglingPassword(true);
-    try {
-      const res = await fetch("/api/auth/toggle-password-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ enabled }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "فشل تعديل حالة الدخول");
-
-      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-      toast({
-        title: enabled ? "تم تفعيل كلمة المرور" : "تم إيقاف كلمة المرور",
-        description: enabled
-          ? "يمكنك الآن الدخول باستخدام رقم هاتفك وكلمة المرور."
-          : "يمكنك الآن الدخول عبر رقم الهاتف، Google، أو Telegram.",
-      });
-    } catch (err: unknown) {
-      toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
-        variant: "destructive",
-      });
-    } finally {
-      setTogglingPassword(false);
-    }
-  };
-
   const tier = user?.loyalty_tier ?? "bronze";
   if (!token) return null;
-
-  const hasFirebase = (user?.linked_identities?.length ?? 0) > 0 || Boolean(user?.firebase_uid);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
@@ -475,155 +395,6 @@ export default function ProfilePage() {
         <SessionManager />
 
         {/* ── Security Options ────────────────────────────────── */}
-        {/* Visible ONLY for legacy users who still have password
-            login enabled. New signups via Telegram / Google / Phone
-            OTP have password_login_enabled=false from creation, so
-            they never see this section. Legacy users keep access to
-            "disable password" + "change password" controls until
-            they switch off — at which point the section disappears.
-            The /forgot-password flow remains the recovery path
-            and works regardless. */}
-        {user?.password_login_enabled === true && (
-          <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-2">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
-                  <Shield className="w-3.5 h-3.5 text-primary" />
-                </div>
-                <h2 className="font-black">خيارات الأمان</h2>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-muted-foreground">
-                  دخول بكلمة المرور
-                </span>
-                <Switch
-                  checked={user?.password_login_enabled}
-                  disabled={togglingPassword || !hasFirebase}
-                  onCheckedChange={handleTogglePasswordLogin}
-                />
-              </div>
-            </div>
-
-            {!hasFirebase && (
-              <div className="flex items-center gap-2 text-[10px] text-destructive bg-destructive/5 border border-destructive/15 p-2 rounded-lg mb-4">
-                <AlertCircle className="w-3 h-3" />
-                اربط حسابك بطريقة دخول حديثة (Google، رقم الهاتف، أو Telegram) قبل إيقاف كلمة المرور.
-              </div>
-            )}
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
-                <Lock className="w-3.5 h-3.5 text-primary/70" />
-              </div>
-              <h3 className="text-sm font-bold">تغيير كلمة المرور</h3>
-            </div>
-
-            <form onSubmit={handleChangePassword} className="space-y-3.5">
-              {/* Current */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground">
-                  كلمة المرور الحالية
-                </Label>
-                <div className="relative">
-                  <Input
-                    type={showCurrent ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="pl-10 h-10 text-sm rounded-xl bg-card"
-                    dir="ltr"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrent((v) => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
-                  >
-                    {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* New */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground">
-                  كلمة المرور الجديدة
-                </Label>
-                <div className="relative">
-                  <Input
-                    type={showNew ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="8 أحرف على الأقل"
-                    className="pl-10 h-10 text-sm rounded-xl bg-card"
-                    dir="ltr"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNew((v) => !v)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1 touch-target flex items-center justify-center"
-                  >
-                    {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Confirm */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-muted-foreground">تأكيد كلمة المرور</Label>
-                <div className="relative">
-                  <Input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className={`h-10 text-sm rounded-xl bg-card transition-all ${
-                      confirmPassword && newPassword
-                        ? confirmPassword === newPassword
-                          ? "border-emerald-500/45 focus:border-emerald-500/60"
-                          : "border-destructive/45 focus:border-destructive/60"
-                        : ""
-                    }`}
-                    dir="ltr"
-                  />
-                  {confirmPassword && newPassword && (
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                      {confirmPassword === newPassword ? (
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-destructive" />
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Feedback */}
-              {pwError && (
-                <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/7 border border-destructive/18 px-3.5 py-2.5 rounded-xl shake">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  {pwError}
-                </div>
-              )}
-              {pwSuccess && (
-                <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/7 border border-emerald-500/18 px-3.5 py-2.5 rounded-xl">
-                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  تم تغيير كلمة المرور بنجاح
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                disabled={changingPassword || !user?.password_login_enabled}
-                className="w-full h-10 bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 rounded-xl cta-glow disabled:grayscale"
-              >
-                {changingPassword ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
-              </Button>
-            </form>
-          </div>
-        </div>
-        )}
 
         {/* ── Danger zone ─────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">

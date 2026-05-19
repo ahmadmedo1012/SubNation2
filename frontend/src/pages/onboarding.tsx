@@ -129,14 +129,6 @@ export function OnboardingPage() {
             <h2 className="text-2xl font-bold text-center">إعدادات الأمان</h2>
             <div className="space-y-4">
               <div className="p-4 border rounded">
-                <h3 className="font-semibold mb-2">كلمة المرور</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {(user as { password_login_enabled?: boolean })?.password_login_enabled
-                    ? "تم تفعيل تسجيل الدخول بكلمة المرور"
-                    : "تسجيل الدخول بكلمة المرور معطل"}
-                </p>
-              </div>
-              <div className="p-4 border rounded">
                 <h3 className="font-semibold mb-2">المصادقة الثنائية (اختياري)</h3>
                 <p className="text-sm text-muted-foreground">
                   يمكنك تفعيل المصادقة الثنائية لزيادة أمان حسابك

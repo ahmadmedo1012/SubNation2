@@ -35,7 +35,6 @@ const HomePage = lazy(() => import("@/pages/home"));
 
 const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
 const TelegramCallbackPage = lazy(() => import("@/pages/telegram-callback"));
-const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const LoyaltyPage = lazy(() => import("@/pages/loyalty"));
 const OnboardingPage = lazy(() => import("@/pages/onboarding"));
@@ -200,7 +199,6 @@ function AppRoutes() {
               <Route path="/support" component={SupportPage} />
               <Route path="/status" component={StatusPage} />
               <Route path="/terms" component={TermsPage} />
-              <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/profile" component={ProfilePage} />
               <Route path="/auth/callback" component={AuthCallbackPage} />
               <Route path="/auth/telegram-callback" component={TelegramCallbackPage} />

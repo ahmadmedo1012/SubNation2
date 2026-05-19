@@ -67,11 +67,10 @@ const SORT_OPTIONS = [
 /**
  * Compact pill row showing which auth providers are linked to a given
  * user. Backed by the boolean flags surfaced in /api/admin/users
- * (has_google / has_telegram / has_firebase / has_password).
+ * (has_google / has_telegram / has_firebase).
  *
  * If multiple are linked, all show — admins can quickly see merged
- * accounts. If none are linked AND legacy password is set, shows a
- * "كلمة مرور" badge so legacy accounts are visible.
+ * accounts.
  *
  * Uses the relaxed `Record<string, unknown>` pattern because the
  * generated AdminUser type doesn't yet include the new fields. We
@@ -83,7 +82,6 @@ function ProviderBadges({ user }: { user: Record<string, unknown> }) {
   const hasTelegram = Boolean(user.has_telegram);
   // Phone OTP via Firebase. Distinguished from Google by has_google flag.
   const hasFirebasePhone = Boolean(user.has_firebase) && !hasGoogle;
-  const hasPassword = Boolean(user.has_password);
 
   const badges: Array<{ label: string; className: string }> = [];
   if (hasFirebasePhone) {
@@ -102,12 +100,6 @@ function ProviderBadges({ user }: { user: Record<string, unknown> }) {
     badges.push({
       label: "Telegram",
       className: "text-sky-400 bg-sky-500/10 border-sky-500/20",
-    });
-  }
-  if (badges.length === 0 && hasPassword) {
-    badges.push({
-      label: "كلمة مرور",
-      className: "text-amber-500 bg-amber-500/10 border-amber-500/20",
     });
   }
   if (badges.length === 0) {

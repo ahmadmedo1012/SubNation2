@@ -8,7 +8,6 @@ export * from "./inventory";
 export * from "./login_attempts";
 export * from "./notifications";
 export * from "./orders";
-export * from "./otps";
 export * from "./products";
 export * from "./referral_events";
 export * from "./support_tickets";

@@ -14,13 +14,10 @@ import { Link } from "wouter";
  *                              `auth.telegram` admin setting + a real
  *                              TELEGRAM_BOT_TOKEN is provisioned)
  *
- * Password-first UX has been removed from the public flow as the
- * platform moves to a passwordless model. The backend `/api/auth/login`
- * + `/api/auth/forgot-password` + `/api/auth/reset-password` endpoints
- * are unchanged so legacy users with passwords can still recover via
- * the existing `/forgot-password` deep link, and `/api/auth/change-password`
- * + `/api/auth/toggle-password-login` continue to power the
- * profile-page "set / disable password" controls.
+ * The platform is fully passwordless: Phone OTP / Google / Telegram are
+ * the only supported flows. Legacy password endpoints (login, register,
+ * forgot-password, reset-password, change-password, toggle-password-login)
+ * have been removed.
  *
  * Bug-fix benefit: removing the react-hook-form-driven phone field
  * eliminates the `{...register("phone")} onChange={handlePhoneChange}`

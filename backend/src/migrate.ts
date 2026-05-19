@@ -805,6 +805,37 @@ export async function runMigrations() {
     } catch (migErr) {
       logger.error({ err: migErr }, "Data migration failed");
     }
+    // ── Stage C: full passwordless cleanup ─────────────────────────────────
+    //
+    // Pre-launch system with effectively zero legacy users. The previous
+    // ALTERs above (DROP NOT NULL, change defaults) were a transitional
+    // step; this block now drops the legacy password infrastructure
+    // outright. All idempotent — safe to re-run on every cold start.
+    //
+    //   - password_hash               : column dropped (no production users
+    //                                    rely on bcrypt-based login)
+    //   - password_login_enabled      : column dropped (UI gating gone)
+    //   - legacy_password_disabled_at : column dropped (audit-trail field)
+    //   - github_id                   : column dropped (Stage A removed
+    //                                    GitHub OAuth provider)
+    //   - facebook_id                 : column dropped (Stage A removed
+    //                                    Facebook OAuth provider)
+    //   - otps table                  : dropped (only legacy
+    //                                    /forgot-password + /reset-password
+    //                                    used it; both routes removed)
+    //
+    // The Drizzle schema in shared/db/src/schema/users.ts has been updated
+    // to match. Application code that referenced these columns has been
+    // removed; the typecheck in CI catches any regression.
+    await db.execute(sql`
+      ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
+      ALTER TABLE users DROP COLUMN IF EXISTS password_login_enabled;
+      ALTER TABLE users DROP COLUMN IF EXISTS legacy_password_disabled_at;
+      ALTER TABLE users DROP COLUMN IF EXISTS github_id;
+      ALTER TABLE users DROP COLUMN IF EXISTS facebook_id;
+    `);
+    await db.execute(sql`DROP TABLE IF EXISTS otps;`);
+
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }
