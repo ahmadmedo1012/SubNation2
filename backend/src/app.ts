@@ -561,5 +561,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
   }
 });
-
+app.get("/api/debug-sentry", (_req, _res) => {
+  throw new Error("Backend Sentry Test");
+});
 export default app;
