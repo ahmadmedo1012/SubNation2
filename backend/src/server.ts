@@ -4,13 +4,21 @@
 // are observable in traces.
 import "./instrument";
 
+import { pool } from "@workspace/db";
 import { createServer } from "http";
 import app from "./app";
 import { bootMigrations } from "./lib/boot-migrations";
+import { instrumentDbPool } from "./lib/db-instrumentation";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { initSocket } from "./lib/socket";
 import { startWebSchedulers } from "./lib/web-scheduler";
+
+// Slow-query instrumentation. Patches pool.query + pool.connect so
+// every database call (including migrations + scheduler jobs) flows
+// through the timer. Must run BEFORE any query — install at module
+// load, before bootstrap()'s bootMigrations call.
+instrumentDbPool(pool);
 
 const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 
