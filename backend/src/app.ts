@@ -562,8 +562,4 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   }
 });
 
-app.get("/debug-sentry", function mainHandler(req, res) {
-  throw new Error("My first Sentry error!");
-});
-
 export default app;
