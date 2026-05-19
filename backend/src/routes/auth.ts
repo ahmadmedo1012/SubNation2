@@ -253,7 +253,7 @@ router.post("/login", async (req, res) => {
       );
   }
 
-  const { valid, needsRehash } = await verifyPassword(password, user.passwordHash);
+  const { valid, needsRehash } = await verifyPassword(password, user.passwordHash ?? "");
   if (!valid) {
     await recordFailedAttempt(normalizedPhone);
     await logAuthActivity({
@@ -725,7 +725,7 @@ router.post("/change-password", async (req, res) => {
 
   const { valid: currentValid, needsRehash: currentNeedsRehash } = await verifyPassword(
     current_password,
-    user.passwordHash,
+    user.passwordHash ?? "",
   );
   if (!currentValid) {
     await logAuthActivity({

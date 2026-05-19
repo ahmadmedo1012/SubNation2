@@ -23,7 +23,15 @@ export const usersTable = pgTable(
       onDelete: "set null",
     }),
     phone: varchar("phone", { length: 20 }).notNull().unique(),
-    passwordHash: varchar("password_hash", { length: 255 }).notNull().default(""),
+    /**
+     * Legacy column from the password era. NULLABLE — new passwordless
+     * users (Phone OTP / Google / Telegram) leave this null. Only the
+     * legacy_password admin path writes a value. EXISTING rows that
+     * were written before the platform went passwordless retain their
+     * hashed value; the production migration in migrate.ts drops the
+     * NOT NULL constraint without rewriting any data.
+     */
+    passwordHash: varchar("password_hash", { length: 255 }),
     googleId: varchar("google_id", { length: 255 }).unique(),
     githubId: varchar("github_id", { length: 255 }).unique(),
     facebookId: varchar("facebook_id", { length: 255 }).unique(),
@@ -34,8 +42,18 @@ export const usersTable = pgTable(
     phoneVerified: boolean("phone_verified").notNull().default(false),
     displayName: varchar("display_name", { length: 255 }),
     photoUrl: text("photo_url"),
-    authProvider: varchar("auth_provider", { length: 50 }).notNull().default("legacy_password"),
-    passwordLoginEnabled: boolean("password_login_enabled").notNull().default(true),
+    /**
+     * Default flipped from "legacy_password" to "firebase_phone" — the
+     * actual primary auth path. Existing rows are untouched.
+     */
+    authProvider: varchar("auth_provider", { length: 50 }).notNull().default("firebase_phone"),
+    /**
+     * Default flipped from true → false. New passwordless users have
+     * no password to log in with; only the small set of operator-
+     * created legacy accounts have this enabled. Existing rows
+     * unchanged.
+     */
+    passwordLoginEnabled: boolean("password_login_enabled").notNull().default(false),
     legacyPasswordDisabledAt: timestamp("legacy_password_disabled_at", { withTimezone: true }),
     lastAuthAt: timestamp("last_auth_at", { withTimezone: true }),
     walletBalance: numeric("wallet_balance", { precision: 10, scale: 2 }).notNull().default("0.00"),

@@ -444,6 +444,32 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
 
+    // ── Passwordless cleanup (P1-5) ────────────────────────────────────────
+    //
+    // The platform is fully passwordless (Phone OTP / Google /
+    // Telegram). The legacy `password_hash` column is now write-only
+    // for the legacy_password admin path; new user rows should NOT
+    // be forced to carry an empty-string placeholder.
+    //
+    // EXISTING rows are NOT altered — users with a real password_hash
+    // keep it. Only the column constraints and DEFAULTS change so
+    // new inserts behave correctly going forward.
+    //
+    // Each statement is wrapped in a tolerant DO block: re-running on
+    // a database that has already been migrated is a no-op.
+    await db.execute(sql`
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+    `);
+    await db.execute(sql`
+      ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT;
+    `);
+    await db.execute(sql`
+      ALTER TABLE users ALTER COLUMN auth_provider SET DEFAULT 'firebase_phone';
+    `);
+    await db.execute(sql`
+      ALTER TABLE users ALTER COLUMN password_login_enabled SET DEFAULT FALSE;
+    `);
+
     await db.execute(sql`
       ALTER TABLE admin_users
         ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(255),
