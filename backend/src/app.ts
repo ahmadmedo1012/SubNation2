@@ -478,6 +478,29 @@ app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);
 
+// ── TEMPORARY: Public Sentry verification route ──────────────────────────────
+// Bypasses ALL auth (no requireUser, no requireAdmin) to verify event
+// delivery end-to-end without needing an admin session. REMOVE after
+// successful verification per the operator runbook (see commit message).
+//
+// Position: registered AFTER the /api router (so the router gets first
+// match priority for any future real route at this path) and BEFORE the
+// /api 404 handler (so this route actually executes instead of returning
+// 404 like the prior /api/debug-sentry attempts did).
+app.get("/api/debug-sentry-public", async (_req, res) => {
+  try {
+    throw new Error("Public Backend Sentry Test");
+  } catch (err) {
+    const eventId = Sentry.captureException(err);
+    await Sentry.flush(5000);
+    res.status(200).json({
+      ok: true,
+      eventId,
+      sentryInitialized: !!Sentry.getClient(),
+    });
+  }
+});
+
 // JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "المسار غير موجود", code: "NOT_FOUND" });
