@@ -3,6 +3,7 @@ import { eq, and, count } from "drizzle-orm";
 import { notifyLowStock, isTelegramConfigured } from "../telegram";
 import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 const LOW_STOCK_THRESHOLD = 3;
 
@@ -52,6 +53,7 @@ async function checkLowStock(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, "Stock watcher error");
+    captureSchedulerFailure("stock_watcher", err);
   }
 }
 

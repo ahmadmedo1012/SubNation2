@@ -75,8 +75,24 @@ services:
         sync: false
       - key: ADMIN_RESET_PASSWORD
         value: "false"
+      # Backend Sentry DSN. Set in Render Dashboard → Environment with
+      # the value from the Sentry project page:
+      #   https://11936f1c161b16bd27a9439dd2ce30ca@o4511397349097472.ingest.de.sentry.io/4511414239559760
+      # IMPORTANT: this MUST be sync:false (not generateValue:true) —
+      # a Render-generated random string is not a valid Sentry DSN.
       - key: SENTRY_DSN
-        generateValue: true
+        sync: false
+      # Trace sampling rate. Production default is 0.1 (10% of
+      # transactions). Bump to 1.0 for a release window when investigating
+      # regressions; revert immediately to avoid burning quota.
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.1"
+      - key: SENTRY_PROFILES_SAMPLE_RATE
+        value: "0.1"
+      # Slow-query threshold in ms. Queries above this are warn-logged +
+      # surface in pg_query_duration_seconds histogram with slow="1".
+      - key: SLOW_QUERY_THRESHOLD_MS
+        value: "250"
       - key: VITE_SENTRY_DSN
         sync: false
       - key: SENTRY_AUTH_TOKEN

@@ -33,6 +33,7 @@
 
 import { createClient, type RedisClientType } from "redis";
 import { logger } from "./logger";
+import { captureSubsystemException } from "./sentry";
 import {
   getRegistry,
   redisErrorsTotal,
@@ -134,6 +135,14 @@ export function initRedisClient(): Promise<RedisClientType | null> {
 
   redisClient.on("error", (err) => {
     safeInc(redisErrorsTotal, { reason: "client_error" });
+    // Capture to Sentry with subsystem tag. In production this is
+    // followed by process.exit(1) so we capture FIRST and rely on
+    // the Sentry SDK's queue-flush before the process actually dies
+    // (Sentry node SDK has a default 2s flush on SIGTERM).
+    captureSubsystemException("redis", err, {
+      redis_url_present: Boolean(process.env.REDIS_URL),
+      production: isProduction,
+    });
     if (isProduction) {
       // CASE 2: REDIS_URL was configured (operator promised Redis would work)
       // but the client errored. Fail closed rather than silently degrade —

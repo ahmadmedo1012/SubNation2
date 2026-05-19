@@ -3,6 +3,7 @@ import { db, inventoryTable, productsTable } from "@workspace/db";
 import { count, eq, sql } from "drizzle-orm";
 import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 export function initCronJobs() {
   // 1. Every day at midnight: Low Stock Alert
@@ -34,6 +35,11 @@ export function initCronJobs() {
       logger.info({ count: lowStockProducts.length }, "Low Stock Alert job finished");
     } catch (err) {
       logger.error({ err }, "Error in Low Stock Alert job");
+      // Surface to Sentry with subsystem=scheduler + job_name tag so
+      // the issue groups cleanly in the UI.
+      captureSchedulerFailure("low_stock_alert", err, {
+        cron_expression: "0 0 * * *",
+      });
     }
   });
 

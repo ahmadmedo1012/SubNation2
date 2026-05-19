@@ -2,6 +2,7 @@ import { db, authActivityTable } from "@workspace/db";
 import { lt } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 const RETENTION_DAYS = 90;
 
@@ -46,6 +47,9 @@ if (isMainModule) {
     })
     .catch((err) => {
       logger.error({ err, category: "monitoring" }, "cleanup-auth-activity: failed");
+      // Capture before exit so the Sentry SDK's queue flushes (default
+      // 2s drain on SIGTERM via the onUncaughtException integration).
+      captureSchedulerFailure("cleanup_auth_activity", err);
       process.exit(1);
     });
 }

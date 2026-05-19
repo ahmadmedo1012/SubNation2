@@ -3,6 +3,7 @@ import { eq, and, isNotNull, gt, lte } from "drizzle-orm";
 import { notifyCouponExpiringSoon, isTelegramConfigured } from "../telegram";
 import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 // Track which coupons we already alerted about (per server session)
 const alertedExpiring = new Set<number>();
@@ -49,6 +50,7 @@ async function checkExpiringCoupons(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, "Coupon watcher error");
+    captureSchedulerFailure("coupon_watcher", err);
   }
 }
 

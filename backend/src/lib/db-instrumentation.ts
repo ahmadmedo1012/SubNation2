@@ -31,6 +31,7 @@
 
 import { logger } from "./logger";
 import { getRegistry, safeObserve } from "./metrics";
+import { captureSubsystemException } from "./sentry";
 
 // Minimal structural types — we don't import pg directly because the
 // pg dep lives in @workspace/db, not the backend package. The shapes
@@ -219,10 +220,30 @@ export function instrumentDbPool(pool: unknown): void {
     return result;
   };
 
+  // 3. Wire pool 'error' events to Sentry with the postgres subsystem
+  //    tag. The shared/db package's own listener still logs to
+  //    console; this listener captures the error to Sentry for
+  //    incident triage. Pool errors are RARE and CRITICAL — they
+  //    indicate the pool itself is failing (DNS, TLS, auth, peer
+  //    reset, etc.), not just a single query.
+  //
+  //    Using `(pool as PgPoolEventEmitter).on(...)` because the
+  //    structural type doesn't include EventEmitter shape; pg.Pool
+  //    extends EventEmitter at runtime.
+  type PgPoolEventEmitter = {
+    on: (event: "error", listener: (err: Error) => void) => void;
+  };
+  (p as unknown as PgPoolEventEmitter).on("error", (err: Error) => {
+    captureSubsystemException("postgres", err, {
+      pool_state: "client_error",
+    });
+  });
+
   logger.info(
     {
       threshold_ms: thresholdMs,
       histogram: HISTOGRAM_NAME,
+      sentry_capture: true,
     },
     "[db] slow-query instrumentation installed",
   );
