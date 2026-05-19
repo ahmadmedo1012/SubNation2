@@ -171,6 +171,20 @@ app.use(
 // Trust the first reverse proxy hop when deployed behind one.
 app.set("trust proxy", 1);
 
+// ── ETag policy ─────────────────────────────────────────────────────────────
+// Use strong ETags (SHA-1 of response body) instead of the default weak
+// ETags. Strong ETags are usable for byte-range conditional requests
+// AND save a few bytes of header per response. Both Cloudflare and any
+// modern browser handle them transparently.
+//
+// Express auto-computes the ETag for every response in res.send(). When
+// the client sends `If-None-Match: <etag>` and the body hasn't changed,
+// Express returns 304 with an empty body, saving the response payload.
+// Cache-Control + s-maxage at the route level (see routes/products.ts
+// cacheable()) handles edge caching; ETag handles same-client
+// revalidation between cache windows.
+app.set("etag", "strong");
+
 // ── Cloudflare-aware client-IP resolution ──────────────────────────────────
 // When the request flows through Cloudflare (→ Render → app), Express's
 // `trust proxy = 1` resolves req.ip to Cloudflare's edge IP, not the
