@@ -13,6 +13,7 @@ import * as Sentry from "@sentry/node";
 import { getCorrelationId } from "./lib/correlation";
 import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
+import { verifyUserToken } from "./lib/jwt";
 import { getRedisClient } from "./lib/redis-client";
 import { captureException } from "./lib/sentry";
 import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
@@ -247,16 +248,76 @@ const rateLimiterStore = redisClient
     })
   : undefined;
 
+/**
+ * Best-effort userId extractor for the rate-limiter.
+ *
+ * Decodes the auth_token cookie (or Authorization header) and
+ * verifies the JWT signature. Returns null when there is no token,
+ * the token is the cookie-session sentinel from the SPA's auth
+ * hydration probe, the signature is invalid, or the token is
+ * expired. Never throws.
+ *
+ * Verification is HMAC-SHA256 over a ~150-byte payload — sub-
+ * millisecond on every modern host. requireUser will repeat the
+ * verification later, but doing it here is the cleanest way to
+ * route authenticated traffic to the per-user limiter without
+ * threading state through middleware.
+ */
+function getRequestUserId(req: Request): number | null {
+  const token =
+    req.cookies?.auth_token ??
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : undefined);
+  if (!token || token === "__cookie_session__") return null;
+  const payload = verifyUserToken(token);
+  return payload?.userId ?? null;
+}
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  limit: 300,
+  // 600/min/IP for UNAUTHENTICATED traffic. Bumped from 300 to give
+  // headroom for legitimate users behind CGNAT (Libya's mobile
+  // carriers extensively share egress IPs); abuse is still capped.
+  // Authenticated users are skipped here and limited per-userId by
+  // userLimiter instead.
+  limit: 600,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   store: rateLimiterStore,
   skip: (req) => {
     // Skip rate limiting for health checks and static assets
     const path = req.path;
-    return path === "/health" || path.startsWith("/assets/") || path.startsWith("/static/");
+    if (path === "/health" || path.startsWith("/assets/") || path.startsWith("/static/")) {
+      return true;
+    }
+    // Skip when the caller has a verified user identity — the per-
+    // user limiter handles them. Unauthenticated callers fall
+    // through and are bound by the IP limit.
+    return getRequestUserId(req) !== null;
+  },
+});
+
+const userLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  // 1200/min/user. Sized for the busiest legitimate page-load
+  // pattern (admin dashboards opening multiple polled queries plus
+  // user navigation). With this many requests in a minute, the
+  // user is either a bot or hitting a regression we should know
+  // about — the response message is intentionally non-Arabic-only
+  // so logs are searchable.
+  limit: 1200,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  store: rateLimiterStore,
+  // Inverse skip of apiLimiter — only authenticated traffic.
+  skip: (req) => getRequestUserId(req) === null,
+  keyGenerator: (req) => {
+    const userId = getRequestUserId(req);
+    return `u:${userId ?? "anon"}`;
+  },
+  message: {
+    error: "تم تجاوز الحد الأقصى للطلبات لهذه الجلسة. حاول مرة أخرى بعد دقيقة.",
   },
 });
 
@@ -400,6 +461,7 @@ app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/firebase/session", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api", apiLimiter);
+app.use("/api", userLimiter);
 app.use("/api", router);
 
 // JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
