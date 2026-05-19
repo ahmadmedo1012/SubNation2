@@ -39,6 +39,7 @@
  */
 
 import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import { getCorrelationId } from "./correlation";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -300,8 +301,10 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
       // production log spam.
       debug: process.env.SENTRY_DEBUG === "1",
       // Auto-enable Express, HTTP, Redis, Postgres integrations from
-      // @sentry/node v10+. We don't pass `integrations: [...]` so the
-      // defaults stay applied; explicit overrides go in beforeSend.
+      // @sentry/node v10+. We don't pass `integrations: [...]` for those
+      // because the defaults stay applied; we DO add nodeProfilingIntegration
+      // which is opt-in (separate package).
+      integrations: [nodeProfilingIntegration()],
       tracesSampler: makeTracesSampler(),
       profilesSampleRate:
         process.env.NODE_ENV === "production"
@@ -349,10 +352,17 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
         if (event.message?.includes("health") || event.request?.url?.includes("/health")) {
           return null;
         }
-        // Attach correlation_id from AsyncLocalStorage.
+        // Attach correlation_id from AsyncLocalStorage. Stored as a
+        // CONTEXT (not a tag) — UUID-shaped values would otherwise blow
+        // past Sentry's ~1000-unique-tag-value cap and stop indexing
+        // for search. As a context, it's still visible in every event
+        // header and searchable via Sentry's full-text search.
         const correlationId = getCorrelationId();
         if (correlationId) {
-          event.tags = { ...(event.tags ?? {}), correlation_id: correlationId };
+          event.contexts = {
+            ...(event.contexts ?? {}),
+            correlation: { id: correlationId },
+          };
         }
       } catch {
         // beforeSend MUST NOT throw — that would silently drop events.

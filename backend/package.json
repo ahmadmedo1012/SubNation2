@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@sentry/node": "^10.53.1",
+    "@sentry/profiling-node": "^10.53.1",
     "@socket.io/redis-adapter": "^8.3.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",

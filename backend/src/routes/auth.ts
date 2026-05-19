@@ -14,6 +14,7 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { logger } from "../lib/logger";
+import { captureAuthFailure, captureSubsystemException } from "../lib/sentry";
 import type { AuthenticatedRequest } from "../middlewares/requireUser";
 import { requireUser } from "../middlewares/requireUser";
 import {
@@ -148,6 +149,7 @@ router.get("/providers/linked", requireUser, async (req, res) => {
     return res.json({ providers: identities });
   } catch (err) {
     logger.error({ err, userId }, "Failed to fetch linked providers");
+    captureSubsystemException("auth", err, { userId, route: "providers/linked" });
     return res
       .status(500)
       .json(createErrorResponse("فشل جلب مزودي المصادقة", ErrorCode.INTERNAL_ERROR));
@@ -236,6 +238,7 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
     return res.json({ success: true, message: "تم فصل مزود المصادقة" });
   } catch (err) {
     logger.error({ err, userId, provider }, "Failed to unlink provider");
+    captureSubsystemException("auth", err, { userId, provider, route: "providers/unlink" });
     return res
       .status(500)
       .json(createErrorResponse("فشل فصل مزود المصادقة", ErrorCode.INTERNAL_ERROR));
@@ -344,9 +347,14 @@ router.post("/firebase/session", async (req, res) => {
         .status(err.statusCode)
         .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
-    // Non-Firebase error (database, network, etc.) — return 500, not 401.
-    // A 401 here would cause the frontend to enter an infinite refresh loop
-    // because it would interpret it as "session invalid, retry".
+    // Non-Firebase error (database, network, etc.) — capture for Sentry
+    // triage. FirebaseAuthError above is expected user-facing failure
+    // noise (invalid/expired token); we only escalate the unexpected
+    // path that warrants engineer attention.
+    captureAuthFailure("firebase", err, { id_token_length: id_token?.length });
+    // Return 500, not 401. A 401 here would cause the frontend to enter
+    // an infinite refresh loop because it would interpret it as "session
+    // invalid, retry".
     return res
       .status(500)
       .json(
@@ -432,9 +440,13 @@ router.post("/firebase/refresh", async (req, res) => {
       provider: "firebase",
       ...clientInfo,
     });
-    // Non-Firebase error (database, network, etc.) — return 500, not 401.
-    // A 401 here would trigger the frontend's onIdTokenChanged listener to
-    // retry indefinitely, creating an infinite refresh loop.
+    // Non-Firebase error (database, network, etc.) — capture for Sentry
+    // triage. The FirebaseAuthError branch above is expected user-facing
+    // noise; we only escalate the unexpected path.
+    captureAuthFailure("firebase", err, { id_token_length: id_token?.length });
+    // Return 500, not 401. A 401 here would trigger the frontend's
+    // onIdTokenChanged listener to retry indefinitely, creating an
+    // infinite refresh loop.
     return res
       .status(500)
       .json(
