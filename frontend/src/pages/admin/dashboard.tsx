@@ -202,7 +202,7 @@ export default function AdminDashboardPage() {
     isLoading: statsLoading,
     refetch,
   } = useGetAdminStats({
-    query: { queryKey: getGetAdminStatsQueryKey(), enabled: !!adminToken, refetchInterval: 30_000 },
+    query: { queryKey: getGetAdminStatsQueryKey(), enabled: !!adminToken, refetchInterval: 30_000, refetchIntervalInBackground: false },
     request: { headers },
   });
 
@@ -213,6 +213,7 @@ export default function AdminDashboardPage() {
         queryKey: getListAdminOrdersQueryKey({ limit: 8 }),
         enabled: !!adminToken,
         refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
       },
       request: { headers },
     },

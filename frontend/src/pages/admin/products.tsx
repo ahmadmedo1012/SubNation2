@@ -157,6 +157,7 @@ export default function AdminProductsPage() {
       queryKey: getListAdminProductsQueryKey(),
       enabled: !!adminToken,
       refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
     },
     request: { headers },
   });

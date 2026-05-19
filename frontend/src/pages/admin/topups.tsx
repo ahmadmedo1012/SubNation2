@@ -299,6 +299,7 @@ export default function AdminTopupsPage() {
         queryKey: getListAdminTopupsQueryKey({}),
         enabled: !!adminToken,
         refetchInterval: 20_000,
+        refetchIntervalInBackground: false,
       },
       request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
     },

@@ -115,6 +115,7 @@ export default function AdminAlertsPage() {
     queryKey: ["admin-alerts"],
     queryFn: () => fetch("/api/admin/alerts", { headers }).then((r) => r.json()),
     refetchInterval: 20_000,
+    refetchIntervalInBackground: false,
     enabled: !!adminToken,
   });
 

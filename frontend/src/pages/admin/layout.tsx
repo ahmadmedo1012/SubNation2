@@ -327,6 +327,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" },
       }).then((r) => r.json()),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
     enabled: !!adminToken,
     staleTime: 15_000,
   });

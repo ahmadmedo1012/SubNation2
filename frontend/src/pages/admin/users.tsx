@@ -201,6 +201,7 @@ export default function AdminUsersPage() {
       queryKey: getListAdminUsersQueryKey(params),
       enabled: !!adminToken,
       refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
     },
     request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
   });

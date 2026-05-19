@@ -365,6 +365,7 @@ export default function AdminSystemPage(): ReactElement | null {
     // Reduced 30 s → 60 s. Backend cache is 15 s; admin doesn't need
     // sub-30 s granularity on health.
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     staleTime: 30_000,
     retry: false,
     enabled: !!adminToken,
@@ -375,6 +376,7 @@ export default function AdminSystemPage(): ReactElement | null {
     queryFn: () => fetch("/api/admin/diagnostics", { headers }).then((r) => r.json()),
     // 30 s → 60 s. Memory + CPU + event-loop p99 don't need 30 s precision.
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     staleTime: 30_000,
     enabled: !!adminToken,
   });
@@ -385,6 +387,7 @@ export default function AdminSystemPage(): ReactElement | null {
       fetch("/api/admin/observability/summary", { headers }).then((r) => r.json()),
     // 30 s → 60 s. Aggregate counters update slowly.
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     staleTime: 30_000,
     enabled: !!adminToken,
   });
@@ -396,6 +399,7 @@ export default function AdminSystemPage(): ReactElement | null {
     // 60 s → 90 s. Alerts already trigger Discord pushes; this panel is
     // a historical view, not real-time.
     refetchInterval: 90_000,
+    refetchIntervalInBackground: false,
     staleTime: 45_000,
     enabled: !!adminToken,
   });
@@ -409,6 +413,7 @@ export default function AdminSystemPage(): ReactElement | null {
     // Kept at 15 s — realtime CWV + event-loop is the highest-value
     // panel for live operator triage.
     refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
     staleTime: 7_000,
     enabled: !!adminToken,
   });
@@ -420,6 +425,7 @@ export default function AdminSystemPage(): ReactElement | null {
     // 30 s → 90 s. Scheduler state changes slowly (leader rotation,
     // worker heartbeat). Sub-minute precision is unnecessary.
     refetchInterval: 90_000,
+    refetchIntervalInBackground: false,
     staleTime: 45_000,
     enabled: !!adminToken,
   });
