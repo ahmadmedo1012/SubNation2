@@ -562,7 +562,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   }
 });
 // TEMPORARY SENTRY TEST ROUTE
-app.get("/debug-sentry", (_req, _res) => {
+app.get("/api/debug-sentry", (_req, _res) => {
   throw new Error("Sentry Backend Test");
 });
 export default app;
