@@ -21,17 +21,19 @@
  *    those entirely.
  *
  *  - One retry on transient failures (5xx, 429). Honours `retry_after`
- *    from the API body when present. Permanent failures (4xx with bad
- *    token / chat_not_found) do NOT retry.
+ *    from the API body when present, clamped to 5s. Permanent failures
+ *    (4xx with bad token / chat_not_found) do NOT retry.
  *
  *  - Every outcome is observable:
- *      • `telegramSendsTotal{event, outcome}` counter
+ *      • `telegram_sends_total{event, outcome}` counter
  *      • Pino log at debug (success) / warn (transient) / error (final)
  *      • Sentry capture only on permanent failure (post-retry)
  *
- *  - Exports are byte-compatible with the previous module — every
- *    existing call site (orders / wallet / topup.service / auth /
- *    stockWatcher / couponWatcher) keeps working unchanged.
+ *  - Helpers are self-guarding — when env is unset, dispatchWithDetails
+ *    increments `outcome=skip` and returns silently. Callers should NOT
+ *    wrap notify*() calls in `if (isTelegramConfigured())` — the helper
+ *    handles it. The exported isTelegramConfigured is for status
+ *    reporting (admin/settings status, frontend display) only.
  *
  * ── Adding a new notification ───────────────────────────────────────
  *
@@ -39,22 +41,27 @@
  *  2. Pass an event label string from the EventLabel union below so the
  *     counter cardinality stays bounded.
  *  3. Build the HTML message with the existing helpers (escapeHtml,
- *     formatLyd, etc).
+ *     formatLyd).
  */
 
-import { captureSubsystemException } from "./lib/sentry";
 import { logger } from "./lib/logger";
 import { safeInc, telegramSendsTotal } from "./lib/metrics";
+import { captureSubsystemException } from "./lib/sentry";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const TELEGRAM_API = "https://api.telegram.org";
 const HTTP_TIMEOUT_MS = 5_000;
 const MAX_ATTEMPTS = 2; // one initial + one retry on transient errors
+// Clamp Telegram's retry_after hint. The single retry budget is small
+// and the request handler should not block the user-visible code path
+// for >5s waiting for a flood-wait. If Telegram demands more, we let
+// the second attempt fail and log it — operator-visible signal.
+const MAX_RETRY_BACKOFF_MS = 5_000;
 
 /**
  * Bounded set of event labels. Each helper passes its own label when
- * calling `dispatch()` so the metric stays cardinality-safe.
+ * calling `dispatch()` so the metric cardinality stays bounded.
  */
 type EventLabel =
   | "order_new"
@@ -72,7 +79,6 @@ interface TelegramApiResponse {
   error_code?: number;
   description?: string;
   parameters?: { retry_after?: number };
-  result?: unknown;
 }
 
 // ── Public surface ─────────────────────────────────────────────────────────
@@ -80,29 +86,38 @@ interface TelegramApiResponse {
 /**
  * Whether the bot is configured. Returns false when either env is
  * unset or empty. Read at call time — never cached.
+ *
+ * Use this for STATUS REPORTING (admin/settings panel, frontend
+ * display). Do NOT use it to gate notify*() calls — those are already
+ * self-guarding.
  */
 export function isTelegramConfigured(): boolean {
   return !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
 /**
- * Low-level send. Kept public for backwards compatibility and for the
- * admin diagnostic endpoint. Most callers should use the typed
- * notify*() helpers below — they take care of formatting and tagging.
- *
- * Resolves to true on delivery success, false on configured-skip OR
- * permanent failure. Never throws.
+ * Boot-time configuration probe. Called once from server.ts during
+ * startup so the operator sees Telegram readiness in the boot logs
+ * without needing to open the admin panel. Never throws.
  */
-export async function sendTelegramMessage(text: string): Promise<boolean> {
-  return dispatch("diagnostic", text);
+export function logTelegramBootStatus(): void {
+  const configured = isTelegramConfigured();
+  logger.info(
+    { configured, category: "telegram" },
+    configured
+      ? "telegram boot: configured (delivery active)"
+      : "telegram boot: NOT configured — TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID unset; notifications will be skipped",
+  );
 }
 
 // ── Notification helpers ───────────────────────────────────────────────────
 //
-// All return void by convention (fire-and-forget) but internally await
-// the dispatch and capture failures via Sentry. Callers that want to
-// know success can use the underlying `dispatch()` directly — exported
-// for the admin diagnostic endpoint.
+// Each helper formats its specific event and dispatches via the
+// shared internal pipeline. All return void by convention
+// (fire-and-forget) — failures surface via the metric, log, and
+// Sentry, not via the return value. The diagnostic helper is the
+// only one that returns a structured result, because the operator
+// needs to see what happened.
 
 export function notifyNewUser(phone: string, hadReferral: boolean): void {
   const msg = [
@@ -210,15 +225,25 @@ export function notifyLowStock(productName: string, stockCount: number): void {
  * Operator-triggered diagnostic ping. Resolves to a structured result
  * the admin diagnostic endpoint can return verbatim — gives the
  * operator one-click "is the bot reachable?" verification.
+ *
+ * `hint` is a human-readable, Arabic next-step the admin UI can show
+ * verbatim when delivery fails or the system isn't configured.
  */
 export async function diagnosticPing(): Promise<{
   configured: boolean;
   delivered: boolean;
   attempts: number;
   errorMessage: string | null;
+  hint: string | null;
 }> {
   if (!isTelegramConfigured()) {
-    return { configured: false, delivered: false, attempts: 0, errorMessage: null };
+    return {
+      configured: false,
+      delivered: false,
+      attempts: 0,
+      errorMessage: null,
+      hint: "اضبط TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في إعدادات Render، ثم أعد النشر.",
+    };
   }
   const text = [
     `🔧 <b>اختبار الإشعارات</b>`,
@@ -232,20 +257,30 @@ export async function diagnosticPing(): Promise<{
     delivered: result.outcome === "ok",
     attempts: result.attempts,
     errorMessage: result.errorMessage,
+    hint:
+      result.outcome === "ok"
+        ? null
+        : hintForError(result.errorMessage),
   };
 }
 
 // ── Internals ──────────────────────────────────────────────────────────────
 
 /**
- * Convenience wrapper around dispatchWithDetails for the void-return
- * call sites. Returns true on delivery, false on skip-or-failure.
+ * Fire-and-forget wrapper around dispatchWithDetails. Returns true on
+ * delivery, false on skip-or-failure. Used by every notify*() helper.
  */
 async function dispatch(event: EventLabel, text: string): Promise<boolean> {
   const result = await dispatchWithDetails(event, text);
   return result.outcome === "ok";
 }
 
+/**
+ * Final outcome of a single dispatch call. Note: `outcome="retry"` is
+ * NOT reachable here — retries are loop-internal. The metric counter
+ * (`telegram_sends_total`) tracks the broader 4-state {ok|skip|retry|
+ * failure} space; this type tracks only what the caller observes.
+ */
 interface DispatchResult {
   outcome: "ok" | "skip" | "failure";
   attempts: number;
@@ -258,7 +293,7 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
 
   if (!token || !chatId) {
     safeInc(telegramSendsTotal, { event, outcome: "skip" });
-    logger.debug({ event, category: "telegram" }, "telegram skip — env not configured");
+    logger.debug({ event, category: "telegram" }, "telegram dispatch: skip (env not configured)");
     return { outcome: "skip", attempts: 0, errorMessage: null };
   }
 
@@ -284,7 +319,10 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
 
       if (response.ok && body?.ok) {
         safeInc(telegramSendsTotal, { event, outcome: "ok" });
-        logger.debug({ event, status: response.status, category: "telegram" }, "telegram ok");
+        logger.debug(
+          { event, status: response.status, category: "telegram" },
+          "telegram dispatch: ok",
+        );
         return { outcome: "ok", attempts, errorMessage: null };
       }
 
@@ -308,9 +346,9 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
             retryAfterMs,
             category: "telegram",
           },
-          "telegram transient failure — retrying",
+          "telegram dispatch: transient — retrying",
         );
-        await sleep(Math.min(retryAfterMs, 5_000));
+        await sleep(Math.min(retryAfterMs, MAX_RETRY_BACKOFF_MS));
         continue;
       }
 
@@ -318,7 +356,7 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
       safeInc(telegramSendsTotal, { event, outcome: "failure" });
       logger.error(
         { event, status: response.status, errorCode, description, category: "telegram" },
-        "telegram permanent failure",
+        "telegram dispatch: failure (permanent)",
       );
       captureSubsystemException("telegram", new Error(lastError), {
         event,
@@ -334,7 +372,7 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
         safeInc(telegramSendsTotal, { event, outcome: "retry" });
         logger.warn(
           { event, err: lastError, category: "telegram" },
-          "telegram network error — retrying",
+          "telegram dispatch: network — retrying",
         );
         await sleep(500);
         continue;
@@ -342,16 +380,40 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
       safeInc(telegramSendsTotal, { event, outcome: "failure" });
       logger.error(
         { event, err: lastError, category: "telegram" },
-        "telegram network failure (final)",
+        "telegram dispatch: failure (network)",
       );
       captureSubsystemException("telegram", err, { event });
       return { outcome: "failure", attempts, errorMessage: lastError };
     }
   }
 
-  // Exhausted retries — bookkeeping safety net.
+  // Exhausted retries — defensive bookkeeping; the loop above always
+  // returns before reaching here, but TypeScript can't see that.
   safeInc(telegramSendsTotal, { event, outcome: "failure" });
   return { outcome: "failure", attempts, errorMessage: lastError ?? "exhausted" };
+}
+
+/**
+ * Map a raw Telegram error string to a short, Arabic, operator-actionable
+ * hint. Best-effort — the diagnostic UI shows both the raw error and
+ * this hint, so a generic fallback is fine.
+ */
+function hintForError(errorMessage: string | null): string | null {
+  if (!errorMessage) return null;
+  const lower = errorMessage.toLowerCase();
+  if (lower.includes("chat not found")) {
+    return "أضف البوت إلى المحادثة وحدّث TELEGRAM_CHAT_ID بمعرّف المحادثة الصحيح.";
+  }
+  if (lower.includes("unauthorized") || lower.includes("401")) {
+    return "التوكن غير صالح. ولّد توكن جديداً عبر @BotFather وحدّث TELEGRAM_BOT_TOKEN.";
+  }
+  if (lower.includes("forbidden") || lower.includes("bot was blocked")) {
+    return "البوت محظور أو مُزال من المحادثة. أعد إضافته كمسؤول.";
+  }
+  if (lower.includes("timeout") || lower.includes("aborted")) {
+    return "انتهت مهلة الاتصال بـ api.telegram.org. تحقق من شبكة الخادم.";
+  }
+  return "راجع لوحة Sentry والسجل لمعرفة التفاصيل.";
 }
 
 function sleep(ms: number): Promise<void> {
@@ -361,8 +423,9 @@ function sleep(ms: number): Promise<void> {
 /**
  * Minimal HTML escape sufficient for Telegram's parse_mode=HTML.
  * Telegram only honours a specific tag set — escaping &, <, > prevents
- * a user-supplied product name with stray tags from breaking the
- * message render or being interpreted as markup.
+ * a user-supplied product name (or coupon code, or any external input
+ * we splice into the message) from breaking the message render or
+ * being interpreted as markup.
  */
 function escapeHtml(value: string): string {
   return String(value)

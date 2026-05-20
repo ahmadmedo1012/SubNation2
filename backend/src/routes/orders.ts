@@ -17,7 +17,7 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { stringParam } from "../lib/http";
 import { insertLedgerEntry } from "../lib/ledger";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
-import { isTelegramConfigured, notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
+import { notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
 import { computeTier } from "./loyalty";
 
 const router = Router();
@@ -207,8 +207,7 @@ router.post("/", requireUser, async (req, res) => {
           .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
           .where(eq(couponsTable.id, appliedCoupon.id));
         if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
-          if (isTelegramConfigured())
-            notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
+          notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
           logAdminAlert(
             "coupon_maxed",
             `كوبون استُنفد: ${appliedCoupon.code}`,

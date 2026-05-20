@@ -479,6 +479,52 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("auth");
 
+  // Telegram diagnostic-ping state. Operator hits the "اختبار" button →
+  // we POST /api/admin/diagnostics/telegram-test and render the
+  // structured result inline so the operator sees end-to-end whether
+  // the bot is actually reachable from this server.
+  const [tgTesting, setTgTesting] = useState(false);
+  const [tgTestResult, setTgTestResult] = useState<{
+    configured: boolean;
+    delivered: boolean;
+    attempts: number;
+    errorMessage: string | null;
+    hint: string | null;
+  } | null>(null);
+
+  async function runTelegramTest(): Promise<void> {
+    if (!adminToken) return;
+    setTgTesting(true);
+    try {
+      const res = await fetch("/api/admin/diagnostics/telegram-test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body) {
+        setTgTestResult({
+          configured: false,
+          delivered: false,
+          attempts: 0,
+          errorMessage: `HTTP ${res.status}`,
+          hint: "تعذّر الوصول إلى نقطة الاختبار. تأكّد من جلسة الإدارة.",
+        });
+      } else {
+        setTgTestResult(body);
+      }
+    } catch (err) {
+      setTgTestResult({
+        configured: false,
+        delivered: false,
+        attempts: 0,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        hint: "تعذّر الاتصال بالخادم.",
+      });
+    } finally {
+      setTgTesting(false);
+    }
+  }
+
   useEffect(() => {
     if (!adminToken) return;
     const headers = { Authorization: `Bearer ${adminToken}` };
@@ -670,6 +716,74 @@ export default function AdminSettingsPage() {
                   ))}
                 </div>
               )}
+
+              {/* ── Diagnostic ping ──────────────────────────────────
+                  Sends a real test message via the same dispatch path
+                  used by production notifications, so the operator
+                  gets end-to-end proof of delivery (or a clear error
+                  with a hint when something is wrong). */}
+              <div className="mt-5 p-4 bg-card border border-border/60 rounded-2xl">
+                <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-bold">اختبار التسليم</div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      يُرسل رسالة فعلية للمحادثة المُعدّة للتحقق من قابلية وصول البوت.
+                    </p>
+                  </div>
+                  <button
+                    onClick={runTelegramTest}
+                    disabled={tgTesting}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold text-xs transition-all press-spring"
+                  >
+                    {tgTesting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Bot className="w-3.5 h-3.5" />
+                    )}
+                    {tgTesting ? "جارٍ الإرسال…" : "اختبار اتصال البوت"}
+                  </button>
+                </div>
+
+                {tgTestResult && (
+                  <div
+                    className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs ${
+                      tgTestResult.delivered
+                        ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                        : "bg-red-500/10 border-red-500/25 text-red-400"
+                    }`}
+                  >
+                    {tgTestResult.delivered ? (
+                      <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    ) : (
+                      <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="font-bold">
+                        {tgTestResult.delivered
+                          ? "تم التسليم بنجاح"
+                          : tgTestResult.configured
+                            ? "فشل التسليم"
+                            : "النظام غير مُعدّ"}
+                      </div>
+                      {tgTestResult.errorMessage && (
+                        <div className="font-mono text-[10px] opacity-90 break-all">
+                          {tgTestResult.errorMessage}
+                        </div>
+                      )}
+                      {tgTestResult.hint && (
+                        <div className="text-[11px] opacity-90 leading-relaxed">
+                          {tgTestResult.hint}
+                        </div>
+                      )}
+                      {tgTestResult.attempts > 0 && (
+                        <div className="text-[10px] opacity-75">
+                          عدد المحاولات: {tgTestResult.attempts}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="mt-5 p-4 bg-muted/30 border border-border/50 rounded-2xl">
                 <div className="flex items-center gap-2 mb-3">

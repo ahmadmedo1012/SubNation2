@@ -13,6 +13,7 @@ import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { initSocket } from "./lib/socket";
 import { startWebSchedulers } from "./lib/web-scheduler";
+import { logTelegramBootStatus } from "./telegram";
 
 // Slow-query instrumentation. Patches pool.query + pool.connect so
 // every database call (including migrations + scheduler jobs) flows
@@ -109,6 +110,11 @@ async function bootstrap(): Promise<void> {
   // (operator flips this once a real worker exists) plus a Redis-backed
   // leader lock that only one instance can hold at a time.
   const schedulers = await startWebSchedulers(getRedisClient());
+
+  // Surface Telegram readiness in the boot logs so the operator can
+  // confirm notifications will deliver without opening the admin panel.
+  // No-op if env is unset — just emits a single info line.
+  logTelegramBootStatus();
 
   // Graceful shutdown — release the leader lock so the next instance can
   // pick up immediately instead of waiting for the 60 s TTL.
