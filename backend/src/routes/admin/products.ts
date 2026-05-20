@@ -11,8 +11,23 @@ import { bumpSitemapCache } from "../seo";
 const router = Router();
 
 router.get("/products", requireAdmin, async (_req, res) => {
+  // Use an explicit projection (mirrors routes/products.ts) so a future
+  // schema column added before its migration runs cannot break this
+  // endpoint. We only select what we render.
   const products = await db
-    .select()
+    .select({
+      id: productsTable.id,
+      name: productsTable.name,
+      description: productsTable.description,
+      imageUrl: productsTable.imageUrl,
+      price: productsTable.price,
+      costPrice: productsTable.costPrice,
+      category: productsTable.category,
+      isActive: productsTable.isActive,
+      isArchived: productsTable.isArchived,
+      usageTerms: productsTable.usageTerms,
+      createdAt: productsTable.createdAt,
+    })
     .from(productsTable)
     .where(eq(productsTable.isArchived, false))
     .orderBy(desc(productsTable.createdAt));
