@@ -110,8 +110,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         <PopularBadge count={product.order_count} />
 
-        <div className="relative aspect-[4/3] bg-card overflow-hidden">
-          <div className={`absolute inset-0 bg-gradient-to-br ${accent.gradient} pointer-events-none`} />
+        <div className="relative aspect-square bg-card overflow-hidden">
           <div className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`} />
           <div className="shine-trigger absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full skew-x-[-14deg] pointer-events-none z-[3]" />
 
@@ -120,10 +119,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               src={product.image_url}
               alt={product.name}
               width={400}
-              height={300}
+              height={400}
               loading="lazy"
               decoding="async"
-              className="relative z-[2] w-full h-full object-contain p-3 sm:p-4 transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
+              className="relative z-[2] w-full h-full object-contain p-4 sm:p-5 transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
               onError={(e) => {
                 const el = e.target as HTMLImageElement;
                 el.style.display = "none";
@@ -137,7 +136,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             style={{ display: product.image_url ? "none" : "flex" }}
             className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
           >
-            <span className={`text-7xl font-black select-none opacity-40 group-hover:opacity-55 transition-opacity duration-300 drop-shadow-md ${accent.text}`}>
+            <span className={`text-8xl font-black select-none opacity-40 group-hover:opacity-55 transition-opacity duration-300 drop-shadow-md ${accent.text}`}>
               {product.name[0]}
             </span>
           </div>
