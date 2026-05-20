@@ -7,6 +7,7 @@ import {
 } from "../../lib/sentry";
 import { getIO } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { diagnosticPing } from "../../telegram";
 
 const router: IRouter = Router();
 
@@ -160,6 +161,26 @@ router.get("/sentry-debug", requireAdmin, (req, res, next) => {
       subsystem: "?mode=subsystem   — sends via captureSubsystemException",
     },
   });
+});
+
+// ── Telegram diagnostic ping ─────────────────────────────────────────────────
+//
+// Operator-triggered "is the bot reachable?" check. Sends a real
+// message to the configured chat using the same dispatch path as
+// production notifications, then echoes the structured result so the
+// operator can distinguish:
+//
+//   - configured=false              env not set; configure first
+//   - configured=true, delivered=true  delivery confirmed end-to-end
+//   - configured=true, delivered=false errorMessage explains why
+//                                     (bad token, chat_not_found,
+//                                     network timeout, etc.)
+//
+// Always returns 200 so the admin UI can render the structured result;
+// dispatch failures are not server errors.
+router.post("/telegram-test", requireAdmin, async (_req, res) => {
+  const result = await diagnosticPing();
+  return res.json(result);
 });
 
 export { router as adminDiagnosticsRouter };

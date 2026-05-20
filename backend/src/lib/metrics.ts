@@ -85,6 +85,34 @@ export const authOutcomesTotal = new Counter({
 });
 
 // ============================================================================
+// Telegram Notification Metrics
+// ============================================================================
+
+/**
+ * Counts every Telegram business-notification dispatch attempt.
+ *
+ *   - outcome=ok       → message accepted by Telegram (HTTP 200, body.ok=true)
+ *   - outcome=skip     → env not configured (TELEGRAM_BOT_TOKEN/CHAT_ID unset)
+ *   - outcome=retry    → transient failure (5xx / 429); retried at least once
+ *   - outcome=failure  → permanent failure after retry (4xx, network, timeout)
+ *
+ * `event` labels the helper that triggered the send (order_new,
+ * user_new, topup_new, topup_approved, topup_rejected, coupon_maxed,
+ * coupon_expiring, low_stock, diagnostic). Cardinality is bounded —
+ * one cell per (event × outcome).
+ *
+ * Surfaces in /api/admin/observability/metrics and the admin system
+ * page so operators can detect "deliveries stopped" without checking
+ * Telegram itself.
+ */
+export const telegramSendsTotal = new Counter({
+  name: "telegram_sends_total",
+  help: "Total Telegram notification dispatches by event and outcome",
+  labelNames: ["event", "outcome"] as const,
+  registers: [getRegistry()],
+});
+
+// ============================================================================
 // Boot Migration Metrics
 // ============================================================================
 
