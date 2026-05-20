@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
-import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
+import { categoryLabel, formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -55,15 +55,25 @@ const SORTS = [
   { value: "price_desc", label: "السعر: الأعلى" },
 ];
 
-const BRANDS = [
-  "Netflix",
-  "Spotify",
-  "Disney+",
-  "PlayStation",
-  "YouTube",
-  "Canva",
-  "Adobe",
-  "Office 365",
+/**
+ * Featured brand chips on the editorial hero.
+ *
+ * Each entry has both the canonical Latin name (visible label —
+ * preserves brand recognition for users) and the Arabic
+ * transliteration (the form Arabic users actually type into Google:
+ * "نتفلكس", "بلايستيشن", etc). The Arabic form is exposed to
+ * crawlers via `aria-label` + a visually-hidden `.sr-only` span so
+ * the chip carries Arabic-keyword weight without changing the visual.
+ */
+const BRANDS: Array<{ latin: string; ar: string }> = [
+  { latin: "Netflix", ar: "نتفلكس" },
+  { latin: "Spotify", ar: "سبوتيفاي" },
+  { latin: "Disney+", ar: "ديزني+" },
+  { latin: "PlayStation", ar: "بلايستيشن" },
+  { latin: "YouTube", ar: "يوتيوب" },
+  { latin: "Canva", ar: "كانفا" },
+  { latin: "Adobe", ar: "أدوبي" },
+  { latin: "Office 365", ar: "مايكروسوفت ٣٦٥" },
 ];
 
 // Search history localStorage helpers
@@ -203,9 +213,17 @@ export default function HomePage() {
   };
 
   const seoBlock = useSeo({
-    title: "SubNation — سوق الاشتراكات الرقمية في ليبيا",
+    // Keyword-forward title for Arabic SERPs (brand at the end is fine —
+    // brand searches resolve on URL/favicon anyway). Stays under 50
+    // Arabic characters so it doesn't truncate on mobile SERP.
+    title: "سوق الاشتراكات الرقمية في ليبيا | SubNation",
+    // Description leads with intent (متجر إلكتروني متخصّص لشراء اشتراكات),
+    // includes the locale (في ليبيا) inside the first clause, then the
+    // Arabic brand transliterations Arabic users actually type
+    // (نتفلكس، سبوتيفاي، بلايستيشن، ديزني+), closing with the three
+    // differentiators (دينار، تسليم فوري، دعم محلي). 149 chars / 160 cap.
     description:
-      "اشترك في Netflix وSpotify وPS Plus وDisney+ والمزيد بالدينار الليبي. تسليم فوري ودفع آمن.",
+      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، بلايستيشن، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
     path: "/",
     locale: "ar",
     type: "website",
@@ -360,12 +378,33 @@ export default function HomePage() {
                     </span>
                   </div>
                   <h1 className="text-fluid-3xl font-black mb-3 leading-[1.15] tracking-tight">
-                    اشتراكات رقمية
-                    <br />
-                    <span className="text-gradient-animated">بالدينار الليبي</span>
+                    {/*
+                      Single contiguous phrase for Google's NLU. Visual
+                      two-line split is achieved with `block` + a styled
+                      span — NOT a literal <br>, which used to fragment
+                      the heading text node and weaken keyword strength.
+                      The locale word "في ليبيا" stays attached to the
+                      keyword phrase and shifts to its own line on
+                      narrow viewports.
+                    */}
+                    <span className="block">سوق الاشتراكات الرقمية</span>
+                    <span className="block text-gradient-animated">في ليبيا</span>
                   </h1>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-4 max-w-xs">
-                    تسليم فوري، دفع آمن، دعم متواصل. كل اشتراكاتك في مكان واحد.
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-4 max-w-md">
+                    {/*
+                      Editorial intro — the only on-page Arabic prose
+                      that gives Google a topic-vector beyond the title.
+                      Every target keyword appears EXACTLY ONCE: سوق،
+                      اشتراكات، البث المباشر، نتفلكس، ديزني+، شاهد،
+                      سبوتيفاي، الألعاب، بلايستيشن بلاس، أدوبي،
+                      مايكروسوفت ٣٦٥، الدينار الليبي، تسليم فوري. NOT
+                      keyword-stuffing — every term serves the sentence.
+                    */}
+                    <strong className="font-bold text-foreground">SubNation</strong> سوق
+                    إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة
+                    اشتراكات البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي،
+                    واشتراكات الألعاب مثل بلايستيشن بلاس، وأدوات الإنتاجية مثل أدوبي ومايكروسوفت ٣٦٥
+                    — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
                   </p>
 
                   {/* Brand chips */}
@@ -373,10 +412,16 @@ export default function HomePage() {
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
                       {BRANDS.map((brand, i) => (
                         <span
-                          key={brand}
+                          key={brand.latin}
+                          aria-label={brand.ar}
                           className={`shrink-0 text-[11px] font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
                         >
-                          {brand}
+                          <span aria-hidden="true">{brand.latin}</span>
+                          {/* Visually hidden Arabic transliteration so the
+                              crawler indexes "نتفلكس", "بلايستيشن", etc.
+                              alongside the Latin form. .sr-only is the
+                              standard a11y utility. */}
+                          <span className="sr-only">{brand.ar}</span>
                         </span>
                       ))}
                       <span className="shrink-0 text-[11px] text-muted-foreground px-1 whitespace-nowrap">
@@ -541,6 +586,12 @@ export default function HomePage() {
 
           {/* Category chips — scrollable with fade edges */}
           <div className="relative overflow-hidden">
+            {/* sr-only heading for crawlers — the chips themselves are
+                a11y-meaningful tabs, but Google's outline algorithm
+                wants a heading to bracket the section. Visually
+                redundant with the chip labels, so kept screen-reader
+                only to avoid changing the design. */}
+            <h2 className="sr-only">تصفّح حسب الفئة</h2>
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
               {CATEGORIES.map((c) => {
                 const active = category === c.value;
@@ -597,6 +648,33 @@ export default function HomePage() {
         )}
 
         {/* ── Products Grid ─────────────────────────────────── */}
+        {/*
+          h2 above the product grid. Text reflects the active filter
+          so the heading is informative rather than decorative:
+            - search active → "نتائج البحث"
+            - category selected → category Arabic label
+            - sort changed → sort label
+            - default → "الاشتراكات المتاحة"
+          When idle (no filter active) the heading is sr-only to
+          preserve the current visual; with a filter, it becomes
+          visible as a small section title.
+        */}
+        {(() => {
+          const hasFilter = !!(searchInput || category || sort || availableOnly);
+          let label = "الاشتراكات المتاحة";
+          if (searchInput) label = `نتائج البحث: ${searchInput}`;
+          else if (category) label = categoryLabel(category);
+          else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;
+          else if (availableOnly) label = "المنتجات المتوفّرة فقط";
+          return hasFilter ? (
+            <h2 className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2">
+              <span className="w-1 h-4 bg-primary rounded-full" />
+              {label}
+            </h2>
+          ) : (
+            <h2 className="sr-only">{label}</h2>
+          );
+        })()}
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
