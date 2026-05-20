@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Shield, FileText, ChevronLeft } from "lucide-react";
 import { Link } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
 
 type Tab = "terms" | "privacy";
 
@@ -174,8 +175,26 @@ export default function TermsPage() {
     }
   };
 
+  // SEO — title + canonical track the active tab so /terms and
+  // /terms#privacy report different titles to Google. Both tabs are
+  // legal/policy content with no transactional value, so robots stays
+  // index,follow but priority in the sitemap is low.
+  const isPrivacy = tab === "privacy";
+  const seoBlock = useSeo({
+    title: isPrivacy
+      ? "سياسة الخصوصية — SubNation"
+      : "الشروط والأحكام — SubNation",
+    description: isPrivacy
+      ? "كيف يجمع SubNation بياناتك ويحميها أثناء استخدامك المتجر وشحن المحفظة وشراء الاشتراكات."
+      : "شروط استخدام منصة SubNation: سياسة الشراء، شحن المحفظة، الاشتراكات الرقمية، والاسترداد.",
+    path: isPrivacy ? "/terms#privacy" : "/terms",
+    locale: "ar",
+    type: "website",
+  });
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
+      {seoBlock}
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-7">
         <Link href="/">

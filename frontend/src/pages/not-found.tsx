@@ -1,9 +1,25 @@
 import { Link } from "wouter";
 import { Home, ArrowLeft, Compass } from "lucide-react";
+import { useSeo } from "@/hooks/useSeo";
 
 export default function NotFound() {
+  // Soft-404 mitigation. The SPA fallback returns HTTP 200 for all
+  // unmatched routes (we cannot easily emit a real 404 without SSR), so
+  // we rely on robots="noindex,follow" to keep these out of the index.
+  // `follow` lets crawlers walk the in-page links back to legitimate
+  // surfaces. We also set a canonical here so Search Console doesn't
+  // file phantom paths against the homepage's canonical.
+  const seoBlock = useSeo({
+    title: "الصفحة غير موجودة — SubNation",
+    description: "الرابط الذي تحاول الوصول إليه غير موجود.",
+    path: "/404",
+    locale: "ar",
+    robots: "noindex,follow",
+  });
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 text-center">
+      {seoBlock}
       <div className="space-y-8 max-w-sm w-full">
         {/* Illustration */}
         <div className="relative mx-auto w-40 h-40 flex items-center justify-center select-none">

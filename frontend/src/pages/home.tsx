@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { buildOrganizationLd } from "@/lib/seo-builders";
+import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
 import { formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
@@ -209,7 +209,15 @@ export default function HomePage() {
     path: "/",
     locale: "ar",
     type: "website",
-    jsonLd: [buildOrganizationLd()],
+    jsonLd: [
+      buildOrganizationLd(),
+      buildWebsiteLd(),
+      // Emit ItemList only when products are loaded — an empty list LD
+      // is treated by Google as a thin/low-quality structured-data block.
+      ...(products.length > 0
+        ? [buildItemListLd(products.slice(0, 50).map((p) => ({ id: p.id, name: p.name })))]
+        : []),
+    ],
   });
 
   return (

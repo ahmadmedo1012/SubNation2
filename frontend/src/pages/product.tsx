@@ -358,7 +358,19 @@ export default function ProductPage() {
           {product.image_url ? (
             <img
               src={product.image_url}
-              alt={product.name}
+              alt={(() => {
+                const name = (product.name ?? "").trim();
+                const cat = categoryLabel(product.category);
+                if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";
+                const hasSub = /اشتراك/.test(name);
+                return cat && cat !== "عام"
+                  ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
+                  : name;
+              })()}
+              width={800}
+              height={800}
+              fetchPriority="high"
+              decoding="async"
               className="w-full h-full object-contain p-8 sm:p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
             />
           ) : (

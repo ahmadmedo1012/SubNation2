@@ -522,6 +522,11 @@ if (frontendDist) {
     }
 
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    // Secondary language signal for crawlers (lang+dir on <html> is the
+    // primary; the response header is supplementary). The site is
+    // currently Arabic-only — when an English locale ships, swap this
+    // to derive from the request path / Accept-Language.
+    res.setHeader("Content-Language", "ar");
     res.sendFile(path.join(frontendDist, "index.html"));
   });
 }

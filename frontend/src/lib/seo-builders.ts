@@ -21,6 +21,7 @@ export function buildOrganizationLd() {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${origin}/#organization`,
     name: "SubNation",
     alternateName: "سَب نيشن",
     url: origin,
@@ -114,6 +115,61 @@ export function buildFaqLd(items: FaqItem[]) {
         "@type": "Answer",
         text: item.answer,
       },
+    })),
+  };
+}
+
+// ── WebSite (with sitelinks SearchAction) ────────────────────────────────────
+//
+// Emitted on the homepage. The SearchAction declares the in-site search
+// endpoint so Google can surface a sitelinks search box on brand SERP
+// results. The target points back to `/` with a `?search={term}` query
+// because home.tsx already drives its catalog filter from that param.
+
+export function buildWebsiteLd() {
+  const origin = getOrigin();
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${origin}/#website`,
+    url: origin,
+    name: "SubNation",
+    alternateName: "سَب نيشن",
+    inLanguage: "ar",
+    publisher: { "@id": `${origin}/#organization` },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${origin}/?search={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  };
+}
+
+// ── ItemList (catalog grid) ──────────────────────────────────────────────────
+//
+// Emitted on the homepage when the catalog has loaded. Helps Google
+// understand the rendered grid as a structured collection rather than
+// guessing from the DOM. Each entry is a lightweight reference to the
+// product detail URL — full Product LD lives on the detail page itself.
+
+export interface ItemListEntry {
+  id: number | string;
+  name: string;
+}
+
+export function buildItemListLd(items: ItemListEntry[]) {
+  const origin = getOrigin();
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    itemListElement: items.map((p, idx) => ({
+      "@type": "ListItem",
+      position: idx + 1,
+      url: `${origin}/product/${p.id}`,
+      name: p.name,
     })),
   };
 }

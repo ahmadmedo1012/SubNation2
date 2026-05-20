@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
+import { buildFaqLd, type FaqItem } from "@/lib/seo-builders";
 
 const CATEGORIES = [
   { value: "billing", label: "الدفع والفواتير", icon: "💳" },
@@ -28,6 +30,79 @@ const CATEGORIES = [
   { value: "technical", label: "مشكلة تقنية", icon: "⚙️" },
   { value: "account", label: "الحساب", icon: "👤" },
   { value: "other", label: "أخرى", icon: "💬" },
+];
+
+/**
+ * SEO FAQ — answers questions real users ask before they sign up.
+ *
+ * IMPORTANT: every item here is grounded in actual product behaviour
+ * (wallet ledger, topup approvals, instant credentials delivery, the
+ * 5 LYD welcome bonus on referred signup, etc.). Do NOT fabricate
+ * answers — Google can downgrade FAQ rich-results that don't match
+ * the rendered page content. Update both the Q&A objects AND any UI
+ * copy that asserts the same fact when policies change.
+ *
+ * Schema rules (from Google):
+ *   - Q&A must also be visible on the page (not just in JSON-LD).
+ *   - Answers must be the publisher's, not the user's.
+ *   - Don't mark up advertising content as FAQ.
+ */
+const SUPPORT_FAQ: FaqItem[] = [
+  {
+    question: "كيف أشتري اشتراكاً عبر SubNation؟",
+    answer:
+      "اختر المنتج من المتجر، تأكد من رصيد المحفظة، ثم اضغط شراء. سيتم خصم المبلغ من محفظتك فوراً وستصلك بيانات الاشتراك في صفحة الطلب وعبر الإشعارات.",
+  },
+  {
+    question: "ما طرق الدفع المتاحة؟",
+    answer:
+      "يتم الشراء من رصيد محفظتك داخل SubNation. يمكنك شحن المحفظة بالدينار الليبي عبر طلبات الشحن (Top-up) ضمن صفحة المحفظة، ثم يتم اعتماد الشحن من قِبَل الإدارة قبل توفر الرصيد للشراء.",
+  },
+  {
+    question: "متى أستلم بيانات الاشتراك بعد الشراء؟",
+    answer:
+      "التسليم فوري في أغلب الحالات. إذا كان المنتج يتطلب تجهيز يدوي ستُحدَّد مدة الانتظار في صفحة الطلب وتصلك بيانات الاشتراك بمجرد الجاهزية.",
+  },
+  {
+    question: "هل يمكنني استرداد المبلغ إذا واجهت مشكلة؟",
+    answer:
+      "نعم. إذا لم يصلك الاشتراك أو واجهتك مشكلة في تفعيل الحساب، تواصل مع الدعم خلال 24 ساعة من الشراء وسنُرجع المبلغ إلى محفظتك بعد التحقق. الاشتراكات المسلَّمة والمستخدَمة لا تُسترَد.",
+  },
+  {
+    question: "كم تستغرق الموافقة على شحن المحفظة؟",
+    answer:
+      "عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل. ستظهر حالة الطلب في صفحة المحفظة، وتصلك إشعارات بالقبول أو الرفض.",
+  },
+  {
+    question: "نسيت كلمة المرور — كيف أستعيد حسابي؟",
+    answer:
+      "يدعم SubNation الدخول عبر البريد الإلكتروني وGoogle وTelegram. اذهب لصفحة الدخول واختر طريقة الدخول التي استخدمتها للتسجيل أصلاً. لا حاجة لكلمات مرور تقليدية.",
+  },
+  {
+    question: "هل بياناتي الشخصية محمية؟",
+    answer:
+      "نعم. جميع البيانات تُرسَل عبر اتصال مشفّر (HTTPS)، ولا نشارك بياناتك مع أطراف ثالثة. للاطلاع على التفاصيل راجع صفحة سياسة الخصوصية.",
+  },
+  {
+    question: "هل يمكنني مشاركة حساب الاشتراك مع شخص آخر؟",
+    answer:
+      "تخضع المشاركة لشروط الخدمة الأصلية لكل منصة (Netflix، Spotify، …). نحن لا نمنع المشاركة لكن أي قيود من جانب المنصة الأصلية تظل سارية ولا نتحمّل مسؤوليتها.",
+  },
+  {
+    question: "هل أحصل على مكافأة عند دعوة أصدقائي؟",
+    answer:
+      "نعم. لكل صديق ينضم عبر رابط إحالتك ويكمل أول شحنة، تحصل على نقاط ولاء قابلة للتحويل لرصيد. كما يحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته فور التسجيل.",
+  },
+  {
+    question: "كيف أتواصل مع الدعم؟",
+    answer:
+      "افتح تذكرة دعم جديدة من هذه الصفحة باختيار التصنيف المناسب وإرفاق التفاصيل. يصلك الرد عبر الإشعارات وداخل التذكرة.",
+  },
+  {
+    question: "هل المتجر متاح خارج ليبيا؟",
+    answer:
+      "SubNation مصمَّم لمستخدمي ليبيا والدفع بالدينار الليبي. يمكن لأي شخص تصفح المنتجات، لكن قد يتطلب الشراء وسيلة شحن متاحة محلياً.",
+  },
 ];
 
 const STATUS_CONFIG: Record<
@@ -183,8 +258,22 @@ export default function SupportPage() {
 
   const openCount = tickets.filter((t) => t.status === "open").length;
 
+  // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD
+  // built from SUPPORT_FAQ. Note: the same Q&A is rendered visibly on
+  // the page below (Google requires JSON-LD content to also be visible).
+  const seoBlock = useSeo({
+    title: "الدعم والأسئلة الشائعة — SubNation",
+    description:
+      "إجابات حول الدفع وشحن المحفظة والاشتراكات والاسترداد وتسجيل الدخول في SubNation. افتح تذكرة دعم في أي وقت.",
+    path: "/support",
+    locale: "ar",
+    type: "website",
+    jsonLd: [buildFaqLd(SUPPORT_FAQ)],
+  });
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -572,6 +661,38 @@ export default function SupportPage() {
             })}
           </div>
         ))}
+
+      {/* ── Visible FAQ — backs the JSON-LD FAQPage claim ─────────────────
+          Google requires every Q&A in FAQPage JSON-LD to also be visible
+          on the page. We hide this section when a ticket is selected so
+          the message thread stays focused.
+      */}
+      {!selectedTicket && (
+        <section className="mt-10 mb-6">
+          <h2 className="text-base font-black mb-3 flex items-center gap-2 border-r-2 border-primary pr-3">
+            الأسئلة الشائعة
+          </h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            الأسئلة التي يطرحها المستخدمون قبل أول عملية شراء — اضغط على أي سؤال لرؤية الإجابة.
+          </p>
+          <div className="space-y-2">
+            {SUPPORT_FAQ.map((item, i) => (
+              <details
+                key={i}
+                className="group bg-card border border-border/55 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
+              >
+                <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
+                  <span className="text-sm font-bold flex-1">{item.question}</span>
+                  <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
+                </summary>
+                <div className="px-4 pt-1 pb-4 border-t border-border/40 text-sm text-muted-foreground leading-relaxed">
+                  {item.answer}
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Bottom safe area */}
       <div className="h-6 md:h-0" />

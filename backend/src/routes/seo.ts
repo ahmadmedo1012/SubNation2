@@ -139,8 +139,12 @@ function urlEntry(loc: string, lastmod: string, changefreq: string, priority: st
     `    <lastmod>${lastmod}</lastmod>`,
     `    <changefreq>${changefreq}</changefreq>`,
     `    <priority>${priority}</priority>`,
+    // The site is currently Arabic-only. We declare the Arabic alternate
+    // for explicit-locale crawlers, plus x-default for fallback. We do
+    // NOT emit an "en" alternate because no English version exists; an
+    // alternate that points to Arabic content is a misconfiguration that
+    // Google can flag and use to suppress the entire alternate set.
     `    <xhtml:link rel="alternate" hreflang="ar" href="${escapedLoc}" />`,
-    `    <xhtml:link rel="alternate" hreflang="en" href="${escapedLoc}" />`,
     `    <xhtml:link rel="alternate" hreflang="x-default" href="${escapedLoc}" />`,
     "  </url>",
   ].join("\n");

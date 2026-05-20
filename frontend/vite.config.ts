@@ -65,6 +65,34 @@ function bundleBudgetPlugin(): Plugin {
   };
 }
 
+/**
+ * Inject SEO meta tags that need build-time env substitution.
+ *
+ * Vite's native `%VAR%` HTML replacement only fires when the env is
+ * defined; when unset, the literal placeholder remains in the output —
+ * which would surface as garbage in <head>. This plugin injects the
+ * google-site-verification meta with a safe empty default so an
+ * unconfigured environment ships clean HTML.
+ */
+function seoHeadInject(): Plugin {
+  return {
+    name: "seo-head-inject",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        const token = (process.env.VITE_GSC_VERIFICATION ?? "").trim();
+        const tag = `<meta name="google-site-verification" content="${token}" />`;
+        // Inject right after the viewport meta so it lives near the top
+        // of <head> where Search Console looks for it.
+        return html.replace(
+          /(<meta name="viewport"[^>]*>)/,
+          `$1\n    ${tag}`,
+        );
+      },
+    },
+  };
+}
+
 const rawPort = process.env.PORT?.trim() || process.env.FRONTEND_PORT?.trim() || "5173";
 
 const port = Number(rawPort);
@@ -83,6 +111,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     bundleBudgetPlugin(),
+    seoHeadInject(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],

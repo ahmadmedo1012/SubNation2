@@ -36,6 +36,13 @@ services:
         value: /
       - key: VITE_APP_NAME
         value: SubNation
+      # Google Search Console site-verification token (HTML tag method).
+      # Operator-set in Render Dashboard: Settings → Environment → Add
+      # Environment Variable → VITE_GSC_VERIFICATION = <token from
+      # search.google.com/search-console>. Empty when unset = harmless;
+      # Search Console simply fails ownership detection until set.
+      - key: VITE_GSC_VERIFICATION
+        sync: false
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: VITE_GOOGLE_CLIENT_ID

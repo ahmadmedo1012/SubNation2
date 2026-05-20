@@ -117,7 +117,21 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           {product.image_url ? (
             <img
               src={product.image_url}
-              alt={product.name}
+              alt={(() => {
+                // Build descriptive alt text:
+                //   "<product name> — <category label> اشتراك"
+                // Falls back gracefully when name is missing. The
+                // category context helps Google Image search ranking
+                // for queries like "اشتراك بث مباشر ليبيا".
+                const name = (product.name ?? "").trim();
+                const cat = categoryLabel(product.category);
+                if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";
+                // Avoid duplicating "اشتراك" when the name already includes it.
+                const hasSub = /اشتراك/.test(name);
+                return cat && cat !== "عام"
+                  ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
+                  : name;
+              })()}
               width={400}
               height={400}
               loading="lazy"
