@@ -836,6 +836,22 @@ export async function runMigrations() {
     `);
     await db.execute(sql`DROP TABLE IF EXISTS otps;`);
 
+    // ── Monetization Increment 1: profit visibility ───────────────────────
+    //
+    // Adds a per-product `cost_price` column for the admin pricing
+    // calculator. Nullable — existing rows have no procurement cost
+    // recorded; new products are expected to set it via the admin UI
+    // but the backend NEVER enforces it. Pure visibility / no behavior
+    // change in the order pipeline.
+    //
+    // Context: the audit found operators had no margin visibility
+    // because product cost was never tracked. This column closes that
+    // gap without altering checkout, coupon, flash-sale, or referral
+    // logic. See SECURITY_FIXES.md / monetization audit notes.
+    await db.execute(sql`
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2);
+    `);
+
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

@@ -54,6 +54,7 @@ const AdminDashboardPage = lazy(() => import("@/pages/admin/dashboard"));
 const AdminTopupsPage = lazy(() => import("@/pages/admin/topups"));
 const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
 const AdminProductsPage = lazy(() => import("@/pages/admin/products"));
+const AdminPricingPage = lazy(() => import("@/pages/admin/pricing"));
 const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
 const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
 const AdminSecurityPage = lazy(() => import("@/pages/admin/security"));
@@ -143,6 +144,7 @@ function AdminProtectedRoutes() {
         <Route path="/admin/topups" component={AdminTopupsPage} />
         <Route path="/admin/orders" component={AdminOrdersPage} />
         <Route path="/admin/products" component={AdminProductsPage} />
+        <Route path="/admin/pricing" component={AdminPricingPage} />
         <Route path="/admin/users" component={AdminUsersPage} />
         <Route path="/admin/settings" component={AdminSettingsPage} />
         <Route path="/admin/security" component={AdminSecurityPage} />

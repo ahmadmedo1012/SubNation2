@@ -1000,6 +1000,12 @@ components:
           type: ["string", "null"]
         price:
           type: number
+        cost_price:
+          type: ["number", "null"]
+          description: |
+            Operator's procurement cost per unit. Used by the admin
+            pricing calculator to compute margin. Nullable for products
+            created before this field existed.
         category:
           type: ["string", "null"]
         is_active:
@@ -1027,6 +1033,8 @@ components:
           type: ["string", "null"]
         price:
           type: number
+        cost_price:
+          type: ["number", "null"]
         category:
           type: ["string", "null"]
         usage_terms:
@@ -1045,6 +1053,8 @@ components:
         image_url:
           type: ["string", "null"]
         price:
+          type: ["number", "null"]
+        cost_price:
           type: ["number", "null"]
         category:
           type: ["string", "null"]

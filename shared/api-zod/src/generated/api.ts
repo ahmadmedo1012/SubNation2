@@ -339,6 +339,12 @@ export const ListAdminProductsResponseItem = zod.object({
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
+  cost_price: zod
+    .number()
+    .nullish()
+    .describe(
+      "Operator's procurement cost per unit. Used by the admin\npricing calculator to compute margin. Nullable for products\ncreated before this field existed.\n",
+    ),
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   is_archived: zod.boolean(),
@@ -357,6 +363,7 @@ export const CreateProductBody = zod.object({
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
+  cost_price: zod.number().nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
   is_active: zod.boolean().optional(),
@@ -374,6 +381,7 @@ export const UpdateProductBody = zod.object({
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
   price: zod.number().nullish(),
+  cost_price: zod.number().nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
   is_active: zod.boolean().nullish(),
@@ -385,6 +393,12 @@ export const UpdateProductResponse = zod.object({
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
+  cost_price: zod
+    .number()
+    .nullish()
+    .describe(
+      "Operator's procurement cost per unit. Used by the admin\npricing calculator to compute margin. Nullable for products\ncreated before this field existed.\n",
+    ),
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   is_archived: zod.boolean(),

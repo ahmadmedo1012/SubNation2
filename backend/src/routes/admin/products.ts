@@ -40,6 +40,7 @@ router.get("/products", requireAdmin, async (_req, res) => {
       description: p.description,
       image_url: p.imageUrl,
       price: parseFloat(String(p.price)),
+      cost_price: p.costPrice != null ? parseFloat(String(p.costPrice)) : null,
       category: p.category,
       is_active: p.isActive,
       is_archived: p.isArchived,
@@ -63,6 +64,7 @@ router.post("/products", requireAdmin, async (req, res) => {
       description: data.description ?? null,
       imageUrl: data.image_url ?? null,
       price: String(data.price),
+      costPrice: data.cost_price != null ? String(data.cost_price) : null,
       category: data.category ?? null,
       usageTerms: data.usage_terms ?? null,
       isActive: data.is_active ?? true,
@@ -73,6 +75,7 @@ router.post("/products", requireAdmin, async (req, res) => {
   void writeAuditLog(req, "product.create", "product", product.id, {
     name: data.name,
     price: data.price,
+    cost_price: data.cost_price ?? null,
     category: data.category,
   });
 
@@ -82,6 +85,7 @@ router.post("/products", requireAdmin, async (req, res) => {
     description: product.description,
     image_url: product.imageUrl,
     price: parseFloat(String(product.price)),
+    cost_price: product.costPrice != null ? parseFloat(String(product.costPrice)) : null,
     category: product.category,
     is_active: product.isActive,
     is_archived: product.isArchived,
@@ -105,6 +109,10 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
   if (data.description != null) updateData.description = data.description;
   if (data.image_url != null) updateData.imageUrl = data.image_url;
   if (data.price != null) updateData.price = String(data.price);
+  if (data.cost_price !== undefined) {
+    // Allow explicit null to clear, allow number to set
+    updateData.costPrice = data.cost_price != null ? String(data.cost_price) : null;
+  }
   if (data.category != null) updateData.category = data.category;
   if (data.usage_terms != null) updateData.usageTerms = data.usage_terms;
   if (data.is_active != null) updateData.isActive = data.is_active;
@@ -139,6 +147,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     description: product.description,
     image_url: product.imageUrl,
     price: parseFloat(String(product.price)),
+    cost_price: product.costPrice != null ? parseFloat(String(product.costPrice)) : null,
     category: product.category,
     is_active: product.isActive,
     is_archived: product.isArchived,

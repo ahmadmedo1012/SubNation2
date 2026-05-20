@@ -19,6 +19,13 @@ export const productsTable = pgTable(
     description: text("description"),
     imageUrl: varchar("image_url", { length: 1000 }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+    /**
+     * Operator's procurement cost (per unit) — used by the admin pricing
+     * calculator to compute margin. Never returned on user-facing /api/products.
+     * Nullable because existing rows pre-Increment-1 have no value; new
+     * products SHOULD set it but the backend never enforces it.
+     */
+    costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
     category: varchar("category", { length: 100 }),
     isActive: boolean("is_active").notNull().default(true),
     isArchived: boolean("is_archived").notNull().default(false),

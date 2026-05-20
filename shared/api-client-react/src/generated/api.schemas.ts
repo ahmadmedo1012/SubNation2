@@ -259,6 +259,14 @@ export interface AdminProduct {
   /** @nullable */
   image_url?: string | null;
   price: number;
+  /**
+   * Operator's procurement cost per unit. Used by the admin
+pricing calculator to compute margin. Nullable for products
+created before this field existed.
+
+   * @nullable
+   */
+  cost_price?: number | null;
   /** @nullable */
   category?: string | null;
   is_active: boolean;
@@ -278,6 +286,8 @@ export interface CreateProductBody {
   image_url?: string | null;
   price: number;
   /** @nullable */
+  cost_price?: number | null;
+  /** @nullable */
   category?: string | null;
   /** @nullable */
   usage_terms?: string | null;
@@ -293,6 +303,8 @@ export interface UpdateProductBody {
   image_url?: string | null;
   /** @nullable */
   price?: number | null;
+  /** @nullable */
+  cost_price?: number | null;
   /** @nullable */
   category?: string | null;
   /** @nullable */

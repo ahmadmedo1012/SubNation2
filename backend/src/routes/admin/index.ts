@@ -4,6 +4,7 @@ import { adminAuthRouter } from "./auth";
 import { adminDiagnosticsRouter } from "./diagnostics";
 import { adminObservabilityRouter } from "./observability";
 import { adminOrdersRouter } from "./orders";
+import { adminPricingCalculatorRouter } from "./pricing-calculator";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
 import { adminSecurityRouter } from "./security";
@@ -21,6 +22,7 @@ router.use("/", adminStatsRouter); // /stats, /chart-data
 router.use("/", adminOrdersRouter); // /orders, /orders/bulk-status
 router.use("/", adminTopupsRouter); // /topups/*
 router.use("/", adminProductsRouter); // /products/*
+router.use("/", adminPricingCalculatorRouter); // /pricing/calculate
 router.use("/", adminUsersRouter); // /users/*
 router.use("/", adminTicketsRouter); // /tickets/*
 router.use("/", adminReferralsRouter); // /referrals/*

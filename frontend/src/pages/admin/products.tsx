@@ -39,6 +39,7 @@ const EMPTY_FORM = {
   description: "",
   image_url: "",
   price: "",
+  cost_price: "",
   category: "",
   usage_terms: "",
   is_active: true,
@@ -227,6 +228,7 @@ export default function AdminProductsPage() {
       description: form.description || undefined,
       image_url: form.image_url || undefined,
       price: parseFloat(form.price),
+      cost_price: form.cost_price ? parseFloat(form.cost_price) : undefined,
       category: form.category || undefined,
       usage_terms: form.usage_terms || undefined,
       is_active: form.is_active,
@@ -242,6 +244,10 @@ export default function AdminProductsPage() {
       description: product.description ?? "",
       image_url: product.image_url ?? "",
       price: String(product.price),
+      cost_price:
+        (product as { cost_price?: number | null }).cost_price != null
+          ? String((product as { cost_price?: number | null }).cost_price)
+          : "",
       category: product.category ?? "",
       usage_terms: product.usage_terms ?? "",
       is_active: product.is_active,
@@ -474,6 +480,45 @@ export default function AdminProductsPage() {
                   dir="ltr"
                   placeholder="0.00"
                 />
+              </div>
+              <div>
+                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2">
+                  سعر التكلفة (د.ل)
+                  <span className="text-[9px] font-normal text-muted-foreground/70">
+                    اختياري — للإدارة فقط، لا يظهر للمستخدم
+                  </span>
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.cost_price}
+                  onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
+                  dir="ltr"
+                  placeholder="0.00"
+                />
+                {form.price && form.cost_price && (
+                  <p className="text-[10px] mt-1 text-muted-foreground">
+                    {(() => {
+                      const p = parseFloat(form.price);
+                      const c = parseFloat(form.cost_price);
+                      if (!Number.isFinite(p) || !Number.isFinite(c) || p <= 0) return null;
+                      const margin = p - c;
+                      const pct = (margin / p) * 100;
+                      const tone =
+                        margin < 0
+                          ? "text-destructive"
+                          : pct < 10
+                            ? "text-amber-500"
+                            : "text-emerald-500";
+                      return (
+                        <span className={tone}>
+                          هامش الربح: {margin.toFixed(2)} د.ل ({pct.toFixed(1)}%)
+                        </span>
+                      );
+                    })()}
+                  </p>
+                )}
               </div>
               <div className="md:col-span-2">
                 <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
@@ -714,9 +759,32 @@ export default function AdminProductsPage() {
 
                     {/* Stats bar — inline stock edit */}
                     <div className="flex items-center justify-between px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
-                      <span className="font-black text-primary tabular-nums">
-                        {formatCurrency(product.price)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-primary tabular-nums">
+                          {formatCurrency(product.price)}
+                        </span>
+                        {(() => {
+                          const cp = (product as { cost_price?: number | null }).cost_price;
+                          if (cp == null) return null;
+                          const margin = product.price - cp;
+                          const pct = product.price > 0 ? (margin / product.price) * 100 : 0;
+                          const tone =
+                            margin < 0
+                              ? "bg-destructive/15 text-destructive border-destructive/30"
+                              : pct < 10
+                                ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                : "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
+                          return (
+                            <span
+                              className={`text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
+                              title={`تكلفة: ${cp.toFixed(2)} د.ل / هامش: ${margin.toFixed(2)} د.ل`}
+                            >
+                              {margin >= 0 ? "+" : ""}
+                              {pct.toFixed(0)}%
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <div className="flex items-center gap-3 text-xs">
                         {editingStockId === product.id ? (
                           <InlineStockEdit

@@ -6,6 +6,7 @@ import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-
 import {
   Activity,
   Bell,
+  Calculator,
   ChevronRight,
   Clock,
   Gift,
@@ -51,6 +52,7 @@ const NAV_SECTIONS = [
     label: "الكتالوج",
     items: [
       { href: "/admin/products", label: "المنتجات", icon: Package },
+      { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator },
       { href: "/admin/users", label: "المستخدمون", icon: Users },
       { href: "/admin/referrals", label: "الإحالات", icon: Gift },
       { href: "/admin/coupons", label: "الكوبونات", icon: Tag },
@@ -72,6 +74,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/topups": "طلبات الشحن",
   "/admin/orders": "الطلبات",
   "/admin/products": "المنتجات",
+  "/admin/pricing": "حاسبة الأسعار",
   "/admin/users": "المستخدمون",
   "/admin/tickets": "الدعم الفني",
   "/admin/settings": "الإعدادات",
