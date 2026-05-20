@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Box,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Cpu,
   Database,
@@ -14,10 +15,8 @@ import {
   Flag,
   HeartPulse,
   Inbox,
-  KeyRound,
   Layers,
   MemoryStick,
-  Network,
   Radio,
   Server,
   ShieldCheck,
@@ -26,7 +25,7 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
 import {
   Area,
   AreaChart,
@@ -176,13 +175,6 @@ const STATUS_META: Record<
   },
 };
 
-const SERVICE_LABELS: Record<string, { label: string; icon: typeof Database }> = {
-  redis: { label: "Redis", icon: Database },
-  neon: { label: "قاعدة البيانات", icon: Database },
-  worker: { label: "Worker", icon: HeartPulse },
-  socket: { label: "Socket.IO", icon: Wifi },
-};
-
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86_400);
   const h = Math.floor((seconds % 86_400) / 3_600);
@@ -209,36 +201,9 @@ function formatMs(v: number | null | undefined): string {
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function HealthPill({
-  service,
-  check,
-}: {
-  service: string;
-  check: HealthCheck;
-}): ReactElement {
-  const meta = STATUS_META[check.status];
-  const svc = SERVICE_LABELS[service] ?? { label: service, icon: Server };
-  const Icon = svc.icon;
-  return (
-    <div
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border ${meta.bg} ${meta.border}`}
-      title={check.error ?? `مدة الاستجابة: ${check.latencyMs ?? "?"}ms`}
-    >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${meta.bg}`}>
-        <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-bold leading-none">{svc.label}</div>
-        <div className={`text-[10px] mt-0.5 ${meta.color}`}>
-          {meta.label}
-          {check.latencyMs != null && (
-            <span className="text-muted-foreground"> · {check.latencyMs}ms</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// HealthPill (legacy compact-list pill for service health) was removed
+// in the System Status cleanup pass — the new HealthTile component in
+// the Overview section replaced it.
 
 function MetricCard({
   label,
@@ -332,6 +297,95 @@ function deriveDelta(samples: MetricsSample[], pick: (s: MetricsSample) => numbe
     out.push(Math.max(0, dv / dt)); // counters never decrease in normal flow
   }
   return out;
+}
+
+// ── Overview & disclosure helpers (UI-only, no logic) ─────────────────────
+
+/**
+ * Compact KPI tile used in the "Health Overview" strip at the top of the
+ * page. Designed to be scannable in <5s and stack cleanly on mobile.
+ *
+ * `status` controls the color tone; pass "neutral" for tiles that are
+ * informational rather than health-bearing (e.g. uptime).
+ */
+function HealthTile({
+  label,
+  value,
+  status,
+  icon: Icon,
+  hint,
+}: {
+  label: string;
+  value: string;
+  status: CheckStatus | "neutral";
+  icon: typeof CheckCircle2;
+  hint?: string;
+}): ReactElement {
+  const meta =
+    status === "neutral"
+      ? {
+          color: "text-foreground",
+          bg: "bg-muted/15",
+          border: "border-border/50",
+        }
+      : STATUS_META[status];
+  return (
+    <div
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${meta.bg} ${meta.border} min-w-0`}
+      title={hint}
+    >
+      <div
+        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.bg}`}
+      >
+        <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1 truncate">
+          {label}
+        </div>
+        <div
+          className={`text-sm font-black tabular-nums leading-none ${meta.color}`}
+        >
+          {value}
+        </div>
+        {hint && (
+          <div className="text-[9px] text-muted-foreground mt-1 truncate">
+            {hint}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Collapsible section using the native HTML <details> element.
+ * - Zero new libraries. No JS state needed; the browser owns open/closed.
+ * - Accessible by default (proper aria semantics, keyboard support).
+ * - RTL-safe: chevron rotates the same way regardless of writing direction.
+ * - Persists expand state inside the React tree across re-renders.
+ */
+function DetailsSection({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <details
+      open={defaultOpen}
+      className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
+    >
+      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
+        <span className="text-sm font-bold flex-1 truncate">{title}</span>
+        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180 shrink-0" />
+      </summary>
+      <div className="px-4 pt-1 pb-4 border-t border-border/40">{children}</div>
+    </details>
+  );
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -556,16 +610,16 @@ export default function AdminSystemPage(): ReactElement | null {
 
   return (
     <AdminLayout onRefresh={handleRefresh}>
-      <div className="space-y-6 page-in">
-        {/* Header */}
+      <div className="space-y-5 page-in">
+        {/* Header — compact, single-purpose copy */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-xl font-black flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
               مركز المراقبة
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              مقاييس الأداء، الطلبات، المصادقة، Redis، الجدولة، والتنبيهات — تحديث تلقائي كل 15ث
+            <p className="text-xs text-muted-foreground mt-0.5">
+              حالة الخدمات والأداء — تحديث تلقائي
             </p>
           </div>
           {health && (
@@ -592,76 +646,275 @@ export default function AdminSystemPage(): ReactElement | null {
           )}
         </div>
 
-        {/* ── Panel 1: Service health strip ── */}
-        <section className="space-y-3 float-in stagger-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold">صحة الخدمات</h2>
-            <span className="text-[10px] text-muted-foreground">آخر فحص: تلقائي كل 30ث</span>
+        {/* ═══════════════════════════════════════════════════════════════
+            SECTION 1 — HEALTH OVERVIEW
+            Seven critical KPIs the operator should be able to read in <5s.
+            All other detail moves below into Advanced Diagnostics.
+        ═══════════════════════════════════════════════════════════════ */}
+        <section className="space-y-2.5 float-in stagger-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold flex items-center gap-2">
+              <HeartPulse className="w-3.5 h-3.5 text-primary" />
+              نظرة سريعة على الصحة
+            </h2>
+            <span className="text-[10px] text-muted-foreground">تحديث تلقائي</span>
           </div>
 
-          {healthQ.isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-[52px] rounded-xl skeleton-shimmer" />
+          {healthQ.isLoading || !health ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="h-[56px] rounded-xl skeleton-shimmer" />
               ))}
-            </div>
-          ) : healthQ.isError || !health ? (
-            <div className="bg-card border border-red-400/20 rounded-2xl p-4 flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span className="text-xs text-muted-foreground">
-                تعذّر جلب حالة الخدمات. تحقق من الاتصال بالخادم.
-              </span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {Object.entries(filteredChecks).map(([service, check]) => (
-                <HealthPill key={service} service={service} check={check} />
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+              {/* DB / Neon */}
+              {(() => {
+                const c = filteredChecks.neon;
+                return (
+                  <HealthTile
+                    label="قاعدة البيانات"
+                    value={c ? STATUS_META[c.status].label : "—"}
+                    status={c?.status ?? "degraded"}
+                    icon={Database}
+                    hint={
+                      c?.latencyMs != null
+                        ? `${c.latencyMs}ms`
+                        : (c?.error ?? undefined)
+                    }
+                  />
+                );
+              })()}
+
+              {/* Redis */}
+              {(() => {
+                const c = filteredChecks.redis;
+                return (
+                  <HealthTile
+                    label="Redis"
+                    value={c ? STATUS_META[c.status].label : "—"}
+                    status={c?.status ?? "degraded"}
+                    icon={Database}
+                    hint={
+                      c?.latencyMs != null
+                        ? `${c.latencyMs}ms`
+                        : (c?.error ?? undefined)
+                    }
+                  />
+                );
+              })()}
+
+              {/* Socket.IO */}
+              {(() => {
+                const c = filteredChecks.socket;
+                const clients = metrics?.socket.connectedClients;
+                return (
+                  <HealthTile
+                    label="Socket.IO"
+                    value={
+                      clients != null
+                        ? `${formatNumber(clients)} اتصال`
+                        : c
+                          ? STATUS_META[c.status].label
+                          : "—"
+                    }
+                    status={c?.status ?? "degraded"}
+                    icon={Wifi}
+                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : undefined}
+                  />
+                );
+              })()}
+
+              {/* API latency (p95) */}
+              {(() => {
+                const p95 = metrics?.http.latency.p95Ms ?? null;
+                const tone: CheckStatus | "neutral" =
+                  p95 == null
+                    ? "neutral"
+                    : p95 > 1000
+                      ? "failing"
+                      : p95 > 500
+                        ? "degraded"
+                        : "ok";
+                return (
+                  <HealthTile
+                    label="زمن الاستجابة p95"
+                    value={formatMs(p95)}
+                    status={tone}
+                    icon={Clock}
+                    hint={
+                      metrics?.http.latency.p99Ms != null
+                        ? `p99 ${formatMs(metrics.http.latency.p99Ms)}`
+                        : undefined
+                    }
+                  />
+                );
+              })()}
+
+              {/* Error rate (5xx) */}
+              {(() => {
+                const er = metrics?.http.errorRate ?? null;
+                const tone: CheckStatus | "neutral" =
+                  er == null
+                    ? "neutral"
+                    : er > 0.05
+                      ? "failing"
+                      : er > 0.01
+                        ? "degraded"
+                        : "ok";
+                const errCount = metrics?.http.requestsByStatusClass["5xx"] ?? 0;
+                return (
+                  <HealthTile
+                    label="معدل الأخطاء"
+                    value={er == null ? "—" : `${(er * 100).toFixed(2)}%`}
+                    status={tone}
+                    icon={AlertCircle}
+                    hint={errCount > 0 ? `${formatNumber(errCount)} خطأ 5xx` : "بدون أخطاء"}
+                  />
+                );
+              })()}
+
+              {/* Background jobs / scheduler */}
+              <HealthTile
+                label="المهام الخلفية"
+                value={
+                  scheduler == null
+                    ? "—"
+                    : scheduler.mode === "disabled"
+                      ? "معطّلة"
+                      : scheduler.heartbeat.healthy
+                        ? "نشطة"
+                        : scheduler.heartbeat.expected
+                          ? "نبضة متأخرة"
+                          : "قيد البدء"
+                }
+                status={schedTone}
+                icon={TimerReset}
+                hint={
+                  scheduler?.heartbeat.ageSec != null
+                    ? `نبضة قبل ${scheduler.heartbeat.ageSec}ث`
+                    : scheduler?.mode
+                      ? `mode: ${scheduler.mode}`
+                      : undefined
+                }
+              />
+
+              {/* Sentry / monitoring */}
+              {(() => {
+                const sentryUrl = summary?.dashboards.sentry;
+                const alertsStale = recentAlertsQ.data?.stale === true;
+                const tone: CheckStatus | "neutral" = !summary
+                  ? "neutral"
+                  : sentryUrl && !alertsStale
+                    ? "ok"
+                    : "degraded";
+                const value = !summary
+                  ? "—"
+                  : sentryUrl
+                    ? alertsStale
+                      ? "تنبيهات قديمة"
+                      : "متصل"
+                    : "غير مهيأ";
+                return (
+                  <HealthTile
+                    label="المراقبة"
+                    value={value}
+                    status={tone}
+                    icon={ShieldCheck}
+                    hint={
+                      summary?.alerts.lastKnownGoodAt
+                        ? `آخر إشارة: ${formatRelativeTime(summary.alerts.lastKnownGoodAt)}`
+                        : undefined
+                    }
+                  />
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Critical scheduler banner — only when NOT healthy.
+              When healthy the tile above already conveys it; we suppress
+              the banner to keep the overview calm. */}
+          {scheduler && schedTone !== "ok" && (
+            <div
+              className={`flex items-center gap-3 p-3 rounded-2xl border ${schedMeta.bg} ${schedMeta.border}`}
+            >
+              <div
+                className={`w-8 h-8 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
+              >
+                <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className={`font-bold text-xs ${schedMeta.color} truncate`}>
+                  {schedTitle}
+                </p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {schedMessage}
+                </p>
+              </div>
             </div>
           )}
         </section>
 
-        {/* ── Panel 2: Scheduler banner (replaces misleading worker pill) ── */}
-        <section
-          className={`flex items-center justify-between gap-4 p-4 rounded-2xl border ${schedMeta.bg} ${schedMeta.border} float-in stagger-2`}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-9 h-9 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
-            >
-              <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
-            </div>
-            <div className="min-w-0">
-              <p className={`font-bold text-sm ${schedMeta.color}`}>{schedTitle}</p>
-              <p className="text-xs text-muted-foreground">{schedMessage}</p>
-              {scheduler && (
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
-                    mode: {scheduler.mode}
-                  </span>
-                  {scheduler.isLeader && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
-                      leader
+        {/* ═══════════════════════════════════════════════════════════════
+            SECTION 2 — ADVANCED DIAGNOSTICS
+            All low-priority technical metrics live here, collapsed by
+            default. Operators expand only what they need.
+        ═══════════════════════════════════════════════════════════════ */}
+        <section className="space-y-2.5 float-in stagger-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold flex items-center gap-2">
+              <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+              التشخيص المتقدّم
+            </h2>
+            <span className="text-[10px] text-muted-foreground">
+              انقر لتوسيع أي قسم
+            </span>
+          </div>
+
+          <div className="space-y-2">
+
+        {/* ── Scheduler details (was Panel 2) ── */}
+        <DetailsSection title="تفاصيل الجدولة">
+          <div
+            className={`flex items-center justify-between gap-4 p-3 rounded-xl border ${schedMeta.bg} ${schedMeta.border}`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
+              >
+                <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
+              </div>
+              <div className="min-w-0">
+                <p className={`font-bold text-sm ${schedMeta.color}`}>{schedTitle}</p>
+                <p className="text-xs text-muted-foreground">{schedMessage}</p>
+                {scheduler && (
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
+                      mode: {scheduler.mode}
                     </span>
-                  )}
-                  {scheduler.startedAt && (
-                    <span
-                      className="text-[10px] text-muted-foreground"
-                      title={scheduler.startedAt}
-                    >
-                      منذ {formatRelativeTime(scheduler.startedAt)}
-                    </span>
-                  )}
-                </div>
-              )}
+                    {scheduler.isLeader && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                        leader
+                      </span>
+                    )}
+                    {scheduler.startedAt && (
+                      <span
+                        className="text-[10px] text-muted-foreground"
+                        title={scheduler.startedAt}
+                      >
+                        منذ {formatRelativeTime(scheduler.startedAt)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </section>
+        </DetailsSection>
 
         {/* ── Panel 3: Runtime diagnostics grid ── */}
-        <section className="space-y-3 float-in stagger-3">
-          <h2 className="text-sm font-bold">تشخيص وقت التشغيل</h2>
-
+        <DetailsSection title="وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)">
           {diagQ.isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -761,15 +1014,11 @@ export default function AdminSystemPage(): ReactElement | null {
               </div>
             </>
           )}
-        </section>
+        </DetailsSection>
 
         {/* ── Panel 4: HTTP Request Analytics ── */}
         {metrics && (
-          <section className="space-y-3 float-in stagger-4">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <Network className="w-4 h-4 text-primary" />
-              تحليلات الطلبات HTTP
-            </h2>
+          <DetailsSection title="تحليلات الطلبات HTTP (المسارات · حالات الاستجابة · زمن p50/p99)">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
                 label="إجمالي الطلبات"
@@ -862,16 +1111,12 @@ export default function AdminSystemPage(): ReactElement | null {
                 </div>
               </div>
             )}
-          </section>
+          </DetailsSection>
         )}
 
         {/* ── Panel 5: Auth & Security ── */}
         {metrics && (
-          <section className="space-y-3 float-in stagger-5">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-primary" />
-              المصادقة والأمان
-            </h2>
+          <DetailsSection title="المصادقة والأمان (المحاولات · معدل الفشل · حالات القفل)">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
                 label="إجمالي المحاولات"
@@ -924,16 +1169,12 @@ export default function AdminSystemPage(): ReactElement | null {
                 border="border-red-400/20"
               />
             </div>
-          </section>
+          </DetailsSection>
         )}
 
         {/* ── Panel 6: Redis Performance ── */}
         {metrics && (
-          <section className="space-y-3 float-in stagger-6">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <Database className="w-4 h-4 text-primary" />
-              أداء Redis
-            </h2>
+          <DetailsSection title="أداء Redis (الاتصال · العمليات · ping latency · الأخطاء)">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <MetricCard
                 label="حالة الاتصال"
@@ -1011,13 +1252,14 @@ export default function AdminSystemPage(): ReactElement | null {
                 }
               />
             </div>
-          </section>
+          </DetailsSection>
         )}
 
         {/* ── Panel 7: Socket.IO + Job Activity ── */}
         {metrics && (
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 float-in stagger-7">
-            {/* Socket.IO */}
+          <DetailsSection title="Socket.IO والمهام الخلفية (cron · watchers · heartbeat)">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {/* Socket.IO */}
             <div className="bg-card border border-border/60 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Wifi className="w-4 h-4 text-cyan-400" />
@@ -1090,16 +1332,13 @@ export default function AdminSystemPage(): ReactElement | null {
                 </div>
               )}
             </div>
-          </section>
+            </div>
+          </DetailsSection>
         )}
 
         {/* ── Panel 7.5: Core Web Vitals p75 ── */}
         {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
-          <section className="space-y-3 float-in stagger-7">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-primary" />
-              Core Web Vitals (p75)
-            </h2>
+          <DetailsSection title="Core Web Vitals (LCP · FCP · INP · CLS · TTFB — p75)">
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               {(
                 [
@@ -1155,12 +1394,12 @@ export default function AdminSystemPage(): ReactElement | null {
                 );
               })}
             </div>
-          </section>
+          </DetailsSection>
         )}
 
         {/* ── Panel 8: Request rate trend chart (visual centerpiece) ── */}
         {samples.length >= 4 && (
-          <section className="float-in stagger-8">
+          <DetailsSection title="مخطط معدل الطلبات (rps · آخر 60 عيّنة)">
             <div className="bg-card border border-border/60 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-3">
                 <Activity className="w-4 h-4 text-primary" />
@@ -1207,8 +1446,12 @@ export default function AdminSystemPage(): ReactElement | null {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </section>
+          </DetailsSection>
         )}
+
+          </div>
+        </section>
+        {/* End of SECTION 2 — ADVANCED DIAGNOSTICS */}
 
         {/* ── Panel 9: Recent observability alerts ── */}
         <section className="space-y-3 float-in stagger-9">
