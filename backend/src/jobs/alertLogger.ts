@@ -2,7 +2,7 @@ import { adminAlertsTable, db } from "@workspace/db";
 import { count, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-export type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system";
+export type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "flash_sale_expired" | "system";
 
 export async function logAdminAlert(
   type: AlertType,

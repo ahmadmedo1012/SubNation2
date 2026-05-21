@@ -203,6 +203,22 @@ export async function runMigrations() {
       );
     `);
 
+    // ── flash_sales: at-most-one-active invariant ──────────────────────
+    //
+    // Partial unique index on a constant `true` expression, gated by
+    // `is_active=true`. Result: any number of inactive rows allowed
+    // (history), but only ONE row may be active at a time. Without
+    // this, the runtime LIMIT(1) without an ORDER BY makes the served
+    // discount non-deterministic when multiple active rows exist.
+    //
+    // The admin POST/PATCH handlers rely on this index — they catch
+    // the unique-violation and return a clean error to the operator
+    // ("another flash sale is currently active; deactivate it first").
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_flash_sales_active_singleton
+        ON flash_sales ((true)) WHERE is_active = true;
+    `);
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS coupons (
         id               SERIAL PRIMARY KEY,

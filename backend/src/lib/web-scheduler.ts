@@ -27,6 +27,7 @@ import type { RedisClientType } from "redis";
 import { logger } from "./logger";
 import { startCouponWatcher } from "../jobs/couponWatcher";
 import { initCronJobs } from "../jobs/cron";
+import { startFlashSaleWatcher } from "../jobs/flashSaleWatcher";
 import { startStockWatcher } from "../jobs/stockWatcher";
 import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
@@ -101,10 +102,11 @@ export async function startWebSchedulers(
   // Cron + watchers — same code path used by worker.ts when a worker exists.
   startCouponWatcher();
   startStockWatcher();
+  startFlashSaleWatcher();
   initCronJobs();
   logger.info(
     { category: "monitoring", instanceId: leadership.instanceId },
-    "[scheduler] cron + watchers started (couponWatcher, stockWatcher, otpCleanup, cron)",
+    "[scheduler] cron + watchers started (couponWatcher, stockWatcher, flashSaleWatcher, cron)",
   );
 
   setSchedulerState({
