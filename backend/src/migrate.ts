@@ -260,41 +260,49 @@ export async function runMigrations() {
       );
     `);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS otps (
-        id          SERIAL PRIMARY KEY,
-        phone       VARCHAR(20) NOT NULL,
-        code        VARCHAR(10) NOT NULL,
-        expires_at  TIMESTAMPTZ NOT NULL,
-        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-
-    // ── otps schema drift reconcile ─────────────────────────────────────
-    // The OTP design migrated from plaintext (column `code`) to argon2
-    // hashed (column `code_hash`) plus per-row attempt counter. Production
-    // tables created by the original CREATE TABLE above don't have the
-    // new columns. This reconciliation is idempotent and non-destructive:
+    // ── Legacy OTP table reconcile (skipped after Stage C drops it) ────
     //
-    //   1. Add code_hash + attempts columns (IF NOT EXISTS).
-    //   2. Make legacy `code` nullable so new INSERTs don't violate
-    //      NOT NULL on a column the runtime no longer writes.
+    // OTP-based password recovery was removed in the passwordless
+    // launch. Stage C below drops the entire `otps` table. This block
+    // remains for two reasons:
+    //   1. Fresh-DB bootstrap — a brand-new DB needs the table to
+    //      exist before Stage C's `DROP TABLE IF EXISTS` runs cleanly.
+    //   2. Mid-deploy DBs where Stage C hasn't reached yet still need
+    //      the historical drift reconcile (code_hash, attempts).
     //
-    // Existing rows with plaintext `code` are kept; they expire naturally
-    // via the cleanupExpiredOtps job (which deletes by expires_at, no
-    // schema dependency on which column has the value).
+    // Once Stage C has dropped the table, the entire block early-exits
+    // via the information_schema gate so the next boot is a no-op.
     await db.execute(sql`
-      ALTER TABLE otps
-        ADD COLUMN IF NOT EXISTS code_hash VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS attempts  INTEGER NOT NULL DEFAULT 0;
-    `);
-    await db.execute(sql`
-      ALTER TABLE otps ALTER COLUMN code DROP NOT NULL;
-    `);
+      DO $$
+      BEGIN
+        -- Cold-bootstrap path: create the table if Stage C never ran.
+        CREATE TABLE IF NOT EXISTS otps (
+          id          SERIAL PRIMARY KEY,
+          phone       VARCHAR(20) NOT NULL,
+          code        VARCHAR(10) NOT NULL,
+          expires_at  TIMESTAMPTZ NOT NULL,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
 
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_otps_phone ON otps(phone);
-      CREATE INDEX IF NOT EXISTS idx_otps_expires ON otps(expires_at);
+        -- Stage A drift-reconcile: hashed-code + attempt counter.
+        -- Guarded so a post-Stage-C reboot (table dropped between
+        -- the CREATE above and this ALTER) doesn't crash.
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='otps') THEN
+          ALTER TABLE otps
+            ADD COLUMN IF NOT EXISTS code_hash VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS attempts  INTEGER NOT NULL DEFAULT 0;
+
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='otps' AND column_name='code' AND is_nullable='NO'
+          ) THEN
+            ALTER TABLE otps ALTER COLUMN code DROP NOT NULL;
+          END IF;
+
+          CREATE INDEX IF NOT EXISTS idx_otps_phone ON otps(phone);
+          CREATE INDEX IF NOT EXISTS idx_otps_expires ON otps(expires_at);
+        END IF;
+      END $$;
     `);
 
     await db.execute(sql`
@@ -455,19 +463,44 @@ export async function runMigrations() {
     // keep it. Only the column constraints and DEFAULTS change so
     // new inserts behave correctly going forward.
     //
-    // Each statement is wrapped in a tolerant DO block: re-running on
-    // a database that has already been migrated is a no-op.
+    // Each ALTER is guarded so the block stays idempotent across
+    // every drift state of `users`:
+    //   - Fresh DB: all four columns exist; every ALTER fires.
+    //   - Mid-migration: password_hash dropped but password_login_enabled
+    //     still present; only the still-existing-column ALTERs fire.
+    //   - Post-Stage-C: password_hash + password_login_enabled both
+    //     gone; only the auth_provider default reconcile fires.
+    //
+    // Without these guards a bare `ALTER COLUMN password_hash DROP
+    // NOT NULL` raises SQLSTATE 42703 (undefined_column) which
+    // boot-migrations.ts classifies as critical, abort the migration,
+    // and Stage C below never reaches its DROPs — the exact failure
+    // mode this comment is preventing from re-emerging.
     await db.execute(sql`
-      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-    `);
-    await db.execute(sql`
-      ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT;
-    `);
-    await db.execute(sql`
-      ALTER TABLE users ALTER COLUMN auth_provider SET DEFAULT 'firebase_phone';
-    `);
-    await db.execute(sql`
-      ALTER TABLE users ALTER COLUMN password_login_enabled SET DEFAULT FALSE;
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='users' AND column_name='password_hash'
+        ) THEN
+          ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+          ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT;
+        END IF;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='users' AND column_name='auth_provider'
+        ) THEN
+          ALTER TABLE users ALTER COLUMN auth_provider SET DEFAULT 'firebase_phone';
+        END IF;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='users' AND column_name='password_login_enabled'
+        ) THEN
+          ALTER TABLE users ALTER COLUMN password_login_enabled SET DEFAULT FALSE;
+        END IF;
+      END $$;
     `);
 
     await db.execute(sql`
