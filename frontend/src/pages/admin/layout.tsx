@@ -56,6 +56,7 @@ const NAV_SECTIONS = [
       { href: "/admin/users", label: "المستخدمون", icon: Users },
       { href: "/admin/referrals", label: "الإحالات", icon: Gift },
       { href: "/admin/coupons", label: "الكوبونات", icon: Tag },
+      { href: "/admin/promotions", label: "العروض السريعة", icon: Zap },
     ],
   },
   {
@@ -80,6 +81,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/settings": "الإعدادات",
   "/admin/referrals": "الإحالات",
   "/admin/coupons": "الكوبونات",
+  "/admin/promotions": "العروض السريعة",
   "/admin/alerts": "صندوق التنبيهات",
   "/admin/security": "الأمان",
   "/admin/system": "حالة النظام",

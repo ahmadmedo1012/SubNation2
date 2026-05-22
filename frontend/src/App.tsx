@@ -61,6 +61,7 @@ const AdminSecurityPage = lazy(() => import("@/pages/admin/security"));
 const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
 const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
 const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
+const AdminPromotionsPage = lazy(() => import("@/pages/admin/promotions"));
 const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
 const AdminSystemPage = lazy(() => import("@/pages/admin/system"));
 
@@ -151,6 +152,7 @@ function AdminProtectedRoutes() {
         <Route path="/admin/tickets" component={AdminTicketsPage} />
         <Route path="/admin/referrals" component={AdminReferralsPage} />
         <Route path="/admin/coupons" component={AdminCouponsPage} />
+        <Route path="/admin/promotions" component={AdminPromotionsPage} />
         <Route path="/admin/alerts" component={AdminAlertsPage} />
         <Route path="/admin/system" component={AdminSystemPage} />
         <Route component={NotFound} />

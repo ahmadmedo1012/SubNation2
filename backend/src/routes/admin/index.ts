@@ -2,6 +2,7 @@ import { Router } from "express";
 import { adminAlertsRouter } from "./alerts";
 import { adminAuthRouter } from "./auth";
 import { adminDiagnosticsRouter } from "./diagnostics";
+import { adminFlashSalesRouter } from "./flash-sales";
 import { adminObservabilityRouter } from "./observability";
 import { adminOrdersRouter } from "./orders";
 import { adminPricingCalculatorRouter } from "./pricing-calculator";
@@ -23,6 +24,7 @@ router.use("/", adminOrdersRouter); // /orders, /orders/bulk-status
 router.use("/", adminTopupsRouter); // /topups/*
 router.use("/", adminProductsRouter); // /products/*
 router.use("/", adminPricingCalculatorRouter); // /pricing/calculate
+router.use("/", adminFlashSalesRouter); // /flash-sales, /flash-sales/:id
 router.use("/", adminUsersRouter); // /users/*
 router.use("/", adminTicketsRouter); // /tickets/*
 router.use("/", adminReferralsRouter); // /referrals/*
