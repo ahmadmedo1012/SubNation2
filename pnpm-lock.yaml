@@ -204,6 +204,9 @@ importers:
 
   frontend:
     dependencies:
+      '@fontsource/readex-pro':
+        specifier: 5.2.6
+        version: 5.2.6
       '@sentry/react':
         specifier: ^10.53.1
         version: 10.53.1(react@19.1.0)
@@ -1722,6 +1725,9 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@fontsource/readex-pro@5.2.6':
+    resolution: {integrity: sha512-Weg50PyeMH+R91e45puq+31Ft1VVmLZlZ9X8U3CIfltMAxLoeU/KO9emE3hNCWWRE+iCaEglhZuM/wz5na+t+w==}
 
   '@gerrit0/mini-shiki@3.23.0':
     resolution: {integrity: sha512-bEMORlG0cqdjVyCEuU0cDQbORWX+kYCeo0kV1lbxF5bt4r7SID2l9bqsxJEM0zndaxpOUT7riCyIVEuqq/Ynxg==}
@@ -8050,6 +8056,8 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@fontsource/readex-pro@5.2.6': {}
 
   '@gerrit0/mini-shiki@3.23.0':
     dependencies:

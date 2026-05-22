@@ -93,6 +93,56 @@ function seoHeadInject(): Plugin {
   };
 }
 
+/**
+ * Inject <link rel="preload"> for the critical Readex Pro woff2 fonts
+ * (Arabic + Latin, weight 400 — the LCP-text faces).
+ *
+ * Why preload: the browser only discovers @font-face rules AFTER it has
+ * parsed the index CSS bundle. Without a preload, the woff2 fetch waits
+ * on the CSS download + parse (~50-100 ms on mobile). Preload makes the
+ * browser start the woff2 fetch in parallel with the CSS, shaving
+ * ~10-30 ms off LCP for Arabic-text LCP elements (most of the homepage).
+ *
+ * Why per-build: @fontsource's woff2 files are emitted with content
+ * hashes (`readex-pro-arabic-400-normal-De1vYjJZ.woff2`). The hash
+ * changes whenever the font version bumps. We can't hard-code the
+ * hash in index.html — this plugin reads the rollup bundle at the
+ * very end of the build and emits the correct preload tags.
+ */
+function fontPreloadInject(): Plugin {
+  return {
+    name: "font-preload-inject",
+    apply: "build",
+    enforce: "post",
+    transformIndexHtml: {
+      order: "post",
+      handler(html, ctx) {
+        const bundle = ctx.bundle;
+        if (!bundle) return html;
+
+        // Find the Arabic-400 + Latin-400 woff2 files by name pattern.
+        const woff2 = Object.keys(bundle).filter((name) =>
+          /readex-pro-(arabic|latin)-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(name),
+        );
+
+        if (woff2.length === 0) return html;
+
+        const tags = woff2
+          .map(
+            (name) =>
+              `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${name}" />`,
+          )
+          .join("\n    ");
+
+        // Inject right before the </head> close so the preload tags sit
+        // alongside the existing network hints. The browser starts the
+        // font fetch during HTML parse, in parallel with the CSS bundle.
+        return html.replace(/(\s*<\/head>)/, `\n    ${tags}$1`);
+      },
+    },
+  };
+}
+
 const rawPort = process.env.PORT?.trim() || process.env.FRONTEND_PORT?.trim() || "5173";
 
 const port = Number(rawPort);
@@ -112,6 +162,7 @@ export default defineConfig({
     tailwindcss(),
     bundleBudgetPlugin(),
     seoHeadInject(),
+    fontPreloadInject(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
@@ -137,22 +188,12 @@ export default defineConfig({
         ],
       },
       workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-cache",
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
+        // Fonts are now bundled into /assets/ via @fontsource (no longer
+        // fetched from fonts.googleapis.com), so the previous
+        // google-fonts-cache runtime rule has been removed. The bundled
+        // woff2 are covered by the standard precache + the 1y immutable
+        // cache header on /assets/.
+        runtimeCaching: [],
       },
     }),
     // Sentry source-map upload — only active when SENTRY_AUTH_TOKEN is set

@@ -1,5 +1,27 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* ── Self-hosted Readex Pro (was Google Fonts) ───────────────────────
+ * Eliminates the third-party stylesheet roundtrip + external font
+ * fetches that were on the critical path. Vite hashes each woff2
+ * under /assets/ and serves it from the same origin (covered by the
+ * 1y immutable cache rule in backend/src/app.ts).
+ *
+ * Per-subset+weight imports keep the bundle minimal: only Arabic
+ * + Latin scripts are loaded (the original Google URL had subset
+ * auto-detection; this is more explicit + cheaper). Weights 400 +
+ * 600 + 700 match the previous URL's `wght@400;600;700` parameter.
+ *
+ * Each upstream CSS file is a single @font-face block with
+ * `font-display: swap` baked in, so the browser shows the system
+ * font fallback immediately while the woff2 streams. */
+@import "@fontsource/readex-pro/arabic-400.css";
+@import "@fontsource/readex-pro/arabic-600.css";
+@import "@fontsource/readex-pro/arabic-700.css";
+@import "@fontsource/readex-pro/latin-400.css";
+@import "@fontsource/readex-pro/latin-600.css";
+@import "@fontsource/readex-pro/latin-700.css";
+
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
