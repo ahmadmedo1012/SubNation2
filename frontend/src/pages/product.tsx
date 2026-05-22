@@ -883,6 +883,8 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                     <img
                       src={r.image_url}
                       alt={r.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
                     />
                   ) : (

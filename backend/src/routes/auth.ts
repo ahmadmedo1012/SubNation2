@@ -286,6 +286,74 @@ router.get("/me", requireUser, async (req, res) => {
   });
 });
 
+/**
+ * GET /api/auth/probe — 200-always cookie-presence probe.
+ *
+ * Used by `frontend/src/lib/auth.tsx` on every cold boot to detect
+ * whether the httpOnly auth_token cookie carries a live session,
+ * WITHOUT producing a console-visible 401 on the unauthenticated
+ * path. The browser network panel logs every non-2xx response
+ * regardless of how JS handles it; calling /api/auth/me (which
+ * legitimately returns 401 for typed clients) leaves a misleading
+ * "Failed to load resource: 401" line in DevTools that Lighthouse
+ * counts as a console error.
+ *
+ * Behaviour:
+ *   - Cookie/header missing or invalid → 200 with { authenticated: false }
+ *   - Cookie/header valid + user found → 200 with { authenticated: true, user, linked_identities }
+ *   - User row missing for a valid token → 200 with { authenticated: false }
+ *
+ * The response shape on the authenticated path matches /api/auth/me
+ * exactly so the React Query cache pre-seed in lib/auth.tsx still
+ * lights up the typed useGetMe queryKey with full data.
+ *
+ * Cache-Control: same `private, max-age=30` as /me.
+ */
+router.get("/probe", async (req, res) => {
+  const token = req.cookies?.auth_token || req.headers.authorization?.replace("Bearer ", "");
+
+  res.set("Cache-Control", "private, max-age=30");
+
+  if (!token) {
+    return res.status(200).json({ authenticated: false });
+  }
+
+  const result = verifyUserTokenDetailed(token);
+  if (!result.ok) {
+    return res.status(200).json({ authenticated: false });
+  }
+
+  const userId = result.payload.userId;
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!user) {
+    return res.status(200).json({ authenticated: false });
+  }
+
+  const identities = await db
+    .select()
+    .from(userAuthIdentitiesTable)
+    .where(eq(userAuthIdentitiesTable.userId, user.id));
+
+  return res.status(200).json({
+    authenticated: true,
+    user: {
+      ...formatUser(user),
+      linked_identities: identities.map((id) => ({
+        provider: id.provider,
+        provider_uid: id.providerUid,
+        email: id.email,
+        phone: id.phone,
+        linked_at: id.linkedAt,
+        last_seen_at: id.lastSeenAt,
+      })),
+    },
+  });
+});
+
 router.post("/firebase/session", async (req, res) => {
   const { id_token, referral_code } = req.body as { id_token?: string; referral_code?: string };
   if (!id_token || typeof id_token !== "string") {

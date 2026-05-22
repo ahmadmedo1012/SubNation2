@@ -1,7 +1,13 @@
 import { Router } from "express";
 import healthRouter from "./health";
 import { authRouter } from "./auth";
-import { productsRouter, getProductStatsHandler, getFlashSaleHandler } from "./products";
+import {
+  productsRouter,
+  getProductStatsHandler,
+  getFlashSaleHandler,
+  catalogCache,
+  flashSaleCache,
+} from "./products";
 import { ordersRouter } from "./orders";
 import { walletRouter } from "./wallet";
 import { adminRouter } from "./admin";
@@ -25,8 +31,12 @@ router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth
 
 // ── Products ──────────────────────────────────────────────────────────────────
 router.use("/products", productsRouter);
-router.get("/catalog/stats", getProductStatsHandler);
-router.get("/flash-sale", getFlashSaleHandler);
+// Aliases — apply the same edge-cache middleware as the canonical
+// /api/products/{stats,flash-sale} mounts, otherwise the alias paths
+// hit the origin DB on every request while their siblings serve from
+// the CDN edge for 60s/30s windows.
+router.get("/catalog/stats", catalogCache, getProductStatsHandler);
+router.get("/flash-sale", flashSaleCache, getFlashSaleHandler);
 
 // ── User routes ───────────────────────────────────────────────────────────────
 router.use("/orders", ordersRouter);

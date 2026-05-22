@@ -266,7 +266,12 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
                   >
                     <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
                       {p.image_url ? (
-                        <img src={p.image_url} className="w-full h-full object-contain p-1" />
+                        <img
+                          src={p.image_url}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-contain p-1"
+                        />
                       ) : (
                         <Package className="w-3.5 h-3.5 text-muted-foreground" />
                       )}

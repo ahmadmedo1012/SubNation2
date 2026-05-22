@@ -722,6 +722,8 @@ export default function AdminProductsPage() {
                           <img
                             src={product.image_url}
                             alt={product.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-contain p-1.5"
                             onError={(e) => {
                               e.currentTarget.style.display = "none";

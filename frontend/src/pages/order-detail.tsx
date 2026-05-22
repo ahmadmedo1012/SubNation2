@@ -189,6 +189,8 @@ export default function OrderDetailPage() {
                     <img
                       src={(order as { product_image_url?: string }).product_image_url}
                       alt={order.product_name ?? ""}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-contain p-1.5"
                     />
                   </div>

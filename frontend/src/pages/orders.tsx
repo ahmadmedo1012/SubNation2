@@ -169,6 +169,8 @@ export default function OrdersPage() {
                         <img
                           src={order.product_image_url}
                           alt={order.product_name}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (

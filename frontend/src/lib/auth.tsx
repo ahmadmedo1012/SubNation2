@@ -143,20 +143,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // paths).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/auth/me", {
+    // Use /api/auth/probe (200-always) instead of /api/auth/me. Both
+    // endpoints have the same authenticated-response shape, so the
+    // useGetMe queryKey pre-seed below is identical. The probe avoids
+    // the cosmetic console-visible 401 on the unauthenticated path
+    // that Lighthouse counts as a console error.
+    fetch("/api/auth/probe", {
       credentials: "include",
       headers: { Accept: "application/json" },
     })
       .then(async (res) => {
         if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data && !cancelled) {
-            setTokenState(COOKIE_AUTH_SENTINEL);
-            queryClient.setQueryData(getGetMeQueryKey(), data);
-          }
+        if (!res.ok) return; // network/5xx → unauthenticated path
+        const body = await res.json().catch(() => null);
+        if (!body || cancelled) return;
+        if (body.authenticated && body.user) {
+          setTokenState(COOKIE_AUTH_SENTINEL);
+          queryClient.setQueryData(getGetMeQueryKey(), body.user);
         }
-        // 401 / 4xx / 5xx → unauthenticated, nothing to do.
+        // body.authenticated === false → leave token null, render unauthed.
       })
       .catch(() => {
         // Network error → unauthenticated. Real errors are reported

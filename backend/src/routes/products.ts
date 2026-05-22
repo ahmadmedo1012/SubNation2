@@ -30,8 +30,8 @@ function cacheable(maxSec: number, swrSec: number) {
   };
 }
 
-const catalogCache = cacheable(60, 300);
-const flashSaleCache = cacheable(30, 60);
+export const catalogCache = cacheable(60, 300);
+export const flashSaleCache = cacheable(30, 60);
 
 /**
  * Public-facing flash-sale shape used by /api/products,
