@@ -2,15 +2,15 @@ import { CreateOrderBody } from "@workspace/api-zod";
 import {
   couponsTable,
   db,
-  flashSalesTable,
   inventoryTable,
   ordersTable,
   productsTable,
   usersTable,
 } from "@workspace/db";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { logAdminAlert } from "../jobs/alertLogger";
+import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -89,63 +89,28 @@ router.post("/", requireUser, async (req, res) => {
   if (!product)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
-  const now = new Date();
-  const [flashSale] = await db
-    .select()
-    .from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
-    .limit(1);
+  // ── Discount stack (flash sale → coupon → final) ─────────────────────
+  // Single source of truth: lib/pricing.ts. The same helper is called
+  // by the catalog route + admin pricing calculator, so the math here
+  // and the simulated math in /admin/pricing stay bit-for-bit identical.
+  const pricing = await computePricing({
+    listPrice: parseFloat(String(product.price)),
+    couponCode,
+  });
 
-  let basePrice = parseFloat(String(product.price));
-  if (flashSale) {
-    const discount = parseFloat(String(flashSale.discountPercent));
-    basePrice = +(basePrice * (1 - discount / 100)).toFixed(2);
+  // Reject the request when the coupon failed validation. The shared
+  // helper returns a structured InvalidCoupon with the Arabic-translated
+  // user-facing message, preserving the same UX as the previous inline
+  // checks (4 distinct rejection reasons, same wording).
+  if (pricing.coupon && isInvalidCoupon(pricing.coupon)) {
+    return res
+      .status(400)
+      .json(createErrorResponse(pricing.coupon.reasonAr, ErrorCode.INVALID_DATA));
   }
 
-  // Apply coupon
-  let discountAmount = 0;
-  let appliedCoupon: typeof couponsTable.$inferSelect | null = null;
-  if (couponCode) {
-    const [coupon] = await db
-      .select()
-      .from(couponsTable)
-      .where(eq(couponsTable.code, couponCode))
-      .limit(1);
-    if (!coupon || !coupon.isActive) {
-      return res
-        .status(400)
-        .json(createErrorResponse("كوبون غير صالح أو منتهي الصلاحية", ErrorCode.INVALID_DATA));
-    }
-    if (coupon.expiresAt && coupon.expiresAt < now) {
-      return res
-        .status(400)
-        .json(createErrorResponse("انتهت صلاحية هذا الكوبون", ErrorCode.INVALID_DATA));
-    }
-    if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-      return res
-        .status(400)
-        .json(createErrorResponse("تم استخدام هذا الكوبون بالحد الأقصى", ErrorCode.INVALID_DATA));
-    }
-    const minOrder = parseFloat(String(coupon.minOrderAmount));
-    if (basePrice < minOrder) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse(
-            `هذا الكوبون يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل`,
-            ErrorCode.INVALID_DATA,
-          ),
-        );
-    }
-    if (coupon.type === "percentage") {
-      discountAmount = +((basePrice * parseFloat(String(coupon.value))) / 100).toFixed(2);
-    } else {
-      discountAmount = +Math.min(parseFloat(String(coupon.value)), basePrice).toFixed(2);
-    }
-    appliedCoupon = coupon;
-  }
-
-  const finalPrice = +(basePrice - discountAmount).toFixed(2);
+  const discountAmount = pricing.discountAmount;
+  const finalPrice = pricing.finalPrice;
+  const appliedCoupon = isAppliedCoupon(pricing.coupon) ? pricing.coupon.record : null;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user)
@@ -177,6 +142,7 @@ router.post("/", requireUser, async (req, res) => {
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
+  const now = new Date();
   const order = await db
     .transaction(async (tx) => {
       // Atomic inventory claim inside transaction to prevent race conditions

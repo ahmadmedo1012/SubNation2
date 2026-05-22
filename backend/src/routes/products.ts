@@ -1,4 +1,5 @@
 import { db, flashSalesTable, inventoryTable, ordersTable, productsTable } from "@workspace/db";
+import { applyFlashSale } from "../lib/pricing";
 import { and, count, eq, gt, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
@@ -32,19 +33,25 @@ function cacheable(maxSec: number, swrSec: number) {
 const catalogCache = cacheable(60, 300);
 const flashSaleCache = cacheable(30, 60);
 
-async function getActiveFlashSale() {
-  const now = new Date();
-  const [sale] = await db
-    .select()
-    .from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
-    .limit(1);
-  if (!sale) return null;
+/**
+ * Public-facing flash-sale shape used by /api/products,
+ * /api/products/flash-sale and the frontend banner. Underlying lookup
+ * is delegated to lib/pricing.ts so the math + lookup criteria stay
+ * in lockstep with the order pipeline and the admin calculator.
+ */
+async function getActiveFlashSale(): Promise<{
+  id: number;
+  title: string;
+  discount_percent: number;
+  ends_at: string;
+} | null> {
+  const { flashSale } = await applyFlashSale(0);
+  if (!flashSale) return null;
   return {
-    id: sale.id,
-    title: sale.title,
-    discount_percent: parseFloat(String(sale.discountPercent)),
-    ends_at: sale.endsAt.toISOString(),
+    id: flashSale.id,
+    title: flashSale.title,
+    discount_percent: flashSale.discountPercent,
+    ends_at: flashSale.endsAt,
   };
 }
 

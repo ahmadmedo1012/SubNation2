@@ -21,9 +21,10 @@
  * loyalty module directly so any future tuning there is reflected.
  */
 
-import { couponsTable, db, flashSalesTable, productsTable } from "@workspace/db";
-import { and, eq, gt } from "drizzle-orm";
+import { db, productsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { Router } from "express";
+import { computePricing, isAppliedCoupon } from "../../lib/pricing";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { POINTS_PER_LYD, POINTS_PER_REFERRAL } from "../loyalty";
 
@@ -79,84 +80,55 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "السعر لا يمكن أن يكون سالباً" });
   }
 
-  // ── Resolve active flash sale (mirrors routes/orders.ts:88-94) ────────
-  const now = new Date();
-  const [flashSale] = await db
-    .select()
-    .from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
-    .limit(1);
+  // ── Discount stack (delegates to lib/pricing.ts) ─────────────────────
+  // Same shared pipeline used by routes/orders.ts at checkout, so the
+  // simulation is bit-for-bit identical to what the real order path
+  // would compute. The shapes below are translated to the calculator's
+  // existing snake_case response schema.
+  const pricing = await computePricing({
+    listPrice,
+    couponCode: body.coupon_code ?? null,
+  });
 
-  let basePrice = listPrice;
-  let flashSaleApplied: { discount_percent: number; title: string } | null = null;
-  if (flashSale) {
-    const discount = parseFloat(String(flashSale.discountPercent));
-    basePrice = +(basePrice * (1 - discount / 100)).toFixed(2);
-    flashSaleApplied = { discount_percent: discount, title: flashSale.title };
-  }
+  const basePrice = pricing.basePrice;
+  const finalPrice = pricing.finalPrice;
+  const discountAmount = pricing.discountAmount;
 
-  // ── Resolve coupon (mirrors routes/orders.ts:108-145) ─────────────────
-  let discountAmount = 0;
-  let couponInfo: {
+  const flashSaleApplied: { discount_percent: number; title: string } | null = pricing.flashSale
+    ? {
+        discount_percent: pricing.flashSale.discountPercent,
+        title: pricing.flashSale.title,
+      }
+    : null;
+
+  const couponInfo: {
     code: string;
     type: "percentage" | "fixed";
     value: number;
     valid: boolean;
     reason_invalid: string | null;
-  } | null = null;
-
-  if (body.coupon_code && typeof body.coupon_code === "string") {
-    const code = body.coupon_code.trim().toUpperCase();
-    const [coupon] = await db
-      .select()
-      .from(couponsTable)
-      .where(eq(couponsTable.code, code))
-      .limit(1);
-
-    if (!coupon) {
-      couponInfo = {
-        code,
-        type: "percentage",
-        value: 0,
-        valid: false,
-        reason_invalid: "كوبون غير موجود",
-      };
-    } else {
-      let valid = true;
-      let reason: string | null = null;
-      if (!coupon.isActive) {
-        valid = false;
-        reason = "كوبون غير مفعل";
-      } else if (coupon.expiresAt && coupon.expiresAt < now) {
-        valid = false;
-        reason = "انتهت صلاحية الكوبون";
-      } else if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-        valid = false;
-        reason = "تم استنفاد الكوبون";
-      } else if (basePrice < parseFloat(String(coupon.minOrderAmount))) {
-        valid = false;
-        reason = `يتطلب حد أدنى ${parseFloat(String(coupon.minOrderAmount)).toFixed(2)} د.ل`;
-      }
-
-      if (valid) {
-        if (coupon.type === "percentage") {
-          discountAmount = +((basePrice * parseFloat(String(coupon.value))) / 100).toFixed(2);
-        } else {
-          discountAmount = +Math.min(parseFloat(String(coupon.value)), basePrice).toFixed(2);
-        }
-      }
-
-      couponInfo = {
-        code: coupon.code,
-        type: coupon.type as "percentage" | "fixed",
-        value: parseFloat(String(coupon.value)),
-        valid,
-        reason_invalid: reason,
+  } | null = (() => {
+    if (!pricing.coupon) return null;
+    if (isAppliedCoupon(pricing.coupon)) {
+      return {
+        code: pricing.coupon.code,
+        type: pricing.coupon.type,
+        value: pricing.coupon.value,
+        valid: true,
+        reason_invalid: null,
       };
     }
-  }
-
-  const finalPrice = +(basePrice - discountAmount).toFixed(2);
+    return {
+      code: pricing.coupon.code,
+      // The invalid-coupon shape doesn't carry type/value when the row
+      // wasn't found; mirror the previous endpoint behaviour (default
+      // to "percentage" / 0) so the response schema stays stable.
+      type: (pricing.coupon.record?.type as "percentage" | "fixed" | undefined) ?? "percentage",
+      value: pricing.coupon.record ? parseFloat(String(pricing.coupon.record.value)) : 0,
+      valid: false,
+      reason_invalid: pricing.coupon.reasonAr,
+    };
+  })();
 
   // ── Margin math ───────────────────────────────────────────────────────
   const loyaltyPointsEarned = Math.floor(finalPrice);
