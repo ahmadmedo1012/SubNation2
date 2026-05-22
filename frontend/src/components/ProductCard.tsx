@@ -134,7 +134,19 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               })()}
               width={400}
               height={400}
-              loading="lazy"
+              // ── LCP optimization ─────────────────────────────────────
+              // The homepage product grid is 2-cols on mobile, 2-3-4 on
+              // tablet/desktop. The visible above-fold rows fit ~4 cards
+              // on every breakpoint, so the FIRST 4 images must load
+              // eagerly — `loading="lazy"` on the LCP image is a known
+              // ~400-800 ms regression on mobile Lighthouse runs.
+              //
+              // The very first card (index 0) gets fetchpriority="high"
+              // so the browser prioritizes its bytes over the rest of
+              // the resource graph (CSS, JS, other images). This is
+              // the single biggest LCP lever on the storefront.
+              loading={index < 4 ? "eager" : "lazy"}
+              fetchPriority={index === 0 ? "high" : index < 4 ? "auto" : "low"}
               decoding="async"
               className="relative z-[2] w-full h-full object-contain p-4 sm:p-5 transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
               onError={(e) => {

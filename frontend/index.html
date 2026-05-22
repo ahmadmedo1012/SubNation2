@@ -24,16 +24,48 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SubNation" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- ── Network hints ───────────────────────────────────────────────
+         preconnect runs the DNS+TLS+TCP handshake during HTML parse so
+         the first request to each origin starts ~150 ms sooner on a
+         cold visit. Origins that we always hit on first paint go here
+         (fonts.googleapis, fonts.gstatic, image2url for product images).
+         Origins that are only hit on a delayed action (Firebase popup
+         on login click, recaptcha) get dns-prefetch — cheaper signal
+         that doesn't burn an idle TLS slot. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Firebase auth preconnect reduces iframe waterfall -->
-    <link rel="preconnect" href="https://apis.google.com" crossorigin />
+    <link rel="preconnect" href="https://image2url.com" crossorigin />
+    <link rel="dns-prefetch" href="https://apis.google.com" />
     <link rel="dns-prefetch" href="https://subnation-2571e.firebaseapp.com" />
-    <!-- Critical fonts stylesheet -->
+    <link rel="dns-prefetch" href="https://www.google.com" />
+    <link rel="dns-prefetch" href="https://www.gstatic.com" />
+
+    <!-- ── Fonts (async, non-render-blocking) ──────────────────────────
+         The default <link rel="stylesheet"> blocks first paint until
+         the CSS arrives — measurable ~80–150 ms LCP cost on mobile.
+         The preload+swap pattern below loads the stylesheet at high
+         priority but keeps it off the critical render path. The
+         &display=swap parameter makes the @font-face rules show the
+         fallback immediately while the woff2 streams in.
+         The <noscript> fallback restores synchronous behaviour for
+         users without JS so the brand font still renders. -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&display=swap"
+    />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;600;700&display=swap"
+      />
+    </noscript>
     <script src="/init.js"></script>
   </head>
   <body>

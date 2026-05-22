@@ -1,10 +1,23 @@
-// IMPORTANT: This must be the very first import. Sentry.init() in
-// instrument.ts has to run before any other code so unhandled errors during
-// boot are captured.
-import "./instrument";
+// ── Sentry boot deferral ────────────────────────────────────────────
+// The Sentry chunk (@sentry/react with Replay + BrowserTracing) is
+// ~155 KB gzip — bigger than React itself. Eager-importing it here
+// puts a `<link rel="modulepreload">` on the critical path that
+// contends with the LCP image bytes and adds ~250 ms TBT on mid-tier
+// mobile. lib/boot-sentry installs window error listeners + React
+// error-handler buffers SYNCHRONOUSLY (cheap), then schedules the
+// Sentry chunk via requestIdleCallback (with a 2 s timeout fallback).
+// Boot-window errors are queued and flushed once Sentry loads — none
+// are lost. See lib/boot-sentry.ts for full rationale.
+import {
+  installBootErrorBuffer,
+  bufferedReactErrorHandler,
+  scheduleSentryBoot,
+} from "./lib/boot-sentry";
+
+installBootErrorBuffer();
+scheduleSentryBoot();
 
 import { setBaseUrl } from "@workspace/api-client-react";
-import { reactErrorHandler } from "@sentry/react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
@@ -54,9 +67,14 @@ createRoot(document.getElementById("root")!, {
   // React 19 error capture pattern from the official Sentry React skill.
   // Each callback forwards its error to Sentry while preserving the React
   // default behaviour for the corresponding category.
-  onUncaughtError: reactErrorHandler(),
-  onCaughtError: reactErrorHandler(),
-  onRecoverableError: reactErrorHandler(),
+  //
+  // The handler we install here is a BUFFERING WRAPPER from
+  // lib/boot-sentry. It queues errors during the brief Sentry-defer
+  // window and drains them once @sentry/react finishes loading on idle.
+  // Effect: nothing is lost, but Sentry stays off the critical path.
+  onUncaughtError: bufferedReactErrorHandler(),
+  onCaughtError: bufferedReactErrorHandler(),
+  onRecoverableError: bufferedReactErrorHandler(),
 }).render(
   <HelmetProvider>
     <App />

@@ -1,5 +1,4 @@
 import { Component, ReactNode } from "react";
-import * as Sentry from "@sentry/react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 
 interface Props {
@@ -25,13 +24,20 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("React render error:", error, errorInfo);
-    // Forward to Sentry with the React component stack as additional context
-    // so the issue page shows the same tree React itself sees.
-    Sentry.withScope((scope) => {
-      scope.setContext("react", {
-        componentStack: errorInfo.componentStack,
+    // ── Lazy-load Sentry on the error path ─────────────────────────
+    // The much more common no-error path no longer pulls @sentry/react
+    // (~155 KB gzip) into the critical chunk graph. When an error DOES
+    // fire we accept a one-time ~50–100 ms async-import cost to ship the
+    // event — still vastly cheaper than blocking every cold visit on
+    // Sentry. Errors during the brief boot-defer window are also caught
+    // by the window error/rejection buffer in lib/boot-sentry.
+    void import("@sentry/react").then((Sentry) => {
+      Sentry.withScope((scope) => {
+        scope.setContext("react", {
+          componentStack: errorInfo.componentStack,
+        });
+        Sentry.captureException(error);
       });
-      Sentry.captureException(error);
     });
   }
 
