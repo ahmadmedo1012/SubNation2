@@ -472,6 +472,11 @@ app.use((req, res, next) => {
 app.use("/api/auth/firebase/session", authLimiter);
 app.use("/api/admin/login", authLimiter);
 app.use("/api/admin/login/verify-2fa", authLimiter);
+// Telegram-Login is a credential-equivalent endpoint (signature-verified
+// identity assertion). Apply the same strict limit as admin login to
+// keep brute-force resistance consistent across auth surfaces.
+app.use("/api/auth/telegram", authLimiter);
+app.use("/api/auth/telegram/callback", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);

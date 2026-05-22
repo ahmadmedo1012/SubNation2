@@ -452,7 +452,19 @@ async function handleTelegramAuth(
       failureReason: verification.reason,
       ipAddress: client.ipAddress,
       userAgent: client.userAgent,
-    }).catch(() => {});
+    }).catch((err) => {
+      // Non-fatal — auth-telemetry insert failed. Log + breadcrumb
+      // so brute-force attempts are not silently lost.
+      logger.warn(
+        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
+        "logAuthActivity: failed to record telegram-auth failure",
+      );
+      Sentry.addBreadcrumb({
+        category: "auth.telegram",
+        level: "error",
+        message: "logAuthActivity insert failed (failure path)",
+      });
+    });
     Sentry.addBreadcrumb({
       category: "auth.telegram",
       level: "warning",
@@ -482,7 +494,19 @@ async function handleTelegramAuth(
       failureReason: "replay_detected",
       ipAddress: client.ipAddress,
       userAgent: client.userAgent,
-    }).catch(() => {});
+    }).catch((err) => {
+      // Non-fatal — but a replay-detection attempt that failed to
+      // record is the LEAST tolerable telemetry loss. Surface loudly.
+      logger.warn(
+        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
+        "logAuthActivity: failed to record telegram-auth replay-detected event",
+      );
+      Sentry.addBreadcrumb({
+        category: "auth.telegram",
+        level: "error",
+        message: "logAuthActivity insert failed (replay-detected path)",
+      });
+    });
     Sentry.addBreadcrumb({
       category: "auth.telegram",
       level: "error",
@@ -517,7 +541,19 @@ async function handleTelegramAuth(
     success: true,
     ipAddress: client.ipAddress,
     userAgent: client.userAgent,
-  }).catch(() => {});
+  }).catch((err) => {
+    // Non-fatal — successful login still proceeds. Log so the
+    // success record's absence in auth_activity is auditable.
+    logger.warn(
+      { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
+      "logAuthActivity: failed to record telegram-auth success",
+    );
+    Sentry.addBreadcrumb({
+      category: "auth.telegram",
+      level: "warning",
+      message: "logAuthActivity insert failed (success path)",
+    });
+  });
 
   Sentry.addBreadcrumb({
     category: "auth.telegram",

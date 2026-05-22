@@ -92,6 +92,19 @@ export async function runMigrations() {
       );
     `);
 
+    // Products lookup indexes — mirror the declarations in
+    // shared/db/src/schema/products.ts. Without these the catalog
+    // filter (is_active=true AND is_archived=false) and the
+    // category filter both seq-scan, which is fine at <100 rows but
+    // becomes the storefront's hot-path bottleneck above ~1k products.
+    // Idempotent — safe to re-run on every cold boot.
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+      CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
+      CREATE INDEX IF NOT EXISTS idx_products_archived ON products(is_archived);
+      CREATE INDEX IF NOT EXISTS idx_products_active_category ON products(is_active, category);
+    `);
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS inventory (
         id               SERIAL PRIMARY KEY,
@@ -565,6 +578,7 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id);
       CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_user_auth_identities_provider_uid ON user_auth_identities(provider, provider_uid);
       CREATE INDEX IF NOT EXISTS idx_user_auth_identities_user ON user_auth_identities(user_id);
       CREATE INDEX IF NOT EXISTS idx_user_auth_identities_firebase_uid ON user_auth_identities(firebase_uid);

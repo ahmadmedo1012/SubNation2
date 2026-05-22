@@ -31,6 +31,7 @@
  *     fires once per process so degraded mode is observable, not silent.
  */
 
+import { Counter, Histogram } from "prom-client";
 import { createClient, type RedisClientType } from "redis";
 import { logger } from "./logger";
 import { captureSubsystemException } from "./sentry";
@@ -57,12 +58,10 @@ const DEGRADED_COUNTER_NAME = "redis_degraded_mode_total";
 function ensurePingHistogram() {
   const reg = getRegistry();
   let hist = reg.getSingleMetric(PING_HISTOGRAM_NAME) as
-    | import("prom-client").Histogram<string>
+    | Histogram<string>
     | undefined;
   if (!hist) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const promClient = require("prom-client") as typeof import("prom-client");
-    hist = new promClient.Histogram({
+    hist = new Histogram({
       name: PING_HISTOGRAM_NAME,
       help: "Latency of Redis PING (seconds) sampled by the in-process watchdog",
       buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
@@ -75,12 +74,10 @@ function ensurePingHistogram() {
 function ensureDegradedCounter() {
   const reg = getRegistry();
   let counter = reg.getSingleMetric(DEGRADED_COUNTER_NAME) as
-    | import("prom-client").Counter<string>
+    | Counter<string>
     | undefined;
   if (!counter) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const promClient = require("prom-client") as typeof import("prom-client");
-    counter = new promClient.Counter({
+    counter = new Counter({
       name: DEGRADED_COUNTER_NAME,
       help: "Number of times the Redis singleton entered degraded (in-memory fallback) mode",
       labelNames: ["reason"] as const,

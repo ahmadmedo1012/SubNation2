@@ -1,6 +1,7 @@
 import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
+import { POINTS_PER_REFERRAL } from "../routes/loyalty";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
@@ -96,10 +97,20 @@ export class TopupService {
           .limit(1);
         if (current?.status !== "pending") throw new ServiceError(409, "الطلب تمت معالجته مسبقاً");
 
-        await tx
+        // The status flip is also guarded at the UPDATE level. The
+        // SELECT above is the fast-fail check; this WHERE clause is
+        // the actual race protection — two concurrent approves both
+        // pass the SELECT (READ COMMITTED), then serialize on the
+        // row lock; the second UPDATE matches 0 rows and throws,
+        // preventing double-credit of the wallet.
+        const flipped = await tx
           .update(walletTopupsTable)
           .set({ status: "approved", adminNote, reviewedAt: new Date() })
-          .where(eq(walletTopupsTable.id, topupId));
+          .where(and(eq(walletTopupsTable.id, topupId), eq(walletTopupsTable.status, "pending")))
+          .returning({ id: walletTopupsTable.id });
+        if (flipped.length !== 1) {
+          throw new ServiceError(409, "الطلب تمت معالجته مسبقاً");
+        }
 
         if (user) {
           const balanceBefore = parseFloat(String(user.walletBalance));
@@ -147,9 +158,14 @@ export class TopupService {
                 .where(eq(usersTable.id, user.referredBy))
                 .limit(1);
               if (referrer) {
+                // Atomic SQL increment — prevents lost-update race when two
+                // concurrent topups for distinct referees share the same
+                // referrer. Same pattern as admin/referrals.ts:115.
                 await tx
                   .update(usersTable)
-                  .set({ loyaltyPoints: referrer.loyaltyPoints + 50 })
+                  .set({
+                    loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS_PER_REFERRAL}`,
+                  })
                   .where(eq(usersTable.id, referrer.id));
               }
             }
@@ -210,10 +226,16 @@ export class TopupService {
     if (!topup) throw new ServiceError(404, "طلب الشحن غير موجود");
     if (topup.status !== "pending") throw new ServiceError(400, "الطلب تمت معالجته مسبقاً");
 
-    await db
+    // Same race-protection as approve: the WHERE status='pending'
+    // clause + rowsAffected check makes a double-click idempotent.
+    const flipped = await db
       .update(walletTopupsTable)
       .set({ status: "rejected", adminNote, reviewedAt: new Date() })
-      .where(eq(walletTopupsTable.id, topupId));
+      .where(and(eq(walletTopupsTable.id, topupId), eq(walletTopupsTable.status, "pending")))
+      .returning({ id: walletTopupsTable.id });
+    if (flipped.length !== 1) {
+      throw new ServiceError(409, "الطلب تمت معالجته مسبقاً");
+    }
 
     const [rejUser] = await db
       .select()
