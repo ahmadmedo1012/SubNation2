@@ -1,5 +1,6 @@
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
@@ -15,6 +16,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Moon,
   Package,
   Plus,
   RefreshCw,
@@ -22,6 +24,7 @@ import {
   Settings,
   Shield,
   ShoppingBag,
+  Sun,
   Tag,
   Users,
   Wallet,
@@ -318,6 +321,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [location] = useLocation();
   const { adminToken, adminLogout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -630,6 +634,22 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
             <span className="hidden sm:inline">{refreshLabel}</span>
           </div>
+
+          {/* Theme toggle — always visible. Reuses the app-level
+              ThemeProvider context so the toggle in the public navbar
+              and this one stay in lockstep. */}
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
+            title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
+            aria-label="تبديل الثيم"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-3.5 h-3.5" />
+            ) : (
+              <Moon className="w-3.5 h-3.5" />
+            )}
+          </button>
 
           {onRefresh && (
             <button

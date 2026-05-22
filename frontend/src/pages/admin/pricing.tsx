@@ -19,6 +19,7 @@ import {
   useListAdminProducts,
   getListAdminProductsQueryKey,
 } from "@workspace/api-client-react";
+import { AdminLayout } from "./layout";
 
 /**
  * Admin Pricing Calculator
@@ -214,21 +215,23 @@ export default function AdminPricingPage() {
   if (!adminToken) return null;
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-          <Calculator className="w-5 h-5 text-primary" />
+    <AdminLayout onRefresh={canCalculate ? calculate : undefined}>
+      <div className="max-w-4xl mx-auto space-y-5">
+        {/* Page-section header (kept narrow — global admin chrome
+            comes from AdminLayout above). */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Calculator className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="font-black text-lg">حاسبة الأسعار والأرباح</h1>
+            <p className="text-xs text-muted-foreground">
+              للقراءة فقط — لا يُغيّر أي سعر أو كوبون. يحاكي منطق نظام الطلبات الفعلي.
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="font-black text-lg">حاسبة الأسعار والأرباح</h1>
-          <p className="text-xs text-muted-foreground">
-            للقراءة فقط — لا يُغيّر أي سعر أو كوبون. يحاكي منطق نظام الطلبات الفعلي.
-          </p>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* ── INPUTS ─────────────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
           <h2 className="font-black text-sm flex items-center gap-2">
@@ -430,6 +433,7 @@ export default function AdminPricingPage() {
         تستخدم الحاسبة منطق نظام الطلبات الفعلي (تخفيضات + كوبونات + ولاء + إحالات). أي تغيير في
         النظام الفعلي يجب أن ينعكس هنا.
       </div>
-    </div>
+      </div>
+    </AdminLayout>
   );
 }
