@@ -1,4 +1,4 @@
-import { db, flashSalesTable, inventoryTable, ordersTable, productsTable } from "@workspace/db";
+import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
 import { applyFlashSale } from "../lib/pricing";
 import { and, count, eq, gt, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
