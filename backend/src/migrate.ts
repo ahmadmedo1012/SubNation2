@@ -105,6 +105,65 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_products_active_category ON products(is_active, category);
     `);
 
+    // Slug column + backfill + unique index — used by /product/<slug>
+    // SEO routes. The rich Arabic-aware transliteration lives in
+    // backend/src/lib/slugify.ts and runs on insert/update via the
+    // admin handlers. The SQL backfill below is best-effort: it only
+    // strips non-alphanumerics from Latin names. Rows whose name
+    // collapses to empty (Arabic-only, emoji-only, etc.) get the
+    // `product-<id>` fallback so the column is never NULL.
+    //
+    // Idempotent across all four states:
+    //   - column missing                 → ADD COLUMN
+    //   - column present, slug NULL      → backfill UPDATE
+    //   - column present, slug set       → no-op
+    //   - unique index missing           → CREATE
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'products' AND column_name = 'slug'
+        ) THEN
+          ALTER TABLE products ADD COLUMN slug VARCHAR(160);
+        END IF;
+      END $$;
+    `);
+
+    // Best-effort SQL backfill: lowercase, replace anything non-[a-z0-9]
+    // with '-', collapse repeated '-', trim. Falls back to product-<id>
+    // when the result is empty.
+    await db.execute(sql`
+      UPDATE products
+      SET slug = COALESCE(
+        NULLIF(
+          trim(BOTH '-' FROM regexp_replace(
+            regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g'),
+            '-+', '-', 'g'
+          )),
+          ''
+        ),
+        'product-' || id::text
+      )
+      WHERE slug IS NULL;
+    `);
+
+    // Resolve any backfill-time collisions by suffixing -<id> on the
+    // duplicates. Stable: when two rows share a slug, the lower id
+    // keeps the bare slug, the higher id gets the suffix.
+    await db.execute(sql`
+      UPDATE products p
+      SET slug = p.slug || '-' || p.id::text
+      FROM products other
+      WHERE p.slug = other.slug
+        AND p.id > other.id;
+    `);
+
+    // Unique index — also accelerates /api/products/by-slug/:slug.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_products_slug_unique ON products(slug);
+    `);
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS inventory (
         id               SERIAL PRIMARY KEY,

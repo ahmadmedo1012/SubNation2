@@ -5,6 +5,7 @@ import { Zap, Lock, Tag, Star, ShoppingCart, AlertTriangle } from "lucide-react"
 
 interface Product {
   id: number;
+  slug?: string | null;
   name: string;
   description?: string | null;
   image_url?: string | null;
@@ -85,7 +86,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
 
   return (
-    <Link href={`/product/${product.id}`}>
+    <Link href={`/product/${product.slug ?? product.id}`}>
       <div
         className={`
         group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col

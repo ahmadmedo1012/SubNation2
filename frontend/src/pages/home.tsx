@@ -707,6 +707,7 @@ export default function HomePage() {
                   product={
                     product as {
                       id: number;
+                      slug?: string | null;
                       name: string;
                       description?: string | null;
                       image_url?: string | null;

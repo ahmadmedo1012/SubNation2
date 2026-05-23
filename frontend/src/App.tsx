@@ -194,7 +194,7 @@ function AppRoutes() {
               <Route path="/login" component={LoginPage} />
               <Route path="/register" component={RegisterPage} />
               <Route path="/onboarding" component={OnboardingPage} />
-              <Route path="/product/:id" component={ProductPage} />
+              <Route path="/product/:slug" component={ProductPage} />
               <Route path="/wallet" component={WalletPage} />
               <Route path="/orders" component={OrdersPage} />
               <Route path="/orders/:orderCode" component={OrderDetailPage} />

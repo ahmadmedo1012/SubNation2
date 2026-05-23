@@ -29,6 +29,7 @@
  * 10-100 ms (joins), tail at 100-1000 ms (admin reports).
  */
 
+import { Histogram } from "prom-client";
 import { logger } from "./logger";
 import { getRegistry, safeObserve } from "./metrics";
 import { captureSubsystemException } from "./sentry";
@@ -71,13 +72,9 @@ function getThresholdMs(): number {
  */
 function getDurationHistogram() {
   const reg = getRegistry();
-  let hist = reg.getSingleMetric(HISTOGRAM_NAME) as
-    | import("prom-client").Histogram<string>
-    | undefined;
+  let hist = reg.getSingleMetric(HISTOGRAM_NAME) as Histogram<string> | undefined;
   if (!hist) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const promClient = require("prom-client") as typeof import("prom-client");
-    hist = new promClient.Histogram({
+    hist = new Histogram({
       name: HISTOGRAM_NAME,
       help: "Postgres query duration (seconds)",
       labelNames: ["slow"],

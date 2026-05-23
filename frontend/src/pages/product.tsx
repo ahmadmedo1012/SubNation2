@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { buildBreadcrumbLd, buildProductLd } from "@/lib/seo-builders";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getGetMeQueryKey,
   getGetProductQueryKey,
@@ -36,7 +36,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
@@ -92,7 +92,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 export default function ProductPage() {
-  const { id } = useParams<{ id: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -111,11 +111,67 @@ export default function ProductPage() {
   }>(null);
   const [couponError, setCouponError] = useState("");
 
-  const numericId = parseInt(id ?? "0");
+  // ── Slug-or-id routing ─────────────────────────────────────────────
+  // The route `/product/:slug` accepts both:
+  //   - numeric id (legacy URLs, bookmarks, sitemap entries from before
+  //     the slug migration ran — fetched by id, then transparently
+  //     redirected to the canonical slug URL for SEO)
+  //   - URL-safe slug (post-migration canonical form)
+  //
+  // We detect "numeric" with a strict regex: `/^\d+$/` rather than
+  // `parseInt`, because parseInt("12-foo") = 12 which would mismatch
+  // a slug that happens to start with digits ("12-month-plan").
+  const param = slug ?? "";
+  const isLegacyNumeric = /^\d+$/.test(param);
+  const numericId = isLegacyNumeric ? parseInt(param, 10) : 0;
 
-  const { data: product, isLoading } = useGetProduct(numericId, {
-    query: { queryKey: getGetProductQueryKey(numericId), enabled: !!numericId },
+  // Path 1: numeric id (legacy). Use the typed orval client.
+  const byIdQuery = useGetProduct(numericId, {
+    query: {
+      queryKey: getGetProductQueryKey(numericId),
+      enabled: isLegacyNumeric && numericId > 0,
+    },
   });
+
+  // Path 2: slug (canonical). Raw fetch — the new /api/products/by-slug/:slug
+  // endpoint isn't in the orval-generated client yet, but the response shape
+  // is byte-for-byte identical to the by-id response, so the rest of this
+  // page's render code is fully shape-agnostic.
+  const bySlugQuery = useQuery({
+    queryKey: ["product-by-slug", param],
+    enabled: !isLegacyNumeric && !!param,
+    queryFn: async () => {
+      const res = await fetch(`/api/products/by-slug/${encodeURIComponent(param)}`, {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (res.status === 404) {
+        const err = new Error("not_found") as Error & { status: number };
+        err.status = 404;
+        throw err;
+      }
+      if (!res.ok) throw new Error(`Product fetch failed: ${res.status}`);
+      return res.json();
+    },
+    retry: false,
+  });
+
+  const product = (isLegacyNumeric ? byIdQuery.data : bySlugQuery.data) as
+    | (typeof byIdQuery.data & { slug?: string | null })
+    | undefined;
+  const isLoading = isLegacyNumeric ? byIdQuery.isLoading : bySlugQuery.isLoading;
+
+  // After a numeric-id fetch resolves and the product carries a slug,
+  // rewrite the URL to the canonical slug form via history.replaceState.
+  // We DON'T navigate via wouter — that would unmount the component
+  // and refetch. replaceState updates the bar without a route change.
+  useEffect(() => {
+    if (!isLegacyNumeric) return;
+    const productSlug = (byIdQuery.data as { slug?: string | null } | undefined)?.slug;
+    if (productSlug && typeof window !== "undefined") {
+      window.history.replaceState(null, "", `/product/${productSlug}`);
+    }
+  }, [isLegacyNumeric, byIdQuery.data]);
 
   const { data: user } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
@@ -222,7 +278,11 @@ export default function ProductPage() {
     ).slice(0, 160),
     image: product.image_url ?? undefined,
     type: "product",
-    path: `/product/${product.id}`,
+    // Canonical URL must use the slug for SEO. Falls back to id when
+    // the product somehow has no slug (defensive — should never happen
+    // post-migration but covers the case where a fresh row hasn't yet
+    // been backfilled by the admin POST handler).
+    path: `/product/${product.slug ?? product.id}`,
     locale: "ar",
     jsonLd: [
       buildProductLd({
@@ -237,7 +297,7 @@ export default function ProductPage() {
       buildBreadcrumbLd([
         { name: "الرئيسية", href: "/" },
         { name: categoryLabel(product.category ?? "") || "المنتجات", href: "/" },
-        { name: product.name, href: `/product/${product.id}` },
+        { name: product.name, href: `/product/${product.slug ?? product.id}` },
       ]),
     ],
   });
@@ -528,8 +588,10 @@ export default function ProductPage() {
         </div>
       </div>
 
-      {/* Recommendations Section */}
-      <RecommendationsSection numericId={numericId} />
+      {/* Recommendations Section. Pass the resolved product id from
+          either fetch path — `numericId` is 0 when the URL is a slug,
+          so we MUST use product.id which is filled by both branches. */}
+      <RecommendationsSection numericId={product.id} />
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div

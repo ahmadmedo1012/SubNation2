@@ -98,6 +98,7 @@ router.get("/", catalogCache, async (req, res) => {
   let query = db
     .select({
       id: productsTable.id,
+      slug: productsTable.slug,
       name: productsTable.name,
       description: productsTable.description,
       imageUrl: productsTable.imageUrl,
@@ -129,6 +130,7 @@ router.get("/", catalogCache, async (req, res) => {
     const stockCount = Number(p.stockCount ?? 0);
     return {
       id: p.id,
+      slug: p.slug,
       name: p.name,
       description: p.description,
       image_url: p.imageUrl,
@@ -189,6 +191,63 @@ export async function getFlashSaleHandler(_req: Request, res: Response) {
 router.get("/stats", catalogCache, getProductStatsHandler);
 router.get("/flash-sale", flashSaleCache, getFlashSaleHandler);
 
+// ── /api/products/by-slug/:slug ─────────────────────────────────────────────
+// SEO-friendly product lookup. Used by the new /product/<slug> frontend
+// route + sitemap-driven crawler hits. Same response shape as /:id so
+// the frontend can swap the URL pattern transparently.
+//
+// MUST be registered BEFORE /:id — Express does first-match routing, so
+// without this ordering /by-slug/foo would match /:id with id="foo" and
+// return 400 from the intParam guard.
+router.get("/by-slug/:slug", catalogCache, async (req, res) => {
+  const slug = String(req.params.slug ?? "").trim().toLowerCase();
+  if (!slug || slug.length > 160) {
+    return res.status(400).json({ error: "معرف المنتج غير صالح" });
+  }
+
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
+    .limit(1);
+
+  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+
+  const [stockResult] = await db
+    .select({ count: count() })
+    .from(inventoryTable)
+    .where(and(eq(inventoryTable.productId, product.id), eq(inventoryTable.isSold, false)));
+
+  const [orderResult] = await db
+    .select({ count: count() })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed")));
+
+  const flashSale = await getActiveFlashSale();
+  const basePrice = parseFloat(String(product.price));
+  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+  const salePrice =
+    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+  const stockCount = Number(stockResult?.count ?? 0);
+
+  return res.json({
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    description: product.description,
+    image_url: product.imageUrl,
+    price: basePrice,
+    category: product.category,
+    is_active: product.isActive,
+    usage_terms: product.usageTerms,
+    stock_count: stockCount,
+    is_available: stockCount > 0,
+    sale_price: salePrice,
+    discount_percent: discountPercent > 0 ? discountPercent : null,
+    order_count: Number(orderResult?.count ?? 0),
+  });
+});
+
 router.get("/:id", catalogCache, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
@@ -220,6 +279,7 @@ router.get("/:id", catalogCache, async (req, res) => {
 
   return res.json({
     id: product.id,
+    slug: product.slug,
     name: product.name,
     description: product.description,
     image_url: product.imageUrl,
@@ -235,6 +295,13 @@ router.get("/:id", catalogCache, async (req, res) => {
   });
 });
 
+// ── /api/products/by-slug/:slug ─────────────────────────────────────────────
+// SEO-friendly product lookup. Used by the new /product/<slug> frontend
+// route + sitemap-driven crawler hits. Same response shape as /:id so
+// the frontend can swap the URL pattern transparently.
+//
+// Mounted BEFORE /:id at the parent /products router level so Express's
+// route matcher hits "by-slug" before the numeric :id catch-all.
 router.get("/:id/recommendations", catalogCache, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json({ error: "معرف غير صالح" });

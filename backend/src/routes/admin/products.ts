@@ -5,6 +5,7 @@ import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { encrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
+import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
 
@@ -17,6 +18,7 @@ router.get("/products", requireAdmin, async (_req, res) => {
   const products = await db
     .select({
       id: productsTable.id,
+      slug: productsTable.slug,
       name: productsTable.name,
       description: productsTable.description,
       imageUrl: productsTable.imageUrl,
@@ -51,6 +53,7 @@ router.get("/products", requireAdmin, async (_req, res) => {
   return res.json(
     products.map((p) => ({
       id: p.id,
+      slug: p.slug,
       name: p.name,
       description: p.description,
       image_url: p.imageUrl,
@@ -72,7 +75,12 @@ router.post("/products", requireAdmin, async (req, res) => {
   if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   const data = parse.data;
 
-  const [product] = await db
+  // Two-step insert + slug derivation. We need the id to be assigned by the
+  // serial PK before we can fall back to `product-<id>` for any name that
+  // produces an empty slug. Worst case (rare): two products with the same
+  // name insert simultaneously and clash on the unique slug index — the
+  // catch retries with the id-suffixed form which is guaranteed unique.
+  const [inserted] = await db
     .insert(productsTable)
     .values({
       name: data.name,
@@ -86,9 +94,37 @@ router.post("/products", requireAdmin, async (req, res) => {
     })
     .returning();
 
+  let slug = slugifyWithId(data.name, inserted.id, /* withIdSuffix */ false);
+  let product = inserted;
+  try {
+    [product] = await db
+      .update(productsTable)
+      .set({ slug })
+      .where(eq(productsTable.id, inserted.id))
+      .returning();
+  } catch (err) {
+    // Unique constraint violation on slug — fall back to id-suffixed form.
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: string }).code === "23505"
+    ) {
+      slug = slugifyWithId(data.name, inserted.id, /* withIdSuffix */ true);
+      [product] = await db
+        .update(productsTable)
+        .set({ slug })
+        .where(eq(productsTable.id, inserted.id))
+        .returning();
+    } else {
+      throw err;
+    }
+  }
+
   bumpSitemapCache();
   void writeAuditLog(req, "product.create", "product", product.id, {
     name: data.name,
+    slug,
     price: data.price,
     cost_price: data.cost_price ?? null,
     category: data.category,
@@ -96,6 +132,7 @@ router.post("/products", requireAdmin, async (req, res) => {
 
   return res.status(201).json({
     id: product.id,
+    slug: product.slug,
     name: product.name,
     description: product.description,
     image_url: product.imageUrl,
@@ -158,6 +195,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
 
   return res.json({
     id: product.id,
+    slug: product.slug,
     name: product.name,
     description: product.description,
     image_url: product.imageUrl,

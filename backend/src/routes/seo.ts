@@ -164,6 +164,7 @@ async function buildSitemap(): Promise<string> {
   const products = await db
     .select({
       id: productsTable.id,
+      slug: productsTable.slug,
       updatedAt: productsTable.updatedAt,
     })
     .from(productsTable)
@@ -176,7 +177,10 @@ async function buildSitemap(): Promise<string> {
 
   const productEntries = products.map((p) =>
     urlEntry(
-      `${APP_ORIGIN}/product/${p.id}`,
+      // Prefer slug over id for SEO crawlability. Defensive fallback to
+      // `product-<id>` for any (impossible-post-migration) row whose
+      // slug is null — keeps the sitemap valid.
+      `${APP_ORIGIN}/product/${p.slug ?? `product-${p.id}`}`,
       (p.updatedAt instanceof Date ? p.updatedAt : new Date()).toISOString(),
       "weekly",
       "0.8",
