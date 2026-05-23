@@ -52,6 +52,7 @@
 import * as Sentry from "@sentry/node";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { Server as HttpServer } from "http";
+import { Counter } from "prom-client";
 import { createClient } from "redis";
 import { Server as SocketServer, type Socket } from "socket.io";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
@@ -213,13 +214,9 @@ export function authorizeJoinAdmin(identity: SocketIdentity | undefined): boolea
 function getAuthRejectedCounter() {
   const reg = getRegistry();
   const name = "socket_auth_rejected_total";
-  let counter = reg.getSingleMetric(name) as
-    | import("prom-client").Counter<string>
-    | undefined;
+  let counter = reg.getSingleMetric(name) as Counter<string> | undefined;
   if (!counter) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const promClient = require("prom-client") as typeof import("prom-client");
-    counter = new promClient.Counter({
+    counter = new Counter({
       name,
       help: "Socket.IO connection or room-join attempts rejected by auth gate",
       labelNames: ["reason"],
