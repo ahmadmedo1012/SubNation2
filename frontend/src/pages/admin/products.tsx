@@ -753,7 +753,7 @@ export default function AdminProductsPage() {
                         )}
                         {product.stock_count === 0 && product.is_active && (
                           <span className="text-[9px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded">
-                            نفذ المخزون
+                            نفد المخزون
                           </span>
                         )}
                       </div>

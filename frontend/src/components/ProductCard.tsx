@@ -85,8 +85,26 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const staggerClass = STAGGER[Math.min(index, 8)] ?? "";
   const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
 
+  // ── Accessibility ─────────────────────────────────────────────────
+  // Compose a single descriptive aria-label for the whole card so
+  // screen readers announce the full state on a single focus event.
+  // Visually, the same information lives in scattered badges + the
+  // muted opacity treatment; aria collapses it into one phrase.
+  const ariaLabelParts = [
+    product.name,
+    categoryLabel(product.category),
+    `السعر ${formatCurrency(displayPrice)}`,
+    unavailable ? "نفد المخزون" : null,
+    isLowStock ? `آخر ${product.stock_count} متوفرة` : null,
+  ].filter(Boolean);
+  const ariaLabel = ariaLabelParts.join("، ");
+
   return (
-    <Link href={`/product/${product.slug ?? product.id}`}>
+    <Link
+      href={`/product/${product.slug ?? product.id}`}
+      aria-label={ariaLabel}
+      aria-disabled={unavailable || undefined}
+    >
       <div
         className={`
         group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col
@@ -104,8 +122,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         )}
 
         {unavailable && (
-          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/55 text-[10px] font-bold px-2 py-0.5 rounded-full">
-            <Lock className="w-2.5 h-2.5" /> نفذ
+          <div
+            className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/55 text-[10px] font-bold px-2 py-0.5 rounded-full"
+            aria-hidden="true"
+          >
+            <Lock className="w-2.5 h-2.5" /> نفد
           </div>
         )}
 
@@ -199,8 +220,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
             {product.is_available ? (
               isLowStock ? (
-                <div className="flex items-center gap-0.5 text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-full">
-                  <AlertTriangle className="w-2.5 h-2.5" />
+                <div
+                  className="flex items-center gap-0.5 text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-full"
+                  aria-label={`مخزون منخفض، آخر ${product.stock_count} متوفرة`}
+                >
+                  <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />
                   آخر {product.stock_count}
                 </div>
               ) : (
@@ -209,14 +233,27 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 </div>
               )
             ) : (
-              <span className="text-[10px] text-muted-foreground">غير متوفر</span>
+              <span className="text-[10px] font-bold text-muted-foreground/80">نفد</span>
             )}
           </div>
 
-          {product.is_available && (
+          {product.is_available ? (
             <div className="mt-3 md:hidden h-9 rounded-xl bg-primary flex items-center justify-center gap-1.5 text-white text-xs font-black shadow-lg shadow-primary/25">
               <ShoppingCart className="w-3.5 h-3.5" />
               اشترِ الآن
+            </div>
+          ) : (
+            // Mobile: keep card height stable when unavailable by
+            // rendering a static muted bar in place of the buy CTA.
+            // Same h-9 as the active button so the card visual rhythm
+            // is identical across states. Desktop uses a hover-reveal
+            // CTA that's already absent for unavailable products.
+            <div
+              className="mt-3 md:hidden h-9 rounded-xl bg-muted/40 border border-border/40 flex items-center justify-center gap-1.5 text-muted-foreground text-xs font-bold"
+              aria-hidden="true"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              نفد المخزون
             </div>
           )}
         </div>

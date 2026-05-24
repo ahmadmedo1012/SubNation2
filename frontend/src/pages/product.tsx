@@ -480,6 +480,13 @@ export default function ProductPage() {
               )}
             </div>
             <div
+              role="status"
+              aria-live="polite"
+              aria-label={
+                product.is_available
+                  ? `المنتج متوفر، الكمية ${product.stock_count}`
+                  : "نفد المخزون"
+              }
               className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
                 product.is_available
                   ? "bg-emerald-500/10 border-emerald-500/22 text-emerald-400"
@@ -488,11 +495,11 @@ export default function ProductPage() {
             >
               {product.is_available ? (
                 <>
-                  <CheckCircle className="w-3.5 h-3.5" /> متوفر ({product.stock_count})
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر ({product.stock_count})
                 </>
               ) : (
                 <>
-                  <Lock className="w-3.5 h-3.5" /> نفذ المخزون
+                  <Lock className="w-3.5 h-3.5" aria-hidden="true" /> نفد المخزون
                 </>
               )}
             </div>
@@ -800,7 +807,7 @@ function CtaBlock({
 
   if (!product.is_available) {
     return (
-      <div className={compact ? "flex items-center gap-3" : ""}>
+      <div className={compact ? "flex items-center gap-3" : "space-y-2"}>
         {compact && (
           <div className="flex-1 font-black text-xl text-muted-foreground tabular-nums">
             {formatCurrency(displayPrice)}
@@ -808,10 +815,21 @@ function CtaBlock({
         )}
         <Button
           disabled
+          aria-label="نفد المخزون — غير متاح للشراء حالياً"
           className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"}`}
         >
-          <Lock className="w-4 h-4 ml-2" /> نفذ المخزون
+          <Lock className="w-4 h-4 ml-2" /> نفد المخزون
         </Button>
+        {/*
+          Recovery hint — gives the user a reason to come back instead of
+          presenting a dead-end. Hidden in compact (sticky-bar) mode so the
+          mobile sticky bar stays single-line.
+        */}
+        {!compact && (
+          <p className="text-center text-xs text-muted-foreground">
+            تحقّق لاحقاً، قد يعود قريباً
+          </p>
+        )}
       </div>
     );
   }
