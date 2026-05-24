@@ -264,7 +264,6 @@ export default function ProductPage() {
     );
 
   const displayPrice = product.sale_price ?? product.price;
-  const canAfford = user && (user.wallet_balance ?? 0) >= displayPrice;
   const gradientClass =
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
     "from-primary/20 via-primary/8 to-transparent";
@@ -301,7 +300,6 @@ export default function ProductPage() {
       ]),
     ],
   });
-  const shortfall = displayPrice - (user?.wallet_balance ?? 0);
 
   // ── Order success ─────────────────────────────────────────────────────────
   if (orderResult) {

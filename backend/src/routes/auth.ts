@@ -1,6 +1,5 @@
 import {
   db,
-  referralEventsTable,
   sessionsTable,
   userAuthIdentitiesTable,
   usersTable,
@@ -9,7 +8,6 @@ import { and, eq } from "drizzle-orm";
 import { Router } from "express";
 import crypto from "node:crypto";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
-import { generateReferralCode } from "../lib/crypto";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";

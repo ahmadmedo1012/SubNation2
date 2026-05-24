@@ -273,7 +273,6 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
   initialised = true;
 
   if (!process.env.SENTRY_DSN) {
-    // eslint-disable-next-line no-console
     console.warn(
       "[sentry] NOT initialized — SENTRY_DSN env var is unset. " +
         "Backend Sentry capture is DISABLED. Set SENTRY_DSN in Render Dashboard → Environment.",
@@ -389,7 +388,6 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
   // scope so per-call captures inherit.
   Sentry.setTags(tags);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(
       "[sentry] init FAILED — backend Sentry capture is DISABLED:",
       err instanceof Error ? err.message : String(err),
@@ -397,7 +395,6 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
     return undefined;
   }
 
-  // eslint-disable-next-line no-console
   console.log(
     `[sentry] initialized — host=${dsnHost} env=${process.env.NODE_ENV || "development"} ` +
       `release=${tags.git_commit} traces=${process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"} ` +

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, couponsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
-import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router = Router();

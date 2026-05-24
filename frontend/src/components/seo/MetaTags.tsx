@@ -46,7 +46,6 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): ReactElement {
   const url = `${origin}${input.path.startsWith("/") ? input.path : "/" + input.path}`;
   const image = input.image ?? `${origin}${DEFAULT_IMAGE}`;
   const lang = input.locale ?? "ar";
-  const dir = lang === "ar" ? "rtl" : "ltr";
   const ogLocale = lang === "ar" ? "ar_LY" : "en_US";
   const ogLocaleAlt = lang === "ar" ? "en_US" : "ar_LY";
   const title = clamp(input.title.trim(), 60);

@@ -15,7 +15,6 @@
 
 import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import * as Sentry from "@sentry/node";
-import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { generateReferralCode } from "../lib/crypto";
@@ -174,15 +173,6 @@ function buildMaskedConfig(
     masked[field.key] = field.isSecret ? maskSecret(config[field.key]) : (config[field.key] ?? "");
   }
   return masked;
-}
-
-function getAppUrl(): string {
-  if (process.env.APP_URL) {
-    return process.env.APP_URL.replace(/\/+$/, "");
-  }
-
-  const port = process.env.PORT ?? process.env.API_PORT ?? "8080";
-  return `http://127.0.0.1:${port}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

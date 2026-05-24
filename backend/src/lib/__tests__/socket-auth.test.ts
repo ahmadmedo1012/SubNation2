@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET, signAdminToken, signUserToken } from "../jwt";
 import {

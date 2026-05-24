@@ -29,7 +29,6 @@ export function AdminSecurityDashboard() {
   const [stats, setStats] = useState<AuthStats | null>(null);
   const [activities, setActivities] = useState<AuthActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     action: "all",
     success: "all",
@@ -50,10 +49,8 @@ export function AdminSecurityDashboard() {
       if (!response.ok) throw new Error("Failed to fetch stats");
       const data = await response.json();
       setStats(data);
-      setError(null);
     } catch (error) {
       console.error("Failed to fetch stats:", error);
-      setError("فشل في جلب الإحصائيات");
     }
   };
 
@@ -69,10 +66,8 @@ export function AdminSecurityDashboard() {
       if (!response.ok) throw new Error("Failed to fetch activities");
       const data = await response.json();
       setActivities(data.activities || []);
-      setError(null);
     } catch (error) {
       console.error("Failed to fetch activities:", error);
-      setError("فشل في جلب سجل النشاط");
     } finally {
       setLoading(false);
     }

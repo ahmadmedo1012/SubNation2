@@ -38,11 +38,6 @@ interface Coupon {
   created_at: string;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  percentage: "نسبة مئوية",
-  fixed: "مبلغ ثابت",
-};
-
 function TableSkeleton() {
   return (
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">

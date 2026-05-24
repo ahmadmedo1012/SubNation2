@@ -30,12 +30,10 @@ if (!dsn) {
     // each Sentry project's DSN is exclusively env-controlled. Production
     // builds without the env are misconfigured — log loudly so it's caught
     // before traffic exposes the gap.
-    // eslint-disable-next-line no-console
     console.error(
       "[sentry] VITE_SENTRY_DSN is not set in production. Frontend errors will not be reported.",
     );
   } else {
-    // eslint-disable-next-line no-console
     console.info("[sentry] VITE_SENTRY_DSN not set — Sentry disabled in dev.");
   }
 }

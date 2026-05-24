@@ -41,7 +41,6 @@ import { AdminLayout } from "./layout";
 // ── Backend response shapes (mirror what the deployed API returns) ─────────
 
 import {
-  fetchHealthzReady,
   type CheckStatus,
   type HealthCheck,
   type HealthzReadyResponse,

@@ -38,7 +38,6 @@ process.on("uncaughtException", async (err: Error) => {
   // Re-raise to preserve Node's default exit behaviour. Sentry's integration
   // exits with code 1 by default; if a userland handler has overridden it
   // we keep the original semantics.
-  // eslint-disable-next-line no-console
   console.error("uncaughtException:", err);
   process.exit(1);
 });
@@ -54,7 +53,6 @@ process.on("unhandledRejection", async (reason: unknown) => {
   } catch {
     // ignore
   }
-  // eslint-disable-next-line no-console
   console.error("unhandledRejection:", reason);
   // Don't exit — unhandledRejection is typically a logical bug, not a
   // process-fatal condition. The default Sentry behaviour matches this.

@@ -25,7 +25,10 @@ export default tseslint.config(
       // Empty catch blocks are common in error-tolerant code
       "no-empty": ["error", { allowEmptyCatch: true }],
       // TypeScript: allow unused vars with _ prefix
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       // Allow any in route handlers temporarily (Phase 2 will clean these)
       "@typescript-eslint/no-explicit-any": "warn",
       // Non-null assertions are common in Drizzle queries

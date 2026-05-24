@@ -87,7 +87,7 @@ router.post("/login/verify-2fa", async (req, res) => {
 
     const token = signAdminToken({ adminId: admin.id, role: admin.role });
     return res.json({ token, display_name: admin.displayName });
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: "جلسة غير صالحة أو منتهية الصلاحية" });
   }
 });

@@ -1,4 +1,3 @@
-import { Tag, Package, AlertTriangle, Info } from "lucide-react";
 
 export type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system";
 

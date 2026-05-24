@@ -142,7 +142,7 @@ async function dispatchValidationFailureAlert(
 ): Promise<void> {
   try {
     // Import alerting service dynamically to avoid circular dependencies
-    const { alertingService, dispatchTestAlert } =
+    const { alertingService } =
       await import("../backend/src/services/alerting.service.js");
 
     // Build a validation failure alert event
@@ -378,9 +378,12 @@ async function checkSentry(): Promise<ValidationResult> {
       };
     }
 
-    // Send synthetic error via Sentry HTTP API
-    const sentryUrl = `https://sentry.io/api/${projectId}/store/`;
-    const errorEvent = {
+    // Send synthetic error via Sentry HTTP API.
+    // Variables are underscore-prefixed (lint convention for intentionally-
+    // unused) because the actual fetch below is commented out — they're
+    // scaffolding for when someone enables the live HTTP test.
+    const _sentryUrl = `https://sentry.io/api/${projectId}/store/`;
+    const _errorEvent = {
       event_id: crypto.randomUUID(),
       message: `Validation suite synthetic 500 - ${correlationId}`,
       timestamp: testTimestamp,
@@ -417,13 +420,13 @@ async function checkSentry(): Promise<ValidationResult> {
     };
 
     // In production, this would actually send the request
-    // const response = await fetch(sentryUrl, {
+    // const response = await fetch(_sentryUrl, {
     //   method: "POST",
     //   headers: {
     //     "Content-Type": "application/json",
     //     "X-Sentry-Auth": `sentry_version=7, sentry_client=lhci/0.11.0, sentry_key=${projectId}`,
     //   },
-    //   body: JSON.stringify(errorEvent),
+    //   body: JSON.stringify(_errorEvent),
     // });
 
     console.log(`[sentry] Would send synthetic error with correlation_id=${correlationId}`);

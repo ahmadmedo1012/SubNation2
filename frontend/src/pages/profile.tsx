@@ -3,9 +3,6 @@ import { CopyButton } from "@/components/CopyButton";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
@@ -13,14 +10,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, type User as MeUser, useGetMe } from "@workspace/api-client-react";
 import {
   AlertCircle,
-  CheckCircle,
   ChevronLeft,
   Crown,
-  Eye,
-  EyeOff,
   Gift,
   Link as LinkIcon,
-  Lock,
   LogOut,
   Mail,
   Phone,

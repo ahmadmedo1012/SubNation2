@@ -1,6 +1,6 @@
 import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
 import { applyFlashSale } from "../lib/pricing";
-import { and, count, eq, gt, min, sql } from "drizzle-orm";
+import { and, count, eq, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
 
