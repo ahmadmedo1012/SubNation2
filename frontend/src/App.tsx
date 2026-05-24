@@ -7,7 +7,8 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { useDocumentDirection } from "@/lib/direction";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
 // HelmetProvider is mounted once at the very top of the tree in main.tsx.
@@ -19,54 +20,54 @@ import { Navbar } from "@/components/layout/Navbar";
 import NotFound from "@/pages/not-found";
 
 // Non-critical layout deferred
-const FlashSaleBanner = lazy(() =>
+const FlashSaleBanner = lazyWithRetry(() =>
   import("@/components/layout/FlashSaleBanner").then((m) => ({ default: m.FlashSaleBanner })),
 );
-const Footer = lazy(() =>
+const Footer = lazyWithRetry(() =>
   import("@/components/layout/Footer").then((m) => ({ default: m.Footer })),
 );
-const MobileNav = lazy(() =>
+const MobileNav = lazyWithRetry(() =>
   import("@/components/layout/MobileNav").then((m) => ({ default: m.MobileNav })),
 );
 
 // All pages are lazily code-split to minimize initial bundle weight.
 // The HTML shell + vendor-react chunk are the only critical-path resources.
-const HomePage = lazy(() => import("@/pages/home"));
+const HomePage = lazyWithRetry(() => import("@/pages/home"));
 
-const AuthCallbackPage = lazy(() => import("@/pages/auth-callback"));
-const TelegramCallbackPage = lazy(() => import("@/pages/telegram-callback"));
-const LoginPage = lazy(() => import("@/pages/login"));
-const LoyaltyPage = lazy(() => import("@/pages/loyalty"));
-const OnboardingPage = lazy(() => import("@/pages/onboarding"));
-const OrderDetailPage = lazy(() => import("@/pages/order-detail"));
-const OrdersPage = lazy(() => import("@/pages/orders"));
-const ProductPage = lazy(() => import("@/pages/product"));
-const ProfilePage = lazy(() => import("@/pages/profile"));
-const ReferralsPage = lazy(() => import("@/pages/referrals"));
-const RegisterPage = lazy(() => import("@/pages/register"));
-const SupportPage = lazy(() => import("@/pages/support"));
-const TermsPage = lazy(() => import("@/pages/terms"));
-const WalletPage = lazy(() => import("@/pages/wallet"));
+const AuthCallbackPage = lazyWithRetry(() => import("@/pages/auth-callback"));
+const TelegramCallbackPage = lazyWithRetry(() => import("@/pages/telegram-callback"));
+const LoginPage = lazyWithRetry(() => import("@/pages/login"));
+const LoyaltyPage = lazyWithRetry(() => import("@/pages/loyalty"));
+const OnboardingPage = lazyWithRetry(() => import("@/pages/onboarding"));
+const OrderDetailPage = lazyWithRetry(() => import("@/pages/order-detail"));
+const OrdersPage = lazyWithRetry(() => import("@/pages/orders"));
+const ProductPage = lazyWithRetry(() => import("@/pages/product"));
+const ProfilePage = lazyWithRetry(() => import("@/pages/profile"));
+const ReferralsPage = lazyWithRetry(() => import("@/pages/referrals"));
+const RegisterPage = lazyWithRetry(() => import("@/pages/register"));
+const SupportPage = lazyWithRetry(() => import("@/pages/support"));
+const TermsPage = lazyWithRetry(() => import("@/pages/terms"));
+const WalletPage = lazyWithRetry(() => import("@/pages/wallet"));
 
 // Admin pages — lazy loaded so customer bundles stay small.
-const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
-const AdminDashboardPage = lazy(() => import("@/pages/admin/dashboard"));
-const AdminTopupsPage = lazy(() => import("@/pages/admin/topups"));
-const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
-const AdminProductsPage = lazy(() => import("@/pages/admin/products"));
-const AdminPricingPage = lazy(() => import("@/pages/admin/pricing"));
-const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
-const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
-const AdminSecurityPage = lazy(() => import("@/pages/admin/security"));
-const AdminTicketsPage = lazy(() => import("@/pages/admin/tickets"));
-const AdminReferralsPage = lazy(() => import("@/pages/admin/referrals"));
-const AdminCouponsPage = lazy(() => import("@/pages/admin/coupons"));
-const AdminPromotionsPage = lazy(() => import("@/pages/admin/promotions"));
-const AdminAlertsPage = lazy(() => import("@/pages/admin/alerts"));
-const AdminSystemPage = lazy(() => import("@/pages/admin/system"));
+const AdminLoginPage = lazyWithRetry(() => import("@/pages/admin/login"));
+const AdminDashboardPage = lazyWithRetry(() => import("@/pages/admin/dashboard"));
+const AdminTopupsPage = lazyWithRetry(() => import("@/pages/admin/topups"));
+const AdminOrdersPage = lazyWithRetry(() => import("@/pages/admin/orders"));
+const AdminProductsPage = lazyWithRetry(() => import("@/pages/admin/products"));
+const AdminPricingPage = lazyWithRetry(() => import("@/pages/admin/pricing"));
+const AdminUsersPage = lazyWithRetry(() => import("@/pages/admin/users"));
+const AdminSettingsPage = lazyWithRetry(() => import("@/pages/admin/settings"));
+const AdminSecurityPage = lazyWithRetry(() => import("@/pages/admin/security"));
+const AdminTicketsPage = lazyWithRetry(() => import("@/pages/admin/tickets"));
+const AdminReferralsPage = lazyWithRetry(() => import("@/pages/admin/referrals"));
+const AdminCouponsPage = lazyWithRetry(() => import("@/pages/admin/coupons"));
+const AdminPromotionsPage = lazyWithRetry(() => import("@/pages/admin/promotions"));
+const AdminAlertsPage = lazyWithRetry(() => import("@/pages/admin/alerts"));
+const AdminSystemPage = lazyWithRetry(() => import("@/pages/admin/system"));
 
 // Public pages without customer chrome
-const StatusPage = lazy(() => import("@/pages/status"));
+const StatusPage = lazyWithRetry(() => import("@/pages/status"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -230,7 +231,7 @@ function AppRoutes() {
   );
 }
 
-const SocketInitializer = lazy(() =>
+const SocketInitializer = lazyWithRetry(() =>
   import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
 );
 

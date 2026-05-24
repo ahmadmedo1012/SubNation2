@@ -6,10 +6,11 @@ import { formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Logo } from "./Logo";
 
-const NotificationBell = lazy(() =>
+const NotificationBell = lazyWithRetry(() =>
   import("./NotificationBell").then((m) => ({ default: m.NotificationBell })),
 );
 
