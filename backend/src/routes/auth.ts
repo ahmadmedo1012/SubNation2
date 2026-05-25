@@ -374,7 +374,18 @@ router.post("/firebase/session", async (req, res) => {
       typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
       currentUserId,
     );
-    if (result.isNewUser) notifyNewUser(result.user.phone, !!result.user.referredBy);
+    if (result.isNewUser) {
+      notifyNewUser({
+        phone: result.user.phone,
+        userId: result.user.id,
+        hadReferral: !!result.user.referredBy,
+        provider: result.user.telegramId
+          ? "telegram"
+          : result.user.firebaseUid
+            ? "firebase"
+            : "phone",
+      });
+    }
 
     const sessionId = crypto.randomUUID();
     const uaHeader = req.headers["user-agent"];

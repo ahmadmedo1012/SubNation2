@@ -239,7 +239,18 @@ router.post("/", requireUser, async (req, res) => {
       );
   }
 
-  notifyNewOrder(user.phone, product.name, finalPrice);
+  notifyNewOrder({
+    phone: user.phone,
+    productName: product.name,
+    amount: finalPrice,
+    orderId: order.id,
+    orderCode: order.orderCode ?? null,
+    // Derive sign-up provider from the user record's identity columns.
+    // First non-null wins; matches the order in which the user could
+    // have linked their account (telegram first, firebase second, plain
+    // email/phone last).
+    provider: user.telegramId ? "telegram" : user.firebaseUid ? "firebase" : "phone",
+  });
 
   return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
 });

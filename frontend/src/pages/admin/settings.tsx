@@ -18,6 +18,7 @@ import {
   Shield,
   ToggleLeft,
   ToggleRight,
+  UserCog,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -52,6 +53,7 @@ interface AuthProvider {
 }
 
 const TABS = [
+  { id: "account", label: "حسابي", icon: UserCog },
   { id: "auth", label: "المصادقة", icon: KeyRound },
   { id: "integrations", label: "التكاملات", icon: Bot },
   { id: "notifications", label: "الإشعارات", icon: Bell },
@@ -469,6 +471,327 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
   );
 }
 
+// ── Account Tab ───────────────────────────────────────────────────────────────
+//
+// Self-contained account-management surface. Fetches the current admin's
+// session metadata on mount and exposes two re-auth-gated forms:
+//   1. profile update (username + display name)
+//   2. password change (current + new + confirm)
+// Both re-require the CURRENT password before any change goes through —
+// even though the request itself is already cookie-authenticated. This is
+// the standard "sudo" pattern for high-leverage credential changes.
+
+interface AdminSession {
+  id: number;
+  username: string;
+  display_name: string;
+  role: string;
+  totp_enabled: boolean;
+  created_at?: string;
+}
+
+function AccountTab({ adminToken }: { adminToken: string }) {
+  const { toast } = useToast();
+  const [session, setSession] = useState<AdminSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${adminToken}`,
+  };
+
+  useEffect(() => {
+    fetch("/api/admin/session", { credentials: "include", headers })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then(setSession)
+      .catch(() => setSession(null))
+      .finally(() => setLoading(false));
+  }, [adminToken]);
+
+  // ── Profile (username + display name) form state ──
+  const [profileUsername, setProfileUsername] = useState("");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profilePassword, setProfilePassword] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  useEffect(() => {
+    if (session) {
+      setProfileUsername(session.username);
+      setProfileDisplayName(session.display_name);
+    }
+  }, [session]);
+
+  const submitProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profilePassword) {
+      toast({ title: "كلمة المرور الحالية مطلوبة لتأكيد التغيير", variant: "destructive" });
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const res = await fetch("/api/admin/profile", {
+        method: "PATCH",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({
+          username: profileUsername.trim(),
+          display_name: profileDisplayName.trim(),
+          current_password: profilePassword,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || "فشل التحديث");
+      }
+      setSession((s) => (s ? { ...s, ...body } : s));
+      setProfilePassword("");
+      toast({ title: "تم تحديث بيانات الحساب" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "فشل التحديث",
+        variant: "destructive",
+      });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  // ── Password form state ──
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwShowNew, setPwShowNew] = useState(false);
+
+  const submitPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwNew !== pwConfirm) {
+      toast({ title: "كلمتا المرور الجديدتان غير متطابقتان", variant: "destructive" });
+      return;
+    }
+    if (pwNew.length < 8) {
+      toast({ title: "كلمة المرور يجب أن تكون 8 أحرف على الأقل", variant: "destructive" });
+      return;
+    }
+    setPwSaving(true);
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "فشل تغيير كلمة المرور");
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      toast({ title: "تم تغيير كلمة المرور بنجاح" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "فشل تغيير كلمة المرور",
+        variant: "destructive",
+      });
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground text-sm py-8">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        جاري تحميل بيانات الحساب…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="text-sm text-muted-foreground py-8">
+        تعذر تحميل بيانات الحساب. حاول إعادة تسجيل الدخول.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Identity card */}
+      <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-3 float-in">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <UserCog className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-black text-lg">{session.display_name}</div>
+            <div className="text-xs text-muted-foreground">@{session.username}</div>
+          </div>
+          <div className="text-[10px] font-bold uppercase bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-full">
+            {session.role}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-2 border-t border-border/40">
+          <div>
+            <span className="block text-foreground/50">المصادقة الثنائية</span>
+            <span className="font-bold text-foreground">
+              {session.totp_enabled ? "✓ مفعّلة" : "غير مفعّلة"}
+            </span>
+          </div>
+          {session.created_at && (
+            <div>
+              <span className="block text-foreground/50">تاريخ الإنشاء</span>
+              <span className="font-bold text-foreground">
+                {new Date(session.created_at).toLocaleDateString("ar-LY", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Profile form */}
+      <form
+        onSubmit={submitProfile}
+        className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 float-in"
+      >
+        <div>
+          <h3 className="font-bold text-base mb-1">بيانات الحساب</h3>
+          <p className="text-xs text-muted-foreground">
+            تحديث اسم المستخدم والاسم الظاهر. يُطلب تأكيد كلمة المرور الحالية.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-bold mb-1 block">اسم المستخدم</label>
+            <input
+              type="text"
+              value={profileUsername}
+              onChange={(e) => setProfileUsername(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+              minLength={3}
+              maxLength={100}
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
+            <input
+              type="text"
+              value={profileDisplayName}
+              onChange={(e) => setProfileDisplayName(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+              maxLength={100}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-bold mb-1 block">كلمة المرور الحالية للتأكيد</label>
+          <input
+            type="password"
+            value={profilePassword}
+            onChange={(e) => setProfilePassword(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+            autoComplete="current-password"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={profileSaving}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm disabled:opacity-50 flex items-center gap-2"
+        >
+          {profileSaving ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارِ الحفظ…
+            </>
+          ) : (
+            <>
+              <Save className="w-3.5 h-3.5" /> حفظ التغييرات
+            </>
+          )}
+        </button>
+      </form>
+
+      {/* Password form */}
+      <form
+        onSubmit={submitPassword}
+        className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 float-in"
+      >
+        <div>
+          <h3 className="font-bold text-base mb-1">تغيير كلمة المرور</h3>
+          <p className="text-xs text-muted-foreground">
+            8 أحرف على الأقل. لن يتم إنهاء الجلسات الحالية الأخرى.
+          </p>
+        </div>
+        <div>
+          <label className="text-xs font-bold mb-1 block">كلمة المرور الحالية</label>
+          <input
+            type="password"
+            value={pwCurrent}
+            onChange={(e) => setPwCurrent(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+            autoComplete="current-password"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-bold mb-1 block">كلمة المرور الجديدة</label>
+            <div className="relative">
+              <input
+                type={pwShowNew ? "text" : "password"}
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                className="w-full px-3 py-2 pr-9 bg-background border border-border/60 rounded-lg text-sm"
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setPwShowNew((v) => !v)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                aria-label={pwShowNew ? "إخفاء" : "إظهار"}
+              >
+                {pwShowNew ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold mb-1 block">تأكيد كلمة المرور الجديدة</label>
+            <input
+              type={pwShowNew ? "text" : "password"}
+              value={pwConfirm}
+              onChange={(e) => setPwConfirm(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={pwSaving}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm disabled:opacity-50 flex items-center gap-2"
+        >
+          {pwSaving ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارِ التحديث…
+            </>
+          ) : (
+            <>
+              <Key className="w-3.5 h-3.5" /> تحديث كلمة المرور
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
@@ -477,7 +800,7 @@ export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("auth");
+  const [activeTab, setActiveTab] = useState("account");
 
   // Telegram diagnostic-ping state. Operator hits the "اختبار" button →
   // we POST /api/admin/diagnostics/telegram-test and render the
@@ -574,6 +897,9 @@ export default function AdminSettingsPage() {
             </button>
           ))}
         </div>
+
+        {/* ── Account Tab ─────────────────────────────────────────────── */}
+        {activeTab === "account" && adminToken && <AccountTab adminToken={adminToken} />}
 
         {/* ── Auth Providers Tab ─────────────────────────────────────────── */}
         {activeTab === "auth" && (

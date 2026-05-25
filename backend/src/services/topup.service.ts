@@ -57,7 +57,7 @@ export class TopupService {
       return t;
     });
 
-    notifyTopupApproved(user.phone, amount);
+    notifyTopupApproved({ phone: user.phone, amount, topupId: topup.id });
     await createNotification(
       user.id,
       "wallet",
@@ -196,7 +196,11 @@ export class TopupService {
           );
         }
       }
-      notifyTopupApproved(user.phone, parseFloat(String(topup.amount)));
+      notifyTopupApproved({
+        phone: user.phone,
+        amount: parseFloat(String(topup.amount)),
+        topupId: topup.id,
+      });
       await createNotification(
         user.id,
         "wallet",
@@ -244,7 +248,11 @@ export class TopupService {
       .limit(1);
 
     if (rejUser) {
-      notifyTopupRejected(rejUser.phone, parseFloat(String(topup.amount)));
+      notifyTopupRejected({
+        phone: rejUser.phone,
+        amount: parseFloat(String(topup.amount)),
+        topupId: topup.id,
+      });
       await createNotification(
         rejUser.id,
         "wallet",

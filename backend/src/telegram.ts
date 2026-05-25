@@ -119,56 +119,103 @@ export function logTelegramBootStatus(): void {
 // only one that returns a structured result, because the operator
 // needs to see what happened.
 
-export function notifyNewUser(phone: string, hadReferral: boolean): void {
+export function notifyNewUser(input: {
+  phone: string;
+  userId?: number;
+  hadReferral: boolean;
+  /** Auth provider used for sign-up: "telegram" | "firebase" | "email" | etc. */
+  provider?: string | null;
+}): void {
   const msg = [
     `🆕 <b>مستخدم جديد</b>`,
-    `رقم الهاتف: <code>${escapeHtml(phone)}</code>`,
-    hadReferral ? `✅ سجّل عبر إحالة` : null,
+    `رقم الهاتف: <code>${escapeHtml(input.phone)}</code>`,
+    input.provider ? `طريقة التسجيل: <b>${providerLabel(input.provider)}</b>` : null,
+    input.hadReferral ? `✅ سجّل عبر إحالة` : null,
+    timestampLine(),
   ]
     .filter(Boolean)
     .join("\n");
-  void dispatch("user_new", msg);
+  void dispatch("user_new", msg, buttonsForUser(input.userId));
 }
 
-export function notifyNewTopup(phone: string, amount: number, network: string): void {
-  const netLabel = network === "madar" ? "مدار" : "ليبيانا";
+export function notifyNewTopup(input: {
+  phone: string;
+  amount: number;
+  network: string;
+  topupId?: number;
+  provider?: string | null;
+}): void {
+  const netLabel = input.network === "madar" ? "مدار" : "ليبيانا";
   const msg = [
     `💰 <b>طلب شحن جديد</b>`,
-    `المستخدم: <code>${escapeHtml(phone)}</code>`,
-    `المبلغ: <b>${formatLyd(amount)}</b>`,
+    `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
+    input.provider ? `الحساب: <b>${providerLabel(input.provider)}</b>` : null,
+    `المبلغ: <b>${formatLyd(input.amount)}</b>`,
     `الشبكة: ${netLabel}`,
+    input.topupId ? `معرّف الطلب: <code>#${input.topupId}</code>` : null,
+    timestampLine(),
     ``,
     `⏳ بانتظار الموافقة`,
-  ].join("\n");
-  void dispatch("topup_new", msg);
+  ]
+    .filter(Boolean)
+    .join("\n");
+  void dispatch("topup_new", msg, buttonsForTopup());
 }
 
-export function notifyTopupApproved(phone: string, amount: number): void {
+export function notifyTopupApproved(input: {
+  phone: string;
+  amount: number;
+  topupId?: number;
+}): void {
   const msg = [
     `✅ <b>شحن موافق عليه</b>`,
-    `المستخدم: <code>${escapeHtml(phone)}</code>`,
-    `المبلغ: <b>${formatLyd(amount)}</b>`,
-  ].join("\n");
+    `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
+    `المبلغ: <b>${formatLyd(input.amount)}</b>`,
+    input.topupId ? `معرّف الطلب: <code>#${input.topupId}</code>` : null,
+    timestampLine(),
+  ]
+    .filter(Boolean)
+    .join("\n");
   void dispatch("topup_approved", msg);
 }
 
-export function notifyTopupRejected(phone: string, amount: number): void {
+export function notifyTopupRejected(input: {
+  phone: string;
+  amount: number;
+  topupId?: number;
+}): void {
   const msg = [
     `❌ <b>شحن مرفوض</b>`,
-    `المستخدم: <code>${escapeHtml(phone)}</code>`,
-    `المبلغ: <b>${formatLyd(amount)}</b>`,
-  ].join("\n");
+    `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
+    `المبلغ: <b>${formatLyd(input.amount)}</b>`,
+    input.topupId ? `معرّف الطلب: <code>#${input.topupId}</code>` : null,
+    timestampLine(),
+  ]
+    .filter(Boolean)
+    .join("\n");
   void dispatch("topup_rejected", msg);
 }
 
-export function notifyNewOrder(phone: string, productName: string, amount: number): void {
+export function notifyNewOrder(input: {
+  phone: string;
+  productName: string;
+  amount: number;
+  orderId?: number;
+  orderCode?: string | null;
+  provider?: string | null;
+}): void {
   const msg = [
     `🛒 <b>طلب جديد</b>`,
-    `المستخدم: <code>${escapeHtml(phone)}</code>`,
-    `المنتج: <b>${escapeHtml(productName)}</b>`,
-    `المبلغ: <b>${formatLyd(amount)}</b>`,
-  ].join("\n");
-  void dispatch("order_new", msg);
+    `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
+    input.provider ? `الحساب: <b>${providerLabel(input.provider)}</b>` : null,
+    `المنتج: <b>${escapeHtml(input.productName)}</b>`,
+    `المبلغ: <b>${formatLyd(input.amount)}</b>`,
+    input.orderCode ? `الرمز: <code>${escapeHtml(input.orderCode)}</code>` : null,
+    timestampLine(),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  void dispatch("order_new", msg, buttonsForOrder(input.orderId));
 }
 
 export function notifyCouponMaxedOut(code: string, maxUses: number): void {
@@ -207,18 +254,24 @@ export function notifyCouponExpiringSoon(
   void dispatch("coupon_expiring", msg);
 }
 
-export function notifyLowStock(productName: string, stockCount: number): void {
-  const urgency = stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
-  const countStr = stockCount === 0 ? "لا توجد وحدات متبقية" : `${stockCount} وحدة فقط`;
+export function notifyLowStock(input: {
+  productName: string;
+  stockCount: number;
+  productId?: number;
+}): void {
+  const urgency = input.stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
+  const countStr =
+    input.stockCount === 0 ? "لا توجد وحدات متبقية" : `${input.stockCount} وحدة فقط`;
   const msg = [
     urgency,
     ``,
-    `المنتج: <b>${escapeHtml(productName)}</b>`,
+    `المنتج: <b>${escapeHtml(input.productName)}</b>`,
     `المتوفر: ${countStr}`,
+    timestampLine(),
     ``,
     `يرجى إضافة مخزون جديد في أقرب وقت.`,
   ].join("\n");
-  void dispatch("low_stock", msg);
+  void dispatch("low_stock", msg, buttonsForProduct(input.productId));
 }
 
 /**
@@ -270,8 +323,12 @@ export async function diagnosticPing(): Promise<{
  * Fire-and-forget wrapper around dispatchWithDetails. Returns true on
  * delivery, false on skip-or-failure. Used by every notify*() helper.
  */
-async function dispatch(event: EventLabel, text: string): Promise<boolean> {
-  const result = await dispatchWithDetails(event, text);
+async function dispatch(
+  event: EventLabel,
+  text: string,
+  inlineKeyboard?: InlineKeyboard,
+): Promise<boolean> {
+  const result = await dispatchWithDetails(event, text, inlineKeyboard);
   return result.outcome === "ok";
 }
 
@@ -287,7 +344,11 @@ interface DispatchResult {
   errorMessage: string | null;
 }
 
-async function dispatchWithDetails(event: EventLabel, text: string): Promise<DispatchResult> {
+async function dispatchWithDetails(
+  event: EventLabel,
+  text: string,
+  inlineKeyboard?: InlineKeyboard,
+): Promise<DispatchResult> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -311,6 +372,9 @@ async function dispatchWithDetails(event: EventLabel, text: string): Promise<Dis
           text,
           parse_mode: "HTML",
           disable_web_page_preview: true,
+          ...(inlineKeyboard && inlineKeyboard.length > 0
+            ? { reply_markup: { inline_keyboard: inlineKeyboard } }
+            : {}),
         }),
         signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
       });
@@ -436,4 +500,105 @@ function escapeHtml(value: string): string {
 
 function formatLyd(amount: number): string {
   return `${amount.toFixed(2)} د.ل`;
+}
+
+// ── Inline-keyboard helpers ────────────────────────────────────────────────
+//
+// Telegram inline_keyboard buttons let the operator jump straight to
+// the relevant admin page from the notification, instead of opening
+// the app and navigating. Buttons hit our /admin routes which are
+// auth-gated — clicking lands the operator on the admin login if
+// they're not already signed in, then bounces them to the requested
+// page after auth.
+
+type InlineKeyboardButton = {
+  text: string;
+  url: string;
+};
+type InlineKeyboard = InlineKeyboardButton[][];
+
+/**
+ * Resolve the canonical app origin for deep links. Reads APP_URL or
+ * VITE_APP_ORIGIN env (operator-configured) and falls back to the
+ * production host. Trailing slashes stripped.
+ *
+ * Returns null if no origin is resolvable — callers MUST handle this
+ * by skipping the inline_keyboard entirely so we never emit a broken
+ * relative-URL button.
+ */
+function appUrl(): string | null {
+  const raw = (process.env.APP_URL || process.env.VITE_APP_ORIGIN || "").trim();
+  if (!raw) return null;
+  return raw.replace(/\/+$/, "");
+}
+
+function buttonsForOrder(orderId?: number): InlineKeyboard | undefined {
+  const origin = appUrl();
+  if (!origin || !orderId) return undefined;
+  return [[{ text: "📋 فتح الطلب", url: `${origin}/admin/orders` }]];
+}
+
+function buttonsForTopup(): InlineKeyboard | undefined {
+  const origin = appUrl();
+  if (!origin) return undefined;
+  return [
+    [{ text: "💰 مراجعة طلبات الشحن", url: `${origin}/admin/topups` }],
+  ];
+}
+
+function buttonsForUser(userId?: number): InlineKeyboard | undefined {
+  const origin = appUrl();
+  if (!origin || !userId) return undefined;
+  return [[{ text: "👤 فتح المستخدمين", url: `${origin}/admin/users` }]];
+}
+
+function buttonsForProduct(productId?: number): InlineKeyboard | undefined {
+  const origin = appUrl();
+  if (!origin || !productId) return undefined;
+  return [[{ text: "📦 إدارة المنتج", url: `${origin}/admin/products` }]];
+}
+
+/**
+ * Map our internal provider tags to a short Arabic label for display
+ * in Telegram messages. Keeps the operator-visible vocabulary
+ * consistent across notifications and decouples the storage tag from
+ * the display string. Unknown providers fall through verbatim.
+ */
+function providerLabel(provider: string): string {
+  const normalized = provider.toLowerCase().trim();
+  switch (normalized) {
+    case "telegram":
+    case "telegram.org":
+      return "تيليجرام";
+    case "firebase":
+    case "google":
+    case "google.com":
+      return "Google";
+    case "phone":
+    case "firebase-phone":
+      return "هاتف (Firebase)";
+    case "email":
+    case "password":
+      return "بريد إلكتروني";
+    default:
+      return provider;
+  }
+}
+
+/**
+ * Localized timestamp line ("الوقت: …") rendered in Libya time
+ * (Africa/Tripoli, UTC+2). Compact format so the message stays
+ * readable on mobile Telegram.
+ */
+function timestampLine(): string {
+  const now = new Date();
+  const formatted = now.toLocaleString("ar-LY", {
+    timeZone: "Africa/Tripoli",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `الوقت: <code>${escapeHtml(formatted)}</code>`;
 }

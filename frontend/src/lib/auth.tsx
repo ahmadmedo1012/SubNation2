@@ -96,8 +96,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient, setToken]);
 
-  const adminLogout = useCallback(() => {
-    setAdminToken(null);
+  const adminLogout = useCallback(async () => {
+    try {
+      // Server-side cookie clear. The admin_token is httpOnly so JS
+      // can't clear it directly — we need the server to emit a
+      // Set-Cookie with maxAge=0. Best-effort: even if the network
+      // call fails, the local state clear below still kicks the user
+      // back to the login page.
+      await fetch("/api/admin/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Sentry's network instrumentation captures the actual error.
+    } finally {
+      setAdminToken(null);
+    }
   }, [setAdminToken]);
 
   const logoutAllDevices = useCallback(async () => {
@@ -148,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // useGetMe queryKey pre-seed below is identical. The probe avoids
     // the cosmetic console-visible 401 on the unauthenticated path
     // that Lighthouse counts as a console error.
-    fetch("/api/auth/probe", {
+    const userProbe = fetch("/api/auth/probe", {
       credentials: "include",
       headers: { Accept: "application/json" },
     })
@@ -166,10 +180,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         // Network error → unauthenticated. Real errors are reported
         // by Sentry's network instrumentation elsewhere.
-      })
-      .finally(() => {
-        if (!cancelled) setInitializing(false);
       });
+
+    // Admin session probe — mirrors the user probe but for the
+    // admin_token cookie. Lets the admin panel survive a page
+    // refresh: instead of forcing re-login on every reload, the
+    // SPA detects the existing cookie via this 200-always endpoint
+    // and re-hydrates `adminToken` to the sentinel so the admin
+    // routes render immediately. The actual JWT stays in the
+    // httpOnly cookie — JS never sees it.
+    const adminProbe = fetch("/api/admin/probe", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) return;
+        const body = await res.json().catch(() => null);
+        if (!body || cancelled) return;
+        if (body.authenticated && body.admin) {
+          setAdminTokenState(COOKIE_AUTH_SENTINEL);
+        }
+      })
+      .catch(() => {
+        /* admin-unauth path; Sentry already captures real network errors. */
+      });
+
+    Promise.allSettled([userProbe, adminProbe]).finally(() => {
+      if (!cancelled) setInitializing(false);
+    });
     return () => {
       cancelled = true;
     };

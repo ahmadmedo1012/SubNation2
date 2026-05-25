@@ -27,7 +27,7 @@ async function checkLowStock(): Promise<void> {
       const stock = Number(row?.count ?? 0);
 
       if (stock === 0 && !alertedZero.has(product.id)) {
-        notifyLowStock(product.name, 0);
+        notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });
         await logAdminAlert(
           "no_stock",
           `نفاد المخزون: ${product.name}`,
@@ -37,7 +37,7 @@ async function checkLowStock(): Promise<void> {
         alertedLow.delete(product.id);
         logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
       } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
-        notifyLowStock(product.name, stock);
+        notifyLowStock({ productName: product.name, stockCount: stock, productId: product.id });
         await logAdminAlert("low_stock", `مخزون منخفض: ${product.name}`, `تبقّى ${stock} وحدة فقط`);
         alertedLow.add(product.id);
         alertedZero.delete(product.id);

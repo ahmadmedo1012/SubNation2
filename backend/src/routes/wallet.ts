@@ -151,11 +151,17 @@ router.post("/topups", requireUser, async (req, res) => {
     .where(eq(usersTable.id, userId))
     .limit(1);
   if (currentUser)
-    notifyNewTopup(
-      currentUser.phone,
+    notifyNewTopup({
+      phone: currentUser.phone,
       amount,
-      method === "lypay" ? "LyPay" : (payment_network ?? ""),
-    );
+      network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
+      topupId: topup.id,
+      provider: currentUser.telegramId
+        ? "telegram"
+        : currentUser.firebaseUid
+          ? "firebase"
+          : "phone",
+    });
 
   return res.status(201).json(formatTopup(topup));
 });
