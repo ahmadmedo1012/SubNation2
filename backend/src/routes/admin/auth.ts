@@ -55,6 +55,12 @@ router.post("/login", async (req, res) => {
     await recordFailedAttempt(lockoutKey);
     return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
   }
+  if (!admin.isActive) {
+    // Soft-disabled admin — same 401 response as a wrong password so
+    // we don't leak account-state to a brute-forcer.
+    await recordFailedAttempt(lockoutKey);
+    return res.status(401).json({ error: "اسم المستخدم أو كلمة المرور غير صحيحة" });
+  }
   const { valid, needsRehash } = await verifyPassword(password, admin.passwordHash);
   if (!valid) {
     await recordFailedAttempt(lockoutKey);
@@ -75,7 +81,12 @@ router.post("/login", async (req, res) => {
 
   const token = signAdminToken({ adminId: admin.id, role: admin.role });
   res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
-  return res.json({ token, display_name: admin.displayName });
+  return res.json({
+    token,
+    display_name: admin.displayName,
+    role: admin.role,
+    permissions: admin.permissions ?? [],
+  });
 });
 
 router.post("/login/verify-2fa", async (req, res) => {
@@ -109,7 +120,12 @@ router.post("/login/verify-2fa", async (req, res) => {
 
     const token = signAdminToken({ adminId: admin.id, role: admin.role });
     res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
-    return res.json({ token, display_name: admin.displayName });
+    return res.json({
+      token,
+      display_name: admin.displayName,
+      role: admin.role,
+      permissions: admin.permissions ?? [],
+    });
   } catch {
     return res.status(401).json({ error: "جلسة غير صالحة أو منتهية الصلاحية" });
   }
@@ -154,12 +170,16 @@ router.get("/probe", async (req, res) => {
       displayName: adminUsersTable.displayName,
       role: adminUsersTable.role,
       totpEnabled: adminUsersTable.totpEnabled,
+      permissions: adminUsersTable.permissions,
+      isActive: adminUsersTable.isActive,
     })
     .from(adminUsersTable)
     .where(eq(adminUsersTable.id, decoded.adminId))
     .limit(1);
 
-  if (!admin) {
+  if (!admin || !admin.isActive) {
+    // Treat soft-disabled admins like missing — SPA navigates them to
+    // the login screen instead of rendering a half-broken admin shell.
     return res.status(200).json({ authenticated: false });
   }
 
@@ -171,6 +191,7 @@ router.get("/probe", async (req, res) => {
       display_name: admin.displayName,
       role: admin.role,
       totp_enabled: admin.totpEnabled,
+      permissions: admin.permissions ?? [],
     },
   });
 });
@@ -184,6 +205,7 @@ router.get("/session", requireAdmin, async (req, res) => {
       displayName: adminUsersTable.displayName,
       role: adminUsersTable.role,
       totpEnabled: adminUsersTable.totpEnabled,
+      permissions: adminUsersTable.permissions,
       createdAt: adminUsersTable.createdAt,
     })
     .from(adminUsersTable)
@@ -200,6 +222,7 @@ router.get("/session", requireAdmin, async (req, res) => {
     display_name: admin.displayName,
     role: admin.role,
     totp_enabled: admin.totpEnabled,
+    permissions: admin.permissions ?? [],
     created_at: admin.createdAt?.toISOString(),
   });
 });

@@ -597,6 +597,28 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     `);
 
+    // RBAC permissions + soft-delete flag for admin_users.
+    // Idempotent across all four states:
+    //   - column missing             → ADD COLUMN with empty default
+    //   - column present, all-empty  → backfill ["all"] for existing super-admins
+    //   - column present, populated  → no-op
+    //   - is_active column missing   → ADD with TRUE default
+    //
+    // The empty-array → ["all"] backfill is the single most important
+    // safety property: pre-RBAC admins must keep current full access
+    // when the new requirePermission middleware activates. New admins
+    // created via the admin-mgmt UI default to a narrower scoped set.
+    await db.execute(sql`
+      ALTER TABLE admin_users
+        ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await db.execute(sql`
+      UPDATE admin_users
+      SET permissions = '["all"]'::jsonb
+      WHERE permissions = '[]'::jsonb OR permissions IS NULL;
+    `);
+
     // OTP brute-force counter (B6)
     await db.execute(sql`
       ALTER TABLE otps

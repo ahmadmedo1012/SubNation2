@@ -16,6 +16,13 @@ interface AuthContextType {
   token: string | null;
   adminToken: string | null;
   /**
+   * Permission scopes granted to the currently-logged-in admin.
+   * Empty array when not logged in. Set on login/probe response;
+   * `hasAdminPermission(scope)` is the canonical check (handles
+   * the "all" wildcard).
+   */
+  adminPermissions: string[];
+  /**
    * `true` during the brief boot window while we probe `/api/auth/me`
    * to determine whether the httpOnly auth_token cookie carries a
    * valid backend session. The app shell renders `<AppSplashScreen />`
@@ -28,6 +35,8 @@ interface AuthContextType {
   initializing: boolean;
   setToken: (token: string | null) => void;
   setAdminToken: (token: string | null) => void;
+  setAdminPermissions: (permissions: string[]) => void;
+  hasAdminPermission: (scope: string) => boolean;
   logout: () => void;
   adminLogout: () => void;
   logoutAllDevices: () => void;
@@ -56,6 +65,7 @@ const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [adminToken, setAdminTokenState] = useState<string | null>(null);
+  const [adminPermissions, setAdminPermissionsState] = useState<string[]>([]);
   const [initializing, setInitializing] = useState(true);
   const queryClient = useQueryClient();
 
@@ -91,6 +101,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdminTokenState(t);
   }, []);
 
+  const setAdminPermissions = useCallback((perms: string[]) => {
+    setAdminPermissionsState(Array.isArray(perms) ? perms : []);
+  }, []);
+
+  const hasAdminPermission = useCallback(
+    (scope: string): boolean => {
+      if (!adminPermissions.length) return false;
+      return adminPermissions.includes("all") || adminPermissions.includes(scope);
+    },
+    [adminPermissions],
+  );
+
   const logout = useCallback(() => {
     setToken(null);
     queryClient.clear();
@@ -111,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sentry's network instrumentation captures the actual error.
     } finally {
       setAdminToken(null);
+      setAdminPermissionsState([]);
     }
   }, [setAdminToken]);
 
@@ -200,6 +223,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!body || cancelled) return;
         if (body.authenticated && body.admin) {
           setAdminTokenState(COOKIE_AUTH_SENTINEL);
+          setAdminPermissionsState(
+            Array.isArray(body.admin.permissions) ? body.admin.permissions : [],
+          );
         }
       })
       .catch(() => {
@@ -270,9 +296,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       token,
       adminToken,
+      adminPermissions,
       initializing,
       setToken,
       setAdminToken,
+      setAdminPermissions,
+      hasAdminPermission,
       logout,
       adminLogout,
       logoutAllDevices,
@@ -280,9 +309,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       token,
       adminToken,
+      adminPermissions,
       initializing,
       setToken,
       setAdminToken,
+      setAdminPermissions,
+      hasAdminPermission,
       logout,
       adminLogout,
       logoutAllDevices,

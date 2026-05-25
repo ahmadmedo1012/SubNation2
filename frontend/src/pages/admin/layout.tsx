@@ -23,6 +23,7 @@ import {
   Search,
   Settings,
   Shield,
+  ShieldCheck,
   ShoppingBag,
   Sun,
   Tag,
@@ -40,32 +41,34 @@ const NAV_SECTIONS = [
     label: "التشغيل",
     items: [
       { href: "/admin", label: "الرئيسية", icon: LayoutDashboard },
-      { href: "/admin/topups", label: "طلبات الشحن", icon: Wallet, badgeKey: "pendingTopups" },
-      { href: "/admin/orders", label: "الطلبات", icon: ShoppingBag },
+      { href: "/admin/topups", label: "طلبات الشحن", icon: Wallet, badgeKey: "pendingTopups", scope: "finance" },
+      { href: "/admin/orders", label: "الطلبات", icon: ShoppingBag, scope: "orders" },
       {
         href: "/admin/tickets",
         label: "الدعم الفني",
         icon: MessageSquare,
         badgeKey: "openTickets",
+        scope: "support",
       },
-      { href: "/admin/alerts", label: "التنبيهات", icon: Bell, badgeKey: "unreadAlerts" },
+      { href: "/admin/alerts", label: "التنبيهات", icon: Bell, badgeKey: "unreadAlerts", scope: "support" },
     ],
   },
   {
     label: "الكتالوج",
     items: [
-      { href: "/admin/products", label: "المنتجات", icon: Package },
-      { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator },
-      { href: "/admin/users", label: "المستخدمون", icon: Users },
-      { href: "/admin/referrals", label: "الإحالات", icon: Gift },
-      { href: "/admin/coupons", label: "الكوبونات", icon: Tag },
-      { href: "/admin/promotions", label: "العروض السريعة", icon: Zap },
+      { href: "/admin/products", label: "المنتجات", icon: Package, scope: "inventory" },
+      { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator, scope: "inventory" },
+      { href: "/admin/users", label: "المستخدمون", icon: Users, scope: "users" },
+      { href: "/admin/referrals", label: "الإحالات", icon: Gift, scope: "users" },
+      { href: "/admin/coupons", label: "الكوبونات", icon: Tag, scope: "inventory" },
+      { href: "/admin/promotions", label: "العروض السريعة", icon: Zap, scope: "inventory" },
     ],
   },
   {
     label: "النظام",
     items: [
-      { href: "/admin/system", label: "حالة النظام", icon: Activity },
+      { href: "/admin/admins", label: "إدارة المسؤولين", icon: ShieldCheck, scope: "admins" },
+      { href: "/admin/system", label: "حالة النظام", icon: Activity, scope: "settings" },
       { href: "/admin/settings", label: "الإعدادات", icon: Settings },
     ],
   },
@@ -88,6 +91,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/alerts": "صندوق التنبيهات",
   "/admin/security": "الأمان",
   "/admin/system": "حالة النظام",
+  "/admin/admins": "إدارة المسؤولين",
 };
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; href: string }[]> =
@@ -325,7 +329,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [location] = useLocation();
-  const { adminToken, adminLogout } = useAuth();
+  const { adminToken, adminLogout, hasAdminPermission } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -525,23 +529,33 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
       {/* Nav sections */}
       <nav className="flex-1 p-2.5 space-y-4 overflow-y-auto">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label}>
-            {!collapsed && (
-              <div className="px-2 mb-1.5">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                  {section.label}
-                </span>
+        {NAV_SECTIONS.map((section) => {
+          // Filter section items by RBAC: items without a scope are
+          // always visible (dashboard / self-service settings).
+          // hasAdminPermission("all") short-circuits true for super
+          // admins so they see every nav item exactly as before.
+          const visibleItems = section.items.filter(
+            (item) => !("scope" in item) || !item.scope || hasAdminPermission(item.scope),
+          );
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={section.label}>
+              {!collapsed && (
+                <div className="px-2 mb-1.5">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                    {section.label}
+                  </span>
+                </div>
+              )}
+              {collapsed && <div className="h-px bg-border/40 mb-2" />}
+              <div className="space-y-0.5">
+                {visibleItems.map((item) => (
+                  <NavItem key={item.href} item={item} />
+                ))}
               </div>
-            )}
-            {collapsed && <div className="h-px bg-border/40 mb-2" />}
-            <div className="space-y-0.5">
-              {section.items.map((item) => (
-                <NavItem key={item.href} item={item} />
-              ))}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Footer: search hint + logout */}

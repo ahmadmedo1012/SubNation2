@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 
 export default function AdminLoginPage() {
   const [, navigate] = useLocation();
-  const { setAdminToken } = useAuth();
+  const { setAdminToken, setAdminPermissions } = useAuth();
   const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -31,6 +31,8 @@ export default function AdminLoginPage() {
           return;
         }
         setAdminToken(data.token ?? null);
+        const perms = (data as unknown as { permissions?: unknown }).permissions;
+        setAdminPermissions(Array.isArray(perms) ? (perms as string[]) : []);
         navigate("/admin");
       },
       onError(err: unknown) {
@@ -61,6 +63,7 @@ export default function AdminLoginPage() {
       if (!res.ok) throw new Error(data.error || "رمز خاطئ");
 
       setAdminToken(data.token);
+      setAdminPermissions(Array.isArray(data.permissions) ? data.permissions : []);
       navigate("/admin");
     } catch (err: unknown) {
       toast({
