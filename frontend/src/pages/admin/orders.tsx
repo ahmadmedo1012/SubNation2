@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
@@ -91,6 +92,8 @@ function TableSkeleton() {
 
 export default function AdminOrdersPage() {
   const { adminToken } = useAuth();
+  const jsonHeaders = useAdminHeaders({ json: true });
+  const headers = useAdminHeaders();
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
@@ -115,7 +118,7 @@ export default function AdminOrdersPage() {
         refetchInterval: 30_000,
         refetchIntervalInBackground: false,
       },
-      request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
+      request: { headers },
     },
   );
 
@@ -132,7 +135,7 @@ export default function AdminOrdersPage() {
     try {
       await fetch("/api/admin/orders/bulk-status", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        headers: jsonHeaders,
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
       setSelectedIds(new Set());

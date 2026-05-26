@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -261,6 +262,8 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" })
 
 export default function AdminTopupsPage() {
   const { adminToken } = useAuth();
+  const jsonHeaders = useAdminHeaders({ json: true });
+  const headers = useAdminHeaders();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -301,7 +304,7 @@ export default function AdminTopupsPage() {
         refetchInterval: 20_000,
         refetchIntervalInBackground: false,
       },
-      request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
+      request: { headers },
     },
   );
 
@@ -311,7 +314,7 @@ export default function AdminTopupsPage() {
     queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
 
   const approveMutation = useApproveTopup({
-    request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
+    request: { headers },
     mutation: {
       onSuccess(_, vars) {
         setProcessingId(null);
@@ -336,7 +339,7 @@ export default function AdminTopupsPage() {
   });
 
   const rejectMutation = useRejectTopup({
-    request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
+    request: { headers },
     mutation: {
       onSuccess(_, vars) {
         setProcessingId(null);
@@ -413,13 +416,13 @@ export default function AdminTopupsPage() {
         if (action === "approve") {
           await fetch(`/api/admin/topups/${id}/approve`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+            headers: jsonHeaders,
             body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
           });
         } else {
           await fetch(`/api/admin/topups/${id}/reject`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+            headers: jsonHeaders,
             body: JSON.stringify({ admin_note: "مرفوض جماعياً" }),
           });
         }
@@ -444,7 +447,7 @@ export default function AdminTopupsPage() {
     for (const t of pending) {
       await fetch(`/api/admin/topups/${t.id}/approve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        headers: jsonHeaders,
         body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
       });
     }

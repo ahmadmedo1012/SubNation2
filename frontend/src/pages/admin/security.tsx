@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { Activity, CheckCircle, Download, Shield, XCircle } from "lucide-react";
@@ -26,6 +27,7 @@ interface AuthStats {
 
 export function AdminSecurityDashboard() {
   const { adminToken } = useAuth();
+  const headers = useAdminHeaders();
   const [stats, setStats] = useState<AuthStats | null>(null);
   const [activities, setActivities] = useState<AuthActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +46,7 @@ export function AdminSecurityDashboard() {
   const fetchStats = async () => {
     try {
       const response = await fetch("/api/admin/auth-stats/summary", {
-        headers: { Authorization: `Bearer ${adminToken}` },
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch stats");
       const data = await response.json();
@@ -61,7 +63,7 @@ export function AdminSecurityDashboard() {
       if (filters.success !== "all") params.append("success", filters.success);
 
       const response = await fetch(`/api/admin/auth-activity?${params}`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
+        headers,
       });
       if (!response.ok) throw new Error("Failed to fetch activities");
       const data = await response.json();

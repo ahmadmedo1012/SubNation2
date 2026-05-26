@@ -116,7 +116,7 @@ function ProviderIcon({ id }: { id: string }) {
 
 function ProviderCard({
   provider,
-  adminToken,
+  adminToken: _adminToken,
   onUpdate,
 }: {
   provider: AuthProvider;
@@ -124,6 +124,7 @@ function ProviderCard({
   onUpdate: (updated: AuthProvider) => void;
 }) {
   const { toast } = useToast();
+  const jsonHeaders = useAdminHeaders({ json: true });
   const [expanded, setExpanded] = useState(false);
   const [enabled, setEnabled] = useState(provider.enabled);
   const [config, setConfig] = useState<Record<string, string>>(provider.config);
@@ -149,10 +150,7 @@ function ProviderCard({
     try {
       const res = await fetch(`/api/admin/settings/auth/${provider.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
+        headers: jsonHeaders,
         body: JSON.stringify(body),
       });
       const data = (await res.json()) as {
@@ -332,7 +330,9 @@ function ProviderCard({
 
 // ── 2FA Setup Component ────────────────────────────────────────────────────────
 
-function TwoFactorSetup({ adminToken }: { adminToken: string }) {
+function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
+  const headers = useAdminHeaders();
+  const jsonHeaders = useAdminHeaders({ json: true });
   const [setupData, setSetupData] = useState<{
     secret: string;
     otpauth_url: string;
@@ -349,7 +349,7 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
     try {
       const res = await fetch("/api/admin/2fa/setup", {
         method: "POST",
-        headers: { Authorization: `Bearer ${adminToken}` },
+        headers,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "حدث خطأ أثناء الإعداد");
@@ -372,10 +372,7 @@ function TwoFactorSetup({ adminToken }: { adminToken: string }) {
     try {
       const res = await fetch("/api/admin/2fa/verify-setup", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`,
-        },
+        headers: jsonHeaders,
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
@@ -491,14 +488,11 @@ interface AdminSession {
   created_at?: string;
 }
 
-function AccountTab({ adminToken }: { adminToken: string }) {
+function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
   const { toast } = useToast();
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${adminToken}`,
-  };
+  const headers = useAdminHeaders({ json: true });
 
   useEffect(() => {
     fetch("/api/admin/session", { credentials: "include", headers })
@@ -506,7 +500,7 @@ function AccountTab({ adminToken }: { adminToken: string }) {
       .then(setSession)
       .catch(() => setSession(null))
       .finally(() => setLoading(false));
-  }, [adminToken]);
+  }, [headers]);
 
   // ── Profile (username + display name) form state ──
   const [profileUsername, setProfileUsername] = useState("");
@@ -823,7 +817,7 @@ export default function AdminSettingsPage() {
     try {
       const res = await fetch("/api/admin/diagnostics/telegram-test", {
         method: "POST",
-        headers: { Authorization: `Bearer ${adminToken}` },
+        headers: adminHeaders,
       });
       const body = await res.json().catch(() => null);
       if (!res.ok || !body) {

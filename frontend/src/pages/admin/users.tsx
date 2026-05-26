@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -165,6 +166,8 @@ function TableSkeleton() {
 
 export default function AdminUsersPage() {
   const { adminToken } = useAuth();
+  const jsonHeaders = useAdminHeaders({ json: true });
+  const headers = useAdminHeaders();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -195,7 +198,7 @@ export default function AdminUsersPage() {
       refetchInterval: 30_000,
       refetchIntervalInBackground: false,
     },
-    request: { headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" } },
+    request: { headers },
   });
 
   const users: AdminUser[] = usersRaw;
@@ -259,7 +262,7 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch(`/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        headers: jsonHeaders,
         body: JSON.stringify(body),
       });
       const data = await res.json();

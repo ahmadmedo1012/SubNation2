@@ -72,14 +72,13 @@ const CATEGORY_FILTERS = [
 function InlineStockEdit({
   productId,
   current,
-  adminToken,
   onDone,
 }: {
   productId: number;
   current: number;
-  adminToken: string;
   onDone: () => void;
 }) {
+  const jsonHeaders = useAdminHeaders({ json: true });
   const [val, setVal] = useState(String(current));
   const [saving, setSaving] = useState(false);
 
@@ -92,7 +91,7 @@ function InlineStockEdit({
     setSaving(true);
     await fetch(`/api/admin/products/${productId}/inventory/set-count`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      headers: jsonHeaders,
       body: JSON.stringify({ count: n }),
     }).catch(() => {});
     setSaving(false);
@@ -132,6 +131,7 @@ function InlineStockEdit({
 
 export default function AdminProductsPage() {
   const { adminToken } = useAuth();
+  const jsonHeaders = useAdminHeaders({ json: true });
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -270,7 +270,7 @@ export default function AdminProductsPage() {
     try {
       const res = await fetch(`/api/admin/products/${productId}/inventory`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        headers: jsonHeaders,
         body: JSON.stringify({ bulk_text: bulkText }),
       });
       const data = await res.json();
@@ -793,7 +793,6 @@ export default function AdminProductsPage() {
                           <InlineStockEdit
                             productId={product.id}
                             current={product.stock_count}
-                            adminToken={adminToken!}
                             onDone={() => {
                               setEditingStockId(null);
                               invalidate();

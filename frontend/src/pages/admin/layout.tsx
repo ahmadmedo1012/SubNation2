@@ -331,6 +331,7 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [location] = useLocation();
   const { adminToken, adminLogout, hasAdminPermission } = useAuth();
+  const headers = useAdminHeaders();
   const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -395,7 +396,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     const poll = () => {
       const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
       fetch(`/api/admin/alerts/new?since=${lastId}`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
+        headers,
       })
         .then((r) => (r.ok ? r.json() : { alerts: [] }))
         .then((data: { alerts?: Array<{ id: number; type: string; message: string }> }) => {
