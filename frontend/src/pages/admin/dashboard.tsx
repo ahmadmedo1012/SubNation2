@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -195,7 +196,7 @@ export default function AdminDashboardPage() {
   const [chartLoading, setChartLoading] = useState(false);
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   const {
     data: stats,

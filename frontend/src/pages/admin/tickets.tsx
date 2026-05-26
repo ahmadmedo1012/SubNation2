@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -91,7 +92,7 @@ export default function AdminTicketsPage() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
 
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   const fetchTickets = () => {
     if (!adminToken) return;

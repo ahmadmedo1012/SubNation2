@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -796,6 +797,7 @@ function AccountTab({ adminToken }: { adminToken: string }) {
 
 export default function AdminSettingsPage() {
   const { adminToken } = useAuth();
+  const adminHeaders = useAdminHeaders();
   const [, navigate] = useLocation();
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [providers, setProviders] = useState<AuthProvider[]>([]);
@@ -850,7 +852,7 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     if (!adminToken) return;
-    const headers = { Authorization: `Bearer ${adminToken}` };
+    const headers = adminHeaders;
 
     Promise.all([
       fetch("/api/admin/settings", { headers })

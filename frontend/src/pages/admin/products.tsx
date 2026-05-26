@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,7 +148,7 @@ export default function AdminProductsPage() {
   const [editingStockId, setEditingStockId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   const {
     data: products = [],

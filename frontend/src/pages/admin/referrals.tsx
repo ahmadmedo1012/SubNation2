@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -118,7 +119,7 @@ export default function AdminReferralsPage() {
   const [search, setSearch] = useState("");
   const [crediting, setCrediting] = useState<number | null>(null);
 
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   const fetchData = useCallback(
     async (silent = false) => {

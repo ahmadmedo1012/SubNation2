@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,7 +71,7 @@ export default function AdminPromotionsPage() {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
-  const headers = { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" };
+  const headers = useAdminHeaders({ json: true });
 
   async function load() {
     if (!adminToken) return;

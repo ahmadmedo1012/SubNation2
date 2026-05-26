@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -145,7 +146,7 @@ export default function AdminPricingPage() {
   const [result, setResult] = useState<CalculatorResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   const { data: products = [] } = useListAdminProducts({
     query: {

@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -392,7 +393,7 @@ function DetailsSection({
 export default function AdminSystemPage(): ReactElement | null {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
-  const headers = { Authorization: adminToken ? `Bearer ${adminToken}` : "" };
+  const headers = useAdminHeaders();
 
   // /api/healthz/ready is now admin-gated. Build an admin-aware fetcher
   // wrapping the shared robust pattern from lib/healthz.

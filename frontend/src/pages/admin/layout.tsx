@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
@@ -103,7 +104,7 @@ const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; 
 
 // ── Global search component ──────────────────────────────────────────────────
 
-function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: () => void }) {
+function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{
     orders: AdminOrder[];
@@ -117,7 +118,7 @@ function GlobalSearch({ adminToken, onClose }: { adminToken: string; onClose: ()
   const [loading, setLoading] = useState(false);
   const [, navigate] = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
-  const headers = { Authorization: `Bearer ${adminToken}` };
+  const headers = useAdminHeaders();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -587,7 +588,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     <div className="min-h-screen flex bg-background">
       {/* Global search overlay */}
       {showSearch && adminToken && (
-        <GlobalSearch adminToken={adminToken} onClose={() => setShowSearch(false)} />
+        <GlobalSearch onClose={() => setShowSearch(false)} />
       )}
 
       {/* Desktop sidebar */}

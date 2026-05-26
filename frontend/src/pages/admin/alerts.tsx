@@ -1,3 +1,4 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -107,7 +108,7 @@ function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAle
 export default function AdminAlertsPage() {
   const { adminToken } = useAuth();
   const qc = useQueryClient();
-  const headers = { Authorization: `Bearer ${adminToken}` };
+  const headers = useAdminHeaders();
   const [filter, setFilter] = useState<FilterType>("all");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
