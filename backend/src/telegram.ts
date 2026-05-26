@@ -119,13 +119,22 @@ export function logTelegramBootStatus(): void {
 // only one that returns a structured result, because the operator
 // needs to see what happened.
 
-export function notifyNewUser(input: {
+/**
+ * Input options for {@link notifyNewUser}.
+ *
+ * Exported so callers (auth-settings handlers, the auth route, and
+ * any future signup pipeline) can pass typed objects through helper
+ * functions without re-inlining the shape at every callsite.
+ */
+export interface NotifyNewUserInput {
   phone: string;
   userId?: number;
   hadReferral: boolean;
   /** Auth provider used for sign-up: "telegram" | "firebase" | "email" | etc. */
   provider?: string | null;
-}): void {
+}
+
+export function notifyNewUser(input: NotifyNewUserInput): void {
   const msg = [
     `🆕 <b>مستخدم جديد</b>`,
     `رقم الهاتف: <code>${escapeHtml(input.phone)}</code>`,
@@ -138,13 +147,16 @@ export function notifyNewUser(input: {
   void dispatch("user_new", msg, buttonsForUser(input.userId));
 }
 
-export function notifyNewTopup(input: {
+/** Input options for {@link notifyNewTopup}. */
+export interface NotifyNewTopupInput {
   phone: string;
   amount: number;
   network: string;
   topupId?: number;
   provider?: string | null;
-}): void {
+}
+
+export function notifyNewTopup(input: NotifyNewTopupInput): void {
   const netLabel = input.network === "madar" ? "مدار" : "ليبيانا";
   const msg = [
     `💰 <b>طلب شحن جديد</b>`,
@@ -162,11 +174,18 @@ export function notifyNewTopup(input: {
   void dispatch("topup_new", msg, buttonsForTopup());
 }
 
-export function notifyTopupApproved(input: {
+/**
+ * Input options for {@link notifyTopupApproved} and
+ * {@link notifyTopupRejected}. Both notifications share the same
+ * payload shape so they share a single input type.
+ */
+export interface NotifyTopupOutcomeInput {
   phone: string;
   amount: number;
   topupId?: number;
-}): void {
+}
+
+export function notifyTopupApproved(input: NotifyTopupOutcomeInput): void {
   const msg = [
     `✅ <b>شحن موافق عليه</b>`,
     `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
@@ -179,11 +198,7 @@ export function notifyTopupApproved(input: {
   void dispatch("topup_approved", msg);
 }
 
-export function notifyTopupRejected(input: {
-  phone: string;
-  amount: number;
-  topupId?: number;
-}): void {
+export function notifyTopupRejected(input: NotifyTopupOutcomeInput): void {
   const msg = [
     `❌ <b>شحن مرفوض</b>`,
     `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
@@ -196,14 +211,17 @@ export function notifyTopupRejected(input: {
   void dispatch("topup_rejected", msg);
 }
 
-export function notifyNewOrder(input: {
+/** Input options for {@link notifyNewOrder}. */
+export interface NotifyNewOrderInput {
   phone: string;
   productName: string;
   amount: number;
   orderId?: number;
   orderCode?: string | null;
   provider?: string | null;
-}): void {
+}
+
+export function notifyNewOrder(input: NotifyNewOrderInput): void {
   const msg = [
     `🛒 <b>طلب جديد</b>`,
     `المستخدم: <code>${escapeHtml(input.phone)}</code>`,
@@ -254,11 +272,14 @@ export function notifyCouponExpiringSoon(
   void dispatch("coupon_expiring", msg);
 }
 
-export function notifyLowStock(input: {
+/** Input options for {@link notifyLowStock}. */
+export interface NotifyLowStockInput {
   productName: string;
   stockCount: number;
   productId?: number;
-}): void {
+}
+
+export function notifyLowStock(input: NotifyLowStockInput): void {
   const urgency = input.stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
   const countStr =
     input.stockCount === 0 ? "لا توجد وحدات متبقية" : `${input.stockCount} وحدة فقط`;
