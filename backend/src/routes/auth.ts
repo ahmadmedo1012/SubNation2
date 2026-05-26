@@ -13,6 +13,7 @@ import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
 import { logger } from "../lib/logger";
 import { captureAuthFailure, captureSubsystemException } from "../lib/sentry";
+import { derivePrimaryProvider } from "../lib/user-provider";
 import type { AuthenticatedRequest } from "../middlewares/requireUser";
 import { requireUser } from "../middlewares/requireUser";
 import {
@@ -379,11 +380,7 @@ router.post("/firebase/session", async (req, res) => {
         phone: result.user.phone,
         userId: result.user.id,
         hadReferral: !!result.user.referredBy,
-        provider: result.user.telegramId
-          ? "telegram"
-          : result.user.firebaseUid
-            ? "firebase"
-            : "phone",
+        provider: derivePrimaryProvider(result.user),
       });
     }
 

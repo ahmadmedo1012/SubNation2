@@ -4,6 +4,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { normalizeLibyanPhone } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
+import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewTopup } from "../telegram";
 
@@ -156,11 +157,7 @@ router.post("/topups", requireUser, async (req, res) => {
       amount,
       network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
       topupId: topup.id,
-      provider: currentUser.telegramId
-        ? "telegram"
-        : currentUser.firebaseUid
-          ? "firebase"
-          : "phone",
+      provider: derivePrimaryProvider(currentUser),
     });
 
   return res.status(201).json(formatTopup(topup));

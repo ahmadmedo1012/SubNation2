@@ -538,7 +538,7 @@ async function runValidation(): Promise<ValidationReport> {
 
   for (const check of checks) {
     try {
-      const { result, durationMs } = await measure(check.fn, check.timeout);
+      const { durationMs } = await measure(check.fn, check.timeout);
       results.push({
         name: check.name,
         status: "pass",

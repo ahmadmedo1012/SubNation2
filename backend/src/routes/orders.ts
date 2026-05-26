@@ -16,6 +16,7 @@ import { safeDecrypt } from "../lib/encryption";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { stringParam } from "../lib/http";
 import { insertLedgerEntry } from "../lib/ledger";
+import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyCouponMaxedOut, notifyNewOrder } from "../telegram";
 import { computeTier } from "./loyalty";
@@ -245,11 +246,7 @@ router.post("/", requireUser, async (req, res) => {
     amount: finalPrice,
     orderId: order.id,
     orderCode: order.orderCode ?? null,
-    // Derive sign-up provider from the user record's identity columns.
-    // First non-null wins; matches the order in which the user could
-    // have linked their account (telegram first, firebase second, plain
-    // email/phone last).
-    provider: user.telegramId ? "telegram" : user.firebaseUid ? "firebase" : "phone",
+    provider: derivePrimaryProvider(user),
   });
 
   return res.status(201).json(formatOrder(order, product.name, product.imageUrl));

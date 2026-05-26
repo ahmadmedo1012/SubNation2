@@ -74,7 +74,7 @@ const NAV_SECTIONS = [
   },
 ];
 
-const ALL_NAV = NAV_SECTIONS.flatMap((s) => s.items);
+type NavItemShape = (typeof NAV_SECTIONS)[number]["items"][number];
 
 const PAGE_TITLES: Record<string, string> = {
   "/admin": "لوحة التحكم",
@@ -429,7 +429,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     (mergedBadges.unreadAlerts ?? 0);
   const contextActions = CONTEXT_ACTIONS[location] ?? [];
 
-  const NavItem = ({ item }: { item: (typeof ALL_NAV)[0] }) => {
+  const NavItem = ({ item }: { item: NavItemShape }) => {
     const active = location === item.href;
     const badge = item.badgeKey
       ? (mergedBadges as Record<string, number>)?.[item.badgeKey]
