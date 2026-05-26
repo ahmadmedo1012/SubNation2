@@ -118,6 +118,14 @@ let sitemapCache: SitemapCacheEntry | null = null;
 
 const STATIC_ROUTES: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/", changefreq: "daily", priority: "1.0" },
+  // Category landing pages — each targets a distinct intent cluster
+  // (streaming/music/gaming/productivity) with unique h1, intro, and
+  // FAQs. Higher priority than /support + /terms because they're
+  // money pages with money intent.
+  { path: "/category/streaming", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/music", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/gaming", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/productivity", changefreq: "weekly", priority: "0.9" },
   { path: "/support", changefreq: "monthly", priority: "0.4" },
   { path: "/terms", changefreq: "yearly", priority: "0.3" },
 ];

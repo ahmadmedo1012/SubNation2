@@ -42,6 +42,7 @@ const OnboardingPage = lazyWithRetry(() => import("@/pages/onboarding"));
 const OrderDetailPage = lazyWithRetry(() => import("@/pages/order-detail"));
 const OrdersPage = lazyWithRetry(() => import("@/pages/orders"));
 const ProductPage = lazyWithRetry(() => import("@/pages/product"));
+const CategoryPage = lazyWithRetry(() => import("@/pages/category"));
 const ProfilePage = lazyWithRetry(() => import("@/pages/profile"));
 const ReferralsPage = lazyWithRetry(() => import("@/pages/referrals"));
 const RegisterPage = lazyWithRetry(() => import("@/pages/register"));
@@ -198,6 +199,7 @@ function AppRoutes() {
               <Route path="/register" component={RegisterPage} />
               <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/product/:slug" component={ProductPage} />
+              <Route path="/category/:slug" component={CategoryPage} />
               <Route path="/wallet" component={WalletPage} />
               <Route path="/orders" component={OrdersPage} />
               <Route path="/orders/:orderCode" component={OrderDetailPage} />

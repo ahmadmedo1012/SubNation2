@@ -31,6 +31,14 @@ export function buildOrganizationLd() {
       "@type": "PostalAddress",
       addressCountry: "LY",
     },
+    // Geographic service area — declares to search engines that this
+    // organization's services target Libya specifically. Helps local
+    // intent queries ("اشتراك Netflix ليبيا") match the site.
+    areaServed: {
+      "@type": "Country",
+      name: "Libya",
+      sameAs: "https://www.wikidata.org/wiki/Q1016",
+    },
     description:
       "سوق الاشتراكات الرقمية في ليبيا — Netflix، Spotify، PS Plus، Disney+ بالدينار الليبي.",
   };

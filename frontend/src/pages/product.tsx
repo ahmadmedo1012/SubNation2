@@ -46,6 +46,14 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
   productivity: "from-amber-950 via-amber-900/60 to-amber-800/20",
 };
 
+/**
+ * Categories that have a dedicated landing page at /category/<slug>.
+ * The breadcrumb middle segment links to the category page only when
+ * the product's category is in this set; unknown categories fall back
+ * to "/" so the breadcrumb never produces a broken link.
+ */
+const KNOWN_CATEGORIES = new Set(["streaming", "music", "gaming", "productivity"]);
+
 const CATEGORY_INITIAL_COLOR: Record<string, string> = {
   streaming: "text-violet-300",
   music: "text-emerald-300",
@@ -295,7 +303,16 @@ export default function ProductPage() {
       }),
       buildBreadcrumbLd([
         { name: "الرئيسية", href: "/" },
-        { name: categoryLabel(product.category ?? "") || "المنتجات", href: "/" },
+        {
+          name: categoryLabel(product.category ?? "") || "المنتجات",
+          // Link to the category landing page when the product has a
+          // recognised category — improves topical clustering for
+          // search engines + gives users a richer landing destination
+          // than a plain home-page filter.
+          href: product.category && KNOWN_CATEGORIES.has(product.category)
+            ? `/category/${product.category}`
+            : "/",
+        },
         { name: product.name, href: `/product/${product.slug ?? product.id}` },
       ]),
     ],
