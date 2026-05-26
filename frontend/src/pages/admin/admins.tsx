@@ -1,3 +1,4 @@
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
@@ -32,6 +33,7 @@ interface ScopeOption {
 export default function AdminAdminsPage() {
   const { adminToken } = useAuth();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [scopes, setScopes] = useState<ScopeOption[]>([]);
@@ -79,7 +81,15 @@ export default function AdminAdminsPage() {
   const handleToggleActive = async (admin: AdminAccount) => {
     const action = admin.is_active ? "disable" : "enable";
     const verb = admin.is_active ? "تعطيل" : "تفعيل";
-    if (!confirm(`هل تريد ${verb} المسؤول @${admin.username}؟`)) return;
+    const ok = await confirm({
+      title: `${verb} المسؤول؟`,
+      description: `سيتم ${verb} الحساب @${admin.username}.${
+        admin.is_active ? " ستنتهي جلساته الحالية فوراً." : ""
+      }`,
+      confirmLabel: verb,
+      destructive: admin.is_active,
+    });
+    if (!ok) return;
     try {
       const res = await fetch(`/api/admin/admins/${admin.id}/${action}`, {
         method: "POST",
@@ -245,6 +255,7 @@ export default function AdminAdminsPage() {
           headers={headers}
         />
       )}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

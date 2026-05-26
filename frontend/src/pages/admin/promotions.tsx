@@ -1,3 +1,4 @@
+import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,7 @@ const EMPTY_FORM = {
 export default function AdminPromotionsPage() {
   const { adminToken } = useAuth();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [, navigate] = useLocation();
 
   const [sales, setSales] = useState<FlashSale[]>([]);
@@ -174,7 +176,13 @@ export default function AdminPromotionsPage() {
 
   async function handleDelete(sale: FlashSale) {
     if (!adminToken) return;
-    if (!confirm(`إيقاف العرض "${sale.title}" نهائياً؟`)) return;
+    const ok = await confirm({
+      title: "إيقاف العرض السريع؟",
+      description: `سيتم إيقاف العرض "${sale.title}" نهائياً. لا يمكن التراجع عن هذه العملية.`,
+      confirmLabel: "إيقاف",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const r = await fetch(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
       if (!r.ok) {
@@ -448,6 +456,7 @@ export default function AdminPromotionsPage() {
         خدمة التنظيف الخلفية تُحدّث الحالة كل 5 دقائق.
       </p>
       </div>
+      <ConfirmDialog />
     </AdminLayout>
   );
 }
