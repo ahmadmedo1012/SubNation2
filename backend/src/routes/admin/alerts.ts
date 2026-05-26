@@ -13,6 +13,7 @@ import {
 import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { dispatchTestAlert } from "../../services/alerting.service";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -44,7 +45,7 @@ router.post("/test", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to dispatch test alert");
-    return res.status(500).json({ error: "خطأ في إرسال التنبيه" });
+    return res.status(500).json(createErrorResponse("خطأ في إرسال التنبيه", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -56,7 +57,7 @@ router.get("/new", requireAdmin, async (req, res) => {
     return res.json({ alerts: newAlerts });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch new alerts");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -65,7 +66,7 @@ router.get("/unread-count", requireAdmin, async (_req, res) => {
     const c = await countUnreadAlerts();
     return res.json({ count: c });
   } catch {
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -87,7 +88,7 @@ router.get("/", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch admin alerts");
-    return res.status(500).json({ error: "خطأ في جلب التنبيهات" });
+    return res.status(500).json(createErrorResponse("خطأ في جلب التنبيهات", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -97,19 +98,19 @@ router.patch("/read-all", requireAdmin, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to mark all alerts read");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
 router.patch("/:id/read", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرّف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
   try {
     await markAlertRead(id);
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to mark alert read");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -119,19 +120,19 @@ router.delete("/read", requireAdmin, async (req, res) => {
     return res.json({ success: true, deleted });
   } catch (err) {
     req.log.error({ err }, "Failed to delete read alerts");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
 router.delete("/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرّف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
   try {
     await db.delete(adminAlertsTable).where(eq(adminAlertsTable.id, id));
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete alert");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -141,7 +142,7 @@ router.delete("/", requireAdmin, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete all alerts");
-    return res.status(500).json({ error: "خطأ" });
+    return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
 

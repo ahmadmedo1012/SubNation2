@@ -3,6 +3,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { verifyAdminTokenDetailed } from "../lib/jwt";
 import { logger } from "../lib/logger";
 import { getMetrics } from "../lib/metrics";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router: IRouter = Router();
 
@@ -50,7 +51,7 @@ function requireMetricsAuth(req: Request, res: Response, next: NextFunction): vo
     }
   }
 
-  res.status(401).json({ error: "غير مصرح", code: "UNAUTHORIZED" });
+  res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
 }
 
 router.get("/metrics", requireMetricsAuth, async (_req, res) => {
@@ -60,7 +61,7 @@ router.get("/metrics", requireMetricsAuth, async (_req, res) => {
     res.send(body);
   } catch (err) {
     logger.error({ err, category: "monitoring" }, "Failed to render Prometheus metrics");
-    res.status(500).json({ error: "metrics_unavailable" });
+    res.status(500).json(createErrorResponse("metrics_unavailable", ErrorCode.INTERNAL_ERROR));
   }
 });
 

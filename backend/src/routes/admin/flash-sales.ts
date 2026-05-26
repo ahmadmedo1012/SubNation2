@@ -22,6 +22,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router: IRouter = Router();
 
@@ -162,7 +163,7 @@ router.get("/flash-sales", requireAdmin, async (_req, res) => {
 router.post("/flash-sales", requireAdmin, async (req, res) => {
   const validation = validateCreate(req.body ?? {});
   if (!validation.ok) {
-    return res.status(400).json({ error: validation.error.message, field: validation.error.field });
+    return res.status(400).json(createErrorResponse(validation.error.message, ErrorCode.INVALID_DATA, { field: validation.error.field }));
   }
 
   try {
@@ -188,9 +189,7 @@ router.post("/flash-sales", requireAdmin, async (req, res) => {
     // a second active row — translate to a 409 with clear guidance.
     const code = (err as { code?: string }).code;
     if (code === "23505") {
-      return res.status(409).json({
-        error: "يوجد عرض نشط بالفعل. أوقف العرض الحالي أولاً قبل إنشاء عرض جديد.",
-      });
+      return res.status(409).json(createErrorResponse("يوجد عرض نشط بالفعل. أوقف العرض الحالي أولاً قبل إنشاء عرض جديد.", ErrorCode.ALREADY_EXISTS));
     }
     logger.error({ err, category: "admin.flash_sales" }, "flash_sale.create failed");
     throw err;
@@ -204,7 +203,7 @@ router.post("/flash-sales", requireAdmin, async (req, res) => {
  */
 router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const body = (req.body ?? {}) as UpdateBody;
   const updates: Record<string, unknown> = {};
@@ -212,12 +211,12 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
 
   if (body.title !== undefined) {
     if (body.title !== null && typeof body.title !== "string") {
-      return res.status(400).json({ error: "العنوان يجب أن يكون نصاً." });
+      return res.status(400).json(createErrorResponse("العنوان يجب أن يكون نصاً.", ErrorCode.INVALID_DATA));
     }
     if (typeof body.title === "string") {
       const trimmed = body.title.trim();
       if (trimmed.length === 0 || trimmed.length > 255) {
-        return res.status(400).json({ error: "العنوان فارغ أو طويل جداً." });
+        return res.status(400).json(createErrorResponse("العنوان فارغ أو طويل جداً.", ErrorCode.INVALID_DATA));
       }
       updates.title = trimmed;
       auditMeta.title = trimmed;
@@ -226,12 +225,10 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
 
   if (body.discount_percent !== undefined) {
     if (typeof body.discount_percent !== "number" || !Number.isFinite(body.discount_percent)) {
-      return res.status(400).json({ error: "نسبة الخصم غير صالحة." });
+      return res.status(400).json(createErrorResponse("نسبة الخصم غير صالحة.", ErrorCode.INVALID_DATA));
     }
     if (body.discount_percent < MIN_DISCOUNT_PERCENT || body.discount_percent > MAX_DISCOUNT_PERCENT) {
-      return res.status(400).json({
-        error: `نسبة الخصم يجب أن تكون بين ${MIN_DISCOUNT_PERCENT}% و ${MAX_DISCOUNT_PERCENT}%.`,
-      });
+      return res.status(400).json(createErrorResponse(`نسبة الخصم يجب أن تكون بين ${MIN_DISCOUNT_PERCENT}% و ${MAX_DISCOUNT_PERCENT}%.`, ErrorCode.INVALID_DATA));
     }
     updates.discountPercent = String(body.discount_percent);
     auditMeta.discount_percent = body.discount_percent;
@@ -239,14 +236,14 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
 
   if (body.ends_at !== undefined) {
     if (typeof body.ends_at !== "string") {
-      return res.status(400).json({ error: "وقت الانتهاء غير صالح." });
+      return res.status(400).json(createErrorResponse("وقت الانتهاء غير صالح.", ErrorCode.INVALID_DATA));
     }
     const endsAt = new Date(body.ends_at);
     if (Number.isNaN(endsAt.getTime())) {
-      return res.status(400).json({ error: "وقت الانتهاء غير صالح." });
+      return res.status(400).json(createErrorResponse("وقت الانتهاء غير صالح.", ErrorCode.INVALID_DATA));
     }
     if (endsAt.getTime() < Date.now() + MIN_DURATION_MS) {
-      return res.status(400).json({ error: "يجب أن ينتهي العرض بعد 5 دقائق على الأقل من الآن." });
+      return res.status(400).json(createErrorResponse("يجب أن ينتهي العرض بعد 5 دقائق على الأقل من الآن.", ErrorCode.INVALID_DATA));
     }
     updates.endsAt = endsAt;
     auditMeta.ends_at = endsAt.toISOString();
@@ -254,14 +251,14 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
 
   if (body.is_active !== undefined) {
     if (typeof body.is_active !== "boolean") {
-      return res.status(400).json({ error: "حالة التفعيل يجب أن تكون true/false." });
+      return res.status(400).json(createErrorResponse("حالة التفعيل يجب أن تكون true/false.", ErrorCode.INVALID_DATA));
     }
     updates.isActive = body.is_active;
     auditMeta.is_active = body.is_active;
   }
 
   if (Object.keys(updates).length === 0) {
-    return res.status(400).json({ error: "لا توجد حقول للتحديث." });
+    return res.status(400).json(createErrorResponse("لا توجد حقول للتحديث.", ErrorCode.INVALID_DATA));
   }
 
   try {
@@ -271,16 +268,14 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
       .where(eq(flashSalesTable.id, id))
       .returning();
 
-    if (!row) return res.status(404).json({ error: "العرض غير موجود." });
+    if (!row) return res.status(404).json(createErrorResponse("العرض غير موجود.", ErrorCode.NOT_FOUND));
 
     void writeAuditLog(req, "flash_sale.update", "flash_sale", row.id, auditMeta);
     return res.json(toResponse(row));
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code === "23505") {
-      return res.status(409).json({
-        error: "تفعيل هذا العرض يتعارض مع عرض نشط آخر. أوقف العرض الحالي أولاً.",
-      });
+      return res.status(409).json(createErrorResponse("تفعيل هذا العرض يتعارض مع عرض نشط آخر. أوقف العرض الحالي أولاً.", ErrorCode.ALREADY_EXISTS));
     }
     logger.error({ err, category: "admin.flash_sales" }, "flash_sale.update failed");
     throw err;
@@ -294,7 +289,7 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
  */
 router.delete("/flash-sales/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [row] = await db
     .update(flashSalesTable)
@@ -302,7 +297,7 @@ router.delete("/flash-sales/:id", requireAdmin, async (req, res) => {
     .where(eq(flashSalesTable.id, id))
     .returning();
 
-  if (!row) return res.status(404).json({ error: "العرض غير موجود." });
+  if (!row) return res.status(404).json(createErrorResponse("العرض غير موجود.", ErrorCode.NOT_FOUND));
 
   void writeAuditLog(req, "flash_sale.deactivate", "flash_sale", row.id, {
     title: row.title,

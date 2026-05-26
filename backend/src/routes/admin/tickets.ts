@@ -4,6 +4,7 @@ import { Router } from "express";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get("/tickets", requireAdmin, async (req, res) => {
 
 router.get("/tickets/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [row] = await db
     .select({ ticket: supportTicketsTable, userPhone: usersTable.phone })
@@ -63,7 +64,7 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
     .where(eq(supportTicketsTable.id, id))
     .limit(1);
 
-  if (!row) return res.status(404).json({ error: "التذكرة غير موجودة" });
+  if (!row) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
   const replies = await db
     .select()
@@ -89,17 +90,17 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
 
 router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const { message } = req.body ?? {};
-  if (!message?.trim()) return res.status(400).json({ error: "الرسالة مطلوبة" });
+  if (!message?.trim()) return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
 
   const [ticket] = await db
     .select()
     .from(supportTicketsTable)
     .where(eq(supportTicketsTable.id, id))
     .limit(1);
-  if (!ticket) return res.status(404).json({ error: "التذكرة غير موجودة" });
+  if (!ticket) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
   const [reply] = await db
     .insert(ticketRepliesTable)
@@ -133,11 +134,11 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
 
 router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const { status } = req.body ?? {};
   if (!["open", "in_progress", "closed"].includes(status))
-    return res.status(400).json({ error: "حالة غير صالحة" });
+    return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
 
   await db.update(supportTicketsTable).set({ status }).where(eq(supportTicketsTable.id, id));
   return res.json({ success: true });

@@ -8,6 +8,7 @@ import { intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.get("/products", requireAdmin, async (_req, res) => {
 
 router.post("/products", requireAdmin, async (req, res) => {
   const parse = CreateProductBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
 
   // Two-step insert + slug derivation. We need the id to be assigned by the
@@ -150,10 +151,10 @@ router.post("/products", requireAdmin, async (req, res) => {
 
 router.patch("/products/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const parse = UpdateProductBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
 
   const updateData: Record<string, any> = {};
@@ -174,7 +175,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     .set(updateData)
     .where(eq(productsTable.id, id))
     .returning();
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   bumpSitemapCache();
 
@@ -213,7 +214,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
 
 router.delete("/products/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   await db
     .update(productsTable)
@@ -226,14 +227,14 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
 
 router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
-  if (productId === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (productId === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [product] = await db
     .select()
     .from(productsTable)
     .where(eq(productsTable.id, productId))
     .limit(1);
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const { entries, bulk_text } = req.body ?? {};
 
@@ -269,8 +270,8 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       }));
   }
 
-  if (items.length === 0) return res.status(400).json({ error: "لا توجد بيانات صالحة للإضافة" });
-  if (items.length > 500) return res.status(400).json({ error: "الحد الأقصى 500 عنصر دفعة واحدة" });
+  if (items.length === 0) return res.status(400).json(createErrorResponse("لا توجد بيانات صالحة للإضافة", ErrorCode.INVALID_DATA));
+  if (items.length > 500) return res.status(400).json(createErrorResponse("الحد الأقصى 500 عنصر دفعة واحدة", ErrorCode.INVALID_DATA));
 
   const inserted = await db
     .insert(inventoryTable)

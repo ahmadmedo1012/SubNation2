@@ -27,6 +27,7 @@ import { Router } from "express";
 import { computePricing, isAppliedCoupon } from "../../lib/pricing";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { POINTS_PER_LYD, POINTS_PER_REFERRAL } from "../loyalty";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -63,7 +64,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       .where(eq(productsTable.id, body.product_id))
       .limit(1);
     if (!p) {
-      return res.status(404).json({ error: "المنتج غير موجود" });
+      return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
     }
     listPrice = parseFloat(String(p.price));
     costPrice = p.costPrice != null ? parseFloat(String(p.costPrice)) : null;
@@ -73,11 +74,11 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
     listPrice = body.price;
     costPrice = typeof body.cost_price === "number" ? body.cost_price : null;
   } else {
-    return res.status(400).json({ error: "أدخل معرف منتج أو سعراً مباشراً" });
+    return res.status(400).json(createErrorResponse("أدخل معرف منتج أو سعراً مباشراً", ErrorCode.INVALID_DATA));
   }
 
   if (listPrice < 0) {
-    return res.status(400).json({ error: "السعر لا يمكن أن يكون سالباً" });
+    return res.status(400).json(createErrorResponse("السعر لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
   }
 
   // ── Discount stack (delegates to lib/pricing.ts) ─────────────────────

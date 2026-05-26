@@ -29,6 +29,7 @@ import {
   verifyTelegramAuth,
 } from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -598,7 +599,7 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       { category: "auth", err: err instanceof Error ? err.message : String(err) },
       "[telegram-auth] internal error",
     );
-    return res.status(500).json({ error: "حدث خطأ، حاول مجدداً", reason: "server_error" });
+    return res.status(500).json(createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, { reason: "server_error" }));
   }
 });
 
@@ -689,7 +690,7 @@ authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
 // PATCH /api/admin/settings/auth/:id
 authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
   const meta = PROVIDERS.find((p) => p.id === stringParam(req, "id"));
-  if (!meta) return res.status(404).json({ error: "مزود غير موجود" });
+  if (!meta) return res.status(404).json(createErrorResponse("مزود غير موجود", ErrorCode.NOT_FOUND));
 
   const key = `auth.${meta.id}`;
   const existing = await getSetting(key);

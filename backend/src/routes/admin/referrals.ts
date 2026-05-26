@@ -4,6 +4,7 @@ import { Router } from "express";
 import { intParam, queryString, rowsFromResult } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -94,15 +95,15 @@ router.get("/referrals", requireAdmin, async (req, res) => {
 
 router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [event] = await db
     .select()
     .from(referralEventsTable)
     .where(eq(referralEventsTable.id, id))
     .limit(1);
-  if (!event) return res.status(404).json({ error: "الإحالة غير موجودة" });
-  if (event.status === "credited") return res.status(400).json({ error: "تم منح النقاط مسبقاً" });
+  if (!event) return res.status(404).json(createErrorResponse("الإحالة غير موجودة", ErrorCode.NOT_FOUND));
+  if (event.status === "credited") return res.status(400).json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
 
   const POINTS = 50;
   await db

@@ -102,14 +102,20 @@ describe("POST /api/cwv ingestion", () => {
     const app = buildApp();
     const res = await postRaw(app, "not json {", "text/plain");
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ error: "invalid_cwv_sample", reason: "malformed_json" });
+    expect(res.body).toMatchObject({
+      error: "invalid_cwv_sample",
+      details: { reason: "malformed_json" },
+    });
   });
 
   it("rejects empty body with reason='empty_body'", async () => {
     const app = buildApp();
     const res = await postRaw(app, "", "text/plain");
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ error: "invalid_cwv_sample", reason: "empty_body" });
+    expect(res.body).toMatchObject({
+      error: "invalid_cwv_sample",
+      details: { reason: "empty_body" },
+    });
   });
 
   it("rejects schema mismatch with reason='schema_mismatch'", async () => {
@@ -117,7 +123,10 @@ describe("POST /api/cwv ingestion", () => {
     const bad = { ...VALID_SAMPLE, name: "BOGUS" };
     const res = await postRaw(app, JSON.stringify(bad), "application/json");
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ error: "invalid_cwv_sample", reason: "schema_mismatch" });
+    expect(res.body).toMatchObject({
+      error: "invalid_cwv_sample",
+      details: { reason: "schema_mismatch" },
+    });
   });
 
   it("rejects non-UUID-v4 sessionId", async () => {

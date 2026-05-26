@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable, referralEventsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
 
   const referrals = await db
     .select()
@@ -67,17 +68,17 @@ router.post("/convert-points", requireUser, async (req, res) => {
   const pointsToConvert = parseInt(points);
 
   if (!pointsToConvert || pointsToConvert < POINTS_PER_LYD) {
-    return res.status(400).json({ error: `الحد الأدنى للتحويل ${POINTS_PER_LYD} نقطة` });
+    return res.status(400).json(createErrorResponse(`الحد الأدنى للتحويل ${POINTS_PER_LYD} نقطة`, ErrorCode.INVALID_DATA));
   }
   if (pointsToConvert % POINTS_PER_LYD !== 0) {
-    return res.status(400).json({ error: `يجب أن تكون النقاط من مضاعفات ${POINTS_PER_LYD}` });
+    return res.status(400).json(createErrorResponse(`يجب أن تكون النقاط من مضاعفات ${POINTS_PER_LYD}`, ErrorCode.INVALID_DATA));
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
 
   if (user.loyaltyPoints < pointsToConvert) {
-    return res.status(400).json({ error: "رصيد النقاط غير كافٍ" });
+    return res.status(400).json(createErrorResponse("رصيد النقاط غير كافٍ", ErrorCode.INVALID_DATA));
   }
 
   const lydValue = pointsToConvert / POINTS_PER_LYD;

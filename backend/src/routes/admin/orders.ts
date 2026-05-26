@@ -5,6 +5,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
 import { queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -56,11 +57,11 @@ const ORDER_STATUS_VALUES = ["pending", "completed", "failed", "refunded"] as co
 router.patch("/orders/bulk-status", requireAdmin, async (req, res) => {
   const { ids, status } = req.body ?? {};
   const ALLOWED: readonly string[] = ORDER_STATUS_VALUES;
-  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids مطلوبة" });
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json(createErrorResponse("ids مطلوبة", ErrorCode.INVALID_DATA));
   if (!status || !ALLOWED.includes(status))
-    return res.status(400).json({ error: "حالة غير صالحة" });
+    return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
   const numIds: number[] = ids.map(Number).filter((n) => !isNaN(n));
-  if (numIds.length === 0) return res.status(400).json({ error: "لا معرّفات صالحة" });
+  if (numIds.length === 0) return res.status(400).json(createErrorResponse("لا معرّفات صالحة", ErrorCode.INVALID_DATA));
   await db
     .update(ordersTable)
     .set({ status: status as any })

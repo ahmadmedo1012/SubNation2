@@ -5,6 +5,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -44,7 +45,7 @@ router.get("/topups", requireAdmin, async (req, res) => {
 
 router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   try {
     const result = await TopupService.approve(id, req.body?.admin_note ?? null);
@@ -62,7 +63,7 @@ router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
 
 router.post("/topups/:id/reject", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   try {
     const result = await TopupService.reject(id, req.body?.admin_note ?? null);

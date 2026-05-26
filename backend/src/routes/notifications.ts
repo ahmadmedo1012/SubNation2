@@ -3,6 +3,7 @@ import { db, notificationsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.post("/read-all", requireUser, async (req, res) => {
 router.post("/:id/read", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
   await db
     .update(notificationsTable)
     .set({ isRead: true })

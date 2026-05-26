@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger";
 import { monitoringErrorsTotal } from "../lib/metrics";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 /**
  * Wraps any function so monitoring failures never crash the request handler.
@@ -35,7 +36,7 @@ export const instrumentationIsolation: import("express").RequestHandler = (req, 
     logger.error({ err, component: "middleware", category: "monitoring" }, "Instrumentation error");
     // Send 500 to client but don't crash the server
     if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json(createErrorResponse("Internal server error", ErrorCode.INTERNAL_ERROR));
     }
   }
 };

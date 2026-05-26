@@ -4,6 +4,7 @@ import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
@@ -59,10 +60,10 @@ router.get("/users", requireAdmin, async (req, res) => {
 
 router.patch("/users/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
-  if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
 
   const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier } = req.body ?? {};
   const updates: Record<string, any> = {};
@@ -70,10 +71,10 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
   if (typeof wallet_adjustment === "number") {
     const current = parseFloat(String(user.walletBalance));
     const next = +(current + wallet_adjustment).toFixed(2);
-    if (next < 0) return res.status(400).json({ error: "الرصيد لا يمكن أن يكون سالباً" });
+    if (next < 0) return res.status(400).json(createErrorResponse("الرصيد لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
     updates.walletBalance = String(next);
   } else if (typeof wallet_balance === "number") {
-    if (wallet_balance < 0) return res.status(400).json({ error: "الرصيد لا يمكن أن يكون سالباً" });
+    if (wallet_balance < 0) return res.status(400).json(createErrorResponse("الرصيد لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
     updates.walletBalance = String(wallet_balance.toFixed(2));
   }
   if (typeof loyalty_points === "number" && loyalty_points >= 0) {
@@ -86,7 +87,7 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
     updates.loyaltyTier = loyalty_tier;
   }
 
-  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "لا توجد تعديلات" });
+  if (Object.keys(updates).length === 0) return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
 
   const [updated] = await db
     .update(usersTable)

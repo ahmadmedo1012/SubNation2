@@ -7,6 +7,7 @@ import { safeDecrypt } from "../lib/encryption";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewTopup } from "../telegram";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(401).json({ error: "المستخدم غير موجود" });
+  if (!user) return res.status(401).json(createErrorResponse("المستخدم غير موجود", ErrorCode.UNAUTHORIZED));
 
   const recentOrders = await db
     .select({
@@ -73,7 +74,7 @@ router.post("/topups", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateTopupBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const {
     amount,
     payment_method,
@@ -84,21 +85,21 @@ router.post("/topups", requireUser, async (req, res) => {
   } = parse.data;
 
   if (amount <= 0 || amount > 10000) {
-    return res.status(400).json({ error: "قيمة الشحن غير صالحة" });
+    return res.status(400).json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
   }
 
   const method = payment_method ?? "mobile_transfer";
 
   if (method === "mobile_transfer" && !payment_network) {
-    return res.status(400).json({ error: "يرجى اختيار الشبكة" });
+    return res.status(400).json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
   }
   if (method === "lypay" && !sender_account) {
-    return res.status(400).json({ error: "يرجى إدخال رقم حساب المُرسل" });
+    return res.status(400).json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
   }
 
   if (method === "mobile_transfer" && sender_phone) {
     if (!normalizeLibyanPhone(sender_phone)) {
-      return res.status(400).json({ error: "رقم هاتف المُرسل غير صالح" });
+      return res.status(400).json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
     }
   }
 

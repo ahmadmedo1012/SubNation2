@@ -21,6 +21,7 @@ import { instrumentationIsolation } from "./middlewares/instrumentation-isolatio
 import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import seoRouter from "./routes/seo";
+import { ErrorCode, createErrorResponse } from "./lib/errors";
 
 const app = express();
 
@@ -460,7 +461,7 @@ app.use((req, res, next) => {
 
       if (!isValid) {
         logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
-        return res.status(403).json({ error: "طلب غير مصرح" });
+        return res.status(403).json(createErrorResponse("طلب غير مصرح", ErrorCode.FORBIDDEN));
       }
     }
   }
@@ -483,7 +484,7 @@ app.use("/api", router);
 
 // JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
 app.use("/api", (_req, res) => {
-  res.status(404).json({ error: "المسار غير موجود", code: "NOT_FOUND" });
+  res.status(404).json(createErrorResponse("المسار غير موجود", ErrorCode.NOT_FOUND));
 });
 
 // ── SEO routes (root-level) ──────────────────────────────────────────────────
@@ -556,12 +557,12 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error({ err, req: { method: req.method, url: req.url } }, "Unhandled error");
 
   if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
-    res.status(400).json({ error: "بيانات غير صالحة" });
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   } else if ("errors" in err) {
     const errorWithErrors = err as { errors?: unknown[] };
-    res.status(400).json({ error: "بيانات غير صالحة", details: errorWithErrors.errors });
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, { details: errorWithErrors.errors }));
   } else {
-    res.status(500).json({ error: "خطأ في الخادم. حاول مرة أخرى." });
+    res.status(500).json(createErrorResponse("خطأ في الخادم. حاول مرة أخرى.", ErrorCode.INTERNAL_ERROR));
   }
 });
 

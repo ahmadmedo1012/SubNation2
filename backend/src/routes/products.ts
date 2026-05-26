@@ -3,6 +3,7 @@ import { applyFlashSale } from "../lib/pricing";
 import { and, count, eq, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
@@ -202,7 +203,7 @@ router.get("/flash-sale", flashSaleCache, getFlashSaleHandler);
 router.get("/by-slug/:slug", catalogCache, async (req, res) => {
   const slug = String(req.params.slug ?? "").trim().toLowerCase();
   if (!slug || slug.length > 160) {
-    return res.status(400).json({ error: "معرف المنتج غير صالح" });
+    return res.status(400).json(createErrorResponse("معرف المنتج غير صالح", ErrorCode.INVALID_DATA));
   }
 
   const [product] = await db
@@ -211,7 +212,7 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
     .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
     .limit(1);
 
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const [stockResult] = await db
     .select({ count: count() })
@@ -250,7 +251,7 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
 
 router.get("/:id", catalogCache, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [product] = await db
     .select()
@@ -258,7 +259,7 @@ router.get("/:id", catalogCache, async (req, res) => {
     .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
     .limit(1);
 
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const [stockResult] = await db
     .select({ count: count() })
@@ -304,7 +305,7 @@ router.get("/:id", catalogCache, async (req, res) => {
 // route matcher hits "by-slug" before the numeric :id catch-all.
 router.get("/:id/recommendations", catalogCache, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json({ error: "معرف غير صالح" });
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [product] = await db
     .select({ category: productsTable.category })
@@ -312,7 +313,7 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
     .where(eq(productsTable.id, id))
     .limit(1);
 
-  if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const recommendations = await db
     .select({

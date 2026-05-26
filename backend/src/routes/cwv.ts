@@ -1,4 +1,5 @@
 import express, { Router, type IRouter } from "express";
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { cwvLogger } from "../lib/logger";
 import { cwvSampleValue, cwvSamplesTotal, safeInc, safeObserve } from "../lib/metrics";
 
@@ -103,19 +104,19 @@ router.post("/cwv", cwvBodyParser, (req, res) => {
   let body: unknown = req.body;
   if (typeof body === "string") {
     if (body.length === 0) {
-      res.status(400).json({ error: "invalid_cwv_sample", reason: "empty_body" });
+      res.status(400).json(createErrorResponse("invalid_cwv_sample", ErrorCode.INVALID_DATA, { reason: "empty_body" }));
       return;
     }
     try {
       body = JSON.parse(body);
     } catch {
-      res.status(400).json({ error: "invalid_cwv_sample", reason: "malformed_json" });
+      res.status(400).json(createErrorResponse("invalid_cwv_sample", ErrorCode.INVALID_DATA, { reason: "malformed_json" }));
       return;
     }
   }
 
   if (!isCWVSample(body)) {
-    res.status(400).json({ error: "invalid_cwv_sample", reason: "schema_mismatch" });
+    res.status(400).json(createErrorResponse("invalid_cwv_sample", ErrorCode.INVALID_DATA, { reason: "schema_mismatch" }));
     return;
   }
   const sample = body;
