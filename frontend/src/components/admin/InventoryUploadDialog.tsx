@@ -142,7 +142,7 @@ export function InventoryUploadDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onClose}
     >
       <div
@@ -186,7 +186,10 @@ export function InventoryUploadDialog({
               <FileText className="w-3.5 h-3.5 text-primary" />
               الصيغ المدعومة (اضغط للعرض)
             </summary>
-            <ul className="mt-2 text-[11px] leading-relaxed text-muted-foreground space-y-1 ltr text-left font-mono">
+            <ul
+              dir="ltr"
+              className="mt-2 text-[11px] leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
+            >
               <li>
                 <Mail className="w-3 h-3 inline mr-1" />
                 <code>email|password</code> — حساب بسيط
@@ -319,7 +322,7 @@ export function InventoryUploadDialog({
                   {parsed.entries.length})
                 </h3>
               </div>
-              <div className="bg-card border border-border/55 rounded-xl overflow-hidden">
+              <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
                 <table className="w-full text-[11px]">
                   <thead className="bg-muted/30 text-muted-foreground">
                     <tr>
