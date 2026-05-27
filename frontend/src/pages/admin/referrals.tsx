@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -67,21 +68,10 @@ const MEDAL_COLORS = [
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-      <div className="border-b border-border/60 bg-muted/30 h-11" />
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div
-          key={i}
-          className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
-        >
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-28" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-28" />
-          <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-24 flex-1" />
-          <div className="h-7 w-16 bg-muted skeleton-shimmer rounded" />
-        </div>
-      ))}
-    </div>
+    <SharedTableSkeleton
+      rows={6}
+      cells={["w-28", "w-28", "rounded-full w-14", "flex-1 w-24", "w-16"]}
+    />
   );
 }
 

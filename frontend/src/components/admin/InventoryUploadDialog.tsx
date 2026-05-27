@@ -21,10 +21,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 interface InventoryUploadDialogProps {
   productId: number;
   productName: string;
-  /** Total inventory items currently in this product (sold + unsold). */
+  /**
+   * Total inventory items currently in this product (sold + unsold).
+   * If omitted, the dialog displays the count it fetched itself.
+   */
   inventoryCount?: number;
-  /** Existing inventory rows for dedup detection. */
-  existingRows?: Array<{ account_email?: string | null; extra_details?: string | null }>;
   onClose: () => void;
   onUploaded: () => void;
 }
@@ -36,7 +37,6 @@ export function InventoryUploadDialog({
   productId,
   productName,
   inventoryCount,
-  existingRows,
   onClose,
   onUploaded,
 }: InventoryUploadDialogProps) {
@@ -47,16 +47,59 @@ export function InventoryUploadDialog({
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Build the existing-keys Set once per `existingRows` change.
-  const existingKeys = useMemo(() => {
-    if (!existingRows) return new Set<string>();
-    return buildExistingDedupKeys(
-      existingRows.map((r) => ({
-        accountEmail: r.account_email ?? null,
-        extraDetails: r.extra_details ?? null,
-      })),
-    );
-  }, [existingRows]);
+  // Existing inventory: fetched once on mount so the dedup-preview
+  // can flag entries that already exist in the DB. The actual count
+  // (when caller didn't pass `inventoryCount`) and the per-row
+  // identifiers both come from this fetch.
+  const [existingKeys, setExistingKeys] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+  const [fetchedCount, setFetchedCount] = useState<number | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/products/${productId}/inventory`,
+          { headers: jsonHeaders },
+        );
+        if (!res.ok) {
+          // Soft-fail: dedup-against-DB just won't be available;
+          // the in-batch dedup + server-side dedup at submit still work.
+          if (!cancelled) setLoadingExisting(false);
+          return;
+        }
+        const data = (await res.json()) as {
+          total: number;
+          items: Array<{
+            account_email: string | null;
+            extra_details: string | null;
+          }>;
+        };
+        if (cancelled) return;
+        setExistingKeys(
+          buildExistingDedupKeys(
+            data.items.map((r) => ({
+              accountEmail: r.account_email,
+              extraDetails: r.extra_details,
+            })),
+          ),
+        );
+        setFetchedCount(data.total);
+      } catch {
+        // Network error → soft-fail (same rationale as above).
+      } finally {
+        if (!cancelled) setLoadingExisting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, jsonHeaders]);
+
+  const displayCount = inventoryCount ?? fetchedCount ?? undefined;
 
   // Live parse on every text change — cheap, runs on the operator's
   // machine, gives instant feedback as they paste.
@@ -156,16 +199,21 @@ export function InventoryUploadDialog({
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="font-black text-base">رفع مخزون جديد</h2>
-            <div className="text-xs text-muted-foreground truncate">
-              {productName}
-              {typeof inventoryCount === "number" && (
+            <div className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+              <span className="truncate">{productName}</span>
+              {typeof displayCount === "number" ? (
                 <>
-                  {" · "}
-                  <span className="font-bold">
-                    {inventoryCount} عنصر متوفر حالياً
+                  <span aria-hidden="true">·</span>
+                  <span className="font-bold shrink-0">
+                    {displayCount} عنصر متوفر حالياً
                   </span>
                 </>
-              )}
+              ) : loadingExisting ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                </>
+              ) : null}
             </div>
           </div>
           <button

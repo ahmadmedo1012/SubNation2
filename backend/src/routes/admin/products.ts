@@ -225,6 +225,50 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 
+router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
+  const productId = intParam(req, "id");
+  if (productId === null)
+    return res
+      .status(400)
+      .json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+
+  // Confirm the product exists so the frontend can distinguish a 404
+  // from "exists but has 0 inventory rows".
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(eq(productsTable.id, productId))
+    .limit(1);
+  if (!product)
+    return res
+      .status(404)
+      .json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+
+  // Only fields needed for the dedup-preview in the inventory dialog.
+  // accountPassword is intentionally NOT returned — it's not needed
+  // for dedup and would needlessly expose encrypted material.
+  const rows = await db
+    .select({
+      accountEmail: inventoryTable.accountEmail,
+      extraDetails: inventoryTable.extraDetails,
+      isSold: inventoryTable.isSold,
+    })
+    .from(inventoryTable)
+    .where(eq(inventoryTable.productId, productId));
+
+  const sold = rows.filter((r) => r.isSold).length;
+  return res.json({
+    total: rows.length,
+    sold,
+    available: rows.length - sold,
+    items: rows.map((r) => ({
+      account_email: r.accountEmail,
+      extra_details: r.extraDetails,
+      is_sold: r.isSold,
+    })),
+  });
+});
+
 router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
   if (productId === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));

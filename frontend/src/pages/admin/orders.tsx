@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
@@ -72,22 +73,17 @@ function isWithinDays(dateStr: string, days: number) {
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-      <div className="border-b border-border/60 bg-muted/30 h-11" />
-      {Array.from({ length: 7 }).map((_, i) => (
-        <div
-          key={i}
-          className={`flex items-center gap-4 px-4 py-3 border-b border-border/25 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
-        >
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-24 shrink-0" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-28" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md flex-1" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-16 shrink-0" />
-          <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14 shrink-0" />
-          <div className="h-3.5 bg-muted skeleton-shimmer rounded-md w-20 shrink-0" />
-        </div>
-      ))}
-    </div>
+    <SharedTableSkeleton
+      rows={7}
+      cells={[
+        "w-24 shrink-0",
+        "w-28",
+        "flex-1",
+        "w-16 shrink-0",
+        "rounded-full w-14 shrink-0",
+        "w-20 shrink-0",
+      ]}
+    />
   );
 }
 

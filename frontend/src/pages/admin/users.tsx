@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -144,24 +145,19 @@ function userIdentityLabel(user: Record<string, unknown>): string {
 
 function TableSkeleton() {
   return (
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-      <div className="border-b border-border/60 bg-muted/30 h-11" />
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div
-          key={i}
-          className={`flex items-center gap-4 px-4 py-3 border-b border-border/30 ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
-        >
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-28 shrink-0" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-16 shrink-0" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded-full w-14 shrink-0" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-12 shrink-0" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-16 flex-1" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-8 shrink-0" />
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-20 shrink-0" />
-          <div className="h-7 w-7 bg-muted skeleton-shimmer rounded shrink-0" />
-        </div>
-      ))}
-    </div>
+    <SharedTableSkeleton
+      rows={6}
+      cells={[
+        "w-28 shrink-0",
+        "w-16 shrink-0",
+        "rounded-full w-14 shrink-0",
+        "w-12 shrink-0",
+        "flex-1 w-16",
+        "w-8 shrink-0",
+        "w-20 shrink-0",
+        "w-7 shrink-0",
+      ]}
+    />
   );
 }
 
