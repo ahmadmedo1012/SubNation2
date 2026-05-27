@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -387,18 +388,18 @@ export default function AdminCouponsPage() {
         {loading ? (
           <TableSkeleton />
         ) : coupons.length === 0 ? (
-          <div className="bg-card border border-border/60 rounded-2xl py-16 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted/30 border border-border/40 flex items-center justify-center mx-auto mb-3">
-              <Tag className="w-6 h-6 opacity-20" />
-            </div>
-            <p className="font-bold text-foreground/50 text-sm mb-1">لا توجد كوبونات بعد</p>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="text-xs text-primary hover:underline press-spring"
-            >
-              + إنشاء أول كوبون
-            </button>
-          </div>
+          <EmptyState
+            icon={Tag}
+            title="لا توجد كوبونات بعد"
+            action={
+              <button
+                onClick={() => setShowCreate(true)}
+                className="text-xs text-primary hover:underline press-spring"
+              >
+                + إنشاء أول كوبون
+              </button>
+            }
+          />
         ) : (
           <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
             {/* Header */}

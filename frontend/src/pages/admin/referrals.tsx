@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -300,15 +301,11 @@ export default function AdminReferralsPage() {
         {loading ? (
           <TableSkeleton />
         ) : list.length === 0 ? (
-          <div className="bg-card border border-border/60 rounded-2xl py-16 text-center text-muted-foreground">
-            <div className="w-14 h-14 rounded-2xl bg-muted/30 border border-border/40 flex items-center justify-center mx-auto mb-3">
-              <Gift className="w-6 h-6 opacity-20" />
-            </div>
-            <p className="font-bold text-foreground/50 text-sm">لا توجد إحالات</p>
-            <p className="text-xs mt-1 text-muted-foreground">
-              {search ? `لا نتائج لـ "${search}"` : "لم يتم تسجيل إحالات بعد"}
-            </p>
-          </div>
+          <EmptyState
+            icon={Gift}
+            title="لا توجد إحالات"
+            description={search ? `لا نتائج لـ "${search}"` : "لم يتم تسجيل إحالات بعد"}
+          />
         ) : (
           <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
             {/* Table header */}

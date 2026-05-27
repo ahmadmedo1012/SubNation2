@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
@@ -600,15 +601,15 @@ export default function AdminTopupsPage() {
             ))}
           </div>
         ) : topups.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
-              <Clock className="w-5 h-5 opacity-30" />
-            </div>
-            <p className="font-bold text-sm">
-              {statusFilter === "pending" ? "لا توجد طلبات معلقة" : "لا توجد طلبات في هذه الفئة"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">ستظهر الطلبات هنا عند ورودها</p>
-          </div>
+          <EmptyState
+            icon={Clock}
+            title={
+              statusFilter === "pending"
+                ? "لا توجد طلبات معلقة"
+                : "لا توجد طلبات في هذه الفئة"
+            }
+            description="ستظهر الطلبات هنا عند ورودها"
+          />
         ) : (
           <div className="space-y-2.5">
             {topups.map((t, i: number) => (

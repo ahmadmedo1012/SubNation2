@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -653,12 +654,7 @@ export default function AdminProductsPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
-              <Package className="w-5 h-5 opacity-30" />
-            </div>
-            <p className="font-bold text-sm">لا توجد منتجات</p>
-          </div>
+          <EmptyState icon={Package} title="لا توجد منتجات" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((product) => {

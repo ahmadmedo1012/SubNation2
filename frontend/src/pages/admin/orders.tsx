@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
@@ -604,24 +605,24 @@ export default function AdminOrdersPage() {
         {isLoading ? (
           <TableSkeleton />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
-              <ShoppingBag className="w-5 h-5 opacity-30" />
-            </div>
-            <p className="font-bold text-sm mb-1">لا توجد طلبات</p>
-            {(search || statusFilter || dateRange > 0) && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setStatusFilter("");
-                  setDateRange(0);
-                }}
-                className="text-xs text-primary hover:underline mt-1"
-              >
-                مسح الفلاتر
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={ShoppingBag}
+            title="لا توجد طلبات"
+            action={
+              search || statusFilter || dateRange > 0 ? (
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("");
+                    setDateRange(0);
+                  }}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  مسح الفلاتر
+                </button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             {/* Desktop table */}

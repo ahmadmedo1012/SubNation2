@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -643,20 +644,19 @@ export default function AdminUsersPage() {
         {isLoading ? (
           <TableSkeleton />
         ) : sorted.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">
-              <Users className="w-5 h-5 opacity-30" />
-            </div>
-            <p className="font-bold text-sm">
-              {search
+          <EmptyState
+            icon={Users}
+            title={
+              search
                 ? `لا نتائج لـ "${search}"`
                 : tierFilter
                   ? `لا مستخدمون بمستوى ${tierLabel(tierFilter)}`
-                  : "لا يوجد مستخدمون"}
-            </p>
-            {(search || tierFilter) && (
-              <button
-                onClick={() => {
+                  : "لا يوجد مستخدمون"
+            }
+            action={
+              search || tierFilter ? (
+                <button
+                  onClick={() => {
                   setSearch("");
                   setTierFilter("");
                 }}
@@ -664,8 +664,9 @@ export default function AdminUsersPage() {
               >
                 مسح الفلاتر
               </button>
-            )}
-          </div>
+              ) : undefined
+            }
+          />
         ) : (
           <>
             {/* Desktop table */}
