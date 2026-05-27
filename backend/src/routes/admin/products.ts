@@ -238,9 +238,80 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
 
   const { entries, bulk_text } = req.body ?? {};
 
-  let items: Array<{ accountEmail: string; accountPassword: string; extraDetails?: string }> = [];
+  // Structured entries shape (per inventory-parser.ts ParsedInventoryEntry):
+  //   { kind: "credentials"|"code", email?, password?, extra? }
+  // Legacy bulk_text path is kept for any in-flight clients but new
+  // operators upload via the structured path so the server-side dedup
+  // and per-row validation can run uniformly.
+  type ParsedEntry =
+    | { kind: "credentials"; email: string; password: string; extra?: string | null }
+    | { kind: "code"; extra: string };
 
-  if (bulk_text && typeof bulk_text === "string") {
+  const items: Array<{
+    accountEmail: string | null;
+    accountPassword: string | null;
+    extraDetails: string | null;
+  }> = [];
+
+  if (Array.isArray(entries)) {
+    // Validate each entry. Reject the whole batch on the first malformed
+    // entry — the operator is supposed to have previewed the parse on
+    // the frontend, so a server-side reject means the payload was
+    // tampered with or out of date.
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i] as Partial<ParsedEntry> & { kind?: string };
+      if (e?.kind === "credentials") {
+        const email = typeof e.email === "string" ? e.email.trim() : "";
+        const password = typeof e.password === "string" ? e.password : "";
+        if (!email || !password) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${i + 1}: بيانات الحساب ناقصة`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
+        const extra =
+          typeof e.extra === "string" && e.extra.trim() ? e.extra.trim() : null;
+        items.push({
+          accountEmail: email,
+          accountPassword: encrypt(password),
+          extraDetails: extra,
+        });
+      } else if (e?.kind === "code") {
+        const code = typeof e.extra === "string" ? e.extra.trim() : "";
+        if (!code) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${i + 1}: كود فارغ`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
+        items.push({
+          accountEmail: null,
+          accountPassword: null,
+          extraDetails: code,
+        });
+      } else {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              `السطر ${i + 1}: نوع غير معروف`,
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
+    }
+  } else if (bulk_text && typeof bulk_text === "string") {
+    // Legacy flat-text path. Kept for backward compatibility with old
+    // bookmarklets / scripts; the modern frontend always sends
+    // structured entries.
     const lines = bulk_text
       .split("\n")
       .map((l: string) => l.trim())
@@ -250,37 +321,80 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       if (parts.length >= 2) {
         items.push({
           accountEmail: parts[0].trim(),
-          accountPassword: parts[1].trim(),
-          extraDetails: parts[2]?.trim() || undefined,
+          accountPassword: encrypt(parts[1].trim()),
+          extraDetails: parts[2]?.trim() || null,
+        });
+      } else if (parts.length === 1 && parts[0].trim()) {
+        // Single-column line → code-only entry (matches the new parser).
+        items.push({
+          accountEmail: null,
+          accountPassword: null,
+          extraDetails: parts[0].trim(),
         });
       }
     }
-  } else if (Array.isArray(entries)) {
-    interface AccountEntry {
-      account_email: string;
-      account_password: string;
-      extra_details?: string;
-    }
-    items = entries
-      .filter((e: AccountEntry) => e.account_email && e.account_password)
-      .map((e: AccountEntry) => ({
-        accountEmail: e.account_email,
-        accountPassword: e.account_password,
-        extraDetails: e.extra_details || undefined,
-      }));
   }
 
   if (items.length === 0) return res.status(400).json(createErrorResponse("لا توجد بيانات صالحة للإضافة", ErrorCode.INVALID_DATA));
   if (items.length > 500) return res.status(400).json(createErrorResponse("الحد الأقصى 500 عنصر دفعة واحدة", ErrorCode.INVALID_DATA));
 
+  // Server-side dedup against existing inventory for THIS product. Even
+  // though the frontend flags duplicates in the preview, an operator can
+  // still submit them on purpose ("force") — but we never want to insert
+  // the SAME email twice for the same product. Keys mirror the parser
+  // ('c:<email>' for credentials, 'k:<code>' for code-only).
+  const existing = await db
+    .select({
+      accountEmail: inventoryTable.accountEmail,
+      extraDetails: inventoryTable.extraDetails,
+    })
+    .from(inventoryTable)
+    .where(eq(inventoryTable.productId, productId));
+  const existingKeys = new Set<string>();
+  for (const r of existing) {
+    if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
+    else if (r.extraDetails) existingKeys.add(`k:${r.extraDetails.toLowerCase()}`);
+  }
+
+  const seenInBatch = new Set<string>();
+  const filtered: typeof items = [];
+  let skippedDuplicates = 0;
+  for (const item of items) {
+    const key = item.accountEmail
+      ? `c:${item.accountEmail.toLowerCase()}`
+      : item.extraDetails
+        ? `k:${item.extraDetails.toLowerCase()}`
+        : null;
+    if (key === null) {
+      filtered.push(item);
+      continue;
+    }
+    if (existingKeys.has(key) || seenInBatch.has(key)) {
+      skippedDuplicates++;
+      continue;
+    }
+    seenInBatch.add(key);
+    filtered.push(item);
+  }
+
+  if (filtered.length === 0) {
+    return res.status(400).json(
+      createErrorResponse(
+        `كل العناصر (${skippedDuplicates}) موجودة مسبقاً في المخزون`,
+        ErrorCode.INVALID_DATA,
+        { skipped_duplicates: skippedDuplicates },
+      ),
+    );
+  }
+
   const inserted = await db
     .insert(inventoryTable)
     .values(
-      items.map((item) => ({
+      filtered.map((item) => ({
         productId,
         accountEmail: item.accountEmail,
-        accountPassword: encrypt(item.accountPassword),
-        extraDetails: item.extraDetails ?? null,
+        accountPassword: item.accountPassword,
+        extraDetails: item.extraDetails,
       })),
     )
     .returning();
@@ -288,7 +402,11 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   return res.status(201).json({
     success: true,
     added: inserted.length,
-    message: `تم إضافة ${inserted.length} عنصر إلى المخزون`,
+    skipped_duplicates: skippedDuplicates,
+    message:
+      skippedDuplicates > 0
+        ? `تم إضافة ${inserted.length} عنصر، وتم تخطي ${skippedDuplicates} عنصر مكرر`
+        : `تم إضافة ${inserted.length} عنصر إلى المخزون`,
   });
 });
 

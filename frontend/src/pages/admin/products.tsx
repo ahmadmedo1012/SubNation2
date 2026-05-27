@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -131,16 +132,17 @@ function InlineStockEdit({
 
 export default function AdminProductsPage() {
   const { adminToken } = useAuth();
-  const jsonHeaders = useAdminHeaders({ json: true });
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [inventoryProductId, setInventoryProductId] = useState<number | null>(null);
-  const [bulkText, setBulkText] = useState("");
-  const [uploadLoading, setUploadLoading] = useState(false);
+  const [inventoryDialogProduct, setInventoryDialogProduct] = useState<{
+    id: number;
+    name: string;
+    inventoryCount: number;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
@@ -254,7 +256,6 @@ export default function AdminProductsPage() {
       is_active: product.is_active,
     });
     setShowForm(true);
-    setInventoryProductId(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -262,32 +263,6 @@ export default function AdminProductsPage() {
     setShowForm(false);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
-  };
-
-  const handleInventoryUpload = async (productId: number) => {
-    if (!bulkText.trim()) return;
-    setUploadLoading(true);
-    try {
-      const res = await fetch(`/api/admin/products/${productId}/inventory`, {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({ bulk_text: bulkText }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "خطأ");
-      toast({ title: "تم الرفع", description: data.message });
-      setBulkText("");
-      setInventoryProductId(null);
-      invalidate();
-    } catch (err: unknown) {
-      toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
-        variant: "destructive",
-      });
-    } finally {
-      setUploadLoading(false);
-    }
   };
 
   const filtered = products.filter((p) => {
@@ -372,7 +347,6 @@ export default function AdminProductsPage() {
               setShowForm(true);
               setEditingId(null);
               setForm({ ...EMPTY_FORM });
-              setInventoryProductId(null);
             }}
             className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 h-9 active:scale-[0.97] transition-transform"
           >
@@ -827,16 +801,16 @@ export default function AdminProductsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className={`flex-1 h-8 text-xs active:scale-[0.97] transition-transform ${inventoryProductId === product.id ? "border-primary/40 text-primary bg-primary/8" : "text-muted-foreground"}`}
-                        onClick={() => {
-                          setInventoryProductId((prev) =>
-                            prev === product.id ? null : product.id,
-                          );
-                          setBulkText("");
-                          setShowForm(false);
-                        }}
+                        className="flex-1 h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
+                        onClick={() =>
+                          setInventoryDialogProduct({
+                            id: product.id,
+                            name: product.name,
+                            inventoryCount: product.stock_count,
+                          })
+                        }
                       >
-                        <Upload className="w-3 h-3 ml-1" /> مخزون
+                        <Upload className="w-3 h-3 ml-1" /> رفع مخزون
                       </Button>
                       {deleteConfirm === product.id ? (
                         <div className="flex gap-1">
@@ -870,54 +844,31 @@ export default function AdminProductsPage() {
                     </div>
                   </div>
 
-                  {/* Inventory panel */}
-                  {inventoryProductId === product.id && (
-                    <div className="border-t border-border bg-muted/10 p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Upload className="w-3.5 h-3.5 text-primary" />
-                        <span className="text-xs font-bold">رفع مخزون جديد</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        كل سطر:{" "}
-                        <span className="font-mono bg-muted/60 border border-border/50 px-1 rounded text-[10px]">
-                          البريد|كلمةالمرور|تفاصيل
-                        </span>
-                      </p>
-                      <textarea
-                        value={bulkText}
-                        onChange={(e) => setBulkText(e.target.value)}
-                        placeholder={"example@email.com|Password123\nuser2@mail.com|Pass456|extra"}
-                        className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                        dir="ltr"
-                      />
-                      <div className="flex gap-2 mt-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 h-8"
-                          onClick={() => setInventoryProductId(null)}
-                        >
-                          إلغاء
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="flex-1 h-8 bg-primary hover:bg-primary/90"
-                          onClick={() => handleInventoryUpload(product.id)}
-                          disabled={uploadLoading || !bulkText.trim()}
-                        >
-                          {uploadLoading
-                            ? "جارٍ الرفع..."
-                            : `رفع (${bulkText.split("\n").filter((l) => l.trim()).length} سطر)`}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  {/* Inventory upload now happens in a full-screen
+                      dialog (see InventoryUploadDialog). The 'رفع مخزون'
+                      button above opens it; it gives the operator a
+                      preview table, drag-drop file support, and dedup
+                      detection before the POST fires. */}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Inventory upload dialog (shared mount, opened per-product) */}
+      {inventoryDialogProduct && (
+        <InventoryUploadDialog
+          productId={inventoryDialogProduct.id}
+          productName={inventoryDialogProduct.name}
+          inventoryCount={inventoryDialogProduct.inventoryCount}
+          onClose={() => setInventoryDialogProduct(null)}
+          onUploaded={() => {
+            setInventoryDialogProduct(null);
+            invalidate();
+          }}
+        />
+      )}
     </AdminLayout>
   );
 }
