@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { createHmac } from "crypto";
 import {
   signTelegramFixture,
+  signTelegramWebAppFixture,
   TELEGRAM_AUTH_FRESHNESS_SEC,
+  TELEGRAM_WEBAPP_FRESHNESS_SEC,
   verifyTelegramAuth,
+  verifyTelegramWebAppData,
 } from "../telegram-auth";
 
 const BOT_TOKEN = "1234567890:AAH-test-bot-token-not-real-do-not-reuse";
@@ -265,6 +269,130 @@ describe("verifyTelegramAuth", () => {
         expect(result.fields.first_name).toBeUndefined();
         expect(result.fields.photo_url).toBeUndefined();
       }
+    });
+  });
+});
+
+describe("verifyTelegramWebAppData", () => {
+  describe("happy paths", () => {
+    it("accepts a fresh, well-formed initData payload", () => {
+      const auth_date = nowSec();
+      const initData = signTelegramWebAppFixture(
+        {
+          user: {
+            id: 987654321,
+            first_name: "Ahmed",
+            username: "ahmed_test",
+            photo_url: "https://t.me/i/userpic/abc.jpg",
+          },
+          auth_date,
+          query_id: "AAHdF6IQAAAAAN0XohBOKJjL",
+        },
+        BOT_TOKEN,
+      );
+
+      const result = verifyTelegramWebAppData(initData, BOT_TOKEN);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.user.id).toBe("987654321");
+        expect(result.user.first_name).toBe("Ahmed");
+        expect(result.user.username).toBe("ahmed_test");
+        expect(result.auth_date).toBe(String(auth_date));
+      }
+    });
+
+    it("normalises numeric ids to strings (matches users.telegram_id column)", () => {
+      const initData = signTelegramWebAppFixture(
+        { user: { id: 123 }, auth_date: nowSec() },
+        BOT_TOKEN,
+      );
+      const result = verifyTelegramWebAppData(initData, BOT_TOKEN);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(typeof result.user.id).toBe("string");
+    });
+  });
+
+  describe("failure modes", () => {
+    it("rejects a missing initData", () => {
+      const result = verifyTelegramWebAppData("", BOT_TOKEN);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("missing_init_data");
+    });
+
+    it("rejects when the hash is missing", () => {
+      const initData = "user=%7B%22id%22%3A1%7D&auth_date=" + nowSec();
+      const result = verifyTelegramWebAppData(initData, BOT_TOKEN);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("missing_hash");
+    });
+
+    it("rejects when the user field is missing", () => {
+      // Hand-build a payload with a valid hash but no `user` field.
+      const params = new URLSearchParams();
+      params.set("auth_date", String(nowSec()));
+      const keys = Array.from(params.keys()).sort();
+      const checkString = keys.map((k) => `${k}=${params.get(k)}`).join("\n");
+      // Reproduce the WebApp secret derivation from the impl.
+      const secretKey = createHmac("sha256", "WebAppData").update(BOT_TOKEN).digest();
+      const hash = createHmac("sha256", secretKey).update(checkString).digest("hex");
+      params.set("hash", hash);
+      const result = verifyTelegramWebAppData(params.toString(), BOT_TOKEN);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("missing_user");
+    });
+
+    it("rejects a tampered hash", () => {
+      const initData = signTelegramWebAppFixture(
+        { user: { id: 1 }, auth_date: nowSec() },
+        BOT_TOKEN,
+      );
+      const tampered = initData.replace(/hash=[a-f0-9]+/, "hash=" + "0".repeat(64));
+      const result = verifyTelegramWebAppData(tampered, BOT_TOKEN);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("bad_signature");
+    });
+
+    it("rejects a payload signed with a different bot token", () => {
+      const initData = signTelegramWebAppFixture(
+        { user: { id: 1 }, auth_date: nowSec() },
+        BOT_TOKEN,
+      );
+      const result = verifyTelegramWebAppData(initData, "9999999999:other-bot-token");
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("bad_signature");
+    });
+
+    it("rejects a stale auth_date past the freshness window", () => {
+      const auth_date = nowSec() - (TELEGRAM_WEBAPP_FRESHNESS_SEC + 5);
+      const initData = signTelegramWebAppFixture(
+        { user: { id: 1 }, auth_date },
+        BOT_TOKEN,
+      );
+      const result = verifyTelegramWebAppData(initData, BOT_TOKEN);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("stale_auth_date");
+    });
+  });
+
+  describe("algorithm correctness", () => {
+    it("rejects a Login-Widget-signed payload (proves the WebApp key swap is correct)", () => {
+      // The Login Widget uses secretKey = SHA256(botToken).
+      // The Mini App  uses secretKey = HMAC_SHA256("WebAppData", botToken).
+      // A widget-signed payload MUST NOT verify as a WebApp payload.
+      const widgetPayload = signTelegramFixture(
+        { id: 1, auth_date: nowSec() },
+        BOT_TOKEN,
+      );
+      const widgetAsInitData = new URLSearchParams(
+        Object.entries(widgetPayload).map(([k, v]) => [k, String(v)]),
+      ).toString();
+      const result = verifyTelegramWebAppData(widgetAsInitData, BOT_TOKEN);
+      expect(result.ok).toBe(false);
+    });
+
+    it("does not advertise the standalone TELEGRAM_AUTH_FRESHNESS_SEC for WebApp", () => {
+      // Sanity: the two windows are independent constants.
+      expect(TELEGRAM_WEBAPP_FRESHNESS_SEC).toBeGreaterThan(TELEGRAM_AUTH_FRESHNESS_SEC);
     });
   });
 });

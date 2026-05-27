@@ -27,6 +27,7 @@ import {
   TELEGRAM_AUTH_FRESHNESS_SEC,
   type TelegramAuthFields,
   verifyTelegramAuth,
+  verifyTelegramWebAppData,
 } from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -566,6 +567,147 @@ async function handleTelegramAuth(
   return { ok: true, token, isNewUser };
 }
 
+/**
+ * Telegram Mini App / WebApp auto-login handler.
+ *
+ * Parallel to `handleTelegramAuth` but for the Mini App SDK flow:
+ * when the user opens the site INSIDE the Telegram client, the SDK
+ * exposes `window.Telegram.WebApp.initData` carrying a verified
+ * identity. The user is already authenticated by Telegram itself,
+ * so they NEVER see the phone-number prompt that oauth.telegram.org
+ * shows for first-time browser users.
+ *
+ * This handler shares the same downstream pieces (replay protection
+ * via the embedded `hash`, find-or-create via `findOrCreateTelegramUser`,
+ * JWT issuance via `signUserToken`, audit logging via `logAuthActivity`)
+ * — only the wire-format and HMAC algorithm differ.
+ */
+async function handleTelegramWebAppAuth(
+  initData: string,
+  referralCode: string | undefined,
+  client: { ipAddress?: string; userAgent?: string },
+): Promise<
+  | { ok: true; token: string; isNewUser: boolean }
+  | { ok: false; status: number; error: string; reason: string }
+> {
+  const config = await getSetting("auth.telegram");
+  if (!config.enabled || typeof config.bot_token !== "string" || !config.bot_token) {
+    return {
+      ok: false,
+      status: 503,
+      error: "تسجيل الدخول عبر Telegram غير مفعّل",
+      reason: "provider_disabled",
+    };
+  }
+
+  const verification = verifyTelegramWebAppData(initData, config.bot_token);
+  if (!verification.ok) {
+    const userMsg =
+      verification.reason === "stale_auth_date"
+        ? "انتهت صلاحية الجلسة، حاول مجدداً"
+        : "فشل التحقق من Telegram";
+    await logAuthActivity({
+      identifier: "tg:webapp_unknown",
+      action: "login",
+      provider: "telegram",
+      success: false,
+      failureReason: verification.reason,
+      ipAddress: client.ipAddress,
+      userAgent: client.userAgent,
+    }).catch((err) => {
+      logger.warn(
+        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
+        "logAuthActivity: failed to record telegram-webapp failure",
+      );
+    });
+    Sentry.addBreadcrumb({
+      category: "auth.telegram",
+      level: "warning",
+      message: "telegram-webapp verification failed",
+      data: { reason: verification.reason },
+    });
+    return {
+      ok: false,
+      status:
+        verification.reason === "missing_init_data" ||
+        verification.reason === "missing_hash" ||
+        verification.reason === "missing_user"
+          ? 400
+          : 401,
+      error: userMsg,
+      reason: verification.reason,
+    };
+  }
+
+  // Replay protection — reuse the same hash table as the redirect
+  // path so a leaked initData can't be replayed against either.
+  const initParams = new URLSearchParams(initData);
+  const hash = initParams.get("hash") ?? "";
+  const claimed = await claimTelegramReplayHash(hash);
+  if (!claimed) {
+    Sentry.addBreadcrumb({
+      category: "auth.telegram",
+      level: "error",
+      message: "telegram-webapp replay detected",
+    });
+    return {
+      ok: false,
+      status: 401,
+      error: "تم استخدام هذه الجلسة من قبل، حاول مجدداً",
+      reason: "replay_detected",
+    };
+  }
+
+  // Map the WebApp user shape onto the existing TelegramAuthFields
+  // contract so we can reuse findOrCreateTelegramUser unchanged.
+  const fieldsForFindOrCreate = {
+    id: verification.user.id,
+    first_name: verification.user.first_name,
+    last_name: verification.user.last_name,
+    username: verification.user.username,
+    photo_url: verification.user.photo_url,
+    auth_date: verification.auth_date,
+    hash,
+  };
+  const { user, isNewUser } = await findOrCreateTelegramUser(
+    fieldsForFindOrCreate,
+    referralCode,
+  );
+  const token = signUserToken({ userId: user.id });
+
+  await logAuthActivity({
+    userId: user.id,
+    identifier: `tg:${verification.user.id}`,
+    action: isNewUser ? "register" : "login",
+    provider: "telegram",
+    success: true,
+    ipAddress: client.ipAddress,
+    userAgent: client.userAgent,
+  }).catch(() => {
+    // Non-fatal — login proceeds even if telemetry insert fails.
+  });
+
+  Sentry.addBreadcrumb({
+    category: "auth.telegram",
+    level: "info",
+    message: isNewUser ? "telegram-webapp register" : "telegram-webapp login",
+    data: { userId: user.id },
+  });
+
+  logger.info(
+    {
+      category: "auth",
+      userId: user.id,
+      provider: "telegram",
+      isNewUser,
+      flow: "webapp",
+    },
+    "[telegram-webapp] succeeded",
+  );
+
+  return { ok: true, token, isNewUser };
+}
+
 // POST /api/auth/telegram (callback mode — primary, called from the
 //                          frontend telegram-callback page after it
 //                          decodes the redirect fragment)
@@ -600,6 +742,51 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       "[telegram-auth] internal error",
     );
     return res.status(500).json(createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, { reason: "server_error" }));
+  }
+});
+
+// POST /api/auth/telegram/webapp (Mini App auto-login)
+//
+// Called by the SPA when it detects `window.Telegram.WebApp.initData`
+// at boot. The user has been authenticated by Telegram itself —
+// they NEVER see the oauth.telegram.org phone-number prompt. We
+// verify the WebApp HMAC, run the same replay protection as the
+// redirect-flow endpoint, and issue the same JWT. Existing public
+// web flow (POST /telegram + GET /telegram/callback) is unchanged.
+authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
+  try {
+    const body = (req.body as Record<string, unknown>) ?? {};
+    const initData = typeof body.initData === "string" ? body.initData : "";
+    const referralCode =
+      typeof body.referralCode === "string"
+        ? body.referralCode.trim().toUpperCase().slice(0, 16) || undefined
+        : undefined;
+
+    const result = await handleTelegramWebAppAuth(initData, referralCode, getClientInfo(req));
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error, reason: result.reason });
+    }
+    res.cookie("auth_token", result.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+    return res.json({ token: result.token, is_new_user: result.isNewUser });
+  } catch (err) {
+    Sentry.captureException(err);
+    logger.error(
+      { category: "auth", err: err instanceof Error ? err.message : String(err) },
+      "[telegram-webapp] internal error",
+    );
+    return res
+      .status(500)
+      .json(
+        createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
+          reason: "server_error",
+        }),
+      );
   }
 });
 

@@ -4,6 +4,7 @@ import { AppSplashScreen } from "@/components/AppSplashScreen";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { useTelegramWebAppAutoLogin } from "@/hooks/use-telegram-webapp-auto-login";
 import { useDocumentDirection } from "@/lib/direction";
 import { ThemeProvider } from "@/lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -168,6 +169,7 @@ function AdminProtectedRoutes() {
 function AppRoutes() {
   const [location] = useLocation();
   const { token } = useAuth();
+  useTelegramWebAppAutoLogin();
   const isAdmin = location.startsWith("/admin");
   const isAuth = location === "/login" || location === "/register";
   // /status is a public chromeless page (no Navbar/Footer/MobileNav)
