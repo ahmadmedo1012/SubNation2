@@ -223,5 +223,3 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
     ],
   },
 };
-
-export const CATEGORY_SLUGS = Object.keys(CATEGORY_META) as CategoryMeta["slug"][];
