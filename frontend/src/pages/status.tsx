@@ -2,6 +2,7 @@ import { fetchHealthzSummary, type CheckStatus, type HealthzSummary } from "@/li
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
+import { Link } from "wouter";
 
 /**
  * Public status page.
@@ -141,9 +142,9 @@ export default function StatusPage(): ReactElement {
         {/* Help link */}
         <div className="mt-10 text-center text-xs text-muted-foreground">
           هل تواجه مشكلة لم تظهر هنا؟{" "}
-          <a href="/support" className="text-primary hover:underline">
+          <Link href="/support" className="text-primary hover:underline">
             تواصل مع فريق الدعم
-          </a>
+          </Link>
         </div>
       </div>
     </div>

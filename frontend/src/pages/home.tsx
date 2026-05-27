@@ -597,33 +597,19 @@ export default function HomePage() {
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
               {CATEGORIES.map((c) => {
                 const active = category === c.value;
-                const baseCls = `flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
-                  active
-                    ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
-                    : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
-                }`;
-                // The "All" chip keeps the in-place filter behaviour (no nav).
-                // Real category chips become <Link> so each one has its own
-                // crawlable URL + a dedicated landing page with category-
-                // specific h1/intro/FAQs (see /category/:slug). Improves SEO
-                // and gives users a richer destination than an in-place filter.
-                if (c.value === "") {
-                  return (
-                    <button
-                      key={c.value}
-                      onClick={() => setCategory("")}
-                      className={baseCls}
-                    >
-                      <c.Icon className="w-3.5 h-3.5" />
-                      {c.label}
-                    </button>
-                  );
-                }
                 return (
-                  <Link key={c.value} href={`/category/${c.value}`} className={baseCls}>
+                  <button
+                    key={c.value}
+                    onClick={() => setCategory(c.value)}
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
+                      active
+                        ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
+                        : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+                    }`}
+                  >
                     <c.Icon className="w-3.5 h-3.5" />
                     {c.label}
-                  </Link>
+                  </button>
                 );
               })}
               <button
