@@ -148,7 +148,17 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
   const code = generateOtp();
   const send = await sendWhatsAppMessage(
     buildChatId(phone),
-    `🔐 رمز التحقق الخاص بك على SubNation هو: ${code}\n\nلا تشاركه مع أحد. تنتهي صلاحيته بعد ٥ دقائق.`,
+    // Long-press a triple-backtick block in WhatsApp on Android/iOS
+    // selects the entire monospace chunk in one gesture — that's the
+    // closest the platform offers to a native "copy code" button when
+    // we're not on the official Business Cloud API. Layout:
+    //   line 1: "SubNation — رمز التحقق"
+    //   line 2: blank
+    //   line 3: ```<code>```           ← long-press here to copy
+    //   line 4: blank
+    //   line 5: "⏳ صالح لمدة 5 دقائق"
+    //   line 6: "⚠️ لا تشاركه مع أحد"
+    `*SubNation — رمز التحقق*\n\n\`\`\`${code}\`\`\`\n\n⏳ صالح لمدة 5 دقائق\n⚠️ لا تشاركه مع أحد`,
   );
   if (!send.ok) {
     // `not_configured` (env missing) and `session_not_*` (operator
