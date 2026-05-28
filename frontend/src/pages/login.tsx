@@ -29,7 +29,6 @@ import { Link } from "wouter";
  */
 export default function LoginPage() {
   const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
-  const showAnyPhoneForm = whatsappEnabled || phoneAuthEnabled;
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -72,7 +71,22 @@ export default function LoginPage() {
 
           {/* Single divider — the phone form is a peer option, not a
               fallback. Wording makes the independence explicit. */}
-          {showAnyPhoneForm && (
+          {/* WhatsApp — visually a peer of Google + Telegram. The component
+              starts pristine (single "Continue with WhatsApp" button) and
+              expands inline on click. The backend's findOrCreateWhatsAppUser
+              handles new + returning users identically — the user never
+              has to choose "register" vs "login". No divider needed. */}
+          {whatsappEnabled && (
+            <div className="mt-2.5">
+              <WhatsAppPhoneSignIn />
+            </div>
+          )}
+
+          {/* Legacy Firebase Phone OTP — only when explicitly re-enabled
+              via PHONE_AUTH_ENABLED=true on the backend. Default OFF.
+              Kept behind a divider since it is a semantically distinct
+              two-step phone form, not a one-click provider. */}
+          {phoneAuthEnabled && (
             <>
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px bg-border/50" />
@@ -81,15 +95,7 @@ export default function LoginPage() {
                 </span>
                 <div className="flex-1 h-px bg-border/50" />
               </div>
-
-              {/* When the operator has provisioned an OpenWA gateway, the
-                  public providers endpoint flips `whatsapp_enabled=true` and
-                  we render the WhatsApp form. When the legacy Firebase
-                  Phone OTP is explicitly re-enabled (PHONE_AUTH_ENABLED=true
-                  on the backend), we fall back to <FirebasePhoneSignIn />.
-                  By default both flags are off → no phone form is rendered
-                  and users see ONLY the Telegram + Google buttons above. */}
-              {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+              <FirebasePhoneSignIn />
             </>
           )}
         </div>

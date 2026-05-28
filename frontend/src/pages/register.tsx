@@ -32,7 +32,6 @@ function readReferralFromUrl(): string {
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
   const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
-  const showAnyPhoneForm = whatsappEnabled || phoneAuthEnabled;
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
@@ -105,9 +104,19 @@ export default function RegisterPage() {
               no implicit dependency on the phone OTP path below. */}
           <AuthProviders />
 
-          {showAnyPhoneForm && (
+          {/* WhatsApp — peer of Google + Telegram. Pristine button →
+              expands inline. Backend handles new + returning users
+              identically (findOrCreateWhatsAppUser). No divider. */}
+          {whatsappEnabled && (
+            <div className="mt-2.5">
+              <WhatsAppPhoneSignIn />
+            </div>
+          )}
+
+          {/* Legacy Firebase Phone OTP — only when explicitly re-enabled
+              via PHONE_AUTH_ENABLED=true. Default OFF. */}
+          {phoneAuthEnabled && (
             <>
-              {/* Single divider — phone form is a peer option, not a fallback. */}
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px bg-border/50" />
                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
@@ -115,13 +124,7 @@ export default function RegisterPage() {
                 </span>
                 <div className="flex-1 h-px bg-border/50" />
               </div>
-
-              {/* When the operator has provisioned an OpenWA gateway, we
-                  render <WhatsAppPhoneSignIn />. When the legacy Firebase
-                  Phone OTP is explicitly re-enabled, we fall back to it.
-                  By default both flags are off → no phone form is rendered
-                  and users see only Telegram + Google buttons above. */}
-              {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+              <FirebasePhoneSignIn />
             </>
           )}
         </div>

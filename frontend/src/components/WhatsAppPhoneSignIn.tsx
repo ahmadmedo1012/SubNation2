@@ -38,7 +38,7 @@ export function WhatsAppPhoneSignIn({
   const [, navigate] = useLocation();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [step, setStep] = useState<"pristine" | "phone" | "code">("pristine");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -133,7 +133,8 @@ export function WhatsAppPhoneSignIn({
   }
 
   function resetFlow() {
-    setStep("phone");
+    setStep("pristine");
+    setPhone("");
     setCode("");
     setError("");
     autoSubmittedFor.current = null;
@@ -198,8 +199,27 @@ export function WhatsAppPhoneSignIn({
           <div className="flex-1 h-px bg-border/50" />
         </div>
       )}
-      {step === "phone" ? (
-        <div className="flex gap-2">
+      {step === "pristine" ? (
+        // Pristine entry — matches the Google/Telegram visual: a single
+        // tappable button. The 2-step OTP form is revealed only after
+        // the user opts in by clicking. This keeps WhatsApp visually
+        // consistent with the other one-click providers and avoids
+        // surfacing a phone input by default.
+        //
+        // The backend handles new + returning users identically — the
+        // user never has to choose "register" vs "login".
+        <button
+          type="button"
+          onClick={() => setStep("phone")}
+          className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm press-spring"
+          aria-label="المتابعة عبر WhatsApp"
+        >
+          <MessageCircle className="w-4 h-4 text-[#25D366]" />
+          المتابعة عبر WhatsApp
+        </button>
+      ) : step === "phone" ? (
+        <>
+          <div className="flex gap-2">
           <input
             type="tel"
             value={phone}
@@ -225,6 +245,19 @@ export function WhatsAppPhoneSignIn({
             {cooldown > 0 ? "" : "إرسال"}
           </button>
         </div>
+        {/* Allow the user to collapse the OTP UI back to the single
+            "Continue with WhatsApp" button — useful if they opened it
+            by accident or want to switch providers. */}
+        <button
+          type="button"
+          onClick={resetFlow}
+          disabled={loading}
+          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors"
+        >
+          <RotateCcw className="w-3 h-3" />
+          تراجع
+        </button>
+        </>
       ) : (
         <div className="space-y-2">
           <div className="flex gap-2">
