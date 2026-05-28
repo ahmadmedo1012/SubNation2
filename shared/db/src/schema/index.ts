@@ -18,3 +18,4 @@ export * from "./wallet_ledger";
 export * from "./wallet_topups";
 export * from "./sessions";
 export * from "./organizations";
+export * from "./whatsapp_otps";

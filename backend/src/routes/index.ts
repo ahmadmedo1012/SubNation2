@@ -16,6 +16,7 @@ import { loyaltyRouter } from "./loyalty";
 import { notificationsRouter } from "./notifications";
 import { couponsRouter } from "./coupons";
 import { authProviderPublicRouter, authProviderAdminRouter } from "./auth-settings";
+import { whatsappAuthRouter } from "./auth-whatsapp";
 import metricsRouter from "./metrics";
 import cwvRouter from "./cwv";
 
@@ -28,6 +29,7 @@ router.use(cwvRouter);
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.use("/auth", authRouter);
 router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth/github, etc.
+router.use("/auth", whatsappAuthRouter); // /api/auth/whatsapp/start, /api/auth/whatsapp/verify
 
 // ── Products ──────────────────────────────────────────────────────────────────
 router.use("/products", productsRouter);

@@ -1,7 +1,9 @@
 import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
+import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
+import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { CheckCircle, Gift } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "wouter";
@@ -29,6 +31,7 @@ function readReferralFromUrl(): string {
 
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
+  const { whatsappEnabled } = usePublicAuthProviders();
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
@@ -113,8 +116,12 @@ export default function RegisterPage() {
           {/* Phone OTP — multi-step flow, kept inline since it's the most
               common path in Libya. Independent component; no state shared
               with the providers above. The phone OTP path also reads ?ref=
-              independently — no coupling. */}
-          <FirebasePhoneSignIn />
+              independently — no coupling.
+
+              When the operator has provisioned an OpenWA gateway, we
+              switch to <WhatsAppPhoneSignIn /> instead — same surface,
+              same UX, codes delivered via WhatsApp. */}
+          {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
         </div>
 
         {/* Footer link to login */}

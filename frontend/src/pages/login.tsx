@@ -1,7 +1,9 @@
 import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
+import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
+import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { Link } from "wouter";
 
 /**
@@ -26,6 +28,7 @@ import { Link } from "wouter";
  * controlled state with no equivalent issue.
  */
 export default function LoginPage() {
+  const { whatsappEnabled } = usePublicAuthProviders();
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -78,8 +81,16 @@ export default function LoginPage() {
 
           {/* Phone OTP — multi-step flow, kept inline since it's the most
               common path in Libya. Independent component; no state shared
-              with the providers above. */}
-          <FirebasePhoneSignIn />
+              with the providers above.
+
+              When the operator has provisioned an OpenWA gateway via the
+              WHATSAPP_OTP_BASE_URL + WHATSAPP_OTP_API_KEY env vars, the
+              public providers endpoint flips `whatsapp_enabled=true` and
+              we render the WhatsApp form instead — same visual surface,
+              same 2-step UX, codes delivered via WhatsApp. The Firebase
+              path stays in the bundle and serves as the automatic
+              fallback when WhatsApp is not configured. */}
+          {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
         </div>
 
         {/* Footer link to register */}

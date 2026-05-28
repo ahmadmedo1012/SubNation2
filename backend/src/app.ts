@@ -478,6 +478,7 @@ app.use("/api/admin/login/verify-2fa", authLimiter);
 // keep brute-force resistance consistent across auth surfaces.
 app.use("/api/auth/telegram", authLimiter);
 app.use("/api/auth/telegram/callback", authLimiter);
+app.use("/api/auth/whatsapp", authLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);

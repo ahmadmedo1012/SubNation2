@@ -466,6 +466,30 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_auth_activity_created ON auth_activity(created_at DESC);
     `);
 
+    // ── whatsapp_otps (Phase 1: phone registration via OpenWA) ─────────────
+    // Generic OTP store; the `purpose` column separates registration /
+    // login / future 2FA so the same table serves all three flows.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS whatsapp_otps (
+        id              SERIAL PRIMARY KEY,
+        phone           VARCHAR(20) NOT NULL,
+        code_hash       VARCHAR(64) NOT NULL,
+        purpose         VARCHAR(32) NOT NULL,
+        expires_at      TIMESTAMPTZ NOT NULL,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        consumed_at     TIMESTAMPTZ,
+        ip_address      VARCHAR(45),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_otps_phone_purpose
+        ON whatsapp_otps(phone, purpose, created_at);
+      CREATE INDEX IF NOT EXISTS idx_whatsapp_otps_expires_at
+        ON whatsapp_otps(expires_at);
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     // Organizations table + users.organization_id (added in drizzle migration 0001)
     await db.execute(sql`

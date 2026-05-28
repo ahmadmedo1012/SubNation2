@@ -31,6 +31,7 @@ import {
 } from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -257,7 +258,12 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     }
   }
 
-  return res.json({ providers });
+  return res.json({
+    providers,
+    // Boolean only — never exposes the API key. Clients gate the
+    // <WhatsAppPhoneSignIn /> render on this flag.
+    whatsapp_enabled: isWhatsAppGatewayConfigured(),
+  });
 });
 
 // ── Telegram Login (legacy widget) ─────────────────────────────────────────────
