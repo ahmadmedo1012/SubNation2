@@ -64,10 +64,12 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         cooldown: "يرجى الانتظار قبل طلب رمز جديد",
         hourly_limit: "تم تجاوز حد المحاولات، حاول لاحقاً",
         delivery_failed: "تعذّر إرسال الرمز عبر WhatsApp، حاول مجدداً",
+        recipient_not_on_whatsapp: "هذا الرقم غير مسجَّل في WhatsApp",
         gateway_disabled: "خدمة WhatsApp غير مفعّلة حالياً",
       };
       const status =
-        result.reason === "invalid_phone"
+        result.reason === "invalid_phone" ||
+        result.reason === "recipient_not_on_whatsapp"
           ? 400
           : result.reason === "cooldown" || result.reason === "hourly_limit"
             ? 429

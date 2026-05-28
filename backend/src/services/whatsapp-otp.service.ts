@@ -62,6 +62,7 @@ export type StartOtpResult =
         | "cooldown"
         | "hourly_limit"
         | "delivery_failed"
+        | "recipient_not_on_whatsapp"
         | "gateway_disabled";
       retryAfterSec?: number;
     };
@@ -150,17 +151,36 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     `🔐 رمز التحقق الخاص بك على SubNation هو: ${code}\n\nلا تشاركه مع أحد. تنتهي صلاحيته بعد ٥ دقائق.`,
   );
   if (!send.ok) {
+    // `not_configured` (env missing) and `session_not_*` (operator
+    // hasn't scanned the QR yet / session disconnected) are both
+    // "service is not currently available" — surface as 503 to the
+    // client instead of 502 so retry semantics + UX copy match the
+    // existing gateway-disabled story. Genuine wire failures
+    // (timeouts, non-2xx from a ready session) remain `delivery_failed`.
+    // `recipient_not_on_whatsapp` is a client-fixable condition (wrong
+    // number) — surface it as its own reason so the UI can show a
+    // targeted Arabic message rather than a generic "delivery failed".
+    const isGatewayDisabled =
+      send.reason === "not_configured" ||
+      send.reason === "session_not_found" ||
+      send.reason === "session_not_ready";
+    const isRecipientMissing = send.reason === "recipient_not_on_whatsapp";
+    const failureReason = isGatewayDisabled
+      ? "gateway_disabled"
+      : isRecipientMissing
+        ? "recipient_not_on_whatsapp"
+        : "delivery_failed";
     await safeLog({
       identifier: `wa:${phone}`,
       action: "register",
       success: false,
-      failureReason: send.reason === "not_configured" ? "gateway_disabled" : "delivery_failed",
+      failureReason,
       ipAddress: input.ipAddress,
       userAgent: input.userAgent,
     });
     return {
       ok: false,
-      reason: send.reason === "not_configured" ? "gateway_disabled" : "delivery_failed",
+      reason: failureReason,
     };
   }
 
