@@ -1,6 +1,7 @@
 import { AuthProviders } from "@/components/AuthProviders";
 import { CopyButton } from "@/components/CopyButton";
 import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
+import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -45,6 +46,7 @@ export default function ProfilePage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { phoneAuthEnabled } = usePublicAuthProviders();
 
   const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
@@ -376,9 +378,8 @@ export default function ProfilePage() {
                     }}
                   />
                 )}
-                {!linkedProviders.find((i) => i.provider === "firebase.com") && (
-                  <FirebasePhoneSignIn />
-                )}
+                {!linkedProviders.find((i) => i.provider === "firebase.com") &&
+                  phoneAuthEnabled && <FirebasePhoneSignIn />}
               </div>
             )}
           </div>

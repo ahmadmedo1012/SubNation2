@@ -28,7 +28,8 @@ import { Link } from "wouter";
  * controlled state with no equivalent issue.
  */
 export default function LoginPage() {
-  const { whatsappEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
+  const showAnyPhoneForm = whatsappEnabled || phoneAuthEnabled;
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -71,26 +72,26 @@ export default function LoginPage() {
 
           {/* Single divider — the phone form is a peer option, not a
               fallback. Wording makes the independence explicit. */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-border/50" />
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-              أو سجّل برقم الهاتف
-            </span>
-            <div className="flex-1 h-px bg-border/50" />
-          </div>
+          {showAnyPhoneForm && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-border/50" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
+                  أو سجّل برقم الهاتف
+                </span>
+                <div className="flex-1 h-px bg-border/50" />
+              </div>
 
-          {/* Phone OTP — multi-step flow, kept inline since it's the most
-              common path in Libya. Independent component; no state shared
-              with the providers above.
-
-              When the operator has provisioned an OpenWA gateway via the
-              WHATSAPP_OTP_BASE_URL + WHATSAPP_OTP_API_KEY env vars, the
-              public providers endpoint flips `whatsapp_enabled=true` and
-              we render the WhatsApp form instead — same visual surface,
-              same 2-step UX, codes delivered via WhatsApp. The Firebase
-              path stays in the bundle and serves as the automatic
-              fallback when WhatsApp is not configured. */}
-          {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+              {/* When the operator has provisioned an OpenWA gateway, the
+                  public providers endpoint flips `whatsapp_enabled=true` and
+                  we render the WhatsApp form. When the legacy Firebase
+                  Phone OTP is explicitly re-enabled (PHONE_AUTH_ENABLED=true
+                  on the backend), we fall back to <FirebasePhoneSignIn />.
+                  By default both flags are off → no phone form is rendered
+                  and users see ONLY the Telegram + Google buttons above. */}
+              {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+            </>
+          )}
         </div>
 
         {/* Footer link to register */}

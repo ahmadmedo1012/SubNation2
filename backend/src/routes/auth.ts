@@ -26,6 +26,24 @@ import { notifyNewUser } from "../telegram";
 
 const router = Router();
 
+/**
+ * Whether the legacy Firebase Phone OTP flow is enabled.
+ *
+ * Default: OFF. The platform now uses WhatsApp OTP (via OpenWA) for
+ * phone-based sign-in, plus Telegram and Google for one-click flows.
+ * Set PHONE_AUTH_ENABLED=true on the backend env ONLY if you need to
+ * temporarily re-enable Firebase phone OTP — e.g. for migration of a
+ * stuck account.
+ *
+ * The Firebase Google login (sign_in_provider="google.com") is NOT
+ * affected by this flag — it goes through the same /firebase/session
+ * route but is not phone-typed.
+ */
+export function isPhoneAuthEnabled(): boolean {
+  const v = (process.env.PHONE_AUTH_ENABLED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes" || v === "on";
+}
+
 router.post("/logout", requireUser, async (req, res) => {
   const auth = getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
@@ -370,6 +388,27 @@ router.post("/firebase/session", async (req, res) => {
   try {
     // Use checkRevoked to detect revoked sessions during initial login
     const decoded = await verifyFirebaseIdToken(id_token, true);
+
+    // ── Legacy Firebase Phone OTP gate ─────────────────────────────────────
+    // Phone authentication is being phased out in favour of WhatsApp OTP.
+    // Reject phone-provider Firebase tokens unless the operator has
+    // explicitly opted back in via PHONE_AUTH_ENABLED=true. Google tokens
+    // (sign_in_provider === "google.com") are unaffected.
+    const signInProvider = (
+      decoded.firebase as { sign_in_provider?: string } | undefined
+    )?.sign_in_provider;
+    if (signInProvider === "phone" && !isPhoneAuthEnabled()) {
+      return res
+        .status(403)
+        .json(
+          createErrorResponse(
+            "تسجيل الدخول برقم الهاتف عبر Firebase معطّل — استخدم WhatsApp OTP",
+            ErrorCode.SERVICE_UNAVAILABLE,
+            { reason: "phone_auth_disabled" },
+          ),
+        );
+    }
+
     const result = await resolveFirebaseSession(
       decoded,
       typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,

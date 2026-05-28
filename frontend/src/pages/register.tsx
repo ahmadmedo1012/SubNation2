@@ -31,7 +31,8 @@ function readReferralFromUrl(): string {
 
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
-  const { whatsappEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
+  const showAnyPhoneForm = whatsappEnabled || phoneAuthEnabled;
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
@@ -104,24 +105,25 @@ export default function RegisterPage() {
               no implicit dependency on the phone OTP path below. */}
           <AuthProviders />
 
-          {/* Single divider — phone form is a peer option, not a fallback. */}
-          <div className="flex items-center gap-3 my-5">
-            <div className="flex-1 h-px bg-border/50" />
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-              أو سجّل برقم الهاتف
-            </span>
-            <div className="flex-1 h-px bg-border/50" />
-          </div>
+          {showAnyPhoneForm && (
+            <>
+              {/* Single divider — phone form is a peer option, not a fallback. */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-border/50" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
+                  أو سجّل برقم الهاتف
+                </span>
+                <div className="flex-1 h-px bg-border/50" />
+              </div>
 
-          {/* Phone OTP — multi-step flow, kept inline since it's the most
-              common path in Libya. Independent component; no state shared
-              with the providers above. The phone OTP path also reads ?ref=
-              independently — no coupling.
-
-              When the operator has provisioned an OpenWA gateway, we
-              switch to <WhatsAppPhoneSignIn /> instead — same surface,
-              same UX, codes delivered via WhatsApp. */}
-          {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+              {/* When the operator has provisioned an OpenWA gateway, we
+                  render <WhatsAppPhoneSignIn />. When the legacy Firebase
+                  Phone OTP is explicitly re-enabled, we fall back to it.
+                  By default both flags are off → no phone form is rendered
+                  and users see only Telegram + Google buttons above. */}
+              {whatsappEnabled ? <WhatsAppPhoneSignIn /> : <FirebasePhoneSignIn />}
+            </>
+          )}
         </div>
 
         {/* Footer link to login */}
