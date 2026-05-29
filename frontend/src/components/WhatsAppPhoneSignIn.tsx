@@ -144,7 +144,7 @@ export function WhatsAppPhoneSignIn({
   /**
    * Extract the OTP from any pasted text. Strips non-digits, takes the
    * first 6 digits — so pasting the whole WhatsApp message works:
-   *   "SubNation — رمز التحقق\n\n```123456```\n\n⏳ ..."  →  "123456"
+   *   "SubNation — رمز التحقق\n\n123456\n\nصالح لمدة 5 دقائق…"  →  "123456"
    */
   function extractOtpDigits(input: string): string {
     return input.replace(/\D/g, "").slice(0, 6);
