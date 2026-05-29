@@ -166,9 +166,7 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   // (inline-SVG) button paints on first render — before the
   // /api/auth/providers round-trip resolves. The fetch below then merges
   // the full server list (Telegram, etc.) in place.
-  const [providers, setProviders] = useState<Provider[]>(() =>
-    includeFirebaseGoogleProvider([]),
-  );
+  const [providers, setProviders] = useState<Provider[]>(() => includeFirebaseGoogleProvider([]));
   const [error, setError] = useState("");
 
   useEffect(() => {
