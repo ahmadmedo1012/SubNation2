@@ -5,7 +5,10 @@
 **Production canonical:** [`https://subnation.ly`](https://subnation.ly).
 **Codebase scale:** 25,449 LOC frontend (TS/TSX) + 17,477 LOC backend (TS) + 22 Drizzle tables + 14 admin pages + 14 admin API routes + 98 vitest cases.
 
-This document supersedes `PRODUCTION_READINESS_MASTER.md` and `FINAL_RUNTIME_STATE.md` (both archived under `docs/archive/`). The deeper architecture references it links to (`OBSERVABILITY_SETUP.md`, `OPERATIONS_RUNBOOK.md`, `DOMAIN_RUNTIME_ARCHITECTURE.md`, `REDIS_RUNTIME_ARCHITECTURE.md`, `RTL_LAYOUT_ARCHITECTURE.md`, `SECRET_ROTATION_RUNBOOK.md`) remain authoritative for their narrow domains.
+For a concise full-project reference (features, defects, recommendations) see
+[`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md). The on-call playbook lives in
+[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md); disaster recovery in
+[`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
 
 ---
 
