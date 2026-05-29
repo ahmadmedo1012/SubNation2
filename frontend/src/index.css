@@ -853,9 +853,16 @@
     opacity: 1;
   }
 
-  /* Better focus rings */
+  /* Keyboard focus ring — keyboard-only (never on mouse click).
+     Solid (no alpha) brand-red on a 2px offset clears the WCAG 2.4.11
+     non-text-contrast bar against every surface-elevation layer.
+     :focus (mouse/programmatic) shows nothing; :focus-visible (keyboard
+     / a11y tools) shows the ring. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
   :focus-visible {
-    outline: 2px solid hsl(var(--primary) / 0.6);
+    outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
     border-radius: 5px;
   }
@@ -1049,14 +1056,23 @@
   }
 }
 
-/* ── REDUCED MOTION ─────────────────────────────────── */
+/* ── REDUCED MOTION ───────────────────────────────────
+ * Global kill-switch covers ALL 20+ keyframes + every transition in one
+ * wildcard (no per-animation maintenance). Entrance animations
+ * (float-in / reveal-up / page-in / card-enter / slide-*) start at
+ * opacity:0 — finishing them in ~0ms (rather than cancelling) lands the
+ * element at its final visible frame, so reduced-motion users still SEE
+ * the content. Infinite loops (blob-drift / cta-glow / *-pulse / shine /
+ * text-glow) are pinned to a single iteration so nothing keeps moving. */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
   ::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
