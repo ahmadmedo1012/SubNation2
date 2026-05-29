@@ -29,10 +29,7 @@ interface WhatsAppPhoneSignInProps {
 
 const COOLDOWN_DEFAULT = 60;
 
-export function WhatsAppPhoneSignIn({
-  enabled = true,
-  dividerLabel,
-}: WhatsAppPhoneSignInProps) {
+export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPhoneSignInProps) {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
   const [phone, setPhone] = useState("");
@@ -220,43 +217,43 @@ export function WhatsAppPhoneSignIn({
       ) : step === "phone" ? (
         <>
           <div className="flex gap-2">
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-            placeholder="091XXXXXXX"
-            disabled={loading}
-            dir="ltr"
-            className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={sendCode}
-            disabled={loading || phone.length < 9 || cooldown > 0}
-            className="h-11 px-4 rounded-xl bg-[#25D366] text-white font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : cooldown > 0 ? (
-              <span className="text-xs">{cooldown}s</span>
-            ) : (
-              <MessageCircle className="w-4 h-4" />
-            )}
-            {cooldown > 0 ? "" : "إرسال"}
-          </button>
-        </div>
-        {/* Allow the user to collapse the OTP UI back to the single
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              placeholder="091XXXXXXX"
+              disabled={loading}
+              dir="ltr"
+              className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={sendCode}
+              disabled={loading || phone.length < 9 || cooldown > 0}
+              className="h-11 px-4 rounded-xl bg-[#25D366] text-white font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : cooldown > 0 ? (
+                <span className="text-xs">{cooldown}s</span>
+              ) : (
+                <MessageCircle className="w-4 h-4" />
+              )}
+              {cooldown > 0 ? "" : "إرسال"}
+            </button>
+          </div>
+          {/* Allow the user to collapse the OTP UI back to the single
             "Continue with WhatsApp" button — useful if they opened it
             by accident or want to switch providers. */}
-        <button
-          type="button"
-          onClick={resetFlow}
-          disabled={loading}
-          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors"
-        >
-          <RotateCcw className="w-3 h-3" />
-          تراجع
-        </button>
+          <button
+            type="button"
+            onClick={resetFlow}
+            disabled={loading}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors"
+          >
+            <RotateCcw className="w-3 h-3" />
+            تراجع
+          </button>
         </>
       ) : (
         <div className="space-y-2">
@@ -289,17 +286,17 @@ export function WhatsAppPhoneSignIn({
             {typeof navigator !== "undefined" &&
               "clipboard" in navigator &&
               typeof navigator.clipboard?.readText === "function" && (
-              <button
-                type="button"
-                onClick={tryPasteFromClipboard}
-                disabled={loading}
-                title="لصق الرمز من الحافظة"
-                aria-label="لصق الرمز من الحافظة"
-                className="h-11 w-11 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
-              >
-                <ClipboardPaste className="w-4 h-4" />
-              </button>
-            )}
+                <button
+                  type="button"
+                  onClick={tryPasteFromClipboard}
+                  disabled={loading}
+                  title="لصق الرمز من الحافظة"
+                  aria-label="لصق الرمز من الحافظة"
+                  className="h-11 w-11 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                </button>
+              )}
             <button
               type="button"
               onClick={verifyCode}
