@@ -166,6 +166,15 @@ CREATE TABLE referral_events (
   created_at timestamptz NOT NULL DEFAULT now(),
   credited_at timestamptz
 );
+
+CREATE TABLE flash_sales (
+  id serial PRIMARY KEY,
+  title varchar(255) NOT NULL DEFAULT 'Flash Sale',
+  discount_percent numeric(5,2) NOT NULL DEFAULT '0.00',
+  ends_at timestamptz NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 const TABLES = [
@@ -175,6 +184,7 @@ const TABLES = [
   "wallet_topups",
   "referral_events",
   "coupons",
+  "flash_sales",
   "products",
   "users",
 ];

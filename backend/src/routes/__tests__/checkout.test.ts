@@ -1,5 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   db,
   initTestDb,
@@ -10,100 +10,14 @@ import {
   usersTable,
   walletLedgerTable,
 } from "../../test/db";
-import { insertLedgerEntry } from "../../lib/ledger";
+import { CheckoutService } from "../../services/checkout.service";
 
 /**
- * Checkout integration tests (pglite-isolated).
- *
- * `runCheckout` is a faithful replica of the atomic transaction in
- * routes/orders.ts (atomic inventory claim → optimistic wallet-balance
- * lock → order insert → ledger entry). Replicating the txn here lets us
- * assert real Postgres transaction semantics (commit + ROLLBACK) against
- * pglite without standing up Express. The `failDelivery` hook injects a
- * mid-transaction throw to prove the rollback path.
+ * Checkout integration tests (pglite-isolated) — exercise the REAL
+ * production path via CheckoutService.purchase(). The rollback case mocks
+ * the final in-transaction write (insertLedgerEntry) to throw, proving the
+ * whole transaction (inventory claim + wallet deduction + order) rolls back.
  */
-async function runCheckout(opts: {
-  userId: number;
-  productId: number;
-  price: number;
-  failDelivery?: boolean;
-}): Promise<{ ok: boolean; reason?: string; orderId?: number }> {
-  const { userId, productId, price } = opts;
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return { ok: false, reason: "NO_USER" };
-
-  const currentBalance = parseFloat(String(user.walletBalance));
-  if (currentBalance < price) return { ok: false, reason: "INSUFFICIENT_BALANCE" };
-
-  const [inv] = await db
-    .select()
-    .from(inventoryTable)
-    .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
-    .limit(1);
-  if (!inv) return { ok: false, reason: "OUT_OF_STOCK" };
-
-  const newBalance = +(currentBalance - price).toFixed(2);
-  const now = new Date();
-
-  try {
-    const order = await db.transaction(async (tx) => {
-      const [claimed] = await tx
-        .update(inventoryTable)
-        .set({ isSold: true, soldAt: now })
-        .where(and(eq(inventoryTable.id, inv.id), eq(inventoryTable.isSold, false)))
-        .returning();
-      if (!claimed) throw new Error("INVENTORY_CLAIMED");
-
-      // Optimistic lock: only deduct if the balance is still what we read.
-      const [updated] = await tx
-        .update(usersTable)
-        .set({ walletBalance: String(newBalance) })
-        .where(and(eq(usersTable.id, userId), eq(usersTable.walletBalance, String(currentBalance))))
-        .returning();
-      if (!updated) throw new Error("CONCURRENCY_ERROR");
-
-      // Injected runtime failure AFTER the balance deduction — must roll back.
-      if (opts.failDelivery) throw new Error("DELIVERY_FAILED");
-
-      const [o] = await tx
-        .insert(ordersTable)
-        .values({
-          orderCode: `ORD-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
-          userId,
-          productId,
-          inventoryId: inv.id,
-          amount: String(price),
-          walletBalanceBefore: String(currentBalance),
-          walletBalanceAfter: String(newBalance),
-          status: "completed",
-          deliveredEmail: inv.accountEmail,
-          deliveredPassword: inv.accountPassword,
-          deliveredAt: now,
-        })
-        .returning();
-
-      await insertLedgerEntry(
-        {
-          userId,
-          type: "purchase",
-          amount: String(price),
-          balanceBefore: String(currentBalance),
-          balanceAfter: String(newBalance),
-          referenceId: o.id,
-          referenceType: "order",
-          description: "Purchase (test)",
-        },
-        tx as unknown as typeof db,
-      );
-
-      return o;
-    });
-    return { ok: true, orderId: order.id };
-  } catch (err) {
-    return { ok: false, reason: (err as Error).message };
-  }
-}
 
 async function seedUser(balance: string) {
   const [u] = await db
@@ -131,23 +45,27 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetTestDb();
 });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-describe("Checkout — success path", () => {
+describe("CheckoutService — success path", () => {
   it("deducts wallet, marks inventory sold, completes order, writes ledger — atomically", async () => {
     const user = await seedUser("50.00");
     const product = await seedProductWithStock(1, "30.00");
 
-    const result = await runCheckout({ userId: user.id, productId: product.id, price: 30 });
+    const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.order.status).toBe("completed");
+      expect(result.finalPrice).toBe(30);
+    }
 
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(20); // 50 - 30
 
-    const inv = await db
-      .select()
-      .from(inventoryTable)
-      .where(eq(inventoryTable.productId, product.id));
-    expect(inv.filter((i) => i.isSold)).toHaveLength(1); // exactly one unit consumed
+    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    expect(inv.filter((i) => i.isSold)).toHaveLength(1);
 
     const orders = await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id));
     expect(orders).toHaveLength(1);
@@ -164,90 +82,94 @@ describe("Checkout — success path", () => {
   });
 });
 
-describe("Checkout — insufficient funds", () => {
+describe("CheckoutService — insufficient funds", () => {
   it("rejects cleanly, leaves balance + inventory untouched, writes nothing", async () => {
     const user = await seedUser("10.00");
     const product = await seedProductWithStock(1, "30.00");
 
-    const result = await runCheckout({ userId: user.id, productId: product.id, price: 30 });
+    const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("INSUFFICIENT_BALANCE");
+    if (!result.ok) expect(result.reason).toBe("INSUFFICIENT_BALANCE");
 
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-    expect(parseFloat(String(u.walletBalance))).toBe(10); // unchanged
-    const inv = await db
-      .select()
-      .from(inventoryTable)
-      .where(eq(inventoryTable.productId, product.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(10);
+    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => !i.isSold)).toBe(true);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
   });
 });
 
-describe("Checkout — atomic rollback on delivery failure", () => {
-  it("rolls back the wallet deduction + inventory claim when the txn throws mid-flight", async () => {
+describe("CheckoutService — not-found / out-of-stock guards", () => {
+  it("returns PRODUCT_NOT_FOUND for an unknown product", async () => {
+    const user = await seedUser("50.00");
+    const result = await CheckoutService.purchase({ userId: user.id, productId: 999999 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("PRODUCT_NOT_FOUND");
+  });
+
+  it("returns OUT_OF_STOCK when the product has no unsold inventory", async () => {
+    const user = await seedUser("50.00");
+    const product = await seedProductWithStock(0, "30.00"); // no units
+    const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("OUT_OF_STOCK");
+  });
+});
+
+describe("CheckoutService — atomic rollback on a mid-transaction failure", () => {
+  it("rolls back wallet deduction + inventory claim when the final ledger write throws", async () => {
     const user = await seedUser("50.00");
     const product = await seedProductWithStock(1, "30.00");
 
-    const result = await runCheckout({
-      userId: user.id,
-      productId: product.id,
-      price: 30,
-      failDelivery: true,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toBe("DELIVERY_FAILED");
+    // Force the LAST in-transaction write to fail, exercising the rollback.
+    const ledger = await import("../../lib/ledger");
+    vi.spyOn(ledger, "insertLedgerEntry").mockRejectedValueOnce(new Error("LEDGER_FAILED"));
+
+    await expect(
+      CheckoutService.purchase({ userId: user.id, productId: product.id }),
+    ).rejects.toThrow();
 
     // Everything must be as if the purchase never happened.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-    expect(parseFloat(String(u.walletBalance))).toBe(50); // NOT 20 — rolled back
-    const inv = await db
-      .select()
-      .from(inventoryTable)
-      .where(eq(inventoryTable.productId, product.id));
-    expect(inv.every((i) => !i.isSold)).toBe(true); // claim rolled back
+    expect(parseFloat(String(u.walletBalance))).toBe(50); // rolled back (not 20)
+    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    expect(inv.every((i) => !i.isSold)).toBe(true);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
   });
 });
 
-describe("Checkout — concurrency race", () => {
-  it("with funds for only one purchase, exactly one of two concurrent checkouts wins; balance never goes negative", async () => {
-    const user = await seedUser("30.00"); // enough for ONE 30.00 purchase
-    const product = await seedProductWithStock(2, "30.00"); // stock isn't the limiter — funds are
+describe("CheckoutService — concurrency races", () => {
+  it("funds for one: two concurrent purchases → exactly one wins, balance never negative", async () => {
+    const user = await seedUser("30.00");
+    const product = await seedProductWithStock(2, "30.00"); // stock not the limiter
 
     const [a, b] = await Promise.all([
-      runCheckout({ userId: user.id, productId: product.id, price: 30 }),
-      runCheckout({ userId: user.id, productId: product.id, price: 30 }),
+      CheckoutService.purchase({ userId: user.id, productId: product.id }),
+      CheckoutService.purchase({ userId: user.id, productId: product.id }),
     ]);
 
-    const wins = [a, b].filter((r) => r.ok).length;
-    expect(wins).toBe(1); // optimistic lock lets only one succeed
-
+    expect([a, b].filter((r) => r.ok).length).toBe(1);
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-    expect(parseFloat(String(u.walletBalance))).toBe(0); // 30 - 30, never negative
+    expect(parseFloat(String(u.walletBalance))).toBe(0);
     expect(parseFloat(String(u.walletBalance))).toBeGreaterThanOrEqual(0);
-
     expect(await db.select().from(ordersTable)).toHaveLength(1);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(1);
   });
 
-  it("with stock for only one unit, two concurrent buyers — only one claims it", async () => {
+  it("stock for one: two buyers → only one claims the single unit", async () => {
     const u1 = await seedUser("50.00");
     const u2 = await seedUser("50.00");
-    const product = await seedProductWithStock(1, "30.00"); // single unit
+    const product = await seedProductWithStock(1, "30.00");
 
     const [a, b] = await Promise.all([
-      runCheckout({ userId: u1.id, productId: product.id, price: 30 }),
-      runCheckout({ userId: u2.id, productId: product.id, price: 30 }),
+      CheckoutService.purchase({ userId: u1.id, productId: product.id }),
+      CheckoutService.purchase({ userId: u2.id, productId: product.id }),
     ]);
 
-    expect([a, b].filter((r) => r.ok).length).toBe(1); // one claims, one OUT_OF_STOCK/claimed
-    const inv = await db
-      .select()
-      .from(inventoryTable)
-      .where(eq(inventoryTable.productId, product.id));
+    expect([a, b].filter((r) => r.ok).length).toBe(1);
+    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
     expect(inv.filter((i) => i.isSold)).toHaveLength(1);
     expect(await db.select().from(ordersTable)).toHaveLength(1);
   });
