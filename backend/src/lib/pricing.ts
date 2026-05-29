@@ -136,11 +136,7 @@ interface CouponInput {
 
 async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | InvalidCoupon> {
   const code = input.code.trim().toUpperCase();
-  const [row] = await db
-    .select()
-    .from(couponsTable)
-    .where(eq(couponsTable.code, code))
-    .limit(1);
+  const [row] = await db.select().from(couponsTable).where(eq(couponsTable.code, code)).limit(1);
 
   if (!row) {
     return {
@@ -240,11 +236,7 @@ export function computeFlashSalePrice(listPrice: number, discountPercent: number
  *   - percentage: basePrice × value/100
  *   - fixed:      min(value, basePrice)  (never discounts more than the price)
  */
-export function computeCouponDiscount(
-  type: CouponType,
-  value: number,
-  basePrice: number,
-): number {
+export function computeCouponDiscount(type: CouponType, value: number, basePrice: number): number {
   return type === "percentage"
     ? +((basePrice * value) / 100).toFixed(2)
     : +Math.min(value, basePrice).toFixed(2);

@@ -44,16 +44,16 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
 ## Tech stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, Vite, Tailwind CSS, wouter, TanStack Query (RTL, Arabic) |
-| Backend | Express 5, TypeScript, Socket.IO |
-| Database | PostgreSQL (Neon) via Drizzle ORM |
-| Cache / realtime | Redis (rate-limit, leader-lock, socket adapter) |
-| Auth | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies |
-| Validation | Zod (shared contracts) |
-| Observability | Sentry, Prometheus (`prom-client`), Pino |
-| Deploy | Render (Docker): web + worker + Redis |
+| Layer            | Technology                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Frontend         | React 19, Vite, Tailwind CSS, wouter, TanStack Query (RTL, Arabic)                    |
+| Backend          | Express 5, TypeScript, Socket.IO                                                      |
+| Database         | PostgreSQL (Neon) via Drizzle ORM                                                     |
+| Cache / realtime | Redis (rate-limit, leader-lock, socket adapter)                                       |
+| Auth             | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies |
+| Validation       | Zod (shared contracts)                                                                |
+| Observability    | Sentry, Prometheus (`prom-client`), Pino                                              |
+| Deploy           | Render (Docker): web + worker + Redis                                                 |
 
 It is a **pnpm monorepo**:
 
@@ -87,7 +87,7 @@ pnpm run db:seed                # create the default admin + sample products
 pnpm run dev                    # starts API + frontend, auto-picks free ports
 ```
 
-Open the printed local URL. Ports are only *preferences* — the runner moves to
+Open the printed local URL. Ports are only _preferences_ — the runner moves to
 the next free port automatically and wires the Vite `/api` proxy for you.
 
 ---
@@ -123,16 +123,16 @@ All runtime config flows through a single `.env` file — copy `config/env.examp
 and edit. You should never need to change code to switch host, port, or domain.
 Most important keys:
 
-| Key | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Postgres connection string (**required**) |
-| `SESSION_SECRET` | JWT signing secret (**required in prod**, ≥ 32 chars) |
-| `ENCRYPTION_KEY` | AES-256-GCM key (64 hex chars) for inventory credentials |
-| `REDIS_URL` | Redis connection (required in prod; in-memory fallback in dev) |
-| `APP_URL` / `APP_ORIGINS` | Public origin and CORS allow-list |
-| `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In |
-| `TELEGRAM_BOT_TOKEN` | Operational notifications (Telegram **login** is configured in the admin UI) |
-| `WHATSAPP_OTP_*` | OpenWA gateway for WhatsApp OTP |
+| Key                              | Purpose                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                   | Postgres connection string (**required**)                                    |
+| `SESSION_SECRET`                 | JWT signing secret (**required in prod**, ≥ 32 chars)                        |
+| `ENCRYPTION_KEY`                 | AES-256-GCM key (64 hex chars) for inventory credentials                     |
+| `REDIS_URL`                      | Redis connection (required in prod; in-memory fallback in dev)               |
+| `APP_URL` / `APP_ORIGINS`        | Public origin and CORS allow-list                                            |
+| `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In                                                        |
+| `TELEGRAM_BOT_TOKEN`             | Operational notifications (Telegram **login** is configured in the admin UI) |
+| `WHATSAPP_OTP_*`                 | OpenWA gateway for WhatsApp OTP                                              |
 
 See `config/env.example` for the full annotated reference.
 
@@ -155,13 +155,13 @@ schemas live in `shared/api-zod`.
 
 ## Documentation
 
-| Document | What it covers |
-| --- | --- |
-| **[`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)** | 📌 Full project reference — architecture, features, defects, and add/remove/improve recommendations. **Start here.** |
-| [`PLATFORM.md`](./PLATFORM.md) | Authoritative platform state, production-readiness scoring, and roadmap |
-| [`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md) | On-call playbook: alert triage, dashboards, rollback, scaling |
-| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery |
-| [`docs/API.md`](./docs/API.md) | API reference |
+| Document                                                   | What it covers                                                                                                       |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **[`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)**         | 📌 Full project reference — architecture, features, defects, and add/remove/improve recommendations. **Start here.** |
+| [`PLATFORM.md`](./PLATFORM.md)                             | Authoritative platform state, production-readiness scoring, and roadmap                                              |
+| [`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)         | On-call playbook: alert triage, dashboards, rollback, scaling                                                        |
+| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                                 |
+| [`docs/API.md`](./docs/API.md)                             | API reference                                                                                                        |
 
 ---
 

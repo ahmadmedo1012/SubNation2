@@ -14,17 +14,17 @@ For a concise full-project reference (features, defects, recommendations) see
 
 ## 1. Executive snapshot
 
-| Dimension | Score | Verdict |
-|---|---|---|
-| Functional completeness | **9 / 10** | Customer flow end-to-end works (browse → buy → pay → fulfil → support). Auth fully passwordless on public surfaces, three modern providers, account linking via `user_auth_identities`. Admin surface complete with 14 functional pages. |
-| Architectural quality | **8 / 10** | Express 5 + Drizzle + React + Vite, lazy admin chunks, Redis singleton with watchdog, Sentry on both tiers, correlation IDs, Pino structured logs, Prom-style metrics, Socket.IO with Redis adapter. Clean module boundaries, no circular deps. Single-tier deployment with worker-ready `DISABLE_WEB_SCHEDULERS` switch. |
-| Security posture | **8 / 10** | Helmet CSP correct for Firebase + reCAPTCHA + no `unsafe-eval`, HSTS preload, COOP `same-origin-allow-popups`, argon2id at OWASP-2024 params, admin TOTP, lockout, rate-limit-redis, CSRF gate, no-secret-in-bundle (DSN env-only), Telegram HMAC + Redis replay protection + 18 vitest cases. |
-| Observability | **9 / 10** | Prom metrics + Sentry on both tiers + Pino + correlation IDs + 10-panel `/admin/system` + public `/status` + Discord alerts + `window.__sentryStatus()` + `window.__sentryTest()` debug surface. Critical/optional health-check semantics fix the 503-noise problem. |
-| Performance | **7 / 10** | Bundle 21.5 KB gzip on index, lazy admin chunks, edge cache headers on catalog endpoints, DB pool 15, INP/LCP under target. Admin concurrency under heavy use needs an honest load-test. |
-| Mobile / RTL | **9 / 10** | RTL locked at boot, `min-h-[100dvh]`, sticky bottom nav, autocomplete attributes, PWA precache 61 entries, masked Replay. Accessibility passes for active focus rings + ARIA on auth buttons. |
-| Backup & recovery | **5 / 10** | `pnpm run db:backup` (pg_dump → optional S3-compatible PUT) + DR runbook with 5 named scenarios. Schedule + tested restore drill not yet automated. Neon free-tier branch history covers 7 days. |
-| Test coverage | **3 / 10** | 98 tests across 10 files. Telegram-auth has the strongest coverage (18 cases). Auth router (1100+ LOC) and admin routes (1000+ LOC) untested. Frontend has zero unit tests. |
-| Launch readiness | **8.5 / 10** | Soft-launchable today. Hardening items below are post-launch unless flagged 🔴. |
+| Dimension               | Score        | Verdict                                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Functional completeness | **9 / 10**   | Customer flow end-to-end works (browse → buy → pay → fulfil → support). Auth fully passwordless on public surfaces, three modern providers, account linking via `user_auth_identities`. Admin surface complete with 14 functional pages.                                                                                  |
+| Architectural quality   | **8 / 10**   | Express 5 + Drizzle + React + Vite, lazy admin chunks, Redis singleton with watchdog, Sentry on both tiers, correlation IDs, Pino structured logs, Prom-style metrics, Socket.IO with Redis adapter. Clean module boundaries, no circular deps. Single-tier deployment with worker-ready `DISABLE_WEB_SCHEDULERS` switch. |
+| Security posture        | **8 / 10**   | Helmet CSP correct for Firebase + reCAPTCHA + no `unsafe-eval`, HSTS preload, COOP `same-origin-allow-popups`, argon2id at OWASP-2024 params, admin TOTP, lockout, rate-limit-redis, CSRF gate, no-secret-in-bundle (DSN env-only), Telegram HMAC + Redis replay protection + 18 vitest cases.                            |
+| Observability           | **9 / 10**   | Prom metrics + Sentry on both tiers + Pino + correlation IDs + 10-panel `/admin/system` + public `/status` + Discord alerts + `window.__sentryStatus()` + `window.__sentryTest()` debug surface. Critical/optional health-check semantics fix the 503-noise problem.                                                      |
+| Performance             | **7 / 10**   | Bundle 21.5 KB gzip on index, lazy admin chunks, edge cache headers on catalog endpoints, DB pool 15, INP/LCP under target. Admin concurrency under heavy use needs an honest load-test.                                                                                                                                  |
+| Mobile / RTL            | **9 / 10**   | RTL locked at boot, `min-h-[100dvh]`, sticky bottom nav, autocomplete attributes, PWA precache 61 entries, masked Replay. Accessibility passes for active focus rings + ARIA on auth buttons.                                                                                                                             |
+| Backup & recovery       | **5 / 10**   | `pnpm run db:backup` (pg_dump → optional S3-compatible PUT) + DR runbook with 5 named scenarios. Schedule + tested restore drill not yet automated. Neon free-tier branch history covers 7 days.                                                                                                                          |
+| Test coverage           | **3 / 10**   | 98 tests across 10 files. Telegram-auth has the strongest coverage (18 cases). Auth router (1100+ LOC) and admin routes (1000+ LOC) untested. Frontend has zero unit tests.                                                                                                                                               |
+| Launch readiness        | **8.5 / 10** | Soft-launchable today. Hardening items below are post-launch unless flagged 🔴.                                                                                                                                                                                                                                           |
 
 **Overall verdict:** **Ready for soft launch.** The remaining work is hardening + observability discipline, not architectural rewrites. The platform has weathered 50+ commits of focused stabilisation in the last week and is in the best operational state it has ever been.
 
@@ -79,31 +79,37 @@ For a concise full-project reference (features, defects, recommendations) see
 ### 2.2 Auth surface
 
 **Public auth methods (passwordless):**
+
 - **Phone OTP** via Firebase Phone Auth + reCAPTCHA → `/api/auth/firebase/session`
 - **Google Sign-In** via Firebase popup → `/api/auth/firebase/session`
 - **Telegram Login** via official OAuth redirect flow → `/auth/telegram-callback` (frontend reads fragment) → `POST /api/auth/telegram` (HMAC + Redis replay + auth-activity log)
 
 **Legacy support (kept for migration safety):**
+
 - Password login at `/api/auth/login` — still functional for legacy users with `password_login_enabled=true`. UI hidden from `/login` and `/register`; only reachable via `/profile` (when active) and `/forgot-password`.
 - `/api/auth/forgot-password` + `/reset-password` — phone-OTP-driven password recovery.
 
 **Identity model:**
+
 - `users.id` is the primary key.
 - `users.firebase_uid`, `users.google_id`, `users.telegram_id` — unique columns, allow lookup by provider.
 - `user_auth_identities` table — multi-provider linkage rows; supports unlinking via `/api/auth/providers/unlink`.
 - Account merging by phone match in `firebase-auth.service.findOrCreateUser`.
 
 **Account-linking semantics:**
+
 - Phone-matching across Firebase providers (Google + Phone OTP with same phone link to single account).
 - Telegram identities are NOT auto-merged with phone (Telegram doesn't expose phone via the legacy widget). A future "add phone to Telegram-first account" flow is recommended (§ 4 Future).
 
 **Audit + observability:**
+
 - Every login/register/logout/provider-link emits a row in `auth_activity` AND a Prom counter `auth_outcomes_total{method, outcome}`.
 - `/admin/security` surfaces activity log for forensics.
 
 ### 2.3 Observability surface
 
 **Health endpoints:**
+
 - `/api/healthz` — simple liveness, used by Render probes (200 always when process is up)
 - `/api/healthz/ready` — aggregate with critical/optional split (since `daa88de`):
   - **Critical**: Neon (DB), Redis. Failure → 503.
@@ -112,6 +118,7 @@ For a concise full-project reference (features, defects, recommendations) see
 - `/api/metrics` — Prometheus exposition (admin-token-gated)
 
 **Frontend instrumentation:**
+
 - Sentry React + Replay (`maskAllText: true`, `blockAllMedia: true`) + browserTracingIntegration
 - `window.__sentryStatus()` + `window.__sentryTest()` exposed for production debug
 - Vite-build-time env injection now correctly forwards 14 `VITE_*` env vars + `RENDER_GIT_COMMIT` via Dockerfile ARG/ENV (since `5bd3fa6`)
@@ -119,12 +126,14 @@ For a concise full-project reference (features, defects, recommendations) see
 - ErrorBoundary forwards React render errors with component-stack context
 
 **Backend instrumentation:**
+
 - Sentry Node sidecar with correlation-id propagation
 - Pino structured logs with category fields (auth, monitoring, scheduler, alerting)
 - `auth_outcomes_total` Prom counter per provider + outcome
 - `correlation-id` propagated end-to-end (header + AsyncLocalStorage + Sentry tags)
 
 **Operator surface:**
+
 - `/admin/system` — 10-panel observability center (memory, CPU, event loop p50/p95/p99, scheduler, alerts, deploys, request rate, http p95, CWV p75, auth outcomes)
 - `/admin/security` — auth-activity feed
 - `/admin/alerts` — alert rules + recent firings
@@ -132,6 +141,7 @@ For a concise full-project reference (features, defects, recommendations) see
 - Footer `SystemStatusPill` — green/yellow/red dot with link to `/status`
 
 **Alerting:**
+
 - Channels: Telegram (primary), Discord (secondary), generic webhook
 - Redis-backed dedup (5-min TTL) prevents alert storms
 - Configurable rules via `/admin/alerts` (auth-failure spike, http error rate, etc.)
@@ -139,12 +149,14 @@ For a concise full-project reference (features, defects, recommendations) see
 ### 2.4 Realtime + scheduling
 
 **Socket.IO topology:**
+
 - Rooms = user IDs. Server emits `order-updated`, `topup-updated`, etc. via `emitToUser(userId, event, payload)`.
 - Redis adapter for multi-instance fan-out (currently single instance, but the adapter is wired so scaling out is a config change).
 - `SocketInitializer.tsx` runs once on app mount; calls `useGetMe` with auth header (since `4fba116`) to ensure user joins their own room.
 - Admin namespace at `/admin` with separate auth middleware.
 
 **Scheduler architecture:**
+
 - `web-scheduler.ts` runs heartbeat (15 s) + alerting evaluator (60 s) + cron jobs (couponWatcher, stockWatcher, otpCleanup) **embedded in the web process** under a Redis-backed leader lock.
 - `DISABLE_WEB_SCHEDULERS=true` + the existing `subnation-worker` Render service definition let you split workloads when ready.
 - Single-tier today is by-design and economical. Worker-tier migration is a one-env-var flip + worker deploy.
@@ -152,17 +164,20 @@ For a concise full-project reference (features, defects, recommendations) see
 ### 2.5 Infrastructure topology
 
 **Render services (`render.yaml`):**
+
 - `subnation` — web (Docker, Oregon, starter plan, autoDeploy). The serving frontend + backend.
 - `subnation-redis` — Redis Cloud free plan, allkeys-lru. Used by rate limiting, alerting dedup, scheduler leader, Socket.IO adapter, replay protection.
 - `subnation-worker` — defined but not currently provisioned. Reserved for future split.
 
 **External services:**
+
 - **Neon Postgres** (US-West-2, on `pooler` endpoint with `?channel_binding=require`)
 - **Firebase** project `subnation-2571e` — Google + Phone OTP, SMS region policy permits Libya
 - **Sentry** EU ingest, separate frontend + backend DSNs
 - **Domain** `subnation.ly` (apex canonical) + `www.subnation.ly` (301 → apex via Render edge + app middleware as defence)
 
 **CI/CD:**
+
 - `.github/workflows/ci.yml` — gitleaks → lint → typecheck → migration-drift → vitest → build (gates merges to main)
 - `.github/workflows/deploy.yml` — POST to Render deploy hook (manual or main-merge)
 - pnpm 10 + Node 22 LTS. Husky + lint-staged on commit.
@@ -173,54 +188,54 @@ For a concise full-project reference (features, defects, recommendations) see
 
 ### 3.1 Production-ready (ship today)
 
-| Capability | Evidence |
-|---|---|
-| **End-to-end customer flow** | Browse → product detail → checkout → wallet topup → fulfilment → ticket support. All pages mobile-RTL-correct. |
-| **Three modern auth providers** | Phone OTP, Google, Telegram. All HMAC/JWT/replay-hardened. 18 vitest cases on Telegram. |
-| **Admin surface** | 14 pages live, all auth-gated, audit-logged, observable. |
-| **Realtime updates** | Socket.IO rooms-per-user + Redis adapter. Order/topup status changes propagate < 1 s. |
-| **Observability** | Sentry + Pino + Prom + correlation IDs + 10-panel `/admin/system` + public `/status` + Discord alerts. |
-| **Mobile + RTL** | Locked at boot. `min-h-[100dvh]`. Bottom-nav active state. Focus rings. Sonner toasts. |
-| **PWA** | Workbox precache 61 entries, masked Replay, no offline runtime crashes. |
-| **SEO** | Sitemap + robots.txt + meta tags + structured data + canonical URLs. |
-| **Security baseline** | helmet CSP, HSTS preload, CSRF gate (origin/referer), argon2id OWASP-2024, admin TOTP, lockout, rate-limit-redis. |
-| **Backups** | `pnpm run db:backup` + DR runbook. Manual cadence acceptable for soft-launch volume. |
+| Capability                      | Evidence                                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **End-to-end customer flow**    | Browse → product detail → checkout → wallet topup → fulfilment → ticket support. All pages mobile-RTL-correct.    |
+| **Three modern auth providers** | Phone OTP, Google, Telegram. All HMAC/JWT/replay-hardened. 18 vitest cases on Telegram.                           |
+| **Admin surface**               | 14 pages live, all auth-gated, audit-logged, observable.                                                          |
+| **Realtime updates**            | Socket.IO rooms-per-user + Redis adapter. Order/topup status changes propagate < 1 s.                             |
+| **Observability**               | Sentry + Pino + Prom + correlation IDs + 10-panel `/admin/system` + public `/status` + Discord alerts.            |
+| **Mobile + RTL**                | Locked at boot. `min-h-[100dvh]`. Bottom-nav active state. Focus rings. Sonner toasts.                            |
+| **PWA**                         | Workbox precache 61 entries, masked Replay, no offline runtime crashes.                                           |
+| **SEO**                         | Sitemap + robots.txt + meta tags + structured data + canonical URLs.                                              |
+| **Security baseline**           | helmet CSP, HSTS preload, CSRF gate (origin/referer), argon2id OWASP-2024, admin TOTP, lockout, rate-limit-redis. |
+| **Backups**                     | `pnpm run db:backup` + DR runbook. Manual cadence acceptable for soft-launch volume.                              |
 
 ### 3.2 Needs improvement (pre-launch hardening)
 
-| Item | Severity | Effort | Notes |
-|---|---|---|---|
-| **Schedule the DB backup** | 🟠 medium | 0.5 day | Currently manual `pnpm run db:backup`. Wire to a Render cron job (free tier supports it) — daily 03:00 UTC. |
-| **Test a restore drill** | 🟠 medium | 0.5 day | Restore yesterday's pg_dump into a Neon scratch branch + smoke test. Confirms the runbook actually works. |
-| **Auth router + admin routes test coverage** | 🟠 medium | 2-3 days | Currently 0 tests on `routes/auth.ts` + `routes/admin/*`. Highest blast-radius surface. Start with login + register + Firebase session happy-path + lockout. |
-| **Soft load test** | 🟡 low | 1 day | k6 or autocannon on the listing endpoints + login. Validate DB pool=15 + Redis singleton hold up at 100 RPS. |
-| **Sentry source map upload** | 🟡 low | 0.5 day | Verify `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` are set so production stack traces resolve to source. Run `sentry-cli releases set-commits` per deploy. |
-| **Telegram bot domain + bot configured in `/admin/settings`** | 🟠 medium | 30 min | Owner-side: `/setdomain` in @BotFather + paste bot_token + bot_username + enable. Without this, the Telegram button never appears (handled gracefully — it filters out of `/api/auth/providers`). |
-| **DB connection-pool concurrency review at scale** | 🟡 low | varies | Pool max=15 fits a single starter dyno. If admin power users + customer concurrency spike, raise to 20 + monitor `idle` connection counts in Neon. |
+| Item                                                          | Severity  | Effort   | Notes                                                                                                                                                                                             |
+| ------------------------------------------------------------- | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Schedule the DB backup**                                    | 🟠 medium | 0.5 day  | Currently manual `pnpm run db:backup`. Wire to a Render cron job (free tier supports it) — daily 03:00 UTC.                                                                                       |
+| **Test a restore drill**                                      | 🟠 medium | 0.5 day  | Restore yesterday's pg_dump into a Neon scratch branch + smoke test. Confirms the runbook actually works.                                                                                         |
+| **Auth router + admin routes test coverage**                  | 🟠 medium | 2-3 days | Currently 0 tests on `routes/auth.ts` + `routes/admin/*`. Highest blast-radius surface. Start with login + register + Firebase session happy-path + lockout.                                      |
+| **Soft load test**                                            | 🟡 low    | 1 day    | k6 or autocannon on the listing endpoints + login. Validate DB pool=15 + Redis singleton hold up at 100 RPS.                                                                                      |
+| **Sentry source map upload**                                  | 🟡 low    | 0.5 day  | Verify `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` are set so production stack traces resolve to source. Run `sentry-cli releases set-commits` per deploy.                              |
+| **Telegram bot domain + bot configured in `/admin/settings`** | 🟠 medium | 30 min   | Owner-side: `/setdomain` in @BotFather + paste bot_token + bot_username + enable. Without this, the Telegram button never appears (handled gracefully — it filters out of `/api/auth/providers`). |
+| **DB connection-pool concurrency review at scale**            | 🟡 low    | varies   | Pool max=15 fits a single starter dyno. If admin power users + customer concurrency spike, raise to 20 + monitor `idle` connection counts in Neon.                                                |
 
 ### 3.3 Optional / future improvements
 
-| Item | When | Effort |
-|---|---|---|
-| **Worker tier split** | When `/admin/system` shows event-loop p99 > 500ms during scheduler peak | 0.5 day (env-var flip + Render service deploy) |
-| **CDN in front of static assets** | When > 50% of visitors are outside Oregon region | 1-2 days (Cloudflare or Render's own CDN bump) |
-| **Per-route code-splitting beyond admin lazy chunks** | When Time to Interactive on slowest route exceeds 3s p75 | 1 day per route |
-| **Image optimization (responsive `srcset`, AVIF/WebP)** | When LCP regresses on product detail pages | 1-2 days |
-| **Telegram-to-phone account merge flow** | If users complain about duplicate accounts | 2 days |
-| **Rate-limit per user-agent + per phone for OTP** | If SMS abuse appears in logs | 1 day |
-| **WAF in front of `/api/auth/*`** | Post-launch if credential-stuffing observed | 0.5 day (Cloudflare WAF rule) |
+| Item                                                    | When                                                                    | Effort                                         |
+| ------------------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
+| **Worker tier split**                                   | When `/admin/system` shows event-loop p99 > 500ms during scheduler peak | 0.5 day (env-var flip + Render service deploy) |
+| **CDN in front of static assets**                       | When > 50% of visitors are outside Oregon region                        | 1-2 days (Cloudflare or Render's own CDN bump) |
+| **Per-route code-splitting beyond admin lazy chunks**   | When Time to Interactive on slowest route exceeds 3s p75                | 1 day per route                                |
+| **Image optimization (responsive `srcset`, AVIF/WebP)** | When LCP regresses on product detail pages                              | 1-2 days                                       |
+| **Telegram-to-phone account merge flow**                | If users complain about duplicate accounts                              | 2 days                                         |
+| **Rate-limit per user-agent + per phone for OTP**       | If SMS abuse appears in logs                                            | 1 day                                          |
+| **WAF in front of `/api/auth/*`**                       | Post-launch if credential-stuffing observed                             | 0.5 day (Cloudflare WAF rule)                  |
 
 ### 3.4 Risky areas / technical debt
 
-| Area | Risk | Mitigation |
-|---|---|---|
-| **Auth router has no tests** | High blast radius (1100+ LOC, 7 endpoints, all security-critical) | Add happy-path + lockout + CSRF tests in next sprint. Estimated 3 days for high-leverage coverage. |
+| Area                                                               | Risk                                                                               | Mitigation                                                                                                                                                                 |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auth router has no tests**                                       | High blast radius (1100+ LOC, 7 endpoints, all security-critical)                  | Add happy-path + lockout + CSRF tests in next sprint. Estimated 3 days for high-leverage coverage.                                                                         |
 | **`sessionsTable` schema exists but is not written by login flow** | Device-list UI returns `[]`. Rows referenced by DELETE that never delete anything. | Either wire INSERT on login (Phase 1.3 in the archived `PRODUCTION_READINESS_MASTER`) OR drop the schema + UI + endpoints. Prefer the latter — JWT is the source of truth. |
-| **Zero frontend unit tests** | Refactors to auth/profile/admin pages have no safety net | Adopt Vitest + Testing Library for at least the auth pages + provider modules. 1 week effort to get to 30% coverage on critical paths. |
-| **In-memory fallback when Redis is unavailable** | Multi-instance deployments will desync rate limits + alerting dedup | Stays as-is for single-tier. When scaling out: enforce REDIS_URL or fail-closed; in-memory-fallback is dev-only. |
-| **DB pool sizing is single-instance-tuned** | Splitting into web + worker + admin tiers needs pool re-budgeting | Document + recompute when splitting (worker should probably get max=5, web max=15). |
-| **Bundle budget is soft-warn, not enforced** | Future feature can balloon index entry without CI failure | Flip to hard-fail at 32 KB gzip when ready. |
-| **`docs/` and root `.md` files duplicated state** | This document is the consolidation. Older docs archived. | Maintain THIS file as authoritative. Delete next dated report when this one supersedes itself. |
+| **Zero frontend unit tests**                                       | Refactors to auth/profile/admin pages have no safety net                           | Adopt Vitest + Testing Library for at least the auth pages + provider modules. 1 week effort to get to 30% coverage on critical paths.                                     |
+| **In-memory fallback when Redis is unavailable**                   | Multi-instance deployments will desync rate limits + alerting dedup                | Stays as-is for single-tier. When scaling out: enforce REDIS_URL or fail-closed; in-memory-fallback is dev-only.                                                           |
+| **DB pool sizing is single-instance-tuned**                        | Splitting into web + worker + admin tiers needs pool re-budgeting                  | Document + recompute when splitting (worker should probably get max=5, web max=15).                                                                                        |
+| **Bundle budget is soft-warn, not enforced**                       | Future feature can balloon index entry without CI failure                          | Flip to hard-fail at 32 KB gzip when ready.                                                                                                                                |
+| **`docs/` and root `.md` files duplicated state**                  | This document is the consolidation. Older docs archived.                           | Maintain THIS file as authoritative. Delete next dated report when this one supersedes itself.                                                                             |
 
 ---
 
@@ -232,36 +247,36 @@ For a concise full-project reference (features, defects, recommendations) see
 
 ### 🟠 Important — week-of-launch
 
-| # | Task | Owner | Effort |
-|---|---|---|---|
-| I-1 | Wire daily `db:backup` to Render cron + verify pg_dump appears in target bucket | ops | 0.5d |
-| I-2 | Run a restore drill — pg_dump → fresh Neon branch → smoke test login | ops | 0.5d |
-| I-3 | Add 10-15 vitest cases for auth happy-paths + lockout + CSRF | dev | 2d |
-| I-4 | Configure Telegram in `/admin/settings` + `/setdomain` in @BotFather | owner | 30 min |
-| I-5 | Verify `window.__sentryStatus()` returns `initialized: true` in prod | dev | 5 min after deploy |
-| I-6 | Soft load test (autocannon `--duration 60 --connections 50` on `/api/products`) — confirm p95 < 500 ms | dev | 1d |
+| #   | Task                                                                                                   | Owner | Effort             |
+| --- | ------------------------------------------------------------------------------------------------------ | ----- | ------------------ |
+| I-1 | Wire daily `db:backup` to Render cron + verify pg_dump appears in target bucket                        | ops   | 0.5d               |
+| I-2 | Run a restore drill — pg_dump → fresh Neon branch → smoke test login                                   | ops   | 0.5d               |
+| I-3 | Add 10-15 vitest cases for auth happy-paths + lockout + CSRF                                           | dev   | 2d                 |
+| I-4 | Configure Telegram in `/admin/settings` + `/setdomain` in @BotFather                                   | owner | 30 min             |
+| I-5 | Verify `window.__sentryStatus()` returns `initialized: true` in prod                                   | dev   | 5 min after deploy |
+| I-6 | Soft load test (autocannon `--duration 60 --connections 50` on `/api/products`) — confirm p95 < 500 ms | dev   | 1d                 |
 
 ### 🟡 Optional — post-launch
 
-| # | Task | Effort |
-|---|---|---|
-| O-1 | Add Sentry source-map upload to deploy pipeline | 0.5d |
-| O-2 | Enforce bundle budget hard-fail at 32 KB gzip | 1h |
-| O-3 | Drop `sessionsTable` + the unused device-list endpoints (or wire INSERT) | 0.5d |
-| O-4 | Frontend Vitest setup + first 20 component tests | 3d |
-| O-5 | Tighten admin TOTP + add WebAuthn second factor | 2d |
-| O-6 | Set up uptime monitoring (UptimeRobot or BetterStack) on `/healthz` | 30 min |
+| #   | Task                                                                     | Effort |
+| --- | ------------------------------------------------------------------------ | ------ |
+| O-1 | Add Sentry source-map upload to deploy pipeline                          | 0.5d   |
+| O-2 | Enforce bundle budget hard-fail at 32 KB gzip                            | 1h     |
+| O-3 | Drop `sessionsTable` + the unused device-list endpoints (or wire INSERT) | 0.5d   |
+| O-4 | Frontend Vitest setup + first 20 component tests                         | 3d     |
+| O-5 | Tighten admin TOTP + add WebAuthn second factor                          | 2d     |
+| O-6 | Set up uptime monitoring (UptimeRobot or BetterStack) on `/healthz`      | 30 min |
 
 ### 🟢 Future — 3-6 months
 
-| # | Task | Trigger |
-|---|---|---|
-| F-1 | Split web + worker tiers | When event-loop p99 > 500 ms during scheduler peak |
-| F-2 | Add CDN in front of static assets | > 50% non-Oregon traffic |
-| F-3 | Database read replicas | DB CPU > 60% sustained |
-| F-4 | Queue system (BullMQ on Redis) for fulfilment + email | When > 10 RPS of background work |
-| F-5 | Telegram-to-phone account merge flow | First duplicate-account support ticket |
-| F-6 | i18n beyond Arabic | When market expansion is decided |
+| #   | Task                                                  | Trigger                                            |
+| --- | ----------------------------------------------------- | -------------------------------------------------- |
+| F-1 | Split web + worker tiers                              | When event-loop p99 > 500 ms during scheduler peak |
+| F-2 | Add CDN in front of static assets                     | > 50% non-Oregon traffic                           |
+| F-3 | Database read replicas                                | DB CPU > 60% sustained                             |
+| F-4 | Queue system (BullMQ on Redis) for fulfilment + email | When > 10 RPS of background work                   |
+| F-5 | Telegram-to-phone account merge flow                  | First duplicate-account support ticket             |
+| F-6 | i18n beyond Arabic                                    | When market expansion is decided                   |
 
 ---
 
@@ -311,15 +326,15 @@ T-0  ✓ Open signup to public
 
 ### Monitoring
 
-| Surface | Tool | Cadence | Alert threshold |
-|---|---|---|---|
-| Process liveness | Render edge probe → `/api/healthz` | 30 s | 3 consecutive failures |
-| Critical readiness | `/api/healthz/ready` | continuous (frontend pill) | `status: "failing"` (DB or Redis down) |
-| Error rate | Sentry | real-time | > 5 events / 5 min |
-| Auth failures | `auth_outcomes_total{outcome="failure"}` | 60 s scrape | > 10 / min from same IP |
-| Event loop | `/admin/diagnostics` p99 | continuous in panel | sustained > 500 ms |
-| Web vitals | `/api/cwv` ingest | per-page-load | LCP p75 > 2.5 s |
-| Alert delivery | Discord webhook | per-event | manual review of dedup ratio |
+| Surface            | Tool                                     | Cadence                    | Alert threshold                        |
+| ------------------ | ---------------------------------------- | -------------------------- | -------------------------------------- |
+| Process liveness   | Render edge probe → `/api/healthz`       | 30 s                       | 3 consecutive failures                 |
+| Critical readiness | `/api/healthz/ready`                     | continuous (frontend pill) | `status: "failing"` (DB or Redis down) |
+| Error rate         | Sentry                                   | real-time                  | > 5 events / 5 min                     |
+| Auth failures      | `auth_outcomes_total{outcome="failure"}` | 60 s scrape                | > 10 / min from same IP                |
+| Event loop         | `/admin/diagnostics` p99                 | continuous in panel        | sustained > 500 ms                     |
+| Web vitals         | `/api/cwv` ingest                        | per-page-load              | LCP p75 > 2.5 s                        |
+| Alert delivery     | Discord webhook                          | per-event                  | manual review of dedup ratio           |
 
 ### Backups
 
@@ -379,14 +394,14 @@ SEV3 (single-feature / single-user):
 
 ### Residual risks
 
-| Risk | Likelihood | Mitigation status |
-|---|---|---|
-| Credential stuffing on legacy password login | Medium | Mitigated by lockout + rate-limit + argon2id; recommended: Cloudflare WAF in front when public traffic grows |
-| OTP flooding for SMS billing abuse | Medium | Mitigated by per-phone OTP limiter; recommended: per-IP + per-UA rate limit + Captcha at threshold |
-| Account takeover via Firebase email enumeration | Low | Firebase rate-limits its own provider; we don't echo "user not found" in our responses |
-| Admin TOTP bypass | Low | Backup codes are single-use; rotation runbook exists in `SECRET_ROTATION_RUNBOOK.md` |
-| Redis as single point of failure | Medium | In-memory fallback covers transient outage; production prefers fail-closed |
-| Database compromise (no row-level encryption beyond `inventory.account_passwords`) | Low | OS-level encryption at Neon, transit TLS, app-layer AES-256-GCM on the highest-value column |
+| Risk                                                                               | Likelihood | Mitigation status                                                                                            |
+| ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| Credential stuffing on legacy password login                                       | Medium     | Mitigated by lockout + rate-limit + argon2id; recommended: Cloudflare WAF in front when public traffic grows |
+| OTP flooding for SMS billing abuse                                                 | Medium     | Mitigated by per-phone OTP limiter; recommended: per-IP + per-UA rate limit + Captcha at threshold           |
+| Account takeover via Firebase email enumeration                                    | Low        | Firebase rate-limits its own provider; we don't echo "user not found" in our responses                       |
+| Admin TOTP bypass                                                                  | Low        | Backup codes are single-use; rotation runbook exists in `SECRET_ROTATION_RUNBOOK.md`                         |
+| Redis as single point of failure                                                   | Medium     | In-memory fallback covers transient outage; production prefers fail-closed                                   |
+| Database compromise (no row-level encryption beyond `inventory.account_passwords`) | Low        | OS-level encryption at Neon, transit TLS, app-layer AES-256-GCM on the highest-value column                  |
 
 ### Recommended future hardening
 
@@ -427,6 +442,7 @@ SEV3 (single-feature / single-user):
 ### Analytics priorities
 
 Currently zero customer-side analytics. Recommended:
+
 - Plausible.io (privacy-respecting, lightweight, ~1 KB) for page views + events
 - Track: signup, signup_referred, topup_initiated, topup_completed, order_placed
 - DO NOT track: PII, phone numbers, email addresses
@@ -444,15 +460,15 @@ concurrency-hardening commits (`e292597` + `3432499`) and one after.
 
 **Measured deltas (after − before):**
 
-| Metric | Before | After | Δ |
-|---|---|---|---|
-| `maxHitsPerSecond` | 26.17 | **31.17** | **+19.1 %** |
-| `avgHitsPerSecond` | 9.21 | **10.53** | **+14.3 %** |
-| `maxBytesPerSecond` (network peak) | 21.75 MB/s | **36.37 MB/s** | **+67.2 %** |
-| Errors classified `navigation timed out (30 s)` | 45 | **28** | **−37.8 %** |
-| `responseTimeAvg` | 18.32 s | 17.53 s | −4.3 % |
-| `responseTimeP95` | 29.07 s | 28.50 s | −2.0 % |
-| `responseTimeP99` | 30.77 s | 29.85 s | −3.0 % |
+| Metric                                          | Before     | After          | Δ           |
+| ----------------------------------------------- | ---------- | -------------- | ----------- |
+| `maxHitsPerSecond`                              | 26.17      | **31.17**      | **+19.1 %** |
+| `avgHitsPerSecond`                              | 9.21       | **10.53**      | **+14.3 %** |
+| `maxBytesPerSecond` (network peak)              | 21.75 MB/s | **36.37 MB/s** | **+67.2 %** |
+| Errors classified `navigation timed out (30 s)` | 45         | **28**         | **−37.8 %** |
+| `responseTimeAvg`                               | 18.32 s    | 17.53 s        | −4.3 %      |
+| `responseTimeP95`                               | 29.07 s    | 28.50 s        | −2.0 %      |
+| `responseTimeP99`                               | 30.77 s    | 29.85 s        | −3.0 %      |
 
 **Verdict: the application-level fixes worked** — peak throughput is
 up 67 %, peak request rate is up 19 %, and the most painful error
@@ -498,6 +514,7 @@ What we have. Single web service + Redis + Neon + Firebase + Sentry. Schedulers 
 **Trigger**: `/admin/system` event-loop p99 > 500ms during scheduler peak, OR scheduler-coordinator leader lock contention visible in Pino logs.
 
 **Steps**:
+
 1. Set `DISABLE_WEB_SCHEDULERS=true` on the web service
 2. Deploy `subnation-worker` (already defined in `render.yaml`)
 3. Worker takes over heartbeat + alerting + cron
@@ -511,6 +528,7 @@ What we have. Single web service + Redis + Neon + Firebase + Sentry. Schedulers 
 **Trigger**: `/admin/system` HTTP p95 > 800 ms sustained, OR Render dashboard CPU > 60% sustained.
 
 **Steps**:
+
 1. Render dashboard → web service → instance count = 2 (then 3, then 4)
 2. **Verify**: rate limits + alerting dedup + Socket.IO adapter all use Redis (they already do — `redis-client.ts` is fail-closed in production)
 3. Add a "pre-warm" probe that hits `/api/healthz` after deploys before draining old instance
@@ -521,6 +539,7 @@ What we have. Single web service + Redis + Neon + Firebase + Sentry. Schedulers 
 ### Stage 4 — DB scaling (100K+ DAU)
 
 **Triggers**:
+
 - Neon CPU > 60% sustained → upgrade plan
 - Read traffic dominates → add read replica + route SELECT to replica via separate Drizzle client
 - Write traffic dominates → optimize (indexes on top-3 slow queries, caching, denormalization)
@@ -554,7 +573,7 @@ What we have. Single web service + Redis + Neon + Firebase + Sentry. Schedulers 
 
 ### Dependency updates
 
-- **Weekly**: `pnpm update --interactive` for patch versions. Review CHANGELOG before accepting any minor bumps in: react, drizzle-orm, firebase-admin, @sentry/*, socket.io, express, helmet.
+- **Weekly**: `pnpm update --interactive` for patch versions. Review CHANGELOG before accepting any minor bumps in: react, drizzle-orm, firebase-admin, @sentry/\*, socket.io, express, helmet.
 - **Monthly**: review `pnpm audit` (we use `--prod` to ignore dev-only vulnerabilities).
 - **Major upgrades**: only on explicit decision. Cost > benefit at this stage; pin major versions for at least 6 months unless security issue.
 
@@ -632,23 +651,23 @@ SubNation is a competently-engineered Arabic RTL marketplace with modern auth (p
 
 ## Appendix — Document map
 
-| Doc | Authoritative for | Status |
-|---|---|---|
-| **`PLATFORM.md`** (this file) | Platform state + roadmap | ✅ current |
-| `README.md` | Project overview + dev setup | ✅ current |
-| `OPERATIONS_RUNBOOK.md` | On-call playbook | ✅ current |
-| `OBSERVABILITY_SETUP.md` | Sentry + Pino + Prom + alerting architecture | ✅ current |
-| `DOMAIN_RUNTIME_ARCHITECTURE.md` | Cookies, request lifecycle, Firebase, Socket.IO domain config | ✅ current |
-| `RTL_LAYOUT_ARCHITECTURE.md` | RTL approach + direction-mutator API | ✅ current |
-| `REDIS_RUNTIME_ARCHITECTURE.md` | Redis topology, who uses it, failure modes | ✅ current |
-| `SECRET_ROTATION_RUNBOOK.md` | How to rotate any committed-then-purged secret | ✅ current |
-| `docs/API.md` | API surface reference | ✅ current |
-| `docs/DISASTER_RECOVERY.md` | Named DB recovery scenarios | ✅ current |
-| `docs/COMPLIANCE.md` | Privacy/legal posture | ✅ current |
-| `docs/NEON_MCP_SETUP.md` | Neon-specific dev setup | ✅ current |
-| `docs/archive/PRODUCTION_READINESS_MASTER.md` | Pre-stabilization audit (Phases 1–5) | 📦 archived; superseded by this file |
-| `docs/archive/FINAL_RUNTIME_STATE.md` | May 2026 hardening pass changelog | 📦 archived; superseded by git log + this file |
+| Doc                                           | Authoritative for                                             | Status                                         |
+| --------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------- |
+| **`PLATFORM.md`** (this file)                 | Platform state + roadmap                                      | ✅ current                                     |
+| `README.md`                                   | Project overview + dev setup                                  | ✅ current                                     |
+| `OPERATIONS_RUNBOOK.md`                       | On-call playbook                                              | ✅ current                                     |
+| `OBSERVABILITY_SETUP.md`                      | Sentry + Pino + Prom + alerting architecture                  | ✅ current                                     |
+| `DOMAIN_RUNTIME_ARCHITECTURE.md`              | Cookies, request lifecycle, Firebase, Socket.IO domain config | ✅ current                                     |
+| `RTL_LAYOUT_ARCHITECTURE.md`                  | RTL approach + direction-mutator API                          | ✅ current                                     |
+| `REDIS_RUNTIME_ARCHITECTURE.md`               | Redis topology, who uses it, failure modes                    | ✅ current                                     |
+| `SECRET_ROTATION_RUNBOOK.md`                  | How to rotate any committed-then-purged secret                | ✅ current                                     |
+| `docs/API.md`                                 | API surface reference                                         | ✅ current                                     |
+| `docs/DISASTER_RECOVERY.md`                   | Named DB recovery scenarios                                   | ✅ current                                     |
+| `docs/COMPLIANCE.md`                          | Privacy/legal posture                                         | ✅ current                                     |
+| `docs/NEON_MCP_SETUP.md`                      | Neon-specific dev setup                                       | ✅ current                                     |
+| `docs/archive/PRODUCTION_READINESS_MASTER.md` | Pre-stabilization audit (Phases 1–5)                          | 📦 archived; superseded by this file           |
+| `docs/archive/FINAL_RUNTIME_STATE.md`         | May 2026 hardening pass changelog                             | 📦 archived; superseded by git log + this file |
 
 ---
 
-*Document maintained by the SubNation engineering team. Update the audit timestamp + section §1 + §3 each quarter or after significant architectural shifts. Archive when superseded — never delete.*
+_Document maintained by the SubNation engineering team. Update the audit timestamp + section §1 + §3 each quarter or after significant architectural shifts. Archive when superseded — never delete._
