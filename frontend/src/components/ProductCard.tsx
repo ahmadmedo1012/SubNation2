@@ -182,11 +182,15 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
           <div
             style={{ display: product.image_url ? "none" : "flex" }}
-            className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
+            className={`absolute inset-0 z-[2] items-center justify-center pointer-events-none bg-gradient-to-br ${accent.gradient}`}
           >
-            <span className={`text-8xl font-black select-none opacity-40 group-hover:opacity-55 transition-opacity duration-300 drop-shadow-md ${accent.text}`}>
-              {product.name[0]}
-            </span>
+            <div
+              className={`flex items-center justify-center w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 rounded-2xl border ${accent.bg} ${accent.border} shadow-sm transition-transform duration-300 ease-out group-hover:scale-105`}
+            >
+              <span className={`text-4xl sm:text-5xl font-black select-none drop-shadow-sm ${accent.text}`}>
+                {product.name[0]}
+              </span>
+            </div>
           </div>
         </div>
 

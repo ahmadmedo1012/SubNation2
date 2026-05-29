@@ -449,11 +449,13 @@ export default function ProductPage() {
               className="w-full h-full object-contain p-8 sm:p-10 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
             />
           ) : (
-            <span
-              className={`text-8xl font-black select-none opacity-30 drop-shadow-2xl ${initialColorClass}`}
-            >
-              {product.name[0]}
-            </span>
+            <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
+              <span
+                className={`text-5xl sm:text-6xl font-black select-none drop-shadow-lg ${initialColorClass}`}
+              >
+                {product.name[0]}
+              </span>
+            </div>
           )}
 
           {/* Top badges */}
@@ -983,8 +985,12 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                       className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-2xl font-black text-muted-foreground/30">
-                      {r.name[0]}
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
+                        <span className="text-xl font-black text-muted-foreground/55">
+                          {r.name[0]}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
