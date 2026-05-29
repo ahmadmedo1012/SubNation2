@@ -105,7 +105,7 @@ function clearSearchHistory() {
 function ProductSkeleton() {
   return (
     <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
-      <div className="h-[130px] sm:h-[148px] skeleton-shimmer" />
+      <div className="aspect-square skeleton-shimmer" />
       <div className="p-3.5 space-y-2.5">
         <div className="flex justify-between gap-2">
           <div className="h-3.5 skeleton-shimmer rounded-lg w-3/5" />
