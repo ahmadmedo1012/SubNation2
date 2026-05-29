@@ -78,6 +78,76 @@ const NAV_SECTIONS = [
 
 type NavItemShape = (typeof NAV_SECTIONS)[number]["items"][number];
 
+// Module-scope so it is NOT redefined on every AdminLayout render
+// (react-doctor/no-nested-component-definition). All previously-closed-over
+// values are passed as props.
+function NavItem({
+  item,
+  location,
+  badge,
+  collapsed,
+  contextActions,
+  onNavigate,
+}: {
+  item: NavItemShape;
+  location: string;
+  badge: number | undefined;
+  collapsed: boolean;
+  contextActions: { label: string; icon: React.ElementType; href: string }[];
+  onNavigate: () => void;
+}) {
+  const active = location === item.href;
+  return (
+    <div>
+      <Link href={item.href} onClick={onNavigate}>
+        <div
+          className={`
+            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium
+            transition-all duration-150 group
+            ${
+              active
+                ? "bg-primary/15 text-primary font-bold border border-primary/20"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+            }
+            ${collapsed ? "justify-center px-2" : ""}
+          `}
+        >
+          <item.icon
+            className={`w-4 h-4 shrink-0 transition-colors ${active ? "text-primary" : ""}`}
+          />
+          {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+          {!collapsed && badge ? (
+            <span
+              className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}
+            >
+              {badge}
+            </span>
+          ) : null}
+          {collapsed && badge ? (
+            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
+              {badge > 9 ? "9+" : badge}
+            </span>
+          ) : null}
+        </div>
+      </Link>
+
+      {active && !collapsed && contextActions.length > 0 && (
+        <div className="mt-1 mr-3 space-y-0.5 border-r border-primary/15 pr-2">
+          {contextActions.map((action) => (
+            <Link key={action.href + action.label} href={action.href} onClick={onNavigate}>
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-primary/8 transition-all duration-100">
+                <action.icon className="w-3 h-3 shrink-0" />
+                <span>{action.label}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 const PAGE_TITLES: Record<string, string> = {
   "/admin": "لوحة التحكم",
   "/admin/topups": "طلبات الشحن",
@@ -274,6 +344,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       {p.image_url ? (
                         <img
                           src={p.image_url}
+                          alt={p.name ?? ""}
                           loading="lazy"
                           decoding="async"
                           className="w-full h-full object-contain p-1"
@@ -430,67 +501,6 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     (mergedBadges.pendingTopups ?? 0) +
     (mergedBadges.openTickets ?? 0) +
     (mergedBadges.unreadAlerts ?? 0);
-  const contextActions = CONTEXT_ACTIONS[location] ?? [];
-
-  const NavItem = ({ item }: { item: NavItemShape }) => {
-    const active = location === item.href;
-    const badge = item.badgeKey
-      ? (mergedBadges as Record<string, number>)?.[item.badgeKey]
-      : undefined;
-    return (
-      <div>
-        <Link href={item.href} onClick={() => setMobileOpen(false)}>
-          <div
-            className={`
-            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium
-            transition-all duration-150 group
-            ${
-              active
-                ? "bg-primary/15 text-primary font-bold border border-primary/20"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-            }
-            ${collapsed ? "justify-center px-2" : ""}
-          `}
-          >
-            <item.icon
-              className={`w-4 h-4 shrink-0 transition-colors ${active ? "text-primary" : ""}`}
-            />
-            {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-            {!collapsed && badge ? (
-              <span
-                className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}
-              >
-                {badge}
-              </span>
-            ) : null}
-            {collapsed && badge ? (
-              <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
-                {badge > 9 ? "9+" : badge}
-              </span>
-            ) : null}
-          </div>
-        </Link>
-
-        {/* Context quick actions — only when active and not collapsed */}
-        {active && !collapsed && contextActions.length > 0 && (
-          <div className="mt-1 mr-3 space-y-0.5 border-r border-primary/15 pr-2">
-            {contextActions.map((action) => (
-              <Link
-                key={action.href + action.label}
-                href={action.href}
-                onClick={() => setMobileOpen(false)}
-              >
-                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-primary/8 transition-all duration-100">
-                  <action.icon className="w-3 h-3 shrink-0" />
-                  <span>{action.label}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -553,7 +563,19 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               {collapsed && <div className="h-px bg-border/40 mb-2" />}
               <div className="space-y-0.5">
                 {visibleItems.map((item) => (
-                  <NavItem key={item.href} item={item} />
+                  <NavItem
+                    key={item.href}
+                    item={item}
+                    location={location}
+                    badge={
+                      item.badgeKey
+                        ? (mergedBadges as Record<string, number>)?.[item.badgeKey]
+                        : undefined
+                    }
+                    collapsed={collapsed}
+                    contextActions={CONTEXT_ACTIONS[location] ?? []}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
                 ))}
               </div>
             </div>

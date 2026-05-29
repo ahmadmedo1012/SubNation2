@@ -122,11 +122,6 @@ export default function AdminOrdersPage() {
 
   const allOrders = allOrdersRaw as AdminOrderRow[];
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
-
   const applyBulkStatus = async (status: string) => {
     setBulkUpdating(true);
     setBulkStatusOpen(false);
@@ -145,6 +140,7 @@ export default function AdminOrdersPage() {
   };
 
   // Keyboard shortcut: / to focus search, Esc to clear
+  // Keyboard shortcut: / to focus search, Esc to clear
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "/" && !["INPUT", "TEXTAREA"].includes((e.target as Element)?.tagName)) {
@@ -155,6 +151,14 @@ export default function AdminOrdersPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // Guard AFTER all hooks so hook order is identical every render
+  // (rules-of-hooks). A return before the useEffect above would change
+  // the hook count once adminToken resolves.
+  if (!adminToken) {
+    navigate("/admin/login");
+    return null;
+  }
 
   const statusCounts = allOrders.reduce((acc: Record<string, number>, o) => {
     acc[o.status] = (acc[o.status] ?? 0) + 1;

@@ -235,6 +235,48 @@ export default function ProductPage() {
     navigator.clipboard.writeText(text).then(() => toast({ title: `تم نسخ ${label}` }));
   };
 
+  // SEO — called unconditionally (before the loading/not-found early
+  // returns below) so hook order is stable across renders (rules-of-hooks).
+  // Falls back to neutral metadata while the product is still loading.
+  const seoPrice = product ? (product.sale_price ?? product.price) : 0;
+  const seoBlock = useSeo(
+    product
+      ? {
+          title: `${product.name} — ${formatCurrency(seoPrice)}`,
+          description: (
+            product.description ??
+            `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
+          ).slice(0, 160),
+          image: product.image_url ?? undefined,
+          type: "product",
+          path: `/product/${product.slug ?? product.id}`,
+          locale: "ar",
+          jsonLd: [
+            buildProductLd({
+              id: product.id,
+              name: product.name,
+              description: product.description,
+              imageUrl: product.image_url,
+              price: seoPrice,
+              category: product.category,
+              isActive: product.is_active ?? true,
+            }),
+            buildBreadcrumbLd([
+              { name: "الرئيسية", href: "/" },
+              {
+                name: categoryLabel(product.category ?? "") || "المنتجات",
+                href:
+                  product.category && KNOWN_CATEGORIES.has(product.category)
+                    ? `/category/${product.category}`
+                    : "/",
+              },
+              { name: product.name, href: `/product/${product.slug ?? product.id}` },
+            ]),
+          ],
+        }
+      : { title: "SubNation", description: "اشتراكات رقمية بالدينار الليبي.", path: "/", locale: "ar" },
+  );
+
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (isLoading)
     return (
@@ -276,48 +318,6 @@ export default function ProductPage() {
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
     "from-primary/20 via-primary/8 to-transparent";
   const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
-
-  const seoBlock = useSeo({
-    title: `${product.name} — ${formatCurrency(displayPrice)}`,
-    description: (
-      product.description ??
-      `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
-    ).slice(0, 160),
-    image: product.image_url ?? undefined,
-    type: "product",
-    // Canonical URL must use the slug for SEO. Falls back to id when
-    // the product somehow has no slug (defensive — should never happen
-    // post-migration but covers the case where a fresh row hasn't yet
-    // been backfilled by the admin POST handler).
-    path: `/product/${product.slug ?? product.id}`,
-    locale: "ar",
-    jsonLd: [
-      buildProductLd({
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        imageUrl: product.image_url,
-        price: displayPrice,
-        category: product.category,
-        isActive: product.is_active ?? true,
-      }),
-      buildBreadcrumbLd([
-        { name: "الرئيسية", href: "/" },
-        {
-          name: categoryLabel(product.category ?? "") || "المنتجات",
-          // Link to the category landing page when the product has a
-          // recognised category — improves topical clustering for
-          // search engines + gives users a richer landing destination
-          // than a plain home-page filter.
-          href:
-            product.category && KNOWN_CATEGORIES.has(product.category)
-              ? `/category/${product.category}`
-              : "/",
-        },
-        { name: product.name, href: `/product/${product.slug ?? product.id}` },
-      ]),
-    ],
-  });
 
   // ── Order success ─────────────────────────────────────────────────────────
   if (orderResult) {

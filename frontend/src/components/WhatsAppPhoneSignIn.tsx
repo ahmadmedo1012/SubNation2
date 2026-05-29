@@ -50,8 +50,6 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  if (!enabled) return null;
-
   // Read referral from URL — both phone OTP paths read it independently
   // so this matches the existing referral-attribution conventions
   // used by the other auth paths.
@@ -186,6 +184,11 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
     autoSubmittedFor.current = code;
     void verifyCode();
   }, [code, step]);
+
+  // Guard AFTER all hooks so hook count is identical on every render
+  // (rules-of-hooks). A return before the second useEffect above would
+  // call a different number of hooks when `enabled` flips.
+  if (!enabled) return null;
 
   return (
     <div className="space-y-2.5">
