@@ -64,7 +64,10 @@ describe("CheckoutService — success path", () => {
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(20); // 50 - 30
 
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.filter((i) => i.isSold)).toHaveLength(1);
 
     const orders = await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id));
@@ -93,7 +96,10 @@ describe("CheckoutService — insufficient funds", () => {
 
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(10);
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => !i.isSold)).toBe(true);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
@@ -133,7 +139,10 @@ describe("CheckoutService — atomic rollback on a mid-transaction failure", () 
     // Everything must be as if the purchase never happened.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(50); // rolled back (not 20)
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => !i.isSold)).toBe(true);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
@@ -169,7 +178,10 @@ describe("CheckoutService — concurrency races", () => {
     ]);
 
     expect([a, b].filter((r) => r.ok).length).toBe(1);
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.filter((i) => i.isSold)).toHaveLength(1);
     expect(await db.select().from(ordersTable)).toHaveLength(1);
   });
