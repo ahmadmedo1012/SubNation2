@@ -756,13 +756,11 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       { category: "auth", err: err instanceof Error ? err.message : String(err) },
       "[telegram-auth] internal error",
     );
-    return res
-      .status(500)
-      .json(
-        createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
-          reason: "server_error",
-        }),
-      );
+    return res.status(500).json(
+      createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
+        reason: "server_error",
+      }),
+    );
   }
 });
 
