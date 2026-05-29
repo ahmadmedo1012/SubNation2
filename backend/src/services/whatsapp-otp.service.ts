@@ -148,17 +148,20 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
   const code = generateOtp();
   const send = await sendWhatsAppMessage(
     buildChatId(phone),
-    // Long-press a triple-backtick block in WhatsApp on Android/iOS
-    // selects the entire monospace chunk in one gesture — that's the
-    // closest the platform offers to a native "copy code" button when
-    // we're not on the official Business Cloud API. Layout:
-    //   line 1: "SubNation — رمز التحقق"
-    //   line 2: blank
-    //   line 3: ```<code>```           ← long-press here to copy
-    //   line 4: blank
-    //   line 5: "⏳ صالح لمدة 5 دقائق"
-    //   line 6: "⚠️ لا تشاركه مع أحد"
-    `*SubNation — رمز التحقق*\n\n\`\`\`${code}\`\`\`\n\n⏳ صالح لمدة 5 دقائق\n⚠️ لا تشاركه مع أحد`,
+    // Layout per the brief — code on its own isolated line, prominent,
+    // easy to long-press-copy. The triple-backtick block in WhatsApp is
+    // visually a monospace chunk AND selectable as a single unit on
+    // long-press, which is the closest WhatsApp gets to a native
+    // "copy code" button (only available on the official Business
+    // Cloud API authentication template, not on whatsapp-web.js).
+    //
+    //   *SubNation — رمز التحقق*
+    //
+    //   ```123456```
+    //
+    //   صالح لمدة 5 دقائق
+    //   ⚠️ لا تشاركه مع أحد
+    `*SubNation — رمز التحقق*\n\n\`\`\`${code}\`\`\`\n\nصالح لمدة 5 دقائق\n⚠️ لا تشاركه مع أحد`,
   );
   if (!send.ok) {
     // `not_configured` (env missing) and `session_not_*` (operator

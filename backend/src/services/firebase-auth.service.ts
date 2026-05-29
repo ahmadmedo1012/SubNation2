@@ -204,7 +204,14 @@ export async function resolveFirebaseSession(
 
   const provider = getProvider(decoded);
   const providerUid = getProviderUid(decoded, provider);
-  const phone = decoded.phone_number ? normalizeFirebasePhone(decoded.phone_number) : null;
+  // Firebase Phone OTP is permanently retired — `decoded.phone_number`
+  // is essentially never present anymore. The check is kept defensively
+  // for legacy Google tokens that may carry a linked phone claim, but no
+  // new phone-provider tokens reach this code path (rejected at the route).
+  const phone = decoded.phone_number
+    ? (normalizeLibyanPhone(decoded.phone_number) ??
+       normalizeLibyanPhone(decoded.phone_number.replace(/^\+218/, "0")))
+    : null;
   const email = typeof decoded.email === "string" ? decoded.email.toLowerCase() : null;
   const emailVerified = decoded.email_verified === true;
   const phoneVerified = !!phone;
@@ -352,11 +359,7 @@ export async function resolveFirebaseSession(
       displayName,
       photoUrl,
       authProvider:
-        provider === "phone"
-          ? "firebase_phone"
-          : provider === "google.com"
-            ? "firebase_google"
-            : "firebase",
+        provider === "google.com" ? "firebase_google" : "firebase",
       lastAuthAt: now,
       referralCode: generateReferralCode(),
       referredBy: referredById,
@@ -397,9 +400,6 @@ function getProviderUid(decoded: DecodedIdToken, provider: string) {
   return decoded.uid;
 }
 
-function normalizeFirebasePhone(phone: string) {
-  return normalizeLibyanPhone(phone) ?? normalizeLibyanPhone(phone.replace(/^\+218/, "0"));
-}
 
 function firebasePhonePlaceholder(uid: string) {
   return `f_${createHash("sha256").update(uid).digest("hex").slice(0, 18)}`;
@@ -482,11 +482,7 @@ async function updateUserIdentity(
       displayName: data.displayName ?? undefined,
       photoUrl: data.photoUrl ?? undefined,
       authProvider:
-        data.provider === "phone"
-          ? "firebase_phone"
-          : data.provider === "google.com"
-            ? "firebase_google"
-            : "firebase",
+        data.provider === "google.com" ? "firebase_google" : "firebase",
       lastAuthAt: data.now,
     })
     .where(eq(usersTable.id, userId))

@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 /**
  * WhatsApp phone sign-in / registration.
  *
- * Two-step flow that mirrors `FirebasePhoneSignIn`:
+ * Two-step OTP flow (after the user clicks the pristine button):
  *   1. User enters Libyan phone (9- or 10-digit local form).
  *   2. We POST to /api/auth/whatsapp/start — backend sends a 6-digit
  *      OTP via OpenWA. The cleartext code is NEVER returned to us.
@@ -57,7 +57,8 @@ export function WhatsAppPhoneSignIn({
   if (!enabled) return null;
 
   // Read referral from URL — both phone OTP paths read it independently
-  // so this is consistent with FirebasePhoneSignIn.
+  // so this matches the existing referral-attribution conventions
+  // used by the other auth paths.
   function getReferralCode(): string | undefined {
     if (typeof window === "undefined") return undefined;
     const ref = new URLSearchParams(window.location.search)

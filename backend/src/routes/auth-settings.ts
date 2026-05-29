@@ -32,7 +32,6 @@ import {
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
-import { isPhoneAuthEnabled } from "./auth";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -264,9 +263,6 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     // Boolean only — never exposes the API key. Clients gate the
     // <WhatsAppPhoneSignIn /> render on this flag.
     whatsapp_enabled: isWhatsAppGatewayConfigured(),
-    // Legacy Firebase Phone OTP. Default OFF — re-enable via the
-    // PHONE_AUTH_ENABLED env var if migration ever requires it.
-    phone_auth_enabled: isPhoneAuthEnabled(),
   });
 });
 

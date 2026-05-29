@@ -1,6 +1,5 @@
 import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
-import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
@@ -11,15 +10,14 @@ import { Link } from "wouter";
 /**
  * Public register page — passwordless.
  *
- * Identical auth surface to /login (Phone OTP + Google + Telegram
- * when enabled). The only differences from /login:
+ * Identical auth surface to /login (Google + Telegram + WhatsApp OTP).
+ * The only differences from /login:
  *   - active tab on "حساب جديد"
  *   - referral context banner reading ?ref= from URL
  *   - copy emphasises account creation over sign-in
  *
- * Both auth paths (Phone OTP via FirebasePhoneSignIn, Google via
- * AuthProviders) ALREADY pick up `?ref=` from the URL on the client
- * side and pass it to /api/auth/firebase/session — no separate form
+ * All auth paths read `?ref=` from the URL on the client side and pass
+ * it to their respective backend session endpoints — no separate form
  * field is needed.
  */
 
@@ -31,7 +29,7 @@ function readReferralFromUrl(): string {
 
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
-  const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled } = usePublicAuthProviders();
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
@@ -113,20 +111,9 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Legacy Firebase Phone OTP — only when explicitly re-enabled
-              via PHONE_AUTH_ENABLED=true. Default OFF. */}
-          {phoneAuthEnabled && (
-            <>
-              <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-border/50" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                  أو سجّل برقم الهاتف
-                </span>
-                <div className="flex-1 h-px bg-border/50" />
-              </div>
-              <FirebasePhoneSignIn />
-            </>
-          )}
+          {/* Legacy Firebase Phone OTP block was removed in this commit.
+              Phone authentication now flows exclusively through WhatsApp OTP
+              above. Telegram + Google remain available via <AuthProviders />. */}
         </div>
 
         {/* Footer link to login */}

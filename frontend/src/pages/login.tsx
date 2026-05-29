@@ -1,6 +1,5 @@
 import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
-import { FirebasePhoneSignIn } from "@/components/FirebasePhoneSignIn";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
@@ -10,25 +9,20 @@ import { Link } from "wouter";
  * Public login page — passwordless.
  *
  * Available auth methods:
- *   1. Phone OTP (Firebase) — primary, biggest CTA
- *   2. Google Sign-In        — via AuthProviders (Firebase popup)
- *   3. Telegram              — via AuthProviders (when enabled in
- *                              `auth.telegram` admin setting + a real
- *                              TELEGRAM_BOT_TOKEN is provisioned)
+ *   1. Google Sign-In  — via <AuthProviders /> (Firebase popup)
+ *   2. Telegram        — via <AuthProviders /> (when enabled in
+ *                        `auth.telegram` admin setting + a real
+ *                        TELEGRAM_BOT_TOKEN is provisioned)
+ *   3. WhatsApp OTP    — via <WhatsAppPhoneSignIn /> (pristine button
+ *                        → phone → 6-digit code; backend handles new
+ *                        + returning users identically)
  *
- * The platform is fully passwordless: Phone OTP / Google / Telegram are
- * the only supported flows. Legacy password endpoints (login, register,
- * forgot-password, reset-password, change-password, toggle-password-login)
- * have been removed.
- *
- * Bug-fix benefit: removing the react-hook-form-driven phone field
- * eliminates the `{...register("phone")} onChange={handlePhoneChange}`
- * override that was silently breaking validation ("phone appears
- * filled but validator says required"). FirebasePhoneSignIn uses pure
- * controlled state with no equivalent issue.
+ * The platform is fully passwordless. Firebase Phone OTP has been
+ * permanently retired — the WhatsApp OTP flow is the sole phone-based
+ * sign-in path.
  */
 export default function LoginPage() {
-  const { whatsappEnabled, phoneAuthEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled } = usePublicAuthProviders();
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -82,22 +76,10 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Legacy Firebase Phone OTP — only when explicitly re-enabled
-              via PHONE_AUTH_ENABLED=true on the backend. Default OFF.
-              Kept behind a divider since it is a semantically distinct
-              two-step phone form, not a one-click provider. */}
-          {phoneAuthEnabled && (
-            <>
-              <div className="flex items-center gap-3 my-5">
-                <div className="flex-1 h-px bg-border/50" />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                  أو سجّل برقم الهاتف
-                </span>
-                <div className="flex-1 h-px bg-border/50" />
-              </div>
-              <FirebasePhoneSignIn />
-            </>
-          )}
+          {/* Legacy Firebase Phone OTP block was removed in this commit.
+              Phone authentication now flows exclusively through WhatsApp OTP
+              above. Telegram + Google remain available as one-click providers
+              via <AuthProviders /> at the top of this card. */}
         </div>
 
         {/* Footer link to register */}
