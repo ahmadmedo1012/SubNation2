@@ -3,6 +3,7 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
+import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQuery } from "@tanstack/react-query";
 import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
 import {
@@ -222,7 +223,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{o.product_name}</div>
                       <div className="text-xs text-muted-foreground font-mono">
-                        {o.order_code} · {o.user_phone}
+                        {o.order_code} · {displayUserName(userFromRow(o))}
                       </div>
                     </div>
                     <span className="font-black text-primary text-xs tabular-nums shrink-0">
