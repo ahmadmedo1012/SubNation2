@@ -524,18 +524,16 @@ export default function AdminProductsPage() {
                         alt="معاينة"
                         className="absolute inset-0 m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain"
                         onLoad={(e) => {
-                          (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty(
-                            "display",
-                            "none",
-                          );
+                          (
+                            e.currentTarget.nextElementSibling as HTMLElement | null
+                          )?.style.setProperty("display", "none");
                           e.currentTarget.style.display = "block";
                         }}
                         onError={(e) => {
                           e.currentTarget.style.display = "none";
-                          (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty(
-                            "display",
-                            "flex",
-                          );
+                          (
+                            e.currentTarget.nextElementSibling as HTMLElement | null
+                          )?.style.setProperty("display", "flex");
                         }}
                       />
                       <div
@@ -546,7 +544,8 @@ export default function AdminProductsPage() {
                       </div>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      معاينة كما ستظهر في البطاقة. استخدم صورة شفافة (PNG/SVG) عالية الدقة لأفضل نتيجة.
+                      معاينة كما ستظهر في البطاقة. استخدم صورة شفافة (PNG/SVG) عالية الدقة لأفضل
+                      نتيجة.
                     </p>
                   </div>
                 )}
