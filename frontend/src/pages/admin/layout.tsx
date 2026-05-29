@@ -43,7 +43,13 @@ const NAV_SECTIONS = [
     label: "التشغيل",
     items: [
       { href: "/admin", label: "الرئيسية", icon: LayoutDashboard },
-      { href: "/admin/topups", label: "طلبات الشحن", icon: Wallet, badgeKey: "pendingTopups", scope: "finance" },
+      {
+        href: "/admin/topups",
+        label: "طلبات الشحن",
+        icon: Wallet,
+        badgeKey: "pendingTopups",
+        scope: "finance",
+      },
       { href: "/admin/orders", label: "الطلبات", icon: ShoppingBag, scope: "orders" },
       {
         href: "/admin/tickets",
@@ -52,7 +58,13 @@ const NAV_SECTIONS = [
         badgeKey: "openTickets",
         scope: "support",
       },
-      { href: "/admin/alerts", label: "التنبيهات", icon: Bell, badgeKey: "unreadAlerts", scope: "support" },
+      {
+        href: "/admin/alerts",
+        label: "التنبيهات",
+        icon: Bell,
+        badgeKey: "unreadAlerts",
+        scope: "support",
+      },
     ],
   },
   {
@@ -146,7 +158,6 @@ function NavItem({
     </div>
   );
 }
-
 
 const PAGE_TITLES: Record<string, string> = {
   "/admin": "لوحة التحكم",
@@ -611,9 +622,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   return (
     <div className="min-h-screen flex bg-background">
       {/* Global search overlay */}
-      {showSearch && adminToken && (
-        <GlobalSearch onClose={() => setShowSearch(false)} />
-      )}
+      {showSearch && adminToken && <GlobalSearch onClose={() => setShowSearch(false)} />}
 
       {/* Desktop sidebar */}
       <aside
@@ -688,11 +697,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
             aria-label="تبديل الثيم"
           >
-            {theme === "dark" ? (
-              <Sun className="w-3.5 h-3.5" />
-            ) : (
-              <Moon className="w-3.5 h-3.5" />
-            )}
+            {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </button>
 
           {onRefresh && (

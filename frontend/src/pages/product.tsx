@@ -274,7 +274,12 @@ export default function ProductPage() {
             ]),
           ],
         }
-      : { title: "SubNation", description: "اشتراكات رقمية بالدينار الليبي.", path: "/", locale: "ar" },
+      : {
+          title: "SubNation",
+          description: "اشتراكات رقمية بالدينار الليبي.",
+          path: "/",
+          locale: "ar",
+        },
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
