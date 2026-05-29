@@ -867,6 +867,23 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Pointer affordance — interactive elements get a pointer; disabled
+     controls get not-allowed. Covers custom <div role="button"> + native
+     controls so clickable elements never show the default text arrow. */
+  button:not(:disabled),
+  a[href],
+  label[for],
+  summary,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="menuitem"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   /* Search cancel button */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
