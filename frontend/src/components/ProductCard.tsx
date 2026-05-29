@@ -60,7 +60,17 @@ const DEFAULT_ACCENT = {
   accentLine: "bg-primary/55",
 };
 
-const STAGGER = ["", "stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6", "stagger-7", "stagger-8"];
+const STAGGER = [
+  "",
+  "stagger-1",
+  "stagger-2",
+  "stagger-3",
+  "stagger-4",
+  "stagger-5",
+  "stagger-6",
+  "stagger-7",
+  "stagger-8",
+];
 
 function PopularBadge({ count }: { count?: number }) {
   if (!count || count < 5) return null;
@@ -133,7 +143,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         <PopularBadge count={product.order_count} />
 
         <div className="relative aspect-square bg-card overflow-hidden">
-          <div className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`} />
+          <div
+            className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`}
+          />
           <div className="shine-trigger absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full skew-x-[-14deg] pointer-events-none z-[3]" />
 
           {product.image_url ? (
@@ -187,7 +199,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             <div
               className={`flex items-center justify-center w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 rounded-2xl border ${accent.bg} ${accent.border} shadow-sm transition-transform duration-300 ease-out group-hover:scale-105`}
             >
-              <span className={`text-4xl sm:text-5xl font-black select-none drop-shadow-sm ${accent.text}`}>
+              <span
+                className={`text-4xl sm:text-5xl font-black select-none drop-shadow-sm ${accent.text}`}
+              >
                 {product.name[0]}
               </span>
             </div>
@@ -199,7 +213,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             <h2 className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200">
               {product.name}
             </h2>
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}>
+            <span
+              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
+            >
               {categoryLabel(product.category)}
             </span>
           </div>
@@ -232,7 +248,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                   آخر {product.stock_count}
                 </div>
               ) : (
-                <div className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}>
+                <div
+                  className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
+                >
                   {product.stock_count > 99 ? "+99" : product.stock_count}
                 </div>
               )

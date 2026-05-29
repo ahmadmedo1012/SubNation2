@@ -309,9 +309,10 @@ export default function ProductPage() {
           // recognised category — improves topical clustering for
           // search engines + gives users a richer landing destination
           // than a plain home-page filter.
-          href: product.category && KNOWN_CATEGORIES.has(product.category)
-            ? `/category/${product.category}`
-            : "/",
+          href:
+            product.category && KNOWN_CATEGORIES.has(product.category)
+              ? `/category/${product.category}`
+              : "/",
         },
         { name: product.name, href: `/product/${product.slug ?? product.id}` },
       ]),
@@ -500,9 +501,7 @@ export default function ProductPage() {
               role="status"
               aria-live="polite"
               aria-label={
-                product.is_available
-                  ? `المنتج متوفر، الكمية ${product.stock_count}`
-                  : "نفد المخزون"
+                product.is_available ? `المنتج متوفر، الكمية ${product.stock_count}` : "نفد المخزون"
               }
               className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
                 product.is_available
@@ -512,7 +511,8 @@ export default function ProductPage() {
             >
               {product.is_available ? (
                 <>
-                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر ({product.stock_count})
+                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر (
+                  {product.stock_count})
                 </>
               ) : (
                 <>
@@ -843,9 +843,7 @@ function CtaBlock({
           mobile sticky bar stays single-line.
         */}
         {!compact && (
-          <p className="text-center text-xs text-muted-foreground">
-            تحقّق لاحقاً، قد يعود قريباً
-          </p>
+          <p className="text-center text-xs text-muted-foreground">تحقّق لاحقاً، قد يعود قريباً</p>
         )}
       </div>
     );
