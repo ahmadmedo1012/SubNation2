@@ -115,7 +115,7 @@ export async function applyFlashSale(listPrice: number): Promise<FlashSaleStage>
   }
 
   const discountPercent = parseFloat(String(row.discountPercent));
-  const basePrice = +(listPrice * (1 - discountPercent / 100)).toFixed(2);
+  const basePrice = computeFlashSalePrice(listPrice, discountPercent);
   return {
     flashSale: {
       id: row.id,
@@ -181,10 +181,7 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
 
   // Valid — compute applied amount.
   const value = parseFloat(String(row.value));
-  const appliedAmount =
-    row.type === "percentage"
-      ? +((input.basePrice * value) / 100).toFixed(2)
-      : +Math.min(value, input.basePrice).toFixed(2);
+  const appliedAmount = computeCouponDiscount(row.type as CouponType, value, input.basePrice);
 
   return {
     record: row,
@@ -227,4 +224,28 @@ export async function computePricing(input: ComputePricingInput): Promise<Pricin
     discountAmount,
     finalPrice,
   };
+}
+
+// ── Pure math (DB-free, side-effect-free) — single source for the
+//    discount arithmetic so it can be unit-tested in isolation. The
+//    DB-backed functions above delegate to these. ──────────────────────────
+
+/** Apply a flash-sale percentage to a list price. Clamped to ≥ 0. */
+export function computeFlashSalePrice(listPrice: number, discountPercent: number): number {
+  return +Math.max(0, listPrice * (1 - discountPercent / 100)).toFixed(2);
+}
+
+/**
+ * Compute the coupon discount amount against a base price.
+ *   - percentage: basePrice × value/100
+ *   - fixed:      min(value, basePrice)  (never discounts more than the price)
+ */
+export function computeCouponDiscount(
+  type: CouponType,
+  value: number,
+  basePrice: number,
+): number {
+  return type === "percentage"
+    ? +((basePrice * value) / 100).toFixed(2)
+    : +Math.min(value, basePrice).toFixed(2);
 }
