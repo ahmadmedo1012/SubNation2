@@ -182,7 +182,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               loading={index < 4 ? "eager" : "lazy"}
               fetchPriority={index === 0 ? "high" : index < 4 ? "auto" : "low"}
               decoding="async"
-              className="relative z-[2] w-full h-full object-contain p-4 sm:p-5 transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
+              className="absolute inset-0 z-[2] m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
               onError={(e) => {
                 const el = e.target as HTMLImageElement;
                 el.style.display = "none";
