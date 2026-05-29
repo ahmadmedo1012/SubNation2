@@ -443,7 +443,10 @@ async function handleTelegramAuth(
         ? "انتهت صلاحية الجلسة، حاول مجدداً"
         : "فشل التحقق من Telegram";
     await logAuthActivity({
-      identifier: typeof data.id === "string" || typeof data.id === "number" ? `tg:${String(data.id)}` : "tg:unknown",
+      identifier:
+        typeof data.id === "string" || typeof data.id === "number"
+          ? `tg:${String(data.id)}`
+          : "tg:unknown",
       action: "login",
       provider: "telegram",
       success: false,
@@ -475,7 +478,8 @@ async function handleTelegramAuth(
     );
     return {
       ok: false,
-      status: verification.reason === "missing_hash" || verification.reason === "missing_id" ? 400 : 401,
+      status:
+        verification.reason === "missing_hash" || verification.reason === "missing_id" ? 400 : 401,
       error: userMsg,
       reason: verification.reason,
     };
@@ -679,10 +683,7 @@ async function handleTelegramWebAppAuth(
     auth_date: verification.auth_date,
     hash,
   };
-  const { user, isNewUser } = await findOrCreateTelegramUser(
-    fieldsForFindOrCreate,
-    referralCode,
-  );
+  const { user, isNewUser } = await findOrCreateTelegramUser(fieldsForFindOrCreate, referralCode);
   const { token } = await createUserSession({
     userId: user.id,
     ipAddress: client.ipAddress,
@@ -755,7 +756,13 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       { category: "auth", err: err instanceof Error ? err.message : String(err) },
       "[telegram-auth] internal error",
     );
-    return res.status(500).json(createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, { reason: "server_error" }));
+    return res
+      .status(500)
+      .json(
+        createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
+          reason: "server_error",
+        }),
+      );
   }
 });
 
@@ -794,13 +801,11 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
       { category: "auth", err: err instanceof Error ? err.message : String(err) },
       "[telegram-webapp] internal error",
     );
-    return res
-      .status(500)
-      .json(
-        createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
-          reason: "server_error",
-        }),
-      );
+    return res.status(500).json(
+      createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR, {
+        reason: "server_error",
+      }),
+    );
   }
 });
 
@@ -891,7 +896,8 @@ authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
 // PATCH /api/admin/settings/auth/:id
 authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
   const meta = PROVIDERS.find((p) => p.id === stringParam(req, "id"));
-  if (!meta) return res.status(404).json(createErrorResponse("مزود غير موجود", ErrorCode.NOT_FOUND));
+  if (!meta)
+    return res.status(404).json(createErrorResponse("مزود غير موجود", ErrorCode.NOT_FOUND));
 
   const key = `auth.${meta.id}`;
   const existing = await getSetting(key);

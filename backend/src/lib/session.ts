@@ -47,7 +47,11 @@ export async function createUserSession(input: CreateSessionInput): Promise<{
     });
   } catch (err) {
     logger.warn(
-      { category: "auth.session", err: err instanceof Error ? err.message : String(err), userId: input.userId },
+      {
+        category: "auth.session",
+        err: err instanceof Error ? err.message : String(err),
+        userId: input.userId,
+      },
       "[session] row insert failed (non-fatal — token still issued)",
     );
   }

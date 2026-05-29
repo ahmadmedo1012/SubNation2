@@ -11,11 +11,7 @@
  * those purposes so future phases will be additive.
  */
 
-import {
-  db,
-  usersTable,
-  whatsappOtpsTable,
-} from "@workspace/db";
+import { db, usersTable, whatsappOtpsTable } from "@workspace/db";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 
 import { logAuthActivity } from "../lib/auth-activity";
@@ -108,9 +104,7 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
       createdAt: whatsappOtpsTable.createdAt,
     })
     .from(whatsappOtpsTable)
-    .where(
-      and(eq(whatsappOtpsTable.phone, phone), gte(whatsappOtpsTable.createdAt, oneHourAgo)),
-    )
+    .where(and(eq(whatsappOtpsTable.phone, phone), gte(whatsappOtpsTable.createdAt, oneHourAgo)))
     .orderBy(desc(whatsappOtpsTable.createdAt));
 
   if (recent.length > 0 && recent[0].createdAt >= cooldownStart) {
@@ -233,7 +227,13 @@ export type VerifyOtpResult =
     }
   | {
       ok: false;
-      reason: "invalid_phone" | "no_active_code" | "consumed" | "expired" | "exhausted" | "mismatch";
+      reason:
+        | "invalid_phone"
+        | "no_active_code"
+        | "consumed"
+        | "expired"
+        | "exhausted"
+        | "mismatch";
     };
 
 interface VerifyOtpInput {
@@ -356,11 +356,7 @@ async function findOrCreateWhatsAppUser(
   const now = new Date();
 
   // Existing user with this phone — login path.
-  const [existing] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.phone, phone))
-    .limit(1);
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
 
   if (existing) {
     // Lift phoneVerified=true if it wasn't already (e.g. user previously
@@ -372,10 +368,7 @@ async function findOrCreateWhatsAppUser(
         .where(eq(usersTable.id, existing.id));
       return { user: { ...existing, phoneVerified: true, lastAuthAt: now }, isNewUser: false };
     }
-    await db
-      .update(usersTable)
-      .set({ lastAuthAt: now })
-      .where(eq(usersTable.id, existing.id));
+    await db.update(usersTable).set({ lastAuthAt: now }).where(eq(usersTable.id, existing.id));
     return { user: existing, isNewUser: false };
   }
 
@@ -439,9 +432,7 @@ async function safeLog(params: {
  */
 export async function pruneExpiredOtps(): Promise<number> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const result = await db.execute(
-    sql`DELETE FROM whatsapp_otps WHERE created_at < ${cutoff}`,
-  );
+  const result = await db.execute(sql`DELETE FROM whatsapp_otps WHERE created_at < ${cutoff}`);
   // pg returns affected count via `rowCount`.
   return (result as unknown as { rowCount?: number }).rowCount ?? 0;
 }

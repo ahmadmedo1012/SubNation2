@@ -1,9 +1,4 @@
-import {
-  db,
-  sessionsTable,
-  userAuthIdentitiesTable,
-  usersTable,
-} from "@workspace/db";
+import { db, sessionsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { Router } from "express";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
@@ -247,11 +242,7 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
 router.get("/me", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user)
     return res
       .status(401)
@@ -323,11 +314,7 @@ router.get("/probe", async (req, res) => {
   }
 
   const userId = result.payload.userId;
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
     return res.status(200).json({ authenticated: false });
   }
@@ -377,9 +364,8 @@ router.post("/firebase/session", async (req, res) => {
     // defense-in-depth: even if Firebase Phone is mistakenly re-enabled
     // in the Firebase Console, the backend will not issue a session for it.
     // Google tokens (sign_in_provider === "google.com") are unaffected.
-    const signInProvider = (
-      decoded.firebase as { sign_in_provider?: string } | undefined
-    )?.sign_in_provider;
+    const signInProvider = (decoded.firebase as { sign_in_provider?: string } | undefined)
+      ?.sign_in_provider;
     if (signInProvider === "phone") {
       return res
         .status(403)
