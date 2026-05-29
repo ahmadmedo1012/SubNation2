@@ -20,7 +20,7 @@ import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 
 import { logAuthActivity } from "../lib/auth-activity";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
-import { signUserToken } from "../lib/jwt";
+import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
 import {
   generateOtp,
@@ -326,7 +326,11 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult>
     input.purpose,
     input.referralCode,
   );
-  const token = signUserToken({ userId: user.id });
+  const { token } = await createUserSession({
+    userId: user.id,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  });
 
   await safeLog({
     userId: user.id,

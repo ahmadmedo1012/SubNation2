@@ -6,11 +6,11 @@ import {
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { Router } from "express";
-import crypto from "node:crypto";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
-import { signUserToken, verifyUserTokenDetailed } from "../lib/jwt";
+import { verifyUserTokenDetailed } from "../lib/jwt";
+import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
 import { captureAuthFailure, captureSubsystemException } from "../lib/sentry";
 import { derivePrimaryProvider } from "../lib/user-provider";
@@ -406,18 +406,13 @@ router.post("/firebase/session", async (req, res) => {
       });
     }
 
-    const sessionId = crypto.randomUUID();
     const uaHeader = req.headers["user-agent"];
     const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
-    await db.insert(sessionsTable).values({
-      id: sessionId,
+    const { token } = await createUserSession({
       userId: result.user.id,
-      userAgent: ua?.substring(0, 255),
-      ipAddress: req.ip?.substring(0, 45),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ipAddress: req.ip,
+      userAgent: ua,
     });
-
-    const token = signUserToken({ userId: result.user.id, sessionId });
 
     // Set httpOnly cookie for better security
     res.cookie("auth_token", token, {
@@ -485,19 +480,14 @@ router.post("/firebase/refresh", async (req, res) => {
       ...clientInfo,
     });
 
-    const sessionId = crypto.randomUUID();
     const ua = Array.isArray(req.headers["user-agent"])
       ? req.headers["user-agent"][0]
       : req.headers["user-agent"];
-    await db.insert(sessionsTable).values({
-      id: sessionId,
+    const { token } = await createUserSession({
       userId: result.user.id,
-      userAgent: ua?.substring(0, 255),
-      ipAddress: req.ip?.substring(0, 45),
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ipAddress: req.ip,
+      userAgent: ua,
     });
-
-    const token = signUserToken({ userId: result.user.id, sessionId });
 
     // Set httpOnly cookie
     res.cookie("auth_token", token, {

@@ -19,7 +19,7 @@ import { eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { generateReferralCode } from "../lib/crypto";
 import { stringParam } from "../lib/http";
-import { signUserToken } from "../lib/jwt";
+import { createUserSession } from "../lib/session";
 import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
 import { getRedisClient } from "../lib/redis-client";
@@ -529,7 +529,11 @@ async function handleTelegramAuth(
     typeof rawRef === "string" ? rawRef.trim().toUpperCase().slice(0, 16) || undefined : undefined;
 
   const { user, isNewUser } = await findOrCreateTelegramUser(verification.fields, referralCode);
-  const token = signUserToken({ userId: user.id });
+  const { token } = await createUserSession({
+    userId: user.id,
+    ipAddress: client.ipAddress,
+    userAgent: client.userAgent,
+  });
 
   await logAuthActivity({
     userId: user.id,
@@ -679,7 +683,11 @@ async function handleTelegramWebAppAuth(
     fieldsForFindOrCreate,
     referralCode,
   );
-  const token = signUserToken({ userId: user.id });
+  const { token } = await createUserSession({
+    userId: user.id,
+    ipAddress: client.ipAddress,
+    userAgent: client.userAgent,
+  });
 
   await logAuthActivity({
     userId: user.id,
