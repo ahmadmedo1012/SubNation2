@@ -516,6 +516,40 @@ export default function AdminProductsPage() {
                   dir="ltr"
                   placeholder="https://..."
                 />
+                {form.image_url.trim() && (
+                  <div className="mt-2 flex items-center gap-2.5">
+                    <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/50 bg-card overflow-hidden">
+                      <img
+                        src={form.image_url.trim()}
+                        alt="معاينة"
+                        className="absolute inset-0 m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain"
+                        onLoad={(e) => {
+                          (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty(
+                            "display",
+                            "none",
+                          );
+                          e.currentTarget.style.display = "block";
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                          (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty(
+                            "display",
+                            "flex",
+                          );
+                        }}
+                      />
+                      <div
+                        style={{ display: "none" }}
+                        className="absolute inset-0 items-center justify-center text-[10px] font-bold text-destructive text-center px-1"
+                      >
+                        رابط غير صالح
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      معاينة كما ستظهر في البطاقة. استخدم صورة شفافة (PNG/SVG) عالية الدقة لأفضل نتيجة.
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
