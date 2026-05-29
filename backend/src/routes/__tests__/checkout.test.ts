@@ -114,10 +114,7 @@ async function seedUser(balance: string) {
 }
 
 async function seedProductWithStock(units: number, price = "10.00") {
-  const [p] = await db
-    .insert(productsTable)
-    .values({ name: "Test Product", price })
-    .returning();
+  const [p] = await db.insert(productsTable).values({ name: "Test Product", price }).returning();
   for (let i = 0; i < units; i++) {
     await db.insert(inventoryTable).values({
       productId: p.id,
@@ -178,7 +175,10 @@ describe("Checkout — insufficient funds", () => {
 
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(10); // unchanged
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => !i.isSold)).toBe(true);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
@@ -202,7 +202,10 @@ describe("Checkout — atomic rollback on delivery failure", () => {
     // Everything must be as if the purchase never happened.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(50); // NOT 20 — rolled back
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => !i.isSold)).toBe(true); // claim rolled back
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
@@ -241,7 +244,10 @@ describe("Checkout — concurrency race", () => {
     ]);
 
     expect([a, b].filter((r) => r.ok).length).toBe(1); // one claims, one OUT_OF_STOCK/claimed
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.filter((i) => i.isSold)).toHaveLength(1);
     expect(await db.select().from(ordersTable)).toHaveLength(1);
   });

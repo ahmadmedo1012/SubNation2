@@ -186,7 +186,5 @@ export async function initTestDb(): Promise<void> {
 
 /** Wipe all rows + reset identity sequences between tests for pure isolation. */
 export async function resetTestDb(): Promise<void> {
-  await db.execute(
-    sql.raw(`TRUNCATE TABLE ${TABLES.join(", ")} RESTART IDENTITY CASCADE;`),
-  );
+  await db.execute(sql.raw(`TRUNCATE TABLE ${TABLES.join(", ")} RESTART IDENTITY CASCADE;`));
 }
