@@ -188,6 +188,23 @@ async function findSession(
     return (await direct.json()) as SessionRecord;
   }
   if (direct.status !== 404) {
+    // Read a small slice of the body so the log distinguishes
+    // OpenWA JSON errors from Cloudflare HTML challenge / Access
+    // block pages. Capped at 200 chars and stripped to printable
+    // ASCII to keep the log line bounded and safe.
+    const bodyPeek = await direct
+      .text()
+      .then((t) => t.slice(0, 200).replace(/[^\x20-\x7E]/g, "?"))
+      .catch(() => "<unread>");
+    logger.warn(
+      {
+        category: "whatsapp.gateway",
+        status: direct.status,
+        bodyPeek,
+        sessionRef: config.sessionRef,
+      },
+      "[whatsapp-otp] session lookup non-2xx — body peek",
+    );
     throw new Error(`session_lookup_${direct.status}`);
   }
 
