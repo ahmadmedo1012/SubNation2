@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { RouteLoading } from "@/components/RouteLoading";
 import { AppSplashScreen } from "@/components/AppSplashScreen";
+import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -143,7 +143,17 @@ function AdminProtectedRoutes() {
   }
 
   return (
-    <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-[60vh] items-center justify-center"
+          role="status"
+          aria-busy="true"
+        >
+          <Spinner className="size-8 text-primary" />
+        </div>
+      }
+    >
       <Switch>
         <Route path="/admin" component={AdminDashboardPage} />
         <Route path="/admin/topups" component={AdminTopupsPage} />
@@ -181,7 +191,6 @@ function AppRoutes() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <RouteLoading />
       {!isAdmin && !isChromeless && <Navbar />}
       {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>
@@ -194,7 +203,17 @@ function AppRoutes() {
         }
       >
         <ErrorBoundary>
-          <Suspense fallback={<div className="min-h-[60vh]" aria-busy="true" />}>
+          <Suspense
+            fallback={
+              <div
+                className="flex min-h-[60vh] items-center justify-center"
+                role="status"
+                aria-busy="true"
+              >
+                <Spinner className="size-8 text-primary" />
+              </div>
+            }
+          >
             <Switch>
               <Route path="/" component={HomePage} />
               <Route path="/login" component={LoginPage} />

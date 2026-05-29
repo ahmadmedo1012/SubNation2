@@ -162,9 +162,14 @@ interface AuthProvidersProps {
 export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: AuthProvidersProps) {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
-  const [providers, setProviders] = useState<Provider[]>([]);
+  // Seed with the synchronously-known Firebase Google provider so its
+  // (inline-SVG) button paints on first render — before the
+  // /api/auth/providers round-trip resolves. The fetch below then merges
+  // the full server list (Telegram, etc.) in place.
+  const [providers, setProviders] = useState<Provider[]>(() =>
+    includeFirebaseGoogleProvider([]),
+  );
   const [error, setError] = useState("");
-  const [fetched, setFetched] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -174,8 +179,7 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         if (isFirebaseAuthConfigured()) {
           setProviders([firebaseGoogleProvider()]);
         }
-      })
-      .finally(() => setFetched(true));
+      });
   }, []);
 
   const handleSuccess = useCallback(
@@ -187,7 +191,7 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
     [setToken, onSuccess, navigate],
   );
 
-  if (!fetched || providers.length === 0) return null;
+  if (providers.length === 0) return null;
 
   return (
     <div className="space-y-2.5">
