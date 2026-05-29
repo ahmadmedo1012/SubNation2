@@ -18,6 +18,12 @@ router.get("/topups", requireAdmin, async (req, res) => {
     .select({
       topup: walletTopupsTable,
       userPhone: usersTable.phone,
+      userDisplayName: usersTable.displayName,
+      userEmail: usersTable.email,
+      userAuthProvider: usersTable.authProvider,
+      userGoogleId: usersTable.googleId,
+      userTelegramId: usersTable.telegramId,
+      userFirebaseUid: usersTable.firebaseUid,
     })
     .from(walletTopupsTable)
     .leftJoin(usersTable, eq(walletTopupsTable.userId, usersTable.id))
@@ -30,6 +36,13 @@ router.get("/topups", requireAdmin, async (req, res) => {
       id: r.topup.id,
       user_id: r.topup.userId,
       user_phone: r.userPhone ?? "",
+      user_display_name: r.userDisplayName ?? null,
+      user_email: r.userEmail ?? null,
+      user_auth_provider: r.userAuthProvider ?? null,
+      user_has_google: !!r.userGoogleId,
+      user_has_telegram: !!r.userTelegramId,
+      user_has_firebase: !!r.userFirebaseUid,
+      user_has_whatsapp: r.userAuthProvider === "whatsapp_phone",
       amount: parseFloat(String(r.topup.amount)),
       payment_method: r.topup.paymentMethod ?? "mobile_transfer",
       payment_network: r.topup.paymentNetwork ?? null,

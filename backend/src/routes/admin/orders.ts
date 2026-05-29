@@ -23,6 +23,12 @@ router.get("/orders", requireAdmin, async (req, res) => {
     .select({
       order: ordersTable,
       userPhone: usersTable.phone,
+      userDisplayName: usersTable.displayName,
+      userEmail: usersTable.email,
+      userAuthProvider: usersTable.authProvider,
+      userGoogleId: usersTable.googleId,
+      userTelegramId: usersTable.telegramId,
+      userFirebaseUid: usersTable.firebaseUid,
       productName: productsTable.name,
     })
     .from(ordersTable)
@@ -38,6 +44,16 @@ router.get("/orders", requireAdmin, async (req, res) => {
       id: r.order.id,
       order_code: r.order.orderCode,
       user_phone: r.userPhone ?? "",
+      // ── Identity enrichment for the admin display helper. The
+      //    frontend lib/admin/user-display.ts uses these to pick the
+      //    best human-readable name + render provider badges.
+      user_display_name: r.userDisplayName ?? null,
+      user_email: r.userEmail ?? null,
+      user_auth_provider: r.userAuthProvider ?? null,
+      user_has_google: !!r.userGoogleId,
+      user_has_telegram: !!r.userTelegramId,
+      user_has_firebase: !!r.userFirebaseUid,
+      user_has_whatsapp: r.userAuthProvider === "whatsapp_phone",
       product_name: r.productName ?? "",
       amount: parseFloat(String(r.order.amount)),
       status: r.order.status,

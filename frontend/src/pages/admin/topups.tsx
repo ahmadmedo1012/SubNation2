@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminTopupsQueryKey,
@@ -100,6 +101,13 @@ function RejectModal({
     id: number;
     amount: number;
     user_phone: string;
+    user_display_name?: string | null;
+    user_email?: string | null;
+    user_auth_provider?: string | null;
+    user_has_google?: boolean;
+    user_has_telegram?: boolean;
+    user_has_firebase?: boolean;
+    user_has_whatsapp?: boolean;
     status: string;
     payment_network?: string;
     created_at?: string;
@@ -123,7 +131,7 @@ function RejectModal({
               <span className="font-mono font-bold text-foreground">
                 {formatCurrency(topup.amount)}
               </span>{" "}
-              · {topup.user_phone}
+              · {displayUserName(userFromRow(topup))}
             </p>
           </div>
           <button
@@ -666,7 +674,7 @@ export default function AdminTopupsPage() {
                     <div className="flex items-center gap-1.5 text-xs">
                       <User className="w-3 h-3 text-muted-foreground shrink-0" />
                       <span className="text-muted-foreground">المستخدم:</span>
-                      <span className="font-mono font-bold text-foreground">{t.user_phone}</span>
+                      <span className="font-mono font-bold text-foreground">{displayUserName(userFromRow(t))}</span>
                       <CopyButton text={t.user_phone} size="xs" />
                     </div>
                     {t.sender_phone && (

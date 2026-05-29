@@ -46,6 +46,11 @@ router.get("/users", requireAdmin, async (req, res) => {
       has_google: !!u.googleId,
       has_telegram: !!u.telegramId,
       has_firebase: !!u.firebaseUid,
+      // Derived from the stored authProvider tag — there's no
+      // dedicated column for WhatsApp identity (the phone field
+      // itself is the identity, since WhatsApp users have a real
+      // 9-digit Libyan local form rather than a placeholder).
+      has_whatsapp: u.authProvider === "whatsapp_phone",
       last_auth_at: u.lastAuthAt?.toISOString() ?? null,
       wallet_balance: parseFloat(String(u.walletBalance)),
       loyalty_points: u.loyaltyPoints,

@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetAdminStatsQueryKey,
@@ -764,7 +765,7 @@ export default function AdminDashboardPage() {
                       <div className="font-medium text-xs truncate">{order.product_name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {order.user_phone}
+                          {displayUserName(userFromRow(order as unknown as Parameters<typeof userFromRow>[0]))}
                         </span>
                         {order.created_at && (
                           <span className="text-[10px] text-muted-foreground">

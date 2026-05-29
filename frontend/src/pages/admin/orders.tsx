@@ -5,6 +5,7 @@ import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSk
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminOrdersQueryKey,
@@ -699,7 +700,7 @@ export default function AdminOrdersPage() {
                                 setExpandedRow(expandedRow === order.id ? null : order.id)
                               }
                             >
-                              {order.user_phone}
+                              {displayUserName(userFromRow(order))}
                             </td>
                             <td
                               className="px-4 py-2.5 font-medium text-sm max-w-40 truncate"
@@ -844,7 +845,7 @@ export default function AdminOrdersPage() {
                       <div className="flex-1 min-w-0">
                         <div className="font-bold text-sm">{order.product_name}</div>
                         <div className="font-mono text-xs text-muted-foreground mt-0.5">
-                          {order.user_phone}
+                          {displayUserName(userFromRow(order))}
                         </div>
                       </div>
                       <div className="text-right shrink-0">

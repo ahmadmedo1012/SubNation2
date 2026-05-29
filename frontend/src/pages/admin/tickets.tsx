@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import {
   AlertCircle,
   CheckCircle,
@@ -65,6 +66,13 @@ const CATEGORY_FILTERS = [
 interface TicketSummary {
   id: number;
   user_phone: string;
+  user_display_name?: string | null;
+  user_email?: string | null;
+  user_auth_provider?: string | null;
+  user_has_google?: boolean;
+  user_has_telegram?: boolean;
+  user_has_firebase?: boolean;
+  user_has_whatsapp?: boolean;
   title: string;
   category: string | null;
   status: string;
@@ -265,7 +273,7 @@ export default function AdminTicketsPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs text-muted-foreground font-mono">
-                            {t.user_phone}
+                            {displayUserName(userFromRow(t))}
                           </span>
                           {t.category && (
                             <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
@@ -308,7 +316,7 @@ export default function AdminTicketsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <User className="w-3 h-3" />
-                      <span className="font-mono">{selected.user_phone}</span>
+                      <span className="font-mono">{displayUserName(userFromRow(selected))}</span>
                     </div>
                     <span
                       className={`text-[11px] px-2 py-0.5 rounded-full border font-bold ${STATUS_CONFIG[selected.status]?.color}`}

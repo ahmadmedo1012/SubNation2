@@ -17,6 +17,12 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     .select({
       ticket: supportTicketsTable,
       userPhone: usersTable.phone,
+      userDisplayName: usersTable.displayName,
+      userEmail: usersTable.email,
+      userAuthProvider: usersTable.authProvider,
+      userGoogleId: usersTable.googleId,
+      userTelegramId: usersTable.telegramId,
+      userFirebaseUid: usersTable.firebaseUid,
     })
     .from(supportTicketsTable)
     .leftJoin(usersTable, eq(supportTicketsTable.userId, usersTable.id))
@@ -25,7 +31,8 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     .limit(100);
 
   const withCounts = await Promise.all(
-    tickets.map(async ({ ticket, userPhone }) => {
+    tickets.map(async (row) => {
+      const ticket = row.ticket;
       const [cntRow] = await db
         .select({ count: count() })
         .from(ticketRepliesTable)
@@ -38,7 +45,14 @@ router.get("/tickets", requireAdmin, async (req, res) => {
         .limit(1);
       return {
         id: ticket.id,
-        user_phone: userPhone ?? "",
+        user_phone: row.userPhone ?? "",
+        user_display_name: row.userDisplayName ?? null,
+        user_email: row.userEmail ?? null,
+        user_auth_provider: row.userAuthProvider ?? null,
+        user_has_google: !!row.userGoogleId,
+        user_has_telegram: !!row.userTelegramId,
+        user_has_firebase: !!row.userFirebaseUid,
+        user_has_whatsapp: row.userAuthProvider === "whatsapp_phone",
         title: ticket.title,
         category: ticket.category,
         status: ticket.status,
@@ -58,7 +72,16 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [row] = await db
-    .select({ ticket: supportTicketsTable, userPhone: usersTable.phone })
+    .select({
+      ticket: supportTicketsTable,
+      userPhone: usersTable.phone,
+      userDisplayName: usersTable.displayName,
+      userEmail: usersTable.email,
+      userAuthProvider: usersTable.authProvider,
+      userGoogleId: usersTable.googleId,
+      userTelegramId: usersTable.telegramId,
+      userFirebaseUid: usersTable.firebaseUid,
+    })
     .from(supportTicketsTable)
     .leftJoin(usersTable, eq(supportTicketsTable.userId, usersTable.id))
     .where(eq(supportTicketsTable.id, id))
@@ -75,6 +98,13 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
   return res.json({
     id: row.ticket.id,
     user_phone: row.userPhone ?? "",
+    user_display_name: row.userDisplayName ?? null,
+    user_email: row.userEmail ?? null,
+    user_auth_provider: row.userAuthProvider ?? null,
+    user_has_google: !!row.userGoogleId,
+    user_has_telegram: !!row.userTelegramId,
+    user_has_firebase: !!row.userFirebaseUid,
+    user_has_whatsapp: row.userAuthProvider === "whatsapp_phone",
     title: row.ticket.title,
     category: row.ticket.category,
     status: row.ticket.status,

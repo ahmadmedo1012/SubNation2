@@ -6,6 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import {
+  PROVIDER_TONE_CLASS,
+  displayUserName,
+  userProviderBadges,
+  type AdminUserShape,
+} from "@/lib/admin/user-display";
 import { formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -81,66 +87,19 @@ const SORT_OPTIONS = [
  * silently treated as absent rather than throwing a TS error.
  */
 function ProviderBadges({ user }: { user: Record<string, unknown> }) {
-  const hasGoogle = Boolean(user.has_google);
-  const hasTelegram = Boolean(user.has_telegram);
-  // Phone OTP via Firebase. Distinguished from Google by has_google flag.
-  const hasFirebasePhone = Boolean(user.has_firebase) && !hasGoogle;
-
-  const badges: Array<{ label: string; className: string }> = [];
-  if (hasFirebasePhone) {
-    badges.push({
-      label: "هاتف",
-      className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    });
-  }
-  if (hasGoogle) {
-    badges.push({
-      label: "Google",
-      className: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-    });
-  }
-  if (hasTelegram) {
-    badges.push({
-      label: "Telegram",
-      className: "text-sky-400 bg-sky-500/10 border-sky-500/20",
-    });
-  }
-  if (badges.length === 0) {
-    badges.push({
-      label: "—",
-      className: "text-muted-foreground bg-muted/30 border-border/40",
-    });
-  }
-
+  const badges = userProviderBadges(user as AdminUserShape);
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {badges.map((b) => (
         <span
           key={b.label}
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${b.className}`}
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${PROVIDER_TONE_CLASS[b.tone]}`}
         >
           {b.label}
         </span>
       ))}
     </div>
   );
-}
-
-/**
- * Best-effort identity label for a user row. Telegram-first accounts
- * have phone="tg_<id>" — show the display_name (or "Telegram") instead
- * of the placeholder. Same idea for fb_/gh_ prefixes (legacy).
- */
-function userIdentityLabel(user: Record<string, unknown>): string {
-  const phone = typeof user.phone === "string" ? user.phone : "";
-  const displayName =
-    typeof user.display_name === "string" && user.display_name.trim()
-      ? user.display_name.trim()
-      : null;
-  if (phone.startsWith("tg_")) return displayName ?? "حساب Telegram";
-  if (phone.startsWith("fb_")) return displayName ?? "حساب Facebook";
-  if (phone.startsWith("gh_")) return displayName ?? "حساب GitHub";
-  return phone;
 }
 
 function TableSkeleton() {
@@ -705,7 +664,7 @@ export default function AdminUsersPage() {
                         className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
                       >
                         <td className="px-4 py-2.5 font-mono font-bold text-sm">
-                          {userIdentityLabel(user as unknown as Record<string, unknown>)}
+                          {displayUserName(user as unknown as AdminUserShape)}
                         </td>
                         <td className="px-4 py-2.5">
                           <ProviderBadges user={user as unknown as Record<string, unknown>} />
@@ -768,7 +727,7 @@ export default function AdminUsersPage() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-mono font-bold text-sm truncate">
-                      {userIdentityLabel(user as unknown as Record<string, unknown>)}
+                      {displayUserName(user as unknown as AdminUserShape)}
                     </div>
                     <div className="mt-1">
                       <ProviderBadges user={user as unknown as Record<string, unknown>} />
