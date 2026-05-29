@@ -15,10 +15,9 @@ import { useLocation } from "wouter";
  *      issues JWT + httpOnly cookie, returns { token, is_new_user }.
  *   5. We store the token via the auth context and navigate to /.
  *
- * Coexists with the existing Firebase Phone OTP form on the same page;
- * neither blocks the other. The component renders nothing if the
- * gateway isn't enabled (caller decides whether to mount it via
- * `enabled` prop, typically backed by a /api/auth/providers probe).
+ * Renders nothing if the gateway isn't enabled (caller decides whether
+ * to mount it via the `enabled` prop, typically backed by a
+ * /api/auth/providers probe).
  */
 
 interface WhatsAppPhoneSignInProps {

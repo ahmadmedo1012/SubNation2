@@ -28,7 +28,7 @@ router.use(cwvRouter);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.use("/auth", authRouter);
-router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth/github, etc.
+router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth/telegram, etc.
 router.use("/auth", whatsappAuthRouter); // /api/auth/whatsapp/start, /api/auth/whatsapp/verify
 
 // ── Products ──────────────────────────────────────────────────────────────────
