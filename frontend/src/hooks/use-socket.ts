@@ -1,6 +1,11 @@
 import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetWalletQueryKey,
+  getListTopupsQueryKey,
+} from "@workspace/api-client-react";
 import { connectSocket } from "../lib/socket";
 
 /**
@@ -19,6 +24,7 @@ import { connectSocket } from "../lib/socket";
  */
 export function useSocket(userId?: number | string) {
   const socketRef = useRef<Socket | null>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!userId) return;
@@ -41,6 +47,13 @@ export function useSocket(userId?: number | string) {
         });
 
         socket.on("topup-updated", (data: { amount: number; status: string }) => {
+          // Refresh both queries the moment the server flips the topup
+          // status. The waiting modal subscribes to these queries, so
+          // approval/rejection lands on screen without waiting for the
+          // 3s polling fallback.
+          queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+
           if (data.status === "approved") {
             toast({
               title: `تم شحن المحفظة`,

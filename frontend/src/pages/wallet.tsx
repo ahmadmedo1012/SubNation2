@@ -1,8 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  RECEIVER_PHONE,
+  transferCode,
+  transferCodeTelHref,
+  type TransferNetwork,
+} from "@/lib/transfer-code";
 import {
   formatCurrency,
   formatDate,
@@ -28,6 +34,7 @@ import {
   Clock,
   Copy,
   Lock,
+  PhoneCall,
   Plus,
   Smartphone,
   Star,
@@ -177,11 +184,126 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Step-by-step explanation of the mobile transfer flow. Concise on
+ * purpose — three lines that match the actions the user actually takes.
+ */
+function InstructionsPanel() {
+  const steps = [
+    "قم بتحويل الرصيد باستخدام الزر.",
+    "بعد نجاح التحويل قم بإرسال الطلب.",
+    "سيتم مراجعته من الإدارة.",
+  ];
+  return (
+    <ol className="mt-3 mb-4 bg-muted/25 border border-border/45 rounded-xl p-3.5 space-y-2 text-xs leading-relaxed">
+      {steps.map((s, i) => (
+        <li key={i} className="flex items-start gap-2">
+          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-[10px] font-black flex items-center justify-center">
+            {i + 1}
+          </span>
+          <span className="text-foreground/85 pt-0.5">{s}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/**
+ * Live, dynamically-generated USSD transfer code + one-tap action.
+ *
+ * The code recomputes on every amount/network change — no debounce,
+ * no submit needed. The "تحويل الرصيد" button uses a `tel:` URL with
+ * the code embedded; mobile dialers honour this for both Libyana and
+ * Madar. On non-mobile environments the link still navigates to the
+ * tel: URL — most desktops fall back gracefully (system handler or
+ * "no app available"), and we additionally expose a copy button so
+ * the user can never get stuck.
+ */
+function TransferCodePanel({
+  network,
+  amount,
+  receiver,
+}: {
+  network: TransferNetwork;
+  amount: string;
+  receiver: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const code = transferCode(network, amount, receiver);
+  const ready = code !== null;
+
+  const handleCopy = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API can fail on insecure contexts — silent fallback,
+      // the user still has the visible code on screen.
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-primary/80">
+          <PhoneCall className="w-3.5 h-3.5" />
+          كود التحويل
+        </div>
+        {ready && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-all press-spring ${
+              copied
+                ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/25"
+                : "bg-card text-muted-foreground border-border/50 hover:text-foreground"
+            }`}
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            {copied ? "تم" : "نسخ"}
+          </button>
+        )}
+      </div>
+
+      <div
+        dir="ltr"
+        className={`font-mono font-black text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 mb-3 break-all min-h-[44px] flex items-center ${
+          ready ? "text-foreground" : "text-muted-foreground/60"
+        }`}
+        aria-live="polite"
+      >
+        {ready ? code : "أدخل المبلغ لإنشاء الكود تلقائياً"}
+      </div>
+
+      <a
+        href={ready ? transferCodeTelHref(code!) : undefined}
+        aria-disabled={!ready}
+        onClick={(e) => {
+          if (!ready) e.preventDefault();
+        }}
+        className={`flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-sm transition-all press-spring shadow-md ${
+          ready
+            ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
+            : "bg-muted/40 text-muted-foreground/60 cursor-not-allowed shadow-none"
+        }`}
+      >
+        <PhoneCall className="w-4 h-4" />
+        تحويل الرصيد
+      </a>
+
+      <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+        إذا لم يفتح الزر تطبيق الاتصال، انسخ الكود وألصقه يدوياً في لوحة الاتصال.
+      </p>
+    </div>
+  );
+}
+
 export default function WalletPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const [method, setMethod] = useState<Method>("mobile_transfer");
   const [network, setNetwork] = useState("libyana");
@@ -189,11 +311,12 @@ export default function WalletPage() {
   const [senderPhone, setSenderPhone] = useState("");
   const [senderAccount, setSenderAccount] = useState("");
   const [senderPhoneTouched, setSenderPhoneTouched] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [savedPhones, setSavedPhones] = useState<string[]>([]);
   const [rememberPhone, setRememberPhone] = useState(true);
+  // ID of the topup currently being awaited in the modal.
+  const [waitingTopupId, setWaitingTopupId] = useState<number | null>(null);
 
   // Load saved preferences on mount
   useEffect(() => {
@@ -230,22 +353,24 @@ export default function WalletPage() {
   const topupMutation = useCreateTopup({
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
     mutation: {
-      onSuccess() {
+      onSuccess(created) {
         // Save sender phone if remember is checked
         if (rememberPhone && method === "mobile_transfer" && senderPhone) {
           saveSenderPhone(senderPhone);
           setSavedPhones(getSavedSenderPhones());
         }
 
-        setSuccess(true);
         setAmount("");
         setSenderPhone("");
         setSenderAccount("");
         setSenderPhoneTouched(false);
         queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-        setTimeout(() => setSuccess(false), 7000);
-        toast({ title: "تم إرسال الطلب ✓", description: "سيتم مراجعة طلب الشحن خلال دقائق." });
+
+        // Open the waiting modal — replaces the old "small success toast"
+        // pattern. Modal subscribes to the topups list and reacts to
+        // approval/rejection in real time.
+        setWaitingTopupId(created.id);
       },
       onError(err: unknown) {
         setError(getErrorMessage(err));
@@ -259,7 +384,6 @@ export default function WalletPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setSuccess(false);
 
     if (pendingBlocked) {
       setError("لديك طلبات قيد المراجعة، يرجى الانتظار حتى تُعتمد");
@@ -439,7 +563,6 @@ export default function WalletPage() {
                     onClick={() => {
                       setMethod(m.id);
                       setError("");
-                      setSuccess(false);
                     }}
                     className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border-2 transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
                       method === m.id
@@ -528,13 +651,23 @@ export default function WalletPage() {
 
                 <div className="border-t border-border/20" />
 
-                {/* Step 3: Phone */}
+                {/* Step 3: One-tap transfer */}
                 <div>
-                  <StepDot n={3} label="رقم هاتف المُرسل" active />
+                  <StepDot n={3} label="نفّذ التحويل" active />
+                  <TransferCodePanel
+                    network={network as TransferNetwork}
+                    amount={amount}
+                    receiver={RECEIVER_PHONE}
+                  />
+                </div>
+
+                <div className="border-t border-border/20" />
+
+                {/* Step 4: Phone */}
+                <div>
+                  <StepDot n={4} label="رقم هاتف المُرسل" active />
                   <p className="text-xs text-muted-foreground mt-2 mb-3">
-                    حوّل الرصيد إلى:{" "}
-                    <span className="font-black text-foreground/80 font-mono">091-3456789</span> ثم
-                    أدخل رقمك أدناه
+                    أدخل الرقم الذي حوّلت منه الرصيد لتأكيد العملية.
                   </p>
 
                   {/* Saved phones dropdown */}
@@ -607,16 +740,11 @@ export default function WalletPage() {
 
                 <div className="border-t border-border/20" />
 
-                {/* Step 4: Submit */}
+                {/* Step 5: Submit */}
                 <div>
-                  <StepDot n={4} label="أرسل الطلب" active />
+                  <StepDot n={5} label="أرسل الطلب" active />
+                  <InstructionsPanel />
                   <div className="mt-3">
-                    {success && (
-                      <div className="flex items-center gap-2.5 text-emerald-400 text-sm bg-emerald-500/8 border border-emerald-500/18 px-4 py-3 rounded-xl mb-3">
-                        <CheckCircle className="w-4 h-4 shrink-0" />
-                        <span>تم إرسال طلب الشحن بنجاح! سيتم مراجعته قريباً.</span>
-                      </div>
-                    )}
                     {error && (
                       <div
                         id="wallet-error"
@@ -730,12 +858,6 @@ export default function WalletPage() {
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       تأكد من إتمام التحويل المصرفي أولاً قبل إرسال الطلب
                     </div>
-                    {success && (
-                      <div className="flex items-center gap-2.5 text-emerald-400 text-sm bg-emerald-500/8 border border-emerald-500/18 px-4 py-3 rounded-xl mb-3">
-                        <CheckCircle className="w-4 h-4 shrink-0" />
-                        تم إرسال طلب الشحن بنجاح!
-                      </div>
-                    )}
                     {error && (
                       <div
                         id="wallet-error-2"
@@ -835,6 +957,12 @@ export default function WalletPage() {
       </div>
 
       <div className="h-6 md:h-0" />
+
+      <TopupWaitingModal
+        topupId={waitingTopupId}
+        token={token}
+        onClose={() => setWaitingTopupId(null)}
+      />
     </div>
   );
 }
