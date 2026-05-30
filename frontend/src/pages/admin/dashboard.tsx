@@ -204,7 +204,12 @@ export default function AdminDashboardPage() {
     isLoading: statsLoading,
     refetch,
   } = useGetAdminStats({
-    query: { queryKey: getGetAdminStatsQueryKey(), enabled: !!adminToken, refetchInterval: 30_000, refetchIntervalInBackground: false },
+    query: {
+      queryKey: getGetAdminStatsQueryKey(),
+      enabled: !!adminToken,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+    },
     request: { headers },
   });
 
@@ -772,7 +777,9 @@ export default function AdminDashboardPage() {
                       <div className="font-medium text-xs truncate">{order.product_name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="font-mono text-[10px] text-muted-foreground">
-                          {displayUserName(userFromRow(order as unknown as Parameters<typeof userFromRow>[0]))}
+                          {displayUserName(
+                            userFromRow(order as unknown as Parameters<typeof userFromRow>[0]),
+                          )}
                         </span>
                         {order.created_at && (
                           <span className="text-[10px] text-muted-foreground">
