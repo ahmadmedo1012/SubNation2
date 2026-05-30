@@ -48,22 +48,48 @@ export function buildOrganizationLd() {
 
 export interface ProductLdInput {
   id: number | string;
+  /** SEO-friendly slug used to build the canonical URL when present. */
+  slug?: string | null;
   name: string;
   description?: string | null;
   imageUrl?: string | null;
   price: number;
   category?: string | null;
   isActive?: boolean;
+  /**
+   * Optional long-form description (300-800 words). When present it
+   * replaces `description` in the LD payload — Google rewards
+   * substantive Product structured data and surfaces richer snippets.
+   */
+  descriptionLong?: string | null;
 }
 
 export function buildProductLd(p: ProductLdInput) {
   const origin = getOrigin();
+  // Stable absolute path: prefer slug (canonical for SEO) over numeric
+  // id. Falls through to id when slug is missing (legacy rows pre-
+  // backfill — should be impossible after the migration but keeps the
+  // builder defensive).
+  const path = `/product/${p.slug ?? p.id}`;
+  const productUrl = `${origin}${path}`;
+
+  // priceValidUntil: Google Merchant requires a future date on Offer LD
+  // to consider the product structured data eligible for rich pricing
+  // snippets. We use end-of-current-year + 1 — long enough that crawlers
+  // never see an expired offer, short enough that operators are nudged
+  // to refresh seasonal pricing.
+  //
+  // Computed from a fixed reference (build-time `Date()` would invalidate
+  // every render; this stays deterministic per request render).
+  const now = new Date();
+  const priceValidUntil = `${now.getUTCFullYear() + 1}-12-31`;
+
   return {
     "@context": "https://schema.org",
     "@type": "Product",
-    "@id": `${origin}/product/${p.id}`,
+    "@id": productUrl,
     name: p.name,
-    description: p.description ?? p.name,
+    description: (p.descriptionLong ?? p.description ?? p.name).slice(0, 5000),
     image: p.imageUrl ?? `${origin}/subnation-logo.png`,
     sku: String(p.id),
     brand: {
@@ -74,9 +100,11 @@ export function buildProductLd(p: ProductLdInput) {
       "@type": "Offer",
       price: Number(p.price).toFixed(2),
       priceCurrency: "LYD",
-      url: `${origin}/product/${p.id}`,
+      priceValidUntil,
+      url: productUrl,
       availability:
         p.isActive === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      itemCondition: "https://schema.org/NewCondition",
     },
   };
 }

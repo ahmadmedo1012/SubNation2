@@ -72,6 +72,8 @@ CREATE TABLE products (
   name varchar(255) NOT NULL,
   slug varchar(160),
   description text,
+  description_long text,
+  faq jsonb,
   image_url varchar(1000),
   price numeric(10,2) NOT NULL,
   cost_price numeric(10,2),

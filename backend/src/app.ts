@@ -147,7 +147,14 @@ app.use(
       },
     },
     hsts: {
-      maxAge: 31536000,
+      // 2 years (HSTS preload list requires ≥1 year; 2 years is the
+      // standard preload-list submission). includeSubDomains + preload
+      // make the apex eligible for hstspreload.org submission so
+      // browsers stop following the http→https redirect cold (saves
+      // ~190 ms desktop / ~630 ms mobile per first-visit per
+      // PageSpeed). The redirect itself is kept in the upstream
+      // Cloudflare/Render edge.
+      maxAge: 63072000,
       includeSubDomains: true,
       preload: true,
     },

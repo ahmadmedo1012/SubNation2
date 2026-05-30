@@ -54,6 +54,7 @@ const ROBOTS_BODY = [
   "# Public crawlable surface",
   "Allow: /",
   "Allow: /product/",
+  "Allow: /category/",
   "Allow: /support",
   "Allow: /terms",
   "",

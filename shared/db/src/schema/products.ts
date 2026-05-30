@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  jsonb,
   numeric,
   pgTable,
   serial,
@@ -10,6 +11,17 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+/**
+ * Per-product FAQ entry shape (stored in `products.faq` as a JSONB
+ * array). Surfaced as `FAQPage` JSON-LD on `/product/<slug>` and
+ * rendered as a visible accordion below the product description so
+ * Google can match the on-page text against the structured data.
+ */
+export interface ProductFaqEntry {
+  question: string;
+  answer: string;
+}
 
 export const productsTable = pgTable(
   "products",
@@ -28,6 +40,27 @@ export const productsTable = pgTable(
      */
     slug: varchar("slug", { length: 160 }),
     description: text("description"),
+    /**
+     * Long-form product description (300-800 words). Optional —
+     * displayed below the short `description` on the product page and
+     * used as the source for the `Product.description` JSON-LD field
+     * when present. Surfaces substantive content for Google's
+     * helpful-content signals; thin pages with only a `description`
+     * are flagged as low-content in our Site Audit.
+     */
+    descriptionLong: text("description_long"),
+    /**
+     * Per-product FAQ entries. Renders as a visible accordion on
+     * `/product/<slug>` AND emits a `FAQPage` JSON-LD block — the
+     * combination is what triggers FAQ rich results in Google SERPs.
+     *
+     * Stored as JSONB (not a separate table) because:
+     *   - Always queried alongside the product (no join needed).
+     *   - Order is editorial, not by query — JSON array preserves
+     *     editor-defined ordering trivially.
+     *   - Migration cost: zero — additive ALTER TABLE ADD COLUMN.
+     */
+    faq: jsonb("faq").$type<ProductFaqEntry[]>(),
     imageUrl: varchar("image_url", { length: 1000 }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
     /**

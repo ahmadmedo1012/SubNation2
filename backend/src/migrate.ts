@@ -1020,6 +1020,30 @@ export async function runMigrations() {
       ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2);
     `);
 
+    // ── SEO Phase 2: long-form content + FAQ ──────────────────────────────
+    //
+    // Adds two additive, nullable columns on `products` for richer SEO
+    // surface on product pages:
+    //
+    //   description_long  TEXT  : long-form description (300–800 words).
+    //                              Renders below the short `description`
+    //                              on the product page and feeds the
+    //                              Product LD `description` field. Pure
+    //                              presentational/structured-data — no
+    //                              checkout, ledger, or pricing impact.
+    //   faq               JSONB : per-product FAQ entries
+    //                              ({question, answer}[]). Rendered as
+    //                              a visible accordion on the product
+    //                              page AND emitted as `FAQPage` JSON-LD.
+    //
+    // Both NULL by default; existing rows are unaffected. The frontend
+    // gracefully omits the section when the field is null/empty. Idempotent
+    // — safe to re-run on every cold start.
+    await db.execute(sql`
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS description_long TEXT;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB;
+    `);
+
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

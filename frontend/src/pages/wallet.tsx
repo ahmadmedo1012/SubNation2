@@ -739,9 +739,7 @@ export default function WalletPage() {
                     className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl transition-all"
                     disabled={submitting || topupMutation.isPending}
                   >
-                    {submitting || topupMutation.isPending
-                      ? "جارٍ الإرسال..."
-                      : "إرسال طلب الشحن"}
+                    {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
                   </Button>
                 </div>
               </form>

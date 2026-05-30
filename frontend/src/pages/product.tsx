@@ -4,7 +4,7 @@ import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { buildBreadcrumbLd, buildProductLd } from "@/lib/seo-builders";
+import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -239,6 +239,17 @@ export default function ProductPage() {
   // returns below) so hook order is stable across renders (rules-of-hooks).
   // Falls back to neutral metadata while the product is still loading.
   const seoPrice = product ? (product.sale_price ?? product.price) : 0;
+  // Only emit FAQPage JSON-LD when there's a non-empty curated FAQ list
+  // on the product. Empty arrays are treated by Google as a thin
+  // structured-data block.
+  const productAny = product as
+    | (typeof product & {
+        description_long?: string | null;
+        faq?: { question: string; answer: string }[] | null;
+      })
+    | undefined;
+  const productFaqs =
+    Array.isArray(productAny?.faq) && productAny!.faq!.length > 0 ? productAny!.faq! : null;
   const seoBlock = useSeo(
     product
       ? {
@@ -254,8 +265,10 @@ export default function ProductPage() {
           jsonLd: [
             buildProductLd({
               id: product.id,
+              slug: product.slug,
               name: product.name,
               description: product.description,
+              descriptionLong: productAny?.description_long ?? null,
               imageUrl: product.image_url,
               price: seoPrice,
               category: product.category,
@@ -272,6 +285,7 @@ export default function ProductPage() {
               },
               { name: product.name, href: `/product/${product.slug ?? product.id}` },
             ]),
+            ...(productFaqs ? [buildFaqLd(productFaqs)] : []),
           ],
         }
       : {
@@ -490,6 +504,16 @@ export default function ProductPage() {
             )}
           </div>
 
+          {/* Long-form description (Phase 2 SEO content) — rendered ONLY
+              when an editor has provided one. Mirrors the value embedded
+              in the Product JSON-LD so on-page text matches the
+              structured data Google ingests. */}
+          {productAny?.description_long && (
+            <div className="rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
+              {productAny.description_long}
+            </div>
+          )}
+
           {/* Price + stock */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
             <div className="flex-1">
@@ -558,6 +582,35 @@ export default function ProductPage() {
               </div>
             ))}
           </div>
+
+          {/* FAQ accordion (Phase 2 SEO content). Renders only when the
+              product carries curated FAQ entries. The visible text mirrors
+              the FAQPage JSON-LD emitted by useSeo() above — Google
+              specifically requires the on-page accordion to match the
+              structured data for FAQ rich results to trigger. */}
+          {productFaqs && (
+            <details className="rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
+              <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
+                <span>الأسئلة الشائعة</span>
+                <span className="text-xs text-muted-foreground">
+                  {productFaqs.length}
+                </span>
+              </summary>
+              <div className="border-t border-border/30 divide-y divide-border/30">
+                {productFaqs.map((faq, idx) => (
+                  <details key={idx} className="group/q">
+                    <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
+                      <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
+                      <span className="flex-1">{faq.question}</span>
+                    </summary>
+                    <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
+                      {faq.answer}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </details>
+          )}
 
           {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
           {token && (

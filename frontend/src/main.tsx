@@ -22,6 +22,7 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
 import "./index.css";
+import { initAnalytics } from "./lib/analytics";
 import { applyDocumentDirection } from "./lib/direction";
 import { initWebVitals } from "./lib/web-vitals";
 
@@ -60,6 +61,14 @@ scheduleIdle(() => {
     initWebVitals({ enabled: true });
   } catch {
     // CWV must never break the app — module boundary catches errors itself.
+  }
+  // GA4 is initialized on the same idle tick as Web Vitals so the
+  // gtag.js fetch never contends with the LCP image. No-op when
+  // VITE_GA_TRACKING_ID is unset.
+  try {
+    initAnalytics();
+  } catch {
+    // Analytics must never break the app.
   }
 });
 
