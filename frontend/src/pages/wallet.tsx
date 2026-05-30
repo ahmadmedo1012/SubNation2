@@ -228,21 +228,10 @@ function TransferCodePanel({
   amount: string;
   receiver: string;
 }) {
-  const [copied, setCopied] = useState(false);
   const code = transferCode(network, amount, receiver);
-  const ready = code !== null;
-
-  const handleCopy = async () => {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API can fail on insecure contexts — silent fallback,
-      // the user still has the visible code on screen.
-    }
-  };
+  const href = code ? transferCodeTelHref(code) : null;
+  const buttonClasses =
+    "flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-sm transition-all press-spring";
 
   return (
     <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
@@ -251,47 +240,37 @@ function TransferCodePanel({
           <PhoneCall className="w-3.5 h-3.5" />
           كود التحويل
         </div>
-        {ready && (
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold border transition-all press-spring ${
-              copied
-                ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/25"
-                : "bg-card text-muted-foreground border-border/50 hover:text-foreground"
-            }`}
-          >
-            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            {copied ? "تم" : "نسخ"}
-          </button>
-        )}
+        {code && <CopyBtn text={code} />}
       </div>
 
       <div
         dir="ltr"
         className={`font-mono font-black text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 mb-3 break-all min-h-[44px] flex items-center ${
-          ready ? "text-foreground" : "text-muted-foreground/60"
+          code ? "text-foreground" : "text-muted-foreground/60"
         }`}
         aria-live="polite"
       >
-        {ready ? code : "أدخل المبلغ لإنشاء الكود تلقائياً"}
+        {code ?? "أدخل المبلغ لإنشاء الكود تلقائياً"}
       </div>
 
-      <a
-        href={ready ? transferCodeTelHref(code!) : undefined}
-        aria-disabled={!ready}
-        onClick={(e) => {
-          if (!ready) e.preventDefault();
-        }}
-        className={`flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-sm transition-all press-spring shadow-md ${
-          ready
-            ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
-            : "bg-muted/40 text-muted-foreground/60 cursor-not-allowed shadow-none"
-        }`}
-      >
-        <PhoneCall className="w-4 h-4" />
-        تحويل الرصيد
-      </a>
+      {href ? (
+        <a
+          href={href}
+          className={`${buttonClasses} bg-primary text-white hover:bg-primary/90 shadow-md shadow-primary/25`}
+        >
+          <PhoneCall className="w-4 h-4" />
+          تحويل الرصيد
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled
+          className={`${buttonClasses} bg-muted/40 text-muted-foreground/60 cursor-not-allowed`}
+        >
+          <PhoneCall className="w-4 h-4" />
+          تحويل الرصيد
+        </button>
+      )}
 
       <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
         إذا لم يفتح الزر تطبيق الاتصال، انسخ الكود وألصقه يدوياً في لوحة الاتصال.
@@ -667,7 +646,7 @@ export default function WalletPage() {
                 <div>
                   <StepDot n={4} label="رقم هاتف المُرسل" active />
                   <p className="text-xs text-muted-foreground mt-2 mb-3">
-                    أدخل الرقم الذي حوّلت منه الرصيد لتأكيد العملية.
+                    أدخل رقمك الذي حوّلت منه الرصيد لتأكيد العملية.
                   </p>
 
                   {/* Saved phones dropdown */}
@@ -744,28 +723,26 @@ export default function WalletPage() {
                 <div>
                   <StepDot n={5} label="أرسل الطلب" active />
                   <InstructionsPanel />
-                  <div className="mt-3">
-                    {error && (
-                      <div
-                        id="wallet-error"
-                        role="alert"
-                        aria-live="polite"
-                        className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake"
-                      >
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{error}</span>
-                      </div>
-                    )}
-                    <Button
-                      type="submit"
-                      className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl transition-all"
-                      disabled={submitting || topupMutation.isPending}
+                  {error && (
+                    <div
+                      id="wallet-error"
+                      role="alert"
+                      aria-live="polite"
+                      className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake"
                     >
-                      {submitting || topupMutation.isPending
-                        ? "جارٍ الإرسال..."
-                        : "إرسال طلب الشحن"}
-                    </Button>
-                  </div>
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                  <Button
+                    type="submit"
+                    className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl transition-all"
+                    disabled={submitting || topupMutation.isPending}
+                  >
+                    {submitting || topupMutation.isPending
+                      ? "جارٍ الإرسال..."
+                      : "إرسال طلب الشحن"}
+                  </Button>
                 </div>
               </form>
             )}
@@ -899,14 +876,14 @@ export default function WalletPage() {
             </div>
 
             {topups.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl">
+              <div className="text-center py-10 text-muted-foreground">
                 <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-7 h-7 opacity-25" />
                 </div>
                 <p className="font-black text-base mb-1.5 text-foreground/80">
                   لا توجد طلبات شحن بعد
                 </p>
-                <p className="text-xs text-muted-foreground mb-5 max-w-[200px] mx-auto leading-relaxed">
+                <p className="text-xs text-muted-foreground max-w-[200px] mx-auto leading-relaxed">
                   ابدأ بشحن محفظتك لشراء اشتراكاتك المفضلة
                 </p>
               </div>

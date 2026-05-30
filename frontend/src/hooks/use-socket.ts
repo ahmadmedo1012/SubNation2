@@ -2,10 +2,7 @@ import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  getGetWalletQueryKey,
-  getListTopupsQueryKey,
-} from "@workspace/api-client-react";
+import { getGetWalletQueryKey, getListTopupsQueryKey } from "@workspace/api-client-react";
 import { connectSocket } from "../lib/socket";
 
 /**
