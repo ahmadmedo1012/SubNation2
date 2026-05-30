@@ -103,3 +103,18 @@ PageSpeed*.json
 # Local SQLite databases (e.g. ruvector.db)
 *.sqlite
 *.sqlite3
+
+# ── Heavy binaries / archives / local DBs — keep the repo + CI lean ──────────
+# (*.zip and *.sqlite* are already ignored above; this hardens the rest.)
+*.db
+*.db-wal
+*.db-shm
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.7z
+*.rar
+*.bak
+*.dump
+*.sql.gz
