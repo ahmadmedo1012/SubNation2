@@ -522,10 +522,18 @@ export class AlertingService {
 
     // webhook (generic)
     const url = process.env.GENERIC_ALERT_WEBHOOK_URL!;
+    // Scrub summary + label values defensively before the raw event leaves us.
+    const safeEvent = {
+      ...alertEvent,
+      summary: redactSensitive(alertEvent.summary),
+      labels: Object.fromEntries(
+        Object.entries(alertEvent.labels).map(([k, v]) => [k, redactSensitive(String(v))]),
+      ),
+    };
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(alertEvent),
+      body: JSON.stringify(safeEvent),
       signal,
     });
     if (!response.ok) {
@@ -606,6 +614,52 @@ export class AlertingService {
 
 // ── Module-level helpers ─────────────────────────────────────────────────────
 
+/**
+ * Defensive PII / secret scrubber applied to every outbound alert string
+ * (summary, label values, error slices) before it leaves the process.
+ *
+ * Current alerts are internally generated from the rule registry and carry
+ * no user data — but this guarantees that if a caller ever folds an error
+ * message, label, or summary that happens to contain a credential, bearer
+ * token, JWT, connection string, or wallet figure, it is masked before it
+ * reaches Telegram/Discord/webhook (and the chat history they persist).
+ *
+ * Patterns are intentionally broad and order-sensitive (longest/most-specific
+ * first). Each match collapses to a `[REDACTED:<kind>]` marker so operators
+ * still see that something was present without seeing its value.
+ */
+const REDACTION_PATTERNS: Array<{ kind: string; re: RegExp }> = [
+  // Postgres / Redis connection strings (with inline credentials)
+  { kind: "conn-string", re: /\b(?:postgres(?:ql)?|redis|rediss):\/\/[^\s"'<>]+/gi },
+  // JWTs (three base64url segments)
+  { kind: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  // Bearer tokens
+  { kind: "bearer", re: /\bBearer\s+[A-Za-z0-9._-]{8,}/gi },
+  // Telegram bot tokens (digits:base64url)
+  { kind: "telegram-token", re: /\b\d{6,}:[A-Za-z0-9_-]{30,}\b/g },
+  // key=value / "key": "value" pairs whose KEY names a secret. The value
+  // branch handles quoted ("v"/'v') and bare forms, and never starts with
+  // "[" so it can't re-match an already-inserted [REDACTED:*] marker.
+  {
+    kind: "secret-kv",
+    re: /\b(token|secret|password|passwd|pwd|api[_-]?key|authorization|session[_-]?secret|encryption[_-]?key|service[_-]?account)\b["']?\s*[:=]\s*(?:"[^"]+"|'[^']+'|(?!\[REDACTED)[^\s,;"'}]+)/gi,
+  },
+  // Wallet balances / amounts surfaced in free text (defensive — never leak money figures)
+  {
+    kind: "wallet",
+    re: /\b(wallet[_-]?balance|lifetime[_-]?spend|balance(?:_before|_after)?)\b\s*[:=]\s*["']?-?\d+(?:\.\d+)?/gi,
+  },
+];
+
+export function redactSensitive(input: string): string {
+  if (!input) return input;
+  let out = input;
+  for (const { kind, re } of REDACTION_PATTERNS) {
+    out = out.replace(re, `[REDACTED:${kind}]`);
+  }
+  return out;
+}
+
 function stableHash(str: string): string {
   return createHash("sha1").update(str).digest("hex").slice(0, 16);
 }
@@ -615,20 +669,20 @@ function parseThreshold(threshold: string): number {
   return match ? parseFloat(match[1]!) : 0;
 }
 
-function buildRunbookUrl(section: string): string {
+export function buildRunbookUrl(section: string): string {
   const base =
     process.env.ALERTING_RUNBOOK_URL ??
     `${(process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "")}/OPERATIONS_RUNBOOK.md`;
   return `${base}${section}`;
 }
 
-function formatTelegramMessage(event: AlertEvent): string {
+export function formatTelegramMessage(event: AlertEvent): string {
   const sevEmoji =
     event.severity === "critical" ? "🔴" : event.severity === "warning" ? "🟡" : "🔵";
   const lines = [
     `${sevEmoji} *${event.severity.toUpperCase()}* — ${event.rule}`,
     "",
-    event.summary,
+    redactSensitive(event.summary),
     "",
     `Fired at: ${event.firedAt}`,
     `Runbook: ${event.runbookUrl}`,
@@ -636,7 +690,7 @@ function formatTelegramMessage(event: AlertEvent): string {
   return lines.join("\n");
 }
 
-function formatDiscordPayload(event: AlertEvent): unknown {
+export function formatDiscordPayload(event: AlertEvent): unknown {
   const colorBySeverity: Record<AlertSeverity, number> = {
     info: 0x3b82f6,
     warning: 0xeab308,
@@ -646,7 +700,7 @@ function formatDiscordPayload(event: AlertEvent): unknown {
     embeds: [
       {
         title: `${event.severity.toUpperCase()} — ${event.rule}`,
-        description: event.summary,
+        description: redactSensitive(event.summary),
         color: colorBySeverity[event.severity],
         timestamp: event.firedAt,
         fields: [
