@@ -601,6 +601,7 @@ export default function HomePage() {
                   <button
                     key={c.value}
                     onClick={() => setCategory(c.value)}
+                    aria-pressed={active}
                     className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
                       active
                         ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
@@ -614,6 +615,7 @@ export default function HomePage() {
               })}
               <button
                 onClick={() => setAvailableOnly((v) => !v)}
+                aria-pressed={availableOnly}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold"
