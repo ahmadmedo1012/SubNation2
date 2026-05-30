@@ -612,13 +612,13 @@ export default function AdminUsersPage() {
               search || tierFilter ? (
                 <button
                   onClick={() => {
-                  setSearch("");
-                  setTierFilter("");
-                }}
-                className="text-xs text-primary hover:underline mt-2"
-              >
-                مسح الفلاتر
-              </button>
+                    setSearch("");
+                    setTierFilter("");
+                  }}
+                  className="text-xs text-primary hover:underline mt-2"
+                >
+                  مسح الفلاتر
+                </button>
               ) : undefined
             }
           />
