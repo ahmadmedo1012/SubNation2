@@ -319,6 +319,7 @@ export default function AdminDashboardPage() {
           bg: "bg-orange-400/10",
           border: "border-orange-400/20",
           link: "/admin/products",
+          lowStock: (stats.available_stock ?? 0) < 5,
           sparkKey: null,
           sparkColor: "",
         },
@@ -378,13 +379,19 @@ export default function AdminDashboardPage() {
             {METRIC_CARDS.map((card, i) => (
               <Link key={card.label} href={card.link}>
                 <div
-                  className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40 hover:shadow-yellow-400/10" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
+                  className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-yellow-400/25 hover:border-yellow-400/40 hover:shadow-yellow-400/10" : card.lowStock ? "border-orange-400/30 hover:border-orange-400/45 shadow-[0_0_0_1px_rgba(251,146,60,0.12)] hover:shadow-orange-400/15" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2.5">
                     <div
-                      className={`w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0`}
+                      className={`relative w-8 h-8 ${card.bg} border ${card.border} rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-110`}
                     >
                       <card.icon className={`w-4 h-4 ${card.color}`} />
+                      {card.lowStock && (
+                        <span
+                          className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-orange-400 ring-2 ring-card badge-pulse"
+                          aria-label="مخزون منخفض"
+                        />
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       {card.sparkKey && <TrendBadge data={chartData} dataKey={card.sparkKey} />}
@@ -738,7 +745,7 @@ export default function AdminDashboardPage() {
           <div
             className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}
           >
-            <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
+            <div className="sticky top-0 z-10 px-4 py-3.5 border-b border-border flex items-center justify-between bg-card/80 supports-[backdrop-filter]:bg-card/60 backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-primary" />
                 <h2 className="font-bold text-sm">آخر الطلبات</h2>
