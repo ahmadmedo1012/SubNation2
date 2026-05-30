@@ -8,15 +8,8 @@ import {
   useListTopups,
   type Topup,
 } from "@workspace/api-client-react";
-import {
-  CheckCircle2,
-  Clock,
-  Loader2,
-  Sparkles,
-  Wallet,
-  XCircle,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, Clock, Loader2, Sparkles, Wallet, XCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   topupId: number | null;
@@ -54,7 +47,6 @@ export function TopupWaitingModal({ topupId, token, onClose }: Props) {
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   // Whether the cosmetic timer has elapsed without a decision yet.
   const [timedOut, setTimedOut] = useState(false);
-  const startedAtRef = useRef<number | null>(null);
 
   // Poll the user's topups while the modal is open AND no decision yet.
   const { data: topups = [] } = useListTopups({
@@ -80,7 +72,7 @@ export function TopupWaitingModal({ topupId, token, onClose }: Props) {
   });
 
   const topup = useMemo(
-    () => (topupId === null ? null : topups.find((t) => t.id === topupId) ?? null),
+    () => (topupId === null ? null : (topups.find((t) => t.id === topupId) ?? null)),
     [topups, topupId],
   );
 
@@ -91,14 +83,19 @@ export function TopupWaitingModal({ topupId, token, onClose }: Props) {
         ? "rejected"
         : "waiting";
 
-  // Tick the cosmetic countdown.
+  // Tick the cosmetic countdown. Resets whenever the modal opens for a
+  // new topupId. `startedAt` is captured per-effect so it survives the
+  // 1s interval ticks without sharing state with anything else — and a
+  // separate reset effect can't race with this one anymore.
   useEffect(() => {
     if (!open || status !== "waiting") return;
-    if (startedAtRef.current === null) startedAtRef.current = Date.now();
+
+    const startedAt = Date.now();
+    setCountdown(COUNTDOWN_SECONDS);
+    setTimedOut(false);
 
     const tick = () => {
-      const started = startedAtRef.current ?? Date.now();
-      const elapsed = Math.floor((Date.now() - started) / 1000);
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
       const left = Math.max(0, COUNTDOWN_SECONDS - elapsed);
       setCountdown(left);
       if (left === 0) setTimedOut(true);
@@ -106,15 +103,7 @@ export function TopupWaitingModal({ topupId, token, onClose }: Props) {
     tick();
     const id = window.setInterval(tick, 1_000);
     return () => window.clearInterval(id);
-  }, [open, status]);
-
-  // Reset internal state when the modal opens for a new request.
-  useEffect(() => {
-    if (!open) return;
-    startedAtRef.current = null;
-    setCountdown(COUNTDOWN_SECONDS);
-    setTimedOut(false);
-  }, [open, topupId]);
+  }, [open, status, topupId]);
 
   // When status flips (approved/rejected), make sure the wallet card
   // on the page behind the modal also refreshes immediately.
@@ -201,7 +190,7 @@ function WaitingBody({
             fill="none"
             strokeLinecap="round"
             strokeDasharray={2 * Math.PI * 44}
-            strokeDashoffset={(2 * Math.PI * 44) * (1 - pct / 100)}
+            strokeDashoffset={2 * Math.PI * 44 * (1 - pct / 100)}
             className="text-primary transition-[stroke-dashoffset] duration-1000 ease-linear"
           />
         </svg>
@@ -270,9 +259,7 @@ function ApprovedBody({
         <Sparkles className="w-4 h-4 text-emerald-300 absolute -top-1 -right-1" />
       </div>
       <h2 className="text-lg font-black mb-1.5 text-emerald-400">تمت إضافة الرصيد</h2>
-      <p className="text-sm text-muted-foreground mb-5">
-        تم اعتماد طلب الشحن وإيداعه في محفظتك.
-      </p>
+      <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
 
       <div className="bg-emerald-500/8 border border-emerald-500/25 rounded-xl px-4 py-3.5 mb-3">
         <div className="text-[11px] text-emerald-400/70 font-bold mb-0.5">المبلغ المُضاف</div>
@@ -302,13 +289,7 @@ function ApprovedBody({
   );
 }
 
-function RejectedBody({
-  adminNote,
-  onClose,
-}: {
-  adminNote: string | null;
-  onClose: () => void;
-}) {
+function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClose: () => void }) {
   return (
     <div className="p-6 text-center">
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-red-500/15 border border-red-500/35 flex items-center justify-center">
