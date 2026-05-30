@@ -25,7 +25,9 @@ function eventFor(ruleName: string, summary: string): AlertEvent {
 
 describe("redactSensitive", () => {
   it("masks postgres/redis connection strings", () => {
-    const out = redactSensitive("db down: postgresql://user:p4ss@ep-x.neon.tech/db?sslmode=require");
+    const out = redactSensitive(
+      "db down: postgresql://user:p4ss@ep-x.neon.tech/db?sslmode=require",
+    );
     expect(out).not.toContain("p4ss");
     expect(out).not.toContain("neon.tech");
     expect(out).toContain("[REDACTED:conn-string]");

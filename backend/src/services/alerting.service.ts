@@ -279,11 +279,7 @@ export class AlertingService {
    * we keep a small per-rule baseline map.
    */
   private readonly counterBaseline = new Map<string, number>();
-  private evalCounterDelta(
-    counterName: string,
-    threshold: number,
-    rule: AlertRuleSpec,
-  ): boolean {
+  private evalCounterDelta(counterName: string, threshold: number, rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
         | import("prom-client").Counter<string>
@@ -291,9 +287,7 @@ export class AlertingService {
       if (!counter) return false;
 
       // Aggregate across all label combinations.
-      const collected = counter.get?.() as
-        | { values?: Array<{ value: number }> }
-        | undefined;
+      const collected = counter.get?.() as { values?: Array<{ value: number }> } | undefined;
       const total = (collected?.values ?? []).reduce((sum, v) => sum + Number(v.value || 0), 0);
 
       const baseline = this.counterBaseline.get(rule.name) ?? total;
