@@ -631,7 +631,7 @@ export default function AdminOrdersPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border bg-muted/25">
+                    <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
                       <th className="px-4 py-3 w-8">
                         <button
                           onClick={toggleSelectAll}
