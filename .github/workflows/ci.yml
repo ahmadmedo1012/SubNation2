@@ -90,7 +90,8 @@ jobs:
     env:
       # Synthetic values — the test suite stubs all DB/auth interactions.
       DATABASE_URL: postgres://ci:ci@localhost/ci
-      SESSION_SECRET: ci-test-secret
+      # 32+ char synthetic value — jwt.ts rejects shorter secrets at module load.
+      SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
       # Quiets the husky `prepare` script that runs on `pnpm install`.
       HUSKY: "0"
 
