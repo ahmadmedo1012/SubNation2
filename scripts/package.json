@@ -7,6 +7,7 @@
     "dev": "tsx ./src/dev.ts",
     "start": "tsx ./src/start.ts",
     "seed": "tsx ./src/seed.ts",
+    "import-seo": "tsx ./src/import-seo.ts",
     "backup": "tsx ./src/backup-db.ts",
     "validate": "tsx ../scripts/validate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
