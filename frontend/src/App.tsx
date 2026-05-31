@@ -1,5 +1,6 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSplashScreen } from "@/components/AppSplashScreen";
+import { MetaTags } from "@/components/seo/MetaTags";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -191,6 +192,21 @@ function AppRoutes() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* ── Default SEO tags ────────────────────────────────────────────
+          Mounted globally so every route — including admin and pages
+          that don't call useSeo() — has exactly ONE title and ONE meta
+          description in <head>. Pages that DO call useSeo() render
+          their own <MetaTags>, which react-helmet-async dedupes against
+          this default by tag-key (title, name="description", og:*),
+          so the page-specific values win. The static tags in
+          index.html are tagged with data-rh="true" so Helmet replaces
+          them in place instead of appending — that's what fixes the
+          "more than one title tag" SEO error. */}
+      <MetaTags
+        title="SubNation — سوق الاشتراكات الرقمية"
+        description="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
+        path={location || "/"}
+      />
       {!isAdmin && !isChromeless && <Navbar />}
       {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>

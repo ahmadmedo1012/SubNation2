@@ -2,21 +2,34 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta data-rh="true" name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- google-site-verification meta is injected at build time by the
          seoHeadInject Vite plugin in vite.config.ts. When
          VITE_GSC_VERIFICATION is unset, the meta is emitted with
          content="" — harmless, ignored by Search Console. When set,
          the operator's token appears here. -->
-    <title>SubNation — سوق الاشتراكات الرقمية</title>
+    <!-- ── Why data-rh="true" on the SEO tags below ───────────────────
+         react-helmet-async tracks the tags it owns via the data-rh
+         attribute. On a route that uses useSeo()/MetaTags, Helmet
+         renders fresh <title>/<meta name="description">/<meta og:*>
+         tags into <head>. Without data-rh on the static defaults,
+         the static tags would remain AND Helmet would append its own,
+         shipping two of each — which Lighthouse / SEO crawlers flag
+         as "more than one title tag" and "more than one description
+         tag". Marking the statics as Helmet-managed lets Helmet
+         replace them in place. Tags without data-rh (charset, icons,
+         preconnect, manifest…) are left alone because MetaTags never
+         renders them. -->
+    <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
     <meta
+      data-rh="true"
       name="description"
       content="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
     />
-    <meta name="theme-color" content="#5c7cfa" />
-    <meta property="og:title" content="SubNation — سوق الاشتراكات الرقمية" />
-    <meta property="og:description" content="اشترك في أفضل الخدمات الرقمية بالدينار الليبي" />
-    <meta property="og:type" content="website" />
+    <meta data-rh="true" name="theme-color" content="#5c7cfa" />
+    <meta data-rh="true" property="og:title" content="SubNation — سوق الاشتراكات الرقمية" />
+    <meta data-rh="true" property="og:description" content="اشترك في أفضل الخدمات الرقمية بالدينار الليبي" />
+    <meta data-rh="true" property="og:type" content="website" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/subnation-logo.png" />
