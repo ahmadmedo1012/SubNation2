@@ -564,13 +564,11 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   } else if ("errors" in err) {
     const errorWithErrors = err as { errors?: unknown[] };
-    res
-      .status(400)
-      .json(
-        createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
-          details: errorWithErrors.errors,
-        }),
-      );
+    res.status(400).json(
+      createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
+        details: errorWithErrors.errors,
+      }),
+    );
   } else {
     res
       .status(500)
