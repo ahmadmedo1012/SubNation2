@@ -141,16 +141,12 @@ async function main(): Promise<void> {
     if (p.kind === "missing") {
       console.log(`⚠️  SKIP   "${p.entry.product_name}" — no row in productsTable`);
     } else if (p.kind === "archived") {
-      console.log(
-        `⚠️  SKIP   "${p.entry.product_name}" (id=${p.productId}) — product is archived`,
-      );
+      console.log(`⚠️  SKIP   "${p.entry.product_name}" (id=${p.productId}) — product is archived`);
     } else {
       const parts: string[] = [];
       parts.push(p.willWriteDesc ? "desc✓" : "desc·kept");
       parts.push(p.willWriteFaq ? "faq✓" : "faq·kept");
-      console.log(
-        `✅ APPLY  "${p.entry.product_name}" (id=${p.productId}) — ${parts.join(" ")}`,
-      );
+      console.log(`✅ APPLY  "${p.entry.product_name}" (id=${p.productId}) — ${parts.join(" ")}`);
     }
   }
 

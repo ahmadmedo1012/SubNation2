@@ -388,11 +388,7 @@ app.use(
     autoLogging: {
       ignore: (req) => {
         const url = req.url ?? "";
-        return (
-          url === "/api/healthz" ||
-          url.startsWith("/api/healthz/") ||
-          url === "/api/cwv"
-        );
+        return url === "/api/healthz" || url.startsWith("/api/healthz/") || url === "/api/cwv";
       },
     },
     serializers: {
@@ -568,9 +564,17 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   } else if ("errors" in err) {
     const errorWithErrors = err as { errors?: unknown[] };
-    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, { details: errorWithErrors.errors }));
+    res
+      .status(400)
+      .json(
+        createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
+          details: errorWithErrors.errors,
+        }),
+      );
   } else {
-    res.status(500).json(createErrorResponse("خطأ في الخادم. حاول مرة أخرى.", ErrorCode.INTERNAL_ERROR));
+    res
+      .status(500)
+      .json(createErrorResponse("خطأ في الخادم. حاول مرة أخرى.", ErrorCode.INTERNAL_ERROR));
   }
 });
 

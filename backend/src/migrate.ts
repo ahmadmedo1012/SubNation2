@@ -1043,7 +1043,6 @@ export async function runMigrations() {
       ALTER TABLE products ADD COLUMN IF NOT EXISTS description_long TEXT;
       ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB;
     `);
-
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

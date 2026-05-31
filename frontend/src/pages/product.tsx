@@ -592,9 +592,7 @@ export default function ProductPage() {
             <details className="rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
               <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
                 <span>الأسئلة الشائعة</span>
-                <span className="text-xs text-muted-foreground">
-                  {productFaqs.length}
-                </span>
+                <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
               </summary>
               <div className="border-t border-border/30 divide-y divide-border/30">
                 {productFaqs.map((faq, idx) => (
