@@ -88,6 +88,11 @@ app.use(
           // Firebase Phone Auth uses reCAPTCHA loaded from these origins
           "https://www.google.com",
           "https://www.recaptcha.net",
+          // Google Analytics 4 (gtag.js). Loaded by frontend/src/lib/analytics.ts
+          // when VITE_GA_TRACKING_ID is set. The host is NOT a subdomain of
+          // googleapis.com or gstatic.com, so it must be listed explicitly —
+          // omitting it causes the loader to be blocked by CSP in production.
+          "https://www.googletagmanager.com",
         ],
         // Do NOT set scriptSrcAttr to 'none' — Firebase SDK injects inline
         // event handlers in the popup/iframe auth flow.
@@ -114,6 +119,14 @@ app.use(
           "https://*.ingest.sentry.io",
           "https://*.ingest.de.sentry.io",
           "https://*.ingest.us.sentry.io",
+          // Google Analytics 4 collect endpoint (region-rotated subdomains
+          // such as region1.google-analytics.com). The wildcard covers
+          // www.google-analytics.com, region1.google-analytics.com, and the
+          // beacon fallback at analytics.google.com — without these, beacons
+          // fail with net::ERR_BLOCKED_BY_CSP and traffic never reaches GA.
+          "https://*.google-analytics.com",
+          "https://*.analytics.google.com",
+          "https://*.googletagmanager.com",
           ...(allowedOrigins.length || isProduction
             ? allowedOrigins
             : ["http://localhost:*", "http://127.0.0.1:*"]),

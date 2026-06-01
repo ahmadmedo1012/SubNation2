@@ -72,6 +72,13 @@ services:
         sync: false
       - key: VITE_FIREBASE_DATABASE_URL
         sync: false
+      # Google Analytics 4 Measurement ID. Public value (G-XXXXXXXXXX),
+      # safe to commit, but kept sync:false so each environment (preview
+      # vs production) can point at its own GA stream without forcing a
+      # render.yaml edit. Empty value disables the GA loader entirely
+      # (the no-op default in frontend/src/lib/analytics.ts).
+      - key: VITE_GA_TRACKING_ID
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID

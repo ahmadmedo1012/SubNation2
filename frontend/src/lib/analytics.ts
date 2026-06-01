@@ -27,12 +27,14 @@
  *     by gtag.js itself. If the operator later layers consent gating,
  *     wrap `init()` behind a consent flag.
  *
- * The CSP in backend/src/app.ts allows the GA origins implicitly via
- * `connect-src *.googleapis.com` + `script-src www.gstatic.com /
- * apis.google.com`. No CSP edit is required for analytics to function.
- * If the operator wants strict allowlisting, add
- * `https://www.googletagmanager.com` to scriptSrc and
- * `https://*.google-analytics.com` to connectSrc.
+ * The CSP in backend/src/app.ts allowlists the GA origins explicitly:
+ *   scriptSrc:  https://www.googletagmanager.com
+ *   connectSrc: https://*.google-analytics.com
+ *               https://*.analytics.google.com
+ *               https://*.googletagmanager.com
+ * If those entries are removed, the loader will be blocked by CSP and
+ * beacons will fail with net::ERR_BLOCKED_BY_CSP — keep them in sync
+ * when editing helmet's directives.
  */
 
 declare global {
