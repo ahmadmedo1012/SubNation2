@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { Zap, Lock, Tag, Star, ShoppingCart, AlertTriangle } from "lucide-react";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 interface Product {
   id: number;
@@ -74,16 +75,31 @@ const STAGGER = [
 
 function PopularBadge({ count }: { count?: number }) {
   if (!count || count < 5) return null;
+  // Top sellers (≥20) get a warning-tinted badge so they read as
+  // featured/notable; the lighter "popular" tier (5-19) lands on
+  // success-tinted to feel like a positive momentum signal.
+  // Both ride the shared --status-* tokens so they re-tint on
+  // light theme automatically.
   if (count >= 20)
     return (
-      <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 bg-yellow-500/25 backdrop-blur-md border border-yellow-500/35 text-yellow-200 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm shadow-yellow-900/30">
-        <Star className="w-2.5 h-2.5 fill-current" /> الأكثر مبيعاً
-      </div>
+      <StatusBadge
+        variant="warning"
+        size="xs"
+        icon={Star}
+        className="absolute top-2.5 left-2.5 z-10 backdrop-blur-md"
+      >
+        الأكثر مبيعاً
+      </StatusBadge>
     );
   return (
-    <div className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">
-      <Zap className="w-2.5 h-2.5" /> شائع
-    </div>
+    <StatusBadge
+      variant="success"
+      size="xs"
+      icon={Zap}
+      className="absolute top-2.5 left-2.5 z-10 backdrop-blur-md"
+    >
+      شائع
+    </StatusBadge>
   );
 }
 
@@ -240,13 +256,14 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
             {product.is_available ? (
               isLowStock ? (
-                <div
-                  className="flex items-center gap-0.5 text-[10px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-full"
+                <StatusBadge
+                  variant="low-stock"
+                  size="xs"
+                  icon={AlertTriangle}
                   aria-label={`مخزون منخفض، آخر ${product.stock_count} متوفرة`}
                 >
-                  <AlertTriangle className="w-2.5 h-2.5" aria-hidden="true" />
                   آخر {product.stock_count}
-                </div>
+                </StatusBadge>
               ) : (
                 <div
                   className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}

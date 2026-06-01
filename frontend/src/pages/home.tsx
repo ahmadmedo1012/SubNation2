@@ -1,6 +1,7 @@
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
@@ -727,42 +728,24 @@ export default function HomePage() {
         {!isLoading && products.length > 0 && (
           <div className="mt-10 pt-8 border-t border-border/25">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                {
-                  icon: Truck,
-                  color: "text-yellow-400",
-                  bg: "bg-yellow-400/8 border-yellow-400/15",
-                  title: "تسليم فوري",
-                  desc: "تصلك بيانات الاشتراك فور تأكيد الدفع مباشرة",
-                },
-                {
-                  icon: ShieldCheck,
-                  color: "text-emerald-400",
-                  bg: "bg-emerald-400/8 border-emerald-400/15",
-                  title: "دفع آمن",
-                  desc: "محفظتك محمية بالكامل وجميع معاملاتك موثقة",
-                },
-                {
-                  icon: Headphones,
-                  color: "text-blue-400",
-                  bg: "bg-blue-400/8 border-blue-400/15",
-                  title: "دعم 24/7",
-                  desc: "فريقنا متاح دائماً لمساعدتك في أي وقت",
-                },
-              ].map((item) => (
-                <div
-                  key={item.title}
-                  className={`flex items-start gap-3 p-4 rounded-2xl border ${item.bg}`}
-                >
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-background/35">
-                    <item.icon className={`w-4 h-4 ${item.color}`} />
-                  </div>
-                  <div>
-                    <p className="font-bold text-sm mb-0.5">{item.title}</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
+              <TrustCard
+                icon={Truck}
+                tone="warning"
+                title="تسليم فوري"
+                description="تصلك بيانات الاشتراك فور تأكيد الدفع مباشرة"
+              />
+              <TrustCard
+                icon={ShieldCheck}
+                tone="success"
+                title="دفع آمن"
+                description="محفظتك محمية بالكامل وجميع معاملاتك موثقة"
+              />
+              <TrustCard
+                icon={Headphones}
+                tone="info"
+                title="دعم 24/7"
+                description="فريقنا متاح دائماً لمساعدتك في أي وقت"
+              />
             </div>
           </div>
         )}
