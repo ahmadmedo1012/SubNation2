@@ -1,4 +1,5 @@
 import { ProductCard } from "@/components/ProductCard";
+import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { useSeo } from "@/hooks/useSeo";
 import { CATEGORY_META, type CategoryMeta } from "@/lib/categories";
 import { buildBreadcrumbLd, buildFaqLd, buildItemListLd } from "@/lib/seo-builders";
@@ -7,7 +8,7 @@ import {
   useListProducts,
   type Product,
 } from "@workspace/api-client-react";
-import { Briefcase, ChevronLeft, Gamepad2, Loader2, Music2, Tv2 } from "lucide-react";
+import { Briefcase, ChevronLeft, Gamepad2, Music2, Tv2 } from "lucide-react";
 import { useMemo, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
@@ -229,9 +230,10 @@ export default function CategoryPage() {
           )}
         </h2>
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">جاري التحميل…</span>
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <ProductCardShell key={i} />
+            ))}
           </div>
         ) : products.length === 0 ? (
           <div className="bg-card border border-border/55 rounded-2xl py-12 text-center float-in">

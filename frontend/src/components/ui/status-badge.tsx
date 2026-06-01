@@ -22,18 +22,13 @@ const statusBadgeVariants = cva(
   {
     variants: {
       variant: {
-        success:
-          "bg-status-success/12 text-status-success border-status-success/28",
-        warning:
-          "bg-status-warning/12 text-status-warning border-status-warning/30",
+        success: "bg-status-success/12 text-status-success border-status-success/28",
+        warning: "bg-status-warning/12 text-status-warning border-status-warning/30",
         error: "bg-status-error/12 text-status-error border-status-error/28",
         info: "bg-status-info/12 text-status-info border-status-info/28",
-        "low-stock":
-          "bg-status-low-stock/12 text-status-low-stock border-status-low-stock/28",
-        neutral:
-          "bg-muted/45 text-muted-foreground border-border/50",
-        primary:
-          "bg-primary/12 text-primary-text border-primary/28",
+        "low-stock": "bg-status-low-stock/12 text-status-low-stock border-status-low-stock/28",
+        neutral: "bg-muted/45 text-muted-foreground border-border/50",
+        primary: "bg-primary/12 text-primary-text border-primary/28",
       },
       size: {
         xs: "text-[10px] px-1.5 py-0.5 [&_svg]:w-2.5 [&_svg]:h-2.5",

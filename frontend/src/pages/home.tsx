@@ -1,6 +1,7 @@
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
@@ -104,23 +105,7 @@ function clearSearchHistory() {
 }
 
 function ProductSkeleton() {
-  return (
-    <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
-      <div className="aspect-square skeleton-shimmer" />
-      <div className="p-3.5 space-y-2.5">
-        <div className="flex justify-between gap-2">
-          <div className="h-3.5 skeleton-shimmer rounded-lg w-3/5" />
-          <div className="h-3.5 skeleton-shimmer rounded-full w-14" />
-        </div>
-        <div className="h-2.5 skeleton-shimmer rounded w-full" />
-        <div className="h-2.5 skeleton-shimmer rounded w-4/5" />
-        <div className="pt-2.5 mt-1 flex justify-between items-center border-t border-border/25">
-          <div className="h-4 skeleton-shimmer rounded w-20" />
-          <div className="h-5 w-10 skeleton-shimmer rounded-full" />
-        </div>
-      </div>
-    </div>
-  );
+  return <ProductCardShell />;
 }
 
 function OrderStatusIcon({ status }: { status: string }) {

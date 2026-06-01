@@ -17,10 +17,8 @@ const badgeVariants = cva(
         // re-tint correctly on the light theme. Soft tinted background
         // + matching foreground keeps them quiet next to a primary
         // CTA but still readable on either surface.
-        success:
-          "bg-status-success/12 text-status-success border-status-success/28",
-        warning:
-          "bg-status-warning/12 text-status-warning border-status-warning/30",
+        success: "bg-status-success/12 text-status-success border-status-success/28",
+        warning: "bg-status-warning/12 text-status-warning border-status-warning/30",
         info: "bg-status-info/12 text-status-info border-status-info/28",
       },
     },

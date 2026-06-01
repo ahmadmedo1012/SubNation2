@@ -909,11 +909,7 @@
     position: absolute;
     inset: -8px;
     border-radius: inherit;
-    background: radial-gradient(
-      circle at center,
-      hsl(var(--primary) / 0.45),
-      transparent 70%
-    );
+    background: radial-gradient(circle at center, hsl(var(--primary) / 0.45), transparent 70%);
     filter: blur(12px);
     opacity: 0.32;
     pointer-events: none;

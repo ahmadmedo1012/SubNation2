@@ -1,7 +1,8 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppSplashScreen } from "@/components/AppSplashScreen";
+import { NavigationProgress } from "@/components/NavigationProgress";
 import { MetaTags } from "@/components/seo/MetaTags";
-import { Spinner } from "@/components/ui/spinner";
+import { RouteSkeleton, type RouteSkeletonShape } from "@/components/ui/route-skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -72,6 +73,52 @@ const AdminAdminsPage = lazyWithRetry(() => import("@/pages/admin/admins"));
 
 // Public pages without customer chrome
 const StatusPage = lazyWithRetry(() => import("@/pages/status"));
+
+/**
+ * Route → RouteSkeleton shape map. Used by the Suspense fallback to
+ * render a layout-matching skeleton instead of a spinner-in-the-middle
+ * fallback. The skeleton fills the same vertical space the real route
+ * is about to occupy, so the swap-in is a content-fill, not a layout
+ * jump.
+ *
+ * Order matters: `/orders/:code` must come before `/orders` so the
+ * prefix match picks the more specific entry. The list is consulted
+ * in iteration order; first hit wins.
+ */
+const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
+  [/^\/$/, "catalog"],
+  [/^\/category\//, "catalog"],
+  [/^\/product\//, "detail"],
+  [/^\/orders\/[^/]+/, "detail"],
+  [/^\/orders$/, "list"],
+  [/^\/wallet/, "list"],
+  [/^\/loyalty/, "detail"],
+  [/^\/referrals/, "list"],
+  [/^\/support/, "list"],
+  [/^\/profile/, "form"],
+  [/^\/onboarding/, "form"],
+  [/^\/login/, "form"],
+  [/^\/register/, "form"],
+  [/^\/admin/, "admin"],
+];
+
+function shapeForRoute(path: string): RouteSkeletonShape {
+  for (const [pattern, shape] of ROUTE_SHAPES) {
+    if (pattern.test(path)) return shape;
+  }
+  return "blank";
+}
+
+/**
+ * Suspense fallback that picks a skeleton shape based on the route
+ * the user just navigated to. By the time Suspense suspends on a
+ * lazy chunk, `useLocation` already reflects the destination path —
+ * so we render the destination's skeleton, not the source's.
+ */
+function RouteSuspenseFallback({ adminOnly = false }: { adminOnly?: boolean }) {
+  const [location] = useLocation();
+  return <RouteSkeleton shape={adminOnly ? "admin" : shapeForRoute(location)} />;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -144,17 +191,7 @@ function AdminProtectedRoutes() {
   }
 
   return (
-    <Suspense
-      fallback={
-        <div
-          className="flex min-h-[60vh] items-center justify-center"
-          role="status"
-          aria-busy="true"
-        >
-          <Spinner className="size-8 text-primary" />
-        </div>
-      }
-    >
+    <Suspense fallback={<RouteSuspenseFallback adminOnly />}>
       <Switch>
         <Route path="/admin" component={AdminDashboardPage} />
         <Route path="/admin/topups" component={AdminTopupsPage} />
@@ -192,6 +229,7 @@ function AppRoutes() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <NavigationProgress />
       {/* ── Default SEO tags ────────────────────────────────────────────
           Mounted globally so every route — including admin and pages
           that don't call useSeo() — has exactly ONE title and ONE meta
@@ -219,17 +257,7 @@ function AppRoutes() {
         }
       >
         <ErrorBoundary>
-          <Suspense
-            fallback={
-              <div
-                className="flex min-h-[60vh] items-center justify-center"
-                role="status"
-                aria-busy="true"
-              >
-                <Spinner className="size-8 text-primary" />
-              </div>
-            }
-          >
+          <Suspense fallback={<RouteSuspenseFallback />}>
             <Switch>
               <Route path="/" component={HomePage} />
               <Route path="/login" component={LoginPage} />
@@ -336,13 +364,39 @@ function App() {
  * splash holds, the probe resolves, the routes render with the
  * correct auth state immediately.
  *
- * Cost: one ~50-300ms splash on cold boot / refresh / PWA resume.
- * Benefit: stable, consistent first paint regardless of auth state.
+ * ── Splash threshold ───────────────────────────────────────────────
+ * The probe finishes in 50-300ms on a normal connection. Showing the
+ * branded splash for that brief window produces a visible flash of
+ * "logo + dots → real UI" that users perceive as the app stalling
+ * even though it's just rendering. We delay the splash by 250ms so:
+ *   • Fast probe (<250ms): the user sees a flat background that
+ *     matches `bg-background`, then the real UI. No logo flash.
+ *   • Slow probe (≥250ms): the user sees the splash and KNOWS the
+ *     app is loading. This is the case where the splash is useful.
+ * The flat background during the pre-threshold window is identical
+ * in color to both the splash and the eventual route layout, so
+ * there is no perceived flicker — only a continuous surface that
+ * fills with real content when ready.
  */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { initializing } = useAuth();
+  const [showSplash, setShowSplash] = useState(false);
+
+  useEffect(() => {
+    if (!initializing) return;
+    const timer = setTimeout(() => setShowSplash(true), 250);
+    return () => clearTimeout(timer);
+  }, [initializing]);
+
   if (initializing) {
-    return <AppSplashScreen />;
+    return showSplash ? (
+      <AppSplashScreen />
+    ) : (
+      // Flat background matching --background. Same color as the
+      // splash AND every route layout, so the swap-in of real UI
+      // is a single fade rather than splash → route flash.
+      <div className="min-h-[100dvh] bg-background" aria-hidden="true" />
+    );
   }
   return <>{children}</>;
 }

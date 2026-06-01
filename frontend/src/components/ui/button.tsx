@@ -21,8 +21,7 @@ const buttonVariants = cva(
         // on hover. Border stays transparent (kept the `border` class
         // so size math matches the other variants — pure-text ghosts
         // were 1px shorter and broke flex alignment in toolbars).
-        ghost:
-          "border border-transparent hover:bg-muted/45 hover:text-foreground",
+        ghost: "border border-transparent hover:bg-muted/45 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline active:scale-100",
       },
       size: {
