@@ -7,7 +7,15 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn(
-        "rounded-xl border bg-card text-card-foreground shadow-md transition-shadow duration-300",
+        // rounded-2xl matches the dominant radius across home / wallet /
+        // orders / product pages, where the previous rounded-xl made the
+        // shared <Card/> visually distinct from hand-rolled containers.
+        // Slightly stronger resting border + a hover shadow that
+        // tracks border-color too so the card feels like a tactile chip
+        // instead of a flat panel.
+        "rounded-2xl border border-border/55 bg-card text-card-foreground shadow-sm",
+        "transition-[box-shadow,border-color,transform] duration-300",
+        "hover:shadow-lg hover:shadow-black/15 hover:border-border/80",
         className,
       )}
       {...props}

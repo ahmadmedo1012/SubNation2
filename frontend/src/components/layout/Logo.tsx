@@ -12,11 +12,19 @@ export function Logo({ size = "md", showText = true, className }: LogoProps) {
   const textSizes = { sm: "text-base", md: "text-xl", lg: "text-3xl" };
 
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      {/* Shield icon — matches the actual SubNation brand mark */}
+    <div className={cn("group/logo flex items-center gap-2.5", className)}>
+      {/* Shield icon — matches the actual SubNation brand mark.
+          Diagonal gradient + a slightly tighter inner shadow give the
+          tile depth on both themes (the old solid bg-primary read flat
+          on light mode). Hover scale + a brand-tinted glow are picked
+          up by the parent Navbar's <Link> wrapper. */}
       <div
         className={cn(
-          "rounded-xl bg-primary flex items-center justify-center shrink-0 shadow-lg shadow-primary/30",
+          "relative rounded-xl flex items-center justify-center shrink-0",
+          "bg-gradient-to-br from-primary via-primary to-primary/80",
+          "shadow-lg shadow-primary/30",
+          "transition-transform duration-200 ease-out",
+          "group-hover/logo:scale-105 group-hover/logo:shadow-primary/45",
           iconSizes[size],
         )}
       >

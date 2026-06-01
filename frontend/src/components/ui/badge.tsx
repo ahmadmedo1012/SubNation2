@@ -13,6 +13,15 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive: "border-transparent bg-destructive text-destructive-foreground shadow-xs",
         outline: "text-foreground border [border-color:var(--badge-outline)]",
+        // Status variants — use the shared --status-* tokens so they
+        // re-tint correctly on the light theme. Soft tinted background
+        // + matching foreground keeps them quiet next to a primary
+        // CTA but still readable on either surface.
+        success:
+          "bg-status-success/12 text-status-success border-status-success/28",
+        warning:
+          "bg-status-warning/12 text-status-warning border-status-warning/30",
+        info: "bg-status-info/12 text-status-info border-status-info/28",
       },
     },
     defaultVariants: {

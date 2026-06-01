@@ -68,6 +68,21 @@
   --color-chart-4: hsl(var(--chart-4));
   --color-chart-5: hsl(var(--chart-5));
 
+  /* Category accents — exposed as Tailwind colors so a card can write
+     `bg-cat-streaming/10 text-cat-streaming border-cat-streaming/25`
+     instead of repeating raw hsl(var(--cat-…) / 0.x) at every site. */
+  --color-cat-streaming: hsl(var(--cat-streaming));
+  --color-cat-music: hsl(var(--cat-music));
+  --color-cat-gaming: hsl(var(--cat-gaming));
+  --color-cat-productivity: hsl(var(--cat-productivity));
+
+  /* Status — single token per state, used by StatusBadge + banners */
+  --color-status-success: hsl(var(--status-success));
+  --color-status-warning: hsl(var(--status-warning));
+  --color-status-error: hsl(var(--status-error));
+  --color-status-info: hsl(var(--status-info));
+  --color-status-low-stock: hsl(var(--status-low-stock));
+
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
@@ -104,6 +119,23 @@
   --surface-raised: 220 20% 10%;
   --surface-overlay: 220 20% 12%;
   --surface-float: 220 20% 14%;
+
+  /* ── Category accents — single source of truth ────────────────────
+     Used by ProductCard.tsx and any future category-themed surface.
+     HSL channels only (no hsl() wrapper) so consumers can compose
+     `hsl(var(--cat-streaming) / 0.12)` for translucent fills.
+     Tone is dark-mode-tuned (lighter L for contrast on dark base). */
+  --cat-streaming: 270 75% 68%;
+  --cat-music: 152 65% 55%;
+  --cat-gaming: 211 90% 65%;
+  --cat-productivity: 38 92% 60%;
+
+  /* ── Status palette — used across badges, banners, indicators ──── */
+  --status-success: 152 65% 50%;
+  --status-warning: 38 92% 56%;
+  --status-error: 0 80% 62%;
+  --status-info: 211 90% 58%;
+  --status-low-stock: 22 92% 58%;
 
   --background: var(--surface-base);
   --foreground: 210 40% 98%;
@@ -208,7 +240,32 @@
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.06);
 
-  --background: 220 20% 96%;
+  /* Light-mode surface ladder. Without these, every consumer of
+     hsl(var(--surface-card/raised/overlay/float)) inherits the dark
+     values from :root — collapsing the whole elevation system into
+     near-black on a light background. Mirrors the dark-mode ladder
+     with progressively warmer near-whites. */
+  --surface-base: 220 20% 96%;
+  --surface-card: 0 0% 100%;
+  --surface-raised: 220 16% 98%;
+  --surface-overlay: 0 0% 100%;
+  --surface-float: 220 14% 99%;
+
+  /* Light-mode-tuned category accents — saturated mid-tones that
+     keep readable contrast on white surfaces. */
+  --cat-streaming: 270 65% 50%;
+  --cat-music: 152 60% 38%;
+  --cat-gaming: 211 80% 48%;
+  --cat-productivity: 38 90% 45%;
+
+  /* Status palette — slightly darker for AA contrast on white */
+  --status-success: 152 60% 38%;
+  --status-warning: 38 90% 45%;
+  --status-error: 0 75% 50%;
+  --status-info: 211 80% 48%;
+  --status-low-stock: 22 88% 48%;
+
+  --background: var(--surface-base);
   --foreground: 220 20% 10%;
   --border: 220 13% 87%;
 
@@ -544,9 +601,28 @@
   }
 }
 
+/* Premium brand-tinted glow pulse — CTA + logo halo. Composited
+   (transform + opacity only) so it stays at 60fps on low-end mobile.
+   Distinct from `cta-glow` (a denser ring on hover-only buttons) —
+   this is a softer, broader halo for resting hero / logo states. */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.08);
+  }
+}
+
 /* ── UTILITY LAYER ───────────────────────────────────── */
 @layer utilities {
-  /* Skeleton loading (GPU Optimized) */
+  /* Skeleton loading (GPU Optimized).
+     Sweep tinted with a faint primary-pink wash on top of the
+     muted base — keeps empty placeholders feeling on-brand without
+     drawing more attention than the real content. */
   .skeleton-shimmer {
     position: relative;
     overflow: hidden;
@@ -560,7 +636,9 @@
     background: linear-gradient(
       90deg,
       transparent,
-      hsl(var(--muted-foreground) / 0.1),
+      hsl(var(--muted-foreground) / 0.08),
+      hsl(var(--primary) / 0.08),
+      hsl(var(--muted-foreground) / 0.08),
       transparent
     );
     animation: shimmer 1.6s infinite;
@@ -818,6 +896,37 @@
     animation: pulse-dot 1.6s ease-in-out infinite;
   }
 
+  /* Brand glow halo — for hero CTAs and brand-mark resting state.
+     The element this is applied to should have `position: relative`
+     and `isolation: isolate`; the halo renders behind it via z-[-1].
+     `pointer-events: none` keeps it from stealing clicks. */
+  .glow-halo {
+    position: relative;
+    isolation: isolate;
+  }
+  .glow-halo::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: inherit;
+    background: radial-gradient(
+      circle at center,
+      hsl(var(--primary) / 0.45),
+      transparent 70%
+    );
+    filter: blur(12px);
+    opacity: 0.32;
+    pointer-events: none;
+    z-index: -1;
+    animation: glow-pulse 3.6s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .glow-halo::before {
+      animation: none;
+    }
+  }
+
   /* Tab indicator */
   .tab-slide-in {
     animation: tab-slide-in 0.24s cubic-bezier(0.34, 1.4, 0.64, 1) both;
@@ -922,18 +1031,27 @@
 
   /* Subtle scrollbar */
   ::-webkit-scrollbar {
-    width: 3px;
-    height: 3px;
+    width: 4px;
+    height: 4px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
-    border-radius: 4px;
+    border-radius: 999px;
+    transition: background-color 200ms ease;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.28);
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--primary) / 0.5),
+      hsl(var(--muted-foreground) / 0.4)
+    );
+  }
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
   }
 
   /* Surface elevation helpers */
@@ -1103,7 +1221,7 @@
   --toast-radius: 16px;
 }
 
-[data-sonner-toast][data-styled='true'].premium-toast {
+[data-sonner-toast][data-styled="true"].premium-toast {
   position: relative;
   align-items: flex-start;
   gap: 12px;
@@ -1112,8 +1230,11 @@
   border-radius: var(--toast-radius);
   width: var(--width);
 
-  background:
-    linear-gradient(135deg, hsl(var(--surface-overlay) / 0.92) 0%, hsl(var(--surface-card) / 0.92) 100%);
+  background: linear-gradient(
+    135deg,
+    hsl(var(--surface-overlay) / 0.92) 0%,
+    hsl(var(--surface-card) / 0.92) 100%
+  );
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
 
@@ -1133,8 +1254,8 @@
 /* Leading accent strip — vertical bar that hugs the inline-start edge.
    Logical properties keep it on the right under dir="rtl" (the app's
    default) and on the left in any LTR context, automatically. */
-[data-sonner-toast][data-styled='true'].premium-toast::before {
-  content: '';
+[data-sonner-toast][data-styled="true"].premium-toast::before {
+  content: "";
   position: absolute;
   inset-block: 12px;
   inset-inline-start: 6px;
@@ -1145,7 +1266,7 @@
 }
 
 /* Icon bubble — tinted square with a soft outer glow */
-[data-sonner-toast][data-styled='true'].premium-toast [data-icon] {
+[data-sonner-toast][data-styled="true"].premium-toast [data-icon] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1160,19 +1281,19 @@
     0 0 0 1px hsl(var(--toast-accent, var(--primary)) / 0.22) inset,
     0 0 22px -6px hsl(var(--toast-accent, var(--primary)) / 0.55);
 }
-[data-sonner-toast][data-styled='true'].premium-toast [data-icon] svg {
+[data-sonner-toast][data-styled="true"].premium-toast [data-icon] svg {
   width: 20px;
   height: 20px;
 }
 
 /* Content column */
-[data-sonner-toast][data-styled='true'].premium-toast [data-content] {
+[data-sonner-toast][data-styled="true"].premium-toast [data-content] {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-[data-sonner-toast][data-styled='true'].premium-toast [data-title],
-[data-sonner-toast][data-styled='true'].premium-toast .premium-toast-title {
+[data-sonner-toast][data-styled="true"].premium-toast [data-title],
+[data-sonner-toast][data-styled="true"].premium-toast .premium-toast-title {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
@@ -1180,8 +1301,8 @@
   letter-spacing: -0.005em;
 }
 
-[data-sonner-toast][data-styled='true'].premium-toast [data-description],
-[data-sonner-toast][data-styled='true'].premium-toast .premium-toast-description {
+[data-sonner-toast][data-styled="true"].premium-toast [data-description],
+[data-sonner-toast][data-styled="true"].premium-toast .premium-toast-description {
   font-size: 13px;
   line-height: 1.55;
   color: hsl(var(--muted-foreground));
@@ -1189,7 +1310,7 @@
 }
 
 /* Close button — corner chip, scales subtly on hover */
-[data-sonner-toast][data-styled='true'].premium-toast [data-close-button] {
+[data-sonner-toast][data-styled="true"].premium-toast [data-close-button] {
   top: 8px;
   inset-inline-end: 8px;
   inset-inline-start: auto;
@@ -1206,18 +1327,18 @@
     background-color 150ms ease,
     color 150ms ease;
 }
-[data-sonner-toast][data-styled='true'].premium-toast:hover [data-close-button],
-[data-sonner-toast][data-styled='true'].premium-toast:focus-within [data-close-button] {
+[data-sonner-toast][data-styled="true"].premium-toast:hover [data-close-button],
+[data-sonner-toast][data-styled="true"].premium-toast:focus-within [data-close-button] {
   opacity: 1;
 }
-[data-sonner-toast][data-styled='true'].premium-toast [data-close-button]:hover {
+[data-sonner-toast][data-styled="true"].premium-toast [data-close-button]:hover {
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
   transform: scale(1.06);
 }
 
 /* Action / cancel buttons */
-[data-sonner-toast][data-styled='true'].premium-toast [data-button] {
+[data-sonner-toast][data-styled="true"].premium-toast [data-button] {
   background: hsl(var(--toast-accent, var(--primary)));
   color: hsl(var(--primary-foreground));
   border-radius: 10px;
@@ -1225,27 +1346,29 @@
   font-size: 13px;
   font-weight: 600;
   height: auto;
-  transition: filter 150ms ease, transform 100ms ease;
+  transition:
+    filter 150ms ease,
+    transform 100ms ease;
 }
-[data-sonner-toast][data-styled='true'].premium-toast [data-button]:hover {
+[data-sonner-toast][data-styled="true"].premium-toast [data-button]:hover {
   filter: brightness(1.1);
 }
-[data-sonner-toast][data-styled='true'].premium-toast [data-button]:active {
+[data-sonner-toast][data-styled="true"].premium-toast [data-button]:active {
   transform: translateY(1px);
 }
-[data-sonner-toast][data-styled='true'].premium-toast [data-cancel] {
+[data-sonner-toast][data-styled="true"].premium-toast [data-cancel] {
   background: hsl(var(--muted));
   color: hsl(var(--muted-foreground));
 }
 
 /* ── Variant tokens ─────────────────────────────────────────────── */
 /* Default / informational pink — uses --primary */
-[data-sonner-toast][data-type='default'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="default"][data-styled="true"].premium-toast {
   --toast-accent: var(--primary);
 }
 
 /* Success — emerald */
-[data-sonner-toast][data-type='success'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="success"][data-styled="true"].premium-toast {
   --toast-accent: 152 65% 50%;
   border-color: hsl(152 65% 50% / 0.28);
   box-shadow:
@@ -1255,7 +1378,7 @@
 }
 
 /* Error / destructive — red */
-[data-sonner-toast][data-type='error'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="error"][data-styled="true"].premium-toast {
   --toast-accent: 0 80% 62%;
   border-color: hsl(0 80% 62% / 0.3);
   box-shadow:
@@ -1265,7 +1388,7 @@
 }
 
 /* Warning — amber */
-[data-sonner-toast][data-type='warning'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="warning"][data-styled="true"].premium-toast {
   --toast-accent: 38 92% 56%;
   border-color: hsl(38 92% 56% / 0.3);
   box-shadow:
@@ -1275,7 +1398,7 @@
 }
 
 /* Info — sky blue */
-[data-sonner-toast][data-type='info'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="info"][data-styled="true"].premium-toast {
   --toast-accent: 211 90% 58%;
   border-color: hsl(211 90% 58% / 0.3);
   box-shadow:
@@ -1285,39 +1408,38 @@
 }
 
 /* Loading — neutral with spinner inheriting current color */
-[data-sonner-toast][data-type='loading'][data-styled='true'].premium-toast {
+[data-sonner-toast][data-type="loading"][data-styled="true"].premium-toast {
   --toast-accent: var(--muted-foreground);
 }
 
 /* ── Light mode tuning ──────────────────────────────────────────── */
-.light [data-sonner-toast][data-styled='true'].premium-toast {
-  background:
-    linear-gradient(135deg, hsl(0 0% 100% / 0.98) 0%, hsl(220 20% 98% / 0.96) 100%);
+.light [data-sonner-toast][data-styled="true"].premium-toast {
+  background: linear-gradient(135deg, hsl(0 0% 100% / 0.98) 0%, hsl(220 20% 98% / 0.96) 100%);
   border-color: hsl(var(--border));
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
     0 10px 28px -8px hsl(220 30% 20% / 0.16),
     0 2px 6px -2px hsl(220 30% 20% / 0.08);
 }
-.light [data-sonner-toast][data-type='success'][data-styled='true'].premium-toast {
+.light [data-sonner-toast][data-type="success"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
     0 12px 30px -8px hsl(152 65% 35% / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
-.light [data-sonner-toast][data-type='error'][data-styled='true'].premium-toast {
+.light [data-sonner-toast][data-type="error"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
     0 12px 30px -8px hsl(0 80% 40% / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
-.light [data-sonner-toast][data-type='warning'][data-styled='true'].premium-toast {
+.light [data-sonner-toast][data-type="warning"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
     0 12px 30px -8px hsl(38 92% 35% / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
-.light [data-sonner-toast][data-type='info'][data-styled='true'].premium-toast {
+.light [data-sonner-toast][data-type="info"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
     0 12px 30px -8px hsl(211 90% 35% / 0.22),
@@ -1327,8 +1449,8 @@
 /* Reduced motion — Sonner's own enter motion is already gentle, but
    honor the OS preference for any future hover/transform additions. */
 @media (prefers-reduced-motion: reduce) {
-  [data-sonner-toast][data-styled='true'].premium-toast,
-  [data-sonner-toast][data-styled='true'].premium-toast * {
+  [data-sonner-toast][data-styled="true"].premium-toast,
+  [data-sonner-toast][data-styled="true"].premium-toast * {
     transition-duration: 0.01ms !important;
   }
 }
