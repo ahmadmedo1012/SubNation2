@@ -2,26 +2,26 @@
 
 import { useTheme } from "next-themes";
 import { Toaster as Sonner } from "sonner";
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, Loader2 } from "lucide-react";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 /**
- * Sonner Toaster mounted once at the App root. All `toast(...)` calls in the
- * codebase route through `hooks/use-toast.ts`'s shim into this single
- * Toaster, eliminating the previous two-toast-systems coexistence.
+ * Premium toast surface mounted once at the App root. We deliberately
+ * drop Sonner's built-in `richColors` so we can drive the visual
+ * language ourselves via CSS — leading-edge accent strip, tinted icon
+ * bubble, glass panel, colored glow shadow. See the
+ * "PREMIUM TOAST SYSTEM" block in index.css for the actual styling.
  *
- * Production-safe defaults:
- *   - position: "top-center"  →  works on mobile (no clash with bottom-nav)
- *                                 and keeps notifications in the user's
- *                                 reading flow on RTL pages
- *   - duration: 4000          →  enough to read, not so long it lingers
- *                                 (vs the previous 16-min "stuck" bug)
- *   - visibleToasts: 3        →  cap stack height; older toasts drop off
- *                                 gracefully rather than piling up
- *   - closeButton: true       →  every toast can be dismissed with one tap
- *   - richColors: true        →  destructive toasts go red, success green
- *   - dir: from <html dir>    →  honors lib/direction.ts boot lock
- *   - swipeDirection ("left") →  RTL-natural swipe-to-dismiss on touch
+ * Behavior preserved from the previous wrapper:
+ *   - position: "top-center"  RTL-friendly, doesn't clash with bottom nav
+ *   - duration: 4000          enough to read, not the 16-min stuck-toast bug
+ *   - visibleToasts: 3        cap stack height
+ *   - dir: "rtl"              swipe + layout honor RTL
+ *   - closeButton: true       one-tap dismiss on every toast
+ *
+ * Lucide icons replace Sonner's defaults at the Toaster level so every
+ * variant renders with consistent stroke-width and visual weight.
  */
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
@@ -33,18 +33,25 @@ const Toaster = ({ ...props }: ToasterProps) => {
       position="top-center"
       duration={4000}
       visibleToasts={3}
+      gap={12}
+      offset="20px"
       closeButton
-      richColors
       dir="rtl"
+      icons={{
+        success: <CheckCircle2 strokeWidth={2.4} />,
+        error: <AlertCircle strokeWidth={2.4} />,
+        warning: <AlertTriangle strokeWidth={2.4} />,
+        info: <Info strokeWidth={2.4} />,
+        loading: <Loader2 className="animate-spin" strokeWidth={2.4} />,
+      }}
       toastOptions={{
         classNames: {
-          toast:
-            "group toast group-[.toaster]:bg-card/95 group-[.toaster]:backdrop-blur-3xl group-[.toaster]:text-foreground group-[.toaster]:border-border/50 group-[.toaster]:shadow-xl group-[.toaster]:max-w-[calc(100vw-1rem)]",
-          description: "group-[.toast]:text-muted-foreground",
-          actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-          cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
-          closeButton:
-            "group-[.toast]:bg-card group-[.toast]:border-border/40 group-[.toast]:text-foreground",
+          toast: "premium-toast",
+          title: "premium-toast-title",
+          description: "premium-toast-description",
+          actionButton: "premium-toast-action",
+          cancelButton: "premium-toast-cancel",
+          closeButton: "premium-toast-close",
         },
       }}
       {...props}

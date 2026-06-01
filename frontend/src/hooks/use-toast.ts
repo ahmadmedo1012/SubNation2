@@ -28,12 +28,15 @@ export interface ToastInput {
   /** Secondary text under the title. Maps to Sonner's `description`. */
   description?: ReactNode;
   /**
-   * Visual style:
-   *   - "default"     → neutral / informational
-   *   - "destructive" → red, used for errors and destructive confirms
-   * Maps to `sonnerToast.error()` for destructive, plain `sonnerToast()` otherwise.
+   * Visual style. The premium toast surface adds a leading accent strip,
+   * tinted icon bubble and colored shadow for each variant. Mapping:
+   *   - "default" / "info" → blue informational toast
+   *   - "success"          → green confirmation toast
+   *   - "warning"          → amber caution toast
+   *   - "destructive"      → red error toast (back-compat alias for the old
+   *                          shadcn API; existing 22 callsites keep working)
    */
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | "success" | "warning" | "info";
   /** Auto-dismiss in ms. Default 4000 (Sonner default). */
   duration?: number;
   /** Stable id — passing the same id replaces an existing toast (dedup). */
@@ -53,39 +56,52 @@ export interface ToastHandle {
  *   toast({ title: "تم", description: "تم حفظ التغييرات" });
  *   toast({ title: "خطأ", description: msg, variant: "destructive" });
  */
-export function toast(input: ToastInput): ToastHandle {
+function emit(input: ToastInput, idOverride?: string | number): string | number {
   const opts: Parameters<typeof sonnerToast>[1] = {
     description: input.description ?? undefined,
     duration: input.duration ?? 4000,
-    id: input.id,
+    id: idOverride ?? input.id,
   };
-
   const titleText = input.title ?? "";
 
-  let id: string | number;
-  if (input.variant === "destructive") {
-    id = sonnerToast.error(titleText, opts);
-  } else {
-    id = sonnerToast(titleText, opts);
+  switch (input.variant) {
+    case "destructive":
+      return sonnerToast.error(titleText, opts);
+    case "success":
+      return sonnerToast.success(titleText, opts);
+    case "warning":
+      return sonnerToast.warning(titleText, opts);
+    case "info":
+      return sonnerToast.info(titleText, opts);
+    default:
+      return sonnerToast(titleText, opts);
   }
+}
 
+export function toast(input: ToastInput): ToastHandle {
+  const id = emit(input);
   return {
     id,
     dismiss: () => sonnerToast.dismiss(id),
     update: (next) => {
-      const updateOpts: Parameters<typeof sonnerToast>[1] = {
-        description: next.description ?? undefined,
-        duration: next.duration ?? 4000,
-        id,
-      };
-      if (next.variant === "destructive") {
-        sonnerToast.error(next.title ?? "", updateOpts);
-      } else {
-        sonnerToast(next.title ?? "", updateOpts);
-      }
+      emit(next, id);
     },
   };
 }
+
+/**
+ * Convenience helpers for the new variants. Existing callers can keep
+ * using `toast({ variant: "destructive", ... })`; new code can read
+ * cleaner with `toast.success(...)` etc.
+ */
+toast.success = (title: ReactNode, description?: ReactNode) =>
+  toast({ title, description, variant: "success" });
+toast.error = (title: ReactNode, description?: ReactNode) =>
+  toast({ title, description, variant: "destructive" });
+toast.warning = (title: ReactNode, description?: ReactNode) =>
+  toast({ title, description, variant: "warning" });
+toast.info = (title: ReactNode, description?: ReactNode) =>
+  toast({ title, description, variant: "info" });
 
 /**
  * Hook variant — returns the same `toast` function plus a global `dismiss(id?)`.
