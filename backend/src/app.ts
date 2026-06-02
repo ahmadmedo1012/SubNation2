@@ -43,9 +43,45 @@ const allowedOrigins = process.env.APP_ORIGINS
       .filter(Boolean)
   : [];
 const isProduction = process.env.NODE_ENV === "production";
-const csrfAllowedOrigins = (process.env.APP_ORIGINS || process.env.APP_URL || "")
-  .split(",")
-  .map((o) => o.trim());
+
+/**
+ * F-009 (security audit 004) — CSRF Origin/Referer check is enabled in
+ * EVERY environment, not just production. Previously the middleware was
+ * gated behind `NODE_ENV === "production"`, which left dev servers
+ * accepting cross-origin state-changing requests; a developer running
+ * realistic credentials locally and visiting a hostile origin in the
+ * same browser was vulnerable.
+ *
+ * Resolution order for the allow-list:
+ *   1. `CSRF_ALLOWED_ORIGINS` (explicit override; comma-separated).
+ *   2. `APP_ORIGINS` (the existing CORS allow-list — same trust set).
+ *   3. `APP_URL` (single-origin shorthand).
+ *   4. Non-production fallback: localhost dev origins so `pnpm dev`
+ *      keeps working without operator config. In production the
+ *      fallback is empty — see the misconfiguration warning below.
+ */
+const csrfAllowedOrigins = (() => {
+  const fromExplicit = process.env.CSRF_ALLOWED_ORIGINS;
+  const fromCors = process.env.APP_ORIGINS;
+  const fromAppUrl = process.env.APP_URL;
+  const raw = fromExplicit || fromCors || fromAppUrl || "";
+  const parsed = raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (parsed.length > 0) return parsed;
+  // Dev fallback only. The middleware below logs a misconfiguration
+  // error if production reaches this branch.
+  if (!isProduction) {
+    return [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
+  }
+  return [];
+})();
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 //
@@ -468,8 +504,15 @@ app.use((req, res, next) => {
       return next();
     }
 
-    // In production, validate Origin or Referer
-    if (process.env.NODE_ENV === "production" && csrfAllowedOrigins.length > 0) {
+    // F-009 (security audit 004) — Origin/Referer check runs in ALL
+    // environments. The csrfAllowedOrigins list is computed once at
+    // module load with sensible dev defaults; if it ends up empty in
+    // production, that is operator misconfiguration: the platform is
+    // less safe than intended, but failing closed (rejecting every
+    // state-changing request) would be worse than failing open with
+    // a loud warning. Operations should treat the warning below as
+    // an immediate page.
+    if (csrfAllowedOrigins.length > 0) {
       const isValid =
         (origin &&
           csrfAllowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) ||
@@ -479,6 +522,14 @@ app.use((req, res, next) => {
         logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
         return res.status(403).json(createErrorResponse("طلب غير مصرح", ErrorCode.FORBIDDEN));
       }
+    } else if (isProduction) {
+      // Production with no allow-list: misconfiguration. Log a fatal-class
+      // event so the operator catches it on first request, but do not
+      // 403 the request itself (graceful degrade).
+      logger.error(
+        { path: req.path },
+        "CSRF middleware has no allow-list in production — set CSRF_ALLOWED_ORIGINS or APP_ORIGINS",
+      );
     }
   }
   next();
