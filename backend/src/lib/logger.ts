@@ -45,15 +45,23 @@ const baseLogger = pino({
       "password",
       "password_hash",
       "passwordHash",
+      "current_password",
+      "new_password",
       "account_password",
       "accountPassword",
-      // Tokens
+      // Tokens (every transport — explicit, NOT wildcards: fast-redact
+      // does not support embedded `*` in paths. F-012 fix.)
       "token",
       "access_token",
       "refresh_token",
       "id_token",
+      "auth_token",
+      "admin_token",
+      "session_token",
       // OTP
       "otp",
+      "totp",
+      "totp_secret",
       // Payment
       "card_number",
       "cvv",
@@ -61,10 +69,16 @@ const baseLogger = pino({
       // PII
       "ssn",
       "national_id",
-      // Extended redact paths (design §3.1.2)
-      // Wildcards for secret/token patterns
-      "*secret*",
-      "*token*",
+      // Signing material / API keys (explicit; the previous `*secret*`
+      // wildcard was a no-op under fast-redact — F-012 audit finding).
+      "secret",
+      "session_secret",
+      "encryption_key",
+      "api_key",
+      "apikey",
+      "private_key",
+      "firebase_service_account_json",
+      "telegram_bot_token",
     ],
     censor: "[REDACTED]",
   },

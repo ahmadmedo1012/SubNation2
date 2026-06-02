@@ -85,6 +85,12 @@ const SENSITIVE_FIELD_NAMES = [
   "api_key",
   "apikey",
   "private_key",
+  // PII (F-012 audit fix — these reached Sentry beforeSend untouched)
+  "ssn",
+  "national_id",
+  "card_number",
+  "cvv",
+  "sender_account",
   // Provider-specific raw data we'd rather not leak verbatim
   "id_token_length", // already-truncated marker — keep for grouping
   "firebase_service_account_json",
