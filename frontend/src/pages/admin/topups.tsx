@@ -4,15 +4,16 @@ import { EmptyState } from "@/components/admin/EmptyState";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
+import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  approveTopup,
   getListAdminTopupsQueryKey,
   type AdminTopup,
-  useApproveTopup,
+  rejectTopup,
   useListAdminTopups,
-  useRejectTopup,
 } from "@workspace/api-client-react";
 import {
   AlertTriangle,
@@ -322,48 +323,78 @@ export default function AdminTopupsPage() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
 
-  const approveMutation = useApproveTopup({
-    request: { headers },
-    mutation: {
-      onSuccess(_, vars) {
-        setProcessingId(null);
-        invalidate();
-        const t = allTopups.find((x) => x.id === vars.id);
-        toast({
-          title: "✓ تمت الموافقة",
-          description: t
-            ? `${formatCurrency(t.amount)} لـ ${t.user_phone}`
-            : "تمت الموافقة على الطلب",
-        });
-      },
-      onError() {
-        setProcessingId(null);
-        toast({
-          title: "خطأ",
-          description: "فشلت الموافقة، حاول مرة أخرى",
-          variant: "destructive",
-        });
-      },
+  // F-008 (security audit 004) — every state-changing admin call to
+  // /api/admin/topups/:id/{approve,reject} carries an Idempotency-Key
+  // header. The backend middleware
+  // (backend/src/middlewares/idempotency.ts) caches the response per
+  // (admin, route, key) for 24 h, so a network retry / accidental
+  // double-click cannot double-credit the wallet. We use useMutation
+  // directly (not the generated useApproveTopup / useRejectTopup
+  // hooks) because the generated hooks fix the variable type to
+  // `{id, data}`, which doesn't accommodate the per-call
+  // idempotencyKey we need to thread through.
+  const approveMutation = useMutation({
+    mutationKey: ["approveTopup"],
+    mutationFn: ({
+      id,
+      data,
+      idempotencyKey,
+    }: {
+      id: number;
+      data: { admin_note?: string };
+      idempotencyKey: string;
+    }) =>
+      approveTopup(id, data, {
+        headers: withIdempotencyKey(headers, idempotencyKey),
+      }),
+    onSuccess(_, vars) {
+      setProcessingId(null);
+      invalidate();
+      const t = allTopups.find((x) => x.id === vars.id);
+      toast({
+        title: "✓ تمت الموافقة",
+        description: t
+          ? `${formatCurrency(t.amount)} لـ ${t.user_phone}`
+          : "تمت الموافقة على الطلب",
+      });
+    },
+    onError() {
+      setProcessingId(null);
+      toast({
+        title: "خطأ",
+        description: "فشلت الموافقة، حاول مرة أخرى",
+        variant: "destructive",
+      });
     },
   });
 
-  const rejectMutation = useRejectTopup({
-    request: { headers },
-    mutation: {
-      onSuccess(_, vars) {
-        setProcessingId(null);
-        setRejectTarget(null);
-        invalidate();
-        const t = allTopups.find((x) => x.id === vars.id);
-        toast({
-          title: "تم الرفض",
-          description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
-        });
-      },
-      onError() {
-        setProcessingId(null);
-        toast({ title: "خطأ", description: "فشل الرفض، حاول مرة أخرى", variant: "destructive" });
-      },
+  const rejectMutation = useMutation({
+    mutationKey: ["rejectTopup"],
+    mutationFn: ({
+      id,
+      data,
+      idempotencyKey,
+    }: {
+      id: number;
+      data: { admin_note?: string };
+      idempotencyKey: string;
+    }) =>
+      rejectTopup(id, data, {
+        headers: withIdempotencyKey(headers, idempotencyKey),
+      }),
+    onSuccess(_, vars) {
+      setProcessingId(null);
+      setRejectTarget(null);
+      invalidate();
+      const t = allTopups.find((x) => x.id === vars.id);
+      toast({
+        title: "تم الرفض",
+        description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
+      });
+    },
+    onError() {
+      setProcessingId(null);
+      toast({ title: "خطأ", description: "فشل الرفض، حاول مرة أخرى", variant: "destructive" });
     },
   });
 
@@ -387,13 +418,25 @@ export default function AdminTopupsPage() {
 
   const handleApprove = (id: number) => {
     setProcessingId(id);
-    approveMutation.mutate({ id, data: { admin_note: "تمت الموافقة" } });
+    // F-008: one Idempotency-Key per click. React Query reuses these
+    // variables on internal retries, so the key survives a transient
+    // network failure and the backend replays the cached response
+    // instead of double-crediting.
+    approveMutation.mutate({
+      id,
+      data: { admin_note: "تمت الموافقة" },
+      idempotencyKey: generateIdempotencyKey(),
+    });
   };
 
   const handleReject = (note: string) => {
     if (!rejectTarget) return;
     setProcessingId(rejectTarget.id);
-    rejectMutation.mutate({ id: rejectTarget.id, data: { admin_note: note || "مرفوض" } });
+    rejectMutation.mutate({
+      id: rejectTarget.id,
+      data: { admin_note: note || "مرفوض" },
+      idempotencyKey: generateIdempotencyKey(),
+    });
   };
 
   const handleSelect = (id: number) => {
@@ -420,18 +463,24 @@ export default function AdminTopupsPage() {
     const ids = Array.from(selectedIds);
     let successCount = 0;
 
+    // F-008 (security audit 004): one Idempotency-Key per topup, NOT
+    // one for the whole bulk. The backend dedup is per-(admin, route,
+    // key); a single key shared across N approvals would let only the
+    // first call commit and the next N-1 would replay the first
+    // response, leaving the rest of the topups untouched. Each topup
+    // is its own logical action — generate a fresh key per iteration.
     for (const id of ids) {
       try {
         if (action === "approve") {
           await fetch(`/api/admin/topups/${id}/approve`, {
             method: "POST",
-            headers: jsonHeaders,
+            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
           });
         } else {
           await fetch(`/api/admin/topups/${id}/reject`, {
             method: "POST",
-            headers: jsonHeaders,
+            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "مرفوض جماعياً" }),
           });
         }
@@ -456,7 +505,8 @@ export default function AdminTopupsPage() {
     for (const t of pending) {
       await fetch(`/api/admin/topups/${t.id}/approve`, {
         method: "POST",
-        headers: jsonHeaders,
+        // Same per-iteration key generation as handleBulkAction above.
+        headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
       });
     }

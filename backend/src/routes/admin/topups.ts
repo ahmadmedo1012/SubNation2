@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
+import { idempotency } from "../../middlewares/idempotency";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -56,40 +57,63 @@ router.get("/topups", requireAdmin, async (req, res) => {
   );
 });
 
-router.post("/topups/:id/approve", requireAdmin, async (req, res) => {
-  const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+router.post(
+  "/topups/:id/approve",
+  requireAdmin,
+  // F-008 (security audit 004) extended in branch 006: the topup
+  // approval path is one of the admin's primary money-moving actions
+  // and gets the same idempotency dedup as wallet adjustment / refund.
+  // The frontend admin UI sends an Idempotency-Key header per click;
+  // a network retry / accidental double-click replays the cached
+  // response instead of double-crediting.
+  idempotency({ routeKey: "admin.topups.approve" }),
+  async (req, res) => {
+    const id = intParam(req, "id");
+    if (id === null)
+      return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  try {
-    const result = await TopupService.approve(id, req.body?.admin_note ?? null);
-    void writeAuditLog(req, "topup.approve", "topup", id, {
-      admin_note: req.body?.admin_note ?? null,
-    });
-    return res.json(result);
-  } catch (err) {
-    if (err instanceof ServiceError) {
-      return res.status(err.statusCode).json({ error: err.message });
+    try {
+      const result = await TopupService.approve(id, req.body?.admin_note ?? null);
+      void writeAuditLog(req, "topup.approve", "topup", id, {
+        admin_note: req.body?.admin_note ?? null,
+      });
+      return res.json(result);
+    } catch (err) {
+      if (err instanceof ServiceError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      throw err;
     }
-    throw err;
-  }
-});
+  },
+);
 
-router.post("/topups/:id/reject", requireAdmin, async (req, res) => {
-  const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+router.post(
+  "/topups/:id/reject",
+  requireAdmin,
+  // F-008 — symmetrical idempotency on reject. A "rejected twice"
+  // outcome is harmless to the wallet (no credit), but the audit
+  // trail and admin-stats notifications would fire twice without
+  // dedup, and the second attempt would fail with a 409 from the
+  // status guard inside TopupService — both noise.
+  idempotency({ routeKey: "admin.topups.reject" }),
+  async (req, res) => {
+    const id = intParam(req, "id");
+    if (id === null)
+      return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  try {
-    const result = await TopupService.reject(id, req.body?.admin_note ?? null);
-    void writeAuditLog(req, "topup.reject", "topup", id, {
-      admin_note: req.body?.admin_note ?? null,
-    });
-    return res.json(result);
-  } catch (err) {
-    if (err instanceof ServiceError) {
-      return res.status(err.statusCode).json({ error: err.message });
+    try {
+      const result = await TopupService.reject(id, req.body?.admin_note ?? null);
+      void writeAuditLog(req, "topup.reject", "topup", id, {
+        admin_note: req.body?.admin_note ?? null,
+      });
+      return res.json(result);
+    } catch (err) {
+      if (err instanceof ServiceError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      throw err;
     }
-    throw err;
-  }
-});
+  },
+);
 
 export { router as adminTopupsRouter };

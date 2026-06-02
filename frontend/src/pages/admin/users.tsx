@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import {
   PROVIDER_TONE_CLASS,
   displayUserName,
@@ -218,7 +219,15 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch(`/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
-        headers: jsonHeaders,
+        // F-008 (security audit 004): one Idempotency-Key per save
+        // click. The audit's S-01 bundle wraps wallet_adjustment /
+        // wallet_balance in AdjustmentService (transaction + ledger
+        // entry + optimistic lock); the Idempotency-Key middleware
+        // dedupes on top of that so a network retry / accidental
+        // double-click does not double-credit. The same key spans
+        // wallet + loyalty fields because they ride one PATCH — they
+        // are one logical save action from the admin's POV.
+        headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify(body),
       });
       const data = await res.json();

@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
+import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
@@ -126,9 +127,16 @@ export default function AdminOrdersPage() {
     setBulkUpdating(true);
     setBulkStatusOpen(false);
     try {
+      // F-008 (security audit 004): the bulk-status endpoint is a
+      // SINGLE HTTP request that processes N orders server-side, so
+      // one Idempotency-Key per logical bulk is correct here. A
+      // network retry of the same bulk replays the cached response;
+      // a fresh "Refund 5 orders" click generates a new key.
+      // (Per-order refund atomicity / idempotency lives in
+      // RefundService server-side — see security audit S-01.)
       await fetch("/api/admin/orders/bulk-status", {
         method: "PATCH",
-        headers: jsonHeaders,
+        headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
       setSelectedIds(new Set());
