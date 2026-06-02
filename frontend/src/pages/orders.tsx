@@ -31,16 +31,16 @@ const STAGGER = [
 ];
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "completed") return <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />;
+  if (status === "completed") return <CheckCircle className="w-3.5 h-3.5 text-status-success" />;
   if (status === "failed" || status === "refunded")
-    return <XCircle className="w-3.5 h-3.5 text-red-400" />;
-  return <Clock className="w-3.5 h-3.5 text-yellow-400" />;
+    return <XCircle className="w-3.5 h-3.5 text-status-error" />;
+  return <Clock className="w-3.5 h-3.5 text-status-warning" />;
 }
 
 function statusLeftBorder(status: string): string {
-  if (status === "completed") return "border-l-emerald-500/55";
-  if (status === "failed" || status === "refunded") return "border-l-red-500/55";
-  return "border-l-yellow-500/45";
+  if (status === "completed") return "border-l-status-success/55";
+  if (status === "failed" || status === "refunded") return "border-l-status-error/55";
+  return "border-l-status-warning/45";
 }
 
 function OrderCardSkeleton() {
@@ -105,13 +105,13 @@ export default function OrdersPage() {
       {!isLoading && orders.length > 0 && (
         <div className="flex gap-2 mb-5 flex-wrap slide-up">
           {pending.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-bold bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 px-3 py-1.5 rounded-full">
+            <div className="flex items-center gap-1.5 text-xs font-bold bg-status-warning/10 border border-status-warning/22 text-status-warning px-3 py-1.5 rounded-full">
               <Clock className="w-3 h-3" />
               {pending.length} قيد الانتظار
             </div>
           )}
           {completed.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-full">
+            <div className="flex items-center gap-1.5 text-xs font-bold bg-status-success/10 border border-status-success/22 text-status-success px-3 py-1.5 rounded-full">
               <CheckCircle className="w-3 h-3" />
               {completed.length} مكتمل
             </div>
@@ -195,7 +195,7 @@ export default function OrdersPage() {
                           </span>
                         )}
                         {(order as { coupon_code?: string }).coupon_code && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
                             <Tag className="w-2.5 h-2.5" />
                             {(order as { coupon_code?: string }).coupon_code}
                           </span>

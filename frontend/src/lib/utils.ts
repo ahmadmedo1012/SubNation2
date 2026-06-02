@@ -65,15 +65,20 @@ export function statusLabel(status: string): string {
 }
 
 export function statusColor(status: string): string {
+  // Class tuples ride the shared --status-* tokens (defined in
+  // index.css and exposed to Tailwind via @theme as `status-success`,
+  // etc.). Both light and dark themes get tonally-correct colors with
+  // no per-call branching — the tokens already define light-mode
+  // values that meet AA contrast on white surfaces.
   const colors: Record<string, string> = {
-    pending: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-    processing: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    completed: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    delivered: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    approved: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-    failed: "text-red-400 bg-red-400/10 border-red-400/20",
-    rejected: "text-red-400 bg-red-400/10 border-red-400/20",
-    refunded: "text-blue-400 bg-blue-400/10 border-blue-400/20",
+    pending: "text-status-warning bg-status-warning/10 border-status-warning/22",
+    processing: "text-status-info bg-status-info/10 border-status-info/22",
+    completed: "text-status-success bg-status-success/10 border-status-success/22",
+    delivered: "text-status-success bg-status-success/10 border-status-success/22",
+    approved: "text-status-success bg-status-success/10 border-status-success/22",
+    failed: "text-status-error bg-status-error/10 border-status-error/22",
+    rejected: "text-status-error bg-status-error/10 border-status-error/22",
+    refunded: "text-status-info bg-status-info/10 border-status-info/22",
   };
   return colors[status] ?? "text-muted-foreground";
 }

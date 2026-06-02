@@ -39,11 +39,17 @@ import {
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
+// Category-tinted hero gradients on the product page. Ride the shared
+// --cat-* tokens (defined in index.css, exposed to Tailwind via @theme)
+// so the hero re-tones correctly on the light theme — the previous
+// `from-violet-950 via-violet-900/60 to-violet-800/20` style produced
+// a near-black slab on light backgrounds because the 800/900/950
+// palette is dark-only by design.
 const CATEGORY_GRADIENTS: Record<string, string> = {
-  streaming: "from-violet-950 via-violet-900/60 to-violet-800/20",
-  music: "from-emerald-950 via-emerald-900/60 to-emerald-800/20",
-  gaming: "from-blue-950 via-blue-900/60 to-blue-800/20",
-  productivity: "from-amber-950 via-amber-900/60 to-amber-800/20",
+  streaming: "from-cat-streaming/30 via-cat-streaming/15 to-transparent",
+  music: "from-cat-music/30 via-cat-music/15 to-transparent",
+  gaming: "from-cat-gaming/30 via-cat-gaming/15 to-transparent",
+  productivity: "from-cat-productivity/30 via-cat-productivity/15 to-transparent",
 };
 
 /**
@@ -54,11 +60,14 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
  */
 const KNOWN_CATEGORIES = new Set(["streaming", "music", "gaming", "productivity"]);
 
+// Empty-image fallback foreground tint per category. Mirrors the
+// gradient palette above so the giant first-letter glyph reads as
+// "this is a [category] product" without needing the actual image.
 const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "text-violet-300",
-  music: "text-emerald-300",
-  gaming: "text-blue-300",
-  productivity: "text-amber-300",
+  streaming: "text-cat-streaming",
+  music: "text-cat-music",
+  gaming: "text-cat-gaming",
+  productivity: "text-cat-productivity",
 };
 
 const TRUST_SIGNALS = [

@@ -45,7 +45,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         onClick={copy}
         className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring ${
           copied
-            ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/22"
+            ? "bg-status-success/12 text-status-success border-status-success/22"
             : "bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
         }`}
       >
@@ -63,17 +63,17 @@ function StatusSteps({ status }: { status: string }) {
     <div className="flex items-center gap-0 my-4">
       {/* Step 1 */}
       <div className="flex flex-col items-center gap-1.5 shrink-0">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center bg-emerald-500/15 border-2 border-emerald-500/45 text-emerald-400">
+        <div className="w-7 h-7 rounded-full flex items-center justify-center bg-status-success/15 border-2 border-status-success/45 text-status-success">
           <CheckCircle className="w-3.5 h-3.5" />
         </div>
-        <span className="text-[10px] font-bold text-emerald-400 whitespace-nowrap">
+        <span className="text-[10px] font-bold text-status-success whitespace-nowrap">
           استُلم الطلب
         </span>
       </div>
 
       {/* Connector */}
       <div
-        className={`flex-1 h-[2.5px] mb-4 mx-2 rounded-full transition-all duration-700 ${done ? "bg-emerald-500/40" : "bg-border/35"}`}
+        className={`flex-1 h-[2.5px] mb-4 mx-2 rounded-full transition-all duration-700 ${done ? "bg-status-success/40" : "bg-border/35"}`}
       />
 
       {/* Step 2 */}
@@ -81,14 +81,14 @@ function StatusSteps({ status }: { status: string }) {
         <div
           className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
             done
-              ? "bg-emerald-500/15 border-emerald-500/45 text-emerald-400"
+              ? "bg-status-success/15 border-status-success/45 text-status-success"
               : "bg-muted/40 border-border/40 text-muted-foreground"
           }`}
         >
           {done ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
         </div>
         <span
-          className={`text-[10px] font-bold whitespace-nowrap ${done ? "text-emerald-400" : "text-muted-foreground"}`}
+          className={`text-[10px] font-bold whitespace-nowrap ${done ? "text-status-success" : "text-muted-foreground"}`}
         >
           تم التسليم
         </span>
@@ -173,10 +173,10 @@ export default function OrderDetailPage() {
           <div
             className={`h-[3px] ${
               order.status === "completed"
-                ? "bg-gradient-to-l from-emerald-500/85 via-emerald-400/40 to-transparent"
+                ? "bg-gradient-to-l from-status-success/85 via-status-success/40 to-transparent"
                 : order.status === "failed" || order.status === "refunded"
-                  ? "bg-gradient-to-l from-red-500/85 via-red-400/40 to-transparent"
-                  : "bg-gradient-to-l from-yellow-500/65 via-yellow-400/30 to-transparent"
+                  ? "bg-gradient-to-l from-status-error/85 via-status-error/40 to-transparent"
+                  : "bg-gradient-to-l from-status-warning/65 via-status-warning/30 to-transparent"
             }`}
           />
 
@@ -248,12 +248,12 @@ export default function OrderDetailPage() {
 
             {/* Coupon badge */}
             {couponCode && discountAmount && (
-              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/15 text-xs text-emerald-400">
+              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/15 text-xs text-status-success">
                 <Tag className="w-3 h-3 shrink-0" />
                 <span>
                   كوبون <span className="font-mono font-black">{couponCode}</span>
                 </span>
-                <span className="mr-auto font-bold bg-emerald-500/10 border border-emerald-500/18 px-2 py-0.5 rounded-full">
+                <span className="mr-auto font-bold bg-status-success/10 border border-status-success/22 px-2 py-0.5 rounded-full">
                   وفّرت {formatCurrency(discountAmount)}
                 </span>
               </div>
@@ -263,10 +263,10 @@ export default function OrderDetailPage() {
 
         {/* ── Delivery credentials ────────────────────────────────── */}
         {hasDelivery ? (
-          <div className="bg-card border border-emerald-500/18 rounded-2xl overflow-hidden float-in stagger-1">
-            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-emerald-500/12 bg-emerald-500/5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/12 border border-emerald-500/18 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in stagger-1">
+            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-status-success/15 bg-status-success/5">
+              <div className="w-7 h-7 rounded-lg bg-status-success/12 border border-status-success/22 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
               </div>
               <div>
                 <div className="font-black text-sm">بيانات الحساب</div>
@@ -287,9 +287,9 @@ export default function OrderDetailPage() {
               )}
             </div>
             {order.delivered_usage_terms && (
-              <div className="mx-5 mb-5 flex gap-2.5 text-sm bg-yellow-500/7 border border-yellow-500/18 rounded-xl p-3.5">
-                <Info className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-                <span className="text-yellow-400/85 leading-relaxed">
+              <div className="mx-5 mb-5 flex gap-2.5 text-sm bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
+                <Info className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                <span className="text-status-warning leading-relaxed">
                   {order.delivered_usage_terms}
                 </span>
               </div>
@@ -312,11 +312,11 @@ export default function OrderDetailPage() {
 
         {/* ── Failed / Refunded ──────────────────────────────────── */}
         {(order.status === "failed" || order.status === "refunded") && (
-          <div className="bg-card border border-red-500/18 rounded-2xl p-6 text-center float-in stagger-1">
-            <div className="w-12 h-12 rounded-2xl bg-red-500/8 border border-red-500/18 mx-auto mb-3 flex items-center justify-center">
-              <XCircle className="w-5 h-5 text-red-400/70" />
+          <div className="bg-card border border-status-error/22 rounded-2xl p-6 text-center float-in stagger-1">
+            <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-3 flex items-center justify-center">
+              <XCircle className="w-5 h-5 text-status-error" />
             </div>
-            <p className="font-bold text-sm mb-1 text-red-400">
+            <p className="font-bold text-sm mb-1 text-status-error">
               {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
             </p>
             <p className="text-xs text-muted-foreground leading-relaxed mb-4">
