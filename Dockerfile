@@ -93,16 +93,24 @@ ENV NODE_ENV=production \
     FRONTEND_DIST=/app/frontend/dist/public
 RUN corepack enable
 
-COPY --from=build /app/package.json         ./package.json
-COPY --from=build /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
-COPY --from=build /app/pnpm-lock.yaml       ./pnpm-lock.yaml
-COPY --from=build /app/.npmrc               ./.npmrc
-COPY --from=build /app/backend              ./backend
-COPY --from=build /app/frontend/dist        ./frontend/dist
-COPY --from=build /app/shared               ./shared
+COPY --from=build --chown=node:node /app/package.json         ./package.json
+COPY --from=build --chown=node:node /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
+COPY --from=build --chown=node:node /app/pnpm-lock.yaml       ./pnpm-lock.yaml
+COPY --from=build --chown=node:node /app/.npmrc               ./.npmrc
+COPY --from=build --chown=node:node /app/backend              ./backend
+COPY --from=build --chown=node:node /app/frontend/dist        ./frontend/dist
+COPY --from=build --chown=node:node /app/shared               ./shared
 
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod --filter @workspace/api-server...
+    pnpm install --frozen-lockfile --prod --filter @workspace/api-server... \
+    && chown -R node:node /app
+
+# F-011 (security audit 004) — drop root in the runtime stage.
+# Any RCE in the application becomes container-`node` (UID 1000) code execution
+# instead of UID 0. Defense-in-depth: Render's managed environment limits the
+# blast radius further, but the audit's calibration anchor is "do not run as
+# root regardless." The `node` user ships with the node:*-alpine base image.
+USER node
 
 EXPOSE 8080
 # Run DB migrations, then start the API (which also serves the SPA).
