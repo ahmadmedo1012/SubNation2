@@ -21,21 +21,22 @@
 ## 1. Ranking Method
 
 <Plain-language description of how findings are ranked. Required content:
-  - The five inputs: severity, likelihood, blast radius, ease of exploitation, business impact.
-  - The ordering rule: primary by severity, then businessImpact, then easeOfExploitation desc.
-  - The contested-severity resolution rule (largest possible loss wins; see research.md §2).
-  - Pointer to data-model §6 for full enumerations.>
+
+- The five inputs: severity, likelihood, blast radius, ease of exploitation, business impact.
+- The ordering rule: primary by severity, then businessImpact, then easeOfExploitation desc.
+- The contested-severity resolution rule (largest possible loss wins; see research.md §2).
+- Pointer to data-model §6 for full enumerations.>
 
 ## 2. Ranked Table (every finding)
 
 <Every F-NNN appears here. Severity column MUST equal security.md (FR-052).
 Sorted per §1 ordering rule.>
 
-| Rank | ID | Title | Severity | Likelihood | Blast Radius | Ease | Business Impact | Partition | Urgency |
-|------|----|-------|----------|------------|--------------|------|-----------------|-----------|---------|
-| 1 | F-NNN | <title> | Critical | probable | tenant-wide | easy | severe | quick-win | urgent |
-| 2 | F-NNN | … | High | possible | multi-user | moderate | material | structural | urgent |
-| … | | | | | | | | | |
+| Rank | ID    | Title   | Severity | Likelihood | Blast Radius | Ease     | Business Impact | Partition  | Urgency |
+| ---- | ----- | ------- | -------- | ---------- | ------------ | -------- | --------------- | ---------- | ------- |
+| 1    | F-NNN | <title> | Critical | probable   | tenant-wide  | easy     | severe          | quick-win  | urgent  |
+| 2    | F-NNN | …       | High     | possible   | multi-user   | moderate | material        | structural | urgent  |
+| …    |       |         |          |            |              |          |                 |            |         |
 
 ## 3. Quick Wins (small, reversible, low-risk)
 
@@ -55,7 +56,8 @@ open security.md to fill the sprint.>
 ## 4. Structural Hardening
 
 <Subsection per Finding. Same shape as §3, with one extra required field:
-  - **Why a quick win is insufficient**: <one sentence — supports FR-024 / SC-009>>
+
+- **Why a quick win is insufficient**: <one sentence — supports FR-024 / SC-009>>
 
 ### S-NN — F-NNN — <title>
 
@@ -110,7 +112,7 @@ VR-RS-02 / VR-RS-03.>
 
 1. **"Just sort by severity."** A pure severity sort hides the contested-severity problem (low likelihood × catastrophic blast radius vs. high likelihood × moderate impact). The five-input vector is the audit trail (FR-051).
 2. **Quick wins that are not actually quick.** A "quick win" with one-way reversibility (e.g., key rotation that requires downstream updates) is structural in disguise. The Reversibility field forces this question.
-3. **Repeated bodies between security.md and priorities.md.** §3 / §4 / §5 re-state *the planner-relevant* fields (recommendation direction, reversibility, dependencies, deferral reason) — they do not copy the full Finding body. The Finding body lives in `security.md`.
-4. **Silent large-rewrite recommendations.** §4 makes the "why a quick win is insufficient" line *required* — a structural recommendation without that line fails the contract.
+3. **Repeated bodies between security.md and priorities.md.** §3 / §4 / §5 re-state _the planner-relevant_ fields (recommendation direction, reversibility, dependencies, deferral reason) — they do not copy the full Finding body. The Finding body lives in `security.md`.
+4. **Silent large-rewrite recommendations.** §4 makes the "why a quick win is insufficient" line _required_ — a structural recommendation without that line fails the contract.
 5. **Open-ended deferrals.** Every `D-NN` MUST name the trigger that would un-defer it. "Defer indefinitely" is not a plan; it is forgetting.
 6. **Drift after security.md edits.** §6 cross-document consistency check is the mechanical gate that catches drift before publish.

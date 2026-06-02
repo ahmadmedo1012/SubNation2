@@ -29,22 +29,24 @@ This document describes attack paths and is not for external publication.
 
 <≤ 600 words. Readable by a non-engineer in 5 minutes (SC-001).
 Required points:
-  - overall security posture (one of: solid / acceptable-with-caveats / at-risk / critical)
-  - top three risks in plain language (with their F-NNN IDs)
-  - what is safe enough today
-  - what is most urgent
-  - one-paragraph statement of what this audit did NOT do
-    (no probes, no fixes, no migrations, no secret rotation).>
+
+- overall security posture (one of: solid / acceptable-with-caveats / at-risk / critical)
+- top three risks in plain language (with their F-NNN IDs)
+- what is safe enough today
+- what is most urgent
+- one-paragraph statement of what this audit did NOT do
+  (no probes, no fixes, no migrations, no secret rotation).>
 
 ## 2. Threat Model
 
 <Required content (FR-013):
-  - Likely attacker types (Threat Actor entities from data-model §2)
-  - Attacker goals
-  - Attack surfaces in scope (cross-references the matrix in research.md §3)
-  - Trust boundaries (Trust Boundary entities from data-model §4)
-  - Highest-value assets (Asset entities from data-model §3)
-A diagram is OPTIONAL but recommended.>
+
+- Likely attacker types (Threat Actor entities from data-model §2)
+- Attacker goals
+- Attack surfaces in scope (cross-references the matrix in research.md §3)
+- Trust boundaries (Trust Boundary entities from data-model §4)
+- Highest-value assets (Asset entities from data-model §3)
+  A diagram is OPTIONAL but recommended.>
 
 ## 3. Findings
 
@@ -54,9 +56,11 @@ that grouping happens in research.md §3 (Coverage Matrix) and priorities.md.
 This section's job is to be the canonical, ordered, ID-stable list.>
 
 ### F-001 — <title>
+
 <full Finding template per finding.contract.md>
 
 ### F-002 — <title>
+
 …
 
 ## 4. Risk Ranking (summary)
@@ -66,19 +70,20 @@ detailed five-input ranking lives in priorities.md; this section is the
 quick reference so a reader of security.md does not need to switch
 documents to see the list at a glance.>
 
-| ID | Title | Severity | Urgency | Partition |
-|----|-------|----------|---------|-----------|
-| F-001 | … | Critical | urgent | quick-win |
-| F-002 | … | High | urgent | structural |
-| … | | | | |
+| ID    | Title | Severity | Urgency | Partition  |
+| ----- | ----- | -------- | ------- | ---------- |
+| F-001 | …     | Critical | urgent  | quick-win  |
+| F-002 | …     | High     | urgent  | structural |
+| …     |       |          |         |            |
 
 ## 5. Quick Wins vs. Structural Work
 
 <Two subsections. NOT a re-listing of every Finding — that is priorities.md's
 job. This is a leadership-readable summary:
-  - Quick wins (≤ 5 bullets, each citing F-NNN).
-  - Structural hardening (≤ 5 bullets, each citing F-NNN).
-Items not appearing here are deferred and live in priorities.md.>
+
+- Quick wins (≤ 5 bullets, each citing F-NNN).
+- Structural hardening (≤ 5 bullets, each citing F-NNN).
+  Items not appearing here are deferred and live in priorities.md.>
 
 ### 5.1 Quick wins (small, low-risk, reversible)
 
@@ -93,12 +98,13 @@ Items not appearing here are deferred and live in priorities.md.>
 
 <Per FR-030: surfaces that were inspected, looked risky on first reading,
 and were determined to be acceptable. Each entry names:
-  - Coverage matrix row ID (e.g., FE-2)
-  - What was inspected
-  - Why it is not a Finding (one short paragraph)
-  - The Evidence Note(s) that support the dismissal (EN-NNN)
-This section closes spec FR-030 and ensures future audits do not re-litigate
-the same ground.>
+
+- Coverage matrix row ID (e.g., FE-2)
+- What was inspected
+- Why it is not a Finding (one short paragraph)
+- The Evidence Note(s) that support the dismissal (EN-NNN)
+  This section closes spec FR-030 and ensures future audits do not re-litigate
+  the same ground.>
 
 ### Non-issue: <Coverage matrix ID> — <one-line title>
 

@@ -39,7 +39,7 @@ The "stack" of this feature is the human-readable documentation that the audit p
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 The Constitution governs **what SubNation builds and ships**. This feature ships nothing executable; it ships documentation about what is already shipped. The relevant gates are about whether the audit itself respects the same principles that the codebase is held to. Each is evaluated against the audit's behavior, not the system under audit.
 
@@ -98,7 +98,7 @@ specs/004-security-audit/
 └── tasks.md                             # Phase 2 — written by /speckit-tasks (NOT this command)
 ```
 
-**Note on `quickstart.md`**: there is a deliberate naming collision. The plan template specifies a Phase 1 `quickstart.md` for plan validation, and spec FR-016 mandates a `quickstart.md` as one of the four audit deliverables. Both live at `specs/004-security-audit/quickstart.md`. Resolution: the file written here in Phase 1 documents how to verify *the plan*; when `/speckit-implement` runs, it overwrites the file with the *audit-deliverable* quickstart per FR-016. The plan-validation quickstart is short-lived scaffolding by design — its job ends when the plan is reviewed.
+**Note on `quickstart.md`**: there is a deliberate naming collision. The plan template specifies a Phase 1 `quickstart.md` for plan validation, and spec FR-016 mandates a `quickstart.md` as one of the four audit deliverables. Both live at `specs/004-security-audit/quickstart.md`. Resolution: the file written here in Phase 1 documents how to verify _the plan_; when `/speckit-implement` runs, it overwrites the file with the _audit-deliverable_ quickstart per FR-016. The plan-validation quickstart is short-lived scaffolding by design — its job ends when the plan is reviewed.
 
 ### Source Code (repository root)
 
@@ -120,6 +120,7 @@ The audit proceeds in three internal stages, each producing visible artifacts:
 3. **Finding catalog** — for each cluster of converging Evidence Notes, a Finding is opened in `security.md`. Every Finding carries the required fields (spec FR-020), a proven / likely / hypothesis classification on each claim (spec FR-021), a severity from the 4-tier scale defined once in `security.md` (spec FR-050), and a single recommendation sized as quick win / structural / deferred (spec entity definition). The same Finding ID then appears in `priorities.md` with the five ranking inputs (severity × likelihood × blast radius × ease × business impact, per spec FR-051).
 
 **Severity scale (defined once, used everywhere)** — Critical / High / Medium / Low. Calibration is recorded in `research.md` so the rating is auditable, not subjective:
+
 - **Critical** — direct, currently exploitable path to: full account takeover at scale, ledger corruption, admin-state mutation by an unauthenticated user, or production secret exfiltration. Urgency = urgent.
 - **High** — exploitable by a low-privileged authenticated user with realistic effort, OR a confirmed weakness in a defense-in-depth layer that is the primary control for an asset. Urgency = urgent (for finance/auth/admin) or can-wait (otherwise).
 - **Medium** — exploitable only with non-trivial effort or chained conditions, or a defense-in-depth weakness with a redundant layer in front of it. Urgency = can-wait.
@@ -136,6 +137,7 @@ The audit proceeds in three internal stages, each producing visible artifacts:
 `research.md` produced by this command is the **methodology document plus an empty-but-structured evidence notebook**. The methodology decisions are made now; the evidence rows are filled in by `/speckit-implement`.
 
 Methodology decisions to lock in (each as Decision / Rationale / Alternatives Considered):
+
 - **Severity scale = 4 tiers** (Critical / High / Medium / Low). Not CVSS. Calibrated above.
 - **Classification = 3 tiers** (proven / likely / hypothesis). Per-claim, not per-finding — a finding may carry one proven claim and one hypothesis claim simultaneously.
 - **Evidence-citation format** = Markdown link `path/to/file.ts:42–58` + 1–3 line excerpt block + behavior description; commit reference recorded once in `quickstart.md` rather than on every citation. Excerpts MUST exclude any secret value.
@@ -152,6 +154,7 @@ Methodology decisions to lock in (each as Decision / Rationale / Alternatives Co
 `data-model.md` formalizes the eight entities the spec defined informally (Finding, Threat Actor, Asset, Trust Boundary, Coverage Item, Risk Score, Evidence Note, Recommendation) so that `/speckit-tasks` and `/speckit-implement` cannot drift from the spec when generating the deliverables. Each entity gets: required attributes, optional attributes, relationships to other entities, enumerations, and validation rules drawn from the spec FRs.
 
 `contracts/` holds five **document-shape contracts**:
+
 - `finding.contract.md` — the canonical structure of a single Finding (title, severity, subsystem, exploitability, impact, evidence (list of EN-IDs), reproduction-or-hypothesis, recommendation, urgency, classification per claim). This is the contract `/speckit-implement` MUST satisfy when writing each finding in `security.md`.
 - `security-md.contract.md` — the section order of `security.md` mandated by spec FR-011 (executive summary → threat model → findings → risk ranking → quick wins vs. structural → explicit non-issues).
 - `research-md.contract.md` — the section order of `research.md` (methodology decisions → severity calibration → coverage matrix → evidence notebook → external-source notes → secret-handling log).
@@ -169,7 +172,7 @@ After Phase 1 design, all five Constitution principles still PASS for the same r
 
 ## Complexity Tracking
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
+| Violation                                                                                               | Why Needed                                                                                                                                                                                              | Simpler Alternative Rejected Because                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Audit deliverables in English only (deviation from Constitution → Domain Constraints → Arabic-First UX) | Deliverables are internal-only documents for SubNation's product owner, engineering, and authorized reviewers (spec Assumptions §7). They describe attack paths and are explicitly not customer-facing. | An Arabic translation produces no stakeholder value here, doubles maintenance, and risks per-finding inconsistency between the two language versions. If leadership later wants an Arabic executive summary for a non-engineering audience, that is a follow-up task, separately scoped — not a hidden requirement of this audit. |
-| Plan-validation `quickstart.md` shares a path with the audit-deliverable `quickstart.md` | Spec FR-016 requires a `quickstart.md` deliverable; the plan template requires a Phase 1 `quickstart.md`. | Renaming either file desynchronizes a SPECKIT-template expectation. The collision is resolved by lifecycle: plan-validation quickstart is scaffolding, audit-deliverable quickstart overwrites it during `/speckit-implement`. The handoff is recorded in the Project Structure note above. |
+| Plan-validation `quickstart.md` shares a path with the audit-deliverable `quickstart.md`                | Spec FR-016 requires a `quickstart.md` deliverable; the plan template requires a Phase 1 `quickstart.md`.                                                                                               | Renaming either file desynchronizes a SPECKIT-template expectation. The collision is resolved by lifecycle: plan-validation quickstart is scaffolding, audit-deliverable quickstart overwrites it during `/speckit-implement`. The handoff is recorded in the Project Structure note above.                                       |

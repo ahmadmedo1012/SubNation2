@@ -35,9 +35,10 @@ security.md §1.>
 <The 47-row matrix. Every row's Status MUST be `covered` or `gap` at sign-off
 (no `open` rows). Each row's `Findings / Notes / Gap` cell MUST contain at
 least one of:
-  - a list of F-NNN IDs (the row is closed by those Findings)
-  - the literal `non-issue: <one-line note>` (the row is closed by a non-issue)
-  - a `CG-NN` reference (the row is a coverage gap)>
+
+- a list of F-NNN IDs (the row is closed by those Findings)
+- the literal `non-issue: <one-line note>` (the row is closed by a non-issue)
+- a `CG-NN` reference (the row is a coverage gap)>
 
 ## 4. Evidence Notebook
 
@@ -47,9 +48,11 @@ up not citing in any Finding MUST either be linked to a Finding or moved to a
 "Discarded observations" subsection at the end with a one-line reason.>
 
 ### EN-001 — <title>
+
 <EN body per template>
 
 ### EN-002 — <title>
+
 …
 
 ### Discarded observations (optional)
@@ -68,10 +71,11 @@ dashboard view rather than a repo file.>
 
 <Populated by /speckit-implement. One subsection per CG-NN. Each gap MUST
 record:
-  - assumption the audit is making about the boundary
-  - access required to close the gap
-  - worst-case finding if the assumption is wrong (severity tier + 1-line description)
-This closes FR-032.>
+
+- assumption the audit is making about the boundary
+- access required to close the gap
+- worst-case finding if the assumption is wrong (severity tier + 1-line description)
+  This closes FR-032.>
 
 ## 7. Secret-Handling Log
 
@@ -84,12 +88,13 @@ Closes FR-042 / SC-008.>
 
 <Phase 0 done-when checklist (already complete) PLUS the audit-deliverable
 done-when:
-  - [ ] Coverage matrix has zero `open` rows
-  - [ ] Every EN is linked to a Finding OR moved to Discarded observations
-  - [ ] Every CG records assumption / access / worst-case
-  - [ ] Every SH records type / location / recommendation
-  - [ ] Pre-publish entropy scan run; result attached at the bottom of this file
-  - [ ] Reviewer spot-check on ≥10% of Findings (minimum 3) — pass>
+
+- [ ] Coverage matrix has zero `open` rows
+- [ ] Every EN is linked to a Finding OR moved to Discarded observations
+- [ ] Every CG records assumption / access / worst-case
+- [ ] Every SH records type / location / recommendation
+- [ ] Pre-publish entropy scan run; result attached at the bottom of this file
+- [ ] Reviewer spot-check on ≥10% of Findings (minimum 3) — pass>
 ```
 
 ---

@@ -50,7 +50,7 @@ Every spec FR for deliverable structure has a contract that satisfies it:
 
 ### E. Constitution alignment
 
-- [ ] **E-1.** The plan's Constitution Check evaluates all five principles against the *audit's* behavior, not the system under audit, and returns PASS for each — re-read [`plan.md`](./plan.md) → "Constitution Check".
+- [ ] **E-1.** The plan's Constitution Check evaluates all five principles against the _audit's_ behavior, not the system under audit, and returns PASS for each — re-read [`plan.md`](./plan.md) → "Constitution Check".
 - [ ] **E-2.** The single deviation (English-only deliverables vs. Arabic-First Domain Constraint) is recorded in [`plan.md`](./plan.md) → "Complexity Tracking" with Why Needed + Simpler Alternative Rejected.
 - [ ] **E-3.** The plan does not call for any change to `shared/api-spec/`, `shared/api-zod/`, or `shared/api-client-react/` — confirm by reading [`contracts/README.md`](./contracts/README.md) "Why `shared/api-*` is intentionally not touched".
 
@@ -72,14 +72,14 @@ Every spec FR for deliverable structure has a contract that satisfies it:
 
 ## If something fails
 
-| Failure | What to revise |
-|---------|---------------|
-| **A-** failure (scope creep) | `plan.md` → re-tighten the "Audit Methodology" section against spec FR-040 / FR-041 / FR-042. |
-| **B-** failure (methodology gap) | `research.md` → add or sharpen the missing decision / calibration / matrix row. |
-| **C-** failure (FR has no contract closure) | `contracts/<file>` → add the missing section / field / validation rule. |
-| **D-** failure (closure is aspirational, not mechanical) | The relevant artifact — make the closure rule something a reviewer can run, not something they have to interpret. |
-| **E-** failure (Constitution mis-evaluation) | `plan.md` → "Constitution Check" — re-evaluate the principle against the audit's behavior, not the system under audit. |
-| **F-** failure (handoff unclear) | Trace the failure to the specific contract / entity / section that lacks the structure `/speckit-tasks` or `/speckit-implement` needs. |
+| Failure                                                  | What to revise                                                                                                                         |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **A-** failure (scope creep)                             | `plan.md` → re-tighten the "Audit Methodology" section against spec FR-040 / FR-041 / FR-042.                                          |
+| **B-** failure (methodology gap)                         | `research.md` → add or sharpen the missing decision / calibration / matrix row.                                                        |
+| **C-** failure (FR has no contract closure)              | `contracts/<file>` → add the missing section / field / validation rule.                                                                |
+| **D-** failure (closure is aspirational, not mechanical) | The relevant artifact — make the closure rule something a reviewer can run, not something they have to interpret.                      |
+| **E-** failure (Constitution mis-evaluation)             | `plan.md` → "Constitution Check" — re-evaluate the principle against the audit's behavior, not the system under audit.                 |
+| **F-** failure (handoff unclear)                         | Trace the failure to the specific contract / entity / section that lacks the structure `/speckit-tasks` or `/speckit-implement` needs. |
 
 ---
 

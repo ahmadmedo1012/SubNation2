@@ -18,13 +18,13 @@ A reviewer scanning this branch's diff for `shared/api-*` changes will find none
 
 ## Files in this directory
 
-| Contract | What it specifies |
-|----------|------------------|
-| [`finding.contract.md`](./finding.contract.md) | The required structure of a single Finding inside `security.md`. |
-| [`security-md.contract.md`](./security-md.contract.md) | The section order and content of `security.md`. |
-| [`research-md.contract.md`](./research-md.contract.md) | The section order and content of `research.md` (audit-deliverable form, not the Phase 0 methodology form). |
-| [`priorities-md.contract.md`](./priorities-md.contract.md) | The section order and content of `priorities.md`. |
-| [`quickstart-md.contract.md`](./quickstart-md.contract.md) | The section order and content of the audit-deliverable `quickstart.md`. |
+| Contract                                                   | What it specifies                                                                                          |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [`finding.contract.md`](./finding.contract.md)             | The required structure of a single Finding inside `security.md`.                                           |
+| [`security-md.contract.md`](./security-md.contract.md)     | The section order and content of `security.md`.                                                            |
+| [`research-md.contract.md`](./research-md.contract.md)     | The section order and content of `research.md` (audit-deliverable form, not the Phase 0 methodology form). |
+| [`priorities-md.contract.md`](./priorities-md.contract.md) | The section order and content of `priorities.md`.                                                          |
+| [`quickstart-md.contract.md`](./quickstart-md.contract.md) | The section order and content of the audit-deliverable `quickstart.md`.                                    |
 
 ## How to read these contracts
 

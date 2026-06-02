@@ -26,7 +26,7 @@ Each decision is recorded as **Decision / Rationale / Alternatives Considered** 
 - **Decision**: Classify every claim inside a Finding (not just the Finding overall) as one of: **proven**, **likely**, **hypothesis**. A single Finding may carry mixed classifications.
 - **Rationale**: Spec FR-021 requires this. Per-claim is stronger than per-finding because real Findings often combine a proven primary observation with secondary inferences that cannot be confirmed without state change — e.g., "the route is missing a CSRF check (proven)" + "an attacker on a hostile origin can therefore force a top-up approval (hypothesis, would require running the cross-origin POST against staging)." Collapsing those to one classification either over-claims or under-claims.
 - **Alternatives considered**:
-  - **Binary (confirmed / unconfirmed)** — rejected: erases the useful middle ground of "multiple converging signals but no single reproducible trigger." That middle ground is exactly where many SubNation findings will land (e.g., "the OpenWA OTP flow does not appear to record replay-protection state in the code we can see, AND the Telegram-replay pattern uses Redis TTL — so this is *likely* a gap, not a *hypothesis*"). Spec FR-031 explicitly requires hypothesis to be visibly distinct.
+  - **Binary (confirmed / unconfirmed)** — rejected: erases the useful middle ground of "multiple converging signals but no single reproducible trigger." That middle ground is exactly where many SubNation findings will land (e.g., "the OpenWA OTP flow does not appear to record replay-protection state in the code we can see, AND the Telegram-replay pattern uses Redis TTL — so this is _likely_ a gap, not a _hypothesis_"). Spec FR-031 explicitly requires hypothesis to be visibly distinct.
   - **Likelihood percentages** — rejected: false precision; reviewers would argue about whether something is 60% or 75% rather than about whether the evidence supports the claim.
 
 ### D-03 — Evidence-citation format
@@ -45,7 +45,7 @@ Each decision is recorded as **Decision / Rationale / Alternatives Considered** 
   - **Coverage Gap**: `CG-NN` (e.g., `CG-04`)
 - **Rationale**: `security.md`, `priorities.md`, and `research.md` all cross-reference findings; if IDs were positional the cross-references would silently break on insertion. Zero-padding to 3 (or 2 for gaps, which are rarer) keeps tables aligned.
 - **Alternatives considered**:
-  - **Section-derived IDs (`AUTH-1`, `WALLET-3`)** — rejected: a Finding can plausibly be reclassified mid-audit (e.g., a CSRF gap that turns out to be a wallet-flow issue), which would break its ID. Subsystem is a *field* on the Finding, not part of its identity.
+  - **Section-derived IDs (`AUTH-1`, `WALLET-3`)** — rejected: a Finding can plausibly be reclassified mid-audit (e.g., a CSRF gap that turns out to be a wallet-flow issue), which would break its ID. Subsystem is a _field_ on the Finding, not part of its identity.
 
 ### D-05 — Coverage matrix as the closure mechanism for FR-001 / FR-002 / SC-003
 
@@ -57,10 +57,10 @@ Each decision is recorded as **Decision / Rationale / Alternatives Considered** 
 ### D-06 — Reviewer-spot-check protocol (closes SC-005)
 
 - **Decision**: At sign-off, draw a uniform-random 10% sample of the finalized Finding list (minimum 3 findings, even if 10% rounds lower). For each sampled Finding, an independent reviewer verifies: (a) every cited path resolves at the pinned commit, (b) every cited behavior is present at the pinned commit, (c) the per-claim classification is consistent with the linked Evidence Notes. Any single failure halts sign-off; the audit is not complete until every sampled Finding passes.
-- **Rationale**: Spec SC-005 measures audit *quality*, not audit *output*. Without an enforced sampling protocol, "spot-checked by a reviewer" is unfalsifiable. The 10% / minimum-3 floor handles small-finding-count audits without inflating effort on large ones.
+- **Rationale**: Spec SC-005 measures audit _quality_, not audit _output_. Without an enforced sampling protocol, "spot-checked by a reviewer" is unfalsifiable. The 10% / minimum-3 floor handles small-finding-count audits without inflating effort on large ones.
 - **Alternatives considered**:
   - **Reviewer reads everything** — rejected: doubles audit cost without proportional risk reduction.
-  - **Author-self-check only** — rejected: defeats the purpose; SC-007 also requires an *independent* reviewer.
+  - **Author-self-check only** — rejected: defeats the purpose; SC-007 also requires an _independent_ reviewer.
 
 ### D-07 — No automated probes
 
@@ -95,20 +95,21 @@ Each decision is recorded as **Decision / Rationale / Alternatives Considered** 
 
 The 4 tiers below are the canonical definitions. They appear once here and are referenced (not redefined) in `security.md` per spec FR-050.
 
-| Tier | Trigger conditions | Default urgency |
-|------|--------------------|-----------------|
-| **Critical** | Direct, currently exploitable path to one or more of: (a) full account takeover at scale (not just one account), (b) ledger corruption or balance mutation that bypasses the append-only invariant, (c) admin-state mutation by an unauthenticated user, (d) production secret exfiltration. | urgent |
-| **High** | Exploitable by a low-privileged authenticated user with realistic effort, OR a confirmed weakness in the *primary* defense-in-depth layer for an asset listed in the threat model. Includes: missing CSRF on a state-changing route the customer can reach, broken IDOR on a wallet/order resource, replay-window in the OTP/Telegram-login flow that is wider than its TTL, leaked secret in code or history. | urgent for finance / auth / admin; can-wait otherwise |
-| **Medium** | Exploitable only with non-trivial effort or chained conditions, OR a defense-in-depth weakness with a redundant layer in front of it (e.g., CSP missing a directive that Origin/Referer already covers). | can-wait |
-| **Low** | Best-practice deviation with no current exploit path; hardening opportunity. | can-wait or deferred |
+| Tier         | Trigger conditions                                                                                                                                                                                                                                                                                                                                                                                             | Default urgency                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **Critical** | Direct, currently exploitable path to one or more of: (a) full account takeover at scale (not just one account), (b) ledger corruption or balance mutation that bypasses the append-only invariant, (c) admin-state mutation by an unauthenticated user, (d) production secret exfiltration.                                                                                                                   | urgent                                                |
+| **High**     | Exploitable by a low-privileged authenticated user with realistic effort, OR a confirmed weakness in the _primary_ defense-in-depth layer for an asset listed in the threat model. Includes: missing CSRF on a state-changing route the customer can reach, broken IDOR on a wallet/order resource, replay-window in the OTP/Telegram-login flow that is wider than its TTL, leaked secret in code or history. | urgent for finance / auth / admin; can-wait otherwise |
+| **Medium**   | Exploitable only with non-trivial effort or chained conditions, OR a defense-in-depth weakness with a redundant layer in front of it (e.g., CSP missing a directive that Origin/Referer already covers).                                                                                                                                                                                                       | can-wait                                              |
+| **Low**      | Best-practice deviation with no current exploit path; hardening opportunity.                                                                                                                                                                                                                                                                                                                                   | can-wait or deferred                                  |
 
 **Calibration anchors** (so the scale stays consistent across findings):
+
 - A leaked production database connection string in git history → **Critical**, regardless of whether the auditor has confirmed the secret is still valid.
 - A missing CSRF check on a wallet top-up endpoint that is reachable from the browser → **Critical** if the unauthenticated case allows it; **High** if it requires an authenticated user.
 - A logger redaction gap on an admin-only debug route → **Medium** at most (admin-only narrows blast radius), unless evidence shows a low-privileged user can reach it.
 - Outdated dependency with a published CVE but no demonstrated reachable code path in SubNation → **Low** until the reachability is proven.
 
-**Resolution rule for contested severity** (spec edge case): when a finding's severity is contested between criteria (e.g., low likelihood × catastrophic blast radius), `priorities.md` shows all five ranking inputs (severity, likelihood, blast radius, ease of exploitation, business impact) so the rank is auditable. The severity tier in `security.md` resolves toward whichever input represents the **largest possible loss**, not the most likely outcome — Critical is reserved for things that *can* happen, not things that *will* happen on average.
+**Resolution rule for contested severity** (spec edge case): when a finding's severity is contested between criteria (e.g., low likelihood × catastrophic blast radius), `priorities.md` shows all five ranking inputs (severity, likelihood, blast radius, ease of exploitation, business impact) so the rank is auditable. The severity tier in `security.md` resolves toward whichever input represents the **largest possible loss**, not the most likely outcome — Critical is reserved for things that _can_ happen, not things that _will_ happen on average.
 
 ---
 
@@ -118,61 +119,61 @@ Every cell below MUST be closed before audit sign-off. Each open cell is either:
 
 `/speckit-implement` is responsible for filling the **Status** and **Findings / Notes / Gap** columns. Subsystems and surfaces are frozen by this Phase 0 — they are not edited at audit time without an amendment to spec FR-001.
 
-| # | Subsystem | Surface | Status | Findings / Notes / Gap |
-|---|-----------|---------|--------|------------------------|
-| **AUTH-1** | Authentication | Google login (Firebase) | open | — |
-| **AUTH-2** | Authentication | Telegram login (HMAC widget + Mini App) | open | — |
-| **AUTH-3** | Authentication | WhatsApp OTP via OpenWA | open | — |
-| **AUTH-4** | Authentication | Session cookie (`auth_token`) handling | open | — |
-| **AUTH-5** | Authentication | JWT verification & secret strength (`SESSION_SECRET`) | open | — |
-| **AUTH-6** | Authentication | Login state transitions (sign-in, sign-out, refresh) | open | — |
-| **AUTH-7** | Authentication | Account linking / identity mapping across providers | open | — |
-| **AUTH-8** | Authentication | Admin auth (argon2, TOTP 2FA, lockout, `_admin` cookie) | open | — |
-| **AUTHZ-1** | Authorization | Admin endpoints role/permission boundary | open | — |
-| **AUTHZ-2** | Authorization | User endpoints (own-resource) | open | — |
-| **AUTHZ-3** | Authorization | Order endpoints | open | — |
-| **AUTHZ-4** | Authorization | Wallet endpoints | open | — |
-| **AUTHZ-5** | Authorization | Product / admin product-management endpoints | open | — |
-| **AUTHZ-6** | Authorization | IDOR / privilege-escalation surface | open | — |
-| **WALLET-1** | Wallet & Financial Integrity | Top-up flow (request, approval) | open | — |
-| **WALLET-2** | Wallet & Financial Integrity | Balance change atomicity & optimistic lock | open | — |
-| **WALLET-3** | Wallet & Financial Integrity | Append-only ledger invariant (`balanceBefore` / `balanceAfter`) | open | — |
-| **WALLET-4** | Wallet & Financial Integrity | Coupon application | open | — |
-| **WALLET-5** | Wallet & Financial Integrity | Purchase flow (single-transaction integrity) | open | — |
-| **WALLET-6** | Wallet & Financial Integrity | Refund / adjustment paths | open | — |
-| **WALLET-7** | Wallet & Financial Integrity | Replay / double-spend / race conditions | open | — |
-| **API-1** | API & Input Handling | Request validation (Zod schemas in `shared/api-zod`) | open | — |
-| **API-2** | API & Input Handling | Query-parameter handling | open | — |
-| **API-3** | API & Input Handling | Route protection (auth/admin guards) | open | — |
-| **API-4** | API & Input Handling | CSRF (Origin / Referer check) | open | — |
-| **API-5** | API & Input Handling | CORS allow-list (`APP_ORIGINS`) | open | — |
-| **API-6** | API & Input Handling | Open redirects | open | — |
-| **API-7** | API & Input Handling | Unsafe URLs handed to clients | open | — |
-| **API-8** | API & Input Handling | Webhook inputs | open | — |
-| **API-9** | API & Input Handling | External-provider callbacks (Google / Telegram / OpenWA) | open | — |
-| **INFRA-1** | Infrastructure & Deployment | Render service config (web / worker / redis) | open | — |
-| **INFRA-2** | Infrastructure & Deployment | Neon connection (string handling, TLS, IP allow-list) | open | — |
-| **INFRA-3** | Infrastructure & Deployment | Redis usage (rate-limit, leader-lock, socket adapter) | open | — |
-| **INFRA-4** | Infrastructure & Deployment | Cloudflare Tunnel / WAF assumptions | open | — |
-| **INFRA-5** | Infrastructure & Deployment | Environment variables surface (`config/env.example` vs. real env) | open | — |
-| **INFRA-6** | Infrastructure & Deployment | Secret handling (storage, rotation, fail-fast on missing) | open | — |
-| **INFRA-7** | Infrastructure & Deployment | Logging redaction & Sentry exposure | open | — |
-| **INFRA-8** | Infrastructure & Deployment | Multi-tier rate limits (anonymous / authenticated / auth routes) | open | — |
-| **INFRA-9** | Infrastructure & Deployment | Health / readiness endpoints (`/api/healthz`, `/status`) | open | — |
-| **FE-1** | Frontend Security | Client-side auth state handling | open | — |
-| **FE-2** | Frontend Security | Unsafe rendering (`dangerouslySetInnerHTML` and equivalents) | open | — |
-| **FE-3** | Frontend Security | Dynamic HTML / Markdown rendering | open | — |
-| **FE-4** | Frontend Security | Image URL handling (user-supplied / external) | open | — |
-| **FE-5** | Frontend Security | External-link `rel`/`target` posture | open | — |
-| **FE-6** | Frontend Security | XSS surface (sinks vs. sources) | open | — |
-| **FE-7** | Frontend Security | Sensitive-data exposure in UI | open | — |
-| **FE-8** | Frontend Security | Admin-only data leakage to non-admin clients | open | — |
-| **SUP-1** | Supply Chain & Operational | Dependency tree & known-CVE reachability | open | — |
-| **SUP-2** | Supply Chain & Operational | Build-time / runtime assumptions | open | — |
-| **SUP-3** | Supply Chain & Operational | Hidden debug paths or dev-only routes left enabled | open | — |
-| **SUP-4** | Supply Chain & Operational | Obsolete endpoints (e.g., retired phone+password mentioned in Constitution Principle II) | open | — |
-| **SUP-5** | Supply Chain & Operational | Diagnostic logs / leftover testing hooks | open | — |
-| **SUP-6** | Supply Chain & Operational | Pre-commit / gitleaks coverage gaps | open | — |
+| #            | Subsystem                    | Surface                                                                                  | Status | Findings / Notes / Gap |
+| ------------ | ---------------------------- | ---------------------------------------------------------------------------------------- | ------ | ---------------------- |
+| **AUTH-1**   | Authentication               | Google login (Firebase)                                                                  | open   | —                      |
+| **AUTH-2**   | Authentication               | Telegram login (HMAC widget + Mini App)                                                  | open   | —                      |
+| **AUTH-3**   | Authentication               | WhatsApp OTP via OpenWA                                                                  | open   | —                      |
+| **AUTH-4**   | Authentication               | Session cookie (`auth_token`) handling                                                   | open   | —                      |
+| **AUTH-5**   | Authentication               | JWT verification & secret strength (`SESSION_SECRET`)                                    | open   | —                      |
+| **AUTH-6**   | Authentication               | Login state transitions (sign-in, sign-out, refresh)                                     | open   | —                      |
+| **AUTH-7**   | Authentication               | Account linking / identity mapping across providers                                      | open   | —                      |
+| **AUTH-8**   | Authentication               | Admin auth (argon2, TOTP 2FA, lockout, `_admin` cookie)                                  | open   | —                      |
+| **AUTHZ-1**  | Authorization                | Admin endpoints role/permission boundary                                                 | open   | —                      |
+| **AUTHZ-2**  | Authorization                | User endpoints (own-resource)                                                            | open   | —                      |
+| **AUTHZ-3**  | Authorization                | Order endpoints                                                                          | open   | —                      |
+| **AUTHZ-4**  | Authorization                | Wallet endpoints                                                                         | open   | —                      |
+| **AUTHZ-5**  | Authorization                | Product / admin product-management endpoints                                             | open   | —                      |
+| **AUTHZ-6**  | Authorization                | IDOR / privilege-escalation surface                                                      | open   | —                      |
+| **WALLET-1** | Wallet & Financial Integrity | Top-up flow (request, approval)                                                          | open   | —                      |
+| **WALLET-2** | Wallet & Financial Integrity | Balance change atomicity & optimistic lock                                               | open   | —                      |
+| **WALLET-3** | Wallet & Financial Integrity | Append-only ledger invariant (`balanceBefore` / `balanceAfter`)                          | open   | —                      |
+| **WALLET-4** | Wallet & Financial Integrity | Coupon application                                                                       | open   | —                      |
+| **WALLET-5** | Wallet & Financial Integrity | Purchase flow (single-transaction integrity)                                             | open   | —                      |
+| **WALLET-6** | Wallet & Financial Integrity | Refund / adjustment paths                                                                | open   | —                      |
+| **WALLET-7** | Wallet & Financial Integrity | Replay / double-spend / race conditions                                                  | open   | —                      |
+| **API-1**    | API & Input Handling         | Request validation (Zod schemas in `shared/api-zod`)                                     | open   | —                      |
+| **API-2**    | API & Input Handling         | Query-parameter handling                                                                 | open   | —                      |
+| **API-3**    | API & Input Handling         | Route protection (auth/admin guards)                                                     | open   | —                      |
+| **API-4**    | API & Input Handling         | CSRF (Origin / Referer check)                                                            | open   | —                      |
+| **API-5**    | API & Input Handling         | CORS allow-list (`APP_ORIGINS`)                                                          | open   | —                      |
+| **API-6**    | API & Input Handling         | Open redirects                                                                           | open   | —                      |
+| **API-7**    | API & Input Handling         | Unsafe URLs handed to clients                                                            | open   | —                      |
+| **API-8**    | API & Input Handling         | Webhook inputs                                                                           | open   | —                      |
+| **API-9**    | API & Input Handling         | External-provider callbacks (Google / Telegram / OpenWA)                                 | open   | —                      |
+| **INFRA-1**  | Infrastructure & Deployment  | Render service config (web / worker / redis)                                             | open   | —                      |
+| **INFRA-2**  | Infrastructure & Deployment  | Neon connection (string handling, TLS, IP allow-list)                                    | open   | —                      |
+| **INFRA-3**  | Infrastructure & Deployment  | Redis usage (rate-limit, leader-lock, socket adapter)                                    | open   | —                      |
+| **INFRA-4**  | Infrastructure & Deployment  | Cloudflare Tunnel / WAF assumptions                                                      | open   | —                      |
+| **INFRA-5**  | Infrastructure & Deployment  | Environment variables surface (`config/env.example` vs. real env)                        | open   | —                      |
+| **INFRA-6**  | Infrastructure & Deployment  | Secret handling (storage, rotation, fail-fast on missing)                                | open   | —                      |
+| **INFRA-7**  | Infrastructure & Deployment  | Logging redaction & Sentry exposure                                                      | open   | —                      |
+| **INFRA-8**  | Infrastructure & Deployment  | Multi-tier rate limits (anonymous / authenticated / auth routes)                         | open   | —                      |
+| **INFRA-9**  | Infrastructure & Deployment  | Health / readiness endpoints (`/api/healthz`, `/status`)                                 | open   | —                      |
+| **FE-1**     | Frontend Security            | Client-side auth state handling                                                          | open   | —                      |
+| **FE-2**     | Frontend Security            | Unsafe rendering (`dangerouslySetInnerHTML` and equivalents)                             | open   | —                      |
+| **FE-3**     | Frontend Security            | Dynamic HTML / Markdown rendering                                                        | open   | —                      |
+| **FE-4**     | Frontend Security            | Image URL handling (user-supplied / external)                                            | open   | —                      |
+| **FE-5**     | Frontend Security            | External-link `rel`/`target` posture                                                     | open   | —                      |
+| **FE-6**     | Frontend Security            | XSS surface (sinks vs. sources)                                                          | open   | —                      |
+| **FE-7**     | Frontend Security            | Sensitive-data exposure in UI                                                            | open   | —                      |
+| **FE-8**     | Frontend Security            | Admin-only data leakage to non-admin clients                                             | open   | —                      |
+| **SUP-1**    | Supply Chain & Operational   | Dependency tree & known-CVE reachability                                                 | open   | —                      |
+| **SUP-2**    | Supply Chain & Operational   | Build-time / runtime assumptions                                                         | open   | —                      |
+| **SUP-3**    | Supply Chain & Operational   | Hidden debug paths or dev-only routes left enabled                                       | open   | —                      |
+| **SUP-4**    | Supply Chain & Operational   | Obsolete endpoints (e.g., retired phone+password mentioned in Constitution Principle II) | open   | —                      |
+| **SUP-5**    | Supply Chain & Operational   | Diagnostic logs / leftover testing hooks                                                 | open   | —                      |
+| **SUP-6**    | Supply Chain & Operational   | Pre-commit / gitleaks coverage gaps                                                      | open   | —                      |
 
 **Total**: 47 surfaces. Each MUST be closed at sign-off.
 
@@ -182,7 +183,7 @@ Every cell below MUST be closed before audit sign-off. Each open cell is either:
 
 `/speckit-implement` populates this section. Each entry is one observation; multiple observations may roll up into one Finding.
 
-```
+````
 ### EN-NNN — <one-line title>
 
 **Subsystem (matrix row)**: <e.g., AUTH-3>
@@ -190,11 +191,13 @@ Every cell below MUST be closed before audit sign-off. Each open cell is either:
 **Excerpt** (≤ 3 lines, no secret values):
 ```ts
 // excerpt here
-```
+````
+
 **Behavior**: <what the code does, in plain language>
 **Linked Findings**: <F-NNN, F-NNN…>
 **Classification of the observation itself**: proven / likely / hypothesis
 **Notes**: <reviewer-relevant context, conflicting signals, links to other ENs>
+
 ```
 
 (No entries yet — population is the audit's job, not the plan's.)
@@ -206,6 +209,7 @@ Every cell below MUST be closed before audit sign-off. Each open cell is either:
 For each out-of-repo dashboard the auditor inspected, record one entry.
 
 ```
+
 ### XS-NN — <source name> — <date YYYY-MM-DD HH:MM TZ>
 
 **Source**: <Render | Cloudflare | Sentry | Neon | …>
@@ -213,6 +217,7 @@ For each out-of-repo dashboard the auditor inspected, record one entry.
 **What was inspected**: <e.g., Render service env-var inventory for the `subnation-web` service>
 **What was observed (no secret values)**: <plain-language description>
 **Linked Findings or Gaps**: <F-NNN, CG-NN…>
+
 ```
 
 (No entries yet.)
@@ -224,6 +229,7 @@ For each out-of-repo dashboard the auditor inspected, record one entry.
 For each surface that cannot be fully reached without additional access.
 
 ```
+
 ### CG-NN — <one-line title>
 
 **Subsystem (matrix row)**: <e.g., INFRA-4>
@@ -231,6 +237,7 @@ For each surface that cannot be fully reached without additional access.
 **Assumption the audit is making**: <plain-language assumption>
 **Access required to close the gap**: <e.g., read-only Cloudflare dashboard access>
 **Worst-case finding if the assumption is wrong**: <severity tier + one-line description>
+
 ```
 
 (No entries yet.)
@@ -242,6 +249,7 @@ For each surface that cannot be fully reached without additional access.
 Every secret-class observation lands here AND in its own Finding. Per spec FR-042 and §1 D-09, values are never reproduced.
 
 ```
+
 ### SH-NN — <secret type> in <location>
 
 **Secret type**: <API key | JWT signing secret | DB conn string | OAuth client secret | OpenWA token | Telegram bot token | encryption key | Sentry DSN | other>
@@ -249,6 +257,7 @@ Every secret-class observation lands here AND in its own Finding. Per spec FR-04
 **How the audit found it**: <git history scan | config inspection | log sample | dashboard view>
 **Recommendation**: rotate (no exceptions), then remove from history if applicable.
 **Linked Finding**: <F-NNN>
+
 ```
 
 (No entries yet.)
@@ -266,3 +275,4 @@ This `research.md` is complete for Phase 0 when:
 - [x] No live findings are recorded (those belong to `/speckit-implement`, not Phase 0).
 
 `research.md` will be appended to (not rewritten) by `/speckit-implement` as findings accumulate.
+```
