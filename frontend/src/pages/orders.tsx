@@ -6,13 +6,17 @@ import {
   CheckCircle,
   ChevronLeft,
   Clock,
+  Layers,
   Package,
   ShoppingBag,
   Sparkles,
   Tag,
   XCircle,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+
+type OrderFilter = "all" | "pending" | "completed" | "failed";
 
 const STAGGER = [
   "",
@@ -43,6 +47,63 @@ function statusLeftBorder(status: string): string {
   return "border-l-status-warning/45";
 }
 
+const FILTER_TONES: Record<
+  "neutral" | "warning" | "success" | "error",
+  { active: string; idle: string }
+> = {
+  neutral: {
+    active: "bg-foreground text-background border-foreground shadow-sm shadow-black/20",
+    idle: "bg-muted/40 border-border/55 text-muted-foreground hover:text-foreground hover:bg-muted/60",
+  },
+  warning: {
+    active:
+      "bg-status-warning/15 border-status-warning/45 text-status-warning shadow-sm shadow-status-warning/20",
+    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-warning hover:border-status-warning/35",
+  },
+  success: {
+    active:
+      "bg-status-success/15 border-status-success/45 text-status-success shadow-sm shadow-status-success/20",
+    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-success hover:border-status-success/35",
+  },
+  error: {
+    active:
+      "bg-status-error/15 border-status-error/45 text-status-error shadow-sm shadow-status-error/20",
+    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-error hover:border-status-error/35",
+  },
+};
+
+function FilterChip({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  count,
+  tone,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: typeof Clock;
+  label: string;
+  count: number;
+  tone: "neutral" | "warning" | "success" | "error";
+}) {
+  const styles = FILTER_TONES[tone];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-1.5 text-xs font-bold border px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 transition-all duration-150 press-spring ${
+        active ? styles.active : styles.idle
+      }`}
+    >
+      <Icon className="w-3 h-3" />
+      <span>{label}</span>
+      <span className={`tabular-nums font-black ${active ? "" : "opacity-60"}`}>{count}</span>
+    </button>
+  );
+}
+
 function OrderCardSkeleton() {
   return (
     <div className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4">
@@ -67,6 +128,7 @@ function OrderCardSkeleton() {
 export default function OrdersPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
+  const [filter, setFilter] = useState<OrderFilter>("all");
 
   const { data: orders = [], isLoading } = useListOrders({
     query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
@@ -80,6 +142,16 @@ export default function OrdersPage() {
 
   const pending = orders.filter((o) => o.status === "pending");
   const completed = orders.filter((o) => o.status === "completed");
+  const failed = orders.filter((o) => o.status === "failed" || o.status === "refunded");
+
+  // Apply the active filter chip. The "all" chip preserves the
+  // existing default behaviour (every order, sorted by the API).
+  const visibleOrders = useMemo(() => {
+    if (filter === "all") return orders;
+    if (filter === "pending") return pending;
+    if (filter === "completed") return completed;
+    return failed;
+  }, [filter, orders, pending, completed, failed]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -101,20 +173,51 @@ export default function OrdersPage() {
         )}
       </div>
 
-      {/* Summary chips */}
+      {/* Filter chips. The "all" chip acts as a reset — only shown
+          once there are at least two non-empty buckets, so a fresh
+          user with one pending order doesn't see redundant filtering
+          UI. Each tone-specific chip lights up when active using its
+          status token; inactive chips are muted and unclickable when
+          their bucket is empty. */}
       {!isLoading && orders.length > 0 && (
-        <div className="flex gap-2 mb-5 flex-wrap slide-up">
+        <div className="flex gap-2 mb-5 flex-wrap slide-up overflow-x-auto scrollbar-none">
+          <FilterChip
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+            icon={Layers}
+            label="الكل"
+            count={orders.length}
+            tone="neutral"
+          />
           {pending.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-bold bg-status-warning/10 border border-status-warning/22 text-status-warning px-3 py-1.5 rounded-full">
-              <Clock className="w-3 h-3" />
-              {pending.length} قيد الانتظار
-            </div>
+            <FilterChip
+              active={filter === "pending"}
+              onClick={() => setFilter("pending")}
+              icon={Clock}
+              label="قيد الانتظار"
+              count={pending.length}
+              tone="warning"
+            />
           )}
           {completed.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs font-bold bg-status-success/10 border border-status-success/22 text-status-success px-3 py-1.5 rounded-full">
-              <CheckCircle className="w-3 h-3" />
-              {completed.length} مكتمل
-            </div>
+            <FilterChip
+              active={filter === "completed"}
+              onClick={() => setFilter("completed")}
+              icon={CheckCircle}
+              label="مكتمل"
+              count={completed.length}
+              tone="success"
+            />
+          )}
+          {failed.length > 0 && (
+            <FilterChip
+              active={filter === "failed"}
+              onClick={() => setFilter("failed")}
+              icon={XCircle}
+              label="فشل / مسترجع"
+              count={failed.length}
+              tone="error"
+            />
           )}
         </div>
       )}
@@ -146,10 +249,28 @@ export default function OrdersPage() {
             </Button>
           </Link>
         </div>
+      ) : visibleOrders.length === 0 ? (
+        // Filter is active but matched nothing. Distinct from the
+        // "no orders at all" empty state above — here the user has
+        // orders, just none in the chosen bucket. Surface a quick
+        // way to drop the filter without forcing them to find the
+        // "all" chip again.
+        <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
+          <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
+            <Package className="w-5 h-5 opacity-35" />
+          </div>
+          <p className="font-bold text-sm mb-3 text-foreground/85">لا توجد طلبات في هذه الفئة</p>
+          <button
+            onClick={() => setFilter("all")}
+            className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 py-1.5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+          >
+            عرض كل الطلبات
+          </button>
+        </div>
       ) : (
         /* Orders list */
         <div className="space-y-2.5">
-          {orders.map((order, i: number) => {
+          {visibleOrders.map((order, i: number) => {
             const staggerClass = STAGGER[Math.min(i, 12)] ?? "";
             return (
               <Link key={order.id} href={`/orders/${order.order_code}`}>

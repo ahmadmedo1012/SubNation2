@@ -304,7 +304,8 @@ export default function OrderDetailPage() {
               </div>
               <p className="font-bold text-sm mb-1">قيد الإعداد</p>
               <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                سيتم تسليم بيانات الحساب فور اكتمال الطلب. ستصلك إشعار عند الجاهزية.
+                سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً خلال 5 إلى 15 دقيقة. ستصلك إشعار
+                عند الجاهزية.
               </p>
             </div>
           )
