@@ -662,9 +662,7 @@ export default function AdminTopupsPage() {
           <EmptyState
             icon={Clock}
             title={
-              statusFilter === "pending"
-                ? "لا توجد طلبات معلقة"
-                : "لا توجد طلبات في هذه الفئة"
+              statusFilter === "pending" ? "لا توجد طلبات معلقة" : "لا توجد طلبات في هذه الفئة"
             }
             description="ستظهر الطلبات هنا عند ورودها"
           />
@@ -724,7 +722,9 @@ export default function AdminTopupsPage() {
                     <div className="flex items-center gap-1.5 text-xs">
                       <User className="w-3 h-3 text-muted-foreground shrink-0" />
                       <span className="text-muted-foreground">المستخدم:</span>
-                      <span className="font-mono font-bold text-foreground">{displayUserName(userFromRow(t))}</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {displayUserName(userFromRow(t))}
+                      </span>
                       <CopyButton text={t.user_phone} size="xs" />
                     </div>
                     {t.sender_phone && (
