@@ -19,37 +19,47 @@ interface Product {
   order_count?: number;
 }
 
+// Category accent palette. Each entry rides the shared --cat-*
+// CSS variables (defined in index.css and exposed to Tailwind via
+// @theme as `cat-streaming`, `cat-music`, etc.). The variables
+// re-tone themselves on the light theme — no hard-coded hex/Tailwind
+// shade references here, so a Netflix card on the light theme uses a
+// darker, AA-readable violet automatically.
+//
+// Tailwind needs the full class strings present in source for its
+// content scan to keep them in the bundle, which is why each variant
+// is spelled out instead of computed.
 const CATEGORY_ACCENT: Record<
   string,
   { bg: string; text: string; border: string; gradient: string; accentLine: string }
 > = {
   streaming: {
-    bg: "bg-violet-500/10",
-    text: "text-violet-300",
-    border: "border-violet-500/20",
-    gradient: "from-violet-500/12 via-violet-500/4 to-transparent",
-    accentLine: "bg-violet-500/55",
+    bg: "bg-cat-streaming/10",
+    text: "text-cat-streaming",
+    border: "border-cat-streaming/22",
+    gradient: "from-cat-streaming/12 via-cat-streaming/4 to-transparent",
+    accentLine: "bg-cat-streaming/55",
   },
   music: {
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-300",
-    border: "border-emerald-500/20",
-    gradient: "from-emerald-500/12 via-emerald-500/4 to-transparent",
-    accentLine: "bg-emerald-500/55",
+    bg: "bg-cat-music/10",
+    text: "text-cat-music",
+    border: "border-cat-music/22",
+    gradient: "from-cat-music/12 via-cat-music/4 to-transparent",
+    accentLine: "bg-cat-music/55",
   },
   gaming: {
-    bg: "bg-blue-500/10",
-    text: "text-blue-300",
-    border: "border-blue-500/20",
-    gradient: "from-blue-500/12 via-blue-500/4 to-transparent",
-    accentLine: "bg-blue-500/55",
+    bg: "bg-cat-gaming/10",
+    text: "text-cat-gaming",
+    border: "border-cat-gaming/22",
+    gradient: "from-cat-gaming/12 via-cat-gaming/4 to-transparent",
+    accentLine: "bg-cat-gaming/55",
   },
   productivity: {
-    bg: "bg-amber-500/10",
-    text: "text-amber-300",
-    border: "border-amber-500/20",
-    gradient: "from-amber-500/12 via-amber-500/4 to-transparent",
-    accentLine: "bg-amber-500/55",
+    bg: "bg-cat-productivity/10",
+    text: "text-cat-productivity",
+    border: "border-cat-productivity/22",
+    gradient: "from-cat-productivity/12 via-cat-productivity/4 to-transparent",
+    accentLine: "bg-cat-productivity/55",
   },
 };
 

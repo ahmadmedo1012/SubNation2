@@ -20,9 +20,11 @@ import { Link, useParams, useLocation } from "wouter";
 // hero + matching FAQ heading border is what makes each landing page
 // feel like a coherent themed surface rather than a generic list.
 //
-// Tailwind needs the full class strings to be present in the source
-// for its content scan to keep them in the bundle — that's why these
-// are spelled out as static strings instead of computed.
+// All four palettes ride the shared --cat-streaming/music/gaming/
+// productivity CSS variables (exposed to Tailwind via @theme), so the
+// landing pages re-tone themselves correctly on the light theme.
+// Tailwind needs the full class strings present in source for its
+// content scan, which is why these are static strings.
 
 interface CategoryTheme {
   /** Hero background gradient layer (left edge tint). */
@@ -45,43 +47,43 @@ interface CategoryTheme {
 
 const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
   streaming: {
-    heroGradient: "from-violet-500/15",
-    edgeAccent: "from-violet-400/70 via-violet-400/25 to-transparent",
-    blurOrb: "bg-violet-500/15",
-    headingBorder: "border-violet-400",
-    chipBg: "bg-violet-500/10 hover:bg-violet-500/15",
-    chipText: "text-violet-300",
-    chipBorder: "border-violet-500/25 hover:border-violet-400/45",
+    heroGradient: "from-cat-streaming/15",
+    edgeAccent: "from-cat-streaming/70 via-cat-streaming/25 to-transparent",
+    blurOrb: "bg-cat-streaming/15",
+    headingBorder: "border-cat-streaming",
+    chipBg: "bg-cat-streaming/10 hover:bg-cat-streaming/15",
+    chipText: "text-cat-streaming",
+    chipBorder: "border-cat-streaming/25 hover:border-cat-streaming/45",
     Icon: Tv2,
   },
   music: {
-    heroGradient: "from-emerald-500/15",
-    edgeAccent: "from-emerald-400/70 via-emerald-400/25 to-transparent",
-    blurOrb: "bg-emerald-500/15",
-    headingBorder: "border-emerald-400",
-    chipBg: "bg-emerald-500/10 hover:bg-emerald-500/15",
-    chipText: "text-emerald-300",
-    chipBorder: "border-emerald-500/25 hover:border-emerald-400/45",
+    heroGradient: "from-cat-music/15",
+    edgeAccent: "from-cat-music/70 via-cat-music/25 to-transparent",
+    blurOrb: "bg-cat-music/15",
+    headingBorder: "border-cat-music",
+    chipBg: "bg-cat-music/10 hover:bg-cat-music/15",
+    chipText: "text-cat-music",
+    chipBorder: "border-cat-music/25 hover:border-cat-music/45",
     Icon: Music2,
   },
   gaming: {
-    heroGradient: "from-blue-500/15",
-    edgeAccent: "from-blue-400/70 via-blue-400/25 to-transparent",
-    blurOrb: "bg-blue-500/15",
-    headingBorder: "border-blue-400",
-    chipBg: "bg-blue-500/10 hover:bg-blue-500/15",
-    chipText: "text-blue-300",
-    chipBorder: "border-blue-500/25 hover:border-blue-400/45",
+    heroGradient: "from-cat-gaming/15",
+    edgeAccent: "from-cat-gaming/70 via-cat-gaming/25 to-transparent",
+    blurOrb: "bg-cat-gaming/15",
+    headingBorder: "border-cat-gaming",
+    chipBg: "bg-cat-gaming/10 hover:bg-cat-gaming/15",
+    chipText: "text-cat-gaming",
+    chipBorder: "border-cat-gaming/25 hover:border-cat-gaming/45",
     Icon: Gamepad2,
   },
   productivity: {
-    heroGradient: "from-amber-500/15",
-    edgeAccent: "from-amber-400/70 via-amber-400/25 to-transparent",
-    blurOrb: "bg-amber-500/15",
-    headingBorder: "border-amber-400",
-    chipBg: "bg-amber-500/10 hover:bg-amber-500/15",
-    chipText: "text-amber-300",
-    chipBorder: "border-amber-500/25 hover:border-amber-400/45",
+    heroGradient: "from-cat-productivity/15",
+    edgeAccent: "from-cat-productivity/70 via-cat-productivity/25 to-transparent",
+    blurOrb: "bg-cat-productivity/15",
+    headingBorder: "border-cat-productivity",
+    chipBg: "bg-cat-productivity/10 hover:bg-cat-productivity/15",
+    chipText: "text-cat-productivity",
+    chipBorder: "border-cat-productivity/25 hover:border-cat-productivity/45",
     Icon: Briefcase,
   },
 };
@@ -120,8 +122,7 @@ export default function CategoryPage() {
       products.slice(0, 30).map((p) => ({
         // Slug-based product URL. The orval Product type doesn't yet
         // include slug; widen the cast to read it safely.
-        id:
-          (p as Product & { slug?: string | null }).slug ?? p.id,
+        id: (p as Product & { slug?: string | null }).slug ?? p.id,
         name: p.name,
       })),
     );
@@ -202,12 +203,8 @@ export default function CategoryPage() {
               <theme.Icon className={`w-5 h-5 ${theme.chipText}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground font-medium mb-1">
-                فئة {meta.label}
-              </p>
-              <h1 className="text-fluid-2xl font-black leading-tight text-foreground">
-                {meta.h1}
-              </h1>
+              <p className="text-xs text-muted-foreground font-medium mb-1">فئة {meta.label}</p>
+              <h1 className="text-fluid-2xl font-black leading-tight text-foreground">{meta.h1}</h1>
             </div>
           </div>
           <p className="text-sm sm:text-[15px] text-muted-foreground leading-relaxed max-w-3xl">
@@ -224,9 +221,7 @@ export default function CategoryPage() {
         >
           منتجات {meta.label}
           {!isLoading && products.length > 0 && (
-            <span className="text-xs font-bold text-muted-foreground">
-              ({products.length})
-            </span>
+            <span className="text-xs font-bold text-muted-foreground">({products.length})</span>
           )}
         </h2>
         {isLoading ? (
@@ -237,9 +232,7 @@ export default function CategoryPage() {
           </div>
         ) : products.length === 0 ? (
           <div className="bg-card border border-border/55 rounded-2xl py-12 text-center float-in">
-            <p className="font-bold mb-2 text-foreground/80">
-              لا توجد منتجات في هذه الفئة حالياً.
-            </p>
+            <p className="font-bold mb-2 text-foreground/80">لا توجد منتجات في هذه الفئة حالياً.</p>
             <Link
               href="/"
               className="text-primary-text text-sm font-bold hover:text-primary transition-colors press-spring"
@@ -250,11 +243,7 @@ export default function CategoryPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {products.map((product, i) => (
-              <ProductCard
-                key={product.id}
-                product={product as Product}
-                index={i}
-              />
+              <ProductCard key={product.id} product={product as Product} index={i} />
             ))}
           </div>
         )}
