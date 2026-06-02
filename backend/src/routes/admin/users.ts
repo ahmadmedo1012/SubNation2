@@ -5,6 +5,8 @@ import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { idempotency } from "../../middlewares/idempotency";
+import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 
 const router = Router();
 
@@ -63,54 +65,134 @@ router.get("/users", requireAdmin, async (req, res) => {
   );
 });
 
-router.patch("/users/:id", requireAdmin, async (req, res) => {
-  const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+/**
+ * Admin user-edit endpoint.
+ *
+ * S-01 (security audit 004) — Findings F-004 + F-008 closure.
+ *
+ *   - Wallet mutations (`wallet_adjustment`, `wallet_balance`) route
+ *     through `AdjustmentService`, which wraps each change in a
+ *     transaction with optimistic-lock concurrency safety AND writes a
+ *     `wallet_ledger` row of type=`adjustment`. Constitution Principle I
+ *     compliance — every monetary change is reconstructable from the
+ *     ledger.
+ *   - The whole route is mounted behind the idempotency middleware so a
+ *     network retry / admin double-click does NOT double-credit
+ *     (closes F-008). The `Idempotency-Key` header is currently
+ *     advisory; absence logs a warning, the call proceeds. Will be
+ *     tightened to required after the admin UI ships the header.
+ *   - Loyalty fields (`loyalty_points`, `loyalty_tier`) keep their
+ *     legacy direct-update path — they are not financial integrity
+ *     concerns and have no ledger.
+ */
+router.patch(
+  "/users/:id",
+  requireAdmin,
+  idempotency({ routeKey: "admin.users.patch" }),
+  async (req, res) => {
+    const id = intParam(req, "id");
+    if (id === null)
+      return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
-  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+    const adminId = (req as { adminId?: number }).adminId;
+    if (typeof adminId !== "number") {
+      // requireAdmin guarantees this is set; defensive only.
+      return res
+        .status(401)
+        .json(createErrorResponse("جلسة المسؤول مطلوبة", ErrorCode.UNAUTHORIZED));
+    }
 
-  const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier } = req.body ?? {};
-  const updates: Record<string, any> = {};
+    const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier, note } = req.body ?? {};
 
-  if (typeof wallet_adjustment === "number") {
-    const current = parseFloat(String(user.walletBalance));
-    const next = +(current + wallet_adjustment).toFixed(2);
-    if (next < 0) return res.status(400).json(createErrorResponse("الرصيد لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
-    updates.walletBalance = String(next);
-  } else if (typeof wallet_balance === "number") {
-    if (wallet_balance < 0) return res.status(400).json(createErrorResponse("الرصيد لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
-    updates.walletBalance = String(wallet_balance.toFixed(2));
+    // ── Wallet path: AdjustmentService (atomic, ledger-backed) ────────
+    let walletResult: { walletBalance: number } | null = null;
+    if (typeof wallet_adjustment === "number" || typeof wallet_balance === "number") {
+      try {
+        if (typeof wallet_adjustment === "number") {
+          walletResult = await AdjustmentService.adjust(id, wallet_adjustment, {
+            adminId,
+            note: typeof note === "string" ? note : "Admin adjustment",
+          });
+        } else if (typeof wallet_balance === "number") {
+          walletResult = await AdjustmentService.setBalance(id, wallet_balance, {
+            adminId,
+            note: typeof note === "string" ? note : "Admin balance set",
+          });
+        }
+      } catch (err) {
+        if (err instanceof AdjustmentError) {
+          return res
+            .status(err.statusCode)
+            .json(createErrorResponse(err.message, mapAdjustmentErrorToCode(err.code)));
+        }
+        throw err;
+      }
+    }
+
+    // ── Non-financial fields: direct UPDATE, no ledger ────────────────
+    const nonFinancialUpdates: Record<string, unknown> = {};
+    if (typeof loyalty_points === "number" && loyalty_points >= 0) {
+      nonFinancialUpdates.loyaltyPoints = loyalty_points;
+    }
+    if (
+      typeof loyalty_tier === "string" &&
+      ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)
+    ) {
+      nonFinancialUpdates.loyaltyTier = loyalty_tier;
+    }
+
+    if (!walletResult && Object.keys(nonFinancialUpdates).length === 0) {
+      return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
+    }
+
+    if (Object.keys(nonFinancialUpdates).length > 0) {
+      await db.update(usersTable).set(nonFinancialUpdates).where(eq(usersTable.id, id));
+    }
+
+    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
+    if (!updated) {
+      // The wallet path would have caught this earlier; reachable only
+      // if the row was deleted between the AdjustmentService commit and
+      // this read.
+      return res
+        .status(404)
+        .json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+    }
+
+    void writeAuditLog(req, "user.update", "user", id, {
+      fields_changed: [
+        ...(walletResult ? ["walletBalance"] : []),
+        ...Object.keys(nonFinancialUpdates),
+      ],
+      // F-004 — record the actual amount on the audit row so the trail
+      // is reconstructable without joining the ledger.
+      ...(walletResult ? { wallet_balance_after: walletResult.walletBalance } : {}),
+    });
+
+    return res.json({
+      id: updated.id,
+      phone: updated.phone,
+      wallet_balance: parseFloat(String(updated.walletBalance)),
+      loyalty_points: updated.loyaltyPoints,
+      loyalty_tier: updated.loyaltyTier,
+    });
+  },
+);
+
+function mapAdjustmentErrorToCode(code: string): ErrorCode {
+  switch (code) {
+    case "USER_NOT_FOUND":
+      return ErrorCode.NOT_FOUND;
+    case "NEGATIVE_BALANCE":
+    case "ZERO_DELTA":
+    case "CONCURRENCY_ERROR":
+      // ErrorCode does not have a dedicated CONFLICT slot — the
+      // upstream HTTP status (409) already conveys the semantics;
+      // INVALID_DATA is the closest match for the body code.
+      return ErrorCode.INVALID_DATA;
+    default:
+      return ErrorCode.INVALID_DATA;
   }
-  if (typeof loyalty_points === "number" && loyalty_points >= 0) {
-    updates.loyaltyPoints = loyalty_points;
-  }
-  if (
-    typeof loyalty_tier === "string" &&
-    ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)
-  ) {
-    updates.loyaltyTier = loyalty_tier;
-  }
-
-  if (Object.keys(updates).length === 0) return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
-
-  const [updated] = await db
-    .update(usersTable)
-    .set(updates)
-    .where(eq(usersTable.id, id))
-    .returning();
-
-  void writeAuditLog(req, "user.update", "user", id, {
-    fields_changed: Object.keys(updates),
-  });
-
-  return res.json({
-    id: updated.id,
-    phone: updated.phone,
-    wallet_balance: parseFloat(String(updated.walletBalance)),
-    loyalty_points: updated.loyaltyPoints,
-    loyalty_tier: updated.loyaltyTier,
-  });
-});
+}
 
 export { router as adminUsersRouter };
