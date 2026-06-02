@@ -8,7 +8,7 @@
 
 **Input**: User description: "Full security and vulnerability assessment for SubNation before any hardening work. Design-and-audit phase only — no fixes, no migrations, no code changes, no production behavior changes. Cover authentication (Google / Telegram / OpenWA OTP), authorization, wallet & financial integrity, API/input handling, infrastructure (Render, Neon, Redis, Cloudflare Tunnel, Sentry), frontend, and supply chain. Produce decision-grade outputs: `security.md`, `research.md`, `priorities.md`, `quickstart.md`. Be conservative and evidence-based — hypotheses must be marked as such; non-issues must be called out. Final goal: a clear map of real vs. likely vs. non-issue, with remediation priority."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 <!--
   Stakeholders here are: (a) the product owner/leadership making the go/no-go call
@@ -54,7 +54,7 @@ When a hardening sprint is approved, the engineering team needs every finding to
 
 Once findings exist, someone has to decide what to fix this week, what to schedule for the quarter, and what to defer. The audit must produce a ranked plan that separates small reversible fixes from larger structural work, and explicitly flags items that should not be touched yet.
 
-**Why this priority**: The decision-grade summary tells leadership *what* matters; the ranked plan tells them *in what order*. It is P2 because it is derived from Stories 1 and 2 — it cannot exist without their evidence — but it is the artifact that converts the assessment into a sprint plan.
+**Why this priority**: The decision-grade summary tells leadership _what_ matters; the ranked plan tells them _in what order_. It is P2 because it is derived from Stories 1 and 2 — it cannot exist without their evidence — but it is the artifact that converts the assessment into a sprint plan.
 
 **Independent Test**: A planner reads `priorities.md` only and can fill a hardening sprint with the right items in the right order, knowing for each one whether it is a quick win, a structural change, or a deferred item, and why.
 
@@ -91,7 +91,7 @@ A second engineer (or external reviewer) needs to spot-check the audit's claims,
 - **A risk requires confirmation by running code** (e.g., a suspected race condition in wallet top-up): the audit must not run destructive or state-changing tests; it must record the risk as a hypothesis with the proof-of-concept that would confirm it, and leave execution to a later, authorized phase.
 - **Secrets are discovered in source, history, or logs during the audit**: the finding must name the secret type and location but must not reproduce the secret value in any deliverable; rotation is recommended but not performed by this assessment.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -149,7 +149,7 @@ A second engineer (or external reviewer) needs to spot-check the audit's claims,
 - **Evidence Note**: A single supporting observation in `research.md` — code citation, configuration excerpt, behavior note, or external-doc reference — keyed to one or more findings.
 - **Recommendation**: The remediation direction attached to a finding. Sized as quick win / structural / deferred. Does not include implementation code.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
