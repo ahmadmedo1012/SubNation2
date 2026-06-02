@@ -83,10 +83,7 @@ describe("Wallet top-up (pglite-isolated)", () => {
     // committed purchase or topup. The inner re-read inside the tx
     // must see the new value (80), not the stale outer-SELECT value
     // (100).
-    await db
-      .update(usersTable)
-      .set({ walletBalance: "80.00" })
-      .where(eq(usersTable.id, user.id));
+    await db.update(usersTable).set({ walletBalance: "80.00" }).where(eq(usersTable.id, user.id));
 
     await TopupService.approve(topup.id, "ok");
 

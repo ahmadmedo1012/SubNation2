@@ -51,9 +51,7 @@ export class TopupService {
         .set({
           walletBalance: String(newBalance),
         })
-        .where(
-          and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))),
-        )
+        .where(and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))))
         .returning({ id: usersTable.id });
       if (updated.length !== 1) {
         throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مرة أخرى.");
@@ -164,10 +162,7 @@ export class TopupService {
               walletBalance: String(newBalance),
             })
             .where(
-              and(
-                eq(usersTable.id, user.id),
-                eq(usersTable.walletBalance, String(balanceBefore)),
-              ),
+              and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))),
             )
             .returning({ id: usersTable.id });
           if (updated.length !== 1) {
