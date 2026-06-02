@@ -10,6 +10,7 @@ export * from "./notifications";
 export * from "./orders";
 export * from "./products";
 export * from "./referral_events";
+export * from "./risk";
 export * from "./support_tickets";
 export * from "./ticket_replies";
 export * from "./user_auth_identities";

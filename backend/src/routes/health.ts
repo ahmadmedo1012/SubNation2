@@ -306,6 +306,56 @@ async function checkSocket(io: any, redis: any): Promise<CheckResult> {
   }
 }
 
+async function checkRiskPipeline(redis: any): Promise<CheckResult> {
+  const start = Date.now();
+  // Risk pipeline is OPTIONAL — the rest of the platform works
+  // even if scoring is disabled or degraded (per spec §1 Edge
+  // Cases / FR-010). Surfaces yellow when degraded, red only
+  // when the pipeline is enabled but scoring fails repeatedly.
+  const optional = true;
+
+  if (process.env.RISK_PIPELINE_ENABLED !== "true") {
+    return {
+      status: "ok",
+      optional,
+      latencyMs: Date.now() - start,
+      note: "risk pipeline disabled (RISK_PIPELINE_ENABLED=false)",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+
+  try {
+    if (!redis) {
+      return {
+        status: "degraded",
+        optional,
+        latencyMs: Date.now() - start,
+        note: "redis unavailable — risk-config cache cannot serve",
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+    // The scoring service writes a `risk:pipeline:degraded`
+    // key on internal failure with a 5-min TTL. Presence ⇒
+    // degraded, absence ⇒ ok.
+    const degraded = await redis.get("risk:pipeline:degraded");
+    return {
+      status: degraded ? "degraded" : "ok",
+      optional,
+      latencyMs: Date.now() - start,
+      note: degraded ? "scoring degraded to rules-only in last 5 min" : undefined,
+      lastCheckedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    return {
+      status: "degraded",
+      optional,
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+      lastCheckedAt: new Date().toISOString(),
+    };
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Route handlers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -451,6 +501,12 @@ async function computeReadyState(): Promise<HealthCheckResponseExtended> {
         lastCheckedAt: new Date().toISOString(),
       };
       fold(checks.socket);
+    }
+
+    {
+      const result = await checkRiskPipeline(redis);
+      checks.risk_pipeline = result;
+      fold(result);
     }
 
     const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
