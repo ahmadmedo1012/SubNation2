@@ -13,13 +13,13 @@
 
 **Overall posture: acceptable-with-caveats.** SubNation's defense-in-depth is unusually strong for a platform of its size — the Constitution is being honored in code, not just in document form. Customer auth (Google + Telegram + WhatsApp OTP), admin auth (argon2id + TOTP + lockout + live `isActive`), the purchase transaction (atomic, optimistically locked, ledger-backed), the rate-limit topology, and the frontend XSS posture (zero `dangerouslySetInnerHTML`, sentinel-pattern auth state) are all in good shape. The audit found **zero** Critical, High, or Medium findings on the customer-facing authentication surface beyond two specific, fixable issues; **zero** findings on the customer frontend; and **zero** findings on the purchase critical path.
 
-What is *not* in good shape is **the admin-side wallet path**. Two endpoints — admin user-wallet adjustment (`PATCH /api/admin/users/:id`) and admin order-refund (`PATCH /api/admin/orders/bulk-status`) — mutate balances **without writing ledger entries and without transaction wrapping**. They violate Constitution Principle I, which is non-negotiable. A compromised or careless admin can move money in ways the audit trail cannot reconstruct. This is the single most important issue in the assessment.
+What is _not_ in good shape is **the admin-side wallet path**. Two endpoints — admin user-wallet adjustment (`PATCH /api/admin/users/:id`) and admin order-refund (`PATCH /api/admin/orders/bulk-status`) — mutate balances **without writing ledger entries and without transaction wrapping**. They violate Constitution Principle I, which is non-negotiable. A compromised or careless admin can move money in ways the audit trail cannot reconstruct. This is the single most important issue in the assessment.
 
 **Top three risks** (urgent):
 
 1. **F-004** (Critical) — admin wallet adjustment endpoint mutates `walletBalance` without a ledger entry and without a transaction. Any adjustment is invisible to the append-only ledger; double-clicks and network retries double-credit because there is no idempotency key.
 2. **F-005** (Critical) — admin "refund" status flag on an order updates `orders.status` only. The user's wallet is **not** credited and no ledger entry is written. A refunded order looks refunded in the order list but the customer never gets their funds back, and there is no audit trail to reconstruct what happened.
-3. **F-001** (High) — admin JWT signing key is derived from the customer JWT key by string concatenation (`SESSION_SECRET + "_admin"`). A leak of `SESSION_SECRET` instantly compromises admin tokens. Constitution Principle II requires admin sessions to use a *separate* secret; the spirit is broken even though both fields exist.
+3. **F-001** (High) — admin JWT signing key is derived from the customer JWT key by string concatenation (`SESSION_SECRET + "_admin"`). A leak of `SESSION_SECRET` instantly compromises admin tokens. Constitution Principle II requires admin sessions to use a _separate_ secret; the spirit is broken even though both fields exist.
 
 **What is safe enough today**: customer auth flows, the customer purchase path, the frontend, the rate-limit pyramid, the secret-fail-fast posture, and the supply-chain hygiene (gitleaks + lint-staged + CI gates). Telegram replay protection, WhatsApp OTP rate limiting, Firebase phone-provider rejection, and admin lockout are all proven correct in the committed code.
 
@@ -79,13 +79,13 @@ The 47 surfaces enumerated in `research.md` §3, grouped: Auth (Google / Telegra
 
 #### Impact
 
-A leak of `SESSION_SECRET` — already gated as a Critical-class secret — instantly produces the admin signing key. There is no extra step between "customer secret leaked" and "attacker can sign valid admin tokens." Constitution Principle II calls for admin sessions to use a separate secret; the implementation has the *cookie name* separate but the *secret material* is not.
+A leak of `SESSION_SECRET` — already gated as a Critical-class secret — instantly produces the admin signing key. There is no extra step between "customer secret leaked" and "attacker can sign valid admin tokens." Constitution Principle II calls for admin sessions to use a separate secret; the implementation has the _cookie name_ separate but the _secret material_ is not.
 
 #### Claims
 
 - **[proven]** `ADMIN_JWT_SECRET = JWT_SECRET + "_admin"` is direct string concatenation (no KDF, no separate env var). Evidence: EN-001.
 - **[proven]** Admin tokens are signed and verified with `ADMIN_JWT_SECRET`; a leak of `JWT_SECRET` (= `SESSION_SECRET`) yields the admin key. Evidence: EN-001 (lines 50, 55, 65 of `lib/jwt.ts`).
-- **[likely]** No alternative independent admin-key path exists in code; the boot validation in `lib/jwt.ts:13` only enforces `SESSION_SECRET ≥ 32 chars` — not a separate admin secret. Evidence: EN-001, EN-004. *Why not promoted*: a separate path could exist behind a feature flag the audit did not see; the code at the pinned commit suggests not.
+- **[likely]** No alternative independent admin-key path exists in code; the boot validation in `lib/jwt.ts:13` only enforces `SESSION_SECRET ≥ 32 chars` — not a separate admin secret. Evidence: EN-001, EN-004. _Why not promoted_: a separate path could exist behind a feature flag the audit did not see; the code at the pinned commit suggests not.
 
 #### Reproduction
 
@@ -118,7 +118,7 @@ The string-concat pattern was likely chosen for "simplicity in development" — 
 
 #### Impact
 
-Two callers in `routes/auth.ts:359` and `:457` pass `checkRevoked = true` in good faith expecting Firebase to enforce token revocation. The function silently substitutes `false`, so revoked Firebase ID tokens (e.g., user clicked "sign out from all devices" in a Firebase-aware admin tool, or Firebase Console revoked the user) remain valid for up to one hour. This is the gap between *expected* and *actual* behavior — the source-comment claims "always pass false for compatibility" but the function still *accepts* and *logs* the parameter, producing a false sense of safety in code review.
+Two callers in `routes/auth.ts:359` and `:457` pass `checkRevoked = true` in good faith expecting Firebase to enforce token revocation. The function silently substitutes `false`, so revoked Firebase ID tokens (e.g., user clicked "sign out from all devices" in a Firebase-aware admin tool, or Firebase Console revoked the user) remain valid for up to one hour. This is the gap between _expected_ and _actual_ behavior — the source-comment claims "always pass false for compatibility" but the function still _accepts_ and _logs_ the parameter, producing a false sense of safety in code review.
 
 #### Claims
 
@@ -135,7 +135,7 @@ Two callers in `routes/auth.ts:359` and `:457` pass `checkRevoked = true` in goo
 
 #### Recommendation
 
-**Direction**: forward the `checkRevoked` parameter to the underlying SDK call: `auth.verifyIdToken(idToken, checkRevoked)`. If the original "compatibility" concern (extra round-trip causing 401s) is real, instead make `checkRevoked = false` the default at the *call sites* (be explicit) rather than silently dropping the caller's intent. Add a brief test: `expect(mockedAdmin.verifyIdToken).toHaveBeenCalledWith(token, true)` for the routes that pass `true`.
+**Direction**: forward the `checkRevoked` parameter to the underlying SDK call: `auth.verifyIdToken(idToken, checkRevoked)`. If the original "compatibility" concern (extra round-trip causing 401s) is real, instead make `checkRevoked = false` the default at the _call sites_ (be explicit) rather than silently dropping the caller's intent. Add a brief test: `expect(mockedAdmin.verifyIdToken).toHaveBeenCalledWith(token, true)` for the routes that pass `true`.
 **Size**: quick-win
 **Reversibility**: fully-reversible
 **Dependencies**: none.
@@ -159,7 +159,7 @@ A targeted attacker who controls one provider identity (e.g., a Telegram usernam
 #### Claims
 
 - **[proven]** When `findLinkCandidates` returns exactly one user, the backend silently links the new provider identity to that account without requesting confirmation. Evidence: EN-003.
-- **[likely]** No frontend confirmation step is invoked before this auto-link; the audit did not deep-read the frontend OAuth-completion flow (CG-08), but the backend would have to *receive* a confirmation token to gate the link, and no such token is required by the route signature. Evidence: EN-003 + audit's read of `routes/auth.ts` and `auth-settings.ts`. *Why not promoted*: CG-08 is open; a frontend-only confirmation that depends on no backend input would close this finding.
+- **[likely]** No frontend confirmation step is invoked before this auto-link; the audit did not deep-read the frontend OAuth-completion flow (CG-08), but the backend would have to _receive_ a confirmation token to gate the link, and no such token is required by the route signature. Evidence: EN-003 + audit's read of `routes/auth.ts` and `auth-settings.ts`. _Why not promoted_: CG-08 is open; a frontend-only confirmation that depends on no backend input would close this finding.
 
 #### Reproduction or Hypothesis (mixed)
 
@@ -197,15 +197,15 @@ A careless admin double-click or a network-retry of the PATCH double-credits wit
 - **[proven]** Endpoint accepts `wallet_adjustment` / `wallet_balance` in the request body. Evidence: EN-006 (`backend/src/routes/admin/users.ts:73-84`).
 - **[proven]** The mutation writes `users.walletBalance` directly without `db.transaction()`. Evidence: EN-006 (line ~80, ~97-101).
 - **[proven]** No `insertLedgerEntry()` call exists in this file; `git grep insertLedgerEntry backend/src/routes/admin/users.ts` returns zero. Evidence: EN-006.
-- **[proven]** The ledger schema *does* support `type = "adjustment"` (`shared/db/src/schema/wallet_ledger.ts:17`), so the omission is the route's, not a schema limitation. Evidence: EN-006.
-- **[proven]** `writeAuditLog` is called (line ~103) but records only the *fields changed*, not the amount or before/after balances. Evidence: EN-006.
+- **[proven]** The ledger schema _does_ support `type = "adjustment"` (`shared/db/src/schema/wallet_ledger.ts:17`), so the omission is the route's, not a schema limitation. Evidence: EN-006.
+- **[proven]** `writeAuditLog` is called (line ~103) but records only the _fields changed_, not the amount or before/after balances. Evidence: EN-006.
 
 #### Reproduction
 
 1. Open `backend/src/routes/admin/users.ts:66-114` at commit `1711081`. Read the handler end-to-end.
 2. Confirm the absence of `db.transaction(` in the file.
 3. Confirm the absence of `insertLedgerEntry(` in the file.
-4. Open `backend/src/services/checkout.service.ts:103-180` for the *correct* pattern that this endpoint should follow.
+4. Open `backend/src/services/checkout.service.ts:103-180` for the _correct_ pattern that this endpoint should follow.
 
 The audit did **not** execute the endpoint against any environment (FR-041). The shape of the gap is fully evident from read-only inspection.
 
@@ -231,7 +231,7 @@ The audit did **not** execute the endpoint against any environment (FR-041). The
 
 #### Impact
 
-`PATCH /api/admin/orders/bulk-status` allows the admin to set `status = "refunded"` on one or more orders. The endpoint updates `orders.status` only. The user's `walletBalance` is **not** restored. No `wallet_ledger` entry of type `refund` is written. The order shows "refunded" in the order list, but the customer never receives their funds back, and there is no audit trail explaining the gap. The audit considers this the highest-impact finding for *customer trust*: a user who sees "refunded" expects their balance back, and the system silently fails them.
+`PATCH /api/admin/orders/bulk-status` allows the admin to set `status = "refunded"` on one or more orders. The endpoint updates `orders.status` only. The user's `walletBalance` is **not** restored. No `wallet_ledger` entry of type `refund` is written. The order shows "refunded" in the order list, but the customer never receives their funds back, and there is no audit trail explaining the gap. The audit considers this the highest-impact finding for _customer trust_: a user who sees "refunded" expects their balance back, and the system silently fails them.
 
 The `orders` schema even has `walletBalanceBefore` / `walletBalanceAfter` columns intended for exactly this pattern; the endpoint ignores them.
 
@@ -277,7 +277,7 @@ Two concurrent purchases of a coupon with `maxUses = 1` and current `usedCount =
 
 - **[proven]** Validation read at `backend/src/lib/pricing.ts:159` is non-transactional (`resolveCoupon()` runs outside the checkout `db.transaction`). Evidence: EN-008.
 - **[proven]** The checkout's coupon-increment UPDATE (`backend/src/services/checkout.service.ts:126-131`) uses atomic SQL but lacks `WHERE usedCount < maxUses` (i.e., it does not re-validate inside the lock). Evidence: EN-008.
-- **[likely]** Reproduction would mutate the coupon ledger in real environments; therefore classified as `hypothesis` for the race itself per FR-021 / D-10 (the *gap* is proven; the *race outcome* requires concurrency to confirm).
+- **[likely]** Reproduction would mutate the coupon ledger in real environments; therefore classified as `hypothesis` for the race itself per FR-021 / D-10 (the _gap_ is proven; the _race outcome_ requires concurrency to confirm).
 
 #### Hypothesis
 
@@ -287,7 +287,7 @@ Two concurrent purchases of a coupon with `maxUses = 1` and current `usedCount =
 
 #### Recommendation
 
-**Direction**: move coupon validation *inside* the checkout transaction. Either (a) `SELECT ... FOR UPDATE` on the coupon row at the start of the tx and re-validate `usedCount < maxUses` before incrementing, OR (b) make the increment atomic-with-check: `UPDATE coupons SET usedCount = usedCount + 1 WHERE id = $id AND usedCount < maxUses`; check `rowsAffected = 1`, else throw. Approach (b) is the cheapest and reverses cleanly.
+**Direction**: move coupon validation _inside_ the checkout transaction. Either (a) `SELECT ... FOR UPDATE` on the coupon row at the start of the tx and re-validate `usedCount < maxUses` before incrementing, OR (b) make the increment atomic-with-check: `UPDATE coupons SET usedCount = usedCount + 1 WHERE id = $id AND usedCount < maxUses`; check `rowsAffected = 1`, else throw. Approach (b) is the cheapest and reverses cleanly.
 **Size**: quick-win
 **Reversibility**: fully-reversible
 **Dependencies**: none.
@@ -306,9 +306,9 @@ Two concurrent purchases of a coupon with `maxUses = 1` and current `usedCount =
 
 #### Impact
 
-When an admin approves a top-up, the UPDATE at `topup.service.ts:106-110` uses `WHERE id = $topupId AND status = 'pending'`. The status guard prevents the *same topup* from being approved twice (idempotent for one resource). But it does **not** guard the user's wallet balance against concurrent mutations: a second concurrent topup approval, or a concurrent purchase, can produce a lost-update where one topup's credit silently disappears. Sum-of-ledger-entries will diverge from actual balance.
+When an admin approves a top-up, the UPDATE at `topup.service.ts:106-110` uses `WHERE id = $topupId AND status = 'pending'`. The status guard prevents the _same topup_ from being approved twice (idempotent for one resource). But it does **not** guard the user's wallet balance against concurrent mutations: a second concurrent topup approval, or a concurrent purchase, can produce a lost-update where one topup's credit silently disappears. Sum-of-ledger-entries will diverge from actual balance.
 
-The same codebase shows the *correct* pattern at `checkout.service.ts:122` (`WHERE walletBalance = $expected`). The divergence is what makes this a finding rather than a hypothetical.
+The same codebase shows the _correct_ pattern at `checkout.service.ts:122` (`WHERE walletBalance = $expected`). The divergence is what makes this a finding rather than a hypothetical.
 
 #### Claims
 
@@ -414,7 +414,7 @@ Live reproduction not run on this audit (the audit is not running probes), but t
 
 #### Impact
 
-After Telegram-redirect verification, the server's redirect target is `/auth/callback?token=<JWT>`. The token appears in browser history, in the `Referer` header on the next outbound navigation, and in any HTTP-access logs along the path. The same response also sets the httpOnly cookie, so the query-string copy is *redundant*. The JWT lifetime is 30 days. A device that is compromised at any point in those 30 days has the token in browser history.
+After Telegram-redirect verification, the server's redirect target is `/auth/callback?token=<JWT>`. The token appears in browser history, in the `Referer` header on the next outbound navigation, and in any HTTP-access logs along the path. The same response also sets the httpOnly cookie, so the query-string copy is _redundant_. The JWT lifetime is 30 days. A device that is compromised at any point in those 30 days has the token in browser history.
 
 This is Low because (a) the cookie is the primary transport, (b) the query string is not the only way an attacker would steal the token, (c) a fully exploited compromise is more impactful than a referrer leak. But it is a real, simple finding.
 
@@ -502,20 +502,20 @@ The Pino redact configuration (`lib/logger.ts`) and Sentry `beforeSend` deep-san
 
 The full five-input ranking lives in `priorities.md`. This compact view is for at-a-glance reference.
 
-| ID | Title | Severity | Urgency | Partition |
-|----|-------|----------|---------|-----------|
-| F-004 | Admin wallet adjustment bypasses ledger and transaction | Critical | urgent | structural |
-| F-005 | Admin order-refund does not credit wallet or write ledger | Critical | urgent | structural |
-| F-001 | Admin JWT signing key derived from customer secret | High | urgent | quick-win |
-| F-002 | `verifyFirebaseIdToken` silently ignores `checkRevoked` | High | urgent | quick-win |
-| F-006 | Coupon `maxUses` race | High | urgent | quick-win |
-| F-007 | Topup approval lacks optimistic lock on wallet balance | High | urgent | quick-win |
-| F-008 | Admin wallet adjustment lacks idempotency key | High | urgent | structural |
-| F-003 | Account linking auto-completes without explicit consent | Medium | can-wait | structural |
-| F-009 | CSRF check disabled outside production | Medium | can-wait | quick-win |
-| F-011 | Dockerfile runtime stage runs as root | Medium | can-wait | quick-win |
-| F-010 | JWT in redirect URL query string | Low | can-wait | quick-win |
-| F-012 | Logger / Sentry redaction not unit-tested | Low | can-wait | quick-win |
+| ID    | Title                                                     | Severity | Urgency  | Partition  |
+| ----- | --------------------------------------------------------- | -------- | -------- | ---------- |
+| F-004 | Admin wallet adjustment bypasses ledger and transaction   | Critical | urgent   | structural |
+| F-005 | Admin order-refund does not credit wallet or write ledger | Critical | urgent   | structural |
+| F-001 | Admin JWT signing key derived from customer secret        | High     | urgent   | quick-win  |
+| F-002 | `verifyFirebaseIdToken` silently ignores `checkRevoked`   | High     | urgent   | quick-win  |
+| F-006 | Coupon `maxUses` race                                     | High     | urgent   | quick-win  |
+| F-007 | Topup approval lacks optimistic lock on wallet balance    | High     | urgent   | quick-win  |
+| F-008 | Admin wallet adjustment lacks idempotency key             | High     | urgent   | structural |
+| F-003 | Account linking auto-completes without explicit consent   | Medium   | can-wait | structural |
+| F-009 | CSRF check disabled outside production                    | Medium   | can-wait | quick-win  |
+| F-011 | Dockerfile runtime stage runs as root                     | Medium   | can-wait | quick-win  |
+| F-010 | JWT in redirect URL query string                          | Low      | can-wait | quick-win  |
+| F-012 | Logger / Sentry redaction not unit-tested                 | Low      | can-wait | quick-win  |
 
 ---
 
@@ -552,7 +552,7 @@ The OTP is 6 digits (CSPRNG via `randomInt`), 5-minute TTL, max 5 attempts, 60-s
 
 ### Non-issue: AUTH-8 — Admin auth (argon2id, TOTP, lockout, `_admin` cookie)
 
-Argon2id with OWASP 2024 parameters (64 MiB memory, 3 iterations, 1 parallelism). `needsRehash()` provides automatic migration. TOTP via `otplib` with `verifySync` (constant-time). 5-attempt lockout with exponential backoff (15 → 30 → 60 → 120 → 240 minutes). Live `isActive` enforcement on every admin request, not only at login. **Evidence**: EN-017 + the AUTHZ evidence pass. (Note: F-001 is about the *secret* the admin cookie is signed with, which is a different concern from the cookie + 2FA + lockout layer above, all of which are correct.)
+Argon2id with OWASP 2024 parameters (64 MiB memory, 3 iterations, 1 parallelism). `needsRehash()` provides automatic migration. TOTP via `otplib` with `verifySync` (constant-time). 5-attempt lockout with exponential backoff (15 → 30 → 60 → 120 → 240 minutes). Live `isActive` enforcement on every admin request, not only at login. **Evidence**: EN-017 + the AUTHZ evidence pass. (Note: F-001 is about the _secret_ the admin cookie is signed with, which is a different concern from the cookie + 2FA + lockout layer above, all of which are correct.)
 
 ### Non-issue: AUTHZ-1 through AUTHZ-6 — Authorization layering
 
@@ -560,7 +560,7 @@ Argon2id with OWASP 2024 parameters (64 MiB memory, 3 iterations, 1 parallelism)
 
 ### Non-issue: WALLET-5 — Purchase flow atomicity
 
-The customer purchase path is the *correct* pattern that the rest of this audit references. `db.transaction()` wraps inventory claim + balance debit (with optimistic lock `WHERE walletBalance = $expected`) + coupon increment + order insert + ledger entry. Test at `backend/src/services/__tests__/checkout.test.ts:126-149` asserts atomicity by triggering rollback. Concurrency test at `:152-168` asserts exactly one of two concurrent purchases wins. **Evidence**: EN-011.
+The customer purchase path is the _correct_ pattern that the rest of this audit references. `db.transaction()` wraps inventory claim + balance debit (with optimistic lock `WHERE walletBalance = $expected`) + coupon increment + order insert + ledger entry. Test at `backend/src/services/__tests__/checkout.test.ts:126-149` asserts atomicity by triggering rollback. Concurrency test at `:152-168` asserts exactly one of two concurrent purchases wins. **Evidence**: EN-011.
 
 ### Non-issue: API-1, API-2, API-3, API-5, API-6, API-8, API-9 — API surface
 

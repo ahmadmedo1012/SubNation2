@@ -17,7 +17,7 @@ Findings are ranked using five inputs (per spec FR-051 / `data-model.md` §6):
 
 **Ordering rule**: primary by severity (Critical > High > Medium > Low), then by businessImpact (existential → minor), then by easeOfExploitation (trivial → hard). The full vector is shown for each finding so the rank is auditable, not just stated.
 
-**Contested-severity resolution rule** (per `research.md` §2): when a finding is contested between criteria (e.g., low likelihood × catastrophic blast radius vs. high likelihood × moderate impact), the severity tier resolves toward the **largest possible loss**, not the most likely outcome. Critical is reserved for things that *can* happen, not things that *will* happen on average.
+**Contested-severity resolution rule** (per `research.md` §2): when a finding is contested between criteria (e.g., low likelihood × catastrophic blast radius vs. high likelihood × moderate impact), the severity tier resolves toward the **largest possible loss**, not the most likely outcome. Critical is reserved for things that _can_ happen, not things that _will_ happen on average.
 
 **Authoritative entity definitions**: see [`data-model.md` §6 Risk Score](./data-model.md) for the full enumeration of each input.
 
@@ -27,20 +27,20 @@ Findings are ranked using five inputs (per spec FR-051 / `data-model.md` §6):
 
 Severity column matches `security.md` §3 exactly per FR-052 / VR-RS-02.
 
-| Rank | ID | Title | Severity | Likelihood | Blast Radius | Ease | Business Impact | Partition | Urgency |
-|------|----|-------|----------|------------|--------------|------|-----------------|-----------|---------|
-| 1 | F-004 | Admin wallet adjustment bypasses ledger and transaction | Critical | probable | tenant-wide | trivial | severe | structural | urgent |
-| 2 | F-005 | Admin order-refund does not credit wallet or write ledger | Critical | probable | multi-user | trivial | severe | structural | urgent |
-| 3 | F-001 | Admin JWT signing key derived from customer secret | High | possible | tenant-wide | easy | severe | quick-win | urgent |
-| 4 | F-007 | Topup approval lacks optimistic lock on wallet balance | High | possible | multi-user | moderate | material | quick-win | urgent |
-| 5 | F-006 | Coupon `maxUses` race | High | possible | multi-user | moderate | material | quick-win | urgent |
-| 6 | F-008 | Admin wallet adjustment lacks idempotency key | High | probable | single-user | trivial | material | structural | urgent |
-| 7 | F-002 | `verifyFirebaseIdToken` silently ignores `checkRevoked` | High | possible | single-user | hard | material | quick-win | urgent |
-| 8 | F-003 | Account linking auto-completes without explicit consent | Medium | possible | single-user | moderate | material | structural | can-wait |
-| 9 | F-009 | CSRF check disabled outside production | Medium | remote | single-user | moderate | minor | quick-win | can-wait |
-| 10 | F-011 | Dockerfile runtime stage runs as root | Medium | remote | tenant-wide | hard | material | quick-win | can-wait |
-| 11 | F-010 | JWT in redirect URL query string | Low | remote | single-user | hard | minor | quick-win | can-wait |
-| 12 | F-012 | Logger / Sentry redaction not unit-tested | Low | remote | tenant-wide | hard | minor | quick-win | can-wait |
+| Rank | ID    | Title                                                     | Severity | Likelihood | Blast Radius | Ease     | Business Impact | Partition  | Urgency  |
+| ---- | ----- | --------------------------------------------------------- | -------- | ---------- | ------------ | -------- | --------------- | ---------- | -------- |
+| 1    | F-004 | Admin wallet adjustment bypasses ledger and transaction   | Critical | probable   | tenant-wide  | trivial  | severe          | structural | urgent   |
+| 2    | F-005 | Admin order-refund does not credit wallet or write ledger | Critical | probable   | multi-user   | trivial  | severe          | structural | urgent   |
+| 3    | F-001 | Admin JWT signing key derived from customer secret        | High     | possible   | tenant-wide  | easy     | severe          | quick-win  | urgent   |
+| 4    | F-007 | Topup approval lacks optimistic lock on wallet balance    | High     | possible   | multi-user   | moderate | material        | quick-win  | urgent   |
+| 5    | F-006 | Coupon `maxUses` race                                     | High     | possible   | multi-user   | moderate | material        | quick-win  | urgent   |
+| 6    | F-008 | Admin wallet adjustment lacks idempotency key             | High     | probable   | single-user  | trivial  | material        | structural | urgent   |
+| 7    | F-002 | `verifyFirebaseIdToken` silently ignores `checkRevoked`   | High     | possible   | single-user  | hard     | material        | quick-win  | urgent   |
+| 8    | F-003 | Account linking auto-completes without explicit consent   | Medium   | possible   | single-user  | moderate | material        | structural | can-wait |
+| 9    | F-009 | CSRF check disabled outside production                    | Medium   | remote     | single-user  | moderate | minor           | quick-win  | can-wait |
+| 10   | F-011 | Dockerfile runtime stage runs as root                     | Medium   | remote     | tenant-wide  | hard     | material        | quick-win  | can-wait |
+| 11   | F-010 | JWT in redirect URL query string                          | Low      | remote     | single-user  | hard     | minor           | quick-win  | can-wait |
+| 12   | F-012 | Logger / Sentry redaction not unit-tested                 | Low      | remote     | tenant-wide  | hard     | minor           | quick-win  | can-wait |
 
 **Read of the table**: rows 1–7 are urgent. Rows 1–2 are the audit's headline (Constitution Principle I violations). Rows 3–7 are the High-severity items, four of which are quick wins. Rows 8–12 are can-wait — none are dismissable, but none should block the urgent-tier work.
 
@@ -152,7 +152,7 @@ Structural-hardening partition criteria: requires a coordinated multi-file chang
 **Recommendation**: when `findLinkCandidates` would result in linking, the backend returns 409 with a short-lived link token (Redis-backed, 5-minute TTL) instead of silently linking. The frontend presents a confirmation modal naming the existing account ("link this Telegram identity to your account `user@example.com`?"); on confirmation, the frontend re-submits the link request with the token. The backend verifies the token and commits the link; audit-logs it as a consented action.
 **Reversibility**: reversible-with-care
 **Dependencies**: matched frontend update (modal copy); audit-log shape addition; UX sign-off on the modal language (Arabic-first per Constitution).
-**Why a quick win is insufficient**: a one-line backend reject regresses the feature for all users. The fix is the *flow*, not the *condition*. The condition is correct (two providers can match the same human); the flow needs explicit consent.
+**Why a quick win is insufficient**: a one-line backend reject regresses the feature for all users. The fix is the _flow_, not the _condition_. The condition is correct (two providers can match the same human); the flow needs explicit consent.
 **Justification for size > quick-win**: frontend + backend + audit log + UX writing. None is independently shippable without the others — partial work would either break the UX or leave the security gap open.
 
 ---

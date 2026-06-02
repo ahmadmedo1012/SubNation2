@@ -16,7 +16,7 @@ Spec [`spec.md`](./spec.md) FR-001 enumerates 47 surfaces across six subsystem g
 
 In-repo surfaces were inspected end-to-end by reading committed source at the pinned commit. Out-of-repo surfaces (Render dashboard, Cloudflare dashboard, Sentry org, Neon console) are recorded as coverage gaps because this audit had no live dashboard credentials. A future audit pass with read access can promote these gaps.
 
-The audit deliberately did not cover: any UX/SEO improvement work outside security's scope, any prior spec (`001-ai-opportunity-assessment`, `003-anomaly-detection`) except where the same code path was being audited, the OpenWA host's *internal* configuration (we audit the SubNation side of that boundary; see CG-04-style note for OpenWA in `research.md`), and any code that landed during the audit window itself — those would shift the pinned-commit baseline.
+The audit deliberately did not cover: any UX/SEO improvement work outside security's scope, any prior spec (`001-ai-opportunity-assessment`, `003-anomaly-detection`) except where the same code path was being audited, the OpenWA host's _internal_ configuration (we audit the SubNation side of that boundary; see CG-04-style note for OpenWA in `research.md`), and any code that landed during the audit window itself — those would shift the pinned-commit baseline.
 
 ## 2. How the audit was conducted
 
@@ -72,9 +72,9 @@ For any single `F-NNN`:
 1. Open [`security.md`](./security.md) §3, locate `F-NNN`.
 2. Note the Finding's **Severity**, **Subsystem**, **Exploitability**, and the **Reproduction or Hypothesis** block.
 3. For every entry under **Claims**, follow each `EN-NNN` reference into [`research.md`](./research.md) §4.
-4. For each `EN-NNN`, run `git show 1711081:<path>` and confirm the cited line range still resolves (it should — the audit pinned to this commit). If the path was renamed or removed *since* the pinned commit, that is expected drift; the citation refers to the pinned snapshot, not current `HEAD`.
+4. For each `EN-NNN`, run `git show 1711081:<path>` and confirm the cited line range still resolves (it should — the audit pinned to this commit). If the path was renamed or removed _since_ the pinned commit, that is expected drift; the citation refers to the pinned snapshot, not current `HEAD`.
 5. Read the EN's behavior description and confirm it matches what you see at the cited lines.
-6. Re-classify the claim independently: would *you* call it `proven`, `likely`, or `hypothesis` per the rules in [`research.md`](./research.md) §1 D-10? Compare to the Finding's labeled classification.
+6. Re-classify the claim independently: would _you_ call it `proven`, `likely`, or `hypothesis` per the rules in [`research.md`](./research.md) §1 D-10? Compare to the Finding's labeled classification.
 7. If the claim is `hypothesis`, read the **Reproduction or Hypothesis** block's `whatWouldConfirm` and `whyNotRun` fields. Decide whether the audit's reason for not running the PoC holds (typical reason: "would mutate the append-only ledger" — FR-041).
 8. Open [`priorities.md`](./priorities.md) §2; locate the same `F-NNN`. Confirm severity matches `security.md` (FR-052 / VR-RS-02). Confirm the partition (`quick-win` / `structural` / `deferred`) is consistent with the urgency in `security.md`.
 9. Record your verdict: agree / disagree / needs-discussion. If disagree, name which step (1–8) failed.
@@ -86,7 +86,7 @@ Per `research.md` §1 D-06, locked at plan time:
 - **Sample size**: 10% of Findings, **minimum 3**. With 12 Findings in this audit, sample size is 3 (10% × 12 = 1.2, floor to 1, raised to the minimum 3).
 - **Sampling method**: drawn uniformly at random against the finalized Finding list.
 - **Pass criteria**: for each sampled Finding, all of (a) every cited path resolves at the pinned commit, (b) every cited behavior is present at the pinned commit, (c) per-claim classification consistent with the linked Evidence Notes.
-- **Failure handling**: any single failure halts sign-off. The auditor returns to the affected Finding, repairs the issue, then a *new* sample is drawn (no cherry-picking).
+- **Failure handling**: any single failure halts sign-off. The auditor returns to the affected Finding, repairs the issue, then a _new_ sample is drawn (no cherry-picking).
 - **Independence**: the reviewer is not the auditor.
 
 The audit's own self-spot-check (auditor reviewing their own work) is recorded in `research.md` §8 with explicit "self" labeling. It does **not** satisfy SC-005 / SC-007 — those require an independent reviewer. Sign-off marks the audit as content-complete; SC-005 / SC-007 closure waits on the independent pass.
@@ -124,7 +124,7 @@ Listed explicitly so the absence of an action is not mis-cited as a "we already 
 - **No secret rotation.** Recommendations to rotate secrets are findings; rotation is operations work and follows audit acceptance. (FR-042.)
 - **No production access** beyond what the auditor already held (the SubNation repo). The audit did not request, receive, or use new credentials.
 - **No remediation work.** This branch ships documentation. The next branch (post-acceptance) ships fixes; that branch will reference this audit's pinned commit and `F-NNN` IDs but will not modify the audit deliverables.
-- **No reproduction of any secret value.** The Secret-Handling Log in `research.md` §7 is empty *by observation* — the auditor scanned for committed secrets and found none. If a secret had been found, it would have been recorded as a `SH-NN` entry naming type and location only, never the value (FR-042 / SC-008).
+- **No reproduction of any secret value.** The Secret-Handling Log in `research.md` §7 is empty _by observation_ — the auditor scanned for committed secrets and found none. If a secret had been found, it would have been recorded as a `SH-NN` entry naming type and location only, never the value (FR-042 / SC-008).
 
 This section's purpose: protect the audit's scope. "We audited the system" does not mean "we ran every test"; it means "we read every committed surface end-to-end without changing anything."
 
@@ -135,40 +135,40 @@ This section's purpose: protect the audit's scope. "We audited the system" does 
 1. Read [`security.md`](./security.md) §1 (executive summary) + §2 (threat model) — 5 minutes, leadership-readable.
 2. Read [`priorities.md`](./priorities.md) end-to-end — 15–20 minutes, planner-readable. Fill the sprint with §3 Quick Wins first; queue §4 Structural Hardening next; ignore §5 Deferred unless its triggering condition has fired.
 3. For each Finding being remediated, open the same `F-NNN` in `security.md` §3 and read the **Recommendation** block. The Direction field is design-level (not a code diff) — the implementing engineer translates direction into commits.
-4. Implementation work happens on a fresh branch (e.g., `005-security-fixes-batch-1`), not on `004-security-audit`. The remediation branch references this audit's pinned commit and the `F-NNN` IDs in commit messages. The audit deliverables are *not* edited by remediation work — the audit is the snapshot the remediation references.
+4. Implementation work happens on a fresh branch (e.g., `005-security-fixes-batch-1`), not on `004-security-audit`. The remediation branch references this audit's pinned commit and the `F-NNN` IDs in commit messages. The audit deliverables are _not_ edited by remediation work — the audit is the snapshot the remediation references.
 5. After remediation lands, schedule a follow-up audit (`006-security-audit-followup`) that re-runs against the new commit and either confirms the Finding is closed or files a new Finding for any regression.
 
 **Coverage-gap follow-ups** (`CG-01` … `CG-08`) are not blocked on remediation. They are independent: each gap names the access required and the worst-case if its assumption is wrong. Closing them is a tooling or access task, not a fix.
 
 ## Appendix A — Finding index
 
-| Finding | Severity | Subsystem | Title |
-|---------|----------|-----------|-------|
-| F-001 | High | AUTH-5 | Admin JWT signing key derived from customer secret |
-| F-002 | High | AUTH-1 | `verifyFirebaseIdToken` silently ignores `checkRevoked` |
-| F-003 | Medium | AUTH-7 | Account linking auto-completes without explicit consent |
-| F-004 | **Critical** | WALLET-3/6 | Admin wallet adjustment bypasses ledger and transaction |
-| F-005 | **Critical** | WALLET-3/6 | Admin order-refund does not credit wallet or write ledger |
-| F-006 | High | WALLET-4 | Coupon `maxUses` race |
-| F-007 | High | WALLET-1/2 | Topup approval lacks optimistic lock on wallet balance |
-| F-008 | High | WALLET-7 | Admin wallet adjustment lacks idempotency key |
-| F-009 | Medium | API-4 | CSRF check disabled outside production |
-| F-010 | Low | API-7 | JWT in redirect URL query string |
-| F-011 | Medium | SUP-2 | Dockerfile runtime stage runs as root |
-| F-012 | Low | INFRA-7 | Logger / Sentry redaction not unit-tested |
+| Finding | Severity     | Subsystem  | Title                                                     |
+| ------- | ------------ | ---------- | --------------------------------------------------------- |
+| F-001   | High         | AUTH-5     | Admin JWT signing key derived from customer secret        |
+| F-002   | High         | AUTH-1     | `verifyFirebaseIdToken` silently ignores `checkRevoked`   |
+| F-003   | Medium       | AUTH-7     | Account linking auto-completes without explicit consent   |
+| F-004   | **Critical** | WALLET-3/6 | Admin wallet adjustment bypasses ledger and transaction   |
+| F-005   | **Critical** | WALLET-3/6 | Admin order-refund does not credit wallet or write ledger |
+| F-006   | High         | WALLET-4   | Coupon `maxUses` race                                     |
+| F-007   | High         | WALLET-1/2 | Topup approval lacks optimistic lock on wallet balance    |
+| F-008   | High         | WALLET-7   | Admin wallet adjustment lacks idempotency key             |
+| F-009   | Medium       | API-4      | CSRF check disabled outside production                    |
+| F-010   | Low          | API-7      | JWT in redirect URL query string                          |
+| F-011   | Medium       | SUP-2      | Dockerfile runtime stage runs as root                     |
+| F-012   | Low          | INFRA-7    | Logger / Sentry redaction not unit-tested                 |
 
 ## Appendix B — Coverage-gap index
 
-| Gap | Subsystem | Access required to close |
-|-----|-----------|--------------------------|
-| CG-01 | SUP-1 | Automated CVE scanner in CI (`npm audit` / `snyk` / `osv-scanner`) |
-| CG-02 | SUP-6 | Review of gitleaks default rules + sandbox test commit for `SESSION_SECRET` / `ENCRYPTION_KEY` |
-| CG-03 | AUTH-2 | Frontend deep-read of Telegram OAuth completion |
-| CG-04 | INFRA-4 | Cloudflare dashboard read-only access |
-| CG-05 | INFRA-2 | Neon console read-only access |
-| CG-06 | INFRA-7 | Sentry org admin read access |
-| CG-07 | INFRA-1 | Render dashboard read-only on the SubNation account |
-| CG-08 | AUTH-7 | Frontend deep-read of post-OAuth account-linking flow |
+| Gap   | Subsystem | Access required to close                                                                       |
+| ----- | --------- | ---------------------------------------------------------------------------------------------- |
+| CG-01 | SUP-1     | Automated CVE scanner in CI (`npm audit` / `snyk` / `osv-scanner`)                             |
+| CG-02 | SUP-6     | Review of gitleaks default rules + sandbox test commit for `SESSION_SECRET` / `ENCRYPTION_KEY` |
+| CG-03 | AUTH-2    | Frontend deep-read of Telegram OAuth completion                                                |
+| CG-04 | INFRA-4   | Cloudflare dashboard read-only access                                                          |
+| CG-05 | INFRA-2   | Neon console read-only access                                                                  |
+| CG-06 | INFRA-7   | Sentry org admin read access                                                                   |
+| CG-07 | INFRA-1   | Render dashboard read-only on the SubNation account                                            |
+| CG-08 | AUTH-7    | Frontend deep-read of post-OAuth account-linking flow                                          |
 
 ## Appendix C — Document map
 

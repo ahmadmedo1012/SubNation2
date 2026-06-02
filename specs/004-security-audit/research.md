@@ -89,12 +89,12 @@ Each decision is recorded as **Decision / Rationale / Alternatives Considered** 
 
 Defined once. Referenced (not redefined) by `security.md` per FR-050.
 
-| Tier | Trigger conditions | Default urgency |
-|------|--------------------|-----------------|
-| **Critical** | Direct, currently exploitable path to one or more of: (a) full account takeover at scale, (b) ledger corruption or balance mutation that bypasses the append-only invariant, (c) admin-state mutation by an unauthenticated user, (d) production secret exfiltration. | urgent |
-| **High** | Exploitable by a low-privileged authenticated user with realistic effort, OR a confirmed weakness in the *primary* defense-in-depth layer for an asset listed in the threat model. Includes: missing CSRF on a state-changing browser-reachable route, broken IDOR on wallet/order resource, replay-window wider than TTL, leaked secret in code or history. | urgent for finance / auth / admin; can-wait otherwise |
-| **Medium** | Exploitable only with non-trivial effort or chained conditions, OR a defense-in-depth weakness with a redundant layer in front of it. | can-wait |
-| **Low** | Best-practice deviation with no current exploit path; hardening opportunity. | can-wait or deferred |
+| Tier         | Trigger conditions                                                                                                                                                                                                                                                                                                                                           | Default urgency                                       |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| **Critical** | Direct, currently exploitable path to one or more of: (a) full account takeover at scale, (b) ledger corruption or balance mutation that bypasses the append-only invariant, (c) admin-state mutation by an unauthenticated user, (d) production secret exfiltration.                                                                                        | urgent                                                |
+| **High**     | Exploitable by a low-privileged authenticated user with realistic effort, OR a confirmed weakness in the _primary_ defense-in-depth layer for an asset listed in the threat model. Includes: missing CSRF on a state-changing browser-reachable route, broken IDOR on wallet/order resource, replay-window wider than TTL, leaked secret in code or history. | urgent for finance / auth / admin; can-wait otherwise |
+| **Medium**   | Exploitable only with non-trivial effort or chained conditions, OR a defense-in-depth weakness with a redundant layer in front of it.                                                                                                                                                                                                                        | can-wait                                              |
+| **Low**      | Best-practice deviation with no current exploit path; hardening opportunity.                                                                                                                                                                                                                                                                                 | can-wait or deferred                                  |
 
 **Calibration anchors**:
 
@@ -104,7 +104,7 @@ Defined once. Referenced (not redefined) by `security.md` per FR-050.
 - Logger redaction gap on an admin-only debug route → **Medium** at most.
 - Outdated dep with published CVE but no demonstrated reachable code path → **Low**.
 
-**Resolution rule for contested severity**: `priorities.md` shows all five inputs (severity, likelihood, blast radius, ease, business impact). The severity tier in `security.md` resolves toward the *largest possible loss*, not the average outcome — Critical is reserved for things that *can* happen, not things that *will* happen on average.
+**Resolution rule for contested severity**: `priorities.md` shows all five inputs (severity, likelihood, blast radius, ease, business impact). The severity tier in `security.md` resolves toward the _largest possible loss_, not the average outcome — Critical is reserved for things that _can_ happen, not things that _will_ happen on average.
 
 ---
 
@@ -112,61 +112,61 @@ Defined once. Referenced (not redefined) by `security.md` per FR-050.
 
 Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `non-issue: <note>` rows are detailed in `security.md` §6. `CG-NN` rows are detailed in §6 below.
 
-| # | Subsystem | Surface | Status | Closure |
-|---|-----------|---------|--------|---------|
-| **AUTH-1** | Authentication | Google login (Firebase) | covered | **F-002** (revocation check silently disabled) |
-| **AUTH-2** | Authentication | Telegram login (HMAC widget + Mini App) | covered | non-issue: HMAC SHA-256 verified, 30-min widget freshness, 24h Mini App freshness, Redis replay-protection (auth-settings.ts:297-315) |
-| **AUTH-3** | Authentication | WhatsApp OTP via OpenWA | covered | non-issue: 6-digit OTP, 5-min TTL, max 5 attempts, 60s cooldown, hourly limit; HMAC bound to (phone, purpose) |
-| **AUTH-4** | Authentication | Session cookie (`auth_token`) handling | covered | non-issue: httpOnly + signed JWT + secure-in-prod + SameSite=lax |
-| **AUTH-5** | Authentication | JWT verification & `SESSION_SECRET` | covered | **F-001** (admin secret weakly derived) |
-| **AUTH-6** | Authentication | Login state transitions | covered | non-issue: unified `createUserSession` across providers; logout revokes Firebase refresh tokens |
-| **AUTH-7** | Authentication | Account linking / identity mapping | covered | **F-003** (auto-link without consent) |
-| **AUTH-8** | Authentication | Admin auth (argon2, TOTP, lockout, `_admin` cookie) | covered | non-issue: argon2id with OWASP 2024 params, TOTP via otplib, 5-attempt lockout with exponential backoff, live `isActive` enforcement |
-| **AUTHZ-1** | Authorization | Admin endpoints role/permission boundary | covered | non-issue: `requireAdmin` + `requirePermission(scope)` layered; live `isActive` re-check per request; last-admin-with-`admins`-scope guards |
-| **AUTHZ-2** | Authorization | User endpoints (own-resource) | covered | non-issue: every state-change route filters by `userId` extracted from JWT, never from `req.body` |
-| **AUTHZ-3** | Authorization | Order endpoints | covered | non-issue: checkout receives `userId` from session; product validated; balance checked atomically |
-| **AUTHZ-4** | Authorization | Wallet endpoints | covered | non-issue (route protection); see WALLET-1 / WALLET-7 for transaction concerns |
-| **AUTHZ-5** | Authorization | Product / admin product-management endpoints | covered | non-issue: `requireAdmin` + `requirePermission("inventory")` |
-| **AUTHZ-6** | Authorization | IDOR / privilege-escalation surface | covered | non-issue: no `req.body.userId` pattern in state-changing routes |
-| **WALLET-1** | Wallet & Financial Integrity | Top-up flow (request + approval) | covered | **F-007** (no optimistic lock on balance), **F-008** (no idempotency key on adjustment) |
-| **WALLET-2** | Wallet & Financial Integrity | Balance change atomicity & optimistic lock | covered | **F-007** for topup; non-issue for purchase (correct optimistic lock at checkout.service.ts:122) |
-| **WALLET-3** | Wallet & Financial Integrity | Append-only ledger invariant | covered | **F-004**, **F-005** |
-| **WALLET-4** | Wallet & Financial Integrity | Coupon application | covered | **F-006** (maxUses race) |
-| **WALLET-5** | Wallet & Financial Integrity | Purchase flow (single-transaction integrity) | covered | non-issue: atomic transaction wraps inventory claim + balance debit (optimistic lock) + ledger entry; rollback test at checkout.test.ts:126-149 |
-| **WALLET-6** | Wallet & Financial Integrity | Refund / adjustment paths | covered | **F-004** (admin adjustment), **F-005** (refund bulk-status) |
-| **WALLET-7** | Wallet & Financial Integrity | Replay / double-spend / race | covered | **F-008** (idempotency); see WALLET-1 / WALLET-4 |
-| **API-1** | API & Input Handling | Request validation (Zod) | covered | non-issue: systematic `safeParse` on every state-changing route input |
-| **API-2** | API & Input Handling | Query-parameter handling | covered | non-issue: bounds checked where used (`stats.ts:57`); Drizzle parameterizes all DB queries; no SQL injection vector |
-| **API-3** | API & Input Handling | Route protection (auth/admin guards) | covered | non-issue: `requireUser` / `requireAdmin` / `requirePermission` correctly layered |
-| **API-4** | API & Input Handling | CSRF (Origin / Referer check) | covered | **F-009** (disabled outside production) |
-| **API-5** | API & Input Handling | CORS allow-list (`APP_ORIGINS`) | covered | non-issue: allow-list parsed; dev fallback gated; `credentials:true` paired with explicit allow-list |
-| **API-6** | API & Input Handling | Open redirects | covered | non-issue: only relative paths reach `res.redirect`; `encodeURIComponent` correctly applied |
-| **API-7** | API & Input Handling | Unsafe URLs handed to clients | covered | **F-010** (JWT in redirect query string) |
-| **API-8** | API & Input Handling | Webhook inputs | covered | non-issue: no webhooks defined yet; `/api/webhook/*` defensive skip-list pre-installed in CSRF middleware |
-| **API-9** | API & Input Handling | External-provider callbacks (Google / Telegram / OpenWA) | covered | non-issue: Telegram HMAC + freshness + Redis replay; Firebase SDK verifies token; WhatsApp OTP HMAC-bound |
-| **INFRA-1** | Infrastructure & Deployment | Render service config | covered | non-issue: 3-tier topology (web/worker/redis); secrets marked `sync:false`; health check path wired (with **CG-07**) |
-| **INFRA-2** | Infrastructure & Deployment | Neon connection | covered | non-issue: `sslmode=require`; pool sized; direct URL (not pooler) on free tier (with **CG-05**) |
-| **INFRA-3** | Infrastructure & Deployment | Redis usage | covered | non-issue: fail-closed on connection error in production; in-memory fallback dev-only |
-| **INFRA-4** | Infrastructure & Deployment | Cloudflare Tunnel / WAF | gap | **CG-04** |
-| **INFRA-5** | Infrastructure & Deployment | Environment variables surface | covered | non-issue: `config/env.example` carries placeholder strings only; no real secret committed |
-| **INFRA-6** | Infrastructure & Deployment | Secret handling (storage, rotation, fail-fast) | covered | non-issue: `SESSION_SECRET ≥ 32` and `ENCRYPTION_KEY` 64 hex both validated fail-fast at boot (jwt.ts:13, encryption.ts:7-12); AES-256-GCM with random 12-byte IV + auth tag |
-| **INFRA-7** | Infrastructure & Deployment | Logging redaction & Sentry exposure | covered | **F-012** (redaction not unit-tested) + **CG-06** (Sentry org rules); strong dual-layer redaction structurally proven |
-| **INFRA-8** | Infrastructure & Deployment | Multi-tier rate limits | covered | non-issue: 600/min IP + 1200/min user + 10/15min auth, mounted in correct order; Redis store with in-memory dev fallback |
-| **INFRA-9** | Infrastructure & Deployment | Health / readiness endpoints | covered | non-issue: `/api/healthz` minimal payload; admin-gated diagnostics for deeper info |
-| **FE-1** | Frontend Security | Client-side auth state | covered | non-issue: `__cookie_session__` sentinel pattern; real JWT only in httpOnly cookie |
-| **FE-2** | Frontend Security | Unsafe rendering | covered | non-issue: zero `dangerouslySetInnerHTML` in frontend/src |
-| **FE-3** | Frontend Security | Dynamic HTML / Markdown | covered | non-issue: no markdown-to-HTML rendering anywhere |
-| **FE-4** | Frontend Security | Image URL handling | covered | non-issue: every `<img src=>` originates from server-controlled URLs; no user-supplied URL rendering |
-| **FE-5** | Frontend Security | External-link `rel`/`target` | covered | non-issue: every `target="_blank"` carries `rel="noopener noreferrer"` |
-| **FE-6** | Frontend Security | XSS surface | covered | non-issue: no `eval`, `Function`, `innerHTML`, `document.write` with user input |
-| **FE-7** | Frontend Security | Sensitive-data exposure | covered | non-issue: localStorage holds theme/UX prefs only; zero JWT/admin-token/refresh-token client-side |
-| **FE-8** | Frontend Security | Admin-only data leakage | covered | non-issue: admin pages lazy-loaded into separate chunk; API enforces RBAC server-side; socket admin-join requires server verification |
-| **SUP-1** | Supply Chain & Operational | Dependency tree & CVE reachability | gap | **CG-01** (full automated CVE scan); manual top-15 sample shows no critical CVE in stable minor versions |
-| **SUP-2** | Supply Chain & Operational | Build-time / runtime assumptions | covered | **F-011** (Dockerfile runs as root) |
-| **SUP-3** | Supply Chain & Operational | Hidden debug paths | covered | non-issue: no `/dev/`, `/debug/`, `/test/`, `/__debug__` routes mounted |
-| **SUP-4** | Supply Chain & Operational | Obsolete endpoints (retired phone+password) | covered | non-issue: `sign_in_provider==="phone"` rejected with 403 + `phone_auth_disabled` (auth.ts:361-379) — Constitution Principle II compliance proven |
-| **SUP-5** | Supply Chain & Operational | Diagnostic logs / leftover testing hooks | covered | non-issue: 11 `console.*` calls total, all in error-fallback or boot-diagnostic paths |
-| **SUP-6** | Supply Chain & Operational | Pre-commit / gitleaks coverage | covered | non-issue: `.gitleaks.toml` extends defaults + adds 6 custom rules; CI gates `secret-scan` before quality jobs (with **CG-02** for SESSION_SECRET / ENCRYPTION_KEY explicit rules) |
+| #            | Subsystem                    | Surface                                                  | Status  | Closure                                                                                                                                                                            |
+| ------------ | ---------------------------- | -------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AUTH-1**   | Authentication               | Google login (Firebase)                                  | covered | **F-002** (revocation check silently disabled)                                                                                                                                     |
+| **AUTH-2**   | Authentication               | Telegram login (HMAC widget + Mini App)                  | covered | non-issue: HMAC SHA-256 verified, 30-min widget freshness, 24h Mini App freshness, Redis replay-protection (auth-settings.ts:297-315)                                              |
+| **AUTH-3**   | Authentication               | WhatsApp OTP via OpenWA                                  | covered | non-issue: 6-digit OTP, 5-min TTL, max 5 attempts, 60s cooldown, hourly limit; HMAC bound to (phone, purpose)                                                                      |
+| **AUTH-4**   | Authentication               | Session cookie (`auth_token`) handling                   | covered | non-issue: httpOnly + signed JWT + secure-in-prod + SameSite=lax                                                                                                                   |
+| **AUTH-5**   | Authentication               | JWT verification & `SESSION_SECRET`                      | covered | **F-001** (admin secret weakly derived)                                                                                                                                            |
+| **AUTH-6**   | Authentication               | Login state transitions                                  | covered | non-issue: unified `createUserSession` across providers; logout revokes Firebase refresh tokens                                                                                    |
+| **AUTH-7**   | Authentication               | Account linking / identity mapping                       | covered | **F-003** (auto-link without consent)                                                                                                                                              |
+| **AUTH-8**   | Authentication               | Admin auth (argon2, TOTP, lockout, `_admin` cookie)      | covered | non-issue: argon2id with OWASP 2024 params, TOTP via otplib, 5-attempt lockout with exponential backoff, live `isActive` enforcement                                               |
+| **AUTHZ-1**  | Authorization                | Admin endpoints role/permission boundary                 | covered | non-issue: `requireAdmin` + `requirePermission(scope)` layered; live `isActive` re-check per request; last-admin-with-`admins`-scope guards                                        |
+| **AUTHZ-2**  | Authorization                | User endpoints (own-resource)                            | covered | non-issue: every state-change route filters by `userId` extracted from JWT, never from `req.body`                                                                                  |
+| **AUTHZ-3**  | Authorization                | Order endpoints                                          | covered | non-issue: checkout receives `userId` from session; product validated; balance checked atomically                                                                                  |
+| **AUTHZ-4**  | Authorization                | Wallet endpoints                                         | covered | non-issue (route protection); see WALLET-1 / WALLET-7 for transaction concerns                                                                                                     |
+| **AUTHZ-5**  | Authorization                | Product / admin product-management endpoints             | covered | non-issue: `requireAdmin` + `requirePermission("inventory")`                                                                                                                       |
+| **AUTHZ-6**  | Authorization                | IDOR / privilege-escalation surface                      | covered | non-issue: no `req.body.userId` pattern in state-changing routes                                                                                                                   |
+| **WALLET-1** | Wallet & Financial Integrity | Top-up flow (request + approval)                         | covered | **F-007** (no optimistic lock on balance), **F-008** (no idempotency key on adjustment)                                                                                            |
+| **WALLET-2** | Wallet & Financial Integrity | Balance change atomicity & optimistic lock               | covered | **F-007** for topup; non-issue for purchase (correct optimistic lock at checkout.service.ts:122)                                                                                   |
+| **WALLET-3** | Wallet & Financial Integrity | Append-only ledger invariant                             | covered | **F-004**, **F-005**                                                                                                                                                               |
+| **WALLET-4** | Wallet & Financial Integrity | Coupon application                                       | covered | **F-006** (maxUses race)                                                                                                                                                           |
+| **WALLET-5** | Wallet & Financial Integrity | Purchase flow (single-transaction integrity)             | covered | non-issue: atomic transaction wraps inventory claim + balance debit (optimistic lock) + ledger entry; rollback test at checkout.test.ts:126-149                                    |
+| **WALLET-6** | Wallet & Financial Integrity | Refund / adjustment paths                                | covered | **F-004** (admin adjustment), **F-005** (refund bulk-status)                                                                                                                       |
+| **WALLET-7** | Wallet & Financial Integrity | Replay / double-spend / race                             | covered | **F-008** (idempotency); see WALLET-1 / WALLET-4                                                                                                                                   |
+| **API-1**    | API & Input Handling         | Request validation (Zod)                                 | covered | non-issue: systematic `safeParse` on every state-changing route input                                                                                                              |
+| **API-2**    | API & Input Handling         | Query-parameter handling                                 | covered | non-issue: bounds checked where used (`stats.ts:57`); Drizzle parameterizes all DB queries; no SQL injection vector                                                                |
+| **API-3**    | API & Input Handling         | Route protection (auth/admin guards)                     | covered | non-issue: `requireUser` / `requireAdmin` / `requirePermission` correctly layered                                                                                                  |
+| **API-4**    | API & Input Handling         | CSRF (Origin / Referer check)                            | covered | **F-009** (disabled outside production)                                                                                                                                            |
+| **API-5**    | API & Input Handling         | CORS allow-list (`APP_ORIGINS`)                          | covered | non-issue: allow-list parsed; dev fallback gated; `credentials:true` paired with explicit allow-list                                                                               |
+| **API-6**    | API & Input Handling         | Open redirects                                           | covered | non-issue: only relative paths reach `res.redirect`; `encodeURIComponent` correctly applied                                                                                        |
+| **API-7**    | API & Input Handling         | Unsafe URLs handed to clients                            | covered | **F-010** (JWT in redirect query string)                                                                                                                                           |
+| **API-8**    | API & Input Handling         | Webhook inputs                                           | covered | non-issue: no webhooks defined yet; `/api/webhook/*` defensive skip-list pre-installed in CSRF middleware                                                                          |
+| **API-9**    | API & Input Handling         | External-provider callbacks (Google / Telegram / OpenWA) | covered | non-issue: Telegram HMAC + freshness + Redis replay; Firebase SDK verifies token; WhatsApp OTP HMAC-bound                                                                          |
+| **INFRA-1**  | Infrastructure & Deployment  | Render service config                                    | covered | non-issue: 3-tier topology (web/worker/redis); secrets marked `sync:false`; health check path wired (with **CG-07**)                                                               |
+| **INFRA-2**  | Infrastructure & Deployment  | Neon connection                                          | covered | non-issue: `sslmode=require`; pool sized; direct URL (not pooler) on free tier (with **CG-05**)                                                                                    |
+| **INFRA-3**  | Infrastructure & Deployment  | Redis usage                                              | covered | non-issue: fail-closed on connection error in production; in-memory fallback dev-only                                                                                              |
+| **INFRA-4**  | Infrastructure & Deployment  | Cloudflare Tunnel / WAF                                  | gap     | **CG-04**                                                                                                                                                                          |
+| **INFRA-5**  | Infrastructure & Deployment  | Environment variables surface                            | covered | non-issue: `config/env.example` carries placeholder strings only; no real secret committed                                                                                         |
+| **INFRA-6**  | Infrastructure & Deployment  | Secret handling (storage, rotation, fail-fast)           | covered | non-issue: `SESSION_SECRET ≥ 32` and `ENCRYPTION_KEY` 64 hex both validated fail-fast at boot (jwt.ts:13, encryption.ts:7-12); AES-256-GCM with random 12-byte IV + auth tag       |
+| **INFRA-7**  | Infrastructure & Deployment  | Logging redaction & Sentry exposure                      | covered | **F-012** (redaction not unit-tested) + **CG-06** (Sentry org rules); strong dual-layer redaction structurally proven                                                              |
+| **INFRA-8**  | Infrastructure & Deployment  | Multi-tier rate limits                                   | covered | non-issue: 600/min IP + 1200/min user + 10/15min auth, mounted in correct order; Redis store with in-memory dev fallback                                                           |
+| **INFRA-9**  | Infrastructure & Deployment  | Health / readiness endpoints                             | covered | non-issue: `/api/healthz` minimal payload; admin-gated diagnostics for deeper info                                                                                                 |
+| **FE-1**     | Frontend Security            | Client-side auth state                                   | covered | non-issue: `__cookie_session__` sentinel pattern; real JWT only in httpOnly cookie                                                                                                 |
+| **FE-2**     | Frontend Security            | Unsafe rendering                                         | covered | non-issue: zero `dangerouslySetInnerHTML` in frontend/src                                                                                                                          |
+| **FE-3**     | Frontend Security            | Dynamic HTML / Markdown                                  | covered | non-issue: no markdown-to-HTML rendering anywhere                                                                                                                                  |
+| **FE-4**     | Frontend Security            | Image URL handling                                       | covered | non-issue: every `<img src=>` originates from server-controlled URLs; no user-supplied URL rendering                                                                               |
+| **FE-5**     | Frontend Security            | External-link `rel`/`target`                             | covered | non-issue: every `target="_blank"` carries `rel="noopener noreferrer"`                                                                                                             |
+| **FE-6**     | Frontend Security            | XSS surface                                              | covered | non-issue: no `eval`, `Function`, `innerHTML`, `document.write` with user input                                                                                                    |
+| **FE-7**     | Frontend Security            | Sensitive-data exposure                                  | covered | non-issue: localStorage holds theme/UX prefs only; zero JWT/admin-token/refresh-token client-side                                                                                  |
+| **FE-8**     | Frontend Security            | Admin-only data leakage                                  | covered | non-issue: admin pages lazy-loaded into separate chunk; API enforces RBAC server-side; socket admin-join requires server verification                                              |
+| **SUP-1**    | Supply Chain & Operational   | Dependency tree & CVE reachability                       | gap     | **CG-01** (full automated CVE scan); manual top-15 sample shows no critical CVE in stable minor versions                                                                           |
+| **SUP-2**    | Supply Chain & Operational   | Build-time / runtime assumptions                         | covered | **F-011** (Dockerfile runs as root)                                                                                                                                                |
+| **SUP-3**    | Supply Chain & Operational   | Hidden debug paths                                       | covered | non-issue: no `/dev/`, `/debug/`, `/test/`, `/__debug__` routes mounted                                                                                                            |
+| **SUP-4**    | Supply Chain & Operational   | Obsolete endpoints (retired phone+password)              | covered | non-issue: `sign_in_provider==="phone"` rejected with 403 + `phone_auth_disabled` (auth.ts:361-379) — Constitution Principle II compliance proven                                  |
+| **SUP-5**    | Supply Chain & Operational   | Diagnostic logs / leftover testing hooks                 | covered | non-issue: 11 `console.*` calls total, all in error-fallback or boot-diagnostic paths                                                                                              |
+| **SUP-6**    | Supply Chain & Operational   | Pre-commit / gitleaks coverage                           | covered | non-issue: `.gitleaks.toml` extends defaults + adds 6 custom rules; CI gates `secret-scan` before quality jobs (with **CG-02** for SESSION_SECRET / ENCRYPTION_KEY explicit rules) |
 
 **Total**: 47 surfaces. **Open: 0.** **Covered: 45.** **Gap: 2 (SUP-1, INFRA-4 plus inline gap notes).**
 
@@ -218,7 +218,7 @@ Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `no
 
 - **Subsystem**: WALLET-3 / WALLET-6
 - **Path**: `backend/src/routes/admin/users.ts:66-114`
-- **Behavior**: PATCH `/admin/users/:id` accepts `wallet_adjustment` or `wallet_balance` in the body and writes the new value directly to `users.walletBalance` (line ~80) with NO `db.transaction()` wrapper and NO call to `insertLedgerEntry()`. The `wallet_ledger` schema supports type=`adjustment` (`wallet_ledger.ts:17`) but this endpoint never uses it. Audit log records the *fields changed*, not the amount.
+- **Behavior**: PATCH `/admin/users/:id` accepts `wallet_adjustment` or `wallet_balance` in the body and writes the new value directly to `users.walletBalance` (line ~80) with NO `db.transaction()` wrapper and NO call to `insertLedgerEntry()`. The `wallet_ledger` schema supports type=`adjustment` (`wallet_ledger.ts:17`) but this endpoint never uses it. Audit log records the _fields changed_, not the amount.
 - **Linked Findings**: F-004
 - **Classification**: proven
 
@@ -242,7 +242,7 @@ Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `no
 
 - **Subsystem**: WALLET-1 / WALLET-2
 - **Path**: `backend/src/services/topup.service.ts:106-110`
-- **Behavior**: UPDATE clause is `WHERE id = ? AND status = 'pending'`. The status guard prevents *the same topup* from being approved twice but does NOT guard the wallet balance against concurrent mutations. The checkout path uses the correct pattern (`WHERE walletBalance = $expected` at `checkout.service.ts:122`); this divergence is a primary defense gap.
+- **Behavior**: UPDATE clause is `WHERE id = ? AND status = 'pending'`. The status guard prevents _the same topup_ from being approved twice but does NOT guard the wallet balance against concurrent mutations. The checkout path uses the correct pattern (`WHERE walletBalance = $expected` at `checkout.service.ts:122`); this divergence is a primary defense gap.
 - **Linked Findings**: F-007
 - **Classification**: likely — divergence from the correct pattern that the same codebase already implements in checkout.
 
@@ -259,7 +259,7 @@ Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `no
 - **Subsystem**: WALLET-2 / WALLET-5 (supports the non-issue closures)
 - **Path**: `backend/src/services/checkout.service.ts:103-180`, test at `backend/src/services/__tests__/checkout.test.ts:126-168`
 - **Behavior**: Single `db.transaction` wraps inventory claim + balance debit (optimistic lock at line 122 with `WHERE walletBalance = $expected`) + coupon increment + order insert + ledger entry. Rollback test asserts atomicity. Concurrency test asserts exactly one of two concurrent purchases wins.
-- **Linked Findings**: none — this is the *correct pattern*. Used to argue that F-007 / F-004 / F-005 should adopt the same shape.
+- **Linked Findings**: none — this is the _correct pattern_. Used to argue that F-007 / F-004 / F-005 should adopt the same shape.
 - **Classification**: proven
 
 ### EN-012 — CSRF middleware gated by `NODE_ENV === "production"`
@@ -338,7 +338,7 @@ Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `no
 
 - **Subsystem**: INFRA-4 / INFRA-8 (supports rate-limit non-issue closure)
 - **Path**: `backend/src/app.ts:192` (`trust proxy: 1`), `:217` (mount of `cloudflareClientIp` middleware), middleware itself in `backend/src/middlewares/cloudflareClientIp.ts`
-- **Behavior**: `app.set('trust proxy', 1)` allows one reverse-proxy hop (Render edge). The custom middleware reads `CF-Connecting-IP` and overrides `req.ip` before any rate-limiter runs. Without dashboard access, this audit cannot confirm Cloudflare actually sets that header (if a request reaches the origin without going through Cloudflare, it would have a forgeable IP). The code is structurally correct *given* the Cloudflare-fronted assumption — see CG-04.
+- **Behavior**: `app.set('trust proxy', 1)` allows one reverse-proxy hop (Render edge). The custom middleware reads `CF-Connecting-IP` and overrides `req.ip` before any rate-limiter runs. Without dashboard access, this audit cannot confirm Cloudflare actually sets that header (if a request reaches the origin without going through Cloudflare, it would have a forgeable IP). The code is structurally correct _given_ the Cloudflare-fronted assumption — see CG-04.
 - **Linked Findings**: none — supports INFRA-4 closure to CG-04.
 - **Classification**: proven (the code), with the architectural assumption recorded as CG-04.
 
@@ -404,7 +404,7 @@ Every row closed at sign-off. `F-NNN` IDs cross-reference `security.md` §3. `no
 
 - **Subsystem**: INFRA-4
 - **What we cannot see**: the live WAF rule set, bot-fight mode configuration, the rate-limit edge rules, the actual Cloudflare Tunnel (cloudflared) ACLs.
-- **Assumption**: Cloudflare is the only origin entrypoint AND it sets `CF-Connecting-IP` on every request reaching the app. If that assumption is wrong, every backend rate limit keys on the *edge* IP, not the *client* IP, and one IP can exhaust the bucket for everyone.
+- **Assumption**: Cloudflare is the only origin entrypoint AND it sets `CF-Connecting-IP` on every request reaching the app. If that assumption is wrong, every backend rate limit keys on the _edge_ IP, not the _client_ IP, and one IP can exhaust the bucket for everyone.
 - **Access required**: read-only Cloudflare dashboard access for this account.
 - **Worst-case if assumption wrong**: Severity High — backend rate limits are ineffective; brute-force / credential-stuffing attacks at scale are unblocked.
 
@@ -470,7 +470,7 @@ Audit-deliverable:
 - [ ] Cross-document closure check (C-01 through C-08) recorded below (Phase 7 task).
 - [ ] Reviewer spot-check on ≥ 10% of Findings (minimum 3) (Phase 7 task).
 
-The remaining three checkboxes are filled by Phase 7 (`/speckit-implement` polish phase). Until they are filled, the audit is *complete in content* but *not signed off*.
+The remaining three checkboxes are filled by Phase 7 (`/speckit-implement` polish phase). Until they are filled, the audit is _complete in content_ but _not signed off_.
 
 ---
 
@@ -489,16 +489,16 @@ Conducted 2026-06-02 against all four deliverables (`security.md`, `research.md`
 
 ### 9.2 Cross-document closure check (closes C-01 .. C-08)
 
-| Rule | Description | Status |
-|------|-------------|--------|
-| C-01 | Every Coverage Item has `status ∈ {covered, gap}` (no `open` rows) | **PASS** — 45 covered + 2 gap = 47 (research.md §3) |
-| C-02 | Every Finding has ≥ 1 Evidence Note + ≥ 1 Claim + exactly one Repro-or-Hypothesis | **PASS** — F-001..F-012 all conform (security.md §3) |
-| C-03 | Severity in `security.md` §3 == severity in `priorities.md` §2 for every F-NNN | **PASS** — verified row-by-row in priorities.md §6 |
-| C-04 | Every Evidence Note's `pathRange` resolves at the pinned commit | **PASS (95%)** — sample of 4 ENs spot-checked via `git show 1711081:<path>`; all resolve. The 100% guarantee waits on §9.4 reviewer pass. |
-| C-05 | Zero secret values appear in any deliverable | **PASS** — entropy scan §9.1 clean |
-| C-06 | Zero `large rewrite` recommendation lacks `Justification` | **PASS** — S-01 + S-02 both carry Justification (priorities.md §4) |
-| C-07 | Every Hypothesis Finding records `whatWouldConfirm` + `whyNotRun` | **PASS** — F-006 + F-007 (the only Hypothesis-classified Findings in this audit) both have both fields (security.md §3) |
-| C-08 | Every CG-NN records assumption + access-required + worst-case | **PASS** — CG-01..CG-08 all conform (research.md §6) |
+| Rule | Description                                                                       | Status                                                                                                                                    |
+| ---- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| C-01 | Every Coverage Item has `status ∈ {covered, gap}` (no `open` rows)                | **PASS** — 45 covered + 2 gap = 47 (research.md §3)                                                                                       |
+| C-02 | Every Finding has ≥ 1 Evidence Note + ≥ 1 Claim + exactly one Repro-or-Hypothesis | **PASS** — F-001..F-012 all conform (security.md §3)                                                                                      |
+| C-03 | Severity in `security.md` §3 == severity in `priorities.md` §2 for every F-NNN    | **PASS** — verified row-by-row in priorities.md §6                                                                                        |
+| C-04 | Every Evidence Note's `pathRange` resolves at the pinned commit                   | **PASS (95%)** — sample of 4 ENs spot-checked via `git show 1711081:<path>`; all resolve. The 100% guarantee waits on §9.4 reviewer pass. |
+| C-05 | Zero secret values appear in any deliverable                                      | **PASS** — entropy scan §9.1 clean                                                                                                        |
+| C-06 | Zero `large rewrite` recommendation lacks `Justification`                         | **PASS** — S-01 + S-02 both carry Justification (priorities.md §4)                                                                        |
+| C-07 | Every Hypothesis Finding records `whatWouldConfirm` + `whyNotRun`                 | **PASS** — F-006 + F-007 (the only Hypothesis-classified Findings in this audit) both have both fields (security.md §3)                   |
+| C-08 | Every CG-NN records assumption + access-required + worst-case                     | **PASS** — CG-01..CG-08 all conform (research.md §6)                                                                                      |
 
 **Net**: 8 / 8 PASS at content-complete checkpoint. C-04 is marked PASS (95%) because the 100% guarantee mechanically depends on the independent-reviewer pass in §9.4; the auditor's own spot-check at §9.3 already covers more than the SC-005 minimum.
 
@@ -508,11 +508,11 @@ Drawn 2026-06-02 from F-001..F-012 by deterministic pseudo-random selection (pos
 
 **F-001 verification** — opened `git show 1711081:backend/src/lib/jwt.ts`; line 22 reads literally `export const ADMIN_JWT_SECRET: string = JWT_SECRET + "_admin";`. Lines 50, 55, 65 use this derived value for sign / verify. Claim **proven** — confirmed.
 
-**F-002 verification** — opened `git show 1711081:backend/src/services/firebase-auth.service.ts`; line 160 reads literally `return await auth.verifyIdToken(idToken, false);`. Line 156 comment ("Always pass checkRevoked=false for maximum compatibility") confirms the intent. Line 167 logs `checkRevoked` (the discarded parameter), confirming the parameter is *received* but *ignored*. Caller at `routes/auth.ts:359` passes `true`. Claim **proven** — confirmed.
+**F-002 verification** — opened `git show 1711081:backend/src/services/firebase-auth.service.ts`; line 160 reads literally `return await auth.verifyIdToken(idToken, false);`. Line 156 comment ("Always pass checkRevoked=false for maximum compatibility") confirms the intent. Line 167 logs `checkRevoked` (the discarded parameter), confirming the parameter is _received_ but _ignored_. Caller at `routes/auth.ts:359` passes `true`. Claim **proven** — confirmed.
 
 **F-004 verification** — opened `git show 1711081:backend/src/routes/admin/users.ts`; lines 66-114 contain `router.patch("/users/:id", requireAdmin, async (req, res) => {…})`. Endpoint accepts `wallet_adjustment` (line ~76) and `wallet_balance` (line ~83) from `req.body`. Mutation at `updates.walletBalance = String(next)` (line ~80). Searched the file for `db.transaction(` — zero matches. Searched for `insertLedgerEntry(` — zero matches. Claim **proven** — confirmed.
 
-**Result**: 3 / 3 spot-checked Findings pass. **This is auditor self-verification and does NOT close SC-005 / SC-007** — those require an *independent* reviewer.
+**Result**: 3 / 3 spot-checked Findings pass. **This is auditor self-verification and does NOT close SC-005 / SC-007** — those require an _independent_ reviewer.
 
 ### 9.4 Independent reviewer spot-check (DEFERRED)
 
@@ -531,17 +531,20 @@ Per `research.md` §1 D-06, SC-005 and SC-007 require a reviewer who is **not** 
 **Reviewer (independent)**: pending (§9.4)
 
 **Findings catalog**: 12 Findings (F-001..F-012)
+
 - 2 Critical (F-004, F-005) — admin-side wallet operations bypass ledger / transaction
 - 5 High (F-001, F-002, F-006, F-007, F-008) — auth-secret derivation, silent SDK contract violation, two race conditions, missing idempotency
 - 3 Medium (F-003, F-009, F-011) — account-link consent, dev-only CSRF gap, container runs as root
 - 2 Low (F-010, F-012) — JWT in redirect query string, redaction lacks unit tests
 
 **Coverage**:
+
 - 47 / 47 surfaces resolved (FR-001 / FR-002 / SC-003 closed)
 - 45 covered (Findings or non-issues), 2 gaps (CG-01, CG-04 anchor surfaces)
 - 8 coverage gaps recorded in §6 — none block remediation; all name access required to close
 
 **Closures**:
+
 - C-01..C-08: 8 / 8 PASS (§9.2)
 - SC-001..SC-010: SC-001..SC-004, SC-006, SC-008..SC-010 PASS in content; SC-005 / SC-007 conditional on §9.4 independent reviewer pass
 - FR-001..FR-052: all met by content (the requirements checklist at `checklists/requirements.md` was already validated at `/speckit-specify`; remains valid)
