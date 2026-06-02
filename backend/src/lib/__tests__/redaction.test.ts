@@ -39,7 +39,8 @@ const { deepSanitize, sanitizeUrl, isSensitiveField } = sentryInternal;
 // payload deliberately uses a recognisable but obviously fake claim
 // — there is no real signing key here. Tests must NEVER ship real
 // secrets; this matches the audit's FR-042 / SC-008 discipline.
-const FAKE_JWT_SHAPED = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
+const FAKE_JWT_SHAPED =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
   ".eyJzdWIiOiJ0ZXN0LXVzZXIifQ" +
   ".fake-signature-segment-not-a-real-token";
 
@@ -173,14 +174,9 @@ describe("redaction (F-012) — Pino redact paths", () => {
       // Skip fields that aren't covered by the Pino redact paths
       // explicitly — those are Sentry-only concerns and tested below.
       const isPinoCovered =
-        /password|token|otp|card_number|cvv|ssn|national_id|secret|.*token.*|auth/i.test(
-          fieldName,
-        );
+        /password|token|otp|card_number|cvv|ssn|national_id|secret|.*token.*|auth/i.test(fieldName);
       if (!isPinoCovered) continue;
-      expect(
-        line,
-        `Pino leaked '${fieldName}' value into log output`,
-      ).not.toContain(fakeValue);
+      expect(line, `Pino leaked '${fieldName}' value into log output`).not.toContain(fakeValue);
     }
 
     // Positive assertion: the censor token appears (proves redaction
@@ -250,10 +246,7 @@ describe("redaction (F-012) — Sentry deepSanitize", () => {
             },
           },
           // Plus an array so list traversal is exercised.
-          history: [
-            { token: FAKE_SECRETS.token },
-            { otp: FAKE_SECRETS.otp },
-          ],
+          history: [{ token: FAKE_SECRETS.token }, { otp: FAKE_SECRETS.otp }],
         },
       },
     }) as Record<string, unknown>;
@@ -261,10 +254,7 @@ describe("redaction (F-012) — Sentry deepSanitize", () => {
     // Stringify the entire output and assert no fake value survives.
     const flat = JSON.stringify(sanitized);
     for (const [fieldName, fakeValue] of Object.entries(FAKE_SECRETS)) {
-      expect(
-        flat,
-        `Sentry deepSanitize leaked '${fieldName}' value`,
-      ).not.toContain(fakeValue);
+      expect(flat, `Sentry deepSanitize leaked '${fieldName}' value`).not.toContain(fakeValue);
     }
 
     // Positive assertion: REDACTED token appears.
@@ -294,12 +284,12 @@ describe("redaction (F-012) — Sentry deepSanitize", () => {
     expect(sanitizeUrl(`/auth/callback?token=${FAKE_JWT_SHAPED}`)).toBe(
       "/auth/callback?token=[REDACTED]",
     );
-    expect(
-      sanitizeUrl(`/auth/callback?id_token=${FAKE_JWT_SHAPED}&user=42`),
-    ).toBe("/auth/callback?id_token=[REDACTED]&user=42");
-    expect(
-      sanitizeUrl(`/auth/callback?access_token=${FAKE_JWT_SHAPED}&otp=654321`),
-    ).toBe("/auth/callback?access_token=[REDACTED]&otp=[REDACTED]");
+    expect(sanitizeUrl(`/auth/callback?id_token=${FAKE_JWT_SHAPED}&user=42`)).toBe(
+      "/auth/callback?id_token=[REDACTED]&user=42",
+    );
+    expect(sanitizeUrl(`/auth/callback?access_token=${FAKE_JWT_SHAPED}&otp=654321`)).toBe(
+      "/auth/callback?access_token=[REDACTED]&otp=[REDACTED]",
+    );
   });
 
   it("strips token-shaped URL fragments", () => {

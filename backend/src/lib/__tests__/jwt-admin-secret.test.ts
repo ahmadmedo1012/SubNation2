@@ -114,7 +114,9 @@ describe("F-001 — admin secret separation", () => {
       ADMIN_JWT_SECRET: undefined,
     });
 
-    await expect(import("../jwt")).rejects.toThrow(/ADMIN_JWT_SECRET environment variable is required/);
+    await expect(import("../jwt")).rejects.toThrow(
+      /ADMIN_JWT_SECRET environment variable is required/,
+    );
   });
 
   it("falls back to derivation in non-production with a deprecation warning", async () => {

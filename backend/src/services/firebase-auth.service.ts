@@ -223,7 +223,7 @@ export async function resolveFirebaseSession(
   // new phone-provider tokens reach this code path (rejected at the route).
   const phone = decoded.phone_number
     ? (normalizeLibyanPhone(decoded.phone_number) ??
-       normalizeLibyanPhone(decoded.phone_number.replace(/^\+218/, "0")))
+      normalizeLibyanPhone(decoded.phone_number.replace(/^\+218/, "0")))
     : null;
   const email = typeof decoded.email === "string" ? decoded.email.toLowerCase() : null;
   const emailVerified = decoded.email_verified === true;
@@ -371,8 +371,7 @@ export async function resolveFirebaseSession(
       phoneVerified,
       displayName,
       photoUrl,
-      authProvider:
-        provider === "google.com" ? "firebase_google" : "firebase",
+      authProvider: provider === "google.com" ? "firebase_google" : "firebase",
       lastAuthAt: now,
       referralCode: generateReferralCode(),
       referredBy: referredById,
@@ -412,7 +411,6 @@ function getProviderUid(decoded: DecodedIdToken, provider: string) {
   if (Array.isArray(values) && values.length > 0 && typeof values[0] === "string") return values[0];
   return decoded.uid;
 }
-
 
 function firebasePhonePlaceholder(uid: string) {
   return `f_${createHash("sha256").update(uid).digest("hex").slice(0, 18)}`;
@@ -494,8 +492,7 @@ async function updateUserIdentity(
       phoneVerified: data.phoneVerified,
       displayName: data.displayName ?? undefined,
       photoUrl: data.photoUrl ?? undefined,
-      authProvider:
-        data.provider === "google.com" ? "firebase_google" : "firebase",
+      authProvider: data.provider === "google.com" ? "firebase_google" : "firebase",
       lastAuthAt: data.now,
     })
     .where(eq(usersTable.id, userId))

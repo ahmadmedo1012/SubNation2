@@ -237,14 +237,12 @@ const NOISY_PATHS = ["/api/healthz", "/api/metrics", "/health", "/api/cwv"];
  */
 function makeTracesSampler() {
   const fixedRate = Number(
-    process.env.SENTRY_TRACES_SAMPLE_RATE ??
-      (process.env.NODE_ENV === "production" ? 0.1 : 1.0),
+    process.env.SENTRY_TRACES_SAMPLE_RATE ?? (process.env.NODE_ENV === "production" ? 0.1 : 1.0),
   );
   const safe = Number.isFinite(fixedRate) && fixedRate >= 0 && fixedRate <= 1 ? fixedRate : 0.1;
 
   return (samplingContext: { name?: string; transactionContext?: { name?: string } }) => {
-    const name =
-      samplingContext.name ?? samplingContext.transactionContext?.name ?? "";
+    const name = samplingContext.name ?? samplingContext.transactionContext?.name ?? "";
     if (NOISY_PATHS.some((p) => name.includes(p))) return 0;
     return safe;
   };
@@ -315,84 +313,84 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
         process.env.NODE_ENV === "production"
           ? Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1)
           : 0,
-    // PII sanitization. Order matters: first strip headers Sentry
-    // attached automatically, then deep-walk request body / extras,
-    // then add our correlation_id tag.
-    beforeSend(event) {
-      try {
-        if (event.request) {
-          // Strip cookie + Authorization headers verbatim.
-          delete event.request.cookies;
-          if (event.request.headers) {
-            delete event.request.headers["authorization"];
-            delete event.request.headers["Authorization"];
-            delete event.request.headers["cookie"];
-            delete event.request.headers["Cookie"];
-          }
-          // Sanitize URL (strip ?token=, fragments).
-          if (event.request.url) {
-            event.request.url = sanitizeUrl(event.request.url);
-          }
-          // Deep-sanitize request body, query string, headers values.
-          if (event.request.data) {
-            event.request.data = deepSanitize(event.request.data) as typeof event.request.data;
-          }
-          if (event.request.query_string) {
-            const qs = event.request.query_string;
-            if (typeof qs === "string") {
-              event.request.query_string = sanitizeUrl("?" + qs).slice(1);
+      // PII sanitization. Order matters: first strip headers Sentry
+      // attached automatically, then deep-walk request body / extras,
+      // then add our correlation_id tag.
+      beforeSend(event) {
+        try {
+          if (event.request) {
+            // Strip cookie + Authorization headers verbatim.
+            delete event.request.cookies;
+            if (event.request.headers) {
+              delete event.request.headers["authorization"];
+              delete event.request.headers["Authorization"];
+              delete event.request.headers["cookie"];
+              delete event.request.headers["Cookie"];
+            }
+            // Sanitize URL (strip ?token=, fragments).
+            if (event.request.url) {
+              event.request.url = sanitizeUrl(event.request.url);
+            }
+            // Deep-sanitize request body, query string, headers values.
+            if (event.request.data) {
+              event.request.data = deepSanitize(event.request.data) as typeof event.request.data;
+            }
+            if (event.request.query_string) {
+              const qs = event.request.query_string;
+              if (typeof qs === "string") {
+                event.request.query_string = sanitizeUrl("?" + qs).slice(1);
+              }
             }
           }
+          // Sanitize extras + contexts.
+          if (event.extra) {
+            event.extra = deepSanitize(event.extra) as typeof event.extra;
+          }
+          if (event.contexts) {
+            event.contexts = deepSanitize(event.contexts) as typeof event.contexts;
+          }
+          // Filter health-check noise (defense in depth — tracesSampler
+          // already skips them, this catches any captureMessage that
+          // mentions them).
+          if (event.message?.includes("health") || event.request?.url?.includes("/health")) {
+            return null;
+          }
+          // Attach correlation_id from AsyncLocalStorage. Stored as a
+          // CONTEXT (not a tag) — UUID-shaped values would otherwise blow
+          // past Sentry's ~1000-unique-tag-value cap and stop indexing
+          // for search. As a context, it's still visible in every event
+          // header and searchable via Sentry's full-text search.
+          const correlationId = getCorrelationId();
+          if (correlationId) {
+            event.contexts = {
+              ...(event.contexts ?? {}),
+              correlation: { id: correlationId },
+            };
+          }
+        } catch {
+          // beforeSend MUST NOT throw — that would silently drop events.
+          // If the sanitizer breaks, ship the event un-sanitized rather
+          // than swallow it. Operator will catch the issue in Sentry's
+          // own SDK error logs.
         }
-        // Sanitize extras + contexts.
-        if (event.extra) {
-          event.extra = deepSanitize(event.extra) as typeof event.extra;
+        return event;
+      },
+      // Same sanitization for transaction events (slow-route spans).
+      beforeSendTransaction(event) {
+        try {
+          if (event.request?.url) {
+            event.request.url = sanitizeUrl(event.request.url);
+          }
+        } catch {
+          // see above
         }
-        if (event.contexts) {
-          event.contexts = deepSanitize(event.contexts) as typeof event.contexts;
-        }
-        // Filter health-check noise (defense in depth — tracesSampler
-        // already skips them, this catches any captureMessage that
-        // mentions them).
-        if (event.message?.includes("health") || event.request?.url?.includes("/health")) {
-          return null;
-        }
-        // Attach correlation_id from AsyncLocalStorage. Stored as a
-        // CONTEXT (not a tag) — UUID-shaped values would otherwise blow
-        // past Sentry's ~1000-unique-tag-value cap and stop indexing
-        // for search. As a context, it's still visible in every event
-        // header and searchable via Sentry's full-text search.
-        const correlationId = getCorrelationId();
-        if (correlationId) {
-          event.contexts = {
-            ...(event.contexts ?? {}),
-            correlation: { id: correlationId },
-          };
-        }
-      } catch {
-        // beforeSend MUST NOT throw — that would silently drop events.
-        // If the sanitizer breaks, ship the event un-sanitized rather
-        // than swallow it. Operator will catch the issue in Sentry's
-        // own SDK error logs.
-      }
-      return event;
-    },
-    // Same sanitization for transaction events (slow-route spans).
-    beforeSendTransaction(event) {
-      try {
-        if (event.request?.url) {
-          event.request.url = sanitizeUrl(event.request.url);
-        }
-      } catch {
-        // see above
-      }
-      return event;
-    },
-  });
+        return event;
+      },
+    });
 
-  // Set every event's baseline tags. setTags() applies to the global
-  // scope so per-call captures inherit.
-  Sentry.setTags(tags);
+    // Set every event's baseline tags. setTags() applies to the global
+    // scope so per-call captures inherit.
+    Sentry.setTags(tags);
   } catch (err) {
     console.error(
       "[sentry] init FAILED — backend Sentry capture is DISABLED:",
