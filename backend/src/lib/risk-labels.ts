@@ -53,13 +53,9 @@ const BACKEND = (() => {
  * errors so the route returns 500 (we do NOT silently
  * succeed on label failure — labels feed the model).
  */
-export async function writeRiskLabel(
-  input: WriteRiskLabelInput,
-): Promise<WriteRiskLabelResult> {
+export async function writeRiskLabel(input: WriteRiskLabelInput): Promise<WriteRiskLabelResult> {
   const notes =
-    typeof input.notes === "string" && input.notes.length > 0
-      ? input.notes.slice(0, 2000)
-      : null;
+    typeof input.notes === "string" && input.notes.length > 0 ? input.notes.slice(0, 2000) : null;
 
   if (BACKEND === "audit_logs") {
     await writeAuditLog(input.req, "risk.label", "risk_event", input.riskEventId, {

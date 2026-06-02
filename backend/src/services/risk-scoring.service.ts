@@ -121,10 +121,7 @@ export async function scoreEvent(input: ScoringInput): Promise<ScoringResult> {
     }
   }
 
-  const score = Math.max(
-    0,
-    Math.min(100, Math.round(scoreDelta + 0.2 * userTrend)),
-  );
+  const score = Math.max(0, Math.min(100, Math.round(scoreDelta + 0.2 * userTrend)));
   const level = deriveLevel(score, config.thresholds);
 
   // Phase-1 confidence formula per research.md §9:

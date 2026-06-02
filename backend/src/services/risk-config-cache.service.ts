@@ -148,10 +148,7 @@ export async function invalidateRiskConfig(): Promise<void> {
       await redis.publish(INVALIDATION_CHANNEL, "1");
     }
   } catch (err) {
-    logger.warn(
-      { err, category: "risk-config" },
-      "[risk-config] redis invalidate publish failed",
-    );
+    logger.warn({ err, category: "risk-config" }, "[risk-config] redis invalidate publish failed");
   }
 }
 
@@ -182,8 +179,7 @@ function toSnapshot(row: RiskConfig): RiskConfigSnapshot {
     thresholds: (row.thresholds as RiskConfigSnapshot["thresholds"]) ?? DEFAULTS.thresholds,
     allowlist: (row.allowlist as RiskConfigSnapshot["allowlist"]) ?? DEFAULTS.allowlist,
     autoBlockEnabled:
-      (row.autoBlockEnabled as RiskConfigSnapshot["autoBlockEnabled"]) ??
-      DEFAULTS.autoBlockEnabled,
+      (row.autoBlockEnabled as RiskConfigSnapshot["autoBlockEnabled"]) ?? DEFAULTS.autoBlockEnabled,
     requireApprovalUserIds:
       (row.requireApprovalUserIds as number[]) ?? DEFAULTS.requireApprovalUserIds,
     modelEnabled: row.modelEnabled,

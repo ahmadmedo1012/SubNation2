@@ -18,12 +18,7 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../lib/logger";
 import { recordRuleFired } from "../lib/risk-metrics";
-import {
-  evalClause,
-  parseDsl,
-  type DslClause,
-  type DslExpression,
-} from "../lib/risk-dsl";
+import { evalClause, parseDsl, type DslClause, type DslExpression } from "../lib/risk-dsl";
 
 /**
  * The minimum fields the scoring context must expose for the
