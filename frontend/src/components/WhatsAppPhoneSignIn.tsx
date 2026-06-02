@@ -224,7 +224,7 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-              placeholder="091XXXXXXX"
+              placeholder="09XXXXXXXX"
               disabled={loading}
               dir="ltr"
               className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
@@ -238,13 +238,21 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : cooldown > 0 ? (
-                <span className="text-xs">{cooldown}s</span>
+                // Keep the "إعادة الإرسال" label visible while counting
+                // down — the previous bare "Xs" hid context and made the
+                // button look stuck rather than rate-limited.
+                <span className="text-xs whitespace-nowrap">إعادة الإرسال ({cooldown}s)</span>
               ) : (
-                <MessageCircle className="w-4 h-4" />
+                <>
+                  <MessageCircle className="w-4 h-4" />
+                  إرسال
+                </>
               )}
-              {cooldown > 0 ? "" : "إرسال"}
             </button>
           </div>
+          <p className="text-[11px] text-muted-foreground text-center">
+            تُقبل أرقام ليبيانا ومدار التي تبدأ بـ 091 / 092 / 093 / 094.
+          </p>
           {/* Allow the user to collapse the OTP UI back to the single
             "Continue with WhatsApp" button — useful if they opened it
             by accident or want to switch providers. */}

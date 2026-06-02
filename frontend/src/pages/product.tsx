@@ -909,9 +909,9 @@ function CtaBlock({
         )}
         <Button
           onClick={onLogin}
-          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+          className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
         >
-          {compact ? "دخول" : "تسجيل الدخول للشراء"}
+          {compact ? "سجل للشراء" : "تسجيل الدخول للشراء"}
         </Button>
       </div>
     );
