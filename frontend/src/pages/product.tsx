@@ -880,6 +880,13 @@ function CtaBlock({
   onCouponValidate?: () => void;
   onCouponClear?: () => void;
 }) {
+  // Local navigate for the out-of-stock alternates link below. The
+  // parent already passes onLogin/onWallet because both routes carry
+  // intent context (?intent=, ?return=); the alternates link is a
+  // pure browse jump with no payload, so wiring through one more
+  // callback would just be ceremony.
+  const [, navigate] = useLocation();
+
   if (!token) {
     return (
       <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
@@ -902,28 +909,55 @@ function CtaBlock({
   }
 
   if (!product.is_available) {
-    return (
-      <div className={compact ? "flex items-center gap-3" : "space-y-2"}>
-        {compact && (
-          <div className="flex-1 font-black text-xl text-muted-foreground tabular-nums">
-            {formatCurrency(displayPrice)}
+    // Recovery hint: instead of a dead-end disabled CTA, give the user
+    // a clear alternate path. On desktop the body retains a calm
+    // "check back later" line; on mobile the sticky bar swaps the
+    // disabled button for an active "browse alternatives" link
+    // routed to the same category — same intent, different stock.
+    const altHref =
+      product.category && KNOWN_CATEGORIES.has(product.category)
+        ? `/category/${product.category}`
+        : "/";
+
+    if (compact) {
+      return (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 text-right">
+            <div className="font-black text-muted-foreground text-xl tabular-nums line-through">
+              {formatCurrency(displayPrice)}
+            </div>
+            <div className="text-[11px] text-muted-foreground/80 flex items-center gap-1 mt-0.5">
+              <Lock className="w-3 h-3" aria-hidden="true" /> نفد المخزون
+            </div>
           </div>
-        )}
+          <Button
+            onClick={() => navigate(altHref)}
+            variant="outline"
+            className="shrink-0 h-12 min-w-[7.5rem] px-5 press-spring"
+          >
+            بدائل
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
         <Button
           disabled
           aria-label="نفد المخزون — غير متاح للشراء حالياً"
-          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"}`}
+          className="w-full h-12 text-base"
         >
           <Lock className="w-4 h-4 ml-2" /> نفد المخزون
         </Button>
-        {/*
-          Recovery hint — gives the user a reason to come back instead of
-          presenting a dead-end. Hidden in compact (sticky-bar) mode so the
-          mobile sticky bar stays single-line.
-        */}
-        {!compact && (
-          <p className="text-center text-xs text-muted-foreground">تحقّق لاحقاً، قد يعود قريباً</p>
-        )}
+        <Button
+          onClick={() => navigate(altHref)}
+          variant="outline"
+          className="w-full h-11 text-sm press-spring"
+        >
+          تصفّح بدائل في نفس الفئة
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">تحقّق لاحقاً، قد يعود قريباً</p>
       </div>
     );
   }

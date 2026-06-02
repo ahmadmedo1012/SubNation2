@@ -1,7 +1,9 @@
 import { useAuth } from "@/lib/auth";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
+
+const HANG_TIMEOUT_MS = 12_000;
 
 /**
  * Telegram redirect-flow callback page.
@@ -100,6 +102,12 @@ export default function TelegramCallbackPage() {
   const [, navigate] = useLocation();
   const handled = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [hangVisible, setHangVisible] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHangVisible(true), HANG_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     // Strict-mode + remount guard — the network call must run exactly
@@ -155,10 +163,30 @@ export default function TelegramCallbackPage() {
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-background">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
-        <Loader2 className="w-8 h-8 animate-spin" aria-hidden="true" />
-        <p className="text-sm">جارٍ إكمال تسجيل الدخول عبر Telegram…</p>
-        {error && <p className="text-xs text-destructive">حدث خطأ، إعادة التوجيه…</p>}
+      <div className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center">
+        {hangVisible ? (
+          <>
+            <div className="w-12 h-12 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+            </div>
+            <p className="text-sm font-bold text-foreground">تأخّر تسجيل الدخول عبر Telegram</p>
+            <p className="text-xs leading-relaxed">
+              قد تكون الشبكة بطيئة. حاول مرة أخرى من صفحة تسجيل الدخول.
+            </p>
+            <Link
+              href="/login"
+              className="mt-2 inline-flex items-center justify-center h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold press-spring shadow-md shadow-primary/22"
+            >
+              العودة لتسجيل الدخول
+            </Link>
+          </>
+        ) : (
+          <>
+            <Loader2 className="w-8 h-8 animate-spin" aria-hidden="true" />
+            <p className="text-sm">جارٍ إكمال تسجيل الدخول عبر Telegram…</p>
+            {error && <p className="text-xs text-destructive">حدث خطأ، إعادة التوجيه…</p>}
+          </>
+        )}
       </div>
     </div>
   );

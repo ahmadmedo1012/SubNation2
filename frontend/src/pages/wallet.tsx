@@ -694,6 +694,15 @@ export default function WalletPage() {
                       onChange={(e) => {
                         const d = e.target.value.replace(/\D/g, "").slice(0, 10);
                         setSenderPhone(d);
+                        // Surface validation as the user types once they
+                        // start entering digits — used to wait for blur,
+                        // which meant users tapping submit before the
+                        // input lost focus only saw the "غير صالح" error
+                        // after a failed submit. Live mode is gated on
+                        // having typed at least 4 digits to avoid a
+                        // green check on a 1-digit "0" or red error
+                        // immediately on focus.
+                        if (d.length >= 4) setSenderPhoneTouched(true);
                       }}
                       onBlur={() => setSenderPhoneTouched(true)}
                       required

@@ -319,11 +319,27 @@ export default function OrderDetailPage() {
             <p className="font-bold text-sm mb-1 text-red-400">
               {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
             </p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed mb-4">
               {order.status === "refunded"
                 ? "تم إعادة المبلغ إلى محفظتك تلقائياً"
                 : "يرجى التواصل مع الدعم الفني إن احتجت مساعدة"}
             </p>
+            {/*
+              Promote the support link inside the failure card itself
+              when the order failed. Failed/refunded is exactly the
+              moment the user is most likely to need help, and burying
+              the support link as a subtle text link at the very
+              bottom of the page (below all other cards) means many
+              users miss it.
+            */}
+            {order.status === "failed" && (
+              <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
+                <Button className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  تواصل مع الدعم
+                </Button>
+              </Link>
+            )}
           </div>
         )}
 
