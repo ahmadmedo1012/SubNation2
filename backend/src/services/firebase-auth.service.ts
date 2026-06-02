@@ -153,11 +153,24 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
   }
 
   try {
-    // Always pass checkRevoked=false for maximum compatibility.
-    // Firebase token revocation checks require an extra network round-trip to
-    // Google's servers and can cause 401s if the service account has any
-    // permission issues. Token expiry (1 hour) provides sufficient security.
-    return await auth.verifyIdToken(idToken, false);
+    // F-002 (security audit 004) — forward the caller's `checkRevoked`
+    // intent to the SDK. Previously this was hardcoded to `false`, which
+    // silently dropped the parameter even when callers (`routes/auth.ts`
+    // login + admin path) passed `true` expecting Firebase to enforce
+    // revocation. With the SDK call honoring the parameter, callers that
+    // explicitly want revocation enforcement get it; callers that omit
+    // the second arg default to `false` and incur no extra round-trip.
+    //
+    // The original "compatibility" concern (extra round-trip causing 401s
+    // when the service account has permission issues) is mitigated by:
+    // (a) the SDK's verifyIdToken already requires the same service-
+    //     account permissions for the basic verification call, so a
+    //     revocation check that fails for permission reasons would be
+    //     symptomatic of a broken service-account config we'd want to
+    //     surface, not hide;
+    // (b) callers default to `checkRevoked=false` and only opt in for
+    //     security-sensitive entry points (initial login, admin auth).
+    return await auth.verifyIdToken(idToken, checkRevoked);
   } catch (err: unknown) {
     const error = err as { code?: string; message?: string; errorInfo?: { code?: string } };
     const errorCode = error.code || error.errorInfo?.code;
