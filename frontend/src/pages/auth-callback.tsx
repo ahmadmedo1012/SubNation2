@@ -6,16 +6,25 @@ import { AlertCircle, Loader2 } from "lucide-react";
 const HANG_TIMEOUT_MS = 12_000;
 
 /**
- * OAuth callback landing page (Google → backend → token in URL).
+ * OAuth callback landing page.
  *
- * Normal path: query has `?token=…`, we hand it to the auth context
- * and bounce to "/". Total time on this page ≈ 30-100ms.
+ * Modern path (F-010 / security audit 004): the backend sets the
+ * httpOnly auth_token cookie on the same response that 302s here, with
+ * NO `?token=` in the URL. We rely on AuthProvider's mount-time
+ * /api/auth/probe to detect the cookie session and set the sentinel
+ * token; this page just bounces to "/" and lets the SPA re-hydrate.
  *
- * Recovery path: if `useEffect` ran but no `token` / `auth_error` was
- * present in the URL, the navigate() to "/login" still fires almost
- * instantly. The hang state below covers a different failure mode —
- * if THIS module never paints further (network of the next chunk
- * stalls, browser is offline mid-transition), users would see a
+ * Legacy path: older Firebase / Telegram redirects still place
+ * `?token=…` in the URL. We continue to honour them so a deploy that
+ * lands the backend change before the frontend (or vice-versa) does
+ * not strand sessions. The legacy branch is removed once every active
+ * session has rolled over via the cookie path.
+ *
+ * Recovery path: if neither token nor auth_error is in the URL AND
+ * there is no cookie session either, the SPA's auth guards on "/" will
+ * redirect to /login. The hang state below covers a different failure
+ * mode — if THIS module never paints further (network of the next
+ * chunk stalls, browser is offline mid-transition), users would see a
  * permanent spinner. We surface a manual escape after 12s.
  */
 export default function AuthCallbackPage() {
@@ -28,14 +37,24 @@ export default function AuthCallbackPage() {
     const token = params.get("token");
     const error = params.get("auth_error");
 
+    if (error) {
+      navigate(`/login?error=${encodeURIComponent(error)}`);
+      return;
+    }
+
     if (token) {
+      // Legacy path — see component doc above.
       setToken(token);
       navigate("/");
-    } else if (error) {
-      navigate(`/login?error=${encodeURIComponent(error)}`);
-    } else {
-      navigate("/login");
+      return;
     }
+
+    // F-010 cookie-only path: the backend has already set the
+    // httpOnly auth_token cookie on the redirect response.
+    // AuthProvider's mount-time /api/auth/probe detects the cookie and
+    // seeds the sentinel token, so we just bounce home; SPA auth
+    // guards take it from there if the probe came back unauthenticated.
+    navigate("/");
   }, []);
 
   useEffect(() => {

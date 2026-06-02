@@ -414,8 +414,10 @@ async function findOrCreateTelegramUser(
  * identical.
  *
  * In callback mode this returns JSON `{ token }`. In redirect mode the
- * caller wraps the response into a 302 to /auth/callback?token=… so
- * the existing AuthCallbackPage handles the rest.
+ * caller sets the auth_token httpOnly cookie and 302s the user to
+ * /auth/callback (no `?token=` in the URL — F-010 / security audit 004:
+ * the cookie is the sole transport so the JWT does not leak into
+ * browser history / Referer headers / access logs).
  */
 async function handleTelegramAuth(
   data: Record<string, unknown>,
@@ -811,9 +813,10 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
 //
 // Telegram redirects here after auth with the signed payload appended
 // as URL query params. We verify the same payload as POST mode, then
-// 302 the user to /auth/callback?token=… (the existing AuthCallbackPage
-// stores the JWT and lands them on /). On failure we 302 to /login
-// with an error code that the LoginPage maps to a localised banner.
+// set the auth_token httpOnly cookie and 302 the user to /auth/callback
+// (no `?token=` — F-010 / security audit 004; the cookie is the sole
+// transport now). On failure we 302 to /login with an error code that
+// the LoginPage maps to a localised banner.
 //
 // Cancellation: when the user dismisses the Telegram auth screen
 // (closes the tab, taps "Cancel"), Telegram redirects back to
@@ -846,8 +849,12 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
     // Set httpOnly cookie so the session survives page refresh. The
     // browser carries this cookie on the 302 to /auth/callback and on
     // every subsequent request. Same config as the Firebase session
-    // route. The URL token in the redirect is kept for backward
-    // compatibility but is no longer the only persistence mechanism.
+    // route. F-010 (security audit 004): the JWT is NOT also placed in
+    // the redirect query string. Putting it there leaked the token into
+    // browser history, the Referer header on the next outbound
+    // navigation, and any HTTP-access logs along the path. The cookie
+    // is the sole transport now; AuthCallbackPage detects the cookie
+    // session via the existing /api/auth/probe endpoint.
     res.cookie("auth_token", result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -855,7 +862,7 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: "/",
     });
-    return res.redirect(`/auth/callback?token=${encodeURIComponent(result.token)}`);
+    return res.redirect("/auth/callback");
   } catch (err) {
     Sentry.captureException(err);
     return res.redirect("/login?error=server_error");
