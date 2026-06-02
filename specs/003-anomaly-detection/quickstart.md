@@ -52,7 +52,7 @@ To exercise:
 > (`risk_events`, `risk_rules`, `risk_config`, `risk_labels`)
 > are created by the single Foundational migration (T006) so
 > a brand-new clone can run end-to-end. Phase 1 of the
-> *rollout* still treats labels as `audit_logs` rows — the
+> _rollout_ still treats labels as `audit_logs` rows — the
 > tables exist on disk but the label-write path lives in
 > `backend/src/lib/risk-labels.ts` (T013) and only switches
 > over in the Phase-2 rollout. This split is the reviewable
@@ -111,7 +111,7 @@ Each phase has a kill criterion. To verify:
   the dashboard. If >= 1% in any 7-day window, raise the
   rule thresholds (via `PUT /api/admin/risk/config`) or
   revert the affected rule (via `PUT
-  /api/admin/risk/rules/:id` with `enabled: false`).
+/api/admin/risk/rules/:id` with `enabled: false`).
 - **Phase 2**: compare the precision of statistical signals
   vs rules-only on the labeled events. If statistical
   signals add < 10%, the phase is killed per spec §10.

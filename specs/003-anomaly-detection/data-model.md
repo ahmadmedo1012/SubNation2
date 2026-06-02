@@ -20,23 +20,23 @@ A scored event. One row per scored event.
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `uuid` (PK) | Server-generated event id |
-| `userId` | `uuid` (FK → `users.id`, nullable) | The user the event is about; null for unauthenticated events (e.g., failed logins) |
-| `eventType` | `enum` | One of: `login_attempt`, `login_success`, `login_failure`, `otp_request`, `otp_verify`, `topup_attempt`, `topup_success`, `order_create`, `order_deliver`, `coupon_apply`, `referral_event` |
-| `score` | `integer` (0-100) | The risk score |
-| `level` | `enum` | One of: `low`, `medium`, `high`, `critical` (derived from `score` and `confidence`) |
-| `confidence` | `numeric(4,3)` (0.000-1.000) | The scorer's confidence |
-| `ruleFired` | `text[]` | Names of the rules that fired (e.g., `["impossible_travel_v1", "new_account_large_topup"]`) |
-| `statisticalSignals` | `jsonb` | Per-signal value (e.g., `{z_topup: 4.2, velocity_orders_1h: 5, geo_new_country: true}`) |
-| `mlScore` | `numeric(4,3)` (nullable) | Phase 3: per-event fraud probability |
-| `topFeatures` | `jsonb` (nullable) | Phase 3: top-3 SHAP values with feature names |
-| `actionTaken` | `enum` | One of: `none`, `log`, `soft_block`, `hard_block`, `alert` |
-| `ipAddress` | `inet` | The source IP; PII-handled per logger redaction |
-| `userAgent` | `text` | Source user agent; truncated to 256 chars |
-| `createdAt` | `timestamptz` | Score time, indexed |
-| `shownAt` | `timestamptz` (nullable) | First time an admin opened the investigation view for this event; written by the investigation page on mount and updated only on first view. Powers the AW-1 metric (triage time = `risk_labels.createdAt - risk_events.shownAt`). |
+| Field                | Type                               | Description                                                                                                                                                                                                                        |
+| -------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `uuid` (PK)                        | Server-generated event id                                                                                                                                                                                                          |
+| `userId`             | `uuid` (FK → `users.id`, nullable) | The user the event is about; null for unauthenticated events (e.g., failed logins)                                                                                                                                                 |
+| `eventType`          | `enum`                             | One of: `login_attempt`, `login_success`, `login_failure`, `otp_request`, `otp_verify`, `topup_attempt`, `topup_success`, `order_create`, `order_deliver`, `coupon_apply`, `referral_event`                                        |
+| `score`              | `integer` (0-100)                  | The risk score                                                                                                                                                                                                                     |
+| `level`              | `enum`                             | One of: `low`, `medium`, `high`, `critical` (derived from `score` and `confidence`)                                                                                                                                                |
+| `confidence`         | `numeric(4,3)` (0.000-1.000)       | The scorer's confidence                                                                                                                                                                                                            |
+| `ruleFired`          | `text[]`                           | Names of the rules that fired (e.g., `["impossible_travel_v1", "new_account_large_topup"]`)                                                                                                                                        |
+| `statisticalSignals` | `jsonb`                            | Per-signal value (e.g., `{z_topup: 4.2, velocity_orders_1h: 5, geo_new_country: true}`)                                                                                                                                            |
+| `mlScore`            | `numeric(4,3)` (nullable)          | Phase 3: per-event fraud probability                                                                                                                                                                                               |
+| `topFeatures`        | `jsonb` (nullable)                 | Phase 3: top-3 SHAP values with feature names                                                                                                                                                                                      |
+| `actionTaken`        | `enum`                             | One of: `none`, `log`, `soft_block`, `hard_block`, `alert`                                                                                                                                                                         |
+| `ipAddress`          | `inet`                             | The source IP; PII-handled per logger redaction                                                                                                                                                                                    |
+| `userAgent`          | `text`                             | Source user agent; truncated to 256 chars                                                                                                                                                                                          |
+| `createdAt`          | `timestamptz`                      | Score time, indexed                                                                                                                                                                                                                |
+| `shownAt`            | `timestamptz` (nullable)           | First time an admin opened the investigation view for this event; written by the investigation page on mount and updated only on first view. Powers the AW-1 metric (triage time = `risk_labels.createdAt - risk_events.shownAt`). |
 
 ### Validation rules
 
@@ -75,18 +75,18 @@ A rule definition. One row per rule.
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `uuid` (PK) | Server-generated rule id |
-| `name` | `text` (unique) | The rule name (e.g., `impossible_travel_v1`) |
-| `description` | `text` | Human-readable description |
-| `expression` | `jsonb` | The rule expression in the small DSL (see research.md §4) |
-| `enabled` | `boolean` | Whether the rule is currently active |
-| `version` | `integer` | Increments on every edit; supports rollback |
-| `createdBy` | `uuid` (FK → `admin_users.id`) | Who created the rule |
-| `createdAt` | `timestamptz` | Creation time |
-| `updatedBy` | `uuid` (FK → `admin_users.id`) | Who last edited |
-| `updatedAt` | `timestamptz` | Last edit time |
+| Field         | Type                           | Description                                               |
+| ------------- | ------------------------------ | --------------------------------------------------------- |
+| `id`          | `uuid` (PK)                    | Server-generated rule id                                  |
+| `name`        | `text` (unique)                | The rule name (e.g., `impossible_travel_v1`)              |
+| `description` | `text`                         | Human-readable description                                |
+| `expression`  | `jsonb`                        | The rule expression in the small DSL (see research.md §4) |
+| `enabled`     | `boolean`                      | Whether the rule is currently active                      |
+| `version`     | `integer`                      | Increments on every edit; supports rollback               |
+| `createdBy`   | `uuid` (FK → `admin_users.id`) | Who created the rule                                      |
+| `createdAt`   | `timestamptz`                  | Creation time                                             |
+| `updatedBy`   | `uuid` (FK → `admin_users.id`) | Who last edited                                           |
+| `updatedAt`   | `timestamptz`                  | Last edit time                                            |
 
 ### Validation rules
 
@@ -127,21 +127,21 @@ A singleton configuration. One row.
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `integer` (PK, always 1) | Singleton constraint |
-| `thresholds` | `jsonb` | `{ low: 0, medium: 30, high: 60, critical: 85 }` (defaults; lower bound per level — matches spec §5.2) |
-| `allowlist` | `jsonb` | `{ ips: [], devices: [], phones: [] }` |
-| `autoBlockEnabled` | `jsonb` | `{ softBlock: true, hardBlock: false, alert: true }` (defaults; hardBlock is opt-in) |
-| `modelEnabled` | `boolean` | Phase 3: whether the model is in the scoring path |
-| `updatedBy` | `uuid` (FK → `admin_users.id`) | Who last changed the config |
-| `updatedAt` | `timestamptz` | Last change time |
+| Field              | Type                           | Description                                                                                            |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `id`               | `integer` (PK, always 1)       | Singleton constraint                                                                                   |
+| `thresholds`       | `jsonb`                        | `{ low: 0, medium: 30, high: 60, critical: 85 }` (defaults; lower bound per level — matches spec §5.2) |
+| `allowlist`        | `jsonb`                        | `{ ips: [], devices: [], phones: [] }`                                                                 |
+| `autoBlockEnabled` | `jsonb`                        | `{ softBlock: true, hardBlock: false, alert: true }` (defaults; hardBlock is opt-in)                   |
+| `modelEnabled`     | `boolean`                      | Phase 3: whether the model is in the scoring path                                                      |
+| `updatedBy`        | `uuid` (FK → `admin_users.id`) | Who last changed the config                                                                            |
+| `updatedAt`        | `timestamptz`                  | Last change time                                                                                       |
 
 ### Validation rules
 
 - `id = 1` (singleton); enforced by a partial unique index.
 - `thresholds.low < thresholds.medium < thresholds.high <
-  thresholds.critical`; all in `[0, 100]`.
+thresholds.critical`; all in `[0, 100]`.
 - `autoBlockEnabled.hardBlock = true` requires
   `modelEnabled = true` (Phase 3 only) and a per-level
   `confidence` floor; otherwise hardBlock is ignored.
@@ -159,14 +159,14 @@ A human-confirmed label. One row per labeled event.
 
 ### Fields
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `uuid` (PK) | Server-generated label id |
-| `riskEventId` | `uuid` (FK → `risk_events.id`, on-delete set null) | The labeled event |
-| `label` | `enum` | One of: `confirmed_fraud`, `false_positive`, `escalated` |
-| `labeledBy` | `uuid` (FK → `admin_users.id`) | Who labeled it |
-| `labeledAt` | `timestamptz` | When the label was set |
-| `notes` | `text` (nullable) | Free-form notes from the admin |
+| Field         | Type                                               | Description                                              |
+| ------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| `id`          | `uuid` (PK)                                        | Server-generated label id                                |
+| `riskEventId` | `uuid` (FK → `risk_events.id`, on-delete set null) | The labeled event                                        |
+| `label`       | `enum`                                             | One of: `confirmed_fraud`, `false_positive`, `escalated` |
+| `labeledBy`   | `uuid` (FK → `admin_users.id`)                     | Who labeled it                                           |
+| `labeledAt`   | `timestamptz`                                      | When the label was set                                   |
+| `notes`       | `text` (nullable)                                  | Free-form notes from the admin                           |
 
 ### Validation rules
 
@@ -211,6 +211,7 @@ The migration is small (4 tables, ~10 indexes, ~3
 constraints) and is split out for review per the plan.
 
 The migration MUST be reviewed together with:
+
 - The Drizzle schema in `shared/db/src/schema/risk.ts`.
 - The Zod validators in `shared/api-zod/src/risk.ts`.
 - The OpenAPI spec extension in `shared/api-spec/openapi.yaml`.
@@ -223,6 +224,7 @@ and not as a standalone SQL diff.
 ## 7. Validation rules (testable from the schema alone)
 
 A `risk_event` row is conformant iff:
+
 - `score`, `confidence`, `level`, and `actionTaken` are
   consistent with the validation rules in §1.
 - `userId` is null OR a valid `users.id`.
@@ -231,12 +233,14 @@ A `risk_event` row is conformant iff:
   pre-exist in code before the table is seeded).
 
 A `risk_label` row is conformant iff:
+
 - `riskEventId` references a real `risk_event.id` (or
   null if the event was purged under retention).
 - `label` is one of the enum values.
 - `labeledBy` references a real `admin_user.id`.
 
 A `risk_config` row is conformant iff:
+
 - `id = 1` (singleton).
 - `thresholds` are strictly increasing in `[0, 100]`.
 - `autoBlockEnabled.hardBlock = true` implies

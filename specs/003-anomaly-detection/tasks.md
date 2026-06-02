@@ -248,10 +248,10 @@ user stories.
 - All Setup tasks marked [P] can run in parallel.
 - All Foundational tasks marked [P] can run in parallel (within Phase 2).
 - T006, T007, T008 are independent and can be authored in parallel.
-- T009, T010, T010a, T011, T011a, T012, T013, T014, T015, T016 are independent and can be authored in parallel — note T010 reads the cached config produced by T037 (US3) at runtime but does not depend on T037 *being merged first*; the scoring service degrades gracefully to defaults if the cache is empty.
+- T009, T010, T010a, T011, T011a, T012, T013, T014, T015, T016 are independent and can be authored in parallel — note T010 reads the cached config produced by T037 (US3) at runtime but does not depend on T037 _being merged first_; the scoring service degrades gracefully to defaults if the cache is empty.
 - Once Foundational phase completes, all user stories can start in parallel (if team capacity allows).
 - Within a user story, all [P] implementation tasks (route + component) can run in parallel.
-- Within US1, the four admin-action endpoints T021a/T021b/T021c/T021d are independent of each other and of T017–T021; they share `backend/src/routes/admin/risk.ts` so the [P] marker means *can be authored in parallel*, not *can be committed without rebase* — merge them sequentially or in one batch.
+- Within US1, the four admin-action endpoints T021a/T021b/T021c/T021d are independent of each other and of T017–T021; they share `backend/src/routes/admin/risk.ts` so the [P] marker means _can be authored in parallel_, not _can be committed without rebase_ — merge them sequentially or in one batch.
 - Different user stories can be worked on in parallel by different team members.
 
 ---

@@ -9,11 +9,11 @@
 
 ## Query parameters
 
-| Param | Type | Default | Description |
-|---|---|---|---|
-| `from` | ISO 8601 | (90 days ago) | Lower bound |
-| `to` | ISO 8601 | (now) | Upper bound |
-| `limit` | integer (1-200) | `50` | Page size |
+| Param   | Type            | Default       | Description |
+| ------- | --------------- | ------------- | ----------- |
+| `from`  | ISO 8601        | (90 days ago) | Lower bound |
+| `to`    | ISO 8601        | (now)         | Upper bound |
+| `limit` | integer (1-200) | `50`          | Page size   |
 
 ## Response (200)
 

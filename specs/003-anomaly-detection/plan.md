@@ -79,7 +79,7 @@ library (see [`research.md`](./research.md) §3).
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 This plan is the technical design for the feature specified in
 [spec.md](./spec.md), which already records the Constitution

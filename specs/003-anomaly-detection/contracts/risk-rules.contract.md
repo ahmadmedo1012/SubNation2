@@ -1,6 +1,7 @@
 # Contract: Risk Rules + Config
 
 **Endpoints**:
+
 - `GET /api/admin/risk/rules` — list all rules
 - `PUT /api/admin/risk/rules/:id` — edit a rule (toggle or update expression)
 - `GET /api/admin/risk/config` — read singleton config
@@ -88,7 +89,7 @@
 ### Validation
 
 - `thresholds.low < thresholds.medium < thresholds.high <
-  thresholds.critical`; all in `[0, 100]`.
+thresholds.critical`; all in `[0, 100]`.
 - `autoBlockEnabled.hardBlock = true` requires
   `modelEnabled = true`; otherwise the request is rejected.
 

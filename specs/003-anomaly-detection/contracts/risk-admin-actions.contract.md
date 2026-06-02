@@ -1,6 +1,7 @@
 # Contract: Admin Actions on Users
 
 **Endpoints**:
+
 - `POST /api/admin/risk/users/:userId/lock` — set `users.isActive=false`
 - `POST /api/admin/risk/users/:userId/unlock` — set `users.isActive=true`
 - `POST /api/admin/risk/users/:userId/force-reauth` — invalidate sessions; force re-auth via existing provider
@@ -10,9 +11,10 @@
 `target=<userId>`, `actor=<admin_user_id>`, `meta={reason}`.
 
 **Constitution alignment**:
+
 - Principle I (Financial Integrity): none of these endpoints are installed on
   the purchase critical path. `force-reauth` and `require-approval` change a
-  flag the wallet/order routes consult on the *next* request — they never
+  flag the wallet/order routes consult on the _next_ request — they never
   block an in-flight transaction.
 - Principle II (Passwordless Customer Auth): `force-reauth` reuses the
   existing Google / Telegram / WhatsApp providers. It deletes

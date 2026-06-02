@@ -7,7 +7,7 @@
 
 This file resolves the technical decisions left open by the
 design document. Each decision is in the format
-*Decision → Rationale → Alternatives considered*.
+_Decision → Rationale → Alternatives considered_.
 
 ---
 
@@ -33,16 +33,18 @@ Constitution-compliant place for the model. The model
 observes the transaction, not gates it.
 
 **Alternatives considered**:
-- *Always-async* (queue every event): rejected for Phase 1
+
+- _Always-async_ (queue every event): rejected for Phase 1
   because the latency cost is unnecessary and the design
   benefits from synchronous visibility for low-risk events.
-- *Always-sync, model on the path*: rejected for Phase 3
+- _Always-sync, model on the path_: rejected for Phase 3
   because it violates the Constitution's "AI never gates
   the purchase" rule and adds unbounded latency.
 
 ## 2. ML model library (Phase 3)
 
 **Decision (subject to re-evaluation in Phase 3 planning)**:
+
 - **Primary candidate**: a small gradient-boosted model
   served by an in-process inference library. The two
   leading candidates are:
@@ -66,10 +68,11 @@ required to train a useful model is only available after
 Phase 1 has been live for 60+ days.
 
 **Alternatives considered**:
-- *Custom deep model*: rejected. Tabular fraud features
+
+- _Custom deep model_: rejected. Tabular fraud features
   rarely justify a deep model; gradient boosting is
   industry-standard and explainable.
-- *LLM-based scorer*: rejected. The cost per call is
+- _LLM-based scorer_: rejected. The cost per call is
   orders of magnitude higher than gradient boosting, and
   the LLM would not be more accurate on tabular features.
   Also explicitly rejected by the AI Opportunity
@@ -92,9 +95,10 @@ first read. The hot-cache size is bounded (top 1K active
 users) and the rebuild is O(N) on cold start.
 
 **Alternatives considered**:
-- *Redis-only*: rejected. Redis is ephemeral; the
+
+- _Redis-only_: rejected. Redis is ephemeral; the
   baselines would be lost on Redis restart.
-- *Time-series DB (Timescale, Influx)*: rejected. The
+- _Time-series DB (Timescale, Influx)_: rejected. The
   volume does not justify a new datastore. The existing
   Postgres `orders` table is already time-indexed for the
   forecasting pick.
@@ -106,7 +110,7 @@ users) and the rebuild is O(N) on cold start.
 `backend/src/services/risk-rules.service.ts`). Phase 2
 adds a **declarative rule loader** that reads rules from
 the `risk_rules` table at startup and from the admin
-panel, but the rule *expressions* are still
+panel, but the rule _expressions_ are still
 **constrained to a small DSL** (e.g., `field op value`).
 
 **Rationale**: Free-form code is dangerous (a buggy rule
@@ -119,11 +123,12 @@ This covers the threats in spec §2 without exposing
 arbitrary code execution.
 
 **Alternatives considered**:
-- *CEL (Google's Common Expression Language)*: rejected
+
+- _CEL (Google's Common Expression Language)_: rejected
   for now. CEL is powerful but adds a native dependency
   and a learning curve; the small DSL is sufficient for
   the threats in scope.
-- *Full code-as-rules*: rejected. Auditing is hard and
+- _Full code-as-rules_: rejected. Auditing is hard and
   rollback is slow.
 
 ## 5. Label-collection workflow
@@ -147,7 +152,8 @@ the `audit_logs` rows from Phase 1 are still readable as
 historical provenance.
 
 **Alternatives considered**:
-- *Skip Phase 1 labels*: rejected. The model needs labels
+
+- _Skip Phase 1 labels_: rejected. The model needs labels
   to train, and labels are the most valuable training
   data. The `audit_logs` workaround costs almost nothing
   to implement.
@@ -158,7 +164,7 @@ historical provenance.
 interact with the admin 2FA flow. Admin actions (labeling,
 locking, force re-auth on a customer) are protected by the
 existing 2FA middleware; the risk scoring pipeline is a
-*consumer* of admin actions, not a *modifier* of them.
+_consumer_ of admin actions, not a _modifier_ of them.
 
 **Rationale**: The Constitution (Principle II: Passwordless
 Customer Auth) protects the customer auth flow. The admin
@@ -170,7 +176,8 @@ running inside the existing admin routes (which are
 already gated by `requireAdmin` and the 2FA check).
 
 **Alternatives considered**:
-- *Risk-based 2FA exemption*: rejected. Reducing 2FA based
+
+- _Risk-based 2FA exemption_: rejected. Reducing 2FA based
   on risk is a Constitution violation (Principle II).
   The Constitution is explicit that 2FA is non-negotiable
   for admin.
@@ -194,7 +201,8 @@ of the named fields; new fields (e.g., a future
 `phone_otp`) follow the same pattern.
 
 **Alternatives considered**:
-- *Opt-in redaction*: rejected. Default-deny is the only
+
+- _Opt-in redaction_: rejected. Default-deny is the only
   Constitution-compliant posture.
 
 ## 8. Cold-start: bootstrap when there are no labels
@@ -202,9 +210,10 @@ of the named fields; new fields (e.g., a future
 **Decision**: Phase 1 ships with **rules only** (no model
 labels required). Phase 2 adds statistical signals that
 are also label-free. Phase 3 trains the model only after
->= 500 labeled events (mix of `confirmed_fraud` and
-`false_positive`) have been collected, and the model is
-not deployed until AUC >= 0.7 on hold-out.
+
+> = 500 labeled events (mix of `confirmed_fraud` and
+> `false_positive`) have been collected, and the model is
+> not deployed until AUC >= 0.7 on hold-out.
 
 **Rationale**: A model trained on too few labels is worse
 than no model. The Constitution's principle of "no AI on
@@ -214,10 +223,11 @@ useful model and is documented in spec §10 as a
 Phase-3 gate.
 
 **Alternatives considered**:
-- *Pre-trained model*: rejected. The model needs to learn
+
+- _Pre-trained model_: rejected. The model needs to learn
   SubNation-specific patterns; a generic pre-trained
   fraud model is not a substitute.
-- *No threshold, deploy on day 1*: rejected. The Constitution
+- _No threshold, deploy on day 1_: rejected. The Constitution
   requires explainability and audit; a model with no
   SubNation labels cannot satisfy the SC-006
   "Constitution compliance" gate.
@@ -257,11 +267,12 @@ anything fires; the 1.0 ceiling prevents over-confident
 auto-blocks.
 
 **Alternatives considered**:
-- *Per-rule confidence weights in the DSL*: rejected for
+
+- _Per-rule confidence weights in the DSL_: rejected for
   Phase 1; adds operator burden with no measurable detection
   benefit at this volume. Reconsidered as a Phase-2 polish
   if false-positive rate stays high after rule tuning.
-- *Constant 1.0 confidence*: rejected. Removes the
+- _Constant 1.0 confidence_: rejected. Removes the
   Constitution-IV defense-in-depth gate ("we saw something"
   vs "we believe it") and makes auto-block unsafe.
 
@@ -269,17 +280,17 @@ auto-blocks.
 
 ## Summary of decisions
 
-| # | Decision | Affects |
-|---|---|---|
-| 1 | Sync in-process for Phase 1-2; async post-tx for Phase 3 critical paths | Performance, Constitution I |
-| 2 | Self-hosted small model in Phase 3; hosted API as fallback | Cost, model ops |
-| 3 | Postgres baselines + Redis hot-cache | Storage |
-| 4 | Typed code rules in Phase 1; constrained DSL in Phase 2 | Auditability, admin UX |
-| 5 | Phase 1 labels in `audit_logs`; Phase 2 in dedicated table | Migration scope |
-| 6 | Risk pipeline does not interact with admin 2FA | Constitution II |
-| 7 | Existing logger redaction applies to risk-scoring logs | Constitution IV |
-| 8 | 500-label gate before Phase 3 model deployment | Phase 3 rollout |
-| 9 | Bounded, monotone Phase-1 confidence formula | Constitution IV (defense-in-depth on auto-block) |
+| #   | Decision                                                                | Affects                                          |
+| --- | ----------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | Sync in-process for Phase 1-2; async post-tx for Phase 3 critical paths | Performance, Constitution I                      |
+| 2   | Self-hosted small model in Phase 3; hosted API as fallback              | Cost, model ops                                  |
+| 3   | Postgres baselines + Redis hot-cache                                    | Storage                                          |
+| 4   | Typed code rules in Phase 1; constrained DSL in Phase 2                 | Auditability, admin UX                           |
+| 5   | Phase 1 labels in `audit_logs`; Phase 2 in dedicated table              | Migration scope                                  |
+| 6   | Risk pipeline does not interact with admin 2FA                          | Constitution II                                  |
+| 7   | Existing logger redaction applies to risk-scoring logs                  | Constitution IV                                  |
+| 8   | 500-label gate before Phase 3 model deployment                          | Phase 3 rollout                                  |
+| 9   | Bounded, monotone Phase-1 confidence formula                            | Constitution IV (defense-in-depth on auto-block) |
 
 All decisions are Constitution-compliant and reversible.
 No NEEDS CLARIFICATION markers remain.

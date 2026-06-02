@@ -17,7 +17,7 @@ not create migrations, do not generate implementation tasks.
 
 ---
 
-## 1. User Scenarios & Testing *(mandatory)*
+## 1. User Scenarios & Testing _(mandatory)_
 
 This is an **admin-facing** feature. The "users" are SubNation
 operators (the founder and core maintainers) reviewing events in
@@ -173,6 +173,7 @@ attacker); chargeback exposure; customer trust loss; possible
 processor penalties for high chargeback rates.
 
 **Detection signals**:
+
 - `login_attempts`: failed attempts spike before successful login.
 - `auth_activity`: login from a new country / new device shortly
   after a successful login from elsewhere (impossible travel).
@@ -192,6 +193,7 @@ for the legitimate user; processor relationship risk; potential
 loss of payment processing privileges.
 
 **Detection signals**:
+
 - `wallet_topups`: many small top-ups (e.g., 5 top-ups of 1.00
   LYD in 10 minutes) from the same user.
 - `wallet_topups`: top-up → immediate full-wallet purchase →
@@ -210,6 +212,7 @@ with no prior history, scripted login attempts at unusual hours.
 infrastructure cost; noise that obscures real attacks.
 
 **Detection signals**:
+
 - `login_attempts`: failed attempts per IP, per phone, per user
   per unit time.
 - `auth_activity`: distribution of login times vs user's history.
@@ -226,6 +229,7 @@ new-user bonus.
 **Business risk**: Direct margin loss; bonus pool drain.
 
 **Detection signals**:
+
 - `wallet_topups`: distribution of top-up amounts just below
   threshold values.
 - `coupons`: same coupon used across multiple user accounts
@@ -242,6 +246,7 @@ the most egregious cases; this feature adds a smarter layer.
 gives attackers a foothold if not detected.
 
 **Detection signals**:
+
 - `login_attempts`: requests per IP per second (sub-second
   cadence is almost certainly a bot).
 - `auth_activity`: user-agent entropy — many distinct user
@@ -258,6 +263,7 @@ promotions, refer themselves, or manipulate reviews.
 review integrity; brand-trust erosion.
 
 **Detection signals**:
+
 - `users` + `user_auth_identities`: same phone or same
   Telegram id or same Google account across multiple `users`.
 - `users` + device fingerprint: same fingerprint across multiple
@@ -278,21 +284,21 @@ by the current system; this feature reads them and produces
 
 ### 3.1 Database tables (already exist)
 
-| Table | What it records | Threat relevance |
-|---|---|---|
-| `users` | Core user records, `created_at`, `isActive` | Account age, deactivation |
-| `user_auth_identities` | Linked auth providers per user | Multi-account abuse |
-| `auth_activity` | Every login event: provider, success/failure, IP, user agent, timestamp | ATO, suspicious login |
-| `login_attempts` | Every login attempt including failures, with phone/email/IP | Brute force, credential stuffing |
-| `sessions` | Active sessions: `sessionId`, `userId`, `expiresAt`, IP, user agent | Concurrent sessions, ATO |
-| `whatsapp_otps` | OTP requests and verifications: phone, code, TTL, IP | OTP brute force, social engineering |
-| `wallet_topups` | Top-up records: amount, method, status, timestamp | Card testing, money mule |
-| `wallet_ledger` | Append-only balance history: `balanceBefore`, `balanceAfter`, `kind` | Wallet abuse, cashout pattern |
-| `orders` | Orders: user, amount, status, products, delivery timestamp | ATO → purchase, cashout |
-| `coupons` | Coupon definitions and usage | Coupon stacking |
-| `referral_events` | Referral graph: referrer, referee, reward | Referral-loop abuse |
-| `admin_alerts` | Existing alert infrastructure | Critical event alerting |
-| `audit_logs` | Admin actions | Threshold-change audit |
+| Table                  | What it records                                                         | Threat relevance                    |
+| ---------------------- | ----------------------------------------------------------------------- | ----------------------------------- |
+| `users`                | Core user records, `created_at`, `isActive`                             | Account age, deactivation           |
+| `user_auth_identities` | Linked auth providers per user                                          | Multi-account abuse                 |
+| `auth_activity`        | Every login event: provider, success/failure, IP, user agent, timestamp | ATO, suspicious login               |
+| `login_attempts`       | Every login attempt including failures, with phone/email/IP             | Brute force, credential stuffing    |
+| `sessions`             | Active sessions: `sessionId`, `userId`, `expiresAt`, IP, user agent     | Concurrent sessions, ATO            |
+| `whatsapp_otps`        | OTP requests and verifications: phone, code, TTL, IP                    | OTP brute force, social engineering |
+| `wallet_topups`        | Top-up records: amount, method, status, timestamp                       | Card testing, money mule            |
+| `wallet_ledger`        | Append-only balance history: `balanceBefore`, `balanceAfter`, `kind`    | Wallet abuse, cashout pattern       |
+| `orders`               | Orders: user, amount, status, products, delivery timestamp              | ATO → purchase, cashout             |
+| `coupons`              | Coupon definitions and usage                                            | Coupon stacking                     |
+| `referral_events`      | Referral graph: referrer, referee, reward                               | Referral-loop abuse                 |
+| `admin_alerts`         | Existing alert infrastructure                                           | Critical event alerting             |
+| `audit_logs`           | Admin actions                                                           | Threshold-change audit              |
 
 ### 3.2 Events and signals (already in flight)
 
@@ -439,11 +445,11 @@ Every score MUST be explainable. Specifically:
 
 ### 5.2 Risk levels
 
-| Level | Score | Action |
-|---|---|---|
-| **Low** | 0-29 | Log only; no action. |
-| **Medium** | 30-59 | Log; write to `admin_alerts` with low priority; surface in the review queue. |
-| **High** | 60-84 | Log; alert; soft-block (force re-auth on next action); surface at top of review queue. |
+| Level        | Score  | Action                                                                                                |
+| ------------ | ------ | ----------------------------------------------------------------------------------------------------- |
+| **Low**      | 0-29   | Log only; no action.                                                                                  |
+| **Medium**   | 30-59  | Log; write to `admin_alerts` with low priority; surface in the review queue.                          |
+| **High**     | 60-84  | Log; alert; soft-block (force re-auth on next action); surface at top of review queue.                |
 | **Critical** | 85-100 | Log; alert (Telegram/Discord); hard-block on the action that triggered; immediate admin notification. |
 
 The mapping is configurable in `risk_config` so the admin can
@@ -640,14 +646,14 @@ test (10% of monthly ROI) — this is a low-cost-band feature.
 
 ### 7.5 Failure modes
 
-| Failure | Behavior |
-|---|---|
-| Scoring service down | Fall back to **rules-only**; emit Sentry error; show degraded-mode banner in admin panel. |
+| Failure                                   | Behavior                                                                                                                |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Scoring service down                      | Fall back to **rules-only**; emit Sentry error; show degraded-mode banner in admin panel.                               |
 | Redis (rate-limit / sessions) unavailable | Existing rate-limit degrades; new scoring layer also degrades. Existing rate-limit fallback (in-memory in dev) applies. |
-| Postgres read lag | Statistical aggregates read from a slightly stale snapshot; the staleness is bounded and surfaced. |
-| Queue (`subnation-worker`) down | Async scoring backlog grows; alert admin. Sync paths (login, checkout) use the sync fast-path with rules-only. |
-| ML model fails to load | Phase 1 + Phase 2 still operate; Phase 3 is disabled until model is restored. Kill switch in `risk_config`. |
-| Alert channel (Telegram/Discord) down | Critical events still logged in `admin_alerts`; the existing runbook escalation applies. |
+| Postgres read lag                         | Statistical aggregates read from a slightly stale snapshot; the staleness is bounded and surfaced.                      |
+| Queue (`subnation-worker`) down           | Async scoring backlog grows; alert admin. Sync paths (login, checkout) use the sync fast-path with rules-only.          |
+| ML model fails to load                    | Phase 1 + Phase 2 still operate; Phase 3 is disabled until model is restored. Kill switch in `risk_config`.             |
+| Alert channel (Telegram/Discord) down     | Critical events still logged in `admin_alerts`; the existing runbook escalation applies.                                |
 
 ---
 
@@ -659,6 +665,7 @@ kill criterion.
 ### 8.1 Phase 1: Rules-only (target: 2-3 weeks)
 
 **Scope**:
+
 - Implement the rule engine. ~5-10 initial rules covering the
   most obvious patterns (OTP brute force, impossible travel,
   new-account-large-top-up).
@@ -683,6 +690,7 @@ thresholds or revert.
 ### 8.2 Phase 2: Statistical detection (target: 4-6 weeks)
 
 **Scope**:
+
 - Add `risk_events`, `risk_rules`, `risk_config`, `risk_labels`
   tables (migrations only here, with strict review).
 - Implement z-score and velocity signals.
@@ -702,6 +710,7 @@ final form.
 ### 8.3 Phase 3: ML-assisted scoring (target: 8-12 weeks)
 
 **Scope**:
+
 - Train a small gradient-boosted model on the labels
   collected in Phases 1-2.
 - Per-event fraud probability + per-user aggregated
@@ -815,19 +824,19 @@ references the AI Opportunity Assessment
 
 ### 11.1 Why this should be the first pick
 
-| Dimension | Pick 1 (forecasting) | Pick 2 (anomaly detection) | Pick 3 (enrichment) |
-|---|---|---|---|
-| Impact (assessment §5) | 5 | **5** | 4 |
-| Complexity | 3 | 3 | 3 |
-| Operating cost | 1 | **1** | 1 |
-| Maintenance | 2 | 2 | 2 |
-| Cost band | statistical / small-model | **statistical → small-model** | batched-llm + small CV |
-| Defends a Constitution principle | (no direct defense) | **IV (Defense in Depth)** | (no direct defense) |
-| Data substrate | orders + inventory | auth_activity + login_attempts + wallet_topups + orders | products + image URLs |
-| Data quality risk | medium (never audited) | **low (clean labeled signals)** | medium (Arabic quality variable) |
-| Time to value | weeks (stockout predictions) | **days (label-collection)** | days (per-product batch) |
-| Reversibility | high (predictions are advisories) | **medium (false-blocks hurt customers)** | high (per-product) |
-| Risk to legitimate users | low | **medium** | low |
+| Dimension                        | Pick 1 (forecasting)              | Pick 2 (anomaly detection)                              | Pick 3 (enrichment)              |
+| -------------------------------- | --------------------------------- | ------------------------------------------------------- | -------------------------------- |
+| Impact (assessment §5)           | 5                                 | **5**                                                   | 4                                |
+| Complexity                       | 3                                 | 3                                                       | 3                                |
+| Operating cost                   | 1                                 | **1**                                                   | 1                                |
+| Maintenance                      | 2                                 | 2                                                       | 2                                |
+| Cost band                        | statistical / small-model         | **statistical → small-model**                           | batched-llm + small CV           |
+| Defends a Constitution principle | (no direct defense)               | **IV (Defense in Depth)**                               | (no direct defense)              |
+| Data substrate                   | orders + inventory                | auth_activity + login_attempts + wallet_topups + orders | products + image URLs            |
+| Data quality risk                | medium (never audited)            | **low (clean labeled signals)**                         | medium (Arabic quality variable) |
+| Time to value                    | weeks (stockout predictions)      | **days (label-collection)**                             | days (per-product batch)         |
+| Reversibility                    | high (predictions are advisories) | **medium (false-blocks hurt customers)**                | high (per-product)               |
+| Risk to legitimate users         | low                               | **medium**                                              | low                              |
 
 **Summary**: Pick 2 has the same impact as Pick 1 (both 5/5)
 and the same cost band, but **defends a Constitution
@@ -873,7 +882,7 @@ SubNation.
 - **Bigger engineering surface** (LLM integration, image
   CV, admin UI for review). Anomaly detection is
   primarily a back-end pipeline; enrichment is back-end
-  + admin UI + customer-facing impact.
+  - admin UI + customer-facing impact.
 
 ### 11.4 Final recommendation
 
@@ -898,7 +907,7 @@ Pick 3 has higher maintenance and lower impact.
 
 ---
 
-## 12. Requirements *(mandatory)*
+## 12. Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -961,7 +970,7 @@ Pick 3 has higher maintenance and lower impact.
 
 ---
 
-## 13. Success Criteria *(mandatory)*
+## 13. Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -970,8 +979,8 @@ Pick 3 has higher maintenance and lower impact.
   pre-Phase-1 baseline (FR-1).
 - **SC-002 (Detection accuracy)**: Precision >= 0.80
   and recall >= 0.60 on confirmed-fraud events, AUC
-  >= 0.85 on hold-out, sustained across two consecutive
-  retrains (DA-1, DA-2, DA-3).
+  > = 0.85 on hold-out, sustained across two consecutive
+  > retrains (DA-1, DA-2, DA-3).
 - **SC-003 (False positives)**: < 1% legitimate-user
   throttle in any 7-day rolling window (FP-1);
   < 0.1% legitimate-user hard-block in any 30-day
@@ -1022,7 +1031,7 @@ Pick 3 has higher maintenance and lower impact.
   is ratified and binding. Any conflict between this
   design and the Constitution is resolved in favor of
   the Constitution.
-- This feature is the *first* AI feature in SubNation.
+- This feature is the _first_ AI feature in SubNation.
   The success or failure of this pick sets the
   precedent for future AI work; the kill criteria
   exist precisely to retire the feature if it does

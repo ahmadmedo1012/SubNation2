@@ -1,6 +1,7 @@
 # Contract: Risk Events (Review Queue + Investigation)
 
 **Endpoints**:
+
 - `GET /api/admin/risk/events` — review queue (filterable list)
 - `GET /api/admin/risk/events/:id` — single event (investigation view)
 - `POST /api/admin/risk/events/:id/label` — single label
@@ -12,16 +13,16 @@
 
 ### Query parameters
 
-| Param | Type | Default | Description |
-|---|---|---|---|
-| `level` | `low` \| `medium` \| `high` \| `critical` | (none) | Filter by level |
-| `eventType` | string | (none) | Filter by event type (e.g., `login_failure`) |
-| `from` | ISO 8601 | (none) | Created-at lower bound |
-| `to` | ISO 8601 | (none) | Created-at upper bound |
-| `ruleFired` | string | (none) | Filter by rule name |
-| `userSearch` | string | (none) | Search by user id or email (prefix match) |
-| `cursor` | string | (none) | Opaque pagination cursor |
-| `limit` | integer (1-100) | `50` | Page size |
+| Param        | Type                                      | Default | Description                                  |
+| ------------ | ----------------------------------------- | ------- | -------------------------------------------- |
+| `level`      | `low` \| `medium` \| `high` \| `critical` | (none)  | Filter by level                              |
+| `eventType`  | string                                    | (none)  | Filter by event type (e.g., `login_failure`) |
+| `from`       | ISO 8601                                  | (none)  | Created-at lower bound                       |
+| `to`         | ISO 8601                                  | (none)  | Created-at upper bound                       |
+| `ruleFired`  | string                                    | (none)  | Filter by rule name                          |
+| `userSearch` | string                                    | (none)  | Search by user id or email (prefix match)    |
+| `cursor`     | string                                    | (none)  | Opaque pagination cursor                     |
+| `limit`      | integer (1-100)                           | `50`    | Page size                                    |
 
 ### Response (200)
 
