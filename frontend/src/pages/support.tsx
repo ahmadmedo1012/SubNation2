@@ -361,8 +361,23 @@ export default function SupportPage() {
 
           {/* Messages */}
           {ticketLoading ? (
-            <div className="p-10 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            // Small message-bubble skeleton — matches the real reply
+            // layout (alternating sender alignment + variable widths)
+            // so the panel doesn't shift when ticketReplies arrive.
+            <div
+              className="p-5 space-y-4 overflow-hidden"
+              style={{ maxHeight: "min(460px, calc(100vh - 260px))" }}
+              aria-busy="true"
+            >
+              <div className="flex justify-start">
+                <div className="h-12 w-3/5 skeleton-shimmer rounded-2xl" />
+              </div>
+              <div className="flex justify-end">
+                <div className="h-16 w-2/3 skeleton-shimmer rounded-2xl" />
+              </div>
+              <div className="flex justify-start">
+                <div className="h-10 w-1/2 skeleton-shimmer rounded-2xl" />
+              </div>
             </div>
           ) : (
             <div

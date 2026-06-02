@@ -1,7 +1,20 @@
 import { memo } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
-import { Zap, Lock, Tag, Star, ShoppingCart, AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  Briefcase,
+  Gamepad2,
+  Lock,
+  Music2,
+  Package,
+  ShoppingCart,
+  Star,
+  Tag,
+  Tv2,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 interface Product {
@@ -71,6 +84,17 @@ const DEFAULT_ACCENT = {
   accentLine: "bg-primary/55",
 };
 
+// Category → Lucide icon. Used as the image-area fallback when a
+// product has no image_url, so the empty-image card reads as a
+// category placeholder rather than a giant first-letter glyph that
+// doesn't carry visual identity.
+const CATEGORY_ICON: Record<string, LucideIcon> = {
+  streaming: Tv2,
+  music: Music2,
+  gaming: Gamepad2,
+  productivity: Briefcase,
+};
+
 const STAGGER = [
   "",
   "stagger-1",
@@ -117,6 +141,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const displayPrice = product.sale_price ?? product.price;
   const cat = product.category ?? "streaming";
   const accent = CATEGORY_ACCENT[cat] ?? DEFAULT_ACCENT;
+  const FallbackIcon = CATEGORY_ICON[cat] ?? Package;
   const unavailable = !product.is_available;
   const staggerClass = STAGGER[Math.min(index, 8)] ?? "";
   const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
@@ -225,11 +250,18 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             <div
               className={`flex items-center justify-center w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 rounded-2xl border ${accent.bg} ${accent.border} shadow-sm transition-transform duration-300 ease-out group-hover:scale-105`}
             >
-              <span
-                className={`text-4xl sm:text-5xl font-black select-none drop-shadow-sm ${accent.text}`}
-              >
-                {product.name[0]}
-              </span>
+              {/* Category icon as the empty-image fallback. The icon
+                  inherits the category accent's foreground color so a
+                  Netflix card without an image reads as a violet TV
+                  glyph, a Spotify card without an image reads as an
+                  emerald music glyph, etc. — replaces the previous
+                  first-letter glyph that was identical for "Netflix"
+                  and "Notion" and carried no category cue. */}
+              <FallbackIcon
+                className={`w-9 h-9 sm:w-10 sm:h-10 ${accent.text}`}
+                strokeWidth={1.6}
+                aria-hidden="true"
+              />
             </div>
           </div>
         </div>

@@ -393,9 +393,11 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
             {setupData.qrCode ? (
               <img src={setupData.qrCode} alt="QR Code" className="w-32 h-32" />
             ) : (
-              <div className="w-32 h-32 flex items-center justify-center bg-muted">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
+              // QR is generated client-side after the backend mints the
+              // 2FA secret — usually <100ms, but on slow devices the
+              // tile can briefly read empty. A subtle skeleton tile
+              // (no spinner) matches the rest of the loading system.
+              <div className="w-32 h-32 skeleton-shimmer rounded-md" aria-busy="true" />
             )}
           </div>
           <div className="flex-1 space-y-3">
@@ -581,9 +583,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground text-sm py-8">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        جاري تحميل بيانات الحساب…
+      <div className="space-y-3 py-2" aria-busy="true">
+        <div className="h-5 w-40 skeleton-shimmer rounded-lg" />
+        <div className="h-4 w-64 skeleton-shimmer rounded" />
+        <div className="h-10 skeleton-shimmer rounded-xl mt-2" />
+        <div className="h-10 skeleton-shimmer rounded-xl" />
       </div>
     );
   }

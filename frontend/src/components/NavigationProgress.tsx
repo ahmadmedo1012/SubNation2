@@ -73,10 +73,7 @@ export function NavigationProgress() {
   if (!visible) return null;
 
   return (
-    <div
-      aria-hidden="true"
-      className="fixed top-0 inset-x-0 h-[2px] z-[100] pointer-events-none"
-    >
+    <div aria-hidden="true" className="fixed top-0 inset-x-0 h-[2px] z-[100] pointer-events-none">
       <div
         className="h-full origin-left bg-gradient-to-r from-primary via-primary to-primary/60 shadow-[0_0_8px_hsl(var(--primary)/0.6)] transition-transform duration-500 ease-out"
         style={{ transform: `scaleX(${progress / 100})` }}
