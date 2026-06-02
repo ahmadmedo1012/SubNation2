@@ -109,6 +109,18 @@ router.post("/", requireUser, async (req, res) => {
               ErrorCode.OUT_OF_STOCK,
             ),
           );
+      case "COUPON_EXHAUSTED":
+        // F-006 (security audit 004) — atomic-with-check coupon
+        // increment lost the race; another concurrent purchase already
+        // consumed the last redemption slot.
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "تم استخدام الكوبون من قبل عميل آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
+              ErrorCode.INVALID_DATA,
+            ),
+          );
     }
   }
 
