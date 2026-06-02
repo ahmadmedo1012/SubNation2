@@ -260,7 +260,7 @@ With multiple auditors, after Phase 3 completes:
 - Auditor A: Phase 4 (US1 leadership artifact)
 - Auditor B: Phase 5 (US3 sprint plan)
 - A or B: Phase 6 (US4 reviewer artifact) once both A and B finish
-- One auditor performs Phase 7 sign-off; reviewer spot-check (T037) MUST be a *different* auditor than the one who wrote the Findings.
+- One auditor performs Phase 7 sign-off; reviewer spot-check (T037) MUST be a _different_ auditor than the one who wrote the Findings.
 
 ### When to STOP (constitutional reminder)
 
