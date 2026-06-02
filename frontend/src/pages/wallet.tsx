@@ -296,6 +296,23 @@ export default function WalletPage() {
   const [rememberPhone, setRememberPhone] = useState(true);
   // ID of the topup currently being awaited in the modal.
   const [waitingTopupId, setWaitingTopupId] = useState<number | null>(null);
+  // Return-to-product flow: when the user lands here from a product CTA
+  // (because they couldn't afford it), we stash the product URL in
+  // sessionStorage so a successful top-up can bounce them back. The
+  // sessionStorage indirection is deliberate — `useListTopups` polls
+  // and triggers re-renders, but the underlying URL `?return=` only
+  // exists on the first arrival; sessionStorage carries it across.
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+  useEffect(() => {
+    const STORAGE_KEY = "subnation_topup_return";
+    const fromUrl = new URLSearchParams(window.location.search).get("return");
+    if (fromUrl && fromUrl.startsWith("/")) {
+      sessionStorage.setItem(STORAGE_KEY, fromUrl);
+      setReturnTo(fromUrl);
+      return;
+    }
+    setReturnTo(sessionStorage.getItem(STORAGE_KEY));
+  }, []);
 
   // Load saved preferences on mount
   useEffect(() => {
@@ -937,6 +954,15 @@ export default function WalletPage() {
         topupId={waitingTopupId}
         token={token}
         onClose={() => setWaitingTopupId(null)}
+        onApprovedContinue={
+          returnTo
+            ? () => {
+                sessionStorage.removeItem("subnation_topup_return");
+                setWaitingTopupId(null);
+                navigate(returnTo);
+              }
+            : undefined
+        }
       />
     </div>
   );

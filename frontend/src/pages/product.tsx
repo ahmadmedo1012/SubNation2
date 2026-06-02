@@ -215,9 +215,15 @@ export default function ProductPage() {
       if (!r.ok) throw new Error(data.error);
       setCouponResult(data);
     } catch (err: unknown) {
+      // Persist the error inline (visible until the user types a new
+      // code) AND fire a toast for the immediate "something happened"
+      // cue. Inline-only would be invisible if the user looked away;
+      // toast-only would disappear in 4s before the user could read it.
+      const message = err instanceof Error ? err.message : "فشل التحقق من الكوبون";
+      setCouponError(message);
       toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        title: "تعذّر تطبيق الكوبون",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -654,8 +660,25 @@ export default function ProductPage() {
                   },
                 });
               }}
-              onLogin={() => navigate("/login")}
-              onWallet={() => navigate("/wallet")}
+              onLogin={() =>
+                // Pass buy-intent context so /login can render the
+                // "complete your purchase of X" banner instead of the
+                // cold generic prompt. See login.tsx readLoginIntent().
+                navigate(
+                  `/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}`,
+                )
+              }
+              onWallet={() =>
+                // Pass the current product as the return target so the
+                // user lands back here after a successful top-up — without
+                // this, every wallet-detoured purchase forces the user to
+                // navigate manually back. WalletPage captures the param
+                // and TopupWaitingModal honors it on the approved-state
+                // dismiss.
+                navigate(
+                  `/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`,
+                )
+              }
               couponInput={couponInput}
               couponResult={couponResult}
               couponError={couponError}
@@ -993,6 +1016,17 @@ function CtaBlock({
             ? "اشترِ"
             : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
       </Button>
+      {/* Reassurance: tells the user exactly what will be deducted and
+          what's left after — eliminates a hesitation moment where users
+          tap and pause to mentally calculate "wait, will I still have
+          something for next time?". Desktop-only; the mobile sticky bar
+          already shows the balance via the "رصيد كافٍ ✓" line in compact
+          mode. */}
+      {!compact && user && (
+        <p className="text-center text-xs text-muted-foreground -mt-1">
+          سيُخصم من رصيدك ({formatCurrency(user.wallet_balance ?? 0)} متاح)
+        </p>
+      )}
     </div>
   );
 }

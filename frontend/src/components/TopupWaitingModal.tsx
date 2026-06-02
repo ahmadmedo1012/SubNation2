@@ -15,6 +15,15 @@ interface Props {
   topupId: number | null;
   token: string;
   onClose: () => void;
+  /**
+   * Optional handler invoked when the user dismisses the success state.
+   * When set, the success-screen primary button reads "متابعة الشراء"
+   * and runs this callback instead of `onClose`. The wallet page wires
+   * this to the `?return=` URL parameter so users redirected from a
+   * product CTA bounce straight back to the product after their
+   * top-up clears.
+   */
+  onApprovedContinue?: () => void;
 }
 
 const COUNTDOWN_SECONDS = 30;
@@ -40,7 +49,7 @@ const POLL_INTERVAL_MS = 3_000;
  * via the existing `GET /api/wallet/topups` endpoint and reuses the
  * existing socket emissions.
  */
-export function TopupWaitingModal({ topupId, token, onClose }: Props) {
+export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue }: Props) {
   const queryClient = useQueryClient();
   const open = topupId !== null;
 
@@ -145,6 +154,7 @@ export function TopupWaitingModal({ topupId, token, onClose }: Props) {
             amount={topup?.amount ?? 0}
             balance={wallet?.balance ?? null}
             onClose={onClose}
+            onContinue={onApprovedContinue}
           />
         )}
         {status === "rejected" && (
@@ -247,10 +257,12 @@ function ApprovedBody({
   amount,
   balance,
   onClose,
+  onContinue,
 }: {
   amount: number;
   balance: number | null;
   onClose: () => void;
+  onContinue?: () => void;
 }) {
   return (
     <div className="p-6 text-center">
@@ -278,13 +290,37 @@ function ApprovedBody({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
-      >
-        تم
-      </button>
+      {onContinue ? (
+        // Return-to-product flow: the user came here from a product page
+        // because they couldn't afford it. Now that the top-up cleared,
+        // the primary action is to continue the original purchase, not
+        // to dismiss the modal. The "تم" path is preserved as a soft
+        // secondary in case they changed their mind.
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={onContinue}
+            className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+          >
+            متابعة الشراء
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            البقاء في المحفظة
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+        >
+          تم
+        </button>
+      )}
     </div>
   );
 }

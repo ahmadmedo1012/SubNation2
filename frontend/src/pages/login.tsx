@@ -3,6 +3,8 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import { Gift, ShieldCheck, ShoppingBag } from "lucide-react";
+import { useMemo } from "react";
 import { Link } from "wouter";
 
 /**
@@ -20,9 +22,32 @@ import { Link } from "wouter";
  * The platform is fully passwordless. Firebase Phone OTP has been
  * permanently retired — the WhatsApp OTP flow is the sole phone-based
  * sign-in path.
+ *
+ * ── Intent-aware value prop ────────────────────────────────────────
+ * When a guest taps "اشترِ الآن" on a product, the product page
+ * passes `?intent=buy&product=<slug>` so we can show a contextual
+ * "you're signing in to buy <product>" message instead of a cold
+ * "sign in" prompt — the cold variant has the highest bounce.
  */
+
+interface LoginIntent {
+  type: "buy" | "generic";
+  productName?: string;
+}
+
+function readLoginIntent(): LoginIntent {
+  if (typeof window === "undefined") return { type: "generic" };
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("intent") === "buy") {
+    const productName = params.get("product")?.slice(0, 80) ?? undefined;
+    return { type: "buy", productName };
+  }
+  return { type: "generic" };
+}
+
 export default function LoginPage() {
   const { whatsappEnabled } = usePublicAuthProviders();
+  const intent = useMemo(() => readLoginIntent(), []);
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -58,28 +83,49 @@ export default function LoginPage() {
         <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
           <AuthErrorBanner />
 
-          {/* PRIMARY: One-click providers (Google + Telegram when enabled).
-              Each is fully independent — no shared state, no shared form,
-              no implicit dependency on the phone OTP path below. */}
+          {/* Value-prop banner. Buy-intent variant is highest-conversion:
+              it tells the user exactly why they're here ("to finish buying
+              X") instead of a cold "log in to use the app" prompt.
+              Generic variant lists the three things signing in unlocks. */}
+          {intent.type === "buy" ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-4 p-3 bg-primary/8 border border-primary/22 rounded-xl text-sm text-primary-text flex items-center gap-2.5"
+            >
+              <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/22 flex items-center justify-center shrink-0">
+                <ShoppingBag className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold leading-tight">
+                  {intent.productName
+                    ? `سجّل دخولك لإكمال شراء "${intent.productName}"`
+                    : "سجّل دخولك لإكمال عملية الشراء"}
+                </p>
+                <p className="text-[11px] text-primary-text/75 mt-0.5">
+                  ثوانٍ معدودة بدون كلمة مرور
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-4 grid grid-cols-3 gap-1.5">
+              <ValueChip icon={ShoppingBag} label="تسوّق فوري" />
+              <ValueChip icon={ShieldCheck} label="محفظة آمنة" />
+              <ValueChip icon={Gift} label="5 د.ل عند الإحالة" />
+            </div>
+          )}
+
+          {/* PRIMARY: One-click providers (Google + Telegram when enabled). */}
           <AuthProviders />
 
-          {/* Single divider — the phone form is a peer option, not a
-              fallback. Wording makes the independence explicit. */}
-          {/* WhatsApp — visually a peer of Google + Telegram. The component
-              starts pristine (single "Continue with WhatsApp" button) and
-              expands inline on click. The backend's findOrCreateWhatsAppUser
-              handles new + returning users identically — the user never
-              has to choose "register" vs "login". No divider needed. */}
+          {/* WhatsApp — peer of Google + Telegram. Pristine button →
+              expands inline. Backend handles new + returning users
+              identically (findOrCreateWhatsAppUser). No divider. */}
           {whatsappEnabled && (
             <div className="mt-2.5">
               <WhatsAppPhoneSignIn />
             </div>
           )}
-
-          {/* Legacy Firebase Phone OTP block was removed in this commit.
-              Phone authentication now flows exclusively through WhatsApp OTP
-              above. Telegram + Google remain available as one-click providers
-              via <AuthProviders /> at the top of this card. */}
         </div>
 
         {/* Footer link to register */}
@@ -93,6 +139,15 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
+    </div>
+  );
+}
+
+function ValueChip({ icon: Icon, label }: { icon: typeof ShoppingBag; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 p-2 bg-muted/25 border border-border/40 rounded-lg text-center">
+      <Icon className="w-3.5 h-3.5 text-primary-text" aria-hidden="true" />
+      <span className="text-[10px] font-bold text-foreground/80 leading-tight">{label}</span>
     </div>
   );
 }

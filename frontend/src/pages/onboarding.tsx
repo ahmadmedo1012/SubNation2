@@ -1,14 +1,37 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
+import { ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
+/**
+ * Post-signup welcome screen.
+ *
+ * History: was previously a 5-step "wizard" that collected display
+ * name, 2FA preference, and account-link choices — but every input
+ * was decorative (no `onChange`, no submit) and `handleCompleteOnboarding`
+ * always POSTed an empty body. Users who typed their name across the
+ * flow then found it discarded after step 5, eroding first-session
+ * trust on the very first interaction post-signup.
+ *
+ * Current shape: a 2-step informational welcome that:
+ *   1. Establishes the value proposition (instant delivery, secure pay,
+ *      Libyan dinar) so freshly-signed-up users know what they get.
+ *   2. Hands them clear next-actions (browse / wallet / orders).
+ *
+ * Profile editing already lives at /profile and works correctly. Any
+ * missing bits (display name, 2FA, account links) are reachable from
+ * there — this screen no longer pretends to collect them. The
+ * `onboarded_at` flag is still flipped via the same backend endpoint
+ * so the gate condition that redirects already-onboarded users to /
+ * keeps working unchanged.
+ */
 export function OnboardingPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
-  const [step, setStep] = useState(1);
-  const [isChecking, setIsChecking] = useState(true);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [completing, setCompleting] = useState(false);
   const { data: user } = useGetMe({
     query: {
       enabled: !!token,
@@ -21,20 +44,16 @@ export function OnboardingPage() {
   useEffect(() => {
     if (!token) {
       navigate("/login");
-      setIsChecking(false);
       return;
     }
-
-    // Only redirect if user data is loaded and user is onboarded
     if (user && (user as { onboarded_at?: string }).onboarded_at) {
       navigate("/");
-      return;
     }
-
-    setIsChecking(false);
   }, [token, user, navigate]);
 
-  const handleCompleteOnboarding = async () => {
+  const completeAndGo = async (target: string) => {
+    if (completing) return;
+    setCompleting(true);
     try {
       await fetch("/api/auth/onboarding/complete", {
         method: "POST",
@@ -43,143 +62,156 @@ export function OnboardingPage() {
           "Content-Type": "application/json",
         },
       });
-      navigate("/");
-    } catch (error) {
-      console.error("Failed to complete onboarding:", error);
+    } catch {
+      // Non-fatal — the gate also tolerates a missing `onboarded_at`
+      // and just shows this page again. Sentry's network instrumentation
+      // captures the actual error.
+    } finally {
+      navigate(target);
     }
   };
 
-  const handleNextStep = async () => {
-    if (step < 5) {
-      setStep(step + 1);
-    } else {
-      await handleCompleteOnboarding();
-    }
-  };
-
-  if (isChecking)
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        جاري التحميل...
-      </div>
-    );
   if (!token) return null;
   if (user && (user as { onboarded_at?: string }).onboarded_at) return null;
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4" dir="rtl">
-      <div className="w-full max-w-2xl bg-card rounded-lg shadow-lg p-8">
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <div
-                key={s}
-                className={`h-2 flex-1 mx-1 rounded ${s <= step ? "bg-primary" : "bg-muted"}`}
-              />
-            ))}
-          </div>
-          <p className="text-sm text-muted-foreground text-center">الخطوة {step} من 5</p>
+    <div
+      className="min-h-[100dvh] bg-background flex items-center justify-center p-4 relative overflow-hidden"
+      dir="rtl"
+    >
+      {/* Ambient glow layers — match the auth pages for visual continuity. */}
+      <div className="absolute top-[-10%] right-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift" />
+      <div className="absolute bottom-[-5%] left-[10%] w-64 h-64 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow" />
+      <div className="absolute inset-0 dot-grid opacity-20 pointer-events-none" />
+
+      <div className="relative w-full max-w-md">
+        {/* Progress dots — 2 steps */}
+        <div className="flex items-center justify-center gap-1.5 mb-5">
+          {[1, 2].map((s) => (
+            <div
+              key={s}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                s === step ? "w-8 bg-primary" : "w-4 bg-muted/60"
+              }`}
+            />
+          ))}
         </div>
 
-        {step === 1 && (
-          <div className="text-center space-y-6">
-            <h1 className="text-3xl font-bold">مرحباً بك في SubNation2!</h1>
-            <p className="text-lg text-muted-foreground">
-              منصة شراء بطاقات وألعاب رقمية بأفضل الأسعار في ليبيا
-            </p>
-            <div className="grid grid-cols-3 gap-4 mt-8">
-              <div className="p-4 border rounded">
-                <div className="text-2xl mb-2">🎮</div>
-                <p className="text-sm">بطاقات ألعاب</p>
-              </div>
-              <div className="p-4 border rounded">
-                <div className="text-2xl mb-2">⚡</div>
-                <p className="text-sm">تسليم فوري</p>
-              </div>
-              <div className="p-4 border rounded">
-                <div className="text-2xl mb-2">🔒</div>
-                <p className="text-sm">دفع آمن</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-center">أكمل ملفك الشخصي</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">الاسم المعروض</label>
-                <input
-                  type="text"
-                  className="w-full p-3 border rounded"
-                  placeholder="أدخل اسمك"
-                  defaultValue={(user as { display_name?: string })?.display_name || ""}
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                يمكنك إضافة صورة الملف الشخصي لاحقاً من صفحة الملف الشخصي
-              </div>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-center">إعدادات الأمان</h2>
-            <div className="space-y-4">
-              <div className="p-4 border rounded">
-                <h3 className="font-semibold mb-2">المصادقة الثنائية (اختياري)</h3>
-                <p className="text-sm text-muted-foreground">
-                  يمكنك تفعيل المصادقة الثنائية لزيادة أمان حسابك
+        <div className="bg-card border border-border/55 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-black/20 reveal-up">
+          {step === 1 ? (
+            <div className="space-y-5">
+              <div className="text-center space-y-2.5">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/12 border border-primary/22 mx-auto">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                <h1 className="text-2xl font-black leading-tight">
+                  مرحباً بك في <span className="text-gradient-animated">SubNation</span>
+                </h1>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  سوق الاشتراكات الرقمية في ليبيا — بالدينار الليبي، تسليم فوري، ودعم محلي.
                 </p>
               </div>
-            </div>
-          </div>
-        )}
 
-        {step === 4 && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-center">ربط حسابات إضافية</h2>
-            <p className="text-center text-muted-foreground">يمكنك ربط حساب Google للدخول السريع</p>
-            <div className="p-4 border rounded text-center">
-              <p className="text-sm text-muted-foreground">
-                يمكنك ربط حسابات إضافية من صفحة الملف الشخصي
-              </p>
-            </div>
-          </div>
-        )}
+              <div className="space-y-2.5">
+                <FeatureRow
+                  icon={Truck}
+                  title="تسليم فوري"
+                  description="تصلك بيانات الاشتراك فور تأكيد الدفع."
+                />
+                <FeatureRow
+                  icon={ShieldCheck}
+                  title="دفع آمن بمحفظتك"
+                  description="اشحن مرة، اشترِ بدون تكرار بيانات الدفع."
+                />
+                <FeatureRow
+                  icon={ShoppingBag}
+                  title="كتالوج كامل"
+                  description="نتفلكس، ديزني+، سبوتيفاي، بلايستيشن وأكثر."
+                />
+              </div>
 
-        {step === 5 && (
-          <div className="text-center space-y-6">
-            <h2 className="text-2xl font-bold">جاهز للبدء!</h2>
-            <p className="text-lg text-muted-foreground">
-              لقد أكملت الإعداد الأولي. يمكنك الآن استعراض منتجاتنا وشراء بطاقاتك المفضلة.
-            </p>
-            <div className="p-4 border rounded bg-muted">
-              <p className="text-sm">نصائح سريعة:</p>
-              <ul className="text-sm text-right mt-2 space-y-1">
-                <li>• تصفح فئات المنتجات المختلفة</li>
-                <li>• أضف رصيد إلى محفظتك</li>
-                <li>• راجع طلباتك من صفحة الطلبات</li>
-              </ul>
+              <Button
+                onClick={() => setStep(2)}
+                className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22 cta-glow"
+              >
+                التالي
+              </Button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-5">
+              <div className="text-center space-y-2.5">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/12 border border-emerald-500/22 mx-auto">
+                  <ShoppingBag className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h2 className="text-xl font-black">جاهز للبدء</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة الملف الشخصي.
+                </p>
+              </div>
 
-        <div className="flex justify-between mt-8 pt-4 border-t border-border/20">
-          <Button
-            variant="outline"
-            onClick={() => setStep(Math.max(1, step - 1))}
-            disabled={step === 1}
-            className="h-11 px-8 press-spring font-bold"
-          >
-            السابق
-          </Button>
-          <Button onClick={handleNextStep} className="h-11 px-8 press-spring font-bold">
-            {step === 5 ? "إكمال" : "التالي"}
-          </Button>
+              <div className="grid grid-cols-1 gap-2">
+                <Button
+                  onClick={() => completeAndGo("/")}
+                  disabled={completing}
+                  className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22"
+                >
+                  تصفّح الكتالوج
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => completeAndGo("/wallet")}
+                  disabled={completing}
+                  className="w-full h-12 font-bold rounded-xl"
+                >
+                  شحن المحفظة أولاً
+                </Button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                disabled={completing}
+                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+              >
+                السابق
+              </button>
+            </div>
+          )}
         </div>
+
+        <p className="text-center text-[11px] text-muted-foreground mt-4">
+          يمكنك تخطّي هذه الشاشة في أي وقت من{" "}
+          <button
+            type="button"
+            onClick={() => completeAndGo("/")}
+            disabled={completing}
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            هنا
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function FeatureRow({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof Truck;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/40">
+      <div className="w-9 h-9 rounded-lg bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-primary" aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <div className="font-bold text-sm">{title}</div>
+        <div className="text-xs text-muted-foreground leading-relaxed">{description}</div>
       </div>
     </div>
   );
