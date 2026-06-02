@@ -83,10 +83,7 @@ describe("RefundService.refundOrder — F-005", () => {
     expect(result.walletBalance).toBe(100); // restored
 
     // Order status flipped.
-    const [refundedOrder] = await db
-      .select()
-      .from(ordersTable)
-      .where(eq(ordersTable.id, order.id));
+    const [refundedOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, order.id));
     expect(refundedOrder.status).toBe("refunded");
 
     // Wallet credited.
@@ -116,15 +113,12 @@ describe("RefundService.refundOrder — F-005", () => {
     await RefundService.refundOrder(order.id, { adminId: ADMIN_ID });
 
     // Second refund must NOT double-credit.
-    await expect(
-      RefundService.refundOrder(order.id, { adminId: ADMIN_ID }),
-    ).rejects.toMatchObject({ code: "ALREADY_REFUNDED" });
+    await expect(RefundService.refundOrder(order.id, { adminId: ADMIN_ID })).rejects.toMatchObject({
+      code: "ALREADY_REFUNDED",
+    });
 
     // Wallet balance and ledger entry counts must reflect a single refund.
-    const [refunded] = await db
-      .select()
-      .from(ordersTable)
-      .where(eq(ordersTable.id, order.id));
+    const [refunded] = await db.select().from(ordersTable).where(eq(ordersTable.id, order.id));
     expect(refunded.status).toBe("refunded");
 
     const allLedger = await db.select().from(walletLedgerTable);
@@ -163,9 +157,9 @@ describe("RefundService.refundOrder — F-005", () => {
   });
 
   it("rejects an unknown order with ORDER_NOT_FOUND", async () => {
-    await expect(
-      RefundService.refundOrder(999_999, { adminId: ADMIN_ID }),
-    ).rejects.toBeInstanceOf(RefundError);
+    await expect(RefundService.refundOrder(999_999, { adminId: ADMIN_ID })).rejects.toBeInstanceOf(
+      RefundError,
+    );
 
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
   });
@@ -188,9 +182,7 @@ describe("RefundService.refundOrder — F-005", () => {
     // reconstruct from balanceAfter of the latest entry instead, which is
     // the contract Constitution Principle I leans on.
     const latest = ledger[ledger.length - 1];
-    expect(parseFloat(String(latest.balanceAfter))).toBe(
-      parseFloat(String(u.walletBalance)),
-    );
+    expect(parseFloat(String(latest.balanceAfter))).toBe(parseFloat(String(u.walletBalance)));
     // refund is the latest (after purchase), so amount = 75.50, balanceAfter = 200.
     expect(latest.type).toBe("refund");
     expect(parseFloat(String(latest.amount))).toBe(75.5);

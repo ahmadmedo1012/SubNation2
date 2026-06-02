@@ -102,7 +102,8 @@ router.patch(
         .json(createErrorResponse("جلسة المسؤول مطلوبة", ErrorCode.UNAUTHORIZED));
     }
 
-    const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier, note } = req.body ?? {};
+    const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier, note } =
+      req.body ?? {};
 
     // ── Wallet path: AdjustmentService (atomic, ledger-backed) ────────
     let walletResult: { walletBalance: number } | null = null;
@@ -154,9 +155,7 @@ router.patch(
       // The wallet path would have caught this earlier; reachable only
       // if the row was deleted between the AdjustmentService commit and
       // this read.
-      return res
-        .status(404)
-        .json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+      return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
     }
 
     void writeAuditLog(req, "user.update", "user", id, {

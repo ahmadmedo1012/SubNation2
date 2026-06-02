@@ -63,7 +63,9 @@ function bodyHash(body: unknown): string {
   // Deterministic enough — JSON.stringify with sorted keys would be
   // even better, but the admin UI is the only sender so insertion order
   // is stable.
-  return createHash("sha256").update(JSON.stringify(body ?? null)).digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify(body ?? null))
+    .digest("hex");
 }
 
 /**

@@ -133,10 +133,7 @@ export class RefundService {
         .update(usersTable)
         .set({ walletBalance: String(balanceAfter) })
         .where(
-          and(
-            eq(usersTable.id, order.userId),
-            eq(usersTable.walletBalance, String(balanceBefore)),
-          ),
+          and(eq(usersTable.id, order.userId), eq(usersTable.walletBalance, String(balanceBefore))),
         )
         .returning({ id: usersTable.id });
       if (walletUpdated.length !== 1) {
@@ -156,11 +153,7 @@ export class RefundService {
         .where(and(eq(ordersTable.id, orderId), eq(ordersTable.status, "completed")))
         .returning({ id: ordersTable.id });
       if (statusFlipped.length !== 1) {
-        throw new RefundError(
-          409,
-          "ALREADY_REFUNDED",
-          "تم استرداد هذا الطلب بواسطة عملية أخرى",
-        );
+        throw new RefundError(409, "ALREADY_REFUNDED", "تم استرداد هذا الطلب بواسطة عملية أخرى");
       }
 
       const description =

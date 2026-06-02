@@ -14,13 +14,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  db,
-  initTestDb,
-  resetTestDb,
-  usersTable,
-  walletLedgerTable,
-} from "../../test/db";
+import { db, initTestDb, resetTestDb, usersTable, walletLedgerTable } from "../../test/db";
 import { AdjustmentError, AdjustmentService } from "../adjustment.service";
 
 beforeAll(async () => {
@@ -172,17 +166,12 @@ describe("AdjustmentService — ledger reconstruction invariant", () => {
       .from(walletLedgerTable)
       .where(eq(walletLedgerTable.userId, user.id));
 
-    const ledgerSum = ledger.reduce(
-      (acc, row) => acc + parseFloat(String(row.amount)),
-      0,
-    );
+    const ledgerSum = ledger.reduce((acc, row) => acc + parseFloat(String(row.amount)), 0);
     expect(parseFloat(String(u.walletBalance))).toBe(125);
     expect(+ledgerSum.toFixed(2)).toBe(125);
     expect(ledger).toHaveLength(3);
     // The latest ledger row's balanceAfter must equal current balance.
     const latest = ledger[ledger.length - 1];
-    expect(parseFloat(String(latest.balanceAfter))).toBe(
-      parseFloat(String(u.walletBalance)),
-    );
+    expect(parseFloat(String(latest.balanceAfter))).toBe(parseFloat(String(u.walletBalance)));
   });
 });

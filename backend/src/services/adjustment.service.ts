@@ -157,9 +157,7 @@ async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<Adj
     const updated = await tx
       .update(usersTable)
       .set({ walletBalance: String(balanceAfter) })
-      .where(
-        and(eq(usersTable.id, userId), eq(usersTable.walletBalance, String(balanceBefore))),
-      )
+      .where(and(eq(usersTable.id, userId), eq(usersTable.walletBalance, String(balanceBefore))))
       .returning({ id: usersTable.id });
 
     if (updated.length !== 1) {
