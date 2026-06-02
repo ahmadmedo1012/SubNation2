@@ -36,7 +36,8 @@ export type CheckoutFailureReason =
   | "USER_NOT_FOUND"
   | "INSUFFICIENT_BALANCE"
   | "OUT_OF_STOCK"
-  | "INVENTORY_CLAIMED";
+  | "INVENTORY_CLAIMED"
+  | "COUPON_EXHAUSTED";
 
 export type CheckoutResult =
   | {
@@ -125,10 +126,33 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
       if (appliedCoupon) {
         const newUsedCount = appliedCoupon.usedCount + 1;
-        await tx
+        // F-006 (security audit 004) — atomic-with-check increment.
+        //
+        // Previously: validate-outside-transaction then unconditional
+        // `usedCount + 1` increment inside the transaction. Two concurrent
+        // checkouts of a maxUses=1 coupon both passed validation (read 0,
+        // saw 0 < 1) and both incremented (final usedCount=2). The audit
+        // recommendation is approach (b): make the increment atomic-with-check
+        // by adding `WHERE usedCount < maxUses` to the UPDATE. If
+        // rowsAffected = 0, another concurrent purchase already consumed the
+        // last redemption slot — throw COUPON_EXHAUSTED and the surrounding
+        // transaction rolls back the inventory claim, balance debit, etc.
+        //
+        // For unbounded coupons (maxUses === null), the predicate is just
+        // the id match — no race exists because there is no cap.
+        const couponWhere =
+          appliedCoupon.maxUses === null
+            ? eq(couponsTable.id, appliedCoupon.id)
+            : and(
+                eq(couponsTable.id, appliedCoupon.id),
+                sql`${couponsTable.usedCount} < ${appliedCoupon.maxUses}`,
+              );
+        const [updatedCoupon] = await tx
           .update(couponsTable)
           .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
-          .where(eq(couponsTable.id, appliedCoupon.id));
+          .where(couponWhere)
+          .returning();
+        if (!updatedCoupon) throw new Error("COUPON_EXHAUSTED");
         if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
           notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
           logAdminAlert(
@@ -180,12 +204,19 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     })
     .catch((err) => {
       if (err.message === "INVENTORY_CLAIMED") {
-        return null;
+        return { failure: "INVENTORY_CLAIMED" as const };
+      }
+      if (err.message === "COUPON_EXHAUSTED") {
+        // F-006 — atomic-with-check coupon increment lost the race.
+        return { failure: "COUPON_EXHAUSTED" as const };
       }
       throw err;
     });
 
   if (!order) return { ok: false, reason: "INVENTORY_CLAIMED" };
+  if (typeof order === "object" && "failure" in order) {
+    return { ok: false, reason: order.failure };
+  }
 
   return { ok: true, order, product, user, finalPrice };
 }

@@ -9,6 +9,7 @@ import {
   productsTable,
   usersTable,
   walletLedgerTable,
+  couponsTable,
 } from "../../test/db";
 import { CheckoutService } from "../../services/checkout.service";
 
@@ -184,5 +185,86 @@ describe("CheckoutService — concurrency races", () => {
       .where(eq(inventoryTable.productId, product.id));
     expect(inv.filter((i) => i.isSold)).toHaveLength(1);
     expect(await db.select().from(ordersTable)).toHaveLength(1);
+  });
+
+  it("F-006: coupon maxUses=1 cannot be redeemed twice concurrently", async () => {
+    // Each buyer targets a DIFFERENT product to isolate the coupon race
+    // from the inventory race. (pglite serialises transactions, so the
+    // "concurrent" pre-select phase would otherwise pick the same row
+    // and trip INVENTORY_CLAIMED before the coupon UPDATE runs.) The
+    // only contention here is the maxUses=1 coupon. Without the
+    // atomic-with-check increment, both transactions would pass the
+    // validation read, both would increment, and usedCount would land
+    // at 2. With the fix, exactly one increment succeeds (rowsAffected=1)
+    // and the other transaction throws COUPON_EXHAUSTED.
+    const u1 = await seedUser("50.00");
+    const u2 = await seedUser("50.00");
+    const productA = await seedProductWithStock(1, "30.00");
+    const productB = await seedProductWithStock(1, "30.00");
+    const [coupon] = await db
+      .insert(couponsTable)
+      .values({
+        code: "ONESHOT",
+        type: "percentage",
+        value: "20.00",
+        maxUses: 1,
+        usedCount: 0,
+        isActive: true,
+      })
+      .returning();
+
+    const [a, b] = await Promise.all([
+      CheckoutService.purchase({ userId: u1.id, productId: productA.id, couponCode: "ONESHOT" }),
+      CheckoutService.purchase({ userId: u2.id, productId: productB.id, couponCode: "ONESHOT" }),
+    ]);
+
+    // Exactly one purchase wins; the other returns COUPON_EXHAUSTED.
+    const wins = [a, b].filter((r) => r.ok);
+    const losses = [a, b].filter((r) => !r.ok);
+    expect(wins).toHaveLength(1);
+    expect(losses).toHaveLength(1);
+    if (!losses[0].ok) {
+      expect(losses[0].reason).toBe("COUPON_EXHAUSTED");
+    }
+
+    // Coupon counted exactly once. The audit's failure mode (final
+    // usedCount=2) is what this assertion catches.
+    const [c] = await db.select().from(couponsTable).where(eq(couponsTable.id, coupon.id));
+    expect(c.usedCount).toBe(1);
+
+    // Single ledger entry, single completed order — the loser's entire
+    // transaction (including its inventory claim) rolled back.
+    expect(await db.select().from(ordersTable)).toHaveLength(1);
+    expect(await db.select().from(walletLedgerTable)).toHaveLength(1);
+  });
+
+  it("F-006: unbounded coupon (maxUses=null) is unaffected by the new check", async () => {
+    // The atomic-with-check predicate must NOT trip for unbounded coupons.
+    // Two purchases of a maxUses=null coupon should both succeed (subject
+    // only to balance and inventory).
+    const u1 = await seedUser("50.00");
+    const u2 = await seedUser("50.00");
+    const productA = await seedProductWithStock(1, "30.00");
+    const productB = await seedProductWithStock(1, "30.00");
+    const [coupon] = await db
+      .insert(couponsTable)
+      .values({
+        code: "UNLIMITED",
+        type: "percentage",
+        value: "10.00",
+        maxUses: null, // unbounded
+        usedCount: 0,
+        isActive: true,
+      })
+      .returning();
+
+    const [a, b] = await Promise.all([
+      CheckoutService.purchase({ userId: u1.id, productId: productA.id, couponCode: "UNLIMITED" }),
+      CheckoutService.purchase({ userId: u2.id, productId: productB.id, couponCode: "UNLIMITED" }),
+    ]);
+
+    expect([a, b].every((r) => r.ok)).toBe(true);
+    const [c] = await db.select().from(couponsTable).where(eq(couponsTable.id, coupon.id));
+    expect(c.usedCount).toBe(2);
   });
 });
