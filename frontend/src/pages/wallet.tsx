@@ -134,9 +134,9 @@ function networkLabel(net?: string | null) {
 }
 
 function topupStatusIcon(status: string) {
-  if (status === "approved") return <CheckCircle className="w-4 h-4 text-emerald-400" />;
-  if (status === "rejected") return <XCircle className="w-4 h-4 text-red-400" />;
-  return <Clock className="w-4 h-4 text-yellow-400 pulse-dot" />;
+  if (status === "approved") return <CheckCircle className="w-4 h-4 text-status-success" />;
+  if (status === "rejected") return <XCircle className="w-4 h-4 text-status-error" />;
+  return <Clock className="w-4 h-4 text-status-warning pulse-dot" />;
 }
 
 function CopyBtn({ text, label }: { text: string; label?: string }) {
@@ -151,7 +151,7 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
       onClick={handle}
       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-180 press-spring border ${
         copied
-          ? "bg-emerald-500/12 text-emerald-400 border-emerald-500/25"
+          ? "bg-status-success/12 text-status-success border-status-success/25"
           : "bg-primary/8 text-primary border-primary/20 hover:bg-primary/15"
       }`}
     >
@@ -555,15 +555,15 @@ export default function WalletPage() {
 
           {/* Pending limit warning */}
           {pendingBlocked && (
-            <div className="flex items-start gap-3 p-4 bg-yellow-400/7 border border-yellow-400/22 rounded-2xl float-in">
-              <Lock className="w-4.5 h-4.5 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 p-4 bg-status-warning/8 border border-status-warning/22 rounded-2xl float-in">
+              <Lock className="w-4.5 h-4.5 text-status-warning shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-yellow-300">طلبات الشحن موقوفة مؤقتاً</p>
-                <p className="text-xs text-yellow-400/70 mt-0.5">
+                <p className="font-bold text-sm text-status-warning">طلبات الشحن موقوفة مؤقتاً</p>
+                <p className="text-xs text-status-warning/75 mt-0.5">
                   لديك {pendingCount} طلبات قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
                 {oldestPending && (
-                  <p className="text-[11px] text-yellow-400/70 mt-1">
+                  <p className="text-[11px] text-status-warning/75 mt-1">
                     أقدم طلب: {formatRelativeTime(oldestPending)} — تُعتمد الطلبات عادةً خلال 30
                     دقيقة.
                   </p>
@@ -609,7 +609,7 @@ export default function WalletPage() {
               </div>
               <h2 className="font-black">شحن المحفظة</h2>
               {pendingCount > 0 && !pendingBlocked && (
-                <span className="mr-auto text-xs text-yellow-400 bg-yellow-400/8 border border-yellow-400/18 px-2 py-0.5 rounded-full">
+                <span className="mr-auto text-xs text-status-warning bg-status-warning/8 border border-status-warning/22 px-2 py-0.5 rounded-full">
                   {pendingCount}/{MAX_PENDING} معلق
                 </span>
               )}
@@ -796,14 +796,14 @@ export default function WalletPage() {
                         senderPhoneTouched && senderPhoneErr
                           ? "border-destructive/60 focus:ring-destructive/15"
                           : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr
-                            ? "border-emerald-500/50"
+                            ? "border-status-success/55"
                             : "border-border/50 focus:border-primary/45 focus:ring-primary/12"
                       } focus:ring-2`}
                       maxLength={10}
                     />
                     <div className="absolute left-3 top-1/2 -translate-y-1/2">
                       {senderPhoneTouched && !senderPhoneErr && senderPhone.length === 10 && (
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <CheckCircle className="w-4 h-4 text-status-success" />
                       )}
                       {senderPhoneTouched && senderPhoneErr && (
                         <AlertCircle className="w-4 h-4 text-destructive" />
@@ -946,7 +946,7 @@ export default function WalletPage() {
 
                   <div>
                     <StepDot n={4} label="تأكيد الإرسال" active />
-                    <div className="mt-3 mb-3 p-3.5 bg-yellow-400/7 border border-yellow-400/18 rounded-xl text-xs text-yellow-400 flex items-center gap-2">
+                    <div className="mt-3 mb-3 p-3.5 bg-status-warning/8 border border-status-warning/22 rounded-xl text-xs text-status-warning flex items-center gap-2">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       تأكد من إتمام التحويل المصرفي أولاً قبل إرسال الطلب
                     </div>

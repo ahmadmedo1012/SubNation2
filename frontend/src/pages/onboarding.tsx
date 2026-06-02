@@ -140,8 +140,8 @@ export function OnboardingPage() {
           ) : (
             <div className="space-y-5">
               <div className="text-center space-y-2.5">
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/12 border border-emerald-500/22 mx-auto">
-                  <ShoppingBag className="w-6 h-6 text-emerald-400" />
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-status-success/12 border border-status-success/22 mx-auto">
+                  <ShoppingBag className="w-6 h-6 text-status-success" />
                 </div>
                 <h2 className="text-xl font-black">جاهز للبدء</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">

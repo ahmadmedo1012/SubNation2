@@ -266,16 +266,16 @@ function ApprovedBody({
 }) {
   return (
     <div className="p-6 text-center">
-      <div className="relative mx-auto mb-4 w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/35 flex items-center justify-center">
-        <CheckCircle2 className="w-10 h-10 text-emerald-400" />
-        <Sparkles className="w-4 h-4 text-emerald-300 absolute -top-1 -right-1" />
+      <div className="relative mx-auto mb-4 w-20 h-20 rounded-full bg-status-success/15 border border-status-success/35 flex items-center justify-center">
+        <CheckCircle2 className="w-10 h-10 text-status-success" />
+        <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
       </div>
-      <h2 className="text-lg font-black mb-1.5 text-emerald-400">تمت إضافة الرصيد</h2>
+      <h2 className="text-lg font-black mb-1.5 text-status-success">تمت إضافة الرصيد</h2>
       <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
 
-      <div className="bg-emerald-500/8 border border-emerald-500/25 rounded-xl px-4 py-3.5 mb-3">
-        <div className="text-[11px] text-emerald-400/70 font-bold mb-0.5">المبلغ المُضاف</div>
-        <div className="text-2xl font-black tabular-nums text-emerald-300">
+      <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
+        <div className="text-[11px] text-status-success/80 font-bold mb-0.5">المبلغ المُضاف</div>
+        <div className="text-2xl font-black tabular-nums text-status-success">
           + {formatCurrency(amount)}
         </div>
       </div>
@@ -328,16 +328,16 @@ function ApprovedBody({
 function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClose: () => void }) {
   return (
     <div className="p-6 text-center">
-      <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-red-500/15 border border-red-500/35 flex items-center justify-center">
-        <XCircle className="w-10 h-10 text-red-400" />
+      <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
+        <XCircle className="w-10 h-10 text-status-error" />
       </div>
-      <h2 className="text-lg font-black mb-1.5 text-red-400">تم رفض الطلب</h2>
+      <h2 className="text-lg font-black mb-1.5 text-status-error">تم رفض الطلب</h2>
       <p className="text-sm text-muted-foreground mb-5">
         {adminNote ? "السبب الموضّح من الإدارة:" : "تواصل مع الدعم إذا كنت ترى أن هذا خطأ."}
       </p>
 
       {adminNote && (
-        <div className="bg-red-500/8 border border-red-500/25 rounded-xl px-4 py-3.5 mb-5 text-sm text-red-200/95 leading-relaxed text-right">
+        <div className="bg-status-error/8 border border-status-error/25 rounded-xl px-4 py-3.5 mb-5 text-sm text-status-error leading-relaxed text-right">
           {adminNote}
         </div>
       )}

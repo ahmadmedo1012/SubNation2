@@ -90,14 +90,14 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <button
         onClick={handleCopy}
         className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group ${
-          copied ? "text-emerald-400" : "text-foreground hover:text-primary"
+          copied ? "text-status-success" : "text-foreground hover:text-primary"
         }`}
       >
         <span className="max-w-[160px] truncate">{value}</span>
         <div
           className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${
             copied
-              ? "bg-emerald-500/15 text-emerald-400"
+              ? "bg-status-success/15 text-status-success"
               : "bg-muted/60 text-muted-foreground group-hover:bg-primary/12 group-hover:text-primary"
           }`}
         >
@@ -357,15 +357,15 @@ export default function ProductPage() {
   if (orderResult) {
     return (
       <div className="max-w-xl mx-auto px-4 py-8 sm:py-10">
-        <div className="bg-card border border-emerald-500/20 rounded-2xl overflow-hidden float-in">
+        <div className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in">
           {/* Success header */}
-          <div className="p-6 text-center border-b border-border/40 bg-gradient-to-b from-emerald-500/8 to-transparent">
+          <div className="p-6 text-center border-b border-border/40 bg-gradient-to-b from-status-success/8 to-transparent">
             {/* Animated ring */}
             <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 rounded-full bg-emerald-500/15 success-ring" />
-              <div className="absolute inset-0 rounded-full bg-emerald-500/8" />
-              <div className="w-full h-full bg-emerald-500/15 rounded-full flex items-center justify-center ring-4 ring-emerald-500/12">
-                <CheckCircle className="w-9 h-9 text-emerald-400" />
+              <div className="absolute inset-0 rounded-full bg-status-success/15 success-ring" />
+              <div className="absolute inset-0 rounded-full bg-status-success/8" />
+              <div className="w-full h-full bg-status-success/15 rounded-full flex items-center justify-center ring-4 ring-status-success/12">
+                <CheckCircle className="w-9 h-9 text-status-success" />
               </div>
             </div>
             <h2 className="text-xl font-black mb-1.5">تم الشراء بنجاح!</h2>
@@ -386,7 +386,7 @@ export default function ProductPage() {
             {(orderResult.delivered_email || orderResult.delivered_password) && (
               <div className="bg-muted/20 border border-border/50 rounded-xl overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
                   <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     بيانات الحساب
                   </h3>
@@ -409,9 +409,9 @@ export default function ProductPage() {
             )}
 
             {orderResult.delivered_usage_terms && (
-              <div className="flex gap-2.5 text-sm bg-yellow-500/8 border border-yellow-500/20 rounded-xl p-3.5">
-                <Info className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-                <span className="text-yellow-400 leading-relaxed">
+              <div className="flex gap-2.5 text-sm bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
+                <Info className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                <span className="text-status-warning leading-relaxed">
                   {orderResult.delivered_usage_terms}
                 </span>
               </div>
@@ -427,13 +427,10 @@ export default function ProductPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setOrderResult(null);
-                  setError("");
-                }}
+                onClick={() => navigate("/")}
                 className="flex-1 h-11 press-spring"
               >
-                شراء مجدداً
+                تصفّح المزيد
               </Button>
             </div>
           </div>
@@ -549,7 +546,7 @@ export default function ProductPage() {
               }
               className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
                 product.is_available
-                  ? "bg-emerald-500/10 border-emerald-500/22 text-emerald-400"
+                  ? "bg-status-success/10 border-status-success/22 text-status-success"
                   : "bg-muted/50 border-border/50 text-muted-foreground"
               }`}
             >
@@ -568,7 +565,7 @@ export default function ProductPage() {
 
           {/* Usage terms */}
           {product.usage_terms && (
-            <div className="flex gap-2.5 text-sm text-yellow-400 bg-yellow-500/8 border border-yellow-500/20 rounded-xl p-3.5">
+            <div className="flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
               <Info className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="leading-relaxed">{product.usage_terms}</span>
             </div>
