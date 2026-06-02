@@ -12,6 +12,7 @@ import {
 import {
   formatCurrency,
   formatDate,
+  formatRelativeTime,
   statusColor,
   statusLabel,
   tierColor,
@@ -73,19 +74,23 @@ function saveSenderPhone(phone: string) {
   }
 }
 
-// Get saved topup preferences
+// Get saved topup preferences. `method` is included so a user who
+// previously chose LyPay doesn't have to re-pick mobile_transfer
+// every visit — the wallet form remembers their last choice.
 function getTopupPreferences() {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.TOPUP_PREFERENCES);
-    return saved ? JSON.parse(saved) : { network: "libyana", amount: "" };
+    return saved
+      ? JSON.parse(saved)
+      : { network: "libyana", amount: "", method: "mobile_transfer" };
   } catch {
-    return { network: "libyana", amount: "" };
+    return { network: "libyana", amount: "", method: "mobile_transfer" };
   }
 }
 
 // Save topup preferences
-function saveTopupPreferences(network: string, amount: string) {
-  localStorage.setItem(STORAGE_KEYS.TOPUP_PREFERENCES, JSON.stringify({ network, amount }));
+function saveTopupPreferences(network: string, amount: string, method: string) {
+  localStorage.setItem(STORAGE_KEYS.TOPUP_PREFERENCES, JSON.stringify({ network, amount, method }));
 }
 
 const LYPAY_INFO = {
@@ -97,8 +102,8 @@ const LYPAY_INFO = {
 };
 
 const NETWORK_PRESETS: Record<string, number[]> = {
-  libyana: [1, 5, 10, 20, 50],
-  madar: [1, 5, 10, 20],
+  libyana: [1, 5, 10, 20, 50, 100],
+  madar: [1, 5, 10, 20, 50, 100],
 };
 
 const NETWORKS = [
@@ -253,6 +258,15 @@ function TransferCodePanel({
         {code ?? "أدخل المبلغ لإنشاء الكود تلقائياً"}
       </div>
 
+      {/* Disclaimer ABOVE the button — desktop users who tap the
+          tel: link and don't get a dialer were hitting a dead state
+          before noticing the "copy and dial manually" hint underneath.
+          Surfacing it above the action sets the right expectation up
+          front: tap is the fast path, copy is the universal fallback. */}
+      <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
+        على الجوال: اضغط الزر لفتح لوحة الاتصال. على الحاسوب: انسخ الكود وأدخله يدوياً.
+      </p>
+
       {href ? (
         <a
           href={href}
@@ -271,10 +285,6 @@ function TransferCodePanel({
           تحويل الرصيد
         </button>
       )}
-
-      <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-        إذا لم يفتح الزر تطبيق الاتصال، انسخ الكود وألصقه يدوياً في لوحة الاتصال.
-      </p>
     </div>
   );
 }
@@ -319,13 +329,16 @@ export default function WalletPage() {
     const prefs = getTopupPreferences();
     setNetwork(prefs.network);
     setAmount(prefs.amount);
+    if (prefs.method === "mobile_transfer" || prefs.method === "lypay") {
+      setMethod(prefs.method);
+    }
     setSavedPhones(getSavedSenderPhones());
   }, []);
 
   // Save preferences when they change
   useEffect(() => {
-    saveTopupPreferences(network, amount);
-  }, [network, amount]);
+    saveTopupPreferences(network, amount, method);
+  }, [network, amount, method]);
 
   useEffect(() => {
     if (!token) navigate("/login");
@@ -345,6 +358,35 @@ export default function WalletPage() {
     (t) => t.status === "pending",
   ).length;
   const pendingBlocked = pendingCount >= MAX_PENDING;
+
+  // Oldest pending topup — used to set a real-data expectation in the
+  // pending-block warning. Without this, "blocked" reads as "stuck"
+  // when in fact the user is just queued behind their own earlier
+  // requests. Showing the age of the oldest pending lets them gauge
+  // how soon they'll be unblocked.
+  const oldestPending = (topups as Array<{ status: string; created_at: string }>)
+    .filter((t) => t.status === "pending")
+    .map((t) => t.created_at)
+    .sort()
+    .at(0);
+
+  // Most-recent topup (any status) for the mobile compact summary.
+  // The wallet history sidebar is desktop-only — on mobile it stacks
+  // below the form, so users never see "yes, my last topup is being
+  // processed" until they scroll past their submission. This pins the
+  // latest one near the top of the form.
+  const latestTopup = (
+    topups as Array<{
+      id: number;
+      status: string;
+      amount: number;
+      created_at: string;
+      payment_network?: string;
+    }>
+  )
+    .slice()
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .at(0);
 
   const topupMutation = useCreateTopup({
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
@@ -520,6 +562,39 @@ export default function WalletPage() {
                 <p className="text-xs text-yellow-400/70 mt-0.5">
                   لديك {pendingCount} طلبات قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
+                {oldestPending && (
+                  <p className="text-[11px] text-yellow-400/70 mt-1">
+                    أقدم طلب: {formatRelativeTime(oldestPending)} — تُعتمد الطلبات عادةً خلال 30
+                    دقيقة.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile-only latest-topup pin. Wallet history lives in the
+              right-hand column on desktop (sticky), but on mobile it
+              stacks below the form — this small banner gives a quick
+              "last submission" signal at the top of the page so a
+              user who just submitted doesn't have to scroll to know
+              their request is queued. */}
+          {!isLoading && latestTopup && (
+            <div className="lg:hidden flex items-center gap-3 p-3 bg-card border border-border/55 rounded-xl">
+              {topupStatusIcon(latestTopup.status)}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold tabular-nums">
+                  آخر طلب: {formatCurrency(latestTopup.amount)}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(latestTopup.status)}`}
+                  >
+                    {statusLabel(latestTopup.status)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {formatRelativeTime(latestTopup.created_at)}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -639,6 +714,16 @@ export default function WalletPage() {
                     placeholder="أو أدخل مبلغاً آخر..."
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    onBlur={(e) => {
+                      // Native step="0.5" only enforces on the spinner;
+                      // a typed "1.3" would otherwise reach the backend.
+                      // Round to the nearest 0.5 + clamp to [1, 10000]
+                      // when the user finishes editing.
+                      const v = parseFloat(e.target.value);
+                      if (!Number.isFinite(v)) return;
+                      const rounded = Math.min(10000, Math.max(1, Math.round(v * 2) / 2));
+                      if (rounded !== v) setAmount(String(rounded));
+                    }}
                     required
                     dir="ltr"
                     className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
@@ -830,6 +915,12 @@ export default function WalletPage() {
                       placeholder="المبلغ بالدينار الليبي"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
+                      onBlur={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        const rounded = Math.min(10000, Math.max(1, Math.round(v * 2) / 2));
+                        if (rounded !== v) setAmount(String(rounded));
+                      }}
                       required
                       dir="ltr"
                       className="text-left h-11 rounded-xl bg-card"
