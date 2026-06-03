@@ -4,6 +4,7 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 import { adminAdminsRouter } from "./admins";
 import { adminAlertsRouter } from "./alerts";
 import { adminAuthRouter } from "./auth";
+import { copilotRouter } from "./copilot";
 import { adminDiagnosticsRouter } from "./diagnostics";
 import { adminFlashSalesRouter } from "./flash-sales";
 import { adminObservabilityRouter } from "./observability";
@@ -45,6 +46,10 @@ router.use(
   requirePermission("orders"),
   adminOrdersRouter, // /orders, /orders/bulk-status
 );
+
+// AI Admin Copilot (010-ai-admin-copilot). Each leaf route inside enforces
+// its own phase + scope gate; the parent mount only attaches the router.
+router.use("/", copilotRouter);
 
 router.use(
   "/",
@@ -92,12 +97,7 @@ router.use(
   adminTicketsRouter, // /tickets/*
 );
 
-router.use(
-  "/alerts",
-  requireAdmin,
-  requirePermission("support"),
-  adminAlertsRouter,
-);
+router.use("/alerts", requireAdmin, requirePermission("support"), adminAlertsRouter);
 
 router.use(
   "/",
@@ -113,25 +113,10 @@ router.use(
   adminAdminsRouter, // /admins, /admins/:id, /admins/:id/permissions
 );
 
-router.use(
-  "/settings",
-  requireAdmin,
-  requirePermission("settings"),
-  adminSettingsRouter,
-);
+router.use("/settings", requireAdmin, requirePermission("settings"), adminSettingsRouter);
 
-router.use(
-  "/observability",
-  requireAdmin,
-  requirePermission("settings"),
-  adminObservabilityRouter,
-);
+router.use("/observability", requireAdmin, requirePermission("settings"), adminObservabilityRouter);
 
-router.use(
-  "/diagnostics",
-  requireAdmin,
-  requirePermission("settings"),
-  adminDiagnosticsRouter,
-);
+router.use("/diagnostics", requireAdmin, requirePermission("settings"), adminDiagnosticsRouter);
 
 export { router as adminRouter };
