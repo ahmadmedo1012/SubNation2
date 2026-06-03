@@ -78,22 +78,60 @@ const REVERSE_SYNONYMS: Record<string, string[]> = (() => {
       out[key].add(en);
     }
   }
-  return Object.fromEntries(
-    Object.entries(out).map(([k, v]) => [k, [...v]]),
-  );
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v]]));
 })();
 
 const AR_TO_LATIN: Record<string, string> = {
-  ا: "a", أ: "a", إ: "a", آ: "a", ى: "a",
-  ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh",
-  د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh",
-  ص: "s", ض: "d", ط: "t", ظ: "z", ع: "", غ: "gh",
-  ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n",
-  ه: "h", و: "w", ي: "y", ة: "a", ء: "", ئ: "y", ؤ: "w",
+  ا: "a",
+  أ: "a",
+  إ: "a",
+  آ: "a",
+  ى: "a",
+  ب: "b",
+  ت: "t",
+  ث: "th",
+  ج: "j",
+  ح: "h",
+  خ: "kh",
+  د: "d",
+  ذ: "dh",
+  ر: "r",
+  ز: "z",
+  س: "s",
+  ش: "sh",
+  ص: "s",
+  ض: "d",
+  ط: "t",
+  ظ: "z",
+  ع: "",
+  غ: "gh",
+  ف: "f",
+  ق: "q",
+  ك: "k",
+  ل: "l",
+  م: "m",
+  ن: "n",
+  ه: "h",
+  و: "w",
+  ي: "y",
+  ة: "a",
+  ء: "",
+  ئ: "y",
+  ؤ: "w",
   // Persian/Urdu chars sometimes used
-  پ: "p", چ: "ch", گ: "g", ژ: "zh",
+  پ: "p",
+  چ: "ch",
+  گ: "g",
+  ژ: "zh",
   // Diacritics — drop
-  "ً": "", "ٌ": "", "ٍ": "", "َ": "", "ُ": "", "ِ": "", "ّ": "", "ْ": "",
+  "ً": "",
+  "ٌ": "",
+  "ٍ": "",
+  "َ": "",
+  "ُ": "",
+  "ِ": "",
+  "ّ": "",
+  "ْ": "",
 };
 
 function transliterateArabic(s: string): string {
@@ -248,9 +286,7 @@ export const resolveProduct: CopilotTool = {
       }
     }
 
-    const ranked = [...seen.values()]
-      .sort((a, b) => (b.sim ?? 0) - (a.sim ?? 0))
-      .slice(0, 5);
+    const ranked = [...seen.values()].sort((a, b) => (b.sim ?? 0) - (a.sim ?? 0)).slice(0, 5);
 
     return {
       query: q,
