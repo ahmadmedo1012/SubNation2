@@ -87,6 +87,8 @@ interface AskBody {
   locale?: string;
   /** Prior conversation turns (capped to last 12 messages by the route). */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** If true, response is `text/event-stream` with live progress events. */
+  stream?: boolean;
 }
 
 const MAX_HISTORY_MESSAGES = 12;
@@ -121,6 +123,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     return;
   }
   const history = sanitizeHistory(body.history);
+  const wantsStream = body.stream === true;
 
   if (!copilotLlmAvailable()) {
     res.status(503).json({
@@ -169,6 +172,31 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   const directExecutions: DirectExecution[] = [];
   const provider = getCopilotProvider();
 
+  // SSE writer: when streaming, every event is flushed immediately so the
+  // UI can show progress during the (typically 3–8 sec) tool loop.
+  let sseStarted = false;
+  function sseWrite(event: string, data: unknown): void {
+    if (!wantsStream) return;
+    if (!sseStarted) {
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders?.();
+      sseStarted = true;
+    }
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    // Best-effort flush — Express in Node.js auto-flushes on write but
+    // a Cloudflare/CDN proxy can buffer. The X-Accel-Buffering header
+    // covers nginx-derived proxies.
+  }
+  function emitProgress(e: import("../../../services/copilot/llm-client").CopilotEvent) {
+    if (!wantsStream) return;
+    sseWrite("progress", e);
+  }
+
   let result;
   try {
     result = await copilotChat({
@@ -176,6 +204,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       intentText,
       tools,
       history,
+      onEvent: emitProgress,
       toolHandler: async (name, input) => {
         if (isSuperAdmin && isAdminRequestToolName(name)) {
           const r = await executeAdminRequest(input, { req });
@@ -240,6 +269,11 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   } catch (err) {
     logger.error({ err, adminId: adminReq.adminId, correlationId }, "copilot ask: LLM error");
     commands().inc({ kind: "ask", outcome: "failure" });
+    if (wantsStream && sseStarted) {
+      sseWrite("error", { error: "LLM error", code: "COPILOT_LLM_ERROR" });
+      res.end();
+      return;
+    }
     res.status(502).json({
       error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
       code: "COPILOT_LLM_ERROR",
@@ -267,6 +301,14 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     } catch (err) {
       logger.warn({ err }, "copilot refusal-audit insert failed");
     }
+    if (wantsStream && sseStarted) {
+      sseWrite("error", {
+        error: "secret leak attempted",
+        code: "COPILOT_SECRET_LEAK",
+      });
+      res.end();
+      return;
+    }
     res.status(502).json({
       error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
       code: "COPILOT_SECRET_LEAK",
@@ -275,7 +317,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   }
 
   commands().inc({ kind: "ask", outcome: "success" });
-  res.json({
+  const finalPayload = {
     text: result.text,
     tool_uses: result.toolUses.map((t: ToolUseTrace) => ({
       name: t.name,
@@ -289,7 +331,16 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     input_tokens: result.inputTokens,
     output_tokens: result.outputTokens,
     correlation_id: correlationId,
-  });
+  };
+
+  if (wantsStream) {
+    sseWrite("final", finalPayload);
+    sseWrite("done", { correlation_id: correlationId });
+    res.end();
+    return;
+  }
+
+  res.json(finalPayload);
 }
 
 export const adminCopilotRouter = Router();

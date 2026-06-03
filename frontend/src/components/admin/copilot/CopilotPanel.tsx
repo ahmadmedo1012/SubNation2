@@ -125,6 +125,8 @@ interface ConversationTurn {
   answer?: string | null;
   toolUses?: ToolUseTracePreview[];
   directExecutions?: DirectExecution[];
+  /** Live progress messages while the request is in-flight. */
+  progress?: string[];
   preview?: PreviewView | null;
   previewState?: "pending" | "confirming" | "executed" | "cancelled" | "rejected" | "expired";
   resultUrl?: string | null;
@@ -520,6 +522,7 @@ export function CopilotPanel() {
       body: JSON.stringify({
         intent_text: text,
         history,
+        stream: true,
         context: { route: window.location.pathname },
       }),
     });
@@ -527,14 +530,137 @@ export function CopilotPanel() {
       const body = (await resp.json().catch(() => null)) as { error?: string } | null;
       throw new Error(body?.error ?? `request failed (${resp.status})`);
     }
-    const data = (await resp.json()) as AskResponse;
-    patchTurn(turnId, {
-      kind: "ask",
-      answer: data.text,
-      toolUses: data.tool_uses,
-      directExecutions: data.direct_executions ?? [],
-      previewState: undefined,
-      loading: false,
+    // If the server didn't actually start an SSE stream (e.g. proxy
+    // stripped it), fall back to JSON parse.
+    const ct = resp.headers.get("content-type") ?? "";
+    if (!ct.includes("event-stream") || !resp.body) {
+      const data = (await resp.json()) as AskResponse;
+      patchTurn(turnId, {
+        kind: "ask",
+        answer: data.text,
+        toolUses: data.tool_uses,
+        directExecutions: data.direct_executions ?? [],
+        previewState: undefined,
+        loading: false,
+      });
+      return;
+    }
+
+    // SSE stream — parse events as they arrive.
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalPayload: AskResponse | null = null;
+
+    function progressFor(name: string, ok?: boolean, summary?: string): string {
+      const labels: Record<string, string> = {
+        resolve_product: "🔍 يبحث عن المنتج",
+        search_products: "🔍 يبحث في الكتالوج",
+        get_product: "📋 يقرأ تفاصيل المنتج",
+        list_low_stock: "📦 يفحص المخزون",
+        summarize_recent_changes: "📜 يقرأ سجل النشاط",
+        update_product: "✏️ يحدّث المنتج",
+        update_stock: "📦 يحدّث المخزون",
+        admin_request: "⚙️ يستدعي اللوحة",
+      };
+      const label = labels[name] ?? `🔧 ${name}`;
+      if (ok === undefined) return `${label}…`;
+      const tail = summary ? ` (${summary})` : "";
+      return `${ok ? "✓" : "✗"} ${label}${tail}`;
+    }
+
+    function handleEvent(event: string, data: unknown) {
+      if (event === "progress") {
+        const e = data as
+          | { type: "round_start"; round: number }
+          | { type: "tool_call_start"; name: string }
+          | { type: "tool_call_done"; name: string; ok: boolean; summary: string }
+          | { type: "round_done"; hadToolCalls: boolean };
+        if (e.type === "tool_call_start") {
+          appendProgress(turnId, progressFor(e.name));
+        } else if (e.type === "tool_call_done") {
+          replaceLastProgress(turnId, progressFor(e.name, e.ok, e.summary));
+        }
+      } else if (event === "final") {
+        finalPayload = data as AskResponse;
+      } else if (event === "error") {
+        const e = data as { error?: string };
+        throw new Error(e.error ?? "stream error");
+      }
+    }
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        if (!frame.trim()) continue;
+        let event = "message";
+        let dataLine = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+        }
+        if (!dataLine) continue;
+        try {
+          const data = JSON.parse(dataLine) as unknown;
+          handleEvent(event, data);
+        } catch {
+          // ignore malformed frame
+        }
+      }
+    }
+
+    if (finalPayload) {
+      const fp = finalPayload as AskResponse;
+      patchTurn(turnId, {
+        kind: "ask",
+        answer: fp.text,
+        toolUses: fp.tool_uses,
+        directExecutions: fp.direct_executions ?? [],
+        previewState: undefined,
+        loading: false,
+        progress: [],
+      });
+    } else {
+      patchTurn(turnId, { loading: false });
+    }
+  }
+
+  function appendProgress(turnId: string, line: string) {
+    setConversations((prev) => {
+      const list = prev.map((c) => {
+        if (c.id !== current.id) return c;
+        return {
+          ...c,
+          turns: c.turns.map((t) =>
+            t.id === turnId ? { ...t, progress: [...(t.progress ?? []), line] } : t,
+          ),
+        };
+      });
+      return list;
+    });
+  }
+
+  function replaceLastProgress(turnId: string, line: string) {
+    setConversations((prev) => {
+      const list = prev.map((c) => {
+        if (c.id !== current.id) return c;
+        return {
+          ...c,
+          turns: c.turns.map((t) => {
+            if (t.id !== turnId) return t;
+            const arr = [...(t.progress ?? [])];
+            if (arr.length > 0) arr[arr.length - 1] = line;
+            else arr.push(line);
+            return { ...t, progress: arr };
+          }),
+        };
+      });
+      return list;
     });
   }
 
@@ -885,8 +1011,16 @@ function TurnView({
       </div>
 
       {turn.loading && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground pr-1">
-          <Loader2 className="w-3 h-3 animate-spin" /> جاري التفكير…
+        <div className="space-y-1 pr-1">
+          {(turn.progress ?? []).map((line, i) => (
+            <div key={i} className="text-[11px] text-muted-foreground font-mono leading-5">
+              {line}
+            </div>
+          ))}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            {(turn.progress ?? []).length === 0 ? "جاري التفكير…" : "جاري المعالجة…"}
+          </div>
         </div>
       )}
 

@@ -68,6 +68,41 @@ export interface CopilotChatResult {
   stoppedReason: string | null;
 }
 
+/**
+ * Progress event emitted by copilotChat as it works through tool rounds.
+ * Used by the SSE streaming /ask endpoint to give the user live feedback
+ * during the (typically 3-6 second) tool-loop window. Non-streaming
+ * callers can simply pass no onEvent and ignore.
+ */
+export type CopilotEvent =
+  | { type: "round_start"; round: number }
+  | { type: "tool_call_start"; round: number; name: string; input: Record<string, unknown> }
+  | { type: "tool_call_done"; round: number; name: string; ok: boolean; summary: string }
+  | { type: "round_done"; round: number; hadToolCalls: boolean };
+
+function summarizeToolResult(result: unknown): { ok: boolean; summary: string } {
+  if (result && typeof result === "object" && "error" in (result as Record<string, unknown>)) {
+    const err = (result as { error: unknown }).error;
+    return {
+      ok: false,
+      summary: typeof err === "string" ? err.slice(0, 120) : "error",
+    };
+  }
+  // Try to extract a one-liner from common shapes.
+  if (result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    if (Array.isArray(r.matches)) return { ok: true, summary: `${r.matches.length} match(es)` };
+    if (Array.isArray(r.products)) return { ok: true, summary: `${r.products.length} product(s)` };
+    if (Array.isArray(r.entries)) return { ok: true, summary: `${r.entries.length} entry(ies)` };
+    if (typeof r.productId === "number") return { ok: true, summary: `product #${r.productId}` };
+    if (typeof r.status === "number") {
+      const ok = r.status >= 200 && r.status < 300;
+      return { ok, summary: `HTTP ${r.status}` };
+    }
+  }
+  return { ok: true, summary: "ok" };
+}
+
 export function copilotLlmAvailable(): boolean {
   return hasCopilotProvider();
 }
@@ -120,6 +155,10 @@ async function postChatCompletion(args: {
  * (typically the last 6 turns) so the model has context across turns.
  * The route caps the size so we don't blow the context window on long
  * sessions.
+ *
+ * Optional `onEvent` is called as the chat progresses — used by the SSE
+ * streaming path to push live "searching… updating… done" feedback to
+ * the client during the multi-second tool loop.
  */
 export async function copilotChat(args: {
   systemText: string;
@@ -128,6 +167,7 @@ export async function copilotChat(args: {
   toolHandler: ToolHandler;
   maxTokens?: number;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  onEvent?: (e: CopilotEvent) => void;
 }): Promise<CopilotChatResult> {
   const provider = getCopilotProvider();
   if (!provider.apiKey) {
@@ -152,6 +192,7 @@ export async function copilotChat(args: {
   let finalText = "";
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    args.onEvent?.({ type: "round_start", round });
     const resp = await postChatCompletion({
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
@@ -175,6 +216,7 @@ export async function copilotChat(args: {
     const toolCalls = message.tool_calls ?? [];
     if (toolCalls.length === 0) {
       finalText = (message.content ?? "").trim();
+      args.onEvent?.({ type: "round_done", round, hadToolCalls: false });
       break;
     }
 
@@ -195,7 +237,21 @@ export async function copilotChat(args: {
       } catch {
         parsedInput = {};
       }
+      args.onEvent?.({
+        type: "tool_call_start",
+        round,
+        name: tc.function.name,
+        input: parsedInput,
+      });
       const result = await args.toolHandler(tc.function.name, parsedInput);
+      const { ok: callOk, summary: callSummary } = summarizeToolResult(result);
+      args.onEvent?.({
+        type: "tool_call_done",
+        round,
+        name: tc.function.name,
+        ok: callOk,
+        summary: callSummary,
+      });
       trace.push({ name: tc.function.name, input: parsedInput, result });
       messages.push({
         role: "tool",
@@ -204,6 +260,7 @@ export async function copilotChat(args: {
         content: typeof result === "string" ? result : JSON.stringify(result ?? null),
       });
     }
+    args.onEvent?.({ type: "round_done", round, hadToolCalls: true });
   }
 
   return {
