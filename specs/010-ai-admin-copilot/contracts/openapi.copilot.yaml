@@ -1,0 +1,438 @@
+openapi: 3.1.0
+info:
+  title: SubNation Admin Copilot API
+  version: "0.1.0"
+  description: |
+    HTTP surface for the AI Admin Copilot. All endpoints require an
+    authenticated admin session (the existing `requireAdmin` middleware)
+    and are subject to the per-admin copilot rate limit
+    (30 commands/min, 200 commands/hour, sliding windows).
+servers:
+  - url: /api/admin/copilot
+    description: Mounted under existing admin API base.
+
+paths:
+  /ask:
+    post:
+      operationId: copilotAsk
+      summary: Read-only question. Streams an SSE response.
+      description: |
+        Phase-1 surface. The model is given the read-only tool catalog only;
+        no draft tools are exposed. Responses stream back as SSE events
+        (`token`, `tool_use`, `tool_result`, `done`, `error`). No mutation
+        is possible from this endpoint regardless of model behavior.
+      x-required-permission: any-admin-scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent_text]
+              properties:
+                intent_text:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                context:
+                  type: object
+                  description: Optional UI context (current admin route, focused entity).
+                  properties:
+                    route:
+                      type: string
+                    focus_entity_type:
+                      type: string
+                    focus_entity_id:
+                      type: integer
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream: {}
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /draft:
+    post:
+      operationId: copilotDraft
+      summary: Draft an action and return a preview ID.
+      description: |
+        Phase-2+ surface. The model is given the draft tools the admin has
+        scope for; if it calls one, the proposal is validated, persisted as
+        a `copilot_previews` row, and the preview ID is returned.
+      x-required-permission: scope-dependent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent_text]
+              properties:
+                intent_text:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                context:
+                  $ref: "#/components/schemas/AskContext"
+      responses:
+        "200":
+          description: Draft accepted; preview persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftResponse"
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Validation rejected the proposal (no preview created).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefusalResponse"
+        "422":
+          description: Bulk row cap exceeded; admin must narrow scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefusalResponse"
+        "429": { $ref: "#/components/responses/Error" }
+
+  /previews/{id}:
+    get:
+      operationId: copilotGetPreview
+      summary: Fetch a pending preview the requesting admin owns.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Preview body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preview"
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410":
+          description: Preview expired (TTL elapsed) or already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /previews/{id}/cancel:
+    post:
+      operationId: copilotCancelPreview
+      summary: Cancel a pending preview without executing.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Cancelled. A `copilot_actions` row with outcome=cancelled is recorded.
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /previews/{id}/confirm:
+    post:
+      operationId: copilotConfirm
+      summary: Single confirmation for low-risk previews. Executes immediately.
+      description: |
+        Used only when `risk_tier == "low"`. For `high` tier this endpoint
+        records `confirmed_once_at` and starts the cooldown for
+        `/double-confirm`; it does NOT execute by itself. For `no_execute`
+        tier (wallet/refund), this endpoint returns 403 with a handoff URL.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Executed (low-risk) or first-confirm recorded (high-risk).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+        "401": { $ref: "#/components/responses/Error" }
+        "403":
+          description: Insufficient scope, ownership mismatch, or no_execute tier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "409":
+          description: Stale record (entity changed since draft) or already consumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "410":
+          description: Preview expired.
+        "429": { $ref: "#/components/responses/Error" }
+
+  /previews/{id}/double-confirm:
+    post:
+      operationId: copilotDoubleConfirm
+      summary: Second confirmation for high-risk previews. Executes after cooldown.
+      description: |
+        Server enforces that `now() >= cooldown_starts_at + 3 seconds`
+        (FR-CONFIRM-002). Refuses with 425 if the cooldown is not yet over.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Executed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Stale, already consumed, or first-confirm missing.
+        "410":
+          description: Preview expired.
+        "425":
+          description: Too early — cooldown not elapsed.
+        "429": { $ref: "#/components/responses/Error" }
+
+  /history:
+    get:
+      operationId: copilotHistory
+      summary: List the requesting admin's recent copilot actions.
+      parameters:
+        - in: query
+          name: action_class
+          schema: { type: string }
+        - in: query
+          name: outcome
+          schema:
+            type: string
+            enum: [success, partial, failure, refused, validation_rejected, rate_limited, stale, expired, cancelled]
+        - in: query
+          name: since_iso
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Page of history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/HistoryEntry" }
+                  next_cursor: { type: string, nullable: true }
+
+components:
+  schemas:
+    AskContext:
+      type: object
+      properties:
+        route: { type: string }
+        focus_entity_type: { type: string }
+        focus_entity_id: { type: integer }
+
+    DraftResponse:
+      type: object
+      required: [preview_id, preview]
+      properties:
+        preview_id: { type: string }
+        preview: { $ref: "#/components/schemas/Preview" }
+
+    Preview:
+      type: object
+      required: [id, admin_id, intent_text, intent_summary, action_class, risk_tier, payload, created_at, expires_at]
+      properties:
+        id: { type: string }
+        admin_id: { type: integer }
+        intent_text: { type: string }
+        intent_summary: { type: string }
+        action_class: { type: string }
+        risk_tier:
+          type: string
+          enum: [low, high, no_execute]
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/SinglePreviewPayload"
+            - $ref: "#/components/schemas/BulkPreviewPayload"
+          discriminator:
+            propertyName: kind
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        confirmed_once_at: { type: string, format: date-time, nullable: true }
+        cooldown_starts_at: { type: string, format: date-time, nullable: true }
+        confirmed_twice_at: { type: string, format: date-time, nullable: true }
+
+    SinglePreviewPayload:
+      type: object
+      required: [kind, intent_summary, side_effects, validation_warnings, irreversible, entity_type, entity_id, changes]
+      properties:
+        kind: { type: string, enum: [single] }
+        intent_summary: { type: string }
+        side_effects: { type: array, items: { type: string } }
+        validation_warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationWarning" }
+        irreversible: { type: boolean }
+        handoff:
+          type: object
+          nullable: true
+          properties:
+            target_url: { type: string }
+            rationale: { type: string }
+        entity_type: { type: string }
+        entity_id: { type: integer }
+        changes:
+          type: array
+          items:
+            type: object
+            required: [field, before, after]
+            properties:
+              field: { type: string }
+              before: {}
+              after: {}
+
+    BulkPreviewPayload:
+      type: object
+      required: [kind, intent_summary, side_effects, validation_warnings, irreversible, total_affected, sample, predicted_failures]
+      properties:
+        kind: { type: string, enum: [bulk] }
+        intent_summary: { type: string }
+        side_effects: { type: array, items: { type: string } }
+        validation_warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationWarning" }
+        irreversible: { type: boolean }
+        total_affected:
+          type: integer
+          minimum: 1
+          maximum: 500
+        sample:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [entity_type, entity_id, changes]
+            properties:
+              entity_type: { type: string }
+              entity_id: { type: integer }
+              changes:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field: { type: string }
+                    before: {}
+                    after: {}
+        aggregate_impact:
+          type: object
+          nullable: true
+          additionalProperties: true
+        predicted_failures:
+          type: array
+          items:
+            type: object
+            properties:
+              entity_id: { type: integer }
+              reason: { type: string }
+
+    ValidationWarning:
+      type: object
+      required: [severity, code, message]
+      properties:
+        severity: { type: string, enum: [warn, error] }
+        code: { type: string }
+        message: { type: string }
+        affected_id: { type: integer, nullable: true }
+
+    ConfirmResponse:
+      type: object
+      required: [outcome, action_id]
+      properties:
+        outcome:
+          type: string
+          enum: [success, partial, failure, awaiting_double_confirm]
+        action_id: { type: integer }
+        cooldown_seconds:
+          type: integer
+          nullable: true
+          description: Set when outcome=awaiting_double_confirm.
+        items:
+          type: array
+          nullable: true
+          description: Per-item outcomes for bulk executes.
+          items:
+            type: object
+            properties:
+              entity_id: { type: integer }
+              outcome: { type: string, enum: [success, failure, skipped] }
+              failure_reason: { type: string, nullable: true }
+        result_url:
+          type: string
+          nullable: true
+          description: Link to the affected entity or audit entry in the admin UI.
+
+    RefusalResponse:
+      type: object
+      required: [code, message, reasons]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        reasons:
+          type: array
+          items: { type: string }
+        suggested_narrowing:
+          type: string
+          nullable: true
+
+    HistoryEntry:
+      type: object
+      required: [id, admin_id, intent_text, action_class, risk_tier, outcome, created_at]
+      properties:
+        id: { type: integer }
+        admin_id: { type: integer }
+        intent_text: { type: string }
+        action_class: { type: string }
+        risk_tier: { type: string, enum: [low, high, no_execute] }
+        outcome: { type: string }
+        created_at: { type: string, format: date-time }
+        executed_at: { type: string, format: date-time, nullable: true }
+        failure_reason: { type: string, nullable: true }
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        retry_after_seconds: { type: integer, nullable: true }
+
+  responses:
+    Error:
+      description: Standard error envelope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
