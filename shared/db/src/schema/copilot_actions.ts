@@ -1,4 +1,13 @@
-import { index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { adminUsersTable } from "./admin_users";
 import { copilotPreviewsTable } from "./copilot_previews";
 
@@ -26,10 +35,9 @@ export const copilotActionsTable = pgTable(
      * creation (e.g. out-of-scope at intent stage). SET NULL on preview
      * delete so cleanup of expired-then-reaped rows does not orphan-fail.
      */
-    previewId: varchar("preview_id", { length: 32 }).references(
-      () => copilotPreviewsTable.id,
-      { onDelete: "set null" },
-    ),
+    previewId: varchar("preview_id", { length: 32 }).references(() => copilotPreviewsTable.id, {
+      onDelete: "set null",
+    }),
     /** The admin attributed to this action (FR-AUTH-005). */
     adminId: integer("admin_id")
       .notNull()

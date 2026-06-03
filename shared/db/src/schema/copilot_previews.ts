@@ -1,12 +1,4 @@
-import {
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { adminUsersTable } from "./admin_users";
 
 /**
@@ -65,9 +57,7 @@ export const copilotPreviewsTable = pgTable(
      * re-reads each entity at execute time and aborts if any updated_at has
      * advanced (FR-PREVIEW-004 staleness check).
      */
-    recordVersions: jsonb("record_versions")
-      .$type<Record<string, string>>()
-      .notNull(),
+    recordVersions: jsonb("record_versions").$type<Record<string, string>>().notNull(),
     /**
      * Structured before/after, validation warnings, side-effect notes,
      * sample + aggregate impact for bulk. Discriminated union keyed on
@@ -98,10 +88,7 @@ export const copilotPreviewsTable = pgTable(
     confirmedTwiceAt: timestamp("confirmed_twice_at", { withTimezone: true }),
   },
   (t) => ({
-    adminCreatedIdx: index("idx_copilot_previews_admin_created").on(
-      t.adminId,
-      t.createdAt,
-    ),
+    adminCreatedIdx: index("idx_copilot_previews_admin_created").on(t.adminId, t.createdAt),
     expiresIdx: index("idx_copilot_previews_expires").on(t.expiresAt),
     actionClassIdx: index("idx_copilot_previews_action_class").on(t.actionClass),
   }),
