@@ -135,6 +135,13 @@ jobs:
       - name: Backend unit tests
         run: pnpm --filter @workspace/api-server exec vitest run
 
+      - name: Frontend unit tests
+        # Branch 007 — frontend test infrastructure (vitest + jsdom +
+        # @testing-library). Runs the same vitest binary used by the
+        # backend so CI failures look identical regardless of which
+        # workspace introduced the regression.
+        run: pnpm --filter @workspace/subnation exec vitest run
+
       - name: Production build (API + Vite SPA)
         # The api-server build script chains the frontend build via
         # `pnpm --dir .. --filter @workspace/subnation run build`,
