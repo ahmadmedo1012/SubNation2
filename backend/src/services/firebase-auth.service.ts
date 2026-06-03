@@ -5,6 +5,13 @@ import type { DecodedIdToken } from "firebase-admin/auth";
 import jwt from "jsonwebtoken";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
+import {
+  ConsentTokenError,
+  consumeConsentToken,
+  issueConsentToken,
+  maskEmail,
+  maskPhone,
+} from "../lib/account-link-consent";
 import { logger } from "../lib/logger";
 
 export class FirebaseAuthError extends Error {
@@ -14,6 +21,33 @@ export class FirebaseAuthError extends Error {
   ) {
     super(message);
     this.name = "FirebaseAuthError";
+  }
+}
+
+/**
+ * F-003 (security audit 004) — explicit consent required to link a
+ * fresh Firebase identity to an existing SubNation user. Thrown by
+ * `resolveFirebaseSession` when a single link candidate is found AND
+ * no consent token was supplied. The route handler catches this,
+ * surfaces a 409 carrying the consent token + masked candidate hint,
+ * and the frontend renders a confirmation modal.
+ *
+ * The hint is intentionally masked (j••••@example.com / 9•••••••12)
+ * so the modal proves the user knows their own account without
+ * leaking enough information for an attacker to confirm the match.
+ */
+export class LinkConsentRequiredError extends Error {
+  readonly statusCode = 409;
+  readonly reason = "link_consent_required" as const;
+  constructor(
+    public readonly linkToken: string,
+    public readonly candidateHint: {
+      maskedEmail: string | null;
+      maskedPhone: string | null;
+    },
+  ) {
+    super("Account-link confirmation required");
+    this.name = "LinkConsentRequiredError";
   }
 }
 
@@ -211,6 +245,16 @@ export async function resolveFirebaseSession(
   decoded: DecodedIdToken,
   referralCode?: string,
   currentUserId?: number,
+  /**
+   * F-003 (security audit 004) — when a single link candidate is found
+   * and the caller has NOT supplied a consent token, this function
+   * throws `LinkConsentRequiredError` carrying a freshly-issued token.
+   * The frontend confirms with the user, then re-submits the same
+   * Firebase ID token PLUS this token — pass it in `linkConsentToken`
+   * on the second call. The token is one-shot (Redis GETDEL); after
+   * consumption the link is committed in the same transaction.
+   */
+  linkConsentToken?: string,
 ): Promise<FirebaseSessionResult> {
   const uid = decoded.uid;
   if (!uid) throw new FirebaseAuthError(401, "رمز Firebase غير صالح");
@@ -322,7 +366,55 @@ export async function resolveFirebaseSession(
   }
 
   if (candidates.length === 1) {
-    const [updated] = await updateUserIdentity(candidates[0]!.id, {
+    const candidate = candidates[0]!;
+
+    // F-003 (security audit 004) — auto-linking on a single match
+    // without explicit consent was the failure mode. Two paths:
+    //
+    //   1. Caller supplied a consent token from a previous 409
+    //      response → consume it (validates candidate id + firebase
+    //      UID match against issuance) and proceed with the link.
+    //
+    //   2. No token supplied → issue one bound to this exact
+    //      (candidate, firebase UID) pair and throw
+    //      LinkConsentRequiredError with a masked hint. The frontend
+    //      shows a modal; on confirm it re-calls this endpoint with
+    //      the consent token.
+    if (linkConsentToken) {
+      try {
+        await consumeConsentToken(linkConsentToken, {
+          candidateUserId: candidate.id,
+          firebaseUid: uid,
+        });
+      } catch (err) {
+        if (err instanceof ConsentTokenError) {
+          // Bubble up as a Firebase-flavoured error so the route's
+          // existing error handler maps it to the right HTTP shape.
+          throw new FirebaseAuthError(err.statusCode, err.message);
+        }
+        throw err;
+      }
+    } else {
+      const token = await issueConsentToken({
+        candidateUserId: candidate.id,
+        firebaseUid: uid,
+      });
+      logger.info(
+        {
+          candidate_user_id: candidate.id,
+          firebase_provider: provider,
+          // Length only — never log the token itself or the raw email.
+          link_token_length: token.length,
+        },
+        "F-003 link consent token issued",
+      );
+      throw new LinkConsentRequiredError(token, {
+        maskedEmail: maskEmail(candidate.email),
+        maskedPhone: maskPhone(candidate.phone),
+      });
+    }
+
+    const [updated] = await updateUserIdentity(candidate.id, {
       uid,
       provider,
       providerUid,
@@ -344,6 +436,10 @@ export async function resolveFirebaseSession(
       emailVerified,
       phoneVerified,
       now,
+    );
+    logger.info(
+      { user_id: updated.id, firebase_provider: provider },
+      "F-003 account-link committed with consent",
     );
     return { user: updated, isNewUser: false, provider };
   }

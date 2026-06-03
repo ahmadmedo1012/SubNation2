@@ -13,6 +13,7 @@ import type { AuthenticatedRequest } from "../middlewares/requireUser";
 import { requireUser } from "../middlewares/requireUser";
 import {
   FirebaseAuthError,
+  LinkConsentRequiredError,
   getFirebaseErrorMessage,
   resolveFirebaseSession,
   verifyFirebaseIdToken,
@@ -341,7 +342,19 @@ router.get("/probe", async (req, res) => {
 });
 
 router.post("/firebase/session", async (req, res) => {
-  const { id_token, referral_code } = req.body as { id_token?: string; referral_code?: string };
+  const { id_token, referral_code, link_consent_token } = req.body as {
+    id_token?: string;
+    referral_code?: string;
+    /**
+     * F-003 (security audit 004) — when the previous call returned 409
+     * with `reason === "link_consent_required"`, the frontend re-submits
+     * the same id_token plus the `link_token` value from that 409 body
+     * (renamed to link_consent_token here for clarity at the boundary).
+     * The resolver consumes it one-shot via Redis and only then
+     * commits the link.
+     */
+    link_consent_token?: string;
+  };
   if (!id_token || typeof id_token !== "string") {
     return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
   }
@@ -382,6 +395,7 @@ router.post("/firebase/session", async (req, res) => {
       decoded,
       typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
       currentUserId,
+      typeof link_consent_token === "string" ? link_consent_token : undefined,
     );
     if (result.isNewUser) {
       notifyNewUser({
@@ -417,6 +431,29 @@ router.post("/firebase/session", async (req, res) => {
       needs_phone: !result.user.phoneVerified,
     });
   } catch (err) {
+    // F-003 (security audit 004) — surface a 409 with the consent
+    // token + masked candidate hint so the frontend can render the
+    // confirmation modal. This branch is BEFORE the generic
+    // FirebaseAuthError handler because LinkConsentRequiredError is
+    // not a Firebase error — it's a SubNation-specific control flow.
+    if (err instanceof LinkConsentRequiredError) {
+      logger.info(
+        {
+          // The candidate hint already redacts the email/phone; the
+          // log carries only the lengths so an analyst can sanity-
+          // check shape without seeing the raw values.
+          masked_email_present: !!err.candidateHint.maskedEmail,
+          masked_phone_present: !!err.candidateHint.maskedPhone,
+        },
+        "Account-link consent required (F-003)",
+      );
+      return res.status(err.statusCode).json({
+        success: false,
+        reason: err.reason,
+        link_token: err.linkToken,
+        candidate_hint: err.candidateHint,
+      });
+    }
     logger.error({ err, id_token_length: id_token?.length }, "Firebase session creation failed");
     if (err instanceof FirebaseAuthError) {
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;

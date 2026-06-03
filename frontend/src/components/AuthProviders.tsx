@@ -1,9 +1,15 @@
 import { useAuth } from "@/lib/auth";
 import { isFirebaseAuthConfigured } from "@/lib/firebase";
-import { exchangeFirebaseIdToken, signInWithFirebaseGoogle } from "@/lib/firebase-auth";
+import {
+  FirebaseLinkConsentRequiredError,
+  exchangeFirebaseIdToken,
+  signInWithFirebaseGoogle,
+  type LinkConsentCandidateHint,
+} from "@/lib/firebase-auth";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useLocation } from "wouter";
+import { LinkConsentModal } from "./LinkConsentModal";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
 export interface Provider {
@@ -98,11 +104,24 @@ function ProviderButton({
   provider,
   onSuccess,
   onError,
+  onLinkConsentRequired,
   className,
 }: {
   provider: Provider;
   onSuccess: (token: string) => void;
   onError: (msg: string) => void;
+  /**
+   * F-003 (security audit 004) — invoked when the backend returns
+   * 409 with reason="link_consent_required". The parent renders a
+   * confirmation modal and, on confirm, re-runs the exchange with
+   * the consent token.
+   */
+  onLinkConsentRequired: (ctx: {
+    idToken: string;
+    referralCode?: string;
+    linkToken: string;
+    hint: LinkConsentCandidateHint;
+  }) => void;
   className?: string;
 }) {
   const [loading, setLoading] = useState(false);
@@ -124,8 +143,25 @@ function ProviderButton({
 
         const credential = await signInWithFirebaseGoogle();
         const idToken = await credential.user.getIdToken();
-        const session = await exchangeFirebaseIdToken(idToken, getReferralCodeFromUrl());
-        onSuccess(session.token);
+        const referralCode = getReferralCodeFromUrl();
+        try {
+          const session = await exchangeFirebaseIdToken(idToken, referralCode);
+          onSuccess(session.token);
+        } catch (err) {
+          // F-003 — escalate to the parent so the modal can render.
+          // The idToken stays in the closure; parent calls back with
+          // the link token on confirm.
+          if (err instanceof FirebaseLinkConsentRequiredError) {
+            onLinkConsentRequired({
+              idToken,
+              referralCode,
+              linkToken: err.linkToken,
+              hint: err.candidateHint,
+            });
+            return;
+          }
+          throw err;
+        }
         return;
       }
     } catch (err: unknown) {
@@ -168,6 +204,18 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   // the full server list (Telegram, etc.) in place.
   const [providers, setProviders] = useState<Provider[]>(() => includeFirebaseGoogleProvider([]));
   const [error, setError] = useState("");
+  // F-003 (security audit 004) — consent-modal state. When the
+  // backend returns 409 reason=link_consent_required, we capture the
+  // pending exchange + link token + masked hint and render the modal.
+  // On confirm, we re-call exchangeFirebaseIdToken with the token; on
+  // cancel, we reset and let the user try a different provider.
+  const [pendingLink, setPendingLink] = useState<{
+    idToken: string;
+    referralCode?: string;
+    linkToken: string;
+    hint: LinkConsentCandidateHint;
+  } | null>(null);
+  const [linking, setLinking] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/providers")
@@ -188,6 +236,35 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
     },
     [setToken, onSuccess, navigate],
   );
+
+  const handleConsentConfirm = useCallback(async () => {
+    if (!pendingLink || linking) return;
+    setLinking(true);
+    setError("");
+    try {
+      const session = await exchangeFirebaseIdToken(
+        pendingLink.idToken,
+        pendingLink.referralCode,
+        pendingLink.linkToken,
+      );
+      // Drop modal state BEFORE handleSuccess navigates away.
+      setPendingLink(null);
+      handleSuccess(session.token);
+    } catch (err: unknown) {
+      // The consent-token path can fail with EXPIRED / CANDIDATE_MISMATCH /
+      // FIREBASE_UID_MISMATCH. Either way we close the modal and surface
+      // the message; the user re-clicks the provider to start over.
+      setPendingLink(null);
+      setError(err instanceof Error ? err.message : "تعذّر إكمال ربط الحساب");
+    } finally {
+      setLinking(false);
+    }
+  }, [pendingLink, linking, handleSuccess]);
+
+  const handleConsentCancel = useCallback(() => {
+    if (linking) return;
+    setPendingLink(null);
+  }, [linking]);
 
   if (providers.length === 0) return null;
 
@@ -218,11 +295,20 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
             provider={provider}
             onSuccess={handleSuccess}
             onError={setError}
+            onLinkConsentRequired={setPendingLink}
             className={buttonClassName}
           />
         );
       })}
       {error && <p className="text-xs text-destructive text-center pt-1">{error}</p>}
+      {pendingLink && (
+        <LinkConsentModal
+          hint={pendingLink.hint}
+          loading={linking}
+          onConfirm={handleConsentConfirm}
+          onCancel={handleConsentCancel}
+        />
+      )}
     </div>
   );
 }

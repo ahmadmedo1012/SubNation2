@@ -66,6 +66,20 @@ vi.mock("../../lib/firebase-admin", () => {
   };
 });
 
+// Mock redis-client so the F-003 (branch 009) import chain
+// (firebase-auth.service → account-link-consent → redis-client) does
+// not hang on connection attempts in unit tests. verifyFirebaseIdToken
+// itself does not touch Redis; the mock just keeps module init fast.
+vi.mock("../../lib/redis-client", () => ({
+  getRedisClient: () => null,
+  initRedisClient: async () => null,
+  requireRedisClient: () => {
+    throw new Error("redis not available in tests");
+  },
+  isRedisInitialised: () => false,
+  stopPingWatchdog: () => {},
+}));
+
 const PREV_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
 
 describe("verifyFirebaseIdToken — F-002 (forwards checkRevoked)", () => {

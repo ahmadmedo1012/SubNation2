@@ -30,7 +30,43 @@ export async function signInWithFirebaseGoogle() {
   return signInWithPopup(auth, provider);
 }
 
-export async function exchangeFirebaseIdToken(idToken: string, referralCode?: string) {
+/**
+ * F-003 (security audit 004) — typed error for the account-link
+ * consent flow. The backend returns a 409 with
+ * `{ reason: "link_consent_required", link_token, candidate_hint }`
+ * when a fresh Firebase identity matches exactly one existing
+ * SubNation user. The caller (AuthProviders) catches this, renders a
+ * confirmation modal naming the masked candidate, and on confirm
+ * re-calls `exchangeFirebaseIdToken` with the same id_token plus
+ * `linkConsentToken` set to the value from the 409 body. The backend
+ * consumes the token (one-shot via Redis GETDEL) and commits the
+ * link.
+ */
+export interface LinkConsentCandidateHint {
+  maskedEmail: string | null;
+  maskedPhone: string | null;
+}
+
+export class FirebaseLinkConsentRequiredError extends Error {
+  readonly name = "FirebaseLinkConsentRequiredError";
+  constructor(
+    public readonly linkToken: string,
+    public readonly candidateHint: LinkConsentCandidateHint,
+  ) {
+    super("Account-link confirmation required");
+  }
+}
+
+export async function exchangeFirebaseIdToken(
+  idToken: string,
+  referralCode?: string,
+  /**
+   * F-003 — pass the value from a previous 409 response's `link_token`
+   * field on the second call (after user confirms in the modal).
+   * Omitted on the first call.
+   */
+  linkConsentToken?: string,
+) {
   // Guard: a real Firebase ID token is a 3-segment JWT, typically 900+ chars.
   // If the popup communication was broken by CSP/COOP, getIdToken() may return
   // a garbage/empty string. Fail fast with a clear error instead of a confusing 400.
@@ -45,9 +81,29 @@ export async function exchangeFirebaseIdToken(idToken: string, referralCode?: st
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ id_token: idToken, referral_code: referralCode || undefined }),
+    body: JSON.stringify({
+      id_token: idToken,
+      referral_code: referralCode || undefined,
+      link_consent_token: linkConsentToken || undefined,
+    }),
   });
-  const data = (await res.json()) as FirebaseSessionResponse & { error?: string };
+  const data = (await res.json()) as FirebaseSessionResponse & {
+    error?: string;
+    reason?: string;
+    link_token?: string;
+    candidate_hint?: LinkConsentCandidateHint;
+  };
+
+  // F-003 — 409 with reason="link_consent_required" is the explicit
+  // consent gate. Surface a typed error so the caller can render the
+  // modal without inspecting status codes itself.
+  if (res.status === 409 && data.reason === "link_consent_required" && data.link_token) {
+    throw new FirebaseLinkConsentRequiredError(
+      data.link_token,
+      data.candidate_hint ?? { maskedEmail: null, maskedPhone: null },
+    );
+  }
+
   if (!res.ok) throw new Error(data.error ?? "فشل إنشاء جلسة آمنة");
   // Tell the auth listener to skip the immediate post-sign-in onIdTokenChanged
   // event so it doesn't race this just-created session with a refresh call.
@@ -55,12 +111,16 @@ export async function exchangeFirebaseIdToken(idToken: string, referralCode?: st
   return data;
 }
 
-export async function exchangeCurrentFirebaseUser(referralCode?: string) {
+export async function exchangeCurrentFirebaseUser(
+  referralCode?: string,
+  /** F-003 — same forwarding contract as exchangeFirebaseIdToken. */
+  linkConsentToken?: string,
+) {
   const auth = await requireFirebaseAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("لم يتم إكمال تسجيل الدخول");
   const idToken = await user.getIdToken();
-  return exchangeFirebaseIdToken(idToken, referralCode);
+  return exchangeFirebaseIdToken(idToken, referralCode, linkConsentToken);
 }
 
 export async function refreshFirebaseSession(idToken: string) {
