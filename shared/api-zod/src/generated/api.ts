@@ -455,3 +455,349 @@ export const AdminLoginResponse = zod.object({
   requires_2fa: zod.boolean().optional(),
   temp_token: zod.string().optional(),
 });
+
+/**
+ * @summary Read-only natural-language query (Phase 1 — no writes)
+ */
+export const copilotAskBodyIntentTextMax = 4000;
+
+export const CopilotAskBody = zod.object({
+  intent_text: zod.string().min(1).max(copilotAskBodyIntentTextMax),
+  context: zod
+    .object({
+      route: zod.string().optional(),
+      focus_entity_type: zod.string().optional(),
+      focus_entity_id: zod.number().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Draft an action and return a preview (Phase 2+)
+ */
+export const copilotDraftBodyIntentTextMax = 4000;
+
+export const CopilotDraftBody = zod.object({
+  intent_text: zod.string().min(1).max(copilotDraftBodyIntentTextMax),
+  context: zod
+    .object({
+      route: zod.string().optional(),
+      focus_entity_type: zod.string().optional(),
+      focus_entity_id: zod.number().optional(),
+    })
+    .optional(),
+});
+
+export const copilotDraftResponsePreviewPayloadTwoTotalAffectedMax = 500;
+
+export const copilotDraftResponsePreviewPayloadTwoSampleMax = 20;
+
+export const CopilotDraftResponse = zod.object({
+  preview_id: zod.string(),
+  preview: zod.object({
+    id: zod.string(),
+    admin_id: zod.number(),
+    intent_text: zod.string(),
+    intent_summary: zod.string(),
+    action_class: zod.string(),
+    risk_tier: zod.enum(["low", "high", "no_execute"]),
+    payload: zod.union([
+      zod.object({
+        kind: zod.enum(["single"]),
+        intent_summary: zod.string(),
+        side_effects: zod.array(zod.string()),
+        validation_warnings: zod.array(
+          zod.object({
+            severity: zod.enum(["warn", "error"]),
+            code: zod.string(),
+            message: zod.string(),
+            affected_id: zod.number().nullish(),
+          }),
+        ),
+        irreversible: zod.boolean(),
+        handoff: zod
+          .union([
+            zod.object({
+              target_url: zod.string(),
+              rationale: zod.string(),
+            }),
+            zod.null(),
+          ])
+          .optional(),
+        entity_type: zod.string(),
+        entity_id: zod.number(),
+        changes: zod.array(
+          zod.object({
+            field: zod.string(),
+            before: zod.unknown().optional().describe("Previous value (any JSON-encodable shape)"),
+            after: zod
+              .unknown()
+              .optional()
+              .describe("Proposed new value (any JSON-encodable shape)"),
+          }),
+        ),
+      }),
+      zod.object({
+        kind: zod.enum(["bulk"]),
+        intent_summary: zod.string(),
+        side_effects: zod.array(zod.string()),
+        validation_warnings: zod.array(
+          zod.object({
+            severity: zod.enum(["warn", "error"]),
+            code: zod.string(),
+            message: zod.string(),
+            affected_id: zod.number().nullish(),
+          }),
+        ),
+        irreversible: zod.boolean(),
+        total_affected: zod
+          .number()
+          .min(1)
+          .max(copilotDraftResponsePreviewPayloadTwoTotalAffectedMax),
+        sample: zod
+          .array(
+            zod.object({
+              entity_type: zod.string(),
+              entity_id: zod.number(),
+              changes: zod.array(
+                zod.object({
+                  field: zod.string(),
+                  before: zod
+                    .unknown()
+                    .optional()
+                    .describe("Previous value (any JSON-encodable shape)"),
+                  after: zod
+                    .unknown()
+                    .optional()
+                    .describe("Proposed new value (any JSON-encodable shape)"),
+                }),
+              ),
+            }),
+          )
+          .max(copilotDraftResponsePreviewPayloadTwoSampleMax),
+        aggregate_impact: zod.record(zod.string(), zod.unknown()).nullish(),
+        predicted_failures: zod.array(
+          zod.object({
+            entity_id: zod.number(),
+            reason: zod.string(),
+          }),
+        ),
+      }),
+    ]),
+    created_at: zod.coerce.date(),
+    expires_at: zod.coerce.date(),
+    confirmed_once_at: zod.coerce.date().nullish(),
+    cooldown_starts_at: zod.coerce.date().nullish(),
+    confirmed_twice_at: zod.coerce.date().nullish(),
+  }),
+});
+
+/**
+ * @summary Fetch a pending preview the requesting admin owns
+ */
+export const CopilotGetPreviewParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const copilotGetPreviewResponsePayloadTwoTotalAffectedMax = 500;
+
+export const copilotGetPreviewResponsePayloadTwoSampleMax = 20;
+
+export const CopilotGetPreviewResponse = zod.object({
+  id: zod.string(),
+  admin_id: zod.number(),
+  intent_text: zod.string(),
+  intent_summary: zod.string(),
+  action_class: zod.string(),
+  risk_tier: zod.enum(["low", "high", "no_execute"]),
+  payload: zod.union([
+    zod.object({
+      kind: zod.enum(["single"]),
+      intent_summary: zod.string(),
+      side_effects: zod.array(zod.string()),
+      validation_warnings: zod.array(
+        zod.object({
+          severity: zod.enum(["warn", "error"]),
+          code: zod.string(),
+          message: zod.string(),
+          affected_id: zod.number().nullish(),
+        }),
+      ),
+      irreversible: zod.boolean(),
+      handoff: zod
+        .union([
+          zod.object({
+            target_url: zod.string(),
+            rationale: zod.string(),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      entity_type: zod.string(),
+      entity_id: zod.number(),
+      changes: zod.array(
+        zod.object({
+          field: zod.string(),
+          before: zod.unknown().optional().describe("Previous value (any JSON-encodable shape)"),
+          after: zod.unknown().optional().describe("Proposed new value (any JSON-encodable shape)"),
+        }),
+      ),
+    }),
+    zod.object({
+      kind: zod.enum(["bulk"]),
+      intent_summary: zod.string(),
+      side_effects: zod.array(zod.string()),
+      validation_warnings: zod.array(
+        zod.object({
+          severity: zod.enum(["warn", "error"]),
+          code: zod.string(),
+          message: zod.string(),
+          affected_id: zod.number().nullish(),
+        }),
+      ),
+      irreversible: zod.boolean(),
+      total_affected: zod.number().min(1).max(copilotGetPreviewResponsePayloadTwoTotalAffectedMax),
+      sample: zod
+        .array(
+          zod.object({
+            entity_type: zod.string(),
+            entity_id: zod.number(),
+            changes: zod.array(
+              zod.object({
+                field: zod.string(),
+                before: zod
+                  .unknown()
+                  .optional()
+                  .describe("Previous value (any JSON-encodable shape)"),
+                after: zod
+                  .unknown()
+                  .optional()
+                  .describe("Proposed new value (any JSON-encodable shape)"),
+              }),
+            ),
+          }),
+        )
+        .max(copilotGetPreviewResponsePayloadTwoSampleMax),
+      aggregate_impact: zod.record(zod.string(), zod.unknown()).nullish(),
+      predicted_failures: zod.array(
+        zod.object({
+          entity_id: zod.number(),
+          reason: zod.string(),
+        }),
+      ),
+    }),
+  ]),
+  created_at: zod.coerce.date(),
+  expires_at: zod.coerce.date(),
+  confirmed_once_at: zod.coerce.date().nullish(),
+  cooldown_starts_at: zod.coerce.date().nullish(),
+  confirmed_twice_at: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Cancel a pending preview without executing
+ */
+export const CopilotCancelPreviewParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CopilotCancelPreviewResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Single confirmation; executes low-risk or starts high-risk cooldown
+ */
+export const CopilotConfirmParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CopilotConfirmResponse = zod.object({
+  outcome: zod.enum(["success", "partial", "failure", "awaiting_double_confirm"]),
+  action_id: zod.number().nullish(),
+  cooldown_seconds: zod.number().nullish(),
+  items: zod
+    .union([
+      zod.array(
+        zod.object({
+          entity_id: zod.number(),
+          outcome: zod.enum(["success", "failure", "skipped"]),
+          failure_reason: zod.string().nullish(),
+        }),
+      ),
+      zod.null(),
+    ])
+    .optional(),
+  result_url: zod.string().nullish(),
+});
+
+/**
+ * @summary Second confirmation for high-risk; executes after 3-second cooldown
+ */
+export const CopilotDoubleConfirmParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CopilotDoubleConfirmResponse = zod.object({
+  outcome: zod.enum(["success", "partial", "failure", "awaiting_double_confirm"]),
+  action_id: zod.number().nullish(),
+  cooldown_seconds: zod.number().nullish(),
+  items: zod
+    .union([
+      zod.array(
+        zod.object({
+          entity_id: zod.number(),
+          outcome: zod.enum(["success", "failure", "skipped"]),
+          failure_reason: zod.string().nullish(),
+        }),
+      ),
+      zod.null(),
+    ])
+    .optional(),
+  result_url: zod.string().nullish(),
+});
+
+/**
+ * @summary Browse the requesting admin's copilot action history
+ */
+export const copilotHistoryQueryLimitMax = 100;
+
+export const CopilotHistoryQueryParams = zod.object({
+  action_class: zod.coerce.string().optional(),
+  outcome: zod
+    .enum([
+      "success",
+      "partial",
+      "failure",
+      "refused",
+      "validation_rejected",
+      "rate_limited",
+      "stale",
+      "expired",
+      "cancelled",
+    ])
+    .optional(),
+  entity_type: zod.coerce.string().optional(),
+  entity_id: zod.coerce.number().optional(),
+  since_iso: zod.date().optional(),
+  limit: zod.coerce.number().min(1).max(copilotHistoryQueryLimitMax).optional(),
+  cursor: zod.coerce.string().optional(),
+});
+
+export const CopilotHistoryResponse = zod.object({
+  entries: zod.array(
+    zod.object({
+      id: zod.number(),
+      admin_id: zod.number(),
+      intent_text: zod.string(),
+      action_class: zod.string(),
+      risk_tier: zod.enum(["low", "high", "no_execute"]),
+      outcome: zod.string(),
+      created_at: zod.coerce.date(),
+      executed_at: zod.coerce.date().nullish(),
+      failure_reason: zod.string().nullish(),
+    }),
+  ),
+  next_cursor: zod.string().nullish(),
+});

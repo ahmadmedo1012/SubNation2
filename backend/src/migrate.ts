@@ -1043,6 +1043,108 @@ export async function runMigrations() {
       ALTER TABLE products ADD COLUMN IF NOT EXISTS description_long TEXT;
       ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB;
     `);
+
+    // ── 010-ai-admin-copilot: staleness columns + copilot tables ─────────────
+    //
+    // The AI Admin Copilot (010-ai-admin-copilot, FR-PREVIEW-004) detects a
+    // stale preview by comparing the target entity's `updated_at` between
+    // draft and execute. `products` already had the column; `inventory` and
+    // `admin_users` did not. Both are writable in Phase 3 (FR-DATA-002), so
+    // both must carry the column for the staleness check to be honest.
+    //
+    // The Drizzle `$onUpdate` hook on the schema only fires on Drizzle calls,
+    // not on raw SQL. Existing inline raw-SQL writes against these tables
+    // (admin password reset, inventory bulk import) MUST set updated_at
+    // explicitly going forward.
+    //
+    // Idempotent: NOT NULL with DEFAULT now() backfills existing rows on the
+    // ADD COLUMN; subsequent boots are no-ops.
+    await db.execute(sql`
+      ALTER TABLE inventory   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    `);
+
+    // Three new tables for the copilot's preview/audit pipeline. Spec lives
+    // in specs/010-ai-admin-copilot/data-model.md §1; immutability,
+    // single-use enforcement, and reconciliation invariants enforced by
+    // application code, not DB constraints (we don't trust DB-level
+    // immutability triggers to survive future migrations).
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS copilot_previews (
+        id                    VARCHAR(32)  PRIMARY KEY,
+        admin_id              INTEGER      NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
+        intent_text           TEXT         NOT NULL,
+        tool_name             VARCHAR(100) NOT NULL,
+        action_class          VARCHAR(50)  NOT NULL,
+        risk_tier             VARCHAR(20)  NOT NULL,
+        affected_ids          JSONB        NOT NULL,
+        affected_entity_type  VARCHAR(50)  NOT NULL,
+        record_versions       JSONB        NOT NULL,
+        preview_payload       JSONB        NOT NULL,
+        model_id              VARCHAR(64)  NOT NULL,
+        correlation_id        VARCHAR(64)  NOT NULL,
+        created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        expires_at            TIMESTAMPTZ  NOT NULL,
+        consumed_at           TIMESTAMPTZ,
+        confirmed_once_at     TIMESTAMPTZ,
+        cooldown_starts_at    TIMESTAMPTZ,
+        confirmed_twice_at    TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_copilot_previews_admin_created
+        ON copilot_previews(admin_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_copilot_previews_expires
+        ON copilot_previews(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_copilot_previews_action_class
+        ON copilot_previews(action_class);
+
+      CREATE TABLE IF NOT EXISTS copilot_actions (
+        id                  SERIAL       PRIMARY KEY,
+        preview_id          VARCHAR(32)  REFERENCES copilot_previews(id) ON DELETE SET NULL,
+        admin_id            INTEGER      NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
+        intent_text         TEXT         NOT NULL,
+        tool_name           VARCHAR(100),
+        action_class        VARCHAR(50)  NOT NULL,
+        risk_tier           VARCHAR(20)  NOT NULL,
+        outcome             VARCHAR(20)  NOT NULL,
+        failure_reason      TEXT,
+        before_state        JSONB,
+        after_state         JSONB,
+        confirmed_once_at   TIMESTAMPTZ,
+        confirmed_twice_at  TIMESTAMPTZ,
+        executed_at         TIMESTAMPTZ,
+        model_id            VARCHAR(64),
+        model_input_tokens  INTEGER,
+        model_output_tokens INTEGER,
+        correlation_id      VARCHAR(64)  NOT NULL,
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_copilot_actions_admin_created
+        ON copilot_actions(admin_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_copilot_actions_action_class
+        ON copilot_actions(action_class);
+      CREATE INDEX IF NOT EXISTS idx_copilot_actions_outcome
+        ON copilot_actions(outcome);
+      CREATE INDEX IF NOT EXISTS idx_copilot_actions_preview
+        ON copilot_actions(preview_id);
+
+      CREATE TABLE IF NOT EXISTS copilot_action_items (
+        id              SERIAL       PRIMARY KEY,
+        action_id       INTEGER      NOT NULL REFERENCES copilot_actions(id) ON DELETE CASCADE,
+        entity_type     VARCHAR(50)  NOT NULL,
+        entity_id       INTEGER      NOT NULL,
+        outcome         VARCHAR(20)  NOT NULL,
+        failure_reason  TEXT,
+        before_value    JSONB,
+        after_value     JSONB
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_copilot_action_items_action
+        ON copilot_action_items(action_id);
+      CREATE INDEX IF NOT EXISTS idx_copilot_action_items_entity
+        ON copilot_action_items(entity_type, entity_id);
+    `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

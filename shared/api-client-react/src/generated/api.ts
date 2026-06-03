@@ -26,6 +26,14 @@ import type {
   AdminTopupActionBody,
   AdminUser,
   CatalogStats,
+  CopilotAskBody,
+  CopilotConfirmResponse,
+  CopilotDraftBody,
+  CopilotDraftResponse,
+  CopilotHistory200,
+  CopilotHistoryParams,
+  CopilotPreviewView,
+  CopilotRefusalResponse,
   CreateOrderBody,
   CreateProductBody,
   CreateTopupBody,
@@ -1803,3 +1811,556 @@ export const useAdminLogin = <TError = ErrorType<ErrorResponse>, TContext = unkn
 > => {
   return useMutation(getAdminLoginMutationOptions(options));
 };
+
+/**
+ * @summary Read-only natural-language query (Phase 1 — no writes)
+ */
+export const getCopilotAskUrl = () => {
+  return `/api/admin/copilot/ask`;
+};
+
+export const copilotAsk = async (
+  copilotAskBody: CopilotAskBody,
+  options?: RequestInit,
+): Promise<string> => {
+  return customFetch<string>(getCopilotAskUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(copilotAskBody),
+  });
+};
+
+export const getCopilotAskMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotAsk>>,
+    TError,
+    { data: BodyType<CopilotAskBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof copilotAsk>>,
+  TError,
+  { data: BodyType<CopilotAskBody> },
+  TContext
+> => {
+  const mutationKey = ["copilotAsk"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof copilotAsk>>,
+    { data: BodyType<CopilotAskBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return copilotAsk(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CopilotAskMutationResult = NonNullable<Awaited<ReturnType<typeof copilotAsk>>>;
+export type CopilotAskMutationBody = BodyType<CopilotAskBody>;
+export type CopilotAskMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Read-only natural-language query (Phase 1 — no writes)
+ */
+export const useCopilotAsk = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotAsk>>,
+    TError,
+    { data: BodyType<CopilotAskBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof copilotAsk>>,
+  TError,
+  { data: BodyType<CopilotAskBody> },
+  TContext
+> => {
+  return useMutation(getCopilotAskMutationOptions(options));
+};
+
+/**
+ * @summary Draft an action and return a preview (Phase 2+)
+ */
+export const getCopilotDraftUrl = () => {
+  return `/api/admin/copilot/draft`;
+};
+
+export const copilotDraft = async (
+  copilotDraftBody: CopilotDraftBody,
+  options?: RequestInit,
+): Promise<CopilotDraftResponse> => {
+  return customFetch<CopilotDraftResponse>(getCopilotDraftUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(copilotDraftBody),
+  });
+};
+
+export const getCopilotDraftMutationOptions = <
+  TError = ErrorType<ErrorResponse | CopilotRefusalResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotDraft>>,
+    TError,
+    { data: BodyType<CopilotDraftBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof copilotDraft>>,
+  TError,
+  { data: BodyType<CopilotDraftBody> },
+  TContext
+> => {
+  const mutationKey = ["copilotDraft"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof copilotDraft>>,
+    { data: BodyType<CopilotDraftBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return copilotDraft(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CopilotDraftMutationResult = NonNullable<Awaited<ReturnType<typeof copilotDraft>>>;
+export type CopilotDraftMutationBody = BodyType<CopilotDraftBody>;
+export type CopilotDraftMutationError = ErrorType<ErrorResponse | CopilotRefusalResponse>;
+
+/**
+ * @summary Draft an action and return a preview (Phase 2+)
+ */
+export const useCopilotDraft = <
+  TError = ErrorType<ErrorResponse | CopilotRefusalResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotDraft>>,
+    TError,
+    { data: BodyType<CopilotDraftBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof copilotDraft>>,
+  TError,
+  { data: BodyType<CopilotDraftBody> },
+  TContext
+> => {
+  return useMutation(getCopilotDraftMutationOptions(options));
+};
+
+/**
+ * @summary Fetch a pending preview the requesting admin owns
+ */
+export const getCopilotGetPreviewUrl = (id: string) => {
+  return `/api/admin/copilot/previews/${id}`;
+};
+
+export const copilotGetPreview = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CopilotPreviewView> => {
+  return customFetch<CopilotPreviewView>(getCopilotGetPreviewUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getCopilotGetPreviewQueryKey = (id: string) => {
+  return [`/api/admin/copilot/previews/${id}`] as const;
+};
+
+export const getCopilotGetPreviewQueryOptions = <
+  TData = Awaited<ReturnType<typeof copilotGetPreview>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof copilotGetPreview>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getCopilotGetPreviewQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof copilotGetPreview>>> = ({ signal }) =>
+    copilotGetPreview(id, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof copilotGetPreview>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type CopilotGetPreviewQueryResult = NonNullable<
+  Awaited<ReturnType<typeof copilotGetPreview>>
+>;
+export type CopilotGetPreviewQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Fetch a pending preview the requesting admin owns
+ */
+
+export function useCopilotGetPreview<
+  TData = Awaited<ReturnType<typeof copilotGetPreview>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof copilotGetPreview>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getCopilotGetPreviewQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Cancel a pending preview without executing
+ */
+export const getCopilotCancelPreviewUrl = (id: string) => {
+  return `/api/admin/copilot/previews/${id}/cancel`;
+};
+
+export const copilotCancelPreview = async (
+  id: string,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getCopilotCancelPreviewUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCopilotCancelPreviewMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotCancelPreview>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof copilotCancelPreview>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["copilotCancelPreview"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof copilotCancelPreview>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return copilotCancelPreview(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CopilotCancelPreviewMutationResult = NonNullable<
+  Awaited<ReturnType<typeof copilotCancelPreview>>
+>;
+
+export type CopilotCancelPreviewMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Cancel a pending preview without executing
+ */
+export const useCopilotCancelPreview = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotCancelPreview>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof copilotCancelPreview>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCopilotCancelPreviewMutationOptions(options));
+};
+
+/**
+ * @summary Single confirmation; executes low-risk or starts high-risk cooldown
+ */
+export const getCopilotConfirmUrl = (id: string) => {
+  return `/api/admin/copilot/previews/${id}/confirm`;
+};
+
+export const copilotConfirm = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CopilotConfirmResponse> => {
+  return customFetch<CopilotConfirmResponse>(getCopilotConfirmUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCopilotConfirmMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotConfirm>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof copilotConfirm>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["copilotConfirm"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof copilotConfirm>>, { id: string }> = (
+    props,
+  ) => {
+    const { id } = props ?? {};
+
+    return copilotConfirm(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CopilotConfirmMutationResult = NonNullable<Awaited<ReturnType<typeof copilotConfirm>>>;
+
+export type CopilotConfirmMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Single confirmation; executes low-risk or starts high-risk cooldown
+ */
+export const useCopilotConfirm = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotConfirm>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof copilotConfirm>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCopilotConfirmMutationOptions(options));
+};
+
+/**
+ * @summary Second confirmation for high-risk; executes after 3-second cooldown
+ */
+export const getCopilotDoubleConfirmUrl = (id: string) => {
+  return `/api/admin/copilot/previews/${id}/double-confirm`;
+};
+
+export const copilotDoubleConfirm = async (
+  id: string,
+  options?: RequestInit,
+): Promise<CopilotConfirmResponse> => {
+  return customFetch<CopilotConfirmResponse>(getCopilotDoubleConfirmUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCopilotDoubleConfirmMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotDoubleConfirm>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof copilotDoubleConfirm>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["copilotDoubleConfirm"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof copilotDoubleConfirm>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return copilotDoubleConfirm(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CopilotDoubleConfirmMutationResult = NonNullable<
+  Awaited<ReturnType<typeof copilotDoubleConfirm>>
+>;
+
+export type CopilotDoubleConfirmMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Second confirmation for high-risk; executes after 3-second cooldown
+ */
+export const useCopilotDoubleConfirm = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof copilotDoubleConfirm>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof copilotDoubleConfirm>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getCopilotDoubleConfirmMutationOptions(options));
+};
+
+/**
+ * @summary Browse the requesting admin's copilot action history
+ */
+export const getCopilotHistoryUrl = (params?: CopilotHistoryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/copilot/history?${stringifiedParams}`
+    : `/api/admin/copilot/history`;
+};
+
+export const copilotHistory = async (
+  params?: CopilotHistoryParams,
+  options?: RequestInit,
+): Promise<CopilotHistory200> => {
+  return customFetch<CopilotHistory200>(getCopilotHistoryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getCopilotHistoryQueryKey = (params?: CopilotHistoryParams) => {
+  return [`/api/admin/copilot/history`, ...(params ? [params] : [])] as const;
+};
+
+export const getCopilotHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof copilotHistory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: CopilotHistoryParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof copilotHistory>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getCopilotHistoryQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof copilotHistory>>> = ({ signal }) =>
+    copilotHistory(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof copilotHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type CopilotHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof copilotHistory>>>;
+export type CopilotHistoryQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Browse the requesting admin's copilot action history
+ */
+
+export function useCopilotHistory<
+  TData = Awaited<ReturnType<typeof copilotHistory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: CopilotHistoryParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof copilotHistory>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getCopilotHistoryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
