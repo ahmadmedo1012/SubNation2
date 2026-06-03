@@ -48,17 +48,19 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
       const rows = isArr ? (r as unknown[]) : ((r as { rows?: unknown[] }).rows ?? []);
       const flags = await getPhaseFlags();
 
-      // Env diagnostics — confirm ANTHROPIC_API_KEY presence WITHOUT
-      // leaking the value. Only super-admins reach this branch.
-      const rawKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+      // Env diagnostics — confirm provider config presence WITHOUT
+      // leaking the key value. Only super-admins reach this branch.
+      const rawKey = (process.env.COPILOT_API_KEY ?? "").trim();
       const env = {
-        anthropic_key_present: rawKey.length > 0,
-        anthropic_key_length: rawKey.length,
-        anthropic_key_prefix: rawKey.slice(0, 7),
-        anthropic_key_passes_min_length: rawKey.length >= 40,
+        copilot_provider: process.env.COPILOT_PROVIDER ?? "(default: openrouter)",
+        copilot_api_key_present: rawKey.length > 0,
+        copilot_api_key_length: rawKey.length,
+        copilot_api_key_prefix: rawKey.slice(0, 8),
+        copilot_model: process.env.COPILOT_MODEL ?? "(provider default)",
+        copilot_base_url_override: process.env.COPILOT_BASE_URL ?? null,
         node_env: process.env.NODE_ENV ?? null,
         relevant_env_keys_seen: Object.keys(process.env)
-          .filter((k) => /ANTHROPIC|OPENAI|BEDROCK|AWS_REGION|OPENROUTER/i.test(k))
+          .filter((k) => /COPILOT|NVIDIA|OPENROUTER/i.test(k))
           .sort(),
       };
 

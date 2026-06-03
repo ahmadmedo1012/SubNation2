@@ -1,19 +1,18 @@
 /**
  * Read-only tool implementations for the AI Admin Copilot Phase 1 (US1, T044-T047).
  *
- * Each export is a pair: `{ tool }` — the LLM-facing schema — and `{ handler }` —
- * the function the route invokes when the model calls the tool. Handlers are
- * scope-checked at the call site (the route filters the catalog by
- * adminPermissions before passing tools to the model, so a tool the admin
- * lacks scope for is never offered).
+ * Each export is a pair: `{ spec }` — the LLM-facing schema in OpenAI
+ * function-call shape (the open Chat-Completions standard adopted by
+ * NVIDIA NIM and OpenRouter) — and `{ handler }` — the function the
+ * route invokes when the model calls the tool.
  *
- * Tools fetch live data from authoritative sources only. They do NOT write,
- * draft, or propose changes — that's reserved for Phase 2+.
+ * Tools fetch live data from authoritative sources only. They do NOT
+ * write, draft, or propose changes — that's reserved for Phase 2+.
  */
 
-import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { db, productsTable, inventoryTable } from "@workspace/db";
-import { and, asc, count, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
+import type { Tool } from "../llm-client";
 
 export interface CopilotTool {
   spec: Tool;
@@ -28,17 +27,21 @@ export interface CopilotTool {
 export const searchProducts: CopilotTool = {
   requiredScope: "inventory",
   spec: {
-    name: "search_products",
-    description:
-      "Search the product catalog by free text, category, or status. " +
-      "Returns up to 20 product summaries (id, name, slug, price, category, status).",
-    input_schema: {
-      type: "object",
-      properties: {
-        q: { type: "string", description: "Free-text against name + description." },
-        category: { type: "string" },
-        status: { type: "string", enum: ["active", "draft", "archived"] },
-        limit: { type: "integer", minimum: 1, maximum: 50 },
+    type: "function",
+    function: {
+      name: "search_products",
+      description:
+        "Search the product catalog by free text, category, or status. " +
+        "Returns up to 20 product summaries (id, name, slug, price, category, status).",
+      parameters: {
+        type: "object",
+        properties: {
+          q: { type: "string", description: "Free-text against name + description." },
+          category: { type: "string" },
+          status: { type: "string", enum: ["active", "draft", "archived"] },
+          limit: { type: "integer", minimum: 1, maximum: 50 },
+        },
+        additionalProperties: false,
       },
     },
   },
@@ -95,14 +98,18 @@ export const searchProducts: CopilotTool = {
 export const getProduct: CopilotTool = {
   requiredScope: "inventory",
   spec: {
-    name: "get_product",
-    description:
-      "Fetch full detail for one product by ID, including description, FAQ, " +
-      "usage terms, image, price, and cost price.",
-    input_schema: {
-      type: "object",
-      required: ["id"],
-      properties: { id: { type: "integer" } },
+    type: "function",
+    function: {
+      name: "get_product",
+      description:
+        "Fetch full detail for one product by ID, including description, FAQ, " +
+        "usage terms, image, price, and cost price.",
+      parameters: {
+        type: "object",
+        required: ["id"],
+        properties: { id: { type: "integer" } },
+        additionalProperties: false,
+      },
     },
   },
   handler: async (input) => {
@@ -140,15 +147,19 @@ export const getProduct: CopilotTool = {
 export const listLowStock: CopilotTool = {
   requiredScope: "inventory",
   spec: {
-    name: "list_low_stock",
-    description:
-      "List active products whose available stock (unsold inventory rows) is below the threshold.",
-    input_schema: {
-      type: "object",
-      required: ["threshold"],
-      properties: {
-        threshold: { type: "integer", minimum: 0 },
-        category: { type: "string" },
+    type: "function",
+    function: {
+      name: "list_low_stock",
+      description:
+        "List active products whose available stock (unsold inventory rows) is below the threshold.",
+      parameters: {
+        type: "object",
+        required: ["threshold"],
+        properties: {
+          threshold: { type: "integer", minimum: 0 },
+          category: { type: "string" },
+        },
+        additionalProperties: false,
       },
     },
   },
@@ -186,15 +197,19 @@ export const listLowStock: CopilotTool = {
 export const summarizeRecentChanges: CopilotTool = {
   requiredScope: "admins",
   spec: {
-    name: "summarize_recent_changes",
-    description:
-      "Read recent admin audit-log entries since a given ISO timestamp. Returns up to 50.",
-    input_schema: {
-      type: "object",
-      required: ["since_iso"],
-      properties: {
-        since_iso: { type: "string", format: "date-time" },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+    type: "function",
+    function: {
+      name: "summarize_recent_changes",
+      description:
+        "Read recent admin audit-log entries since a given ISO timestamp. Returns up to 50.",
+      parameters: {
+        type: "object",
+        required: ["since_iso"],
+        properties: {
+          since_iso: { type: "string", format: "date-time" },
+          limit: { type: "integer", minimum: 1, maximum: 100 },
+        },
+        additionalProperties: false,
       },
     },
   },
@@ -240,7 +255,7 @@ export async function runReadTool(
   input: Record<string, unknown>,
   scopes: string[],
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
-  const tool = READ_TOOLS.find((t) => t.spec.name === name);
+  const tool = READ_TOOLS.find((t) => t.spec.function.name === name);
   if (!tool) return { ok: false, error: `unknown tool: ${name}` };
   if (
     tool.requiredScope !== null &&

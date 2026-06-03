@@ -1,13 +1,12 @@
 /**
- * System-prompt builder for the AI Admin Copilot (T029).
+ * System-prompt builder for the AI Admin Copilot.
  *
- * The prompt is composed at request time so the model sees only the tools
- * the admin has scope for, plus the admin's locale and any UI context.
- * Static portion is cache-marked so prompt-cache hits drop input cost on
- * repeated commands within the cache TTL.
+ * Returns a single string suitable for the `system` slot of an
+ * OpenAI-compatible Chat Completions request. Composed at request time
+ * so the model sees only the admin's locale and any UI context. Caching
+ * is left to the upstream provider (most NIM/OpenRouter targets cache
+ * at the prompt level automatically).
  */
-
-import type { TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
 
 export interface PromptInputs {
   /** Admin's preferred response locale (e.g. "ar-LY", "en"). */
@@ -44,18 +43,10 @@ CORE RULES (non-negotiable):
    do not fabricate a substitute.
 6. Keep responses short and actionable. Cite the product IDs you used.
 
-You may call the read-only tools listed below. Each tool input must match
-its declared schema exactly. Do not call a tool that is not in the list.`;
+You may call the read-only tools provided. Each tool input must match its
+declared schema exactly. Do not call a tool that is not in the list.`;
 
-export function buildSystemPrompt(inputs: PromptInputs): TextBlockParam[] {
-  const blocks: TextBlockParam[] = [
-    {
-      type: "text",
-      text: STATIC_PREAMBLE,
-      cache_control: { type: "ephemeral" },
-    },
-  ];
-
+export function buildSystemPrompt(inputs: PromptInputs): string {
   const scopeLine = inputs.scopes.includes("all")
     ? "Admin has FULL scope (super-admin)."
     : `Admin scope: ${inputs.scopes.join(", ") || "(none)"}.`;
@@ -66,10 +57,5 @@ export function buildSystemPrompt(inputs: PromptInputs): TextBlockParam[] {
       ? `Admin is on ${inputs.context.route}.`
       : "";
 
-  blocks.push({
-    type: "text",
-    text: [scopeLine, localeLine, ctxLine].filter(Boolean).join("\n"),
-  });
-
-  return blocks;
+  return [STATIC_PREAMBLE, "", scopeLine, localeLine, ctxLine].filter(Boolean).join("\n");
 }

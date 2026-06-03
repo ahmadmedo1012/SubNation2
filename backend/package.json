@@ -14,7 +14,6 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
     "@sentry/node": "^10.53.1",
     "@sentry/profiling-node": "^10.53.1",
     "@socket.io/redis-adapter": "^8.3.0",

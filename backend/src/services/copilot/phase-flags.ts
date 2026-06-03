@@ -66,9 +66,7 @@ export async function getPhaseFlags(): Promise<CopilotPhaseFlags> {
     // driver/version in flight. Match the existing defensive pattern so
     // a future driver swap doesn't silently revert phase flags to the
     // all-off default.
-    const r = result as unknown as
-      | { rows?: Array<{ value: unknown }> }
-      | Array<{ value: unknown }>;
+    const r = result as unknown as { rows?: Array<{ value: unknown }> } | Array<{ value: unknown }>;
     const rows = Array.isArray(r) ? r : (r.rows ?? []);
     const flags = rows.length > 0 ? parseFlags(rows[0]!.value) : { ...DEFAULT_FLAGS };
     cache = { flags, loadedAt: Date.now() };

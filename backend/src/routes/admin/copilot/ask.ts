@@ -116,7 +116,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const systemBlocks = buildSystemPrompt({
+  const systemText = buildSystemPrompt({
     locale: body.locale ?? "ar-LY",
     scopes,
     context: body.context,
@@ -125,7 +125,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   let result;
   try {
     result = await copilotChat({
-      systemBlocks,
+      systemText,
       intentText,
       tools,
       toolHandler: async (name, input) => {
