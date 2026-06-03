@@ -32,9 +32,9 @@ description: "Task list for AI Admin Copilot implementation"
 
 **Purpose**: Wire the project to allow copilot work to begin. Reuse the constitution's substrate; add only what's missing.
 
-- [X] T001 Add `ANTHROPIC_API_KEY` to `config/env.example` and to the boot validator (`backend/src/lib/env.ts` or equivalent) with fail-fast on missing-in-production, matching the existing `SESSION_SECRET` / `ENCRYPTION_KEY` pattern (Constitution §IV "fail fast on weak/missing secrets")
-- [X] T002 [P] Add `@anthropic-ai/sdk` to `backend/package.json` (latest stable) and run `pnpm install`
-- [X] T003 [P] Audit existing schema files for `updated_at` coverage on writable entities and record findings in `specs/010-ai-admin-copilot/notes-updated-at-audit.md`: `shared/db/src/schema/products.ts` (✅ confirmed in research §R-7), `shared/db/src/schema/inventory.ts`, `shared/db/src/schema/admin_users.ts`. Output is a checklist of which tables need an `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` migration.
+- [x] T001 Add `ANTHROPIC_API_KEY` to `config/env.example` and to the boot validator (`backend/src/lib/env.ts` or equivalent) with fail-fast on missing-in-production, matching the existing `SESSION_SECRET` / `ENCRYPTION_KEY` pattern (Constitution §IV "fail fast on weak/missing secrets")
+- [x] T002 [P] Add `@anthropic-ai/sdk` to `backend/package.json` (latest stable) and run `pnpm install`
+- [x] T003 [P] Audit existing schema files for `updated_at` coverage on writable entities and record findings in `specs/010-ai-admin-copilot/notes-updated-at-audit.md`: `shared/db/src/schema/products.ts` (✅ confirmed in research §R-7), `shared/db/src/schema/inventory.ts`, `shared/db/src/schema/admin_users.ts`. Output is a checklist of which tables need an `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` migration.
 
 **Checkpoint**: Setup complete. Foundation can begin.
 
