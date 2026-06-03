@@ -188,8 +188,7 @@ export async function copilotChat(args: {
         role: "tool",
         tool_call_id: tc.id,
         name: tc.function.name,
-        content:
-          typeof result === "string" ? result : JSON.stringify(result ?? null),
+        content: typeof result === "string" ? result : JSON.stringify(result ?? null),
       });
     }
   }
