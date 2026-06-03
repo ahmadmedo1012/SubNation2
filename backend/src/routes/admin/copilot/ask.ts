@@ -80,6 +80,31 @@ interface AskBody {
   intent_text: string;
   context?: { route?: string; focus_entity_type?: string; focus_entity_id?: number | null };
   locale?: string;
+  /** Prior conversation turns (capped to last 12 messages by the route). */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
+const MAX_HISTORY_MESSAGES = 12;
+const MAX_HISTORY_CHARS = 8000;
+
+function sanitizeHistory(
+  raw: unknown,
+): Array<{ role: "user" | "assistant"; content: string }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ role: "user" | "assistant"; content: string }> = [];
+  let totalChars = 0;
+  // Walk newest → oldest so we keep the most recent context if we hit the cap.
+  for (let i = raw.length - 1; i >= 0; i--) {
+    const item = raw[i] as { role?: unknown; content?: unknown };
+    if (!item || (item.role !== "user" && item.role !== "assistant")) continue;
+    const content = typeof item.content === "string" ? item.content.slice(0, 4000) : "";
+    if (!content) continue;
+    if (totalChars + content.length > MAX_HISTORY_CHARS) break;
+    out.push({ role: item.role, content });
+    totalChars += content.length;
+    if (out.length >= MAX_HISTORY_MESSAGES) break;
+  }
+  return out.reverse();
 }
 
 async function handleAsk(req: Request, res: Response): Promise<void> {
@@ -92,6 +117,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       .json({ error: "intent_text required (1–4000 chars)", code: "COPILOT_INVALID_INPUT" });
     return;
   }
+  const history = sanitizeHistory(body.history);
 
   if (!copilotLlmAvailable()) {
     res.status(503).json({
@@ -141,6 +167,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       systemText,
       intentText,
       tools,
+      history,
       toolHandler: async (name, input) => {
         if (isSuperAdmin && isDirectExecuteToolName(name)) {
           if (name === "resolve_product") {

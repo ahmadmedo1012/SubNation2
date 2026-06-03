@@ -115,6 +115,11 @@ async function postChatCompletion(args: {
 /**
  * Run a tool-use round-trip. Loop until the assistant returns a final
  * text answer (no more tool_calls) or MAX_TOOL_ROUNDS is hit.
+ *
+ * Optional `history` is the prior conversation's user/assistant messages
+ * (typically the last 6 turns) so the model has context across turns.
+ * The route caps the size so we don't blow the context window on long
+ * sessions.
  */
 export async function copilotChat(args: {
   systemText: string;
@@ -122,16 +127,24 @@ export async function copilotChat(args: {
   tools: Tool[];
   toolHandler: ToolHandler;
   maxTokens?: number;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<CopilotChatResult> {
   const provider = getCopilotProvider();
   if (!provider.apiKey) {
     throw new Error("LLM provider not configured");
   }
 
-  const messages: ChatMessage[] = [
-    { role: "system", content: args.systemText },
-    { role: "user", content: args.intentText },
-  ];
+  const messages: ChatMessage[] = [{ role: "system", content: args.systemText }];
+
+  // Prior turns (cap on the route side; we just type-narrow here).
+  for (const h of args.history ?? []) {
+    if (h.role === "user" || h.role === "assistant") {
+      messages.push({ role: h.role, content: h.content });
+    }
+  }
+
+  messages.push({ role: "user", content: args.intentText });
+
   const trace: ToolUseTrace[] = [];
   let inputTokens = 0;
   let outputTokens = 0;
