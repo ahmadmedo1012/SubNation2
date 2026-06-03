@@ -167,18 +167,15 @@ export const listLowStock: CopilotTool = {
       ORDER BY stock ASC, p.name ASC
       LIMIT 50
     `);
-    const list =
-      (
-        rows as unknown as {
-          rows?: Array<{
-            id: number;
-            name: string;
-            slug: string | null;
-            category: string | null;
-            stock: number;
-          }>;
-        }
-      ).rows ?? [];
+    type Row = {
+      id: number;
+      name: string;
+      slug: string | null;
+      category: string | null;
+      stock: number;
+    };
+    const r = rows as unknown as { rows?: Row[] } | Row[];
+    const list = Array.isArray(r) ? r : (r.rows ?? []);
     return { products: list, threshold };
   },
 };
@@ -213,9 +210,10 @@ export const summarizeRecentChanges: CopilotTool = {
       ORDER BY created_at DESC
       LIMIT ${limit}
     `);
-    return {
-      entries: (rows as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [],
-    };
+    type Row = Record<string, unknown>;
+    const r = rows as unknown as { rows?: Row[] } | Row[];
+    const entries = Array.isArray(r) ? r : (r.rows ?? []);
+    return { entries };
   },
 };
 

@@ -60,7 +60,16 @@ export async function getPhaseFlags(): Promise<CopilotPhaseFlags> {
     const result = await db.execute(
       sql`SELECT value FROM system_settings WHERE key = ${KEY} LIMIT 1`,
     );
-    const rows = (result as unknown as { rows?: Array<{ value: string }> }).rows ?? [];
+    // drizzle-orm/node-postgres surfaces the underlying pg QueryResult
+    // shape, but in this project's existing migrate.ts we observe rows
+    // landing as either `result.rows[0]` OR `result[0]` depending on the
+    // driver/version in flight. Match the existing defensive pattern so
+    // a future driver swap doesn't silently revert phase flags to the
+    // all-off default.
+    const r = result as unknown as
+      | { rows?: Array<{ value: unknown }> }
+      | Array<{ value: unknown }>;
+    const rows = Array.isArray(r) ? r : (r.rows ?? []);
     const flags = rows.length > 0 ? parseFlags(rows[0]!.value) : { ...DEFAULT_FLAGS };
     cache = { flags, loadedAt: Date.now() };
     return flags;
