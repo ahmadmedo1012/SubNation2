@@ -20,6 +20,18 @@ The copilot is an **administrative operator surface**, not a customer-facing cha
 
 ---
 
+## Clarifications
+
+### Session 2026-06-03
+
+- Q: What is the maximum number of rows a single bulk operation may affect before the copilot refuses to draft and instructs the admin to narrow scope? → A: 500 rows
+- Q: What unambiguous interaction pattern does the second-confirmation step for high-risk actions use? → A: Delayed re-click — the second Confirm button is disabled for a 3-second cooldown after the panel renders, then becomes clickable; the panel re-states the most consequential summary fields during the cooldown
+- Q: What per-admin rate limit applies to copilot command throughput? → A: 30 commands per minute, 200 commands per hour per admin
+- Q: How long is a generated preview valid before the system invalidates it outright (independent of record-version staleness checks)? → A: 5 minutes from generation timestamp; expired previews cannot be approved and must be re-drafted
+- Q: What is the wallet/balance/refund scope for v1 of the copilot? → A: Draft + preview only — the copilot may interpret wallet/refund commands and show a preview, but the execute step is disabled and the admin is redirected to existing wallet/refund admin tooling to actually run the action; full wallet/refund execute via copilot is out of scope for this spec
+
+---
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 — Read-only Catalog & Operations Assistant (Priority: P1)
@@ -73,17 +85,17 @@ For low-risk catalog fields (title, description, long description, FAQ, usage te
 
 ### User Story 4 — High-Risk Action Double-Confirmation Gate (Priority: P2)
 
-For high-risk actions — price changes, cost-price changes, stock changes, product publish, archive/unarchive, bulk edits, wallet/balance/refund-adjacent operations, and admin permission/role changes — the copilot requires a second, distinct confirmation step beyond the standard Approve click before executing. The second confirmation surfaces the most consequential summary fields again and requires an unambiguous action (e.g., typing a specific phrase or re-clicking with a delay) to commit.
+For high-risk actions — price changes, cost-price changes, stock changes, product publish, archive/unarchive, bulk edits, and admin permission/role changes — the copilot requires a second, distinct confirmation step beyond the standard Approve click before executing. The second confirmation surfaces the most consequential summary fields again and requires an unambiguous action (a 3-second cooldown on the second Confirm button) before committing. Wallet/balance/refund-adjacent commands are a separate class: the copilot drafts and previews them but disables execute and redirects the admin to existing wallet/refund admin tooling.
 
 **Why this priority**: This is the feature's core safety property for sensitive work. Without it, executing the spec's high-risk classes would violate the constraint "never act blindly". Required before any of the high-risk classes can be enabled in production.
 
-**Independent Test**: Admin previews a price change on a product. After clicking Approve, the copilot displays a second confirmation panel re-stating the entity, the field, the old value, the new value, the margin impact, and any warnings. The admin must perform the second-confirmation action explicitly. Verify: (a) clicking outside or pressing Esc cancels without execute, (b) the second confirmation cannot be auto-clicked or skipped via deep-link, (c) once committed, the action executes and is logged with both confirmation timestamps, (d) wallet/role-related operations follow the same pattern.
+**Independent Test**: Admin previews a price change on a product. After clicking Approve, the copilot displays a second confirmation panel re-stating the entity, the field, the old value, the new value, the margin impact, and any warnings. The second Confirm control is disabled for 3 seconds with a visible countdown, then becomes clickable. Verify: (a) clicking outside or pressing Esc cancels without execute, (b) the second confirmation cannot be auto-clicked, deep-linked to, or skipped via API, (c) once committed, the action executes and is logged with both confirmation timestamps, (d) role/permission operations follow the same pattern, (e) wallet/refund commands surface a preview but the execute control is replaced by a "Open in wallet admin" handoff link with no copilot-side execute path.
 
 **Acceptance Scenarios**:
 
 1. **Given** a previewed price change from $19.99 to $9.99, **When** the admin approves, **Then** a second-confirmation step shows the price drop, the margin impact warning, and requires explicit re-confirmation; only after that does the change execute.
 2. **Given** a previewed bulk archive of 47 products, **When** the admin approves, **Then** the second-confirmation step shows the count, lists a sample of the affected products, and warns that archive will hide them from customers; explicit re-confirmation is required.
-3. **Given** any wallet/refund-adjacent action, **When** the admin attempts to skip or bypass the second confirmation (e.g., by re-issuing the same command), **Then** the copilot still requires the second confirmation and never silently re-uses a prior confirmation.
+3. **Given** any wallet/refund-adjacent command, **When** the admin previews it, **Then** the copilot shows the structured preview but the execute control is disabled and replaced with a handoff link to the existing wallet/refund admin tooling; no copilot-side execute path exists for this class.
 
 ---
 
@@ -195,11 +207,11 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 
 - **FR-PREVIEW-001**: Every write action MUST pass through a preview step before execution. There MUST be no execute path that skips preview.
 - **FR-PREVIEW-002**: A preview MUST include: (a) interpreted intent, (b) the structured proposed change set (entity, field, before, after), (c) the list of affected entities with stable identifiers, (d) validation warnings, (e) side-effect notes (e.g., "this will hide products from customers"), (f) a clear "preview — not yet executed" indicator.
-- **FR-PREVIEW-003**: A preview MUST include the admin user, the timestamp it was generated, and a record-version reference for each affected entity sufficient to detect staleness at execute time.
+- **FR-PREVIEW-003**: A preview MUST include the admin user, the timestamp it was generated, and a record-version reference for each affected entity sufficient to detect staleness at execute time. A preview MUST be valid for at most **5 minutes** from its generation timestamp; after this window the preview MUST be rejected at execute time regardless of record-version staleness, and the admin MUST be required to re-draft.
 - **FR-PREVIEW-004**: At execute time the system MUST verify the preview is still valid (entities unchanged since record-version capture). If stale, execution MUST be blocked and a re-draft offered.
 - **FR-CONFIRM-001**: A standard write action (low-risk catalog edits) MUST require one explicit confirmation action by the admin before execute.
-- **FR-CONFIRM-002**: A high-risk action MUST require a second, distinct confirmation step that re-states the most consequential summary fields and requires an unambiguous, deliberate action (e.g., typed phrase or re-click after a brief delay).
-- **FR-CONFIRM-003**: The set of high-risk classes MUST include, at minimum: price changes, cost-price changes, stock-level changes, product publish, archive/unarchive, bulk edits of any kind, wallet/balance/refund-adjacent operations, and admin permission/role changes.
+- **FR-CONFIRM-002**: A high-risk action MUST require a second, distinct confirmation step that re-states the most consequential summary fields. The second Confirm control MUST be disabled for a 3-second cooldown after the second-confirmation panel renders and only becomes clickable after the cooldown elapses. The cooldown countdown MUST be visible to the admin. Closing or navigating away cancels the second confirmation; the cooldown MUST NOT be skippable via keyboard, deep-link, or repeated submission.
+- **FR-CONFIRM-003**: The set of high-risk classes MUST include, at minimum: price changes, cost-price changes, stock-level changes, product publish, archive/unarchive, bulk edits of any kind, and admin permission/role changes. Wallet/balance/refund-adjacent commands are a separate, no-execute class (see FR-DATA-002): they require preview but the copilot MUST disable the execute control for them.
 - **FR-CONFIRM-004**: Confirmations MUST be single-use. A given preview + confirmation pair MUST execute at most one action; replays MUST be rejected.
 - **FR-CONFIRM-005**: Confirmations MUST NOT be auto-clickable, deep-linkable, skippable via direct API, or otherwise bypassable. The execute path MUST verify a fresh, valid preview + confirmation pair exists.
 - **FR-CONFIRM-006**: Cancellation MUST be available at every step. Cancelling MUST produce no side effect on the target data and MUST be recorded as a copilot interaction event.
@@ -223,7 +235,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 
 - **FR-BULK-001**: Bulk operations MUST always pass through preview and high-risk double-confirmation regardless of the underlying action class.
 - **FR-BULK-002**: A bulk preview MUST show the total affected count, a representative sample of N rows with before/after values, aggregate impact summary (e.g., margin impact for price changes), and counts of validation warnings and predicted failures.
-- **FR-BULK-003**: A configured bulk row limit MUST cap the size of any single bulk operation. If a request exceeds the limit, the copilot MUST refuse to draft and instruct the admin to narrow scope. It MUST NOT silently truncate.
+- **FR-BULK-003**: A configured bulk row limit of **500 rows** MUST cap the size of any single bulk operation. If a request exceeds the limit, the copilot MUST refuse to draft and instruct the admin to narrow scope. It MUST NOT silently truncate. The limit is configurable but MUST NOT be raised without a security review.
 - **FR-BULK-004**: A bulk execute MUST produce one audit entry referencing per-item outcomes; per-item failures MUST be visible in both the result UI and the audit entry.
 
 ### Functional Requirements — Safety, Constraints, & Refusals
@@ -231,13 +243,13 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 - **FR-SAFETY-001**: The copilot MUST refuse any request that would bypass authorization, expose secrets, mutate money or balances silently, delete data without explicit confirmation, perform destructive actions without preview, invent data, override business rules, or operate as a customer-facing chatbot.
 - **FR-SAFETY-002**: The copilot MUST never include credentials, API keys, internal infrastructure details, or out-of-scope PII in any response, preview, or audit entry.
 - **FR-SAFETY-003**: The copilot MUST refuse to draft an action that violates a business rule (e.g., price below cost when policy disallows it), and surface the violated rule. If the admin's role permits override, the copilot MAY offer to draft the action with a prominent warning, still requiring high-risk double-confirmation.
-- **FR-SAFETY-004**: The copilot MUST rate-limit per-admin command throughput to prevent burst-driven bypass and to bound the blast radius of compromised sessions. Rate-limit decisions MUST be visible in the audit log.
+- **FR-SAFETY-004**: The copilot MUST rate-limit per-admin command throughput to **30 commands per minute and 200 commands per hour** per admin user (sliding windows). Limits apply to draft, preview, and execute calls combined. Rate-limit denials MUST be visible in the audit log with the admin, window, and counter state. Limits are configurable but MUST NOT be raised without a security review.
 - **FR-SAFETY-005**: The copilot MUST be implementable such that no single failure mode (model error, prompt injection, schema drift, stale data, partial network failure) can cause an unconfirmed write.
 
 ### Functional Requirements — Data Sources
 
 - **FR-DATA-001**: The copilot MAY READ from the existing authoritative admin data domains: products and product attributes (including descriptions, FAQs, usage terms, image references, status, category, pricing, cost), inventory and stock movements, pricing history and planned price changes, orders and order events, top-up and wallet ledgers (read-only for inspection within the admin's scope), users (admin-visible fields only), and existing audit trails.
-- **FR-DATA-002**: The copilot MAY WRITE in Phase 3 only to: catalog content fields (title, description, long description, FAQ, usage terms, image URL, category) for low-risk actions; and — gated by high-risk double-confirmation — to price, cost-price, stock levels, product status (publish/archive/unarchive), bulk variants of the above, wallet/refund-adjacent operations within existing admin tooling, and admin permission/role assignments.
+- **FR-DATA-002**: The copilot MAY WRITE in Phase 3 only to: catalog content fields (title, description, long description, FAQ, usage terms, image URL, category) for low-risk actions; and — gated by high-risk double-confirmation — to price, cost-price, stock levels, product status (publish/archive/unarchive), bulk variants of the above, and admin permission/role assignments. **Wallet/balance/refund-adjacent operations are explicitly NOT writable by the copilot in this spec**: the copilot MAY interpret a wallet/refund command, draft an action plan, and render a preview, but the execute step for any wallet/refund action MUST be disabled and the admin MUST be redirected to the existing wallet/refund admin tooling to actually run the action.
 - **FR-DATA-003**: The copilot MUST NOT write to any data domain not explicitly enumerated in FR-DATA-002. New write scopes are out of scope for this feature and MUST require a separate spec to add.
 - **FR-DATA-004**: The copilot MUST use existing service interfaces for writes; it MUST NOT introduce a parallel data-mutation path that bypasses existing validation, hooks, or business logic.
 
@@ -273,7 +285,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 - **Execution Record**: The immutable audit-trail entry produced by an executed Action Plan. Contains identity, intent, plan, before/after values, confirmations, outcome, and per-item results for bulk.
 - **Affected Entity Reference**: A pointer to a domain entity (Product, InventoryItem, Order, WalletEntry, Permission, etc.) targeted by a Plan, including a record-version reference used for staleness checks.
 - **Permission Scope**: The set of read and write capabilities the requesting Admin Operator has. The copilot reads and writes only within this scope.
-- **High-Risk Policy**: The configured set of action classes that require double-confirmation, including (at minimum) price, cost-price, stock, publish/archive, bulk, wallet/refund-adjacent, and permission/role changes.
+- **High-Risk Policy**: The configured set of action classes that require double-confirmation, including (at minimum) price, cost-price, stock, publish/archive, bulk, and permission/role changes. Wallet/balance/refund-adjacent commands are tracked as a separate no-execute class — preview only, with handoff to existing wallet admin tooling.
 
 ---
 
@@ -302,6 +314,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 - Customer-facing chat, support agents, or any non-admin AI surface.
 - Generic AI chat or open-ended conversational assistant unrelated to administrative actions.
 - SEO content generation, marketing copy generation, or other content-marketing AI.
+- **Copilot-side execute of wallet, balance, refund, top-up, or any other money-mutating operation.** The copilot drafts and previews these but the execute control is disabled and the admin is redirected to existing wallet/refund admin tooling. Adding copilot-side execute for any money-mutating class MUST require a separate spec.
 - New write scopes beyond those enumerated in FR-DATA-002. Adding new write scopes (e.g., creating new admin roles from natural language, mutating financial settings, mutating tax/legal configuration, deploying or modifying infrastructure) MUST require a separate spec.
 - Mobile-native admin client. Phase 1–3 target the web admin dashboard only.
 - Multi-admin shared collaborative sessions. One admin per session.
@@ -317,8 +330,8 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 - All write operations route through the existing service-layer mutation interfaces with their existing validation and business rules; the copilot does not introduce a parallel data path.
 - The admin dashboard is a web application; mobile native support is out of scope for this feature.
 - SubNation operates with English and Arabic as primary admin languages. Both are supported in copilot input/output and the panel honors RTL layout.
-- A configured bulk row limit (e.g., 500 rows per batch) bounds the size of any single bulk operation; the exact limit is set during implementation planning, not in this spec.
-- Per-admin rate limits exist and are enforced; concrete numbers are set during implementation planning.
+- A configured bulk row limit of 500 rows bounds the size of any single bulk operation; the limit is set by FR-BULK-003 and is configurable but MUST NOT be raised without a security review.
+- Per-admin rate limits are set by FR-SAFETY-004 (30/minute and 200/hour, sliding windows); limits are configurable but MUST NOT be raised without a security review.
 - Preview freshness is enforced via record-version references on affected entities; the underlying domain already provides such references or can be extended to do so.
 - Recovery from executed actions is best-effort: it is supported where the underlying domain allows (catalog content, archive/unarchive), and is explicitly flagged as irreversible at preview time where the underlying domain does not (e.g., already-fulfilled wallet operations).
 - The set of "high-risk action classes" enumerated in FR-CONFIRM-003 is the minimum; the implementation MAY add additional classes but MUST NOT remove any without a spec amendment.
