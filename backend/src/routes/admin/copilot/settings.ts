@@ -10,10 +10,12 @@
 import { auditLogsTable, copilotActionsTable, db } from "@workspace/db";
 import type { Request, Response } from "express";
 import { Router } from "express";
+import { sql } from "drizzle-orm";
 import { logger } from "../../../lib/logger";
 import { hasScope } from "../../../middlewares/requireCopilotPermission";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import {
+  clearPhaseFlagsCache,
   getPhaseFlags,
   setPhaseFlags,
   type CopilotPhaseFlags,
@@ -21,11 +23,57 @@ import {
 
 const settingsRouter = Router();
 
-settingsRouter.get("/copilot/settings", requireAdmin, async (_req, res) => {
+settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
   // GET is readable by any authenticated admin — the four booleans are
   // not sensitive and the panel needs them on every load to decide
   // whether to render. PATCH remains restricted to super-admins
   // (`admins` or `settings` scope).
+
+  // Optional ?debug=1 — logs and returns the raw row count + value so
+  // a missing/mis-shaped row is diagnosable without server access.
+  // Only super-admins may pass debug=1.
+  if (req.query.debug === "1") {
+    const adminReq = req as AdminAuthenticatedRequest;
+    if (!hasScope(adminReq.adminPermissions ?? [], ["admins", "settings"])) {
+      res.status(403).json({ error: "غير مصرح", code: "FORBIDDEN" });
+      return;
+    }
+    clearPhaseFlagsCache();
+    try {
+      const result = await db.execute(
+        sql`SELECT key, value FROM system_settings WHERE key = 'copilot.phases' LIMIT 1`,
+      );
+      const r = result as unknown as { rows?: unknown[] } | unknown[];
+      const isArr = Array.isArray(r);
+      const rows = isArr ? (r as unknown[]) : ((r as { rows?: unknown[] }).rows ?? []);
+      const flags = await getPhaseFlags();
+      logger.warn(
+        {
+          shape_is_array: isArr,
+          row_count: rows.length,
+          first_row: rows[0],
+          parsed_flags: flags,
+        },
+        "copilot phase-flags debug",
+      );
+      res.json({
+        flags,
+        __debug__: {
+          shape_is_array: isArr,
+          row_count: rows.length,
+          first_row: rows[0],
+        },
+      });
+      return;
+    } catch (err) {
+      res.status(500).json({
+        error: "debug failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+  }
+
   const flags = await getPhaseFlags();
   res.json(flags);
 });
