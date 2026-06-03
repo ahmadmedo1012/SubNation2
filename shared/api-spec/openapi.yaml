@@ -1740,5 +1740,4 @@ components:
           format: date-time
         failure_reason:
           type: ["string", "null"]
-      required:
-        [id, admin_id, intent_text, action_class, risk_tier, outcome, created_at]
+      required: [id, admin_id, intent_text, action_class, risk_tier, outcome, created_at]
