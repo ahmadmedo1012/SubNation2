@@ -24,10 +24,7 @@ import { logger } from "../../../lib/logger";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { getRegistry } from "../../../lib/metrics";
-import {
-  requireAdmin,
-  type AdminAuthenticatedRequest,
-} from "../../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import {
   copilotChat,

@@ -610,7 +610,13 @@ function AskAnswer({
 
 function DirectExecutionBadge({ item }: { item: DirectExecution }) {
   const ok = item.success;
-  type ProductData = { productId?: number; productName?: string; before_stock?: number; after_stock?: number; diff?: Array<{ field: string }> };
+  type ProductData = {
+    productId?: number;
+    productName?: string;
+    before_stock?: number;
+    after_stock?: number;
+    diff?: Array<{ field: string }>;
+  };
   const data = (item.data ?? {}) as ProductData;
   const fields = Array.isArray(data.diff) ? data.diff.map((d) => d.field).join(", ") : null;
   const stockChange =
@@ -636,8 +642,7 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
         </div>
         {ok && data.productName && (
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            {data.productName} (#{data.productId})
-            {fields && ` — ${fields}`}
+            {data.productName} (#{data.productId}){fields && ` — ${fields}`}
             {stockChange && ` — مخزون: ${stockChange}`}
           </div>
         )}

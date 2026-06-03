@@ -192,7 +192,7 @@ const updateProductSpec: Tool = {
             usageTerms: { type: "string", maxLength: 10000 },
             imageUrl: { type: "string", maxLength: 1000 },
             category: { type: "string", maxLength: 100 },
-            price: { type: "string", description: "Numeric string with 2 decimals, e.g. \"49.99\"." },
+            price: { type: "string", description: 'Numeric string with 2 decimals, e.g. "49.99".' },
             costPrice: { type: "string", description: "Numeric string with 2 decimals." },
             isActive: { type: "boolean" },
             isArchived: { type: "boolean" },
@@ -343,8 +343,10 @@ export async function executeUpdateStock(
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   const productId = Number(input.product_id);
   const delta = Number(input.delta);
-  if (!Number.isFinite(productId) || productId <= 0) return { ok: false, error: "invalid product_id" };
-  if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "delta must be non-zero integer" };
+  if (!Number.isFinite(productId) || productId <= 0)
+    return { ok: false, error: "invalid product_id" };
+  if (!Number.isFinite(delta) || delta === 0)
+    return { ok: false, error: "delta must be non-zero integer" };
   if (Math.abs(delta) > 1000) return { ok: false, error: "delta out of range" };
 
   try {
@@ -380,7 +382,9 @@ export async function executeUpdateStock(
             ORDER BY created_at DESC
             LIMIT ${want}
           `);
-          const idsR = idsRes as unknown as { rows?: Array<{ id: number }> } | Array<{ id: number }>;
+          const idsR = idsRes as unknown as
+            | { rows?: Array<{ id: number }> }
+            | Array<{ id: number }>;
           const idList = Array.isArray(idsR) ? idsR : (idsR.rows ?? []);
           if (idList.length > 0) {
             await tx.execute(sql`
