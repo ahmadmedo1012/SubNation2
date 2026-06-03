@@ -46,6 +46,13 @@ import {
   executeAdminRequest,
   isAdminRequestToolName,
 } from "../../../services/copilot/admin-request-tool";
+import {
+  isOperationalToolName,
+  operationalToolsForScopes,
+  queryData,
+  systemOverview,
+  walletLedgerSummary,
+} from "../../../services/copilot/tools/operational";
 
 const COMMAND_COUNTER_NAME = "copilot_command_total";
 const SAFETY_COUNTER_NAME = "copilot_safety_refusal_total";
@@ -140,10 +147,12 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   const isSuperAdmin = scopes.includes("all");
 
   const reads = readToolsForScopes(scopes);
+  const operational = operationalToolsForScopes(scopes);
   const directs = directToolsForScopes(scopes);
   const universal = adminRequestToolForScopes(scopes);
   const tools = [
     ...reads.map((t) => t.spec),
+    ...operational.map((t) => t.spec),
     ...directs.map((t) => t.spec),
     ...universal.map((t) => t.spec),
   ];
@@ -206,6 +215,11 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       history,
       onEvent: emitProgress,
       toolHandler: async (name, input) => {
+        if (isSuperAdmin && isOperationalToolName(name)) {
+          if (name === "system_overview") return systemOverview.handler(input);
+          if (name === "query_data") return queryData.handler(input);
+          if (name === "wallet_ledger_summary") return walletLedgerSummary.handler(input);
+        }
         if (isSuperAdmin && isAdminRequestToolName(name)) {
           const r = await executeAdminRequest(input, { req });
           const success = r.ok;
