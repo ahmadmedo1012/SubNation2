@@ -1,24 +1,19 @@
 /**
- * POST /api/admin/copilot/ask — Phase 1 read-only natural-language query.
+ * POST /api/admin/copilot/ask — natural-language admin query.
  *
- * Pipeline (left-to-right): requireAdmin → requireCopilotPhase("phase1_enabled")
+ * Pipeline: requireAdmin → requireCopilotPhase("phase1_enabled")
  *   → copilotRateLimit → handler.
  *
- * Handler (010-ai-admin-copilot, T053):
- *   1. Validate request body.
- *   2. Build system prompt + filtered tool catalog from admin's scopes.
- *   3. Call copilotChat which loops tool_use round-trips (max 4 rounds).
- *   4. Run secret-scan over the final text + tool-result trace.
- *   5. If any secret pattern matched → return 502 COPILOT_SECRET_LEAK and
- *      record an audit row; do NOT return the offending text to the admin.
- *   6. Otherwise return JSON: { text, tool_uses, input_tokens, output_tokens }.
+ * Behavior depends on the admin's scope:
+ *   - Regular admin scopes (inventory/orders/etc): read-only tool catalog.
+ *     The model can describe and explain but cannot mutate. Change requests
+ *     should go through /draft (preview/confirm flow).
+ *   - Super-admin (`all` scope): the model ALSO gets resolve_product /
+ *     update_product / update_stock direct-execute tools. Mutations apply
+ *     immediately, with audit trail intact, and no preview step.
  *
- * NOTE: The OpenAPI spec describes this endpoint as SSE. For Phase 1 we ship
- * a non-streaming JSON response — the same payload, just buffered. The
- * frontend renders it identically; switching to SSE is a future enhancement
- * (US8 polish) once we wire Anthropic's streaming API. The OpenAPI contract
- * is source-of-truth elsewhere; this handler is intentionally simpler so
- * pilot admins can use US1 today without an SSE client.
+ * Wallet/balance/refund operations are NEVER directly executable. The
+ * model is instructed to hand off to /admin/topups instead.
  */
 
 import { db, copilotActionsTable } from "@workspace/db";
@@ -29,15 +24,26 @@ import { logger } from "../../../lib/logger";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { getRegistry } from "../../../lib/metrics";
-import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
+import {
+  requireAdmin,
+  type AdminAuthenticatedRequest,
+} from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import {
   copilotChat,
   copilotLlmAvailable,
   type ToolUseTrace,
 } from "../../../services/copilot/llm-client";
+import { getCopilotProvider } from "../../../services/copilot/provider-config";
 import { buildSystemPrompt } from "../../../services/copilot/system-prompt";
 import { readToolsForScopes, runReadTool } from "../../../services/copilot/tools/read";
+import {
+  directToolsForScopes,
+  executeUpdateProduct,
+  executeUpdateStock,
+  isDirectExecuteToolName,
+  resolveProduct,
+} from "../../../services/copilot/admin-direct";
 
 const COMMAND_COUNTER_NAME = "copilot_command_total";
 const SAFETY_COUNTER_NAME = "copilot_safety_refusal_total";
@@ -75,11 +81,7 @@ function safety(): Counter<string> {
 
 interface AskBody {
   intent_text: string;
-  context?: {
-    route?: string;
-    focus_entity_type?: string;
-    focus_entity_id?: number | null;
-  };
+  context?: { route?: string; focus_entity_type?: string; focus_entity_id?: number | null };
   locale?: string;
 }
 
@@ -96,7 +98,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
 
   if (!copilotLlmAvailable()) {
     res.status(503).json({
-      error: "خدمة المساعد غير متاحة (مفتاح Anthropic غير مضبوط)",
+      error: "خدمة المساعد غير متاحة (مفتاح المزوّد غير مضبوط)",
       code: "COPILOT_LLM_UNAVAILABLE",
     });
     return;
@@ -106,11 +108,15 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     (req.headers["x-correlation-id"] as string | undefined) ??
     `cp-${Date.now()}-${adminReq.adminId}`;
   const scopes = adminReq.adminPermissions ?? [];
-  const tools = readToolsForScopes(scopes).map((t) => t.spec);
+  const isSuperAdmin = scopes.includes("all");
+
+  const reads = readToolsForScopes(scopes);
+  const directs = directToolsForScopes(scopes);
+  const tools = [...reads.map((t) => t.spec), ...directs.map((t) => t.spec)];
 
   if (tools.length === 0) {
     res.status(403).json({
-      error: "ليس لديك أي صلاحية تخوّلك استخدام أدوات القراءة في المساعد",
+      error: "ليس لديك أي صلاحية تخوّلك استخدام المساعد",
       code: "COPILOT_OUT_OF_SCOPE",
     });
     return;
@@ -120,7 +126,17 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     locale: body.locale ?? "ar-LY",
     scopes,
     context: body.context,
+    superAdminMode: isSuperAdmin,
   });
+
+  interface DirectExecution {
+    tool: string;
+    success: boolean;
+    summary: string;
+    data: unknown;
+  }
+  const directExecutions: DirectExecution[] = [];
+  const provider = getCopilotProvider();
 
   let result;
   try {
@@ -129,6 +145,46 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       intentText,
       tools,
       toolHandler: async (name, input) => {
+        if (isSuperAdmin && isDirectExecuteToolName(name)) {
+          if (name === "resolve_product") {
+            return resolveProduct.handler(input);
+          }
+          const ctx = {
+            adminId: adminReq.adminId,
+            intentText,
+            modelId: provider.model,
+            correlationId,
+          };
+          if (name === "update_product") {
+            const r = await executeUpdateProduct(input, ctx);
+            const success = r.ok;
+            const summary = success
+              ? `update_product ok (#${(r.data as { productId?: number }).productId})`
+              : `update_product failed: ${r.error}`;
+            directExecutions.push({
+              tool: name,
+              success,
+              summary,
+              data: r.ok ? r.data : { error: r.error },
+            });
+            return r.ok ? r.data : { error: r.error };
+          }
+          if (name === "update_stock") {
+            const r = await executeUpdateStock(input, ctx);
+            const success = r.ok;
+            const summary = success
+              ? `update_stock ok (#${(r.data as { productId?: number }).productId})`
+              : `update_stock failed: ${r.error}`;
+            directExecutions.push({
+              tool: name,
+              success,
+              summary,
+              data: r.ok ? r.data : { error: r.error },
+            });
+            return r.ok ? r.data : { error: r.error };
+          }
+        }
+
         const r = await runReadTool(name, input, scopes);
         return r.ok ? r.data : { error: r.error };
       },
@@ -143,7 +199,6 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // Outbound secret scan — text + the JSON-stringified tool trace.
   const scanText = scanForSecrets(result.text);
   const scanTrace = scanForSecrets(result.toolUses);
   if (scanText.hasMatch || scanTrace.hasMatch) {
@@ -177,13 +232,12 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     tool_uses: result.toolUses.map((t: ToolUseTrace) => ({
       name: t.name,
       input: t.input,
-      // Truncate large results for the response; the model already
-      // synthesized them into `text` so the UI doesn't need full data.
       result_preview:
         typeof t.result === "string"
           ? t.result.slice(0, 2000)
           : JSON.stringify(t.result).slice(0, 2000),
     })),
+    direct_executions: directExecutions,
     input_tokens: result.inputTokens,
     output_tokens: result.outputTokens,
     correlation_id: correlationId,

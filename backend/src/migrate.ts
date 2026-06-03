@@ -6,6 +6,12 @@ import { logger } from "./lib/logger";
 
 export async function runMigrations() {
   try {
+    // ── Extensions ─────────────────────────────────────────────────────────
+    // pg_trgm gives us trigram similarity for fuzzy product name lookup
+    // (010-ai-admin-copilot resolve_product tool — Arabic/English/typo
+    // tolerant). Idempotent + cheap; safe to leave enabled.
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+
     // ── Enums ──────────────────────────────────────────────────────────────
     await db.execute(sql`
       DO $$ BEGIN
@@ -1144,6 +1150,14 @@ export async function runMigrations() {
         ON copilot_action_items(action_id);
       CREATE INDEX IF NOT EXISTS idx_copilot_action_items_entity
         ON copilot_action_items(entity_type, entity_id);
+    `);
+
+    // 010-ai-admin-copilot: trigram index on products.name for fuzzy
+    // resolve_product (Arabic/English/typo tolerant). pg_trgm extension
+    // is enabled at the top of this function.
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_products_name_trgm
+        ON products USING gin (name gin_trgm_ops);
     `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");

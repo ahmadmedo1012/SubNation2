@@ -41,9 +41,17 @@ interface ToolUseTracePreview {
   result_preview: string;
 }
 
+interface DirectExecution {
+  tool: string;
+  success: boolean;
+  summary: string;
+  data: unknown;
+}
+
 interface AskResponse {
   text: string;
   tool_uses: ToolUseTracePreview[];
+  direct_executions?: DirectExecution[];
   input_tokens: number;
   output_tokens: number;
   correlation_id: string;
@@ -100,6 +108,7 @@ interface ConversationTurn {
   // ASK turn fields
   answer?: string | null;
   toolUses?: ToolUseTracePreview[];
+  directExecutions?: DirectExecution[];
   // DRAFT turn fields
   preview?: PreviewView | null;
   previewState?: "pending" | "confirming" | "executed" | "cancelled" | "rejected" | "expired";
@@ -113,14 +122,47 @@ interface ConversationTurn {
 // /draft instead of /ask. Phase 2 must be enabled or backend returns 503,
 // in which case we fall back to /ask automatically.
 const CHANGE_VERBS_AR = [
-  "حدّث", "حدث", "غيّر", "غير", "بدّل", "بدل", "عدّل", "عدل",
-  "أضف", "اضف", "ضع", "اجعل", "احذف", "امسح", "إلغ", "ألغ",
-  "ارفع", "اخفض", "زد", "نقص", "أرشف", "ارشف", "انشر",
+  "حدّث",
+  "حدث",
+  "غيّر",
+  "غير",
+  "بدّل",
+  "بدل",
+  "عدّل",
+  "عدل",
+  "أضف",
+  "اضف",
+  "ضع",
+  "اجعل",
+  "احذف",
+  "امسح",
+  "إلغ",
+  "ألغ",
+  "ارفع",
+  "اخفض",
+  "زد",
+  "نقص",
+  "أرشف",
+  "ارشف",
+  "انشر",
 ];
 const CHANGE_VERBS_EN = [
-  "update", "change", "set", "edit", "modify", "rename",
-  "add", "remove", "delete", "increase", "decrease", "raise", "lower",
-  "publish", "archive", "unarchive",
+  "update",
+  "change",
+  "set",
+  "edit",
+  "modify",
+  "rename",
+  "add",
+  "remove",
+  "delete",
+  "increase",
+  "decrease",
+  "raise",
+  "lower",
+  "publish",
+  "archive",
+  "unarchive",
 ];
 function looksLikeChangeIntent(text: string): boolean {
   const t = text.trim().toLowerCase();
@@ -223,7 +265,11 @@ export function CopilotPanel() {
           }),
         });
         if (!resp.ok) {
-          const body = (await resp.json().catch(() => null)) as { error?: string; code?: string; message?: string } | null;
+          const body = (await resp.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+            message?: string;
+          } | null;
           // If Phase 2 not enabled, retry as /ask automatically.
           if (resp.status === 503 || body?.code === "COPILOT_PHASE_DISABLED") {
             await runAsk(turn.id, text);
@@ -250,8 +296,7 @@ export function CopilotPanel() {
         });
         if (!phase3) {
           patchTurn(turn.id, {
-            error:
-              "المرحلة 3 غير مفعّلة. يمكنك مراجعة المعاينة لكن لا يمكن تنفيذها بعد.",
+            error: "المرحلة 3 غير مفعّلة. يمكنك مراجعة المعاينة لكن لا يمكن تنفيذها بعد.",
           });
         }
       } else {
@@ -278,6 +323,7 @@ export function CopilotPanel() {
       kind: "ask",
       answer: data.text,
       toolUses: data.tool_uses,
+      directExecutions: data.direct_executions ?? [],
       previewState: undefined,
       loading: false,
     });
@@ -292,9 +338,11 @@ export function CopilotPanel() {
         headers,
       });
       if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as
-          | { error?: string; code?: string; stale_ids?: number[] }
-          | null;
+        const body = (await resp.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+          stale_ids?: number[];
+        } | null;
         throw new Error(body?.error ?? `confirm failed (${resp.status})`);
       }
       const data = (await resp.json()) as ConfirmResponse;
@@ -355,8 +403,8 @@ export function CopilotPanel() {
                   {flags.phase3_enabled
                     ? "مرحلة 3 — يمكن تنفيذ التعديلات منخفضة الخطورة بعد الموافقة"
                     : flags.phase2_enabled
-                    ? "مرحلة 2 — يمكن اقتراح تعديلات لكن لا تنفّذ بعد"
-                    : "مرحلة 1 — قراءة فقط"}
+                      ? "مرحلة 2 — يمكن اقتراح تعديلات لكن لا تنفّذ بعد"
+                      : "مرحلة 1 — قراءة فقط"}
                 </div>
               </div>
               <button
@@ -411,7 +459,9 @@ export function CopilotPanel() {
               </div>
               <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
                 <span>كل المحادثات تُسجَّل للمراجعة الأمنية</span>
-                <kbd className="font-mono bg-muted border border-border/50 px-1 py-0.5 rounded">⌘J</kbd>
+                <kbd className="font-mono bg-muted border border-border/50 px-1 py-0.5 rounded">
+                  ⌘J
+                </kbd>
               </div>
             </div>
           </aside>
@@ -425,8 +475,8 @@ function EmptyState({ flags, onPick }: { flags: PhaseFlags; onPick: (s: string) 
   return (
     <div className="space-y-3">
       <div className="text-xs text-muted-foreground leading-6">
-        اطرح سؤالاً عن المنتجات والمخزون والأنشطة الإدارية. المساعد سيستخدم بياناتك
-        المباشرة ولن يخترع أي معلومة.
+        اطرح سؤالاً عن المنتجات والمخزون والأنشطة الإدارية. المساعد سيستخدم بياناتك المباشرة ولن
+        يخترع أي معلومة.
         {flags.phase2_enabled
           ? " يمكنك أيضاً طلب تعديلات بسيطة وستحصل على معاينة قبل التنفيذ."
           : ""}
@@ -500,7 +550,11 @@ function TurnView({
         </div>
       )}
       {turn.kind === "ask" && turn.answer && (
-        <AskAnswer answer={turn.answer} toolUses={turn.toolUses ?? []} />
+        <AskAnswer
+          answer={turn.answer}
+          toolUses={turn.toolUses ?? []}
+          directExecutions={turn.directExecutions ?? []}
+        />
       )}
       {turn.kind === "draft" && turn.preview && (
         <PreviewCard
@@ -515,9 +569,24 @@ function TurnView({
   );
 }
 
-function AskAnswer({ answer, toolUses }: { answer: string; toolUses: ToolUseTracePreview[] }) {
+function AskAnswer({
+  answer,
+  toolUses,
+  directExecutions,
+}: {
+  answer: string;
+  toolUses: ToolUseTracePreview[];
+  directExecutions: DirectExecution[];
+}) {
   return (
     <div className="space-y-2">
+      {directExecutions.length > 0 && (
+        <div className="space-y-1">
+          {directExecutions.map((d, i) => (
+            <DirectExecutionBadge key={i} item={d} />
+          ))}
+        </div>
+      )}
       <div className="bg-muted/40 border border-border/50 rounded-2xl rounded-tr-md px-3 py-2 text-sm whitespace-pre-wrap">
         {answer}
       </div>
@@ -535,6 +604,45 @@ function AskAnswer({ answer, toolUses }: { answer: string; toolUses: ToolUseTrac
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+function DirectExecutionBadge({ item }: { item: DirectExecution }) {
+  const ok = item.success;
+  type ProductData = { productId?: number; productName?: string; before_stock?: number; after_stock?: number; diff?: Array<{ field: string }> };
+  const data = (item.data ?? {}) as ProductData;
+  const fields = Array.isArray(data.diff) ? data.diff.map((d) => d.field).join(", ") : null;
+  const stockChange =
+    typeof data.before_stock === "number" && typeof data.after_stock === "number"
+      ? `${data.before_stock} → ${data.after_stock}`
+      : null;
+  return (
+    <div
+      className={`flex items-start gap-2 text-xs rounded-xl px-3 py-2 border ${
+        ok
+          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+          : "bg-destructive/10 border-destructive/30 text-destructive"
+      }`}
+    >
+      {ok ? (
+        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      ) : (
+        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="font-bold">
+          {ok ? "تم التنفيذ" : "فشل التنفيذ"}: <span className="font-mono">{item.tool}</span>
+        </div>
+        {ok && data.productName && (
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {data.productName} (#{data.productId})
+            {fields && ` — ${fields}`}
+            {stockChange && ` — مخزون: ${stockChange}`}
+          </div>
+        )}
+        {!ok && <div className="text-[11px] mt-0.5">{item.summary}</div>}
+      </div>
     </div>
   );
 }
