@@ -27,6 +27,119 @@ import type { Tool } from "./llm-client";
 import type { CopilotTool } from "./tools/read";
 
 /* ======================================================================
+   Cross-language name resolution
+   ======================================================================
+   pg_trgm cannot match between Arabic and Latin scripts because the two
+   share no trigrams. We bridge by:
+     1. Hard-coded synonyms for popular subscription services (the bulk
+        of SubNation's catalog).
+     2. Crude Arabic → Latin transliteration so common typos still find
+        their target ("نتفلكس" → "ntflks" → ILIKE %ntflks% on the
+        product's English name).
+   The result list is the UNION of (a) trigram similarity, (b) ILIKE on
+   any expanded candidate, dedup'd by id. Threshold is permissive on
+   purpose — it's better to return 5 fuzzy matches and let the model
+   pick than to return zero. */
+
+const SERVICE_SYNONYMS: Record<string, string[]> = {
+  // Latin -> Arabic
+  netflix: ["نتفلكس", "نتفليكس", "نيتفليكس", "نتفلكس بريميوم"],
+  spotify: ["سبوتيفاي", "سبوتفاي", "سبوتيفي", "سبوتيفاي بريميوم"],
+  youtube: ["يوتيوب", "يوتوب", "يوتيوب بريميوم", "يوتيوب موسيقى"],
+  shahid: ["شاهد", "شاهد vip", "شاهد في اي بي"],
+  osn: ["او اس ان", "اوه اس ان"],
+  disney: ["ديزني", "ديزني بلس"],
+  apple: ["ابل", "آبل", "ابل ميوزيك", "ابل تي في"],
+  amazon: ["امازون", "امازون برايم", "أمازون"],
+  hulu: ["هولو"],
+  hbo: ["اتش بي او", "اتشبيو", "ماكس", "max"],
+  prime: ["برايم", "amazon prime", "امازون برايم"],
+  duolingo: ["دولينجو", "دوولينجو"],
+  chatgpt: ["شات جي بي تي", "تشات جي بي تي", "openai"],
+  canva: ["كانفا"],
+  steam: ["ستيم"],
+  playstation: ["بلايستيشن", "بلاي ستيشن", "psn", "ps plus"],
+  xbox: ["اكس بوكس", "إكس بوكس"],
+  zoom: ["زوم"],
+  microsoft: ["مايكروسوفت", "ميكروسوفت"],
+  office: ["اوفيس", "أوفيس", "office 365"],
+  vpn: ["في بي ان", "vpn"],
+  icloud: ["اي كلاود", "آي كلاود"],
+  google: ["جوجل", "غوغل", "google one"],
+};
+
+// Build the inverse map: Arabic spelling → English canonical(s).
+const REVERSE_SYNONYMS: Record<string, string[]> = (() => {
+  const out: Record<string, Set<string>> = {};
+  for (const [en, arVariants] of Object.entries(SERVICE_SYNONYMS)) {
+    for (const ar of arVariants) {
+      const key = ar.toLowerCase().trim();
+      if (!out[key]) out[key] = new Set();
+      out[key].add(en);
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(out).map(([k, v]) => [k, [...v]]),
+  );
+})();
+
+const AR_TO_LATIN: Record<string, string> = {
+  ا: "a", أ: "a", إ: "a", آ: "a", ى: "a",
+  ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh",
+  د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh",
+  ص: "s", ض: "d", ط: "t", ظ: "z", ع: "", غ: "gh",
+  ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n",
+  ه: "h", و: "w", ي: "y", ة: "a", ء: "", ئ: "y", ؤ: "w",
+  // Persian/Urdu chars sometimes used
+  پ: "p", چ: "ch", گ: "g", ژ: "zh",
+  // Diacritics — drop
+  "ً": "", "ٌ": "", "ٍ": "", "َ": "", "ُ": "", "ِ": "", "ّ": "", "ْ": "",
+};
+
+function transliterateArabic(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    out += AR_TO_LATIN[ch] ?? ch;
+  }
+  return out;
+}
+
+function expandQuery(raw: string): string[] {
+  const q = raw.trim();
+  if (!q) return [];
+  const candidates = new Set<string>();
+  candidates.add(q);
+  candidates.add(q.toLowerCase());
+
+  // Synonym map — Arabic input → English canonical(s).
+  const lower = q.toLowerCase();
+  if (REVERSE_SYNONYMS[lower]) {
+    for (const en of REVERSE_SYNONYMS[lower]) candidates.add(en);
+  }
+  // Partial Arabic match for synonyms (e.g. "نتفلكس بريميوم" → "نتفلكس").
+  for (const [ar, ens] of Object.entries(REVERSE_SYNONYMS)) {
+    if (lower.includes(ar) || ar.includes(lower)) {
+      for (const en of ens) candidates.add(en);
+    }
+  }
+
+  // Transliteration fallback — produces useful candidates for typos
+  // not in the synonym map.
+  const ar2lat = transliterateArabic(q).toLowerCase().replace(/\s+/g, " ").trim();
+  if (ar2lat && ar2lat !== lower) candidates.add(ar2lat);
+
+  // Synonym map — English input → Arabic variants (so an English query
+  // can still find a product with an Arabic name).
+  for (const [en, arVariants] of Object.entries(SERVICE_SYNONYMS)) {
+    if (lower.includes(en) || en.includes(lower)) {
+      for (const ar of arVariants) candidates.add(ar);
+    }
+  }
+
+  return [...candidates].filter((c) => c.length >= 2);
+}
+
+/* ======================================================================
    resolve_product — fuzzy match by name OR exact match by id
    ====================================================================== */
 
@@ -88,25 +201,13 @@ export const resolveProduct: CopilotTool = {
       }
     }
 
-    // pg_trgm similarity. Low threshold so dialect/typo matches surface;
-    // the LLM picks the best one. Order by similarity DESC then name ASC
-    // so identical scores break tie predictably.
-    const rows = await db.execute(sql`
-      SELECT
-        id,
-        name,
-        slug,
-        category,
-        price,
-        is_active,
-        is_archived,
-        similarity(name, ${q}) AS sim
-      FROM products
-      WHERE similarity(name, ${q}) >= 0.15
-         OR name ILIKE ${"%" + q + "%"}
-      ORDER BY sim DESC NULLS LAST, name ASC
-      LIMIT 5
-    `);
+    // Cross-language expansion: synonyms + transliteration produce a
+    // list of candidate strings. We then run a single SQL query that
+    // applies pg_trgm similarity for ALL candidates and unions the
+    // results — so "نتفلكس" finds Netflix even though they share zero
+    // trigrams in the original script.
+    const candidates = expandQuery(q);
+
     type Row = {
       id: number;
       name: string;
@@ -117,10 +218,44 @@ export const resolveProduct: CopilotTool = {
       is_archived: boolean;
       sim: number | null;
     };
-    const r = rows as unknown as { rows?: Row[] } | Row[];
-    const list = Array.isArray(r) ? r : (r.rows ?? []);
+
+    const seen = new Map<number, Row>();
+    for (const cand of candidates) {
+      const rows = await db.execute(sql`
+        SELECT
+          id, name, slug, category, price, is_active, is_archived,
+          GREATEST(
+            similarity(name, ${cand}),
+            similarity(COALESCE(slug, ''), ${cand}),
+            similarity(COALESCE(description, ''), ${cand}) * 0.5
+          ) AS sim
+        FROM products
+        WHERE
+          name ILIKE ${"%" + cand + "%"}
+          OR slug ILIKE ${"%" + cand + "%"}
+          OR description ILIKE ${"%" + cand + "%"}
+          OR similarity(name, ${cand}) >= 0.2
+        ORDER BY sim DESC NULLS LAST, name ASC
+        LIMIT 5
+      `);
+      const r = rows as unknown as { rows?: Row[] } | Row[];
+      const list = Array.isArray(r) ? r : (r.rows ?? []);
+      for (const m of list) {
+        const prev = seen.get(m.id);
+        if (!prev || (m.sim ?? 0) > (prev.sim ?? 0)) {
+          seen.set(m.id, m);
+        }
+      }
+    }
+
+    const ranked = [...seen.values()]
+      .sort((a, b) => (b.sim ?? 0) - (a.sim ?? 0))
+      .slice(0, 5);
+
     return {
-      matches: list.map((m) => ({
+      query: q,
+      candidates_tried: candidates,
+      matches: ranked.map((m) => ({
         id: m.id,
         name: m.name,
         slug: m.slug,
