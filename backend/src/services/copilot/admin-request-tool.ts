@@ -179,8 +179,7 @@ export async function executeAdminRequest(
 
   const url = `${getLoopbackBase(ctx.req)}${path}`;
   const correlationId =
-    (ctx.req.headers["x-correlation-id"] as string | undefined) ??
-    `cp-internal-${Date.now()}`;
+    (ctx.req.headers["x-correlation-id"] as string | undefined) ?? `cp-internal-${Date.now()}`;
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
@@ -206,9 +205,7 @@ export async function executeAdminRequest(
       signal: ac.signal,
       headers,
       body:
-        method !== "GET" && body !== null && body !== undefined
-          ? JSON.stringify(body)
-          : undefined,
+        method !== "GET" && body !== null && body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (err) {
     clearTimeout(timer);
