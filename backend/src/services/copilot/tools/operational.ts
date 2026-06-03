@@ -114,10 +114,7 @@ export const systemOverview: CopilotTool = {
           COUNT(*)::int AS total
         FROM products
       `),
-      db
-        .select({ c: count() })
-        .from(inventoryTable)
-        .where(eq(inventoryTable.isSold, false)),
+      db.select({ c: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
       db.execute(sql`
         SELECT COUNT(*)::int AS c
         FROM (
@@ -133,40 +130,38 @@ export const systemOverview: CopilotTool = {
         .select({ c: count() })
         .from(walletTopupsTable)
         .where(eq(walletTopupsTable.status, "pending")),
-      db
-        .select({ c: count() })
-        .from(ordersTable)
-        .where(gte(ordersTable.createdAt, todayStart)),
-      db
-        .select({ c: count() })
-        .from(ordersTable)
-        .where(gte(ordersTable.createdAt, weekStart)),
+      db.select({ c: count() }).from(ordersTable).where(gte(ordersTable.createdAt, todayStart)),
+      db.select({ c: count() }).from(ordersTable).where(gte(ordersTable.createdAt, weekStart)),
       db
         .select({ s: sum(ordersTable.amount) })
         .from(ordersTable)
-        .where(
-          and(gte(ordersTable.createdAt, todayStart), eq(ordersTable.status, "completed")),
-        ),
+        .where(and(gte(ordersTable.createdAt, todayStart), eq(ordersTable.status, "completed"))),
       db
         .select({ s: sum(ordersTable.amount) })
         .from(ordersTable)
-        .where(
-          and(gte(ordersTable.createdAt, weekStart), eq(ordersTable.status, "completed")),
-        ),
+        .where(and(gte(ordersTable.createdAt, weekStart), eq(ordersTable.status, "completed"))),
       db
         .select({ c: count() })
         .from(supportTicketsTable)
         .where(eq(supportTicketsTable.status, "open")),
       db.select({ c: count() }).from(adminUsersTable).where(eq(adminUsersTable.isActive, true)),
-      db
-        .select({ c: count() })
-        .from(auditLogsTable)
-        .where(gte(auditLogsTable.createdAt, dayAgo)),
+      db.select({ c: count() }).from(auditLogsTable).where(gte(auditLogsTable.createdAt, dayAgo)),
     ]);
 
     const productRow =
-      (productCounts as unknown as { rows?: Array<{ active: number; draft: number; archived: number; total: number }> }).rows?.[0] ??
-      (productCounts as unknown as Array<{ active: number; draft: number; archived: number; total: number }>)[0];
+      (
+        productCounts as unknown as {
+          rows?: Array<{ active: number; draft: number; archived: number; total: number }>;
+        }
+      ).rows?.[0] ??
+      (
+        productCounts as unknown as Array<{
+          active: number;
+          draft: number;
+          archived: number;
+          total: number;
+        }>
+      )[0];
     const lowStockRow =
       (lowStock as unknown as { rows?: Array<{ c: number }> }).rows?.[0] ??
       (lowStock as unknown as Array<{ c: number }>)[0];
