@@ -414,14 +414,14 @@ Task: "discount-ratio heuristic — backend/src/services/copilot/anomalies/disco
 ### Incremental Delivery
 
 1. MVP (US1) → Phase 1 in prod.
-2. + US2 → Phase 2 in prod (still no writes; admins see how the copilot would change things).
-3. + US3 → Phase 3 in prod with `copilot_phase3_high_risk_enabled=false` (low-risk catalog edits only).
-4. + US4 → flip the high-risk sub-flag; price/stock/publish/archive/permission classes go live.
-5. + US5 → bulk goes live (still gated by US4's double-confirm).
-6. + US6 → richer history view + reconciliation alerts active.
-7. + US7 → anomaly inspector active.
-8. + US8 → polished discoverability.
-9. + Polish phase.
+2. - US2 → Phase 2 in prod (still no writes; admins see how the copilot would change things).
+3. - US3 → Phase 3 in prod with `copilot_phase3_high_risk_enabled=false` (low-risk catalog edits only).
+4. - US4 → flip the high-risk sub-flag; price/stock/publish/archive/permission classes go live.
+5. - US5 → bulk goes live (still gated by US4's double-confirm).
+6. - US6 → richer history view + reconciliation alerts active.
+7. - US7 → anomaly inspector active.
+8. - US8 → polished discoverability.
+9. - Polish phase.
 
 ### Parallel Team Strategy
 
