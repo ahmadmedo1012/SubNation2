@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import { CopilotPanel } from "@/components/admin/copilot/CopilotPanel";
 import { useQuery } from "@tanstack/react-query";
 import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
 import {
@@ -716,6 +717,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           {children}
         </div>
       </main>
+      <CopilotPanel />
     </div>
   );
 }
