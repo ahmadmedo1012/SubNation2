@@ -21,12 +21,11 @@ import {
 
 const settingsRouter = Router();
 
-settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
-  const adminReq = req as AdminAuthenticatedRequest;
-  if (!hasScope(adminReq.adminPermissions ?? [], ["admins", "settings"])) {
-    res.status(403).json({ error: "غير مصرح", code: "FORBIDDEN" });
-    return;
-  }
+settingsRouter.get("/copilot/settings", requireAdmin, async (_req, res) => {
+  // GET is readable by any authenticated admin — the four booleans are
+  // not sensitive and the panel needs them on every load to decide
+  // whether to render. PATCH remains restricted to super-admins
+  // (`admins` or `settings` scope).
   const flags = await getPhaseFlags();
   res.json(flags);
 });
