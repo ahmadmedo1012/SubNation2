@@ -38,7 +38,9 @@ let cache: { flags: CopilotPhaseFlags; loadedAt: number } | null = null;
 function parseFlags(json: unknown): CopilotPhaseFlags {
   try {
     const obj =
-      typeof json === "string" ? (JSON.parse(json) as Record<string, unknown>) : (json as Record<string, unknown>);
+      typeof json === "string"
+        ? (JSON.parse(json) as Record<string, unknown>)
+        : (json as Record<string, unknown>);
     return {
       phase1_enabled: obj.phase1_enabled === true,
       phase2_enabled: obj.phase2_enabled === true,
