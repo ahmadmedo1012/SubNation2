@@ -79,38 +79,56 @@ SUPER-ADMIN MODE — DIRECT EXECUTE.
 
 The current admin holds the \`all\` (super-admin) scope. You have
 DIRECT-EXECUTE tools that apply changes IMMEDIATELY — there is no
-preview / confirm step. The tools available to you are:
+preview / confirm step. Pick the right tool for the task:
 
+  PRODUCT-SPECIFIC (preferred for product changes):
   - resolve_product(query)
         Find a product by name (fuzzy, multi-language) or by id.
         Use FIRST for any product reference.
-
   - update_product(id, fields)
-        Apply ANY editable fields in one call: name, description,
-        descriptionLong, faq, usageTerms, imageUrl, category,
-        price, costPrice, isActive, isArchived. Executes
-        immediately and returns the diff.
-
+        Apply ANY editable product fields in one call (name,
+        description, price, costPrice, category, imageUrl, faq,
+        usageTerms, isActive, isArchived). Returns a diff.
   - update_stock(product_id, delta)
         delta > 0 adds inventory rows; delta < 0 removes the most-
-        recent unsold rows. Executes immediately.
+        recent unsold rows.
 
-  - The read tools you already have: search_products, get_product,
-    list_low_stock, summarize_recent_changes.
+  UNIVERSAL ADMIN TOOL (use for everything else):
+  - admin_request(method, path, body?)
+        Calls any /api/admin/* endpoint with the admin's session.
+        Use this for orders, users, top-ups, tickets, coupons,
+        flash-sales, admins, alerts, settings — anything beyond
+        product writes. Examples:
+          GET  /api/admin/topups                 list pending top-ups
+          POST /api/admin/topups/{id}/approve    approve a top-up
+          POST /api/admin/topups/{id}/reject     reject a top-up
+          GET  /api/admin/orders                 list orders
+          PATCH /api/admin/users/{id}            update a user
+          POST /api/admin/coupons                create a coupon
+          POST /api/admin/flash-sales            create a flash sale
+          GET  /api/admin/tickets                list tickets
+          PATCH /api/admin/tickets/{id}          change ticket status
+        Tip: GET first to inspect existing record shape if unsure
+        about the body. Numeric ids belong in the URL path, not body.
 
-WORKFLOW for a change request:
+  READ:
+  - search_products, get_product, list_low_stock,
+    summarize_recent_changes — your existing read tools.
 
-  1. Call resolve_product to find the target.
-  2. Call get_product if you need to see the current state.
-  3. Call update_product (or update_stock) with the exact fields.
-  4. Confirm in one short sentence with the diff.
+WORKFLOW:
+  1. Identify the entity (resolve_product for products, otherwise
+     a GET via admin_request).
+  2. Call the right write tool. ONE call when possible.
+  3. Confirm in one short sentence with the diff or status.
 
 DO NOT ask "should I proceed?" — the admin already approved by
-sending the request. Just do it. If a request is genuinely
-ambiguous (e.g. two products match equally), THEN ask.
+sending the request. Just do it. Ask only when a request is
+genuinely ambiguous (e.g. two products match equally well).
 
-You still cannot execute wallet/refund/top-up. Direct the admin
-to /admin/topups for those.`;
+Wallet/refund/top-up MUTATIONS still go through admin_request
+hitting /api/admin/topups/{id}/approve etc. — those endpoints
+own the atomic ledger logic. Do NOT try to write SQL or invent
+your own ledger entries.`;
 
 export function buildSystemPrompt(inputs: PromptInputs): string {
   const isSuper = inputs.superAdminMode ?? inputs.scopes.includes("all");

@@ -995,7 +995,15 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
     after_stock?: number;
     diff?: Array<{ field: string }>;
   };
-  const data = (item.data ?? {}) as ProductData;
+  type AdminReqData = {
+    method?: string;
+    path?: string;
+    status?: number;
+    body?: unknown;
+    truncated?: boolean;
+  };
+  const isReq = item.tool === "admin_request";
+  const data = (item.data ?? {}) as ProductData & AdminReqData;
   const fields = Array.isArray(data.diff) ? data.diff.map((d) => d.field).join(", ") : null;
   const stockChange =
     typeof data.before_stock === "number" && typeof data.after_stock === "number"
@@ -1016,14 +1024,19 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
       )}
       <div className="flex-1 min-w-0">
         <div className="font-bold">{ok ? "تم التنفيذ" : "فشل التنفيذ"}</div>
-        {ok && data.productName && (
+        {ok && isReq && (
+          <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all">
+            {data.method} {data.path} · {data.status}
+          </div>
+        )}
+        {ok && !isReq && data.productName && (
           <div className="text-[11px] text-muted-foreground mt-0.5">
             <span className="font-mono">{item.tool}</span> · {data.productName} (#{data.productId})
             {fields && ` · ${fields}`}
             {stockChange && ` · مخزون: ${stockChange}`}
           </div>
         )}
-        {!ok && <div className="text-[11px] mt-0.5">{item.summary}</div>}
+        {!ok && <div className="text-[11px] mt-0.5 break-words">{item.summary}</div>}
       </div>
     </div>
   );

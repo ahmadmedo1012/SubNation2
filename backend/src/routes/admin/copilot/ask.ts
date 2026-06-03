@@ -41,6 +41,11 @@ import {
   isDirectExecuteToolName,
   resolveProduct,
 } from "../../../services/copilot/admin-direct";
+import {
+  adminRequestToolForScopes,
+  executeAdminRequest,
+  isAdminRequestToolName,
+} from "../../../services/copilot/admin-request-tool";
 
 const COMMAND_COUNTER_NAME = "copilot_command_total";
 const SAFETY_COUNTER_NAME = "copilot_safety_refusal_total";
@@ -133,7 +138,12 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
 
   const reads = readToolsForScopes(scopes);
   const directs = directToolsForScopes(scopes);
-  const tools = [...reads.map((t) => t.spec), ...directs.map((t) => t.spec)];
+  const universal = adminRequestToolForScopes(scopes);
+  const tools = [
+    ...reads.map((t) => t.spec),
+    ...directs.map((t) => t.spec),
+    ...universal.map((t) => t.spec),
+  ];
 
   if (tools.length === 0) {
     res.status(403).json({
@@ -167,6 +177,22 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       tools,
       history,
       toolHandler: async (name, input) => {
+        if (isSuperAdmin && isAdminRequestToolName(name)) {
+          const r = await executeAdminRequest(input, { req });
+          const success = r.ok;
+          const path = String(input.path ?? "?");
+          const method = String(input.method ?? "?");
+          const summary = success
+            ? `${method} ${path} → ${r.status}`
+            : `${method} ${path} → ${r.status} (failed)`;
+          directExecutions.push({
+            tool: name,
+            success,
+            summary,
+            data: { method, path, status: r.status, body: r.body, truncated: r.truncated },
+          });
+          return r.body;
+        }
         if (isSuperAdmin && isDirectExecuteToolName(name)) {
           if (name === "resolve_product") {
             return resolveProduct.handler(input);
