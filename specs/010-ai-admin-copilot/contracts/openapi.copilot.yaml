@@ -222,7 +222,18 @@ paths:
           name: outcome
           schema:
             type: string
-            enum: [success, partial, failure, refused, validation_rejected, rate_limited, stale, expired, cancelled]
+            enum:
+              [
+                success,
+                partial,
+                failure,
+                refused,
+                validation_rejected,
+                rate_limited,
+                stale,
+                expired,
+                cancelled,
+              ]
         - in: query
           name: since_iso
           schema: { type: string, format: date-time }
@@ -263,7 +274,18 @@ components:
 
     Preview:
       type: object
-      required: [id, admin_id, intent_text, intent_summary, action_class, risk_tier, payload, created_at, expires_at]
+      required:
+        [
+          id,
+          admin_id,
+          intent_text,
+          intent_summary,
+          action_class,
+          risk_tier,
+          payload,
+          created_at,
+          expires_at,
+        ]
       properties:
         id: { type: string }
         admin_id: { type: integer }
@@ -287,7 +309,17 @@ components:
 
     SinglePreviewPayload:
       type: object
-      required: [kind, intent_summary, side_effects, validation_warnings, irreversible, entity_type, entity_id, changes]
+      required:
+        [
+          kind,
+          intent_summary,
+          side_effects,
+          validation_warnings,
+          irreversible,
+          entity_type,
+          entity_id,
+          changes,
+        ]
       properties:
         kind: { type: string, enum: [single] }
         intent_summary: { type: string }
@@ -316,7 +348,17 @@ components:
 
     BulkPreviewPayload:
       type: object
-      required: [kind, intent_summary, side_effects, validation_warnings, irreversible, total_affected, sample, predicted_failures]
+      required:
+        [
+          kind,
+          intent_summary,
+          side_effects,
+          validation_warnings,
+          irreversible,
+          total_affected,
+          sample,
+          predicted_failures,
+        ]
       properties:
         kind: { type: string, enum: [bulk] }
         intent_summary: { type: string }

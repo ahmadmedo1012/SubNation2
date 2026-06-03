@@ -10,13 +10,13 @@
 
 Before the first request:
 
-| Requirement | How to satisfy |
-|---|---|
-| Local Postgres + Redis from `pnpm dev` | Already part of the project — no copilot-specific setup. |
-| `ANTHROPIC_API_KEY` env var | Add to your local `.env` (production injects it via Render). The boot validator fails fast if missing in prod. |
-| New tables migrated | `pnpm migrate` runs the boot migrations idempotently. The three new tables (`copilot_previews`, `copilot_actions`, `copilot_action_items`) are created by the new migration. |
-| Phase flags set | In dev, all phases default ON. In production, set the `copilot_phase{1,2,3}_enabled` admin settings via the admin settings UI; sub-flag `copilot_phase3_high_risk_enabled` controls whether high-risk classes execute. |
-| Admin permissions | The acting admin must hold the relevant scope (`inventory`, `finance`, `admins`, etc.). A super-admin (`["all"]`) sees the full tool catalog. |
+| Requirement                            | How to satisfy                                                                                                                                                                                                         |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local Postgres + Redis from `pnpm dev` | Already part of the project — no copilot-specific setup.                                                                                                                                                               |
+| `ANTHROPIC_API_KEY` env var            | Add to your local `.env` (production injects it via Render). The boot validator fails fast if missing in prod.                                                                                                         |
+| New tables migrated                    | `pnpm migrate` runs the boot migrations idempotently. The three new tables (`copilot_previews`, `copilot_actions`, `copilot_action_items`) are created by the new migration.                                           |
+| Phase flags set                        | In dev, all phases default ON. In production, set the `copilot_phase{1,2,3}_enabled` admin settings via the admin settings UI; sub-flag `copilot_phase3_high_risk_enabled` controls whether high-risk classes execute. |
+| Admin permissions                      | The acting admin must hold the relevant scope (`inventory`, `finance`, `admins`, etc.). A super-admin (`["all"]`) sees the full tool catalog.                                                                          |
 
 ---
 
@@ -160,13 +160,13 @@ curl -X POST .../previews/$PREVIEW_ID/double-confirm
 
 ### What you should be able to verify after a successful execute
 
-| Check | Expected result |
-|---|---|
-| `SELECT * FROM copilot_actions WHERE id = 143` | one row with `outcome='success'`, `confirmed_once_at` and `confirmed_twice_at` populated, `executed_at IS NOT NULL`. |
-| `SELECT * FROM audit_logs WHERE target_type='copilot_action' AND target_id=143` | exactly one row with `action='copilot.execute'`, `actor_type='admin'`. |
-| `confirmed_twice_at - confirmed_once_at` | ≥ 3 seconds (FR-CONFIRM-002). |
-| `executed_at - created_at` (joined to preview) | < 5 minutes (FR-PREVIEW-003). |
-| `SELECT * FROM products WHERE id = 17` | `price = '49.99'`, `updated_at` advanced. |
+| Check                                                                           | Expected result                                                                                                      |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `SELECT * FROM copilot_actions WHERE id = 143`                                  | one row with `outcome='success'`, `confirmed_once_at` and `confirmed_twice_at` populated, `executed_at IS NOT NULL`. |
+| `SELECT * FROM audit_logs WHERE target_type='copilot_action' AND target_id=143` | exactly one row with `action='copilot.execute'`, `actor_type='admin'`.                                               |
+| `confirmed_twice_at - confirmed_once_at`                                        | ≥ 3 seconds (FR-CONFIRM-002).                                                                                        |
+| `executed_at - created_at` (joined to preview)                                  | < 5 minutes (FR-PREVIEW-003).                                                                                        |
+| `SELECT * FROM products WHERE id = 17`                                          | `price = '49.99'`, `updated_at` advanced.                                                                            |
 
 ### Wallet/refund handoff
 
@@ -186,29 +186,29 @@ The admin clicks the handoff URL and runs the actual refund through the existing
 
 Map each spec User Story to a hands-on verification:
 
-| Story | Verify |
-|---|---|
-| **US1** read-only | Run §1 above; verify the copilot refuses any draft phrase with "write actions are not yet enabled". |
-| **US2** draft+preview | Run §2 above; confirm the new `copilot_actions` row has `outcome=cancelled` for the cancelled flow. |
-| **US3** low-risk execute | Run §3 low-risk above; verify the audit row pair is written atomically. |
-| **US4** high-risk double-confirm | Run §3 high-risk above; verify the 3-second 425 then success. |
-| **US5** bulk preview | Draft `lower price by 10% on all draft products`; verify `total_affected ≤ 500`, `sample` is rendered, `aggregate_impact.margin_delta_total` is computed; double-confirm; verify per-item rows in `copilot_action_items`. |
-| **US6** audit history | Hit `GET /history`; filter by `action_class=price_change`; verify pagination via `next_cursor`. |
-| **US7** anomalies | Insert a product with `price < cost_price * 0.95`; ask `summarize loss-making products`; verify the row appears with the cost/price gap. |
-| **US8** suggested commands | Open the panel from `/admin/products/<id>`; verify the suggestion list references that product and excludes wallet suggestions if the admin lacks the `finance` scope. |
+| Story                            | Verify                                                                                                                                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **US1** read-only                | Run §1 above; verify the copilot refuses any draft phrase with "write actions are not yet enabled".                                                                                                                       |
+| **US2** draft+preview            | Run §2 above; confirm the new `copilot_actions` row has `outcome=cancelled` for the cancelled flow.                                                                                                                       |
+| **US3** low-risk execute         | Run §3 low-risk above; verify the audit row pair is written atomically.                                                                                                                                                   |
+| **US4** high-risk double-confirm | Run §3 high-risk above; verify the 3-second 425 then success.                                                                                                                                                             |
+| **US5** bulk preview             | Draft `lower price by 10% on all draft products`; verify `total_affected ≤ 500`, `sample` is rendered, `aggregate_impact.margin_delta_total` is computed; double-confirm; verify per-item rows in `copilot_action_items`. |
+| **US6** audit history            | Hit `GET /history`; filter by `action_class=price_change`; verify pagination via `next_cursor`.                                                                                                                           |
+| **US7** anomalies                | Insert a product with `price < cost_price * 0.95`; ask `summarize loss-making products`; verify the row appears with the cost/price gap.                                                                                  |
+| **US8** suggested commands       | Open the panel from `/admin/products/<id>`; verify the suggestion list references that product and excludes wallet suggestions if the admin lacks the `finance` scope.                                                    |
 
 ---
 
 ## 5. Operating limits (locked by spec)
 
-| Limit | Value | Source |
-|---|---|---|
-| Bulk row cap per single operation | 500 | FR-BULK-003 |
-| Per-admin commands per minute | 30 (sliding) | FR-SAFETY-004 |
-| Per-admin commands per hour | 200 (sliding) | FR-SAFETY-004 |
-| Preview validity window | 5 minutes | FR-PREVIEW-003 |
-| High-risk second-confirm cooldown | 3 seconds | FR-CONFIRM-002 |
-| Wallet/refund execute via copilot | NOT ALLOWED | FR-DATA-002 / Out of Scope |
+| Limit                             | Value         | Source                     |
+| --------------------------------- | ------------- | -------------------------- |
+| Bulk row cap per single operation | 500           | FR-BULK-003                |
+| Per-admin commands per minute     | 30 (sliding)  | FR-SAFETY-004              |
+| Per-admin commands per hour       | 200 (sliding) | FR-SAFETY-004              |
+| Preview validity window           | 5 minutes     | FR-PREVIEW-003             |
+| High-risk second-confirm cooldown | 3 seconds     | FR-CONFIRM-002             |
+| Wallet/refund execute via copilot | NOT ALLOWED   | FR-DATA-002 / Out of Scope |
 
 ---
 

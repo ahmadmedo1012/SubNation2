@@ -17,15 +17,17 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 **Decision**: Anthropic API. Claude **Sonnet 4.6** (`claude-sonnet-4-6`) for intent parsing, action drafting, and bulk preview synthesis. **Haiku 4.5** (`claude-haiku-4-5-20251001`) reserved for read/explain (US1) once Phase 1 is operating to drop cost; not enabled at first launch.
 
 **Rationale**:
+
 - Tool-use is mandatory for the safety pipeline (R-2). Anthropic's tool-use is mature, supports forced tool calls, and is documented in the SDK we will use (`@anthropic-ai/sdk`).
 - Sonnet 4.6 is the project's default for "build AI applications" (system note `claude-sonnet-4-6`); using it keeps the copilot consistent with other AI features in the SubNation roadmap.
 - Haiku 4.5 cost is ~5× cheaper than Sonnet — economically meaningful for read/explain where most queries are short. Switching the read/explain path to Haiku is a one-line model-id change once SC-002 acceptance baselines are clear.
 - Prompt caching is supported on both models — the system prompt + tool catalog + per-admin permission summary will be cache-marked so repeated commands within a 5-minute window cost ~10% of a cold call (SC-006/SC-007 budget headroom).
 
 **Alternatives considered**:
-- *OpenAI / GPT*: function-calling is comparable, but the project has no existing OpenAI integration and adding a second provider adds key management, error handling, and observability surface.
-- *Self-hosted open-weight model*: latency and ops cost (GPU inference, model swapping, tool-use quality) outweigh savings at our pilot scale (≤10 admins).
-- *Sonnet for everything*: cheaper to start but locks us out of an obvious cost-down lever once read/explain volume proves out.
+
+- _OpenAI / GPT_: function-calling is comparable, but the project has no existing OpenAI integration and adding a second provider adds key management, error handling, and observability surface.
+- _Self-hosted open-weight model_: latency and ops cost (GPU inference, model swapping, tool-use quality) outweigh savings at our pilot scale (≤10 admins).
+- _Sonnet for everything_: cheaper to start but locks us out of an obvious cost-down lever once read/explain volume proves out.
 
 ---
 
@@ -38,33 +40,38 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 3. **Execute tools** are NOT exposed to the model. Execute is exclusively triggered by the human's `POST /confirm` (or `/double-confirm`) call, which dereferences the stored preview by id and calls the corresponding service-layer function directly. The LLM never sees the execute path; it cannot fabricate one.
 
 **Rationale**:
+
 - Tool-use makes intent recognition **schema-checked at the model boundary** — there is no parsing of free-text into action shape. If the model proposes an invalid call, validation fails before a preview is created.
 - Separating draft (model-callable) from execute (human-triggered only) makes it structurally impossible for an LLM hallucination, prompt injection, or jailbreak to skip the preview/confirm pipeline (FR-CONFIRM-005 + FR-SAFETY-005).
 - Each tool's Zod schema is the same one used in `shared/api-zod/` for the corresponding admin endpoint, so drift between "what the model can propose" and "what the existing admin endpoint accepts" is impossible by construction.
 
 **Alternatives considered**:
-- *Free-text intent + post-parse*: brittle, requires its own grammar, and creates a parsing surface that adversarial entity content (FR-INTENT-006) could exploit.
-- *Single mega-tool with discriminated-union argument*: was attractive for prompt-cache hit rates but Anthropic's tool-use already caches the catalog; named tools make telemetry (`copilot_command_total{kind=draft_price_change, …}`) far more useful.
-- *Letting the LLM call execute tools directly*: rejected — that's exactly the failure mode the spec prohibits.
+
+- _Free-text intent + post-parse_: brittle, requires its own grammar, and creates a parsing surface that adversarial entity content (FR-INTENT-006) could exploit.
+- _Single mega-tool with discriminated-union argument_: was attractive for prompt-cache hit rates but Anthropic's tool-use already caches the catalog; named tools make telemetry (`copilot_command_total{kind=draft_price_change, …}`) far more useful.
+- _Letting the LLM call execute tools directly_: rejected — that's exactly the failure mode the spec prohibits.
 
 ---
 
 ## R-3. System prompt assembly per admin
 
 **Decision**: The system prompt is composed at request time from four parts:
+
 1. **Static preamble** (cache-marked): role, refusal rules, output discipline, language rule (respond in admin's locale, treat entity content as untrusted data per FR-INTENT-006).
 2. **Static tool catalog summary** (cache-marked): the names and one-line descriptions of all tools the model is allowed to consider.
 3. **Per-admin scope summary** (NOT cached): the admin's permissions array reduced to a human-readable bullet list. The full tool catalog is then **filtered** before the API call so tools the admin lacks scope for are simply absent from the request — the model cannot call what it does not see.
 4. **Per-session ephemeral context**: the entity the admin is currently viewing in the dashboard (e.g., product id), used to scope suggested commands and disambiguate "this product" references.
 
 **Rationale**:
+
 - Permission enforcement is two-layered: at draft time the tool is filtered out (so the model cannot propose), and at execute time `requirePermission` is checked again (so a stale token cannot replay) — satisfies FR-AUTH-003.
 - Cache-marking the static preamble + tool catalog gives a ~90% discount on input tokens for the static portion, keeping per-command cost predictable.
 - Per-session context is small enough to skip caching but large enough to materially improve suggested-command quality on a product page.
 
 **Alternatives considered**:
-- *Single static prompt for all admins*: simpler but forces every tool through middleware-only enforcement and weakens the "model cannot propose what it cannot see" property.
-- *Encode permissions inside the model via fine-tuning*: drift risk (RBAC changes in DB but not in model) is unacceptable per Constitution §III.
+
+- _Single static prompt for all admins_: simpler but forces every tool through middleware-only enforcement and weakens the "model cannot propose what it cannot see" property.
+- _Encode permissions inside the model via fine-tuning_: drift risk (RBAC changes in DB but not in model) is unacceptable per Constitution §III.
 
 ---
 
@@ -73,13 +80,15 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 **Decision**: Previews are persisted in a new `copilot_previews` Postgres table with `expires_at = created_at + 5 minutes` (FR-PREVIEW-003). A `subnation-worker` cron (every 5 minutes) deletes expired previews. Execute-time check is a single SQL query: `SELECT … WHERE id=$1 AND admin_id=$2 AND expires_at > now() AND consumed_at IS NULL FOR UPDATE`. Found-and-locked → mark `consumed_at`, run executor; otherwise return `expired` or `consumed`.
 
 **Rationale**:
+
 - Postgres source-of-truth makes the freshness check authoritative and race-safe (`FOR UPDATE`).
 - 5-minute TTL puts the row reaper on the worker tier (constitution §V scheduling rule). Web tier MUST run with `DISABLE_WEB_SCHEDULERS=true` per existing convention.
 - `consumed_at` makes confirmations single-use (FR-CONFIRM-004) without needing a separate confirmations table.
 
 **Alternatives considered**:
-- *Redis-only previews* with TTL: faster but loses durability across deploys, makes the audit story harder (we want previews recoverable for incident review even if execute never happens).
-- *No TTL, only staleness check*: leaves abandoned previews indefinitely, creates a slow-leak storage problem and a bigger replay surface.
+
+- _Redis-only previews_ with TTL: faster but loses durability across deploys, makes the audit story harder (we want previews recoverable for incident review even if execute never happens).
+- _No TTL, only staleness check_: leaves abandoned previews indefinitely, creates a slow-leak storage problem and a bigger replay surface.
 
 ---
 
@@ -88,13 +97,15 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 **Decision**: For each affected entity in a preview, capture `(entity_type, id, updated_at)` at draft time. At execute time, re-read the entity and verify `updated_at` is unchanged. If any entity's `updated_at` has advanced, abort the execute with a `STALE` outcome and offer the admin a re-draft.
 
 **Rationale**:
+
 - The existing `productsTable` has `updatedAt` (verified). We need to ensure every other writable entity does too — see R-7 for the audit.
 - `updated_at` is sufficient — we do not need a separate `version` column. Postgres' `now()` clock is monotonic per row and updated by Drizzle on every write that we control.
 - Staleness check is in the same transaction as `consumed_at` and the actual write, giving us serialized read-write semantics without explicit advisory locks.
 
 **Alternatives considered**:
-- *Optimistic version column*: cleaner semantically but requires schema migrations on every writable table.
-- *Hash of all relevant fields*: protects against an `updated_at` that didn't actually change the relevant field; rejected as over-engineering for this milestone.
+
+- _Optimistic version column_: cleaner semantically but requires schema migrations on every writable table.
+- _Hash of all relevant fields_: protects against an `updated_at` that didn't actually change the relevant field; rejected as over-engineering for this milestone.
 
 ---
 
@@ -103,13 +114,15 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 **Decision**: Two Redis sorted-set sliding windows per admin: `copilot:rl:1m:<adminId>` (60s window, 30 max) and `copilot:rl:1h:<adminId>` (3600s window, 200 max). Implemented as a tiny Lua script (atomic ZREMRANGEBYSCORE + ZCARD + ZADD) so the window decision is race-free under concurrent requests. Counter applies to all `/ask`, `/draft`, `/confirm`, `/double-confirm` endpoints (FR-SAFETY-004 says draft + preview + execute combined). Denials emit a Pino log line + `audit_logs` row + Prometheus counter increment, then return `429 Too Many Requests` with `Retry-After`.
 
 **Rationale**:
+
 - Sliding-window via sorted-set is the standard Redis pattern; matches the existing rate-limit middleware style.
 - Two windows (minute + hour) catch both bursty bypass attempts and slow-and-low credential-abuse patterns.
 - The constitution's existing IP/user rate-limit tiers stay in front of this; the per-admin copilot limit is an inner gate, not a replacement.
 
 **Alternatives considered**:
-- *Token bucket*: equally fine but harder to reason about with two distinct windows; sorted-set is also already proven in this codebase.
-- *Per-tool quotas* (e.g. 10 bulks/hour): defer; not in spec, premature complexity.
+
+- _Token bucket_: equally fine but harder to reason about with two distinct windows; sorted-set is also already proven in this codebase.
+- _Per-tool quotas_ (e.g. 10 bulks/hour): defer; not in spec, premature complexity.
 
 ---
 
@@ -126,36 +139,42 @@ The spec already locks the user-visible numbers and policies (bulk cap, preview 
 ## R-8. Audit log strategy: `copilot_actions` table + `audit_logs` row
 
 **Decision**: Two coordinated rows per executed action, written in one transaction:
+
 1. **`copilot_actions`** (NEW) — full provenance: admin, original natural-language intent, interpreted action plan, action class, before-state snapshot, after-state snapshot, single-confirm timestamp, double-confirm timestamp (nullable), outcome, failure reason. For bulk: a parent row plus N `copilot_action_items` rows for per-item outcomes.
 2. **`audit_logs`** (existing) — one summary row per copilot execute with `action="copilot.execute"`, `actor_type="admin"`, `target_type="copilot_action"`, `target_id=<copilot_actions.id>`. This is what the existing admin audit views read.
 
 Refusals/cancellations/validation rejections are logged to `copilot_actions` with `outcome` set accordingly but DO NOT add to `audit_logs` — FR-AUDIT-002 requires recording them but the existing audit log is for executed admin actions; copilot-specific audit views read directly from `copilot_actions`.
 
 **Rationale**:
+
 - `audit_logs` exists and powers existing UIs (Constitution §I + §V); extending it is the path of least surprise.
 - `copilot_actions` carries the rich payload (intent text, plan JSON, before/after JSONB) without bloating `audit_logs.metadata` text.
 - Single transaction means it is impossible to have an executed write without its audit pair (SC-003: 100% audit coverage).
 
 **Alternatives considered**:
-- *Reuse `audit_logs.metadata` for the rich payload*: technically possible (it is `text`) but defeats the schema-typed indexability we want for filtering history by class/outcome.
-- *Separate write path that fires after the execute*: rejected — non-atomic, possible silent drop on partial failure.
+
+- _Reuse `audit_logs.metadata` for the rich payload_: technically possible (it is `text`) but defeats the schema-typed indexability we want for filtering history by class/outcome.
+- _Separate write path that fires after the execute_: rejected — non-atomic, possible silent drop on partial failure.
 
 ---
 
 ## R-9. Bulk preview generation and execute
 
 **Decision**:
+
 - **Preview**: compute the affected set with a normal SQL query, count the rows. If count > 500, refuse at draft time (FR-BULK-003). Otherwise: store the full id list in `copilot_previews.affected_ids` (JSONB int[]); render a sample of up to 20 representative rows into `preview_payload.sample`; compute aggregate impact (e.g., total margin delta for price changes) by aggregating in-memory over the preview's id list.
 - **Execute**: iterate the stored `affected_ids` in batches of 50 inside one transaction with `SAVEPOINT` per batch — per-item failures roll back the batch only and produce a `copilot_action_items` row with the failure reason; the rest continues. Outcome is `success | partial | failure` based on per-item count.
 
 **Rationale**:
+
 - 500 cap × 50/batch = at most 10 batches per execute; well within Postgres + Drizzle transaction limits.
 - SAVEPOINT-per-batch matches FR-EXECUTE-003 (no silent partial state) and FR-BULK-004 (per-item outcomes).
 - Aggregate impact computed at preview-time means the second-confirm dialog can show "saves you $1,243 in margin" without a second pass.
 
 **Alternatives considered**:
-- *One transaction, all-or-nothing*: harsher UX for admins (partial bulk should not fail wholesale).
-- *Fully parallel item executes*: parallelism gain not worth the per-item ordering loss for ≤500 rows; sequential batches are simpler and predictable.
+
+- _One transaction, all-or-nothing_: harsher UX for admins (partial bulk should not fail wholesale).
+- _Fully parallel item executes_: parallelism gain not worth the per-item ordering loss for ≤500 rows; sequential batches are simpler and predictable.
 
 ---
 
@@ -163,23 +182,25 @@ Refusals/cancellations/validation rejections are logged to `copilot_actions` wit
 
 **Decision**: Four fixed heuristic checks, each a pure function over current data, none using the LLM:
 
-| Heuristic | Definition | Source |
-|---|---|---|
-| `loss-making-price` | `products.price < products.cost_price * 0.95` (5% margin floor) | `productsTable` |
-| `refund-cluster` | ≥ 3 refunds against one user in the last 24 hours | `wallet_ledger` rows where `kind='refund'` |
-| `stock-spike` | inventory delta > 5× the rolling 7-day average for that product | `inventoryTable` count over time |
-| `discount-ratio` | active flash-sale discount > 50% on a product whose 30-day median price has not changed | `flash_sales` + `productsTable` |
+| Heuristic           | Definition                                                                              | Source                                     |
+| ------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `loss-making-price` | `products.price < products.cost_price * 0.95` (5% margin floor)                         | `productsTable`                            |
+| `refund-cluster`    | ≥ 3 refunds against one user in the last 24 hours                                       | `wallet_ledger` rows where `kind='refund'` |
+| `stock-spike`       | inventory delta > 5× the rolling 7-day average for that product                         | `inventoryTable` count over time           |
+| `discount-ratio`    | active flash-sale discount > 50% on a product whose 30-day median price has not changed | `flash_sales` + `productsTable`            |
 
 The LLM's role for "any unusual activity?" is to call `find_anomalies(kind=…)` and **summarize** the rows the heuristic returns, never to decide what counts as an anomaly. Heuristic thresholds are constants in `services/copilot/anomalies/` so they can be tuned without retraining anything.
 
 **Rationale**:
+
 - Deterministic heuristics are auditable and explainable; the spec's "no fabrication" rule (FR-INTENT-003) forbids the model from inventing anomalies.
 - Each check maps to existing tables — no new schema for anomalies.
 - The four are a starting set; the file structure makes adding more (or A/B testing thresholds) trivial.
 
 **Alternatives considered**:
-- *Use the LLM directly to detect anomalies*: rejected — non-deterministic and the spec forbids fabrication.
-- *Prebuilt anomaly-detection feature flag from spec 003*: feature 003 is "anomaly-detection" already on this repo; if its outputs become reliable they can replace these heuristics in a follow-up — but we do not couple to it now to keep this milestone independent.
+
+- _Use the LLM directly to detect anomalies_: rejected — non-deterministic and the spec forbids fabrication.
+- _Prebuilt anomaly-detection feature flag from spec 003_: feature 003 is "anomaly-detection" already on this repo; if its outputs become reliable they can replace these heuristics in a follow-up — but we do not couple to it now to keep this milestone independent.
 
 ---
 
@@ -188,19 +209,22 @@ The LLM's role for "any unusual activity?" is to call `find_anomalies(kind=…)`
 **Decision**: The copilot is a **right-side slide-out panel** mounted in `frontend/src/pages/admin/layout.tsx`, opened by Ctrl/Cmd+K or by a fixed-position floating button. Suggested commands are derived from the current admin route (e.g., on `/admin/products/:id`, the panel pre-loads "update price", "add FAQ", "publish draft"). All copilot interactions go through TanStack Query hooks generated from `shared/api-spec` via the existing orval pipeline.
 
 **Rationale**:
+
 - Slide-out (rather than full page) keeps admins in context — matches FR-UX-001 ("dedicated panel or command surface" inside the dashboard).
 - Ctrl/Cmd+K is the universal command-palette convention; pairing with a visible floating button keeps it discoverable.
 - Reusing the existing orval-generated hooks keeps Constitution §III (API-first, single source of truth) intact.
 
 **Alternatives considered**:
-- *Dedicated `/admin/copilot` page*: too far from the work admins are doing; rejected.
-- *Always-visible inline strip at top*: noisy and steals vertical space.
+
+- _Dedicated `/admin/copilot` page_: too far from the work admins are doing; rejected.
+- _Always-visible inline strip at top_: noisy and steals vertical space.
 
 ---
 
 ## R-12. RTL and Arabic-first behavior
 
 **Decision**:
+
 - Panel slides from the appropriate side based on `document.dir` (right in LTR, left in RTL).
 - All copilot UI strings live in the existing i18n bundle, Arabic first.
 - The system prompt instructs the model to respond in the admin's preferred locale; the locale is read from the existing admin user setting.
@@ -215,6 +239,7 @@ The LLM's role for "any unusual activity?" is to call `find_anomalies(kind=…)`
 ## R-13. Observability instrumentation
 
 **Decision**:
+
 - **Logging**: Pino structured logs with `correlationId` per copilot session (existing pattern from `middlewares/correlation.ts`). New logger field `copilot.preview_id` and `copilot.action_id` for join-friendly tracing.
 - **Metrics** (`prom-client`):
   - Counter: `copilot_command_total{kind, outcome}` — every drafted command, labeled by tool name and outcome (`drafted | confirmed | executed | failed | refused | rate_limited | stale | expired`).
@@ -233,6 +258,7 @@ The LLM's role for "any unusual activity?" is to call `find_anomalies(kind=…)`
 ## R-14. Secret/PII redaction for copilot payloads
 
 **Decision**: Extend the existing Pino redaction list to include:
+
 - `*.metadata.before.accountPassword` and `*.metadata.after.accountPassword` (for inventory previews — already partially covered by the existing `accountPassword` rule, but explicit nested paths defend in depth).
 - `*.preview_payload.before.accountPassword` and `.after.accountPassword`.
 - `*.intent_text` is **not** redacted — admins type their own commands and we want them in audit; if an admin pastes a password into a command, the secret-scan check (next bullet) catches it.
@@ -242,8 +268,9 @@ The copilot also runs an outbound content scan on every model response and on ev
 **Rationale**: SC-008 requires zero secret-leak instances; defense-in-depth means scanning at output time, not just trusting input filtering.
 
 **Alternatives considered**:
-- *Trust the model not to emit secrets*: insufficient for SC-008.
-- *Scan only at log-time (Pino redaction)*: catches the audit story but misses what is actually returned to the admin's screen — the leak target.
+
+- _Trust the model not to emit secrets_: insufficient for SC-008.
+- _Scan only at log-time (Pino redaction)_: catches the audit story but misses what is actually returned to the admin's screen — the leak target.
 
 ---
 
@@ -261,8 +288,9 @@ The flags are checked in the `requirePhase` middleware on copilot routes; flippi
 **Rationale**: FR-ROLLOUT-001/002/003 require independently deployable, reversible phases. Setting flags rather than gating in code keeps redeploy off the critical path.
 
 **Alternatives considered**:
-- *Code-level feature gates with deploys*: slower turnaround, riskier rollback.
-- *Per-admin opt-in*: nice-to-have for the pilot; can layer on top later.
+
+- _Code-level feature gates with deploys_: slower turnaround, riskier rollback.
+- _Per-admin opt-in_: nice-to-have for the pilot; can layer on top later.
 
 ---
 
