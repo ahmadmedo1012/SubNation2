@@ -87,9 +87,7 @@ interface AskBody {
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_HISTORY_CHARS = 8000;
 
-function sanitizeHistory(
-  raw: unknown,
-): Array<{ role: "user" | "assistant"; content: string }> {
+function sanitizeHistory(raw: unknown): Array<{ role: "user" | "assistant"; content: string }> {
   if (!Array.isArray(raw)) return [];
   const out: Array<{ role: "user" | "assistant"; content: string }> = [];
   let totalChars = 0;

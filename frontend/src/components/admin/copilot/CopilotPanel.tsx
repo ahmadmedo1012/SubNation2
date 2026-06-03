@@ -164,10 +164,7 @@ function loadConversations(): Conversation[] {
 
 function saveConversations(list: Conversation[]) {
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(list.slice(0, MAX_CONVERSATIONS)),
-    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_CONVERSATIONS)));
   } catch {
     // Storage quota or disabled — silently ignore.
   }
@@ -212,14 +209,48 @@ function autoTitle(text: string): string {
 // ──────────────────────────────────────────────────────────────────────
 
 const CHANGE_VERBS_AR = [
-  "حدّث", "حدث", "غيّر", "غير", "بدّل", "بدل", "عدّل", "عدل",
-  "أضف", "اضف", "ضع", "اجعل", "احذف", "امسح", "إلغ", "ألغ",
-  "ارفع", "اخفض", "زد", "نقص", "أرشف", "ارشف", "انشر", "rename",
+  "حدّث",
+  "حدث",
+  "غيّر",
+  "غير",
+  "بدّل",
+  "بدل",
+  "عدّل",
+  "عدل",
+  "أضف",
+  "اضف",
+  "ضع",
+  "اجعل",
+  "احذف",
+  "امسح",
+  "إلغ",
+  "ألغ",
+  "ارفع",
+  "اخفض",
+  "زد",
+  "نقص",
+  "أرشف",
+  "ارشف",
+  "انشر",
+  "rename",
 ];
 const CHANGE_VERBS_EN = [
-  "update", "change", "set", "edit", "modify", "rename",
-  "add", "remove", "delete", "increase", "decrease", "raise", "lower",
-  "publish", "archive", "unarchive",
+  "update",
+  "change",
+  "set",
+  "edit",
+  "modify",
+  "rename",
+  "add",
+  "remove",
+  "delete",
+  "increase",
+  "decrease",
+  "raise",
+  "lower",
+  "publish",
+  "archive",
+  "unarchive",
 ];
 function looksLikeChangeIntent(text: string): boolean {
   const t = text.trim().toLowerCase();
@@ -397,7 +428,7 @@ export function CopilotPanel() {
       const assistantContent =
         t.kind === "draft" && t.preview
           ? `(proposed change preview, awaiting confirmation): ${t.preview.intent_summary}`
-          : t.answer ?? "";
+          : (t.answer ?? "");
       if (assistantContent) {
         out.push({ role: "assistant", content: assistantContent });
       }
@@ -516,9 +547,11 @@ export function CopilotPanel() {
         headers,
       });
       if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as
-          | { error?: string; code?: string; stale_ids?: number[] }
-          | null;
+        const body = (await resp.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+          stale_ids?: number[];
+        } | null;
         throw new Error(body?.error ?? `confirm failed (${resp.status})`);
       }
       const data = (await resp.json()) as ConfirmResponse;
@@ -669,13 +702,13 @@ export function CopilotPanel() {
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-sm flex items-center gap-2">
                     المساعد الذكي
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${phaseBadge.color}`}>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded-full border ${phaseBadge.color}`}
+                    >
                       {phaseBadge.label}
                     </span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    {current.title}
-                  </div>
+                  <div className="text-[10px] text-muted-foreground truncate">{current.title}</div>
                 </div>
                 <button
                   onClick={startNewConversation}
@@ -691,7 +724,11 @@ export function CopilotPanel() {
                   title={fullscreen ? "تصغير" : "ملء الشاشة"}
                   aria-label={fullscreen ? "تصغير" : "ملء الشاشة"}
                 >
-                  {fullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  {fullscreen ? (
+                    <Minimize2 className="w-4 h-4" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   onClick={() => setOpen(false)}
@@ -741,9 +778,7 @@ export function CopilotPanel() {
                     }}
                     rows={1}
                     placeholder={
-                      flags.phase2_enabled
-                        ? "اكتب سؤالاً أو أمراً للتعديل..."
-                        : "اكتب سؤالك..."
+                      flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل..." : "اكتب سؤالك..."
                     }
                     className="flex-1 resize-none bg-transparent border-0 text-sm focus:outline-none min-h-[20px] max-h-[240px] py-1"
                   />
@@ -928,11 +963,7 @@ function AskAnswer({
           title="نسخ"
           aria-label="نسخ"
         >
-          {copied ? (
-            <Check className="w-3 h-3 text-emerald-400" />
-          ) : (
-            <Copy className="w-3 h-3" />
-          )}
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
         </button>
       </div>
       {toolUses.length > 0 && (
@@ -984,9 +1015,7 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
       )}
       <div className="flex-1 min-w-0">
-        <div className="font-bold">
-          {ok ? "تم التنفيذ" : "فشل التنفيذ"}
-        </div>
+        <div className="font-bold">{ok ? "تم التنفيذ" : "فشل التنفيذ"}</div>
         {ok && data.productName && (
           <div className="text-[11px] text-muted-foreground mt-0.5">
             <span className="font-mono">{item.tool}</span> · {data.productName} (#{data.productId})
