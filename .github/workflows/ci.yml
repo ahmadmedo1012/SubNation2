@@ -78,6 +78,79 @@ jobs:
         continue-on-error: true
 
   # ─────────────────────────────────────────────────────────────────────────
+  # CVE scanning — pnpm audit on production deps only (CG-01 closure)
+  # ─────────────────────────────────────────────────────────────────────────
+  #
+  # Closes audit Coverage Gap CG-01 (specs/004-security-audit/research.md
+  # §6): "Full automated CVE scan on pnpm-lock.yaml" was a gap because
+  # the audit relied on a manual top-15 sample. This job scans the full
+  # production dependency tree on every push/PR.
+  #
+  # Gating policy:
+  #   - critical CVEs in `--prod` deps → BLOCK (job fails). Currently 0.
+  #   - high CVEs in `--prod` deps     → INFORM (job continues, logs the list).
+  #     Tracking each one and rotating it to BLOCK after triage is the
+  #     follow-up — gating on every high today would block CI on transitive
+  #     issues we have already triaged (e.g. path-to-regexp via express 5).
+  #   - moderate / low / info → not enforced here; appear in the audit
+  #     summary if anyone runs `pnpm audit` locally.
+  #   - build-tool / dev-only deps (vite-plugin-pwa, orval, etc.) are NOT
+  #     scanned — their CVEs do not ship to production. Use `pnpm audit`
+  #     locally without `--prod` to see them.
+  audit:
+    name: CVE scanning (pnpm audit, prod deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        # Audit needs the resolved tree; --frozen-lockfile keeps install
+        # honest about the lockfile we're scanning.
+        run: pnpm install --frozen-lockfile
+
+      - name: CVE summary (informational — all severities)
+        # Always succeeds — gives the audit job a one-line summary in
+        # the CI log so reviewers can see the full picture without
+        # opening artifacts.
+        run: pnpm audit --prod || true
+
+      - name: High-severity CVE inventory (informational)
+        # Lists every high finding so a follow-up triage knows which
+        # transitive deps need an upgrade. Continues on non-zero so a
+        # high finding does not block the workflow.
+        run: |
+          set +e
+          pnpm audit --prod --audit-level high
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::High-severity CVEs in production deps. Triage: rotate the affected transitive to a fixed version, or document acceptance."
+          fi
+          exit 0
+
+      - name: Block on critical-severity CVEs in production deps
+        # The actual gate. Exits non-zero (and fails the job) if any
+        # critical-severity advisory matches a `--prod` dep. Currently 0.
+        # If you intentionally land a critical accept-the-risk override,
+        # gate it through the security review process — do NOT relax
+        # this step in a feature branch.
+        run: pnpm audit --prod --audit-level critical
+
+  # ─────────────────────────────────────────────────────────────────────────
   # Quality — lint, typecheck, migration drift, tests, full build
   # ─────────────────────────────────────────────────────────────────────────
   quality:
