@@ -170,9 +170,7 @@ describe("account-link-consent — masking helpers", () => {
 
   it("hides the local-part length (always 4 dots regardless of input)", () => {
     // Long local part — still 4 dots, not 8.
-    expect(consent.maskEmail("a-very-long-username@example.com")).toBe(
-      "a••••@example.com",
-    );
+    expect(consent.maskEmail("a-very-long-username@example.com")).toBe("a••••@example.com");
   });
 
   it("returns null for malformed / missing email", () => {
