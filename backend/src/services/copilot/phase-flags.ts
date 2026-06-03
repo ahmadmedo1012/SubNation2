@@ -37,10 +37,28 @@ let cache: { flags: CopilotPhaseFlags; loadedAt: number } | null = null;
 
 function parseFlags(json: unknown): CopilotPhaseFlags {
   try {
-    const obj =
-      typeof json === "string"
-        ? (JSON.parse(json) as Record<string, unknown>)
-        : (json as Record<string, unknown>);
+    let obj: Record<string, unknown>;
+    if (typeof json === "string") {
+      // Defensive: strip whitespace inside the raw JSON before parsing.
+      // We hit this in production after a copy-paste introduced a literal
+      // newline + spaces inside one of the boolean keys
+      // (`phase\n  3_high_risk_enabled`), which made JSON.parse throw and
+      // silently fall back to the all-off default. Stripping all whitespace
+      // outside string values is safe for our flat-boolean schema; if any
+      // future key needs to carry whitespace we'd revisit this.
+      const cleaned = json.replace(/\s+/g, "");
+      try {
+        obj = JSON.parse(cleaned) as Record<string, unknown>;
+      } catch (err) {
+        logger.warn(
+          { err, raw_length: json.length, cleaned_length: cleaned.length },
+          "copilot phase-flags: JSON.parse failed even after whitespace strip; defaulting to all-off",
+        );
+        return { ...DEFAULT_FLAGS };
+      }
+    } else {
+      obj = json as Record<string, unknown>;
+    }
     return {
       phase1_enabled: obj.phase1_enabled === true,
       phase2_enabled: obj.phase2_enabled === true,
