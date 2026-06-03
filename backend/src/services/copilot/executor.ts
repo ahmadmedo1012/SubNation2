@@ -24,11 +24,7 @@ import { db, productsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { recordExecute } from "./audit";
-import {
-  claimUnconsumedPreview,
-  markConsumed,
-  type PreviewRow,
-} from "./preview-store";
+import { claimUnconsumedPreview, markConsumed, type PreviewRow } from "./preview-store";
 
 export type ExecuteOutcome =
   | { kind: "success"; actionId: number; afterState: unknown }

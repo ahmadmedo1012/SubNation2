@@ -122,11 +122,7 @@ async function draftCatalogEditHandler(
     );
   }
 
-  const [row] = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.id, id))
-    .limit(1);
+  const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
   if (!row) {
     return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);
   }
@@ -145,7 +141,11 @@ async function draftCatalogEditHandler(
     if (!same) changes.push({ field: k, before: beforeVal ?? null, after: after ?? null });
   }
   if (changes.length === 0) {
-    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "No-op: every field already has the proposed value.");
+    return refusal(
+      409,
+      REFUSAL_CODES.INVALID_VALUE,
+      "No-op: every field already has the proposed value.",
+    );
   }
 
   return {
@@ -158,10 +158,9 @@ async function draftCatalogEditHandler(
       affectedIds: [id],
       changes,
       intentSummary: `Update ${changes.length} field(s) on product #${id} (${row.name}).`,
-      sideEffects:
-        changes.some((c) => c.field === "category" || c.field === "imageUrl")
-          ? ["This change is customer-visible immediately."]
-          : [],
+      sideEffects: changes.some((c) => c.field === "category" || c.field === "imageUrl")
+        ? ["This change is customer-visible immediately."]
+        : [],
       validationWarnings: [],
       irreversible: false,
       recordVersions: { [String(id)]: (row.updatedAt ?? row.createdAt).toISOString() },
@@ -186,9 +185,7 @@ export const DRAFT_TOOLS: CopilotTool[] = [draftCatalogEdit];
 
 export function draftToolsForScopes(scopes: string[]): CopilotTool[] {
   if (scopes.includes("all")) return DRAFT_TOOLS;
-  return DRAFT_TOOLS.filter(
-    (t) => t.requiredScope === null || scopes.includes(t.requiredScope),
-  );
+  return DRAFT_TOOLS.filter((t) => t.requiredScope === null || scopes.includes(t.requiredScope));
 }
 
 /**

@@ -32,7 +32,9 @@ export interface CreatePreviewInput {
 
 const TTL_MINUTES = 5;
 
-export async function createPreview(input: CreatePreviewInput): Promise<{ id: string; expiresAt: Date }> {
+export async function createPreview(
+  input: CreatePreviewInput,
+): Promise<{ id: string; expiresAt: Date }> {
   const id = newPreviewId();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + TTL_MINUTES * 60 * 1000);
@@ -77,10 +79,7 @@ export interface PreviewRow {
 }
 
 /** Fetch a preview the requesting admin owns, regardless of state. */
-export async function getOwnedPreview(
-  id: string,
-  adminId: number,
-): Promise<PreviewRow | null> {
+export async function getOwnedPreview(id: string, adminId: number): Promise<PreviewRow | null> {
   const [row] = await db
     .select()
     .from(copilotPreviewsTable)

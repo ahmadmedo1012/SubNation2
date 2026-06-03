@@ -24,16 +24,10 @@ import { Router } from "express";
 import { logger } from "../../../lib/logger";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
-import {
-  requireAdmin,
-  type AdminAuthenticatedRequest,
-} from "../../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import { recordNonExecute } from "../../../services/copilot/audit";
-import {
-  copilotChat,
-  copilotLlmAvailable,
-} from "../../../services/copilot/llm-client";
+import { copilotChat, copilotLlmAvailable } from "../../../services/copilot/llm-client";
 import { createPreview } from "../../../services/copilot/preview-store";
 import { getCopilotProvider } from "../../../services/copilot/provider-config";
 import { buildSystemPrompt } from "../../../services/copilot/system-prompt";
@@ -63,9 +57,7 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     return;
   }
   if (!copilotLlmAvailable()) {
-    res
-      .status(503)
-      .json({ error: "خدمة المساعد غير متاحة", code: "COPILOT_LLM_UNAVAILABLE" });
+    res.status(503).json({ error: "خدمة المساعد غير متاحة", code: "COPILOT_LLM_UNAVAILABLE" });
     return;
   }
 
@@ -81,9 +73,7 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   const reads = readToolsForScopes(scopes);
   const drafts = draftToolsForScopes(scopes);
   if (drafts.length === 0) {
-    res
-      .status(403)
-      .json({ error: "ليس لديك صلاحية لطرح تعديلات", code: "COPILOT_OUT_OF_SCOPE" });
+    res.status(403).json({ error: "ليس لديك صلاحية لطرح تعديلات", code: "COPILOT_OUT_OF_SCOPE" });
     return;
   }
   const tools = [...reads.map((t) => t.spec), ...drafts.map((t) => t.spec)];
@@ -101,7 +91,8 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
 
   // Capture the first successful draft call.
   let captured: { plan: DraftPlan; toolName: string } | null = null;
-  let validationError: { status: 409 | 422 | 403 | 404; code: string; message: string } | null = null;
+  let validationError: { status: 409 | 422 | 403 | 404; code: string; message: string } | null =
+    null;
 
   let result;
   try {
@@ -129,10 +120,7 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
       },
     });
   } catch (err) {
-    logger.error(
-      { err, adminId: adminReq.adminId, correlationId },
-      "copilot draft: LLM error",
-    );
+    logger.error({ err, adminId: adminReq.adminId, correlationId }, "copilot draft: LLM error");
     res
       .status(502)
       .json({ error: "حدث خطأ أثناء التواصل مع نموذج اللغة", code: "COPILOT_LLM_ERROR" });

@@ -12,59 +12,49 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import { logger } from "../../../lib/logger";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
-import {
-  requireAdmin,
-  type AdminAuthenticatedRequest,
-} from "../../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import { recordNonExecute } from "../../../services/copilot/audit";
 import { executeLowRiskConfirm } from "../../../services/copilot/executor";
-import {
-  cancelPreview,
-  getOwnedPreview,
-} from "../../../services/copilot/preview-store";
+import { cancelPreview, getOwnedPreview } from "../../../services/copilot/preview-store";
 
 const previewsRouter = Router();
 
 // ────────────────────────────────────────────────────────────────────────
 // GET /previews/:id
 // ────────────────────────────────────────────────────────────────────────
-previewsRouter.get(
-  "/copilot/previews/:id",
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    const adminReq = req as AdminAuthenticatedRequest;
-    const id = String(req.params.id ?? "");
-    const row = await getOwnedPreview(id, adminReq.adminId);
-    if (!row) {
-      res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
-      return;
-    }
-    if (row.consumedAt) {
-      res.status(410).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
-      return;
-    }
-    if (row.expiresAt < new Date()) {
-      res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
-      return;
-    }
-    res.json({
-      id: row.id,
-      admin_id: row.adminId,
-      intent_text: row.intentText,
-      intent_summary:
-        (row.previewPayload as { intent_summary?: string } | null)?.intent_summary ?? "",
-      action_class: row.actionClass,
-      risk_tier: row.riskTier,
-      payload: row.previewPayload,
-      created_at: row.createdAt.toISOString(),
-      expires_at: row.expiresAt.toISOString(),
-      confirmed_once_at: row.confirmedOnceAt?.toISOString() ?? null,
-      cooldown_starts_at: row.cooldownStartsAt?.toISOString() ?? null,
-      confirmed_twice_at: row.confirmedTwiceAt?.toISOString() ?? null,
-    });
-  },
-);
+previewsRouter.get("/copilot/previews/:id", requireAdmin, async (req: Request, res: Response) => {
+  const adminReq = req as AdminAuthenticatedRequest;
+  const id = String(req.params.id ?? "");
+  const row = await getOwnedPreview(id, adminReq.adminId);
+  if (!row) {
+    res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+    return;
+  }
+  if (row.consumedAt) {
+    res.status(410).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
+    return;
+  }
+  if (row.expiresAt < new Date()) {
+    res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+    return;
+  }
+  res.json({
+    id: row.id,
+    admin_id: row.adminId,
+    intent_text: row.intentText,
+    intent_summary:
+      (row.previewPayload as { intent_summary?: string } | null)?.intent_summary ?? "",
+    action_class: row.actionClass,
+    risk_tier: row.riskTier,
+    payload: row.previewPayload,
+    created_at: row.createdAt.toISOString(),
+    expires_at: row.expiresAt.toISOString(),
+    confirmed_once_at: row.confirmedOnceAt?.toISOString() ?? null,
+    cooldown_starts_at: row.cooldownStartsAt?.toISOString() ?? null,
+    confirmed_twice_at: row.confirmedTwiceAt?.toISOString() ?? null,
+  });
+});
 
 // ────────────────────────────────────────────────────────────────────────
 // POST /previews/:id/cancel
@@ -84,7 +74,9 @@ previewsRouter.post(
     const ok = await cancelPreview(id, adminReq.adminId);
     if (!ok) {
       // Already consumed.
-      res.status(409).json({ error: "تعذّر إلغاء معاينة مستهلكة", code: "COPILOT_PREVIEW_CONSUMED" });
+      res
+        .status(409)
+        .json({ error: "تعذّر إلغاء معاينة مستهلكة", code: "COPILOT_PREVIEW_CONSUMED" });
       return;
     }
     await recordNonExecute({
@@ -134,7 +126,10 @@ previewsRouter.post(
       res.status(403).json({
         error: "هذا النوع من العمليات لا يُنفَّذ من المساعد.",
         code: "COPILOT_HANDOFF_REQUIRED",
-        handoff: { target_url: "/admin/topups", rationale: "Wallet/refund operations are not executable from the copilot." },
+        handoff: {
+          target_url: "/admin/topups",
+          rationale: "Wallet/refund operations are not executable from the copilot.",
+        },
       });
       return;
     }
@@ -156,10 +151,7 @@ previewsRouter.post(
         res.json({
           outcome: "success",
           action_id: outcome.actionId,
-          result_url:
-            peek.affectedEntityType === "product"
-              ? `/admin/products`
-              : null,
+          result_url: peek.affectedEntityType === "product" ? `/admin/products` : null,
         });
         return;
       case "stale":
