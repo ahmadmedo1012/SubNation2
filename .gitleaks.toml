@@ -64,6 +64,47 @@ regex = '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?\d+:[a-zA-Z0-9_-]{35}['"]?'''
 tags = ["telegram", "bot", "token"]
 severity = "critical"
 
+# CG-02 (security audit 004) — explicit rules for SubNation's two
+# critical signing/encryption secrets. The default gitleaks ruleset
+# catches well-known cloud-provider keys but does not know about the
+# project's specific env-var conventions; if either of these were
+# accidentally committed in a future change, the default high-entropy
+# heuristics might miss them depending on the exact characters used
+# (the v8 entropy threshold is conservative). Explicit rules keyed by
+# the literal env-var name are the audit's recommended belt-and-
+# suspenders. The placeholder values in config/env.example are
+# already path-allowlisted below.
+
+[[rules]]
+id = "session-secret"
+description = "SubNation SESSION_SECRET (≥32 chars, signs customer JWTs)"
+# Production format: `openssl rand -base64 64 | tr -d '\n'` → ~88 chars
+# of base64 (A-Z, a-z, 0-9, +, /, =). We require ≥ 32 chars to dodge
+# placeholder strings; the allowlist for config/env.example handles
+# the documented dev-template values.
+regex = '''SESSION_SECRET\s*=\s*['"]?[A-Za-z0-9+/=_-]{32,}['"]?'''
+tags = ["subnation", "session", "secret"]
+severity = "critical"
+
+[[rules]]
+id = "admin-jwt-secret"
+description = "SubNation ADMIN_JWT_SECRET (≥32 chars, signs admin JWTs)"
+# Added by branch 005 (security audit Finding F-001) — admin sessions
+# now use a separate signing secret so a SESSION_SECRET leak does not
+# also forge admin tokens. Same shape as SESSION_SECRET.
+regex = '''ADMIN_JWT_SECRET\s*=\s*['"]?[A-Za-z0-9+/=_-]{32,}['"]?'''
+tags = ["subnation", "admin", "jwt", "secret"]
+severity = "critical"
+
+[[rules]]
+id = "encryption-key"
+description = "SubNation ENCRYPTION_KEY (AES-256-GCM, exactly 64 hex chars)"
+# Generated as `node -e "crypto.randomBytes(32).toString('hex')"` →
+# exactly 64 lowercase hex. Tight regex for low-FP detection.
+regex = '''ENCRYPTION_KEY\s*=\s*['"]?[a-f0-9]{64}['"]?'''
+tags = ["subnation", "encryption", "aes", "key"]
+severity = "critical"
+
 # ── Allowlists ──────────────────────────────────────────────────────────────
 #
 # `[[allowlists]]` is an array-of-tables: each entry filters out one class
@@ -116,6 +157,14 @@ regexes = [
   '''GENERIC_ALERT_WEBHOOK_URL\s*=\s*['"]?your-webhook-url['"]?''',
   '''METRICS_ADMIN_TOKEN\s*=\s*['"]?your-metrics-token['"]?''',
   '''TELEGRAM_BOT_TOKEN\s*=\s*['"]?your-telegram-bot-token['"]?''',
+  # CG-02 (security audit 004) — env.example placeholders for the
+  # three critical secrets added/extended in branch 005. The
+  # path-allowlist for config/env.example already covers them; these
+  # regex allowlists protect against a future move of the placeholders
+  # into a different documentation file.
+  '''SESSION_SECRET\s*=\s*['"]?replace-with-a-long-random-production-secret['"]?''',
+  '''ADMIN_JWT_SECRET\s*=\s*['"]?replace-with-a-different-long-random-admin-secret['"]?''',
+  '''ENCRYPTION_KEY\s*=\s*['"]?replace-with-64-hex-characters['"]?''',
 ]
 
 # False-positive regex allowlist: the `gcp-api-key` default rule is greedy
