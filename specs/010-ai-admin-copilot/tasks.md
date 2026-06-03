@@ -74,8 +74,8 @@ description: "Task list for AI Admin Copilot implementation"
 - [ ] T023 [P] `backend/src/lib/copilot/redaction.ts` — extends Pino redaction list with copilot-specific paths per research §R-14 (`*.metadata.before.accountPassword`, `*.preview_payload.before.accountPassword`, etc.); wires into the existing logger init
 - [ ] T024 [P] `backend/src/lib/copilot/secret-scan.ts` — outbound regex pack (Postgres URLs, AWS keys, Bearer tokens, password fields) with a single `scan(payload): { hasMatch, matches }` API; used by both response and storage paths
 - [ ] T025 `backend/src/lib/copilot/rate-limit.ts` — Redis sliding-window middleware: keys `copilot:rl:1m:<adminId>` (60s, 30 max) and `copilot:rl:1h:<adminId>` (3600s, 200 max), implemented via Lua for atomicity (research §R-6); returns 429 with `Retry-After` and increments `copilot_rate_limit_denials_total`
-- [ ] T026 [P] `backend/src/middlewares/requirePhase.ts` — reads `copilot_phase{1,2,3}_enabled` and `copilot_phase3_high_risk_enabled` from admin settings; gates routes per phase
-- [ ] T027 [P] `backend/src/middlewares/requireCopilotPermission.ts` — maps `action_class` to required admin permission scope; rejects with `403 COPILOT_OUT_OF_SCOPE` if missing
+- [ ] T026 [P] `backend/src/middlewares/requirePhase.ts` — uses `phase-flags.ts` (T142) to read `phase{1,2,3}_enabled` and `phase3_high_risk_enabled`; gates routes per phase; returns 503 `COPILOT_PHASE_DISABLED` when the relevant phase is off.
+- [ ] T027 [P] `backend/src/middlewares/requireCopilotPermission.ts` — maps `action_class` to required admin permission scope; on missing scope, calls the audit-write helper from T146 then rejects with `403 COPILOT_OUT_OF_SCOPE`.
 
 ### Copilot service skeletons
 
@@ -91,6 +91,42 @@ description: "Task list for AI Admin Copilot implementation"
 ### Worker
 
 - [ ] T036 `backend/src/jobs/copilot-reaper.ts` — every 5 minutes on the `subnation-worker` tier (Constitution §V scheduling rule), deletes `copilot_previews` rows where `expires_at < now() - interval '24 hours'`. MUST refuse to run when `process.env.WORKER_TIER !== "true"` (web tier blocks the job).
+
+### Phase-flag storage (added by /speckit-analyze remediation, 2026-06-03)
+
+- [ ] T140 Audit existing settings storage in `shared/db/src/schema/` and `backend/src/routes/admin/settings.ts`. If a generic key/value `admin_settings` table already exists, document its shape in `specs/010-ai-admin-copilot/notes-settings-storage.md` and skip T141; otherwise proceed.
+- [ ] T141 If T140 finds no suitable table: add Drizzle schema `shared/db/src/schema/copilot_settings.ts` — single row keyed by a fixed `id=1`, with boolean columns `phase1_enabled`, `phase2_enabled`, `phase3_enabled`, `phase3_high_risk_enabled` (all `NOT NULL DEFAULT false`), `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `updated_by INTEGER REFERENCES admin_users(id)`. Add to the boot migration in T008.
+- [ ] T142 [P] Backend reader in `backend/src/services/copilot/phase-flags.ts` — caches the flags row in-process for 30 seconds; invalidates on the writer's UPDATE.
+- [ ] T143 [P] Admin API `PATCH /api/admin/copilot/settings` (super-admin scope `admins` or `all` only) that updates the four flags and writes a `copilot_actions` row with `action_class="phase_flag_change"` plus an `audit_logs` row — every flip of a phase flag is itself an auditable admin action. Add Zod schema in `shared/api-zod/src/copilot/settings.ts` and OpenAPI path in the contracts fragment.
+- [ ] T144 [P] Admin UI in `frontend/src/pages/admin/settings.tsx` — adds a "Copilot phases" panel with four toggles, each requiring the high-risk double-confirm pattern (changing phase flags is high-risk by definition). Reuse `DoubleConfirmDialog` from T101.
+- [ ] T145 [P] Test in `backend/src/test/copilot/phase-flags.test.ts` — flipping `phase1_enabled` from false→true allows `/ask`; flipping back to false returns 503; flipping `phase3_high_risk_enabled` to true while `phase3_enabled` is false is rejected as inconsistent.
+
+### Authorization-denial audit (added by /speckit-analyze remediation, 2026-06-03)
+
+- [ ] T146 Update `backend/src/middlewares/requireCopilotPermission.ts` (T027) so that when a request is denied for missing scope, BEFORE returning 403, it writes a `copilot_actions` row with `admin_id=<requesting admin>`, `intent_text=<request body intent_text or "">`, `action_class="refusal"`, `risk_tier="low"`, `outcome="refused"`, `failure_reason="out_of_scope: missing scope <scope_name>"`. No `audit_logs` row is written for refusals (per data-model.md §R-8).
+- [ ] T147 [P] Test in `backend/src/test/copilot/audit.refusal.test.ts` — admin without `inventory` scope calls `/draft` with a price-change intent → 403 `COPILOT_OUT_OF_SCOPE`; verify exactly one `copilot_actions` row exists with `outcome="refused"` and the correct `failure_reason`. Same admin retry → second row added (refusals are not deduped).
+- [ ] T148 [P] Extend the daily reconciliation worker (T119) with one more invariant: any 403 returned by copilot routes within the report window has a matching `copilot_actions` row with `outcome="refused"`. Mismatches alert via the existing webhook.
+
+### History entity-filter (added by /speckit-analyze remediation, 2026-06-03)
+
+- [ ] T149 Update `shared/api-zod/src/copilot/history.ts` (T015) to include optional `entity_type: z.string()` and `entity_id: z.number().int()` query params; assert that `entity_id` requires `entity_type`.
+- [ ] T150 Update `backend/src/routes/admin/copilot/history.ts` (T117) so the SQL filter joins on `copilot_action_items.entity_type/entity_id` for bulk actions and on the parent `copilot_previews.affected_entity_type` + JSONB-contained id for single actions.
+- [ ] T151 [P] Extend `backend/src/test/copilot/history.routes.test.ts` (T113) with two cases: filter by `entity_type=product&entity_id=42` returns only actions touching that product (single + bulk that included it); requesting `entity_id=42` without `entity_type` returns 400 with a clear message.
+
+### Service-parity decision (added by /speckit-analyze remediation, 2026-06-03)
+
+- [ ] T152 Decide between Option A (extract `products.service.ts`) and Option B (executor-side checklist). Document the choice in `specs/010-ai-admin-copilot/notes-service-parity.md`. Default recommendation: **Option A** — extract a thin service layer for product writes so the copilot and the existing admin route share one path; matches Constitution §III's "single source of truth" pattern and avoids the executor needing to know about every side-effect.
+
+#### Option A path (recommended)
+
+- [ ] T153 [P] Extract `backend/src/services/products.service.ts` from `backend/src/routes/admin/products.ts`: pull `updateProduct(id, fields, { actor })`, `archiveProduct`, `unarchiveProduct`, `setStock`, `setPrice`, `setCostPrice` into named exports that wrap the existing transaction, slugifyWithId, bumpSitemapCache, and writeAuditLog calls. Update the existing admin route to call the service instead of the inline logic; verify all existing product tests pass unchanged.
+- [ ] T154 [P] Refactor T086 (catalog-edit execute), T097 (price/cost), T098 (stock), T099 (status) to call the new service functions exclusively. Executor MUST NOT invoke `productsTable.update` directly.
+- [ ] T155 [P] Test in `backend/src/test/copilot/service-parity.test.ts` — for each writable field, assert that a copilot-driven edit and an admin-route-driven edit produce byte-identical state in `products`, `audit_logs`, the sitemap cache key, and the slug column.
+
+#### Option B path (rejected unless A proves too costly)
+
+- [ ] T156 Document in `specs/010-ai-admin-copilot/notes-service-parity.md` the exhaustive checklist of side effects the executor must invoke per write class (slugifyWithId on name/slug change, bumpSitemapCache on category/status change, writeAuditLog with the existing 'admin' actor type, etc.). The executor implementation must mirror this checklist exactly.
+- [ ] T157 Add a Phase 11 audit task: "Diff the executor's product-write code path against the inline `routes/admin/products.ts` logic line-by-line; any divergence is a defect."
 
 **Checkpoint**: Foundation ready — all user stories may start. Verify by running `pnpm typecheck` (must pass) and confirming `audit_logs` table accepts the new `action` literal.
 
@@ -193,7 +229,7 @@ description: "Task list for AI Admin Copilot implementation"
 
 ### Implementation
 
-- [ ] T085 [US3] `backend/src/services/copilot/executor.ts` — single-entity execute path: `BEGIN` → re-read entity, compare `updated_at` to `record_versions` → mark preview consumed → call existing service-layer function (e.g., update via `productsTable` Drizzle update) → write `copilot_actions` + `audit_logs` via `audit.ts` → `COMMIT`. Capture `before_state`/`after_state` JSONB
+- [ ] T085 [US3] `backend/src/services/copilot/executor.ts` — single-entity execute path: `BEGIN` → re-read entity, compare `updated_at` to `record_versions` → mark preview consumed → call the chosen interface from T152 (Option A: `products.service.ts`; Option B: documented side-effect checklist) — executor MUST NOT call Drizzle update on `productsTable` directly → write `copilot_actions` + `audit_logs` via `audit.ts` → `COMMIT`. Capture `before_state`/`after_state` JSONB
 - [ ] T086 [US3] Execute handler in `backend/src/services/copilot/tools/draft/catalog-edit.ts` (extend with an `execute` function used by `executor.ts`)
 - [ ] T087 [US3] `backend/src/routes/admin/copilot/confirm.ts` — `POST /previews/:id/confirm`: rate-limit → permission re-check (FR-AUTH-003) → load preview with `FOR UPDATE` → branch on `risk_tier`: `low` → executor; `high` + sub-flag enabled → `confirmation.markFirstConfirmed` and return `awaiting_double_confirm`; `no_execute` → 403 with handoff URL; expired → 410; consumed → 409
 - [ ] T088 [P] [US3] `frontend/src/components/admin/copilot/ConfirmDialog.tsx` — single-confirm dialog with Approve and Cancel; calls `/confirm`

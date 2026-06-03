@@ -218,6 +218,7 @@ paths:
         - in: query
           name: action_class
           schema: { type: string }
+          description: Filter by action class (e.g. price_change, catalog_edit, bulk_status_change).
         - in: query
           name: outcome
           schema:
@@ -234,6 +235,18 @@ paths:
                 expired,
                 cancelled,
               ]
+        - in: query
+          name: entity_type
+          schema: { type: string }
+          description: |
+            Filter to actions targeting this entity type (e.g. `product`,
+            `inventory`, `admin_user`). Joins via copilot_action_items
+            for bulk actions and via copilot_previews.affected_entity_type
+            for single-entity actions.
+        - in: query
+          name: entity_id
+          schema: { type: integer }
+          description: Filter to actions targeting this specific entity ID. Requires entity_type.
         - in: query
           name: since_iso
           schema: { type: string, format: date-time }
