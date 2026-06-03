@@ -10,11 +10,11 @@ audit 004. The original audit deliverables in
 `specs/004-security-audit/` are intentionally NOT modified — they are
 the immutable snapshot remediation references.
 
-| Gap   | Subsystem | Closure type    | Branch action              |
-|-------|-----------|-----------------|----------------------------|
-| CG-01 | SUP-1     | Resolved        | Added CI step `audit`      |
-| CG-02 | SUP-6     | Resolved        | New gitleaks rules added   |
-| CG-03 | AUTH-2    | **Non-issue**   | Verified read-only; no fix |
+| Gap   | Subsystem | Closure type  | Branch action              |
+| ----- | --------- | ------------- | -------------------------- |
+| CG-01 | SUP-1     | Resolved      | Added CI step `audit`      |
+| CG-02 | SUP-6     | Resolved      | New gitleaks rules added   |
+| CG-03 | AUTH-2    | **Non-issue** | Verified read-only; no fix |
 
 The remaining gaps (CG-04 Cloudflare WAF, CG-05 Neon allow-list,
 CG-06 Sentry org rules, CG-07 Render dashboard, CG-08 frontend
@@ -163,11 +163,11 @@ Redis to client state, this verification needs to be re-run.
 
 ## Cross-document trail
 
-| Closure | Commit    | File(s) touched                                       |
-|---------|-----------|-------------------------------------------------------|
-| CG-02   | `f883963` | `.gitleaks.toml`                                      |
-| CG-01   | `21b8741` | `.github/workflows/ci.yml`                            |
-| CG-03   | (this)    | `specs/008-audit-coverage-gaps/notes.md` (read-only)  |
+| Closure | Commit    | File(s) touched                                      |
+| ------- | --------- | ---------------------------------------------------- |
+| CG-02   | `f883963` | `.gitleaks.toml`                                     |
+| CG-01   | `21b8741` | `.github/workflows/ci.yml`                           |
+| CG-03   | (this)    | `specs/008-audit-coverage-gaps/notes.md` (read-only) |
 
 Audit branch 004 deliverables (`spec.md`, `plan.md`, `research.md`,
 `security.md`, `priorities.md`, `quickstart.md`, `data-model.md`,
