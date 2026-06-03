@@ -326,6 +326,201 @@ export interface AdminUser {
   created_at: string;
 }
 
+export interface CopilotAskContext {
+  route?: string;
+  focus_entity_type?: string;
+  focus_entity_id?: number;
+}
+
+export type CopilotValidationWarningSeverity =
+  (typeof CopilotValidationWarningSeverity)[keyof typeof CopilotValidationWarningSeverity];
+
+export const CopilotValidationWarningSeverity = {
+  warn: "warn",
+  error: "error",
+} as const;
+
+export interface CopilotValidationWarning {
+  severity: CopilotValidationWarningSeverity;
+  code: string;
+  message: string;
+  /** @nullable */
+  affected_id?: number | null;
+}
+
+export interface CopilotHandoff {
+  target_url: string;
+  rationale: string;
+}
+
+export interface CopilotChange {
+  field: string;
+  /** Previous value (any JSON-encodable shape) */
+  before?: unknown;
+  /** Proposed new value (any JSON-encodable shape) */
+  after?: unknown;
+}
+
+export type CopilotSinglePreviewPayloadKind =
+  (typeof CopilotSinglePreviewPayloadKind)[keyof typeof CopilotSinglePreviewPayloadKind];
+
+export const CopilotSinglePreviewPayloadKind = {
+  single: "single",
+} as const;
+
+export interface CopilotSinglePreviewPayload {
+  kind: CopilotSinglePreviewPayloadKind;
+  intent_summary: string;
+  side_effects: string[];
+  validation_warnings: CopilotValidationWarning[];
+  irreversible: boolean;
+  handoff?: CopilotHandoff | null;
+  entity_type: string;
+  entity_id: number;
+  changes: CopilotChange[];
+}
+
+export interface CopilotBulkSampleRow {
+  entity_type: string;
+  entity_id: number;
+  changes: CopilotChange[];
+}
+
+export interface CopilotPredictedFailure {
+  entity_id: number;
+  reason: string;
+}
+
+export type CopilotBulkPreviewPayloadKind =
+  (typeof CopilotBulkPreviewPayloadKind)[keyof typeof CopilotBulkPreviewPayloadKind];
+
+export const CopilotBulkPreviewPayloadKind = {
+  bulk: "bulk",
+} as const;
+
+/**
+ * @nullable
+ */
+export type CopilotBulkPreviewPayloadAggregateImpact = { [key: string]: unknown } | null;
+
+export interface CopilotBulkPreviewPayload {
+  kind: CopilotBulkPreviewPayloadKind;
+  intent_summary: string;
+  side_effects: string[];
+  validation_warnings: CopilotValidationWarning[];
+  irreversible: boolean;
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  total_affected: number;
+  /** @maxItems 20 */
+  sample: CopilotBulkSampleRow[];
+  /** @nullable */
+  aggregate_impact?: CopilotBulkPreviewPayloadAggregateImpact;
+  predicted_failures: CopilotPredictedFailure[];
+}
+
+export type CopilotPreviewViewRiskTier =
+  (typeof CopilotPreviewViewRiskTier)[keyof typeof CopilotPreviewViewRiskTier];
+
+export const CopilotPreviewViewRiskTier = {
+  low: "low",
+  high: "high",
+  no_execute: "no_execute",
+} as const;
+
+export interface CopilotPreviewView {
+  id: string;
+  admin_id: number;
+  intent_text: string;
+  intent_summary: string;
+  action_class: string;
+  risk_tier: CopilotPreviewViewRiskTier;
+  payload: CopilotSinglePreviewPayload | CopilotBulkPreviewPayload;
+  created_at: string;
+  expires_at: string;
+  /** @nullable */
+  confirmed_once_at?: string | null;
+  /** @nullable */
+  cooldown_starts_at?: string | null;
+  /** @nullable */
+  confirmed_twice_at?: string | null;
+}
+
+export interface CopilotDraftResponse {
+  preview_id: string;
+  preview: CopilotPreviewView;
+}
+
+export type CopilotConfirmItemOutcome =
+  (typeof CopilotConfirmItemOutcome)[keyof typeof CopilotConfirmItemOutcome];
+
+export const CopilotConfirmItemOutcome = {
+  success: "success",
+  failure: "failure",
+  skipped: "skipped",
+} as const;
+
+export interface CopilotConfirmItem {
+  entity_id: number;
+  outcome: CopilotConfirmItemOutcome;
+  /** @nullable */
+  failure_reason?: string | null;
+}
+
+export type CopilotConfirmResponseOutcome =
+  (typeof CopilotConfirmResponseOutcome)[keyof typeof CopilotConfirmResponseOutcome];
+
+export const CopilotConfirmResponseOutcome = {
+  success: "success",
+  partial: "partial",
+  failure: "failure",
+  awaiting_double_confirm: "awaiting_double_confirm",
+} as const;
+
+export interface CopilotConfirmResponse {
+  outcome: CopilotConfirmResponseOutcome;
+  /** @nullable */
+  action_id?: number | null;
+  /** @nullable */
+  cooldown_seconds?: number | null;
+  items?: CopilotConfirmItem[] | null;
+  /** @nullable */
+  result_url?: string | null;
+}
+
+export interface CopilotRefusalResponse {
+  code: string;
+  message: string;
+  reasons: string[];
+  /** @nullable */
+  suggested_narrowing?: string | null;
+}
+
+export type CopilotHistoryEntryRiskTier =
+  (typeof CopilotHistoryEntryRiskTier)[keyof typeof CopilotHistoryEntryRiskTier];
+
+export const CopilotHistoryEntryRiskTier = {
+  low: "low",
+  high: "high",
+  no_execute: "no_execute",
+} as const;
+
+export interface CopilotHistoryEntry {
+  id: number;
+  admin_id: number;
+  intent_text: string;
+  action_class: string;
+  risk_tier: CopilotHistoryEntryRiskTier;
+  outcome: string;
+  created_at: string;
+  /** @nullable */
+  executed_at?: string | null;
+  /** @nullable */
+  failure_reason?: string | null;
+}
+
 export type ListProductsParams = {
   /**
    * @nullable
@@ -385,4 +580,57 @@ export type ListAdminUsersParams = {
    * @nullable
    */
   page?: number | null;
+};
+
+export type CopilotAskBody = {
+  /**
+   * @minLength 1
+   * @maxLength 4000
+   */
+  intent_text: string;
+  context?: CopilotAskContext;
+};
+
+export type CopilotDraftBody = {
+  /**
+   * @minLength 1
+   * @maxLength 4000
+   */
+  intent_text: string;
+  context?: CopilotAskContext;
+};
+
+export type CopilotHistoryParams = {
+  action_class?: string;
+  outcome?: CopilotHistoryOutcome;
+  entity_type?: string;
+  entity_id?: number;
+  since_iso?: string;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+  cursor?: string;
+};
+
+export type CopilotHistoryOutcome =
+  (typeof CopilotHistoryOutcome)[keyof typeof CopilotHistoryOutcome];
+
+export const CopilotHistoryOutcome = {
+  success: "success",
+  partial: "partial",
+  failure: "failure",
+  refused: "refused",
+  validation_rejected: "validation_rejected",
+  rate_limited: "rate_limited",
+  stale: "stale",
+  expired: "expired",
+  cancelled: "cancelled",
+} as const;
+
+export type CopilotHistory200 = {
+  entries: CopilotHistoryEntry[];
+  /** @nullable */
+  next_cursor?: string | null;
 };

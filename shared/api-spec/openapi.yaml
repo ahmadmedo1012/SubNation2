@@ -19,6 +19,8 @@ tags:
     description: Wallet and top-ups
   - name: admin
     description: Admin operations
+  - name: copilot
+    description: AI Admin Copilot — natural-language commands, structured previews, gated execution
 paths:
   /healthz:
     get:
@@ -623,6 +625,363 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # AI Admin Copilot (010-ai-admin-copilot)
+  #
+  # All routes require an authenticated admin session and are subject to the
+  # per-admin copilot rate limit (30/min, 200/hour, sliding windows). Mutation
+  # paths (/confirm, /double-confirm) are the ONLY ones that change domain
+  # state via the copilot — the LLM never proposes execution.
+  # ──────────────────────────────────────────────────────────────────────────
+  /admin/copilot/ask:
+    post:
+      operationId: copilotAsk
+      tags: [copilot]
+      summary: Read-only natural-language query (Phase 1 — no writes)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                intent_text:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                context:
+                  $ref: "#/components/schemas/CopilotAskContext"
+              required: [intent_text]
+      responses:
+        "200":
+          description: SSE stream of token / tool_use / tool_result / done events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Copilot phase disabled or LLM unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/draft:
+    post:
+      operationId: copilotDraft
+      tags: [copilot]
+      summary: Draft an action and return a preview (Phase 2+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                intent_text:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                context:
+                  $ref: "#/components/schemas/CopilotAskContext"
+              required: [intent_text]
+      responses:
+        "200":
+          description: Draft accepted; preview persisted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotDraftResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Out of scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotRefusalResponse"
+        "409":
+          description: Validation rejected the proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotRefusalResponse"
+        "422":
+          description: Bulk row cap exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotRefusalResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/previews/{id}:
+    get:
+      operationId: copilotGetPreview
+      tags: [copilot]
+      summary: Fetch a pending preview the requesting admin owns
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Preview body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotPreviewView"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found or owned by another admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Preview expired or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/previews/{id}/cancel:
+    post:
+      operationId: copilotCancelPreview
+      tags: [copilot]
+      summary: Cancel a pending preview without executing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cancelled (copilot_actions row written with outcome=cancelled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found or owned by another admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/previews/{id}/confirm:
+    post:
+      operationId: copilotConfirm
+      tags: [copilot]
+      summary: Single confirmation; executes low-risk or starts high-risk cooldown
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Executed (low-risk) or first-confirm recorded (high-risk)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotConfirmResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope, ownership mismatch, or no_execute tier (wallet handoff)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Stale record or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Preview expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/previews/{id}/double-confirm:
+    post:
+      operationId: copilotDoubleConfirm
+      tags: [copilot]
+      summary: Second confirmation for high-risk; executes after 3-second cooldown
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotConfirmResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Insufficient scope or ownership mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Stale, already consumed, or first-confirm missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Preview expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "425":
+          description: Cooldown not elapsed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/copilot/history:
+    get:
+      operationId: copilotHistory
+      tags: [copilot]
+      summary: Browse the requesting admin's copilot action history
+      parameters:
+        - name: action_class
+          in: query
+          schema:
+            type: string
+        - name: outcome
+          in: query
+          schema:
+            type: string
+            enum:
+              - success
+              - partial
+              - failure
+              - refused
+              - validation_rejected
+              - rate_limited
+              - stale
+              - expired
+              - cancelled
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          schema:
+            type: integer
+        - name: since_iso
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Page of history entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CopilotHistoryEntry"
+                  next_cursor:
+                    type: ["string", "null"]
+                required: [entries]
+        "400":
+          description: Invalid query (e.g. entity_id without entity_type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -1095,3 +1454,291 @@ components:
           order_count,
           created_at,
         ]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # AI Admin Copilot schemas (010-ai-admin-copilot)
+    # ──────────────────────────────────────────────────────────────────────
+    CopilotAskContext:
+      type: object
+      properties:
+        route:
+          type: string
+        focus_entity_type:
+          type: string
+        focus_entity_id:
+          type: integer
+
+    CopilotValidationWarning:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [warn, error]
+        code:
+          type: string
+        message:
+          type: string
+        affected_id:
+          type: ["integer", "null"]
+      required: [severity, code, message]
+
+    CopilotHandoff:
+      type: object
+      properties:
+        target_url:
+          type: string
+        rationale:
+          type: string
+      required: [target_url, rationale]
+
+    CopilotChange:
+      type: object
+      properties:
+        field:
+          type: string
+        before:
+          description: Previous value (any JSON-encodable shape)
+        after:
+          description: Proposed new value (any JSON-encodable shape)
+      required: [field]
+
+    CopilotSinglePreviewPayload:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [single]
+        intent_summary:
+          type: string
+        side_effects:
+          type: array
+          items:
+            type: string
+        validation_warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotValidationWarning"
+        irreversible:
+          type: boolean
+        handoff:
+          oneOf:
+            - $ref: "#/components/schemas/CopilotHandoff"
+            - type: "null"
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotChange"
+      required:
+        [
+          kind,
+          intent_summary,
+          side_effects,
+          validation_warnings,
+          irreversible,
+          entity_type,
+          entity_id,
+          changes,
+        ]
+
+    CopilotBulkSampleRow:
+      type: object
+      properties:
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotChange"
+      required: [entity_type, entity_id, changes]
+
+    CopilotPredictedFailure:
+      type: object
+      properties:
+        entity_id:
+          type: integer
+        reason:
+          type: string
+      required: [entity_id, reason]
+
+    CopilotBulkPreviewPayload:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [bulk]
+        intent_summary:
+          type: string
+        side_effects:
+          type: array
+          items:
+            type: string
+        validation_warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotValidationWarning"
+        irreversible:
+          type: boolean
+        total_affected:
+          type: integer
+          minimum: 1
+          maximum: 500
+        sample:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/CopilotBulkSampleRow"
+        aggregate_impact:
+          type: ["object", "null"]
+          additionalProperties: true
+        predicted_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotPredictedFailure"
+      required:
+        [
+          kind,
+          intent_summary,
+          side_effects,
+          validation_warnings,
+          irreversible,
+          total_affected,
+          sample,
+          predicted_failures,
+        ]
+
+    CopilotPreviewView:
+      type: object
+      properties:
+        id:
+          type: string
+        admin_id:
+          type: integer
+        intent_text:
+          type: string
+        intent_summary:
+          type: string
+        action_class:
+          type: string
+        risk_tier:
+          type: string
+          enum: [low, high, no_execute]
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/CopilotSinglePreviewPayload"
+            - $ref: "#/components/schemas/CopilotBulkPreviewPayload"
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        confirmed_once_at:
+          type: ["string", "null"]
+          format: date-time
+        cooldown_starts_at:
+          type: ["string", "null"]
+          format: date-time
+        confirmed_twice_at:
+          type: ["string", "null"]
+          format: date-time
+      required:
+        [
+          id,
+          admin_id,
+          intent_text,
+          intent_summary,
+          action_class,
+          risk_tier,
+          payload,
+          created_at,
+          expires_at,
+        ]
+
+    CopilotDraftResponse:
+      type: object
+      properties:
+        preview_id:
+          type: string
+        preview:
+          $ref: "#/components/schemas/CopilotPreviewView"
+      required: [preview_id, preview]
+
+    CopilotConfirmItem:
+      type: object
+      properties:
+        entity_id:
+          type: integer
+        outcome:
+          type: string
+          enum: [success, failure, skipped]
+        failure_reason:
+          type: ["string", "null"]
+      required: [entity_id, outcome]
+
+    CopilotConfirmResponse:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum: [success, partial, failure, awaiting_double_confirm]
+        action_id:
+          type: ["integer", "null"]
+        cooldown_seconds:
+          type: ["integer", "null"]
+        items:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/CopilotConfirmItem"
+            - type: "null"
+        result_url:
+          type: ["string", "null"]
+      required: [outcome]
+
+    CopilotRefusalResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        suggested_narrowing:
+          type: ["string", "null"]
+      required: [code, message, reasons]
+
+    CopilotHistoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        admin_id:
+          type: integer
+        intent_text:
+          type: string
+        action_class:
+          type: string
+        risk_tier:
+          type: string
+          enum: [low, high, no_execute]
+        outcome:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        executed_at:
+          type: ["string", "null"]
+          format: date-time
+        failure_reason:
+          type: ["string", "null"]
+      required:
+        [id, admin_id, intent_text, action_class, risk_tier, outcome, created_at]
