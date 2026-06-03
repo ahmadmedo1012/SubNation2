@@ -20,7 +20,7 @@ The copilot is an **administrative operator surface**, not a customer-facing cha
 
 ---
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 — Read-only Catalog & Operations Assistant (Priority: P1)
 
@@ -172,7 +172,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 
 ---
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements — Identity, Authorization, & Scoping
 
@@ -262,7 +262,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 - **FR-ROLLOUT-002**: Each phase MUST be independently deployable and reversible (a phase can be turned off without breaking earlier phases).
 - **FR-ROLLOUT-003**: Phase 3 enablement of high-risk write classes MUST be gated such that the system can be configured to allow Phase 3 for low-risk classes only while keeping high-risk classes in preview-only mode.
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **Admin Operator**: An authenticated admin user with a defined role and permission scope, the only actor who may interact with the copilot. All copilot actions are attributed to one Admin Operator.
 - **Copilot Session**: A bounded conversational/working context belonging to one Admin Operator. Sessions hold short-term context (e.g., the entity an admin is currently looking at) used to scope suggestions; they do not carry write authority on their own.
@@ -277,7 +277,7 @@ The copilot panel surfaces context-aware suggested commands (e.g., on a product 
 
 ---
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
