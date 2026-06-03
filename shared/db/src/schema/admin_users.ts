@@ -38,6 +38,23 @@ export const adminUsersTable = pgTable("admin_users", {
   totpSecret: varchar("totp_secret", { length: 255 }),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Monotonic write-clock used by the AI Admin Copilot's preview-staleness
+   * check (010-ai-admin-copilot, FR-PREVIEW-004). Captured at draft time and
+   * compared at execute time; if it has advanced the preview is rejected,
+   * preventing a stale role-change preview from overwriting a security-driven
+   * permission downgrade applied between draft and confirm.
+   *
+   * NOT NULL with default now() so existing rows backfill cleanly via the
+   * boot migration's `ADD COLUMN IF NOT EXISTS`.
+   *
+   * Drizzle's `$onUpdate` only fires on calls that go through Drizzle; raw-SQL
+   * mutations MUST set this column explicitly to keep the invariant honest.
+   */
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export const insertAdminUserSchema = createInsertSchema(adminUsersTable).omit({

@@ -46,13 +46,13 @@ description: "Task list for AI Admin Copilot implementation"
 
 ### Schema & migrations
 
-- [ ] T004 Drizzle schema for `copilot_previews` in `shared/db/src/schema/copilot_previews.ts` — column set per `data-model.md` §1.1, including indexes `idx_copilot_previews_admin_created`, `idx_copilot_previews_expires`, `idx_copilot_previews_action_class`
-- [ ] T005 [P] Drizzle schema for `copilot_actions` in `shared/db/src/schema/copilot_actions.ts` — column set per `data-model.md` §1.2, indexes `idx_copilot_actions_admin_created`, `idx_copilot_actions_action_class`, `idx_copilot_actions_outcome`, `idx_copilot_actions_preview`
-- [ ] T006 [P] Drizzle schema for `copilot_action_items` in `shared/db/src/schema/copilot_action_items.ts` — column set per `data-model.md` §1.3, indexes `idx_copilot_action_items_action`, `idx_copilot_action_items_entity`
-- [ ] T007 Re-export the three new tables from `shared/db/src/schema/index.ts`
-- [ ] T008 Boot migration `backend/src/db/migrations/NNNN_copilot.sql` creating the three tables via `IF NOT EXISTS` per Constitution §V; integrates with the existing Redis-NX boot-migration lock
-- [ ] T009 [P] If T003 finds `inventory.updated_at` missing: add migration step in `NNNN_copilot.sql` to `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` plus a Drizzle `onUpdate` hook; otherwise skip
-- [ ] T010 [P] If T003 finds `admin_users.updated_at` missing: same migration pattern as T009 for `admin_users`; otherwise skip
+- [X] T004 Drizzle schema for `copilot_previews` in `shared/db/src/schema/copilot_previews.ts` — column set per `data-model.md` §1.1, including indexes `idx_copilot_previews_admin_created`, `idx_copilot_previews_expires`, `idx_copilot_previews_action_class`
+- [X] T005 [P] Drizzle schema for `copilot_actions` in `shared/db/src/schema/copilot_actions.ts` — column set per `data-model.md` §1.2, indexes `idx_copilot_actions_admin_created`, `idx_copilot_actions_action_class`, `idx_copilot_actions_outcome`, `idx_copilot_actions_preview`
+- [X] T006 [P] Drizzle schema for `copilot_action_items` in `shared/db/src/schema/copilot_action_items.ts` — column set per `data-model.md` §1.3, indexes `idx_copilot_action_items_action`, `idx_copilot_action_items_entity`
+- [X] T007 Re-export the three new tables from `shared/db/src/schema/index.ts`
+- [X] T008 Boot migration `backend/src/db/migrations/NNNN_copilot.sql` creating the three tables via `IF NOT EXISTS` per Constitution §V; integrates with the existing Redis-NX boot-migration lock
+- [X] T009 [P] If T003 finds `inventory.updated_at` missing: add migration step in `NNNN_copilot.sql` to `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` plus a Drizzle `onUpdate` hook; otherwise skip
+- [X] T010 [P] If T003 finds `admin_users.updated_at` missing: same migration pattern as T009 for `admin_users`; otherwise skip
 
 ### Shared contracts (Constitution §III)
 
