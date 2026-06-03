@@ -103,7 +103,8 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   }
 
   const correlationId =
-    (req.headers["x-correlation-id"] as string | undefined) ?? `cp-${Date.now()}-${adminReq.adminId}`;
+    (req.headers["x-correlation-id"] as string | undefined) ??
+    `cp-${Date.now()}-${adminReq.adminId}`;
   const scopes = adminReq.adminPermissions ?? [];
   const tools = readToolsForScopes(scopes).map((t) => t.spec);
 
@@ -164,8 +165,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       logger.warn({ err }, "copilot refusal-audit insert failed");
     }
     res.status(502).json({
-      error:
-        "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
+      error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
       code: "COPILOT_SECRET_LEAK",
     });
     return;
@@ -179,9 +179,10 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       input: t.input,
       // Truncate large results for the response; the model already
       // synthesized them into `text` so the UI doesn't need full data.
-      result_preview: typeof t.result === "string"
-        ? t.result.slice(0, 2000)
-        : JSON.stringify(t.result).slice(0, 2000),
+      result_preview:
+        typeof t.result === "string"
+          ? t.result.slice(0, 2000)
+          : JSON.stringify(t.result).slice(0, 2000),
     })),
     input_tokens: result.inputTokens,
     output_tokens: result.outputTokens,

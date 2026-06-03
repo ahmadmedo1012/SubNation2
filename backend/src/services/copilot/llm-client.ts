@@ -83,9 +83,7 @@ export async function copilotChat(args: {
     outputTokens += resp.usage?.output_tokens ?? 0;
     lastStop = resp.stop_reason;
 
-    const toolUses = resp.content.filter(
-      (b): b is ToolUseBlock => b.type === "tool_use",
-    );
+    const toolUses = resp.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
     const textParts = resp.content
       .filter((b): b is Extract<Message["content"][number], { type: "text" }> => b.type === "text")
       .map((b) => b.text)

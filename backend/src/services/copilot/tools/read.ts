@@ -50,12 +50,16 @@ export const searchProducts: CopilotTool = {
 
     const conditions = [];
     if (q) {
-      conditions.push(or(ilike(productsTable.name, `%${q}%`), ilike(productsTable.description, `%${q}%`)));
+      conditions.push(
+        or(ilike(productsTable.name, `%${q}%`), ilike(productsTable.description, `%${q}%`)),
+      );
     }
     if (category) conditions.push(eq(productsTable.category, category));
     if (status === "archived") conditions.push(eq(productsTable.isArchived, true));
-    else if (status === "draft") conditions.push(and(eq(productsTable.isActive, false), eq(productsTable.isArchived, false)));
-    else if (status === "active") conditions.push(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
+    else if (status === "draft")
+      conditions.push(and(eq(productsTable.isActive, false), eq(productsTable.isArchived, false)));
+    else if (status === "active")
+      conditions.push(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
 
     const rows = await db
       .select({
@@ -104,11 +108,7 @@ export const getProduct: CopilotTool = {
   handler: async (input) => {
     const id = Number(input.id);
     if (!Number.isFinite(id) || id <= 0) return { error: "invalid id" };
-    const [row] = await db
-      .select()
-      .from(productsTable)
-      .where(eq(productsTable.id, id))
-      .limit(1);
+    const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
     if (!row) return { error: "not found" };
     const [stockRow] = await db
       .select({ count: count() })
@@ -168,8 +168,17 @@ export const listLowStock: CopilotTool = {
       LIMIT 50
     `);
     const list =
-      (rows as unknown as { rows?: Array<{ id: number; name: string; slug: string | null; category: string | null; stock: number }> })
-        .rows ?? [];
+      (
+        rows as unknown as {
+          rows?: Array<{
+            id: number;
+            name: string;
+            slug: string | null;
+            category: string | null;
+            stock: number;
+          }>;
+        }
+      ).rows ?? [];
     return { products: list, threshold };
   },
 };
@@ -193,7 +202,9 @@ export const summarizeRecentChanges: CopilotTool = {
     },
   },
   handler: async (input) => {
-    const sinceIso = String(input.since_iso ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+    const sinceIso = String(
+      input.since_iso ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+    );
     const limit = Math.min(Math.max(Number(input.limit ?? 50), 1), 100);
     const rows = await db.execute(sql`
       SELECT id, actor_type, actor_id, action, target_type, target_id, created_at
@@ -203,8 +214,7 @@ export const summarizeRecentChanges: CopilotTool = {
       LIMIT ${limit}
     `);
     return {
-      entries:
-        (rows as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [],
+      entries: (rows as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [],
     };
   },
 };
@@ -234,7 +244,11 @@ export async function runReadTool(
 ): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
   const tool = READ_TOOLS.find((t) => t.spec.name === name);
   if (!tool) return { ok: false, error: `unknown tool: ${name}` };
-  if (tool.requiredScope !== null && !scopes.includes("all") && !scopes.includes(tool.requiredScope)) {
+  if (
+    tool.requiredScope !== null &&
+    !scopes.includes("all") &&
+    !scopes.includes(tool.requiredScope)
+  ) {
     return { ok: false, error: `out_of_scope: tool ${name} requires ${tool.requiredScope}` };
   }
   try {

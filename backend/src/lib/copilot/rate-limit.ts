@@ -119,9 +119,7 @@ export async function copilotRateLimit(
 ): Promise<void> {
   const adminReq = req as AdminAuthenticatedRequest;
   if (!adminReq.adminId) {
-    res
-      .status(401)
-      .json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
+    res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
     return;
   }
   const now = Date.now();

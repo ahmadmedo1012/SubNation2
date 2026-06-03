@@ -31,7 +31,9 @@ export function requireCopilotPermission(scope: string | string[]) {
 
     const need = Array.isArray(scope) ? scope.join("|") : scope;
     const intentText =
-      typeof req.body === "object" && req.body && typeof (req.body as { intent_text?: unknown }).intent_text === "string"
+      typeof req.body === "object" &&
+      req.body &&
+      typeof (req.body as { intent_text?: unknown }).intent_text === "string"
         ? (req.body as { intent_text: string }).intent_text.slice(0, 4000)
         : "";
 

@@ -97,12 +97,7 @@ router.use(
   adminTicketsRouter, // /tickets/*
 );
 
-router.use(
-  "/alerts",
-  requireAdmin,
-  requirePermission("support"),
-  adminAlertsRouter,
-);
+router.use("/alerts", requireAdmin, requirePermission("support"), adminAlertsRouter);
 
 router.use(
   "/",
@@ -118,25 +113,10 @@ router.use(
   adminAdminsRouter, // /admins, /admins/:id, /admins/:id/permissions
 );
 
-router.use(
-  "/settings",
-  requireAdmin,
-  requirePermission("settings"),
-  adminSettingsRouter,
-);
+router.use("/settings", requireAdmin, requirePermission("settings"), adminSettingsRouter);
 
-router.use(
-  "/observability",
-  requireAdmin,
-  requirePermission("settings"),
-  adminObservabilityRouter,
-);
+router.use("/observability", requireAdmin, requirePermission("settings"), adminObservabilityRouter);
 
-router.use(
-  "/diagnostics",
-  requireAdmin,
-  requirePermission("settings"),
-  adminDiagnosticsRouter,
-);
+router.use("/diagnostics", requireAdmin, requirePermission("settings"), adminDiagnosticsRouter);
 
 export { router as adminRouter };

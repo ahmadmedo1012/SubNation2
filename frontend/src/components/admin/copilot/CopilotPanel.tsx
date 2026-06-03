@@ -116,12 +116,11 @@ export function CopilotPanel() {
         }),
       });
       if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as
-          | { error?: string; code?: string }
-          | null;
-        throw new Error(
-          body?.error ?? `request failed (${resp.status})`,
-        );
+        const body = (await resp.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(body?.error ?? `request failed (${resp.status})`);
       }
       const data = (await resp.json()) as AskResponse;
       setTurns((prev) =>
@@ -189,9 +188,8 @@ export function CopilotPanel() {
               {turns.length === 0 && (
                 <div className="space-y-3">
                   <div className="text-xs text-muted-foreground leading-6">
-                    اطرح سؤالاً عن المنتجات، المخزون، الطلبات، أو نشاط لوحة الإدارة.
-                    المساعد سيستخدم بياناتك المباشرة ولن يخترع أي معلومة. لا يقوم بأي
-                    تعديل في هذه المرحلة.
+                    اطرح سؤالاً عن المنتجات، المخزون، الطلبات، أو نشاط لوحة الإدارة. المساعد سيستخدم
+                    بياناتك المباشرة ولن يخترع أي معلومة. لا يقوم بأي تعديل في هذه المرحلة.
                   </div>
                   <div className="space-y-1.5">
                     {SUGGESTIONS.map((s) => (
