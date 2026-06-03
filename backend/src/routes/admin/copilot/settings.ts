@@ -47,14 +47,24 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
       const isArr = Array.isArray(r);
       const rows = isArr ? (r as unknown[]) : ((r as { rows?: unknown[] }).rows ?? []);
       const flags = await getPhaseFlags();
+
+      // Env diagnostics — confirm ANTHROPIC_API_KEY presence WITHOUT
+      // leaking the value. Only super-admins reach this branch.
+      const rawKey = (process.env.ANTHROPIC_API_KEY ?? "").trim();
+      const env = {
+        anthropic_key_present: rawKey.length > 0,
+        anthropic_key_length: rawKey.length,
+        anthropic_key_prefix: rawKey.slice(0, 7),
+        anthropic_key_passes_min_length: rawKey.length >= 40,
+        node_env: process.env.NODE_ENV ?? null,
+        relevant_env_keys_seen: Object.keys(process.env)
+          .filter((k) => /ANTHROPIC|OPENAI|BEDROCK|AWS_REGION|OPENROUTER/i.test(k))
+          .sort(),
+      };
+
       logger.warn(
-        {
-          shape_is_array: isArr,
-          row_count: rows.length,
-          first_row: rows[0],
-          parsed_flags: flags,
-        },
-        "copilot phase-flags debug",
+        { row_count: rows.length, parsed_flags: flags, env },
+        "copilot phase-flags + env debug",
       );
       res.json({
         flags,
@@ -62,6 +72,7 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
           shape_is_array: isArr,
           row_count: rows.length,
           first_row: rows[0],
+          env,
         },
       });
       return;
