@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { getClientInfo } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
+import { scoreEventFireAndForget } from "../lib/risk-emit";
 import * as Sentry from "@sentry/node";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
 import { startOtp, verifyOtp } from "../services/whatsapp-otp.service";
@@ -56,6 +57,23 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       purpose: "registration",
       ipAddress: client.ipAddress,
       userAgent: client.userAgent,
+    });
+
+    // Risk pipeline (003-anomaly-detection) — fire-and-forget; gated on
+    // RISK_PIPELINE_ENABLED inside scoreEvent, so this is a no-op for
+    // operators who haven't flipped the flag yet.
+    scoreEventFireAndForget({
+      eventType: "otp_request",
+      ipAddress: client.ipAddress ?? null,
+      userAgent: client.userAgent ?? null,
+      phone,
+      ruleContext: {
+        event: {
+          eventType: "otp_request",
+          ipAddress: client.ipAddress ?? null,
+          userAgent: client.userAgent ?? null,
+        },
+      },
     });
 
     if (!result.ok) {
@@ -139,6 +157,25 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
       referralCode,
       ipAddress: client.ipAddress,
       userAgent: client.userAgent,
+    });
+
+    // Risk pipeline — emit otp_verify whether successful or not. The
+    // success path also doubles as login_success for new + returning users.
+    const verifyEvent = result.ok ? "otp_verify" : "login_failure";
+    scoreEventFireAndForget({
+      eventType: verifyEvent,
+      userId: result.ok ? result.user?.id ?? null : null,
+      ipAddress: client.ipAddress ?? null,
+      userAgent: client.userAgent ?? null,
+      phone,
+      ruleContext: {
+        event: {
+          eventType: verifyEvent,
+          ipAddress: client.ipAddress ?? null,
+          userAgent: client.userAgent ?? null,
+        },
+        user: result.ok && result.user ? { id: result.user.id } : undefined,
+      },
     });
 
     if (!result.ok) {

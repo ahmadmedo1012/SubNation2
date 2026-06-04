@@ -4,6 +4,7 @@ import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { normalizeLibyanPhone } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
+import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewTopup } from "../telegram";
@@ -160,6 +161,24 @@ router.post("/topups", requireUser, async (req, res) => {
       topupId: topup.id,
       provider: derivePrimaryProvider(currentUser),
     });
+
+  // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never
+  // blocks; gated on RISK_PIPELINE_ENABLED inside scoreEvent.
+  scoreEventFireAndForget({
+    eventType: "topup_attempt",
+    userId,
+    ipAddress: req.ip ?? null,
+    userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
+    phone: currentUser?.phone ?? null,
+    ruleContext: {
+      event: {
+        eventType: "topup_attempt",
+        ipAddress: req.ip ?? null,
+        amount,
+      },
+      user: { id: userId },
+    },
+  });
 
   return res.status(201).json(formatTopup(topup));
 });
