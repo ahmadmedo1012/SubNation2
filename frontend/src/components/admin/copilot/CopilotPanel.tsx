@@ -114,6 +114,10 @@ interface ConfirmResponse {
   outcome: "success" | "partial" | "failure" | "awaiting_double_confirm";
   action_id: number | null;
   result_url?: string | null;
+  /** Present when outcome === "awaiting_double_confirm" — server-side clock. */
+  cooldown_starts_at?: string;
+  cooldown_ends_at?: string;
+  cooldown_seconds?: number;
 }
 
 type TurnKind = "ask" | "draft";
@@ -128,7 +132,17 @@ interface ConversationTurn {
   /** Live progress messages while the request is in-flight. */
   progress?: string[];
   preview?: PreviewView | null;
-  previewState?: "pending" | "confirming" | "executed" | "cancelled" | "rejected" | "expired";
+  previewState?:
+    | "pending"
+    | "confirming"
+    | "awaiting_double_confirm"
+    | "double_confirming"
+    | "executed"
+    | "cancelled"
+    | "rejected"
+    | "expired";
+  /** Server-side clock for the 3-second cooldown on high-risk previews. */
+  cooldownEndsAt?: number | null;
   resultUrl?: string | null;
   error: string | null;
   loading: boolean;
@@ -680,6 +694,17 @@ export function CopilotPanel() {
         throw new Error(body?.error ?? `confirm failed (${resp.status})`);
       }
       const data = (await resp.json()) as ConfirmResponse;
+      if (data.outcome === "awaiting_double_confirm") {
+        // High-risk: enter cooldown, schedule the second confirm.
+        const endsAt = data.cooldown_ends_at
+          ? new Date(data.cooldown_ends_at).getTime()
+          : Date.now() + 3000;
+        patchTurn(turn.id, {
+          previewState: "awaiting_double_confirm",
+          cooldownEndsAt: endsAt,
+        });
+        return;
+      }
       patchTurn(turn.id, {
         previewState: "executed",
         resultUrl: data.result_url ?? null,
@@ -687,6 +712,39 @@ export function CopilotPanel() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "حدث خطأ";
       patchTurn(turn.id, { previewState: "pending", error: msg });
+    }
+  }
+
+  async function doubleConfirm(turn: ConversationTurn) {
+    if (!turn.preview) return;
+    patchTurn(turn.id, { previewState: "double_confirming", error: null });
+    try {
+      const resp = await fetch(
+        `/api/admin/copilot/previews/${turn.preview.id}/double-confirm`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
+      if (!resp.ok) {
+        const body = (await resp.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+          remaining_ms?: number;
+        } | null;
+        // 425 = cooldown not elapsed; route already enforced server-side
+        // but the client clock can drift. Surface it cleanly.
+        const msg = body?.error ?? `double-confirm failed (${resp.status})`;
+        throw new Error(msg);
+      }
+      const data = (await resp.json()) as ConfirmResponse;
+      patchTurn(turn.id, {
+        previewState: "executed",
+        resultUrl: data.result_url ?? null,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "حدث خطأ";
+      patchTurn(turn.id, { previewState: "awaiting_double_confirm", error: msg });
     }
   }
 
@@ -882,6 +940,7 @@ export function CopilotPanel() {
                     turn={turn}
                     onApprove={() => void approve(turn)}
                     onCancel={() => void cancelPreview(turn)}
+                    onDoubleConfirm={() => void doubleConfirm(turn)}
                     onRetry={() => void retry(turn)}
                   />
                 ))}
@@ -993,11 +1052,13 @@ function TurnView({
   turn,
   onApprove,
   onCancel,
+  onDoubleConfirm,
   onRetry,
 }: {
   turn: ConversationTurn;
   onApprove: () => void;
   onCancel: () => void;
+  onDoubleConfirm: () => void;
   onRetry: () => void;
 }) {
   return (
@@ -1049,9 +1110,11 @@ function TurnView({
         <PreviewCard
           preview={turn.preview}
           state={turn.previewState ?? "pending"}
+          cooldownEndsAt={turn.cooldownEndsAt ?? null}
           resultUrl={turn.resultUrl ?? null}
           onApprove={onApprove}
           onCancel={onCancel}
+          onDoubleConfirm={onDoubleConfirm}
         />
       )}
     </div>
@@ -1178,19 +1241,36 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
 function PreviewCard({
   preview,
   state,
+  cooldownEndsAt,
   resultUrl,
   onApprove,
   onCancel,
+  onDoubleConfirm,
 }: {
   preview: PreviewView;
   state: NonNullable<ConversationTurn["previewState"]>;
+  cooldownEndsAt: number | null;
   resultUrl: string | null;
   onApprove: () => void;
   onCancel: () => void;
+  onDoubleConfirm: () => void;
 }) {
   const isHighRisk = preview.risk_tier === "high";
   const isNoExec = preview.risk_tier === "no_execute";
   const changes = preview.payload.changes ?? [];
+
+  // Cooldown countdown for the high-risk path.
+  const [remainingMs, setRemainingMs] = useState(() =>
+    cooldownEndsAt ? Math.max(0, cooldownEndsAt - Date.now()) : 0,
+  );
+  useEffect(() => {
+    if (state !== "awaiting_double_confirm" || !cooldownEndsAt) return;
+    const tick = () => setRemainingMs(Math.max(0, cooldownEndsAt - Date.now()));
+    tick();
+    const id = window.setInterval(tick, 100);
+    return () => window.clearInterval(id);
+  }, [state, cooldownEndsAt]);
+  const cooldownDone = remainingMs <= 0;
 
   return (
     <div className="border border-border rounded-2xl rounded-tr-md bg-muted/20 shadow-sm overflow-hidden">
@@ -1237,10 +1317,10 @@ function PreviewCard({
           <>
             <button
               onClick={onApprove}
-              disabled={isHighRisk || isNoExec}
+              disabled={isNoExec}
               className="flex-1 px-3 py-2 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground text-xs font-bold hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm transition-all"
             >
-              موافقة وتنفيذ
+              {isHighRisk ? "موافقة (تأكيد أول)" : "موافقة وتنفيذ"}
             </button>
             <button
               onClick={onCancel}
@@ -1251,6 +1331,30 @@ function PreviewCard({
           </>
         )}
         {state === "confirming" && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" /> جاري التحقق…
+          </div>
+        )}
+        {state === "awaiting_double_confirm" && (
+          <>
+            <button
+              onClick={onDoubleConfirm}
+              disabled={!cooldownDone}
+              className="flex-1 px-3 py-2 rounded-xl bg-amber-500/90 text-amber-50 text-xs font-bold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+            >
+              {cooldownDone
+                ? "تأكيد ثانٍ — تنفيذ الآن"
+                : `الانتظار ${Math.ceil(remainingMs / 1000)}…`}
+            </button>
+            <button
+              onClick={onCancel}
+              className="px-3 py-2 rounded-xl bg-muted hover:bg-muted/70 text-xs transition-colors"
+            >
+              تراجع
+            </button>
+          </>
+        )}
+        {state === "double_confirming" && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" /> جاري التنفيذ…
           </div>
