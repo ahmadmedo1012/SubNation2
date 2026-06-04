@@ -30,6 +30,7 @@ import {
   isAllowlisted,
   type RiskConfigSnapshot,
 } from "./risk-config-cache.service";
+import { sendCriticalRiskAlert } from "./risk-alerts.service";
 import { evaluateRules, type RuleContext } from "./risk-rules.service";
 
 const PIPELINE_DEGRADED_KEY = "risk:pipeline:degraded";
@@ -183,6 +184,34 @@ export async function scoreEvent(input: ScoringInput): Promise<ScoringResult> {
       degraded = true;
       await markPipelineDegraded();
     }
+  }
+
+  // Critical-event alerting (T042) — fire-and-forget so a slow
+  // Telegram/Discord round-trip does not couple to caller latency.
+  // Gated on:
+  //   - level === "critical" (only escalate the highest tier)
+  //   - autoBlockEnabled.alert (admin can mute alerting per data-model §3)
+  //   - riskEventId !== null (persistence succeeded — alert links require an id)
+  //   - !allowlisted (allowlisted sources never alert)
+  if (
+    level === "critical" &&
+    config.autoBlockEnabled.alert &&
+    riskEventId !== null &&
+    !allowlisted
+  ) {
+    void sendCriticalRiskAlert({
+      riskEventId,
+      userId: input.userId ?? null,
+      eventType: input.eventType,
+      score,
+      level: "critical",
+      topFeatures: null,
+    }).catch((err) => {
+      logger.warn(
+        { err, riskEventId, category: "risk-scoring" },
+        "[risk-scoring] sendCriticalRiskAlert rejected (should be swallowed)",
+      );
+    });
   }
 
   // Metrics.
