@@ -3,6 +3,7 @@ import { db, inventoryTable, productsTable } from "@workspace/db";
 import { count, eq, sql } from "drizzle-orm";
 import { logAdminAlert } from "./alertLogger";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
+import { reapExpiredRiskEvents } from "./risk-retention";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
@@ -72,10 +73,7 @@ export function initCronJobs() {
         `OTP cleanup completed — ${removed} expired record(s) removed`,
       );
     } catch (err) {
-      logger.error(
-        { err, category: "whatsapp.otp.cleanup" },
-        "OTP cleanup failed",
-      );
+      logger.error({ err, category: "whatsapp.otp.cleanup" }, "OTP cleanup failed");
       captureSchedulerFailure("whatsapp_otp_cleanup", err, {
         cron_expression: "15 * * * *",
       });
@@ -99,6 +97,30 @@ export function initCronJobs() {
       logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
       captureSchedulerFailure("copilot_reaper", err, {
         cron_expression: "*/5 * * * *",
+      });
+    }
+  });
+
+  // 5. Daily at 03:30 UTC: risk_events 90-day retention (003-anomaly-detection).
+  //    Unlabeled events older than 90 days are deleted. Labeled events get
+  //    a 97-day grace so retroactive review still resolves the label join.
+  cron.schedule("30 3 * * *", async () => {
+    try {
+      const result = await reapExpiredRiskEvents();
+      if (result.unlabeledDeleted + result.labeledExpiredDeleted > 0) {
+        logger.info(
+          {
+            category: "risk.retention",
+            unlabeled: result.unlabeledDeleted,
+            labeled: result.labeledExpiredDeleted,
+          },
+          "risk-events retention purge complete",
+        );
+      }
+    } catch (err) {
+      logger.error({ err, category: "risk.retention" }, "risk-events retention failed");
+      captureSchedulerFailure("risk_retention", err, {
+        cron_expression: "30 3 * * *",
       });
     }
   });
