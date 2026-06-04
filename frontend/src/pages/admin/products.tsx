@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -354,6 +355,11 @@ export default function AdminProductsPage() {
             <Plus className="w-4 h-4 ml-1.5" /> منتج جديد
           </Button>
         </div>
+
+        {/* Stockout-risk forecast panel (011-inventory-demand-forecast).
+            Self-hides when the cron has never run, when no products are
+            at risk, or when the user lacks the inventory scope. */}
+        <StockoutRiskPanel />
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
