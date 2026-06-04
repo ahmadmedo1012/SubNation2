@@ -1,0 +1,188 @@
+openapi: 3.1.0
+info:
+  title: SubNation Admin — Catalog Enrichment Review
+  version: "0.1.0"
+  description: |
+    Read + small-write admin endpoints for the catalog enrichment review
+    panel (012). All gated by requireAdmin + requirePermission("inventory").
+    No public-facing variant — the storefront never reads `enrichment_drafts`
+    (FR-SAFETY-002).
+
+components:
+  securitySchemes:
+    adminCookie:
+      type: apiKey
+      in: cookie
+      name: subnation_admin
+
+  schemas:
+    DraftState:
+      type: string
+      enum: [drafted, published, rejected, draft_invalid]
+    FieldName:
+      type: string
+      enum: [description, description_long, faq]
+
+    DraftRow:
+      type: object
+      required:
+        - id
+        - product_id
+        - product_name
+        - field_name
+        - state
+        - generated_text
+        - created_at
+        - panel_url
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        product_image_url:
+          type: string
+          nullable: true
+        field_name:
+          $ref: "#/components/schemas/FieldName"
+        state:
+          $ref: "#/components/schemas/DraftState"
+        current_value:
+          type: string
+          nullable: true
+          description: The current value of the product's field at draft time (may be null/empty).
+        generated_text:
+          type: string
+          description: Original LLM output.
+        final_text:
+          type: string
+          nullable: true
+        model_id:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        panel_url:
+          type: string
+
+    ListResponse:
+      type: object
+      required: [drafts, next_cursor]
+      properties:
+        drafts:
+          type: array
+          items:
+            $ref: "#/components/schemas/DraftRow"
+        next_cursor:
+          type: string
+          nullable: true
+        pending_count:
+          type: integer
+          description: Total `state='drafted'` rows (for the queue badge).
+
+    PublishRequest:
+      type: object
+      properties:
+        final_text:
+          type: string
+          description: Optional admin-edited text. If absent, generated_text is used as-is.
+
+    RejectRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+paths:
+  /api/admin/enrichment/list:
+    get:
+      operationId: getAdminEnrichmentList
+      summary: List drafted enrichment rows
+      tags: [admin/enrichment]
+      security: [{ adminCookie: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 25 }
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/DraftState"
+          description: Default `drafted`. Pass `published`/`rejected` to view history.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponse"
+        "401": { description: Unauthenticated }
+        "403": { description: Forbidden — admin lacks inventory scope }
+
+  /api/admin/enrichment/{id}/publish:
+    post:
+      operationId: publishAdminEnrichmentDraft
+      summary: Apply a draft to the live product
+      tags: [admin/enrichment]
+      security: [{ adminCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401": { description: Unauthenticated }
+        "403": { description: Forbidden }
+        "404": { description: Draft not found }
+        "409": { description: Draft is not in state='drafted' }
+
+  /api/admin/enrichment/{id}/reject:
+    post:
+      operationId: rejectAdminEnrichmentDraft
+      summary: Reject a draft (14-day suppression starts)
+      tags: [admin/enrichment]
+      security: [{ adminCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401": { description: Unauthenticated }
+        "403": { description: Forbidden }
+        "404": { description: Draft not found }
+        "409": { description: Draft is not in state='drafted' }
