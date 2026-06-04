@@ -13,6 +13,12 @@
 import { db, productsTable, inventoryTable } from "@workspace/db";
 import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
 import { findAnomalies } from "../anomalies";
+import {
+  latestAtRisk,
+  latestForProduct,
+} from "../../forecast/forecast-store";
+import { latestSuccessful } from "../../forecast/run-store";
+import { isAlertingPaused } from "../../../lib/forecast/redis-flags";
 import type { Tool } from "../llm-client";
 
 export interface CopilotTool {
@@ -276,8 +282,7 @@ export const queryRiskEvents: CopilotTool = {
     },
   },
   handler: async (input) => {
-    const level =
-      typeof input.level === "string" && input.level !== "any" ? input.level : null;
+    const level = typeof input.level === "string" && input.level !== "any" ? input.level : null;
     const hours = Math.max(1, Math.min(720, Number(input.hours ?? 24)));
     const unresolvedOnly = input.unresolved_only === true;
     const sampleLimit = Math.max(1, Math.min(50, Number(input.sample_limit ?? 10)));
@@ -407,6 +412,158 @@ export const findAnomaliesTool: CopilotTool = {
   },
 };
 
+// ────────────────────────────────────────────────────────────────────────
+// forecast_demand — read pre-computed inventory demand forecasts
+// (011-inventory-demand-forecast, US2 / T036)
+// ────────────────────────────────────────────────────────────────────────
+export const forecastDemandTool: CopilotTool = {
+  requiredScope: "inventory",
+  spec: {
+    type: "function",
+    function: {
+      name: "forecast_demand",
+      description:
+        "Read pre-computed demand forecasts. Use to answer questions like " +
+        "'which products will run out next week?'. Cite product IDs verbatim " +
+        "from this output — never invent a product. Returns empty rows when " +
+        "the daily forecast cron has not run yet.",
+      parameters: {
+        type: "object",
+        properties: {
+          horizon_days: {
+            type: "integer",
+            enum: [7, 30],
+            description: "Forecast horizon. Default 7.",
+          },
+          at_risk_only: {
+            type: "boolean",
+            description:
+              "Filter to products with predicted_runout_at <= today + 30 days. Default true.",
+          },
+          product_id: {
+            type: "integer",
+            description: "Single-product lookup. When set, ignores at_risk_only.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            description: "Max rows. Default 10.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  handler: async (input) => {
+    const horizon =
+      input.horizon_days === 30 ? 30 : 7;
+    const atRiskOnly =
+      typeof input.at_risk_only === "boolean" ? input.at_risk_only : true;
+    const limit = Math.max(1, Math.min(50, Number(input.limit ?? 10)));
+    const productId =
+      typeof input.product_id === "number" && input.product_id > 0
+        ? Math.floor(input.product_id)
+        : null;
+
+    const latest = await latestSuccessful();
+    const paused = await isAlertingPaused();
+    let pipelineState: "fresh" | "stale" | "uninitialized" | "calibrating";
+    if (paused) pipelineState = "calibrating";
+    else if (!latest) pipelineState = "uninitialized";
+    else
+      pipelineState =
+        Date.now() - latest.completedAt.getTime() > 24 * 60 * 60 * 1000
+          ? "stale"
+          : "fresh";
+
+    if (!latest) {
+      return {
+        pipeline_state: pipelineState,
+        data_freshness_hours: null,
+        rows: [],
+        reason: "forecast_disabled",
+      };
+    }
+
+    const dataFreshnessHours = Math.floor(
+      (Date.now() - latest.completedAt.getTime()) / 3_600_000,
+    );
+
+    if (productId !== null) {
+      const row = await latestForProduct(productId);
+      if (!row) {
+        return {
+          pipeline_state: pipelineState,
+          data_freshness_hours: dataFreshnessHours,
+          rows: [],
+          reason: "no forecast available — insufficient data",
+        };
+      }
+      return {
+        pipeline_state: pipelineState,
+        data_freshness_hours: dataFreshnessHours,
+        horizon_days: horizon,
+        rows: [shapeForecastRow(row, horizon)],
+      };
+    }
+
+    if (!atRiskOnly) {
+      // We don't currently have a "latest forecast for all products"
+      // selector — at_risk_only=false is honored by surfacing the
+      // at-risk subset and noting the constraint. The drawer-detail
+      // endpoint covers per-product lookups.
+      return {
+        pipeline_state: pipelineState,
+        data_freshness_hours: dataFreshnessHours,
+        horizon_days: horizon,
+        rows: [],
+        reason:
+          "at_risk_only=false is not supported via this tool — call /api/admin/forecast/products/:id for a specific product",
+      };
+    }
+
+    const rows = await latestAtRisk(limit);
+    return {
+      pipeline_state: pipelineState,
+      data_freshness_hours: dataFreshnessHours,
+      horizon_days: horizon,
+      rows: rows.map((r) => shapeForecastRow(r, horizon)),
+    };
+  },
+};
+
+function shapeForecastRow(
+  r: {
+    productId: number;
+    productName: string;
+    currentStockOnHand: number;
+    avgDailySales: number | null;
+    predictedDemand7d: number | null;
+    predictedDemand30d: number | null;
+    predictedRunoutAt: string | null;
+    recommendedReorderQty: number | null;
+    confidence: string;
+    forecastDate: string;
+  },
+  horizon: 7 | 30,
+): Record<string, unknown> {
+  const predicted =
+    horizon === 7 ? r.predictedDemand7d : r.predictedDemand30d;
+  return {
+    product_id: r.productId,
+    product_name: r.productName,
+    current_stock_on_hand: r.currentStockOnHand,
+    avg_daily_sales: r.avgDailySales,
+    predicted_demand: predicted,
+    predicted_runout_at: r.predictedRunoutAt,
+    recommended_reorder_qty: r.recommendedReorderQty,
+    confidence: r.confidence,
+    forecast_date: r.forecastDate,
+    panel_url: `/admin/products?highlight=${r.productId}`,
+  };
+}
+
 export const READ_TOOLS: CopilotTool[] = [
   searchProducts,
   getProduct,
@@ -414,6 +571,7 @@ export const READ_TOOLS: CopilotTool[] = [
   summarizeRecentChanges,
   findAnomaliesTool,
   queryRiskEvents,
+  forecastDemandTool,
 ];
 
 /**
