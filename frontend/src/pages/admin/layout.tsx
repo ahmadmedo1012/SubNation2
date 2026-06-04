@@ -83,6 +83,7 @@ const NAV_SECTIONS = [
     label: "النظام",
     items: [
       { href: "/admin/admins", label: "إدارة المسؤولين", icon: ShieldCheck, scope: "admins" },
+      { href: "/admin/risk", label: "مراقبة المخاطر", icon: Shield, scope: "users" },
       { href: "/admin/system", label: "حالة النظام", icon: Activity, scope: "settings" },
       { href: "/admin/settings", label: "الإعدادات", icon: Settings },
     ],
