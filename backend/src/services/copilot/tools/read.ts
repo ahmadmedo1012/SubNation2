@@ -13,12 +13,14 @@
 import { db, productsTable, inventoryTable } from "@workspace/db";
 import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
 import { findAnomalies } from "../anomalies";
-import {
-  latestAtRisk,
-  latestForProduct,
-} from "../../forecast/forecast-store";
+import { latestAtRisk, latestForProduct } from "../../forecast/forecast-store";
 import { latestSuccessful } from "../../forecast/run-store";
 import { isAlertingPaused } from "../../../lib/forecast/redis-flags";
+import {
+  listByState as listEnrichmentDrafts,
+  type DraftField,
+  type DraftState,
+} from "../../enrichment/draft-store";
 import type { Tool } from "../llm-client";
 
 export interface CopilotTool {
@@ -456,10 +458,8 @@ export const forecastDemandTool: CopilotTool = {
     },
   },
   handler: async (input) => {
-    const horizon =
-      input.horizon_days === 30 ? 30 : 7;
-    const atRiskOnly =
-      typeof input.at_risk_only === "boolean" ? input.at_risk_only : true;
+    const horizon = input.horizon_days === 30 ? 30 : 7;
+    const atRiskOnly = typeof input.at_risk_only === "boolean" ? input.at_risk_only : true;
     const limit = Math.max(1, Math.min(50, Number(input.limit ?? 10)));
     const productId =
       typeof input.product_id === "number" && input.product_id > 0
@@ -473,9 +473,7 @@ export const forecastDemandTool: CopilotTool = {
     else if (!latest) pipelineState = "uninitialized";
     else
       pipelineState =
-        Date.now() - latest.completedAt.getTime() > 24 * 60 * 60 * 1000
-          ? "stale"
-          : "fresh";
+        Date.now() - latest.completedAt.getTime() > 24 * 60 * 60 * 1000 ? "stale" : "fresh";
 
     if (!latest) {
       return {
@@ -486,9 +484,7 @@ export const forecastDemandTool: CopilotTool = {
       };
     }
 
-    const dataFreshnessHours = Math.floor(
-      (Date.now() - latest.completedAt.getTime()) / 3_600_000,
-    );
+    const dataFreshnessHours = Math.floor((Date.now() - latest.completedAt.getTime()) / 3_600_000);
 
     if (productId !== null) {
       const row = await latestForProduct(productId);
@@ -548,8 +544,7 @@ function shapeForecastRow(
   },
   horizon: 7 | 30,
 ): Record<string, unknown> {
-  const predicted =
-    horizon === 7 ? r.predictedDemand7d : r.predictedDemand30d;
+  const predicted = horizon === 7 ? r.predictedDemand7d : r.predictedDemand30d;
   return {
     product_id: r.productId,
     product_name: r.productName,
@@ -564,6 +559,84 @@ function shapeForecastRow(
   };
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// query_enrichment_drafts — read pending catalog enrichment drafts
+// (012-arabic-catalog-enrichment, US4 / T032)
+// ────────────────────────────────────────────────────────────────────────
+export const queryEnrichmentDraftsTool: CopilotTool = {
+  requiredScope: "inventory",
+  spec: {
+    type: "function",
+    function: {
+      name: "query_enrichment_drafts",
+      description:
+        "Read pending catalog enrichment drafts. Use to answer 'what products need content review?'. " +
+        "Cite product IDs verbatim — never invent.",
+      parameters: {
+        type: "object",
+        properties: {
+          state: {
+            type: "string",
+            enum: ["drafted", "published", "rejected"],
+            description: "Default 'drafted'.",
+          },
+          product_id: { type: "integer", description: "Single-product lookup." },
+          field_name: {
+            type: "string",
+            enum: ["description", "description_long", "faq"],
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            description: "Default 10.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  handler: async (input) => {
+    const state =
+      typeof input.state === "string" &&
+      ["drafted", "published", "rejected"].includes(input.state)
+        ? (input.state as DraftState)
+        : "drafted";
+    const limit = Math.max(1, Math.min(50, Number(input.limit ?? 10)));
+    const productIdFilter =
+      typeof input.product_id === "number" && input.product_id > 0
+        ? Math.floor(input.product_id)
+        : null;
+    const fieldFilter =
+      typeof input.field_name === "string" &&
+      ["description", "description_long", "faq"].includes(input.field_name)
+        ? (input.field_name as DraftField)
+        : null;
+
+    const result = await listEnrichmentDrafts({ state, limit, cursor: null });
+    let rows = result.rows;
+    if (productIdFilter != null) rows = rows.filter((r) => r.productId === productIdFilter);
+    if (fieldFilter) rows = rows.filter((r) => r.fieldName === fieldFilter);
+
+    return {
+      state,
+      total: rows.length,
+      rows: rows.map((r) => ({
+        draft_id: r.id,
+        product_id: r.productId,
+        product_name: r.productName,
+        field_name: r.fieldName,
+        state: r.state,
+        model_id: r.modelId,
+        input_tokens: r.inputTokens,
+        output_tokens: r.outputTokens,
+        created_at: r.createdAt.toISOString(),
+        panel_url: `/admin/products/enrichment?focus=${r.id}`,
+      })),
+    };
+  },
+};
+
 export const READ_TOOLS: CopilotTool[] = [
   searchProducts,
   getProduct,
@@ -572,6 +645,7 @@ export const READ_TOOLS: CopilotTool[] = [
   findAnomaliesTool,
   queryRiskEvents,
   forecastDemandTool,
+  queryEnrichmentDraftsTool,
 ];
 
 /**

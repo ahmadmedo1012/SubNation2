@@ -28,6 +28,7 @@ import {
   Shield,
   ShieldCheck,
   ShoppingBag,
+  Sparkles,
   Sun,
   Tag,
   Users,
@@ -72,6 +73,12 @@ const NAV_SECTIONS = [
     label: "الكتالوج",
     items: [
       { href: "/admin/products", label: "المنتجات", icon: Package, scope: "inventory" },
+      {
+        href: "/admin/products/enrichment",
+        label: "مراجعة المحتوى",
+        icon: Sparkles,
+        scope: "inventory",
+      },
       { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator, scope: "inventory" },
       { href: "/admin/users", label: "المستخدمون", icon: Users, scope: "users" },
       { href: "/admin/referrals", label: "الإحالات", icon: Gift, scope: "users" },
