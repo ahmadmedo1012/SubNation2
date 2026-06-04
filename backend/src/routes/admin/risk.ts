@@ -27,7 +27,7 @@ import {
   riskRulesTable,
   usersTable,
 } from "@workspace/db";
-import { and, desc, eq, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -363,7 +363,11 @@ router.put("/risk/rules/:id", requireAdmin, async (req, res) => {
     res.status(400).json(createErrorResponse("معرّف القاعدة غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const body = (req.body ?? {}) as { enabled?: boolean; expression?: unknown; description?: string };
+  const body = (req.body ?? {}) as {
+    enabled?: boolean;
+    expression?: unknown;
+    description?: string;
+  };
 
   const update: Record<string, unknown> = {};
   if (typeof body.enabled === "boolean") update.enabled = body.enabled;
@@ -376,19 +380,14 @@ router.put("/risk/rules/:id", requireAdmin, async (req, res) => {
       res
         .status(400)
         .json(
-          createErrorResponse(
-            `صيغة القاعدة غير صالحة: ${parsed.reason}`,
-            ErrorCode.INVALID_DATA,
-          ),
+          createErrorResponse(`صيغة القاعدة غير صالحة: ${parsed.reason}`, ErrorCode.INVALID_DATA),
         );
       return;
     }
     update.expression = body.expression;
   }
   if (Object.keys(update).length === 0) {
-    res
-      .status(400)
-      .json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
+    res.status(400).json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
     return;
   }
   update.updatedBy = adminReq.adminId;
@@ -451,17 +450,18 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
     low: body.thresholds?.low ?? (current?.thresholds as { low: number } | null)?.low ?? 0,
     medium:
       body.thresholds?.medium ?? (current?.thresholds as { medium: number } | null)?.medium ?? 30,
-    high:
-      body.thresholds?.high ?? (current?.thresholds as { high: number } | null)?.high ?? 60,
+    high: body.thresholds?.high ?? (current?.thresholds as { high: number } | null)?.high ?? 60,
     critical:
       body.thresholds?.critical ??
       (current?.thresholds as { critical: number } | null)?.critical ??
       85,
   };
   if (
-    !(thresholds.low < thresholds.medium &&
+    !(
+      thresholds.low < thresholds.medium &&
       thresholds.medium < thresholds.high &&
-      thresholds.high < thresholds.critical)
+      thresholds.high < thresholds.critical
+    )
   ) {
     res
       .status(400)
@@ -474,9 +474,11 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
     return;
   }
 
-  const currentAuto = (current?.autoBlockEnabled as
-    | { softBlock: boolean; hardBlock: boolean; alert: boolean }
-    | null) ?? { softBlock: true, hardBlock: false, alert: true };
+  const currentAuto = (current?.autoBlockEnabled as {
+    softBlock: boolean;
+    hardBlock: boolean;
+    alert: boolean;
+  } | null) ?? { softBlock: true, hardBlock: false, alert: true };
   const autoBlockEnabled = {
     softBlock: body.autoBlockEnabled?.softBlock ?? currentAuto.softBlock,
     hardBlock: body.autoBlockEnabled?.hardBlock ?? currentAuto.hardBlock,
@@ -496,12 +498,16 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
     return;
   }
 
-  const currentAllow = (current?.allowlist as
-    | { ips: string[]; devices: string[]; phones: string[] }
-    | null) ?? { ips: [], devices: [], phones: [] };
+  const currentAllow = (current?.allowlist as {
+    ips: string[];
+    devices: string[];
+    phones: string[];
+  } | null) ?? { ips: [], devices: [], phones: [] };
   const allowlist = {
     ips: Array.isArray(body.allowlist?.ips) ? body.allowlist!.ips : currentAllow.ips,
-    devices: Array.isArray(body.allowlist?.devices) ? body.allowlist!.devices : currentAllow.devices,
+    devices: Array.isArray(body.allowlist?.devices)
+      ? body.allowlist!.devices
+      : currentAllow.devices,
     phones: Array.isArray(body.allowlist?.phones) ? body.allowlist!.phones : currentAllow.phones,
   };
 
@@ -550,5 +556,73 @@ function formatConfig(row: typeof riskConfigTable.$inferSelect) {
     updated_at: row.updatedAt.toISOString(),
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /risk/dashboard — top-line metrics for the review queue header (T046)
+// ────────────────────────────────────────────────────────────────────────
+router.get("/risk/dashboard", requireAdmin, async (req, res) => {
+  const hours = Math.min(
+    Math.max(Number.parseInt(String(req.query.hours ?? "24"), 10) || 24, 1),
+    720,
+  );
+
+  // Counts grouped by level in the lookback window.
+  const byLevelResult = await db.execute(sql`
+    SELECT level, COUNT(*)::int AS n
+    FROM risk_events
+    WHERE created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+    GROUP BY level
+  `);
+  type LevelRow = { level: string; n: number };
+  const lR = byLevelResult as unknown as { rows?: LevelRow[] } | LevelRow[];
+  const levelRows = Array.isArray(lR) ? lR : (lR.rows ?? []);
+  const byLevel: Record<string, number> = {
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
+  };
+  for (const r of levelRows) byLevel[r.level] = Number(r.n);
+  const total = Object.values(byLevel).reduce((a, b) => a + b, 0);
+
+  // Unresolved (no risk_labels row yet) — admins use this to gauge backlog.
+  const unresolvedResult = await db.execute(sql`
+    SELECT COUNT(*)::int AS n
+    FROM risk_events e
+    WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+      AND NOT EXISTS (SELECT 1 FROM risk_labels l WHERE l.risk_event_id = e.id)
+  `);
+  type CountRow = { n: number };
+  const uR = unresolvedResult as unknown as { rows?: CountRow[] } | CountRow[];
+  const unresolved = Number((Array.isArray(uR) ? uR[0]?.n : uR.rows?.[0]?.n) ?? 0);
+
+  // Top fired rules — flatten the rule_fired text[] column.
+  const topRulesResult = await db.execute(sql`
+    SELECT rule, COUNT(*)::int AS n
+    FROM risk_events e, UNNEST(e.rule_fired) AS rule
+    WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+    GROUP BY rule
+    ORDER BY n DESC
+    LIMIT 5
+  `);
+  type RuleRow = { rule: string; n: number };
+  const rR = topRulesResult as unknown as { rows?: RuleRow[] } | RuleRow[];
+  const ruleRows = Array.isArray(rR) ? rR : (rR.rows ?? []);
+  const topRules = ruleRows.map((r) => ({ rule: r.rule, count: Number(r.n) }));
+
+  // Pipeline state — enabled? degraded?
+  const enabled = process.env.RISK_PIPELINE_ENABLED === "true";
+
+  res.json({
+    window_hours: hours,
+    total,
+    by_level: byLevel,
+    unresolved,
+    top_rules: topRules,
+    pipeline: {
+      enabled,
+    },
+  });
+});
 
 export const adminRiskRouter = router;

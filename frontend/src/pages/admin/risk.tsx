@@ -37,6 +37,15 @@ interface ListResponse {
   next_cursor: string | null;
 }
 
+interface DashboardResponse {
+  window_hours: number;
+  total: number;
+  by_level: Record<RiskLevel, number>;
+  unresolved: number;
+  top_rules: Array<{ rule: string; count: number }>;
+  pipeline: { enabled: boolean };
+}
+
 const LEVEL_META: Record<RiskLevel, { label: string; bg: string; text: string; border: string }> = {
   low: {
     label: "منخفض",
@@ -75,6 +84,16 @@ const FILTERS: { value: "all" | RiskLevel; label: string }[] = [
 export default function AdminRiskPage() {
   const headers = useAdminHeaders();
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
+
+  const dashboard = useQuery<DashboardResponse>({
+    queryKey: ["admin-risk-dashboard"],
+    queryFn: async () => {
+      const resp = await fetch(`/api/admin/risk/dashboard?hours=24`, { headers });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+    refetchInterval: 30_000,
+  });
 
   const query = useQuery<ListResponse>({
     queryKey: ["admin-risk-events", filter],
@@ -117,21 +136,75 @@ export default function AdminRiskPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => query.refetch()}
-            disabled={query.isFetching}
+            onClick={() => {
+              query.refetch();
+              dashboard.refetch();
+            }}
+            disabled={query.isFetching || dashboard.isFetching}
             className="gap-2"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${query.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${query.isFetching || dashboard.isFetching ? "animate-spin" : ""}`}
+            />
             تحديث
           </Button>
         </header>
+
+        {/* Dashboard stats */}
+        {dashboard.data && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <DashCard
+              label={`إجمالي ${dashboard.data.window_hours} ساعة`}
+              value={String(dashboard.data.total)}
+              hint={
+                dashboard.data.pipeline.enabled
+                  ? "خط الأنابيب مفعَّل"
+                  : "خط الأنابيب معطَّل (RISK_PIPELINE_ENABLED=false)"
+              }
+              tone={dashboard.data.pipeline.enabled ? "ok" : "warn"}
+            />
+            <DashCard
+              label="حرج"
+              value={String(dashboard.data.by_level.critical ?? 0)}
+              tone={(dashboard.data.by_level.critical ?? 0) > 0 ? "danger" : "ok"}
+            />
+            <DashCard
+              label="عالي"
+              value={String(dashboard.data.by_level.high ?? 0)}
+              tone={(dashboard.data.by_level.high ?? 0) > 0 ? "warn" : "ok"}
+            />
+            <DashCard
+              label="بدون تصنيف"
+              value={String(dashboard.data.unresolved)}
+              hint="لم تُصنَّف بعد"
+              tone={dashboard.data.unresolved > 0 ? "warn" : "ok"}
+            />
+          </div>
+        )}
+        {dashboard.data && dashboard.data.top_rules.length > 0 && (
+          <div className="border border-border/40 rounded-2xl bg-card/60 p-3">
+            <div className="text-xs text-muted-foreground mb-2 font-bold">
+              أكثر القواعد إطلاقاً (24 ساعة)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {dashboard.data.top_rules.map((r) => (
+                <span
+                  key={r.rule}
+                  className="text-[11px] font-mono bg-muted/40 border border-border/40 rounded-lg px-2 py-1"
+                >
+                  {r.rule}
+                  <span className="opacity-60 mr-1.5">×{r.count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter chips */}
         <div className="flex items-center gap-2 flex-wrap">
           {FILTERS.map((f) => {
             const active = f.value === filter;
-            const tone =
-              f.value === "all" ? null : LEVEL_META[f.value as RiskLevel];
+            const tone = f.value === "all" ? null : LEVEL_META[f.value as RiskLevel];
             return (
               <button
                 key={f.value}
@@ -187,7 +260,8 @@ export default function AdminRiskPage() {
               <tbody>
                 {events.map((e) => {
                   const tone = LEVEL_META[e.level];
-                  const userLabel = e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
+                  const userLabel =
+                    e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
                   return (
                     <tr
                       key={e.id}
@@ -227,5 +301,35 @@ export default function AdminRiskPage() {
         )}
       </div>
     </AdminLayout>
+  );
+}
+
+function DashCard({
+  label,
+  value,
+  hint,
+  tone = "ok",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "ok" | "warn" | "danger";
+}) {
+  const tones = {
+    ok: "border-border/40 bg-card/60",
+    warn: "border-amber-500/30 bg-amber-500/5",
+    danger: "border-red-500/30 bg-red-500/5",
+  };
+  const valueColor = {
+    ok: "",
+    warn: "text-amber-400",
+    danger: "text-red-400",
+  };
+  return (
+    <div className={`border rounded-xl p-3 ${tones[tone]}`}>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className={`text-xl font-bold mt-0.5 ${valueColor[tone]}`}>{value}</div>
+      {hint && <div className="text-[10px] text-muted-foreground mt-1">{hint}</div>}
+    </div>
   );
 }
