@@ -1159,6 +1159,75 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_products_name_trgm
         ON products USING gin (name gin_trgm_ops);
     `);
+
+    // ── 011-inventory-demand-forecast: forecast pipeline tables ──────────────
+    //
+    // Two new tables for the daily statistical demand-forecasting job
+    // (specs/011-inventory-demand-forecast/data-model.md). Read-only
+    // surface — never on the customer purchase critical path
+    // (FR-FORECAST-005). Both tables are additive; existing flows
+    // unaffected.
+    //
+    //   inventory_forecast_runs : one row per cron execution; powers the
+    //                              "last successful run" surface on the
+    //                              admin panel + the calibration analysis.
+    //   inventory_forecasts     : one row per (product, forecast_date);
+    //                              upsert-on-conflict pattern keeps the
+    //                              re-run idempotent (FR-FORECAST-006).
+    //
+    // The admin_alerts.type extension to 'forecast_stockout' is a no-op:
+    // the column is varchar(30), not an enum (audit notes-admin-alerts-type.md).
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS inventory_forecast_runs (
+        id                 SERIAL       PRIMARY KEY,
+        started_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        completed_at       TIMESTAMPTZ,
+        outcome            VARCHAR(20)  NOT NULL DEFAULT 'in_flight',
+        products_predicted INTEGER      NOT NULL DEFAULT 0,
+        products_skipped   JSONB        NOT NULL DEFAULT '{}'::jsonb,
+        alerts_emitted     INTEGER      NOT NULL DEFAULT 0,
+        alerts_capped      BOOLEAN      NOT NULL DEFAULT false,
+        capture_rate_14d   NUMERIC(4,3),
+        worker_tier        VARCHAR(50),
+        failure_reason     TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_forecast_runs_started_at
+        ON inventory_forecast_runs (started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_forecast_runs_outcome
+        ON inventory_forecast_runs (outcome, started_at DESC);
+
+      CREATE TABLE IF NOT EXISTS inventory_forecasts (
+        id                       SERIAL       PRIMARY KEY,
+        run_id                   INTEGER      NOT NULL REFERENCES inventory_forecast_runs(id) ON DELETE CASCADE,
+        product_id               INTEGER      NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        forecast_date            DATE         NOT NULL,
+        current_stock_on_hand    INTEGER      NOT NULL,
+        avg_daily_sales          NUMERIC(8,4),
+        dow_blend_7d             NUMERIC(8,4),
+        predicted_demand_7d      INTEGER,
+        predicted_demand_30d     INTEGER,
+        predicted_runout_at      DATE,
+        recommended_reorder_qty  INTEGER,
+        confidence               VARCHAR(20)  NOT NULL,
+        at_risk                  BOOLEAN      NOT NULL DEFAULT false,
+        created_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        CONSTRAINT chk_forecast_confidence
+          CHECK (confidence IN ('high','medium','low','insufficient_data')),
+        CONSTRAINT chk_forecast_insufficient_consistency
+          CHECK ((confidence = 'insufficient_data') = (avg_daily_sales IS NULL))
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_forecast_product_date
+        ON inventory_forecasts (product_id, forecast_date);
+      CREATE INDEX IF NOT EXISTS idx_forecasts_at_risk_runout
+        ON inventory_forecasts (at_risk, predicted_runout_at)
+        WHERE at_risk = true;
+      CREATE INDEX IF NOT EXISTS idx_forecasts_product_date
+        ON inventory_forecasts (product_id, forecast_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_forecasts_run
+        ON inventory_forecasts (run_id);
+    `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }

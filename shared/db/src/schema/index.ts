@@ -8,6 +8,8 @@ export * from "./copilot_previews";
 export * from "./coupons";
 export * from "./flash_sales";
 export * from "./inventory";
+export * from "./inventory_forecast_runs";
+export * from "./inventory_forecasts";
 export * from "./login_attempts";
 export * from "./notifications";
 export * from "./orders";
