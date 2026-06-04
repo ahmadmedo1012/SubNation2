@@ -18,7 +18,13 @@ import {
 import { useState } from "react";
 import { AdminLayout } from "./layout";
 
-type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system";
+type AlertType =
+  | "coupon_maxed"
+  | "coupon_expiring"
+  | "low_stock"
+  | "no_stock"
+  | "system"
+  | "forecast_stockout";
 
 interface AdminAlertItem {
   id: number;
@@ -67,6 +73,13 @@ const TYPE_META: Record<
     bg: "bg-blue-400/10",
     border: "border-blue-400/20",
     label: "نظام",
+  },
+  forecast_stockout: {
+    icon: AlertTriangle,
+    color: "text-orange-400",
+    bg: "bg-orange-400/10",
+    border: "border-orange-400/20",
+    label: "نفاد متوقع",
   },
 };
 
