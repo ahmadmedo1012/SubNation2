@@ -12,6 +12,7 @@ import { adminOrdersRouter } from "./orders";
 import { adminPricingCalculatorRouter } from "./pricing-calculator";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
+import { adminRiskRouter } from "./risk";
 import { adminSecurityRouter } from "./security";
 import { adminSettingsRouter } from "./settings";
 import { adminStatsRouter } from "./stats";
@@ -50,6 +51,11 @@ router.use(
 // AI Admin Copilot (010-ai-admin-copilot). Each leaf route inside enforces
 // its own phase + scope gate; the parent mount only attaches the router.
 router.use("/", copilotRouter);
+
+// Anomaly detection (003-anomaly-detection). Risk events are user-related
+// investigative data; the `users` scope is the closest fit in the existing
+// permission catalog.
+router.use("/", requireAdmin, requirePermission("users"), adminRiskRouter);
 
 router.use(
   "/",
