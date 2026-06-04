@@ -1,0 +1,216 @@
+openapi: 3.1.0
+info:
+  title: SubNation Admin — Inventory Demand Forecast
+  version: "0.1.0"
+  description: |
+    Read-only admin endpoints for the inventory demand forecasting feature
+    (011). Both endpoints sit behind `requireAdmin` + the existing
+    `inventory` permission scope. There is no public-facing variant — the
+    storefront never exposes forecast data (FR-SAFETY-002).
+
+servers:
+  - url: /
+
+components:
+  securitySchemes:
+    adminCookie:
+      type: apiKey
+      in: cookie
+      name: subnation_admin
+      description: |
+        Existing admin session cookie set by /api/admin/login. The
+        backend's requireAdmin middleware decodes it into adminId +
+        permissions.
+
+  schemas:
+    Confidence:
+      type: string
+      enum: [high, medium, low, insufficient_data]
+      description: |
+        Forecast confidence band. `insufficient_data` means < 14 days of
+        order history; the row carries no predictions.
+
+    PipelineState:
+      type: string
+      enum: [fresh, stale, uninitialized, calibrating]
+      description: |
+        - fresh: latest run completed < 24h ago.
+        - stale: latest run completed ≥ 24h ago.
+        - uninitialized: no successful run yet.
+        - calibrating: kill-criterion tripped (capture rate < 50% rolling
+          14d). Alerts paused; forecasts still populated for back-test.
+
+    AtRiskRow:
+      type: object
+      required:
+        - product_id
+        - product_name
+        - current_stock_on_hand
+        - confidence
+        - panel_url
+      properties:
+        product_id:
+          type: integer
+          description: References products.id.
+        product_name:
+          type: string
+        product_image_url:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        current_stock_on_hand:
+          type: integer
+          description: COUNT(inventory.is_sold = false) at run time.
+        avg_daily_sales:
+          type: number
+          format: float
+          nullable: true
+          description: Trailing 14-day mean. Null when insufficient data.
+        predicted_demand_7d:
+          type: integer
+          nullable: true
+        predicted_demand_30d:
+          type: integer
+          nullable: true
+        predicted_runout_at:
+          type: string
+          format: date
+          nullable: true
+          description: Calendar date the product is predicted to hit zero.
+        recommended_reorder_qty:
+          type: integer
+          nullable: true
+          description: max(0, predicted_demand_30d * 1.2 - current_stock_on_hand).
+        confidence:
+          $ref: "#/components/schemas/Confidence"
+        forecast_date:
+          type: string
+          format: date
+          description: Calendar date this forecast represents.
+        panel_url:
+          type: string
+          description: Deep-link to the existing product-edit page.
+
+    AtRiskResponse:
+      type: object
+      required: [pipeline_state, rows]
+      properties:
+        pipeline_state:
+          $ref: "#/components/schemas/PipelineState"
+        last_successful_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        data_freshness_hours:
+          type: integer
+          nullable: true
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/AtRiskRow"
+
+    ForecastDetail:
+      allOf:
+        - $ref: "#/components/schemas/AtRiskRow"
+        - type: object
+          required: [explanation]
+          properties:
+            explanation:
+              type: object
+              description: |
+                Drives the FR-PANEL "ما الذي أنتج هذا التوقع؟" drawer.
+                Components must reproduce the headline numbers within ±1.
+              properties:
+                avg_daily_sales:
+                  type: number
+                  format: float
+                  nullable: true
+                dow_blend_7d:
+                  type: number
+                  format: float
+                  nullable: true
+                days_of_history_available:
+                  type: integer
+                  description: |
+                    For insufficient_data rows, how many days of order
+                    history exist (< 14 means below the spec floor).
+                run_completed_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+
+    ProductDetailResponse:
+      type: object
+      required: [pipeline_state]
+      properties:
+        pipeline_state:
+          $ref: "#/components/schemas/PipelineState"
+        forecast:
+          $ref: "#/components/schemas/ForecastDetail"
+
+paths:
+  /api/admin/forecast/at-risk:
+    get:
+      operationId: getAdminForecastAtRisk
+      summary: Top-N products at risk of stockout
+      description: |
+        Returns the top N (default 10, max 50) products ordered by
+        predicted-days-until-stockout ascending, filtered to at_risk = true
+        and confidence != insufficient_data. Powers the StockoutRiskPanel
+        on /admin/products.
+      tags: [admin/forecast]
+      security:
+        - adminCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AtRiskResponse"
+        "401":
+          description: Unauthenticated
+        "403":
+          description: Forbidden — admin lacks `inventory` scope.
+
+  /api/admin/forecast/products/{id}:
+    get:
+      operationId: getAdminForecastForProduct
+      summary: Single-product forecast + explanation
+      description: |
+        Returns the latest forecast row for a single product, including
+        the explanation breakdown (avg-daily-sales, dow-blend, history
+        depth). Powers the explanation drawer in StockoutRiskPanel.
+      tags: [admin/forecast]
+      security:
+        - adminCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK — forecast row may be null if pipeline_state != fresh.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetailResponse"
+        "401":
+          description: Unauthenticated
+        "403":
+          description: Forbidden — admin lacks `inventory` scope.
+        "404":
+          description: Product not found.

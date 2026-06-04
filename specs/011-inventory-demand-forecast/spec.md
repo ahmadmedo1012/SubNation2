@@ -10,7 +10,7 @@
 
 ---
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 > All "users" in this spec are SubNation operators (the founder + core admins). The customer-facing surface is intentionally untouched — legitimate buyers see no forecast, no "only N left" UI; the existing storefront keeps its authoritative `inventory.is_sold = false` count behavior.
 
@@ -91,7 +91,7 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 
 ---
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -147,7 +147,7 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 - **FR-SAFETY-003**: System MUST NOT modify the existing `inventory.is_sold` purchase decrement path. The customer flow is unchanged at the byte level.
 - **FR-SAFETY-004**: System MUST surface a "calibrating" state and stop firing alerts when the rolling stockout-capture rate over the trailing 14 days falls below 50% (kill-criterion fail-safe). Forecasts continue to populate the table for back-testing; alerts pause until an admin re-enables.
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **Forecast Run**: One row per daily job execution. Captures: run id, started-at, completed-at, products predicted count, products skipped count (per reason), worker tier identifier, success/failure outcome. Powers the "last updated" surface and the calibration analysis.
 - **Inventory Forecast**: One row per (product, forecast date). Carries: product reference, predicted demand 7d, predicted demand 30d, predicted runout date, confidence band, recommended reorder quantity, input snapshot (avg-daily-sales, dow-multiplier, stock-on-hand at run time), parent run reference. Read by the panel + copilot tool. Cascades on product delete.
@@ -155,7 +155,7 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 
 ---
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
