@@ -141,3 +141,70 @@ export async function markConsumed(id: string): Promise<void> {
     .set({ consumedAt: new Date() })
     .where(eq(copilotPreviewsTable.id, id));
 }
+
+/**
+ * Stamp the first-confirmation timestamps for a high-risk preview, starting
+ * the 3-second cooldown clock. Returns the cooldownStartsAt the server set
+ * so the caller can echo it back to the client. Idempotent: if the preview
+ * is already first-confirmed, returns the existing timestamp.
+ */
+export async function markFirstConfirmHighRisk(
+  id: string,
+  adminId: number,
+): Promise<{ cooldownStartsAt: Date } | null> {
+  const now = new Date();
+  const [row] = await db
+    .update(copilotPreviewsTable)
+    .set({ confirmedOnceAt: now, cooldownStartsAt: now })
+    .where(
+      and(
+        eq(copilotPreviewsTable.id, id),
+        eq(copilotPreviewsTable.adminId, adminId),
+        isNull(copilotPreviewsTable.consumedAt),
+        isNull(copilotPreviewsTable.confirmedOnceAt),
+        gt(copilotPreviewsTable.expiresAt, sql`NOW()`),
+      ),
+    )
+    .returning({
+      cooldownStartsAt: copilotPreviewsTable.cooldownStartsAt,
+    });
+  if (!row) {
+    // Either already first-confirmed, or expired/consumed/not-owned. Re-read
+    // to distinguish for the caller.
+    const existing = await getOwnedPreview(id, adminId);
+    if (existing && existing.cooldownStartsAt) {
+      return { cooldownStartsAt: existing.cooldownStartsAt };
+    }
+    return null;
+  }
+  return { cooldownStartsAt: row.cooldownStartsAt ?? now };
+}
+
+/**
+ * Atomically claim a high-risk preview that has cleared its 3-second
+ * cooldown, is unexpired, and is unconsumed. The caller must be the owner.
+ * Returns the row to execute against, or null if the preview is not yet
+ * eligible (cooldown not elapsed, not first-confirmed, expired, etc.).
+ */
+export async function claimHighRiskForExecute(
+  id: string,
+  adminId: number,
+): Promise<PreviewRow | null> {
+  const [row] = await db
+    .select()
+    .from(copilotPreviewsTable)
+    .where(
+      and(
+        eq(copilotPreviewsTable.id, id),
+        eq(copilotPreviewsTable.adminId, adminId),
+        isNull(copilotPreviewsTable.consumedAt),
+        gt(copilotPreviewsTable.expiresAt, sql`NOW()`),
+        sql`${copilotPreviewsTable.confirmedOnceAt} IS NOT NULL`,
+        sql`${copilotPreviewsTable.cooldownStartsAt} IS NOT NULL`,
+        sql`NOW() >= ${copilotPreviewsTable.cooldownStartsAt} + INTERVAL '3 seconds'`,
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  return row as unknown as PreviewRow;
+}

@@ -24,7 +24,12 @@ import { db, productsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { recordExecute } from "./audit";
-import { claimUnconsumedPreview, markConsumed, type PreviewRow } from "./preview-store";
+import {
+  claimHighRiskForExecute,
+  claimUnconsumedPreview,
+  markConsumed,
+  type PreviewRow,
+} from "./preview-store";
 
 export type ExecuteOutcome =
   | { kind: "success"; actionId: number; afterState: unknown }
@@ -33,6 +38,8 @@ export type ExecuteOutcome =
   | { kind: "consumed" }
   | { kind: "not_found" }
   | { kind: "wrong_tier"; tier: "high" | "no_execute" }
+  | { kind: "cooldown_not_elapsed"; cooldownStartsAt: Date }
+  | { kind: "first_confirm_missing" }
   | { kind: "failure"; reason: string };
 
 export async function executeLowRiskConfirm(args: {
@@ -180,3 +187,175 @@ export async function executeLowRiskConfirm(args: {
 // Re-export for tests / future bulk path.
 export type { PreviewRow };
 export { recordExecute };
+
+// ────────────────────────────────────────────────────────────────────────
+// High-risk execute path (US4)
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Execute a high-risk preview after the 3-second cooldown has elapsed.
+ *
+ * Pre-execute checks:
+ *   1. Owner-matching, unexpired, unconsumed.
+ *   2. confirmed_once_at IS NOT NULL AND now() >= cooldown_starts_at + 3s
+ *      (handled by claimHighRiskForExecute).
+ *   3. risk_tier === "high".
+ *   4. Per-entity record_versions match (FR-PREVIEW-004).
+ *
+ * Apply: route on toolName to the right column update; price_change touches
+ * `price`, cost_change `cost_price`, status_change `is_active`+`is_archived`.
+ *
+ * Audit dual-write happens inside the same transaction as the product
+ * update (FR-EXECUTE-003).
+ */
+export async function executeHighRiskDoubleConfirm(args: {
+  previewId: string;
+  adminId: number;
+}): Promise<ExecuteOutcome> {
+  // Peek first so we can return distinct codes for not-found vs cooldown.
+  const peeked = await claimUnconsumedPreview(args.previewId, args.adminId);
+  if (!peeked) return { kind: "not_found" };
+  if (peeked.riskTier !== "high") {
+    return { kind: "wrong_tier", tier: peeked.riskTier === "low" ? "high" : "no_execute" };
+  }
+  if (!peeked.confirmedOnceAt || !peeked.cooldownStartsAt) {
+    return { kind: "first_confirm_missing" };
+  }
+  const now = Date.now();
+  const cooldownEndMs = peeked.cooldownStartsAt.getTime() + 3000;
+  if (now < cooldownEndMs) {
+    return { kind: "cooldown_not_elapsed", cooldownStartsAt: peeked.cooldownStartsAt };
+  }
+
+  const claimed = await claimHighRiskForExecute(args.previewId, args.adminId);
+  if (!claimed) {
+    return { kind: "failure", reason: "preview no longer claimable" };
+  }
+  const preview = claimed;
+
+  // Staleness check.
+  if (preview.affectedEntityType !== "product") {
+    return { kind: "failure", reason: `unsupported entity type: ${preview.affectedEntityType}` };
+  }
+  const stale: number[] = [];
+  for (const id of preview.affectedIds) {
+    const [row] = await db
+      .select({ updatedAt: productsTable.updatedAt })
+      .from(productsTable)
+      .where(eq(productsTable.id, id))
+      .limit(1);
+    if (!row) {
+      stale.push(id);
+      continue;
+    }
+    const expected = preview.recordVersions[String(id)];
+    const actual = (row.updatedAt ?? new Date(0)).toISOString();
+    if (!expected || expected !== actual) stale.push(id);
+  }
+  if (stale.length > 0) return { kind: "stale", staleIds: stale };
+
+  const productId = preview.affectedIds[0]!;
+  const payload = preview.previewPayload as {
+    changes?: Array<{ field: string; before: unknown; after: unknown }>;
+  };
+  const changes = payload.changes ?? [];
+  if (changes.length === 0) {
+    return { kind: "failure", reason: "preview has no changes" };
+  }
+
+  const updateValues: Record<string, unknown> = {};
+  for (const c of changes) {
+    if (preview.toolName === "draft_price_change" && c.field === "price") {
+      updateValues.price = c.after as string;
+    } else if (preview.toolName === "draft_cost_change" && c.field === "costPrice") {
+      updateValues.costPrice = c.after as string;
+    } else if (
+      preview.toolName === "draft_status_change" &&
+      (c.field === "isActive" || c.field === "isArchived")
+    ) {
+      updateValues[c.field] = Boolean(c.after);
+    } else {
+      return {
+        kind: "failure",
+        reason: `unsupported field/tool combo: ${preview.toolName}/${c.field}`,
+      };
+    }
+  }
+
+  let actionId = -1;
+  try {
+    actionId = await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.id, productId))
+        .limit(1);
+      if (!before) throw new Error("product disappeared mid-transaction");
+
+      const [after] = await tx
+        .update(productsTable)
+        .set(updateValues)
+        .where(eq(productsTable.id, productId))
+        .returning();
+      if (!after) throw new Error("product update returned no row");
+
+      const { auditLogsTable, copilotActionsTable } = await import("@workspace/db");
+      const confirmedTwiceAt = new Date();
+      const [actionRow] = await tx
+        .insert(copilotActionsTable)
+        .values({
+          previewId: preview.id,
+          adminId: args.adminId,
+          intentText: preview.intentText,
+          toolName: preview.toolName,
+          actionClass: preview.actionClass,
+          riskTier: "high",
+          outcome: "success",
+          beforeState: before as never,
+          afterState: after as never,
+          confirmedOnceAt: preview.confirmedOnceAt,
+          confirmedTwiceAt,
+          executedAt: new Date(),
+          modelId: preview.modelId,
+          correlationId: preview.correlationId,
+        })
+        .returning({ id: copilotActionsTable.id });
+      if (!actionRow) throw new Error("copilot_actions insert returned no row");
+
+      await tx.insert(auditLogsTable).values({
+        actorType: "admin",
+        actorId: args.adminId,
+        action: `copilot.${preview.actionClass}`,
+        targetType: "copilot_action",
+        targetId: actionRow.id,
+        metadata: JSON.stringify({
+          outcome: "success",
+          toolName: preview.toolName,
+          productId,
+          fields: changes.map((c) => c.field),
+        }),
+      });
+
+      // Stamp confirmed_twice_at + consumed_at inside the same tx.
+      await tx
+        .update((await import("@workspace/db")).copilotPreviewsTable)
+        .set({ confirmedTwiceAt, consumedAt: new Date() })
+        .where(eq((await import("@workspace/db")).copilotPreviewsTable.id, preview.id));
+
+      return actionRow.id;
+    });
+  } catch (err) {
+    logger.error(
+      { err, previewId: preview.id },
+      "copilot high-risk executor: transaction failed",
+    );
+    return { kind: "failure", reason: err instanceof Error ? err.message : String(err) };
+  }
+
+  const [after] = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.id, productId))
+    .limit(1);
+  return { kind: "success", actionId, afterState: after ?? null };
+}

@@ -178,15 +178,274 @@ export const draftCatalogEdit: CopilotTool = {
 };
 
 // ────────────────────────────────────────────────────────────────────────
+// draft_price_change (high risk) — products.price
+// ────────────────────────────────────────────────────────────────────────
+
+const draftPriceChangeSpec: Tool = {
+  type: "function",
+  function: {
+    name: "draft_price_change",
+    description:
+      "Propose a new selling price for ONE product. HIGH RISK — requires " +
+      "double confirmation. The system surfaces a margin warning when the " +
+      "new price drops below the recorded cost price.",
+    parameters: {
+      type: "object",
+      required: ["id", "new_price"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "integer" },
+        new_price: {
+          type: "number",
+          minimum: 0,
+          description: "New selling price in the platform currency.",
+        },
+      },
+    },
+  },
+};
+
+async function draftPriceChangeHandler(
+  input: Record<string, unknown>,
+): Promise<ValidationResult<DraftPlan>> {
+  const id = Number(input.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "Missing or invalid product id.");
+  }
+  const newPrice = Number(input.new_price);
+  if (!Number.isFinite(newPrice) || newPrice < 0) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "new_price must be a non-negative number.");
+  }
+  const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
+  if (!row) return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);
+
+  const beforePrice = Number(row.price);
+  if (Math.abs(beforePrice - newPrice) < 0.005) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "No-op: price unchanged.");
+  }
+
+  const warnings: DraftPlan["validationWarnings"] = [];
+  const cost = row.costPrice == null ? null : Number(row.costPrice);
+  if (cost != null && newPrice < cost) {
+    warnings.push({
+      severity: "warn",
+      code: "below_cost",
+      message: `Proposed price ${newPrice.toFixed(2)} is below cost price ${cost.toFixed(2)}.`,
+      affected_id: id,
+    });
+  }
+
+  const newPriceFixed = newPrice.toFixed(2);
+  return {
+    ok: true,
+    value: {
+      toolName: "draft_price_change",
+      actionClass: "price_change",
+      riskTier: "high",
+      affectedEntityType: "product",
+      affectedIds: [id],
+      changes: [{ field: "price", before: row.price, after: newPriceFixed }],
+      intentSummary: `Change price of #${id} (${row.name}) from ${row.price} to ${newPriceFixed}.`,
+      sideEffects: ["Customer-facing price changes are visible immediately."],
+      validationWarnings: warnings,
+      irreversible: false,
+      recordVersions: { [String(id)]: (row.updatedAt ?? row.createdAt).toISOString() },
+    },
+  };
+}
+
+export const draftPriceChange: CopilotTool = {
+  requiredScope: "inventory",
+  spec: draftPriceChangeSpec,
+  handler: async () => ({ error: "draft tools must be invoked via runDraftTool" }),
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// draft_cost_change (high risk) — products.cost_price
+// ────────────────────────────────────────────────────────────────────────
+
+const draftCostChangeSpec: Tool = {
+  type: "function",
+  function: {
+    name: "draft_cost_change",
+    description:
+      "Propose a new procurement cost price for ONE product. HIGH RISK — " +
+      "feeds margin and pricing calculators; double confirmation required.",
+    parameters: {
+      type: "object",
+      required: ["id", "new_cost"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "integer" },
+        new_cost: { type: "number", minimum: 0 },
+      },
+    },
+  },
+};
+
+async function draftCostChangeHandler(
+  input: Record<string, unknown>,
+): Promise<ValidationResult<DraftPlan>> {
+  const id = Number(input.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "Missing or invalid product id.");
+  }
+  const newCost = Number(input.new_cost);
+  if (!Number.isFinite(newCost) || newCost < 0) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "new_cost must be a non-negative number.");
+  }
+  const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
+  if (!row) return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);
+
+  const before = row.costPrice == null ? null : Number(row.costPrice);
+  if (before != null && Math.abs(before - newCost) < 0.005) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "No-op: cost price unchanged.");
+  }
+
+  const warnings: DraftPlan["validationWarnings"] = [];
+  const sellPrice = Number(row.price);
+  if (Number.isFinite(sellPrice) && sellPrice < newCost) {
+    warnings.push({
+      severity: "warn",
+      code: "above_sell_price",
+      message: `New cost ${newCost.toFixed(2)} exceeds current sell price ${sellPrice.toFixed(2)}.`,
+      affected_id: id,
+    });
+  }
+
+  const newCostFixed = newCost.toFixed(2);
+  return {
+    ok: true,
+    value: {
+      toolName: "draft_cost_change",
+      actionClass: "cost_change",
+      riskTier: "high",
+      affectedEntityType: "product",
+      affectedIds: [id],
+      changes: [{ field: "costPrice", before: row.costPrice, after: newCostFixed }],
+      intentSummary: `Change cost price of #${id} (${row.name}) from ${row.costPrice ?? "null"} to ${newCostFixed}.`,
+      sideEffects: ["Internal only — customers do not see cost price."],
+      validationWarnings: warnings,
+      irreversible: false,
+      recordVersions: { [String(id)]: (row.updatedAt ?? row.createdAt).toISOString() },
+    },
+  };
+}
+
+export const draftCostChange: CopilotTool = {
+  requiredScope: "inventory",
+  spec: draftCostChangeSpec,
+  handler: async () => ({ error: "draft tools must be invoked via runDraftTool" }),
+};
+
+// ────────────────────────────────────────────────────────────────────────
+// draft_status_change (high risk) — publish / archive / unpublish
+// ────────────────────────────────────────────────────────────────────────
+
+const draftStatusChangeSpec: Tool = {
+  type: "function",
+  function: {
+    name: "draft_status_change",
+    description:
+      "Propose a status change for ONE product (publish / unpublish / archive / unarchive). " +
+      "HIGH RISK — affects customer visibility immediately on execute.",
+    parameters: {
+      type: "object",
+      required: ["id", "target_status"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "integer" },
+        target_status: { type: "string", enum: ["active", "draft", "archived"] },
+      },
+    },
+  },
+};
+
+async function draftStatusChangeHandler(
+  input: Record<string, unknown>,
+): Promise<ValidationResult<DraftPlan>> {
+  const id = Number(input.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "Missing or invalid product id.");
+  }
+  const target = String(input.target_status ?? "");
+  if (!["active", "draft", "archived"].includes(target)) {
+    return refusal(
+      409,
+      REFUSAL_CODES.INVALID_VALUE,
+      "target_status must be one of: active, draft, archived.",
+    );
+  }
+  const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
+  if (!row) return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);
+
+  const currentStatus = row.isArchived ? "archived" : row.isActive ? "active" : "draft";
+  if (currentStatus === target) {
+    return refusal(409, REFUSAL_CODES.INVALID_VALUE, `No-op: product already in '${target}'.`);
+  }
+  const nextIsActive = target === "active";
+  const nextIsArchived = target === "archived";
+  const sideEffects: string[] = [];
+  if (target === "archived") {
+    sideEffects.push("Hides the product from the customer catalog.");
+  } else if (target === "active" && currentStatus !== "active") {
+    sideEffects.push("Makes the product visible to customers immediately.");
+  } else if (target === "draft") {
+    sideEffects.push("Removes the product from the customer catalog (keeps it editable).");
+  }
+
+  return {
+    ok: true,
+    value: {
+      toolName: "draft_status_change",
+      actionClass: "status_change",
+      riskTier: "high",
+      affectedEntityType: "product",
+      affectedIds: [id],
+      changes: [
+        { field: "isActive", before: row.isActive, after: nextIsActive },
+        { field: "isArchived", before: row.isArchived, after: nextIsArchived },
+      ],
+      intentSummary: `Change status of #${id} (${row.name}) from '${currentStatus}' to '${target}'.`,
+      sideEffects,
+      validationWarnings: [],
+      irreversible: false,
+      recordVersions: { [String(id)]: (row.updatedAt ?? row.createdAt).toISOString() },
+    },
+  };
+}
+
+export const draftStatusChange: CopilotTool = {
+  requiredScope: "inventory",
+  spec: draftStatusChangeSpec,
+  handler: async () => ({ error: "draft tools must be invoked via runDraftTool" }),
+};
+
+// ────────────────────────────────────────────────────────────────────────
 // Catalog
 // ────────────────────────────────────────────────────────────────────────
 
-export const DRAFT_TOOLS: CopilotTool[] = [draftCatalogEdit];
+export const DRAFT_TOOLS: CopilotTool[] = [
+  draftCatalogEdit,
+  draftPriceChange,
+  draftCostChange,
+  draftStatusChange,
+];
 
 export function draftToolsForScopes(scopes: string[]): CopilotTool[] {
   if (scopes.includes("all")) return DRAFT_TOOLS;
   return DRAFT_TOOLS.filter((t) => t.requiredScope === null || scopes.includes(t.requiredScope));
 }
+
+const DRAFT_HANDLERS: Record<
+  string,
+  (input: Record<string, unknown>) => Promise<ValidationResult<DraftPlan>>
+> = {
+  draft_catalog_edit: draftCatalogEditHandler,
+  draft_price_change: draftPriceChangeHandler,
+  draft_cost_change: draftCostChangeHandler,
+  draft_status_change: draftStatusChangeHandler,
+};
 
 /**
  * Resolve a draft tool call → a validated DraftPlan or a refusal.
@@ -198,11 +457,20 @@ export async function runDraftTool(
   input: Record<string, unknown>,
   scopes: string[],
 ): Promise<ValidationResult<DraftPlan>> {
-  if (name !== "draft_catalog_edit") {
+  const handler = DRAFT_HANDLERS[name];
+  if (!handler) {
     return refusal(409, REFUSAL_CODES.HALLUCINATED_FIELD, `Unknown draft tool: ${name}`);
   }
-  if (!scopes.includes("all") && !scopes.includes("inventory")) {
-    return refusal(403, REFUSAL_CODES.OUT_OF_SCOPE, "This tool requires the `inventory` scope.");
+  const tool = DRAFT_TOOLS.find((t) => t.spec.function.name === name);
+  if (!tool) {
+    return refusal(409, REFUSAL_CODES.HALLUCINATED_FIELD, `Unregistered draft tool: ${name}`);
   }
-  return draftCatalogEditHandler(input);
+  if (!scopes.includes("all") && tool.requiredScope && !scopes.includes(tool.requiredScope)) {
+    return refusal(
+      403,
+      REFUSAL_CODES.OUT_OF_SCOPE,
+      `This tool requires the \`${tool.requiredScope}\` scope.`,
+    );
+  }
+  return handler(input);
 }

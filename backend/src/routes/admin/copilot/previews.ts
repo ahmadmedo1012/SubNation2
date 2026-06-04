@@ -15,8 +15,16 @@ import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import { recordNonExecute } from "../../../services/copilot/audit";
-import { executeLowRiskConfirm } from "../../../services/copilot/executor";
-import { cancelPreview, getOwnedPreview } from "../../../services/copilot/preview-store";
+import {
+  executeHighRiskDoubleConfirm,
+  executeLowRiskConfirm,
+} from "../../../services/copilot/executor";
+import { getPhaseFlags } from "../../../services/copilot/phase-flags";
+import {
+  cancelPreview,
+  getOwnedPreview,
+  markFirstConfirmHighRisk,
+} from "../../../services/copilot/preview-store";
 
 const previewsRouter = Router();
 
@@ -134,9 +142,30 @@ previewsRouter.post(
       return;
     }
     if (peek.riskTier === "high") {
-      res.status(403).json({
-        error: "هذه العملية عالية الخطورة وتتطلب تأكيداً ثانياً (لم يُفعَّل بعد).",
-        code: "COPILOT_HIGH_RISK_DISABLED",
+      const flags = await getPhaseFlags();
+      if (!flags.phase3_high_risk_enabled) {
+        res.status(403).json({
+          error: "هذه العملية عالية الخطورة وتتطلب تأكيداً ثانياً (لم يُفعَّل بعد).",
+          code: "COPILOT_HIGH_RISK_DISABLED",
+        });
+        return;
+      }
+      // Stamp first-confirm + cooldown clock; client must call /double-confirm
+      // after 3 seconds elapse on the returned cooldown_starts_at.
+      const stamped = await markFirstConfirmHighRisk(id, adminReq.adminId);
+      if (!stamped) {
+        res.status(409).json({
+          error: "تعذّر بدء التأكيد الأول",
+          code: "COPILOT_PREVIEW_CONSUMED",
+        });
+        return;
+      }
+      res.json({
+        outcome: "awaiting_double_confirm",
+        preview_id: id,
+        cooldown_starts_at: stamped.cooldownStartsAt.toISOString(),
+        cooldown_ends_at: new Date(stamped.cooldownStartsAt.getTime() + 3000).toISOString(),
+        cooldown_seconds: 3,
       });
       return;
     }
@@ -176,8 +205,120 @@ previewsRouter.post(
       case "not_found":
         res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
         return;
+      case "first_confirm_missing":
+      case "cooldown_not_elapsed":
+        // Not reachable from the low-risk path, but the shared ExecuteOutcome
+        // union covers them — surface a generic 409 instead of falling through.
+        res.status(409).json({
+          error: "حالة غير متوقعة من منفّذ التأكيد",
+          code: "COPILOT_UNEXPECTED_STATE",
+        });
+        return;
       case "failure":
         logger.error({ outcome, previewId: id }, "copilot execute failure");
+        res
+          .status(500)
+          .json({ error: "فشل التنفيذ", code: "COPILOT_EXECUTE_FAILED", reason: outcome.reason });
+        return;
+    }
+  },
+);
+
+// ────────────────────────────────────────────────────────────────────────
+// POST /previews/:id/double-confirm  — high-risk execute after 3s cooldown
+// ────────────────────────────────────────────────────────────────────────
+previewsRouter.post(
+  "/copilot/previews/:id/double-confirm",
+  requireAdmin,
+  requireCopilotPhase("phase3_enabled"),
+  copilotRateLimit,
+  async (req: Request, res: Response) => {
+    const adminReq = req as AdminAuthenticatedRequest;
+    const id = String(req.params.id ?? "");
+
+    const flags = await getPhaseFlags();
+    if (!flags.phase3_high_risk_enabled) {
+      res.status(403).json({
+        error: "تنفيذ العمليات عالية الخطورة غير مُفعَّل.",
+        code: "COPILOT_HIGH_RISK_DISABLED",
+      });
+      return;
+    }
+
+    const peek = await getOwnedPreview(id, adminReq.adminId);
+    if (!peek) {
+      res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+      return;
+    }
+    if (peek.consumedAt) {
+      res.status(409).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
+      return;
+    }
+    if (peek.expiresAt < new Date()) {
+      res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+      return;
+    }
+    if (peek.riskTier !== "high") {
+      res.status(409).json({
+        error: "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
+        code: "COPILOT_NOT_HIGH_RISK",
+      });
+      return;
+    }
+
+    const outcome = await executeHighRiskDoubleConfirm({
+      previewId: id,
+      adminId: adminReq.adminId,
+    });
+
+    switch (outcome.kind) {
+      case "success":
+        res.json({
+          outcome: "success",
+          action_id: outcome.actionId,
+          result_url: peek.affectedEntityType === "product" ? `/admin/products` : null,
+        });
+        return;
+      case "first_confirm_missing":
+        res.status(409).json({
+          error: "يجب تأكيد المعاينة أولاً قبل التأكيد الثاني.",
+          code: "COPILOT_FIRST_CONFIRM_MISSING",
+        });
+        return;
+      case "cooldown_not_elapsed": {
+        const remainingMs = outcome.cooldownStartsAt.getTime() + 3000 - Date.now();
+        res.status(425).json({
+          error: "لم تنقضِ مدة الانتظار 3 ثوانٍ بعد.",
+          code: "COPILOT_COOLDOWN_NOT_ELAPSED",
+          cooldown_starts_at: outcome.cooldownStartsAt.toISOString(),
+          remaining_ms: Math.max(0, remainingMs),
+        });
+        return;
+      }
+      case "stale":
+        res.status(409).json({
+          error: "تم تعديل البيانات بعد إنشاء المعاينة",
+          code: "COPILOT_STALE_RECORD",
+          stale_ids: outcome.staleIds,
+        });
+        return;
+      case "expired":
+        res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+        return;
+      case "consumed":
+        res.status(409).json({ error: "المعاينة استُهلكت", code: "COPILOT_PREVIEW_CONSUMED" });
+        return;
+      case "wrong_tier":
+        res.status(409).json({
+          error: "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
+          code: "COPILOT_NOT_HIGH_RISK",
+        });
+        return;
+      case "not_found":
+        res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+        return;
+      case "failure":
+        logger.error({ outcome, previewId: id }, "copilot high-risk execute failure");
         res
           .status(500)
           .json({ error: "فشل التنفيذ", code: "COPILOT_EXECUTE_FAILED", reason: outcome.reason });
