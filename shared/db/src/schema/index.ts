@@ -6,6 +6,8 @@ export * from "./copilot_action_items";
 export * from "./copilot_actions";
 export * from "./copilot_previews";
 export * from "./coupons";
+export * from "./enrichment_drafts";
+export * from "./enrichment_runs";
 export * from "./flash_sales";
 export * from "./inventory";
 export * from "./inventory_forecast_runs";

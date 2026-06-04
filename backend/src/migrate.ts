@@ -1228,6 +1228,75 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_forecasts_run
         ON inventory_forecasts (run_id);
     `);
+
+    // ── 012-arabic-catalog-enrichment: enrichment pipeline tables ────────────
+    //
+    // Two new tables for the off-peak Arabic catalog enrichment cron
+    // (specs/012-arabic-catalog-enrichment/data-model.md). Read-only at
+    // the LLM boundary; admin-in-the-loop on every output (FR-SAFETY-001).
+    //
+    //   enrichment_runs   — one row per cron execution; powers the
+    //                       SC-004 cost-cap accounting + the panel's
+    //                       "last run" surface.
+    //   enrichment_drafts — one row per (product, field, iteration);
+    //                       state machine + admin-edited final_text +
+    //                       audit timestamps.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS enrichment_runs (
+        id                SERIAL       PRIMARY KEY,
+        started_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        completed_at      TIMESTAMPTZ,
+        outcome           VARCHAR(20)  NOT NULL DEFAULT 'in_flight',
+        drafts_generated  INTEGER      NOT NULL DEFAULT 0,
+        drafts_invalid    INTEGER      NOT NULL DEFAULT 0,
+        products_skipped  JSONB        NOT NULL DEFAULT '{}'::jsonb,
+        tokens_spent      INTEGER      NOT NULL DEFAULT 0,
+        daily_token_cap   INTEGER      NOT NULL DEFAULT 0,
+        cap_reached       BOOLEAN      NOT NULL DEFAULT false,
+        worker_tier       VARCHAR(50),
+        failure_reason    TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_enrichment_runs_started_at
+        ON enrichment_runs (started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_runs_outcome
+        ON enrichment_runs (outcome, started_at DESC);
+
+      CREATE TABLE IF NOT EXISTS enrichment_drafts (
+        id                  SERIAL       PRIMARY KEY,
+        run_id              INTEGER      NOT NULL REFERENCES enrichment_runs(id) ON DELETE CASCADE,
+        product_id          INTEGER      NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        field_name          VARCHAR(50)  NOT NULL,
+        state               VARCHAR(20)  NOT NULL DEFAULT 'drafted',
+        generated_text      TEXT         NOT NULL,
+        final_text          TEXT,
+        model_id            VARCHAR(64)  NOT NULL,
+        input_tokens        INTEGER      NOT NULL DEFAULT 0,
+        output_tokens       INTEGER      NOT NULL DEFAULT 0,
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        published_at        TIMESTAMPTZ,
+        published_by        INTEGER      REFERENCES admin_users(id) ON DELETE SET NULL,
+        rejected_at         TIMESTAMPTZ,
+        rejected_by         INTEGER      REFERENCES admin_users(id) ON DELETE SET NULL,
+        rejection_reason    TEXT,
+        validation_errors   JSONB,
+        CONSTRAINT chk_enrichment_state
+          CHECK (state IN ('drafted','published','rejected','draft_invalid')),
+        CONSTRAINT chk_enrichment_field
+          CHECK (field_name IN ('description','description_long','faq')),
+        CONSTRAINT chk_enrichment_published_consistency
+          CHECK ((state = 'published') = (published_at IS NOT NULL)),
+        CONSTRAINT chk_enrichment_rejected_consistency
+          CHECK ((state = 'rejected') = (rejected_at IS NOT NULL))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_enrichment_drafts_state_created
+        ON enrichment_drafts (state, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_drafts_product_field_state
+        ON enrichment_drafts (product_id, field_name, state, rejected_at);
+      CREATE INDEX IF NOT EXISTS idx_enrichment_drafts_run
+        ON enrichment_drafts (run_id);
+    `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
   }
