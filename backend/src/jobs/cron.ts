@@ -5,6 +5,8 @@ import { logAdminAlert } from "./alertLogger";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { runForecastIfPermitted } from "./forecast-runner";
 import { runForecastRetention } from "./forecast-retention";
+import { runEnrichmentIfPermitted } from "./enrichment-runner";
+import { runEnrichmentRetention } from "./enrichment-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -158,6 +160,36 @@ export function initCronJobs() {
       logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
       captureSchedulerFailure("forecast_retention", err, {
         cron_expression: "30 3 * * *",
+      });
+    }
+  });
+
+  // 8. Daily at 03:45 UTC: catalog enrichment runner
+  //    (012-arabic-catalog-enrichment). Refuses to run unless
+  //    WORKER_TIER=true AND ENRICHMENT_RUNNER_ENABLED=true. 03:45 lands
+  //    cleanly between the retention sweep at 03:30 and any morning
+  //    admin activity.
+  cron.schedule("45 3 * * *", async () => {
+    try {
+      await runEnrichmentIfPermitted();
+    } catch (err) {
+      logger.error({ err, category: "enrichment.cron" }, "enrichment cron failed");
+      captureSchedulerFailure("enrichment_runner", err, {
+        cron_expression: "45 3 * * *",
+      });
+    }
+  });
+
+  // 9. Daily at 04:00 UTC: enrichment retention (90-day purge of
+  //    terminal-state drafts; reap orphaned in_flight runs).
+  cron.schedule("0 4 * * *", async () => {
+    if (process.env.WORKER_TIER !== "true") return;
+    try {
+      await runEnrichmentRetention();
+    } catch (err) {
+      logger.error({ err, category: "enrichment.retention" }, "enrichment retention failed");
+      captureSchedulerFailure("enrichment_retention", err, {
+        cron_expression: "0 4 * * *",
       });
     }
   });

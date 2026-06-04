@@ -14,6 +14,7 @@ import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
 import { adminRiskRouter } from "./risk";
 import { adminForecastRouter } from "./forecast";
+import { adminEnrichmentRouter } from "./enrichment";
 import { adminSecurityRouter } from "./security";
 import { adminSettingsRouter } from "./settings";
 import { adminStatsRouter } from "./stats";
@@ -62,6 +63,12 @@ router.use("/", requireAdmin, requirePermission("users"), adminRiskRouter);
 // admin surface; gated on the existing `inventory` scope (matches the
 // /admin/products gate the panel mounts above).
 router.use("/", requireAdmin, requirePermission("inventory"), adminForecastRouter);
+
+// Catalog enrichment review panel (012-arabic-catalog-enrichment).
+// Admin-only review surface for batched LLM-drafted descriptions / FAQ.
+// Same `inventory` gate as the existing product-edit pages; the cron
+// itself runs separately on the worker tier.
+router.use("/", requireAdmin, requirePermission("inventory"), adminEnrichmentRouter);
 
 router.use(
   "/",
