@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { db, inventoryTable, productsTable } from "@workspace/db";
 import { count, eq, sql } from "drizzle-orm";
 import { logAdminAlert } from "./alertLogger";
+import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
@@ -77,6 +78,27 @@ export function initCronJobs() {
       );
       captureSchedulerFailure("whatsapp_otp_cleanup", err, {
         cron_expression: "15 * * * *",
+      });
+    }
+  });
+
+  // 4. Every 5 minutes: copilot preview reaper (010-ai-admin-copilot).
+  //    Deletes copilot_previews rows older than 24h past their expiry. The
+  //    audit chain stays intact because copilot_actions.preview_id is
+  //    `ON DELETE SET NULL`.
+  cron.schedule("*/5 * * * *", async () => {
+    try {
+      const removed = await reapExpiredCopilotPreviews();
+      if (removed > 0) {
+        logger.info(
+          { category: "copilot.reaper", removed },
+          `copilot reaper removed ${removed} expired preview row(s)`,
+        );
+      }
+    } catch (err) {
+      logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
+      captureSchedulerFailure("copilot_reaper", err, {
+        cron_expression: "*/5 * * * *",
       });
     }
   });
