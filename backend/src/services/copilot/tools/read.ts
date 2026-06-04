@@ -12,6 +12,7 @@
 
 import { db, productsTable, inventoryTable } from "@workspace/db";
 import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
+import { findAnomalies } from "../anomalies";
 import type { Tool } from "../llm-client";
 
 export interface CopilotTool {
@@ -232,11 +233,64 @@ export const summarizeRecentChanges: CopilotTool = {
   },
 };
 
+// ────────────────────────────────────────────────────────────────────────
+// find_anomalies
+// ────────────────────────────────────────────────────────────────────────
+export const findAnomaliesTool: CopilotTool = {
+  requiredScope: "inventory",
+  spec: {
+    type: "function",
+    function: {
+      name: "find_anomalies",
+      description:
+        "Run a fixed-catalog anomaly heuristic and return raw findings. " +
+        "Cite IDs from this output verbatim — do NOT fabricate entries. " +
+        "Kinds: loss_making_price, refund_cluster, stock_spike, discount_ratio, all.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["loss_making_price", "refund_cluster", "stock_spike", "discount_ratio", "all"],
+            description: "Which heuristic to run (default 'all').",
+          },
+          hours: {
+            type: "integer",
+            minimum: 1,
+            maximum: 720,
+            description: "Lookback window for time-windowed kinds (refund_cluster). Default 24.",
+          },
+          limit: { type: "integer", minimum: 1, maximum: 50, description: "Max rows. Default 20." },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  handler: async (input) => {
+    const kind = typeof input.kind === "string" ? (input.kind as never) : "all";
+    const hours =
+      typeof input.hours === "number" || typeof input.hours === "string"
+        ? Number(input.hours)
+        : undefined;
+    const limit =
+      typeof input.limit === "number" || typeof input.limit === "string"
+        ? Number(input.limit)
+        : undefined;
+    const findings = await findAnomalies({
+      kind,
+      hours: Number.isFinite(hours) ? (hours as number) : undefined,
+      limit: Number.isFinite(limit) ? (limit as number) : undefined,
+    });
+    return { kind, findings };
+  },
+};
+
 export const READ_TOOLS: CopilotTool[] = [
   searchProducts,
   getProduct,
   listLowStock,
   summarizeRecentChanges,
+  findAnomaliesTool,
 ];
 
 /**
