@@ -13,6 +13,7 @@ import { adminPricingCalculatorRouter } from "./pricing-calculator";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
 import { adminRiskRouter } from "./risk";
+import { adminForecastRouter } from "./forecast";
 import { adminSecurityRouter } from "./security";
 import { adminSettingsRouter } from "./settings";
 import { adminStatsRouter } from "./stats";
@@ -56,6 +57,11 @@ router.use("/", copilotRouter);
 // investigative data; the `users` scope is the closest fit in the existing
 // permission catalog.
 router.use("/", requireAdmin, requirePermission("users"), adminRiskRouter);
+
+// Inventory demand forecasting (011-inventory-demand-forecast). Read-only
+// admin surface; gated on the existing `inventory` scope (matches the
+// /admin/products gate the panel mounts above).
+router.use("/", requireAdmin, requirePermission("inventory"), adminForecastRouter);
 
 router.use(
   "/",

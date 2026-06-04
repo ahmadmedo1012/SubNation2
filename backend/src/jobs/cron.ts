@@ -3,6 +3,8 @@ import { db, inventoryTable, productsTable } from "@workspace/db";
 import { count, eq, sql } from "drizzle-orm";
 import { logAdminAlert } from "./alertLogger";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
+import { runForecastIfPermitted } from "./forecast-runner";
+import { runForecastRetention } from "./forecast-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -120,6 +122,41 @@ export function initCronJobs() {
     } catch (err) {
       logger.error({ err, category: "risk.retention" }, "risk-events retention failed");
       captureSchedulerFailure("risk_retention", err, {
+        cron_expression: "30 3 * * *",
+      });
+    }
+  });
+
+  // 6. Daily at 02:15 UTC: inventory demand forecast (011-inventory-demand-
+  //    forecast). Refuses to run unless WORKER_TIER=true AND
+  //    FORECAST_RUNNER_ENABLED=true (the runner enforces the gate).
+  //    02:15 lands outside the existing low_stock (00:00), OTP cleanup
+  //    (every :15), and copilot-reaper (every 5 min) windows so no two
+  //    heavy jobs compete for DB resources.
+  cron.schedule("15 2 * * *", async () => {
+    try {
+      await runForecastIfPermitted();
+    } catch (err) {
+      logger.error({ err, category: "forecast.cron" }, "forecast cron failed");
+      captureSchedulerFailure("forecast_runner", err, {
+        cron_expression: "15 2 * * *",
+      });
+    }
+  });
+
+  // 7. Daily at 03:30 UTC: forecast retention + capture-rate measurement
+  //    (011-inventory-demand-forecast). Purges forecasts > 90 days, reaps
+  //    orphaned in_flight runs, computes the rolling 14-day capture rate
+  //    and pauses alerts when SC-008's kill criterion trips. Same time as
+  //    risk retention — both are read-mostly + small-write jobs that fit
+  //    comfortably in the same minute.
+  cron.schedule("30 3 * * *", async () => {
+    if (process.env.WORKER_TIER !== "true") return;
+    try {
+      await runForecastRetention();
+    } catch (err) {
+      logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
+      captureSchedulerFailure("forecast_retention", err, {
         cron_expression: "30 3 * * *",
       });
     }
