@@ -7,6 +7,7 @@ import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { verifyUserTokenDetailed } from "../lib/jwt";
 import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
+import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { captureAuthFailure, captureSubsystemException } from "../lib/sentry";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import type { AuthenticatedRequest } from "../middlewares/requireUser";
@@ -412,6 +413,24 @@ router.post("/firebase/session", async (req, res) => {
       userId: result.user.id,
       ipAddress: req.ip,
       userAgent: ua,
+    });
+
+    // Risk pipeline (003-anomaly-detection) — emit login_success.
+    // Fire-and-forget; gated on RISK_PIPELINE_ENABLED inside scoreEvent.
+    scoreEventFireAndForget({
+      eventType: "login_success",
+      userId: result.user.id,
+      ipAddress: req.ip ?? null,
+      userAgent: ua ?? null,
+      phone: result.user.phone ?? null,
+      ruleContext: {
+        event: {
+          eventType: "login_success",
+          ipAddress: req.ip ?? null,
+          userAgent: ua ?? null,
+        },
+        user: { id: result.user.id },
+      },
     });
 
     // Set httpOnly cookie for better security

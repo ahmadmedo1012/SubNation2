@@ -23,6 +23,7 @@ import { createUserSession } from "../lib/session";
 import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
 import { getRedisClient } from "../lib/redis-client";
+import { scoreEventFireAndForget } from "../lib/risk-emit";
 import {
   TELEGRAM_AUTH_FRESHNESS_SEC,
   type TelegramAuthFields,
@@ -541,6 +542,23 @@ async function handleTelegramAuth(
     userAgent: client.userAgent,
   });
 
+  // Risk pipeline (003-anomaly-detection) — emit login_success.
+  scoreEventFireAndForget({
+    eventType: "login_success",
+    userId: user.id,
+    ipAddress: client.ipAddress ?? null,
+    userAgent: client.userAgent ?? null,
+    phone: user.phone ?? null,
+    ruleContext: {
+      event: {
+        eventType: "login_success",
+        ipAddress: client.ipAddress ?? null,
+        userAgent: client.userAgent ?? null,
+      },
+      user: { id: user.id },
+    },
+  });
+
   await logAuthActivity({
     userId: user.id,
     identifier: `tg:${verification.fields.id}`,
@@ -690,6 +708,23 @@ async function handleTelegramWebAppAuth(
     userId: user.id,
     ipAddress: client.ipAddress,
     userAgent: client.userAgent,
+  });
+
+  // Risk pipeline (003-anomaly-detection) — emit login_success.
+  scoreEventFireAndForget({
+    eventType: "login_success",
+    userId: user.id,
+    ipAddress: client.ipAddress ?? null,
+    userAgent: client.userAgent ?? null,
+    phone: user.phone ?? null,
+    ruleContext: {
+      event: {
+        eventType: "login_success",
+        ipAddress: client.ipAddress ?? null,
+        userAgent: client.userAgent ?? null,
+      },
+      user: { id: user.id },
+    },
   });
 
   await logAuthActivity({
