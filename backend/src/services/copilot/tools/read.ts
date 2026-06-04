@@ -234,6 +234,128 @@ export const summarizeRecentChanges: CopilotTool = {
 };
 
 // ────────────────────────────────────────────────────────────────────────
+// query_risk_events — surfaces 003-anomaly-detection's risk_events table
+// ────────────────────────────────────────────────────────────────────────
+export const queryRiskEvents: CopilotTool = {
+  requiredScope: "users",
+  spec: {
+    type: "function",
+    function: {
+      name: "query_risk_events",
+      description:
+        "Query the anomaly-detection risk_events table. Use to answer questions like " +
+        "'any high-risk events today?' or 'how many unresolved critical events?'. " +
+        "Returns counts by level + a sample of the most recent rows. Cite IDs verbatim.",
+      parameters: {
+        type: "object",
+        properties: {
+          level: {
+            type: "string",
+            enum: ["low", "medium", "high", "critical", "any"],
+            description: "Filter by risk level. Default 'any'.",
+          },
+          hours: {
+            type: "integer",
+            minimum: 1,
+            maximum: 720,
+            description: "Lookback window in hours. Default 24.",
+          },
+          unresolved_only: {
+            type: "boolean",
+            description: "If true, restrict to events with no risk_labels row yet. Default false.",
+          },
+          sample_limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            description: "Max sample rows to return (default 10).",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  handler: async (input) => {
+    const level =
+      typeof input.level === "string" && input.level !== "any" ? input.level : null;
+    const hours = Math.max(1, Math.min(720, Number(input.hours ?? 24)));
+    const unresolvedOnly = input.unresolved_only === true;
+    const sampleLimit = Math.max(1, Math.min(50, Number(input.sample_limit ?? 10)));
+
+    const levelSql = level ? sql`AND e.level = ${level}::risk_level` : sql``;
+    const unresolvedSql = unresolvedOnly
+      ? sql`AND NOT EXISTS (SELECT 1 FROM risk_labels l WHERE l.risk_event_id = e.id)`
+      : sql``;
+
+    // Counts grouped by level — aggregate first, sample second.
+    const countsResult = await db.execute(sql`
+      SELECT e.level, COUNT(*)::int AS n
+      FROM risk_events e
+      WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+        ${levelSql}
+        ${unresolvedSql}
+      GROUP BY e.level
+    `);
+    const sampleResult = await db.execute(sql`
+      SELECT e.id, e.user_id, e.event_type, e.score, e.level,
+             e.action_taken, e.ip_address, e.created_at, e.shown_at
+      FROM risk_events e
+      WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+        ${levelSql}
+        ${unresolvedSql}
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT ${sampleLimit}
+    `);
+
+    type CountRow = { level: string; n: number };
+    type SampleRow = {
+      id: number;
+      user_id: number | null;
+      event_type: string;
+      score: number;
+      level: string;
+      action_taken: string;
+      ip_address: string | null;
+      created_at: Date | string;
+      shown_at: Date | string | null;
+    };
+    const cR = countsResult as unknown as { rows?: CountRow[] } | CountRow[];
+    const sR = sampleResult as unknown as { rows?: SampleRow[] } | SampleRow[];
+    const counts = Array.isArray(cR) ? cR : (cR.rows ?? []);
+    const sample = Array.isArray(sR) ? sR : (sR.rows ?? []);
+
+    const total = counts.reduce((sum, c) => sum + Number(c.n), 0);
+    const byLevel: Record<string, number> = {};
+    for (const c of counts) byLevel[c.level] = Number(c.n);
+
+    return {
+      window_hours: hours,
+      level_filter: level ?? "any",
+      unresolved_only: unresolvedOnly,
+      total,
+      by_level: byLevel,
+      sample: sample.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        event_type: r.event_type,
+        score: r.score,
+        level: r.level,
+        action_taken: r.action_taken,
+        ip_address: r.ip_address,
+        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+        shown_at:
+          r.shown_at == null
+            ? null
+            : r.shown_at instanceof Date
+              ? r.shown_at.toISOString()
+              : r.shown_at,
+        investigation_url: `/admin/risk/events/${r.id}`,
+      })),
+    };
+  },
+};
+
+// ────────────────────────────────────────────────────────────────────────
 // find_anomalies
 // ────────────────────────────────────────────────────────────────────────
 export const findAnomaliesTool: CopilotTool = {
@@ -291,6 +413,7 @@ export const READ_TOOLS: CopilotTool[] = [
   listLowStock,
   summarizeRecentChanges,
   findAnomaliesTool,
+  queryRiskEvents,
 ];
 
 /**
