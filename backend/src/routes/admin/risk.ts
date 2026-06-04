@@ -35,6 +35,7 @@ import { parseDsl } from "../../lib/risk-dsl";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { invalidateRiskConfig } from "../../services/risk-config-cache.service";
 import { invalidateRulesCache } from "../../services/risk-rules.service";
+import { sendCriticalRiskAlert } from "../../services/risk-alerts.service";
 
 const router = Router();
 
@@ -622,6 +623,72 @@ router.get("/risk/dashboard", requireAdmin, async (req, res) => {
     pipeline: {
       enabled,
     },
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// POST /risk/synth — synthetic event for verifying the wiring (T044)
+// ────────────────────────────────────────────────────────────────────────
+//
+// Dev/staging only. Inserts a synthetic risk_events row at the chosen level,
+// optionally triggering the critical-alert path. Lets operators confirm
+// the UI, alerting, and label flow without waiting for real fraud traffic.
+router.post("/risk/synth", requireAdmin, async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res
+      .status(403)
+      .json(createErrorResponse("الأداة الاصطناعية متاحة في بيئات التطوير فقط", ErrorCode.FORBIDDEN));
+    return;
+  }
+  const adminReq = req as AdminAuthenticatedRequest;
+  const body = (req.body ?? {}) as { level?: string; event_type?: string; user_id?: number };
+  const level = typeof body.level === "string" && VALID_LEVELS.has(body.level) ? body.level : "critical";
+  const eventType = typeof body.event_type === "string" ? body.event_type : "topup_attempt";
+  const score = level === "critical" ? 95 : level === "high" ? 70 : level === "medium" ? 40 : 10;
+
+  const [row] = await db
+    .insert(riskEventsTable)
+    .values({
+      userId: typeof body.user_id === "number" && body.user_id > 0 ? body.user_id : null,
+      eventType: eventType as never,
+      score,
+      level: level as never,
+      confidence: "0.800",
+      ruleFired: ["synthetic_admin_test"],
+      statisticalSignals: {},
+      mlScore: null,
+      topFeatures: null,
+      actionTaken: level === "critical" ? "alert" : "log",
+      ipAddress: req.ip ?? null,
+      userAgent: ((req.headers["user-agent"] as string | undefined) ?? "").slice(0, 256) || null,
+    })
+    .returning({ id: riskEventsTable.id });
+  if (!row) {
+    res.status(500).json(createErrorResponse("فشل إنشاء الحدث الاصطناعي", ErrorCode.INTERNAL_ERROR));
+    return;
+  }
+
+  await writeAuditLog(req, "risk.synth", "risk_event", row.id, { level, score, event_type: eventType });
+
+  // For critical events, fire the alert path so the admin can see the
+  // Discord/Telegram dispatch (or its failure) without needing real traffic.
+  if (level === "critical") {
+    void sendCriticalRiskAlert({
+      riskEventId: row.id,
+      userId: typeof body.user_id === "number" && body.user_id > 0 ? body.user_id : null,
+      eventType,
+      score,
+      level: "critical",
+      topFeatures: null,
+    }).catch(() => {});
+  }
+
+  res.json({
+    id: row.id,
+    level,
+    score,
+    investigation_url: `/admin/risk/events/${row.id}`,
+    triggered_by: adminReq.adminId,
   });
 });
 
