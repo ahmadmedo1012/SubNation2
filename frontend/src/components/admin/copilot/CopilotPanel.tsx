@@ -38,8 +38,10 @@ import {
   Minimize2,
   Menu,
   Check,
+  History,
 } from "lucide-react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { CopilotHistoryView } from "./CopilotHistoryView";
 
 // ──────────────────────────────────────────────────────────────────────
 // Types
@@ -293,6 +295,7 @@ export function CopilotPanel() {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showActionHistory, setShowActionHistory] = useState(false);
   const [flags, setFlags] = useState<PhaseFlags | null>(null);
   const [input, setInput] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -719,13 +722,10 @@ export function CopilotPanel() {
     if (!turn.preview) return;
     patchTurn(turn.id, { previewState: "double_confirming", error: null });
     try {
-      const resp = await fetch(
-        `/api/admin/copilot/previews/${turn.preview.id}/double-confirm`,
-        {
-          method: "POST",
-          headers,
-        },
-      );
+      const resp = await fetch(`/api/admin/copilot/previews/${turn.preview.id}/double-confirm`, {
+        method: "POST",
+        headers,
+      });
       if (!resp.ok) {
         const body = (await resp.json().catch(() => null)) as {
           error?: string;
@@ -902,6 +902,14 @@ export function CopilotPanel() {
                   <Plus className="w-4 h-4" />
                 </button>
                 <button
+                  onClick={() => setShowActionHistory((v) => !v)}
+                  className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+                  title="سجل الإجراءات"
+                  aria-label="سجل الإجراءات"
+                >
+                  <History className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => setFullscreen((v) => !v)}
                   className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hidden sm:inline-flex"
                   title={fullscreen ? "تصغير" : "ملء الشاشة"}
@@ -923,34 +931,36 @@ export function CopilotPanel() {
               </div>
 
               {/* Conversation */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-                {turns.length === 0 && (
-                  <EmptyState
-                    flags={flags}
-                    onPick={(s) => {
-                      setInput(s);
-                      inputRef.current?.focus();
-                    }}
-                  />
-                )}
+              {!showActionHistory && (
+                <>
+                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+                    {turns.length === 0 && (
+                      <EmptyState
+                        flags={flags}
+                        onPick={(s) => {
+                          setInput(s);
+                          inputRef.current?.focus();
+                        }}
+                      />
+                    )}
 
-                {turns.map((turn) => (
-                  <TurnView
-                    key={turn.id}
-                    turn={turn}
-                    onApprove={() => void approve(turn)}
-                    onCancel={() => void cancelPreview(turn)}
-                    onDoubleConfirm={() => void doubleConfirm(turn)}
-                    onRetry={() => void retry(turn)}
-                  />
-                ))}
-                <div ref={turnsEndRef} />
-              </div>
+                    {turns.map((turn) => (
+                      <TurnView
+                        key={turn.id}
+                        turn={turn}
+                        onApprove={() => void approve(turn)}
+                        onCancel={() => void cancelPreview(turn)}
+                        onDoubleConfirm={() => void doubleConfirm(turn)}
+                        onRetry={() => void retry(turn)}
+                      />
+                    ))}
+                    <div ref={turnsEndRef} />
+                  </div>
 
-              {/* Input */}
-              <div className="border-t border-border bg-card/95 px-3 py-3">
-                <div className="flex items-end gap-2 bg-background border border-border rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
-                  <textarea
+                  {/* Input */}
+                  <div className="border-t border-border bg-card/95 px-3 py-3">
+                    <div className="flex items-end gap-2 bg-background border border-border rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
+                      <textarea
                     ref={inputRef}
                     value={input}
                     onChange={onInputChange}
@@ -984,7 +994,12 @@ export function CopilotPanel() {
                     للإرسال
                   </span>
                 </div>
-              </div>
+                  </div>
+                </>
+              )}
+              {showActionHistory && (
+                <CopilotHistoryView onClose={() => setShowActionHistory(false)} />
+              )}
             </div>
           </aside>
         </>
