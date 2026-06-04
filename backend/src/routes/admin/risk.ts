@@ -21,15 +21,20 @@ import {
   adminUsersTable,
   auditLogsTable,
   db,
+  riskConfigTable,
   riskEventsTable,
   riskLabelsTable,
+  riskRulesTable,
   usersTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { parseDsl } from "../../lib/risk-dsl";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
+import { invalidateRiskConfig } from "../../services/risk-config-cache.service";
+import { invalidateRulesCache } from "../../services/risk-rules.service";
 
 const router = Router();
 
@@ -162,10 +167,7 @@ router.get("/risk/events/:id", requireAdmin, async (req, res) => {
 
   // First-open stamps shown_at — powers SC-004 (triage time).
   if (!row.event.shownAt) {
-    await db
-      .update(riskEventsTable)
-      .set({ shownAt: new Date() })
-      .where(eq(riskEventsTable.id, id));
+    await db.update(riskEventsTable).set({ shownAt: new Date() }).where(eq(riskEventsTable.id, id));
   }
 
   // Existing labels for this event (most recent first).
@@ -227,13 +229,10 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
   const body = (req.body ?? {}) as { label?: string; notes?: string };
   const label = typeof body.label === "string" ? body.label : "";
   if (!VALID_LABELS.has(label)) {
-    res
-      .status(400)
-      .json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
+    res.status(400).json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const notes =
-    typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
+  const notes = typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
 
   const [exists] = await db
     .select({ id: riskEventsTable.id })
@@ -255,7 +254,10 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
     })
     .returning({ id: riskLabelsTable.id });
 
-  await writeAuditLog(req, "risk.label", "risk_event", id, { label, notes_len: notes?.length ?? 0 });
+  await writeAuditLog(req, "risk.label", "risk_event", id, {
+    label,
+    notes_len: notes?.length ?? 0,
+  });
 
   res.json({ id: row?.id, success: true });
 });
@@ -270,26 +272,23 @@ router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
     ? body.event_ids.filter((v): v is number => typeof v === "number" && v > 0)
     : [];
   if (ids.length === 0) {
-    res
-      .status(400)
-      .json(createErrorResponse("event_ids مطلوب", ErrorCode.INVALID_DATA));
+    res.status(400).json(createErrorResponse("event_ids مطلوب", ErrorCode.INVALID_DATA));
     return;
   }
   if (ids.length > 100) {
     res
       .status(400)
-      .json(createErrorResponse("لا يمكن تصنيف أكثر من 100 حدث دفعة واحدة", ErrorCode.INVALID_DATA));
+      .json(
+        createErrorResponse("لا يمكن تصنيف أكثر من 100 حدث دفعة واحدة", ErrorCode.INVALID_DATA),
+      );
     return;
   }
   const label = typeof body.label === "string" ? body.label : "";
   if (!VALID_LABELS.has(label)) {
-    res
-      .status(400)
-      .json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
+    res.status(400).json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const notes =
-    typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
+  const notes = typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
 
   // Filter to actually-existing event ids before writing labels — partial
   // success is preferable to a transaction-wide failure here.
@@ -332,5 +331,224 @@ router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
     label,
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /risk/rules — full rule catalog (T032)
+// ────────────────────────────────────────────────────────────────────────
+router.get("/risk/rules", requireAdmin, async (_req, res) => {
+  const rows = await db.select().from(riskRulesTable).orderBy(desc(riskRulesTable.updatedAt));
+  res.json({
+    rules: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      expression: r.expression,
+      enabled: r.enabled,
+      version: r.version,
+      created_by: r.createdBy,
+      created_at: r.createdAt.toISOString(),
+      updated_by: r.updatedBy,
+      updated_at: r.updatedAt.toISOString(),
+    })),
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// PUT /risk/rules/:id — toggle enabled or replace expression (T033)
+// ────────────────────────────────────────────────────────────────────────
+router.put("/risk/rules/:id", requireAdmin, async (req, res) => {
+  const adminReq = req as AdminAuthenticatedRequest;
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json(createErrorResponse("معرّف القاعدة غير صالح", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = (req.body ?? {}) as { enabled?: boolean; expression?: unknown; description?: string };
+
+  const update: Record<string, unknown> = {};
+  if (typeof body.enabled === "boolean") update.enabled = body.enabled;
+  if (typeof body.description === "string") {
+    update.description = body.description.slice(0, 2000);
+  }
+  if (body.expression !== undefined) {
+    const parsed = parseDsl(body.expression);
+    if (!parsed.ok) {
+      res
+        .status(400)
+        .json(
+          createErrorResponse(
+            `صيغة القاعدة غير صالحة: ${parsed.reason}`,
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+      return;
+    }
+    update.expression = body.expression;
+  }
+  if (Object.keys(update).length === 0) {
+    res
+      .status(400)
+      .json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
+    return;
+  }
+  update.updatedBy = adminReq.adminId;
+  update.updatedAt = new Date();
+
+  const [row] = await db
+    .update(riskRulesTable)
+    .set(update)
+    .where(eq(riskRulesTable.id, id))
+    .returning();
+  if (!row) {
+    res.status(404).json(createErrorResponse("القاعدة غير موجودة", ErrorCode.NOT_FOUND));
+    return;
+  }
+  // Bump the version on every successful change (data-model.md §2).
+  await db
+    .update(riskRulesTable)
+    .set({ version: (row.version ?? 1) + 1 })
+    .where(eq(riskRulesTable.id, id));
+
+  invalidateRulesCache();
+  await writeAuditLog(req, "risk.rule_update", "risk_rule", id, {
+    fields: Object.keys(update),
+  });
+
+  res.json({ id, success: true });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// GET /risk/config — singleton thresholds + allowlist + auto-block (T034)
+// ────────────────────────────────────────────────────────────────────────
+router.get("/risk/config", requireAdmin, async (_req, res) => {
+  const [row] = await db.select().from(riskConfigTable).limit(1);
+  if (!row) {
+    // Seed on first read (T034 — auto-seed singleton).
+    const [seeded] = await db.insert(riskConfigTable).values({ id: 1 }).returning();
+    res.json(formatConfig(seeded!));
+    return;
+  }
+  res.json(formatConfig(row));
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// PUT /risk/config — admins tune thresholds without redeploy (T035)
+// ────────────────────────────────────────────────────────────────────────
+router.put("/risk/config", requireAdmin, async (req, res) => {
+  const adminReq = req as AdminAuthenticatedRequest;
+  const body = (req.body ?? {}) as {
+    thresholds?: Partial<{ low: number; medium: number; high: number; critical: number }>;
+    allowlist?: Partial<{ ips: string[]; devices: string[]; phones: string[] }>;
+    autoBlockEnabled?: Partial<{ softBlock: boolean; hardBlock: boolean; alert: boolean }>;
+    modelEnabled?: boolean;
+    requireApprovalUserIds?: number[];
+  };
+
+  const [existing] = await db.select().from(riskConfigTable).limit(1);
+  const current = existing ?? null;
+
+  const thresholds = {
+    low: body.thresholds?.low ?? (current?.thresholds as { low: number } | null)?.low ?? 0,
+    medium:
+      body.thresholds?.medium ?? (current?.thresholds as { medium: number } | null)?.medium ?? 30,
+    high:
+      body.thresholds?.high ?? (current?.thresholds as { high: number } | null)?.high ?? 60,
+    critical:
+      body.thresholds?.critical ??
+      (current?.thresholds as { critical: number } | null)?.critical ??
+      85,
+  };
+  if (
+    !(thresholds.low < thresholds.medium &&
+      thresholds.medium < thresholds.high &&
+      thresholds.high < thresholds.critical)
+  ) {
+    res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "thresholds يجب أن تكون منخفضة < متوسطة < عالية < حرجة",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+    return;
+  }
+
+  const currentAuto = (current?.autoBlockEnabled as
+    | { softBlock: boolean; hardBlock: boolean; alert: boolean }
+    | null) ?? { softBlock: true, hardBlock: false, alert: true };
+  const autoBlockEnabled = {
+    softBlock: body.autoBlockEnabled?.softBlock ?? currentAuto.softBlock,
+    hardBlock: body.autoBlockEnabled?.hardBlock ?? currentAuto.hardBlock,
+    alert: body.autoBlockEnabled?.alert ?? currentAuto.alert,
+  };
+  const modelEnabled = body.modelEnabled ?? current?.modelEnabled ?? false;
+  // hardBlock requires modelEnabled — defense-in-depth from data-model §3.
+  if (autoBlockEnabled.hardBlock && !modelEnabled) {
+    res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "تفعيل hardBlock يتطلب تفعيل النموذج (modelEnabled) أولاً",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+    return;
+  }
+
+  const currentAllow = (current?.allowlist as
+    | { ips: string[]; devices: string[]; phones: string[] }
+    | null) ?? { ips: [], devices: [], phones: [] };
+  const allowlist = {
+    ips: Array.isArray(body.allowlist?.ips) ? body.allowlist!.ips : currentAllow.ips,
+    devices: Array.isArray(body.allowlist?.devices) ? body.allowlist!.devices : currentAllow.devices,
+    phones: Array.isArray(body.allowlist?.phones) ? body.allowlist!.phones : currentAllow.phones,
+  };
+
+  const requireApprovalUserIds = Array.isArray(body.requireApprovalUserIds)
+    ? body.requireApprovalUserIds.filter((v): v is number => typeof v === "number" && v > 0)
+    : ((current?.requireApprovalUserIds as number[] | null) ?? []);
+
+  const updated = {
+    thresholds,
+    allowlist,
+    autoBlockEnabled,
+    modelEnabled,
+    requireApprovalUserIds,
+    updatedBy: adminReq.adminId,
+    updatedAt: new Date(),
+  };
+  if (current) {
+    await db.update(riskConfigTable).set(updated).where(eq(riskConfigTable.id, 1));
+  } else {
+    await db.insert(riskConfigTable).values({ id: 1, ...updated });
+  }
+  await invalidateRiskConfig();
+  await writeAuditLog(req, "risk.config_update", "risk_config", 1, {
+    thresholds,
+    autoBlockEnabled,
+    modelEnabled,
+    allowlist_sizes: {
+      ips: allowlist.ips.length,
+      devices: allowlist.devices.length,
+      phones: allowlist.phones.length,
+    },
+  });
+  const [next] = await db.select().from(riskConfigTable).limit(1);
+  res.json(formatConfig(next!));
+});
+
+function formatConfig(row: typeof riskConfigTable.$inferSelect) {
+  return {
+    id: row.id,
+    thresholds: row.thresholds,
+    allowlist: row.allowlist,
+    auto_block_enabled: row.autoBlockEnabled,
+    require_approval_user_ids: row.requireApprovalUserIds,
+    model_enabled: row.modelEnabled,
+    updated_by: row.updatedBy,
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
 
 export const adminRiskRouter = router;
