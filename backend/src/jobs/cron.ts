@@ -146,20 +146,20 @@ export function initCronJobs() {
     }
   });
 
-  // 7. Daily at 03:30 UTC: forecast retention + capture-rate measurement
+  // 7. Daily at 03:35 UTC: forecast retention + capture-rate measurement
   //    (011-inventory-demand-forecast). Purges forecasts > 90 days, reaps
   //    orphaned in_flight runs, computes the rolling 14-day capture rate
-  //    and pauses alerts when SC-008's kill criterion trips. Same time as
-  //    risk retention — both are read-mostly + small-write jobs that fit
-  //    comfortably in the same minute.
-  cron.schedule("30 3 * * *", async () => {
+  //    and pauses alerts when SC-008's kill criterion trips. Staggered five
+  //    minutes after the risk retention so two heavy DELETE+aggregate jobs
+  //    don't compete for the same connection slot at the same instant.
+  cron.schedule("35 3 * * *", async () => {
     if (process.env.WORKER_TIER !== "true") return;
     try {
       await runForecastRetention();
     } catch (err) {
       logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
       captureSchedulerFailure("forecast_retention", err, {
-        cron_expression: "30 3 * * *",
+        cron_expression: "35 3 * * *",
       });
     }
   });

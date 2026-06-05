@@ -45,8 +45,9 @@ export interface CandidateResult {
 const REJECTION_SUPPRESSION_DAYS = 14;
 
 export async function selectCandidates(perRunCap: number): Promise<CandidateResult> {
-  // Pull every product + its draft history. JS does the field eligibility
-  // because the predicate is cheap and the query stays simple.
+  // Pull eligible products + their draft history. We filter archived /
+  // inactive at the SQL layer (FR-DRAFT-004) so the JS pass below only
+  // sees products worth iterating — at 10k products this matters.
   const result = await db.execute(sql`
     SELECT
       p.id, p.name, p.category, p.description, p.description_long, p.faq, p.usage_terms,
@@ -63,6 +64,7 @@ export async function selectCandidates(perRunCap: number): Promise<CandidateResu
       ) AS drafts
     FROM products p
     LEFT JOIN enrichment_drafts d ON d.product_id = p.id
+    WHERE p.is_archived = false AND p.is_active = true
     GROUP BY p.id
     ORDER BY p.id
   `);

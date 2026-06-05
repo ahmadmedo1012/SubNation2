@@ -7,12 +7,7 @@
  * issuing raw UPDATEs.
  */
 
-import {
-  db,
-  enrichmentDraftsTable,
-  enrichmentRunsTable,
-  productsTable,
-} from "@workspace/db";
+import { db, enrichmentDraftsTable, enrichmentRunsTable, productsTable } from "@workspace/db";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 
 export type DraftState = "drafted" | "published" | "rejected" | "draft_invalid";
@@ -115,8 +110,7 @@ export async function listByState(args: {
   const hasMore = rows.length > args.limit;
   const page = hasMore ? rows.slice(0, args.limit) : rows;
   const last = page[page.length - 1];
-  const nextCursor =
-    hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
+  const nextCursor = hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
   return {
     rows: page.map((r) => ({
       id: r.id,
@@ -147,9 +141,6 @@ export async function pendingCount(): Promise<number> {
 }
 
 export async function getById(id: number): Promise<DraftRow | null> {
-  const result = await listByState({ state: "drafted", limit: 1, cursor: null });
-  // Fast path: if it's not in drafted, do a direct lookup.
-  if (result.rows.length > 0 && result.rows[0]!.id === id) return result.rows[0]!;
   const [row] = await db
     .select({
       id: enrichmentDraftsTable.id,
@@ -208,12 +199,7 @@ export async function markPublished(args: {
       publishedAt: new Date(),
       publishedBy: args.adminId,
     })
-    .where(
-      and(
-        eq(enrichmentDraftsTable.id, args.id),
-        eq(enrichmentDraftsTable.state, "drafted"),
-      ),
-    );
+    .where(and(eq(enrichmentDraftsTable.id, args.id), eq(enrichmentDraftsTable.state, "drafted")));
   return (
     (result as unknown as { rowCount?: number }).rowCount ??
     (result as unknown as Array<unknown>).length ??
@@ -234,12 +220,7 @@ export async function markRejected(args: {
       rejectedBy: args.adminId,
       rejectionReason: args.reason,
     })
-    .where(
-      and(
-        eq(enrichmentDraftsTable.id, args.id),
-        eq(enrichmentDraftsTable.state, "drafted"),
-      ),
-    );
+    .where(and(eq(enrichmentDraftsTable.id, args.id), eq(enrichmentDraftsTable.state, "drafted")));
   return (
     (result as unknown as { rowCount?: number }).rowCount ??
     (result as unknown as Array<unknown>).length ??
