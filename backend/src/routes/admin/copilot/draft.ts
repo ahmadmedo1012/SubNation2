@@ -152,6 +152,30 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   if (!captured) {
     // The model declined to draft (e.g. answered as text). Surface that to
     // the caller so the UI can render it as a normal answer.
+    //
+    // Same secret-scan posture as /ask: the model's plain-text reply is
+    // user-facing content, so it MUST pass the outbound scanner before
+    // we hand it to the admin UI.
+    const textScan = scanForSecrets(result.text);
+    if (textScan.hasMatch) {
+      await recordNonExecute({
+        adminId: adminReq.adminId,
+        intentText,
+        actionClass: "refusal",
+        riskTier: "low",
+        outcome: "refused",
+        failureReason: "secret_leak_attempted",
+        modelId: provider.model,
+        modelInputTokens: result.inputTokens,
+        modelOutputTokens: result.outputTokens,
+        correlationId,
+      });
+      res.status(502).json({
+        error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
+        code: "COPILOT_SECRET_LEAK",
+      });
+      return;
+    }
     res.json({
       preview_id: null,
       preview: null,
