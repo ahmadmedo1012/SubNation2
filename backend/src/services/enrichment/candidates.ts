@@ -30,8 +30,6 @@ export interface CandidateRow {
 }
 
 interface SkipCounts {
-  archived: number;
-  inactive: number;
   alreadyDrafted: number;
   recentlyRejected: number;
   noEligibleField: number;
@@ -88,8 +86,6 @@ export async function selectCandidates(perRunCap: number): Promise<CandidateResu
   const rows = Array.isArray(r) ? r : (r.rows ?? []);
 
   const skipped: SkipCounts = {
-    archived: 0,
-    inactive: 0,
     alreadyDrafted: 0,
     recentlyRejected: 0,
     noEligibleField: 0,
@@ -98,14 +94,9 @@ export async function selectCandidates(perRunCap: number): Promise<CandidateResu
   const cutoff = Date.now() - REJECTION_SUPPRESSION_DAYS * 86_400_000;
 
   for (const p of rows) {
-    if (p.is_archived) {
-      skipped.archived++;
-      continue;
-    }
-    if (!p.is_active) {
-      skipped.inactive++;
-      continue;
-    }
+    // archived/inactive are filtered SQL-side; we no longer count them
+    // in skipped because they never reach the JS pass. The query's
+    // WHERE is the source of truth for FR-DRAFT-004.
 
     // Suppression set: any (field) that has a `drafted` row OR a
     // `rejected` row newer than cutoff.
