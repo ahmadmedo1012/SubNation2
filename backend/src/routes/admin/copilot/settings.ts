@@ -50,12 +50,15 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
 
       // Env diagnostics — confirm provider config presence WITHOUT
       // leaking the key value. Only super-admins reach this branch.
+      // We expose the length and a 4-char prefix; that is enough to
+      // verify "is this the staging key vs the prod key" without
+      // revealing meaningful entropy.
       const rawKey = (process.env.COPILOT_API_KEY ?? "").trim();
       const env = {
         copilot_provider: process.env.COPILOT_PROVIDER ?? "(default: openrouter)",
         copilot_api_key_present: rawKey.length > 0,
         copilot_api_key_length: rawKey.length,
-        copilot_api_key_prefix: rawKey.slice(0, 8),
+        copilot_api_key_prefix: rawKey.slice(0, 4),
         copilot_model: process.env.COPILOT_MODEL ?? "(provider default)",
         copilot_base_url_override: process.env.COPILOT_BASE_URL ?? null,
         node_env: process.env.NODE_ENV ?? null,

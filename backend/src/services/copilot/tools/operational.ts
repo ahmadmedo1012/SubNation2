@@ -25,7 +25,6 @@ import {
   db,
   inventoryTable,
   ordersTable,
-  productsTable,
   supportTicketsTable,
   usersTable,
   walletLedgerTable,

@@ -110,15 +110,41 @@ interface AdminRequestResult {
   truncated?: boolean;
 }
 
-function isPathAllowed(path: string): { ok: true } | { ok: false; reason: string } {
+export function isPathAllowed(path: string): { ok: true } | { ok: false; reason: string } {
   if (typeof path !== "string" || !path.startsWith(ALLOWED_PREFIX)) {
     return {
       ok: false,
       reason: `path must start with ${ALLOWED_PREFIX}`,
     };
   }
+  // Defense-in-depth against path traversal: a path like
+  // `/api/admin/../auth/login` passes the startsWith check, but the URL
+  // constructor (used downstream by fetch()) normalizes `..` segments and
+  // would land on /auth/login — bypassing the disallow list. Reject any
+  // path containing `..` segments or empty path components.
+  if (path.includes("/../") || path.endsWith("/..") || path.includes("//")) {
+    return {
+      ok: false,
+      reason: "path must not contain '..' segments or empty components",
+    };
+  }
+  // Re-normalize via URL and confirm the resulting pathname still starts
+  // with ALLOWED_PREFIX. Belt-and-braces — catches any remaining
+  // normalization edge case (e.g. percent-encoded traversal).
+  let normalized: string;
+  try {
+    normalized = new URL(path, "http://x").pathname;
+  } catch {
+    return { ok: false, reason: "path is not a valid URL pathname" };
+  }
+  if (!normalized.startsWith(ALLOWED_PREFIX)) {
+    return {
+      ok: false,
+      reason: `normalized path '${normalized}' falls outside ${ALLOWED_PREFIX}`,
+    };
+  }
   for (const prefix of DISALLOWED_PREFIXES) {
-    if (path.startsWith(prefix)) {
+    if (normalized.startsWith(prefix)) {
       return {
         ok: false,
         reason: `path under ${prefix} is not allowed via admin_request`,
@@ -167,6 +193,9 @@ export async function executeAdminRequest(
       body: { error: pathCheck.reason, code: "COPILOT_PATH_BLOCKED" },
     };
   }
+  // The check above already normalized; capture the canonical pathname
+  // so the fetch() call uses it instead of the model-supplied form.
+  const safePath = new URL(path, "http://x").pathname;
 
   const bearer = getAdminBearer(ctx.req);
   if (!bearer) {
@@ -177,7 +206,7 @@ export async function executeAdminRequest(
     };
   }
 
-  const url = `${getLoopbackBase(ctx.req)}${path}`;
+  const url = `${getLoopbackBase(ctx.req)}${safePath}`;
   const correlationId =
     (ctx.req.headers["x-correlation-id"] as string | undefined) ?? `cp-internal-${Date.now()}`;
 

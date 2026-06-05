@@ -318,13 +318,6 @@ export function CopilotPanel() {
 
   const turns = current.turns;
 
-  function persist(list: Conversation[], cur: string | null) {
-    setConversations(list);
-    setCurrentId(cur);
-    saveConversations(list);
-    saveCurrentId(cur);
-  }
-
   function patchTurn(id: string, patch: Partial<ConversationTurn>) {
     setConversations((prev) => {
       const list = prev.map((c) => {
@@ -961,39 +954,39 @@ export function CopilotPanel() {
                   <div className="border-t border-border bg-card/95 px-3 py-3">
                     <div className="flex items-end gap-2 bg-background border border-border rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
                       <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={onInputChange}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void submit();
-                      }
-                    }}
-                    rows={1}
-                    placeholder={
-                      flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل..." : "اكتب سؤالك..."
-                    }
-                    className="flex-1 resize-none bg-transparent border-0 text-sm focus:outline-none min-h-[20px] max-h-[240px] py-1"
-                  />
-                  <button
-                    onClick={() => void submit()}
-                    disabled={!input.trim()}
-                    className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-md shadow-primary/20 transition-all active:scale-95"
-                    aria-label="إرسال"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground px-1">
-                  <span>يتذكر آخر {MEMORY_TURNS_SENT} رسائل في هذه المحادثة</span>
-                  <span className="flex items-center gap-2">
-                    <kbd className="font-mono bg-muted border border-border/50 px-1 py-0.5 rounded">
-                      Enter
-                    </kbd>
-                    للإرسال
-                  </span>
-                </div>
+                        ref={inputRef}
+                        value={input}
+                        onChange={onInputChange}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void submit();
+                          }
+                        }}
+                        rows={1}
+                        placeholder={
+                          flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل..." : "اكتب سؤالك..."
+                        }
+                        className="flex-1 resize-none bg-transparent border-0 text-sm focus:outline-none min-h-[20px] max-h-[240px] py-1"
+                      />
+                      <button
+                        onClick={() => void submit()}
+                        disabled={!input.trim()}
+                        className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-md shadow-primary/20 transition-all active:scale-95"
+                        aria-label="إرسال"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground px-1">
+                      <span>يتذكر آخر {MEMORY_TURNS_SENT} رسائل في هذه المحادثة</span>
+                      <span className="flex items-center gap-2">
+                        <kbd className="font-mono bg-muted border border-border/50 px-1 py-0.5 rounded">
+                          Enter
+                        </kbd>
+                        للإرسال
+                      </span>
+                    </div>
                   </div>
                 </>
               )}
