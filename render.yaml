@@ -5,7 +5,10 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/healthz
-    autoDeploy: true
+    # Deploys are gated on green CI via .github/workflows/deploy.yml
+    # (workflow_run + conclusion check). Keep this false — Render's native
+    # autodeploy would bypass the CI gate and ship red-CI commits.
+    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production
@@ -34,6 +37,11 @@ services:
         # Canonical apex + www. Pre-launch state: no legacy origin
         # compatibility — the platform is still in development.
         value: "https://subnation.ly,https://www.subnation.ly"
+      # Absolute origin used to build deep-links inside admin alerts and
+      # copilot/enrichment/forecast panel references. Same value as APP_URL;
+      # kept separate so alert links survive an APP_URL change.
+      - key: APP_ORIGIN
+        value: "https://subnation.ly"
       - key: VITE_API_URL
         value: "https://subnation.ly"
       - key: VITE_APP_ORIGIN
@@ -85,6 +93,24 @@ services:
       # (the no-op default in frontend/src/lib/analytics.ts).
       - key: VITE_GA_TRACKING_ID
         sync: false
+      # ── WhatsApp OTP gateway (openwa-gateway service) ───────────────────
+      # The gateway is a SEPARATE Render web service built from the
+      # ahmadmedo1012/openwa repo:
+      #   srv-da6piju7bikc739anbtg → https://openwa-gateway-7aaa.onrender.com
+      # Its OPENWA_API_KEY must match WHATSAPP_OTP_API_KEY here. The paired
+      # WhatsApp session lives in the gateway's in-memory registry — a
+      # gateway REDEPLOY requires re-pairing (issue a fresh pair-code via
+      # POST /api/sessions/{id}/pair-code). A keep-alive workflow in the
+      # public github.com/ahmadmedo1012/keep-alive repo pings both services
+      # every 10 minutes so free-tier instances never idle-spin-down.
+      - key: WHATSAPP_OTP_BASE_URL
+        sync: false
+      - key: WHATSAPP_OTP_API_KEY
+        sync: false
+      - key: WHATSAPP_OTP_SESSION
+        value: "subnation-otp"
+      - key: WHATSAPP_OTP_AUTO_CREATE_SESSION
+        value: "true"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -198,7 +224,7 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     dockerCommand: "pnpm --filter @workspace/api-server start:worker"
-    autoDeploy: true
+    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production

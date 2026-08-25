@@ -45,3 +45,28 @@ export async function insertLedgerEntry(
     throw err;
   }
 }
+
+/**
+ * Ledger row for the 5 LYD signup bonus granted to referred new users.
+ * Every path that inserts a user with `walletBalance: "5.00"` MUST call
+ * this inside the same transaction, otherwise the balance is not
+ * reconstructable from wallet_ledger (Constitution Principle I).
+ */
+export async function insertReferralSignupLedger(
+  client: DbOrTx,
+  userId: number,
+): Promise<void> {
+  await insertLedgerEntry(
+    {
+      userId,
+      type: "referral_credit",
+      amount: "5.00",
+      balanceBefore: "0.00",
+      balanceAfter: "5.00",
+      referenceId: userId,
+      referenceType: "referral_signup",
+      description: "رصيد ترحيبي عبر كود إحالة",
+    },
+    client,
+  );
+}

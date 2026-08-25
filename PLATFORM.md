@@ -115,7 +115,7 @@ For a concise full-project reference (features, defects, recommendations) see
    │    └─ rate-limit, alerting dedup, scheduler leader, worker       │
    │       heartbeat, Socket.IO adapter, Telegram replay store        │
    │                                                                  │
-   │  • Drizzle ORM → Neon Postgres (US-West-2)                       │
+   │  • Drizzle ORM → Neon Postgres (aws-us-east-1)                   │
    │    └─ pool max=15, channel_binding=require, SSL strict           │
    │                                                                  │
    │  • Firebase Admin (Google ID + Phone OTP verification)           │
@@ -130,7 +130,7 @@ For a concise full-project reference (features, defects, recommendations) see
 
 **Public auth methods (passwordless):**
 
-- **Phone OTP** via Firebase Phone Auth + reCAPTCHA → `/api/auth/firebase/session`
+- **(RETIRED) Firebase Phone OTP** — permanently rejected server-side; the phone path is WhatsApp OTP
 - **Google Sign-In** via Firebase popup → `/api/auth/firebase/session`
 - **Telegram Login** via official OAuth redirect flow → `/auth/telegram-callback` (frontend reads fragment) → `POST /api/auth/telegram` (HMAC + Redis replay + auth-activity log)
 
@@ -216,13 +216,13 @@ For a concise full-project reference (features, defects, recommendations) see
 **Render services (`render.yaml`):**
 
 - `subnation` — web (Docker, Oregon, starter plan, autoDeploy). The serving frontend + backend.
-- `subnation-redis` — Redis Cloud free plan, allkeys-lru. Used by rate limiting, alerting dedup, scheduler leader, Socket.IO adapter, replay protection.
+- `subnation-redis` — Render Redis free plan, allkeys-lru. Used by rate limiting, alerting dedup, scheduler leader, Socket.IO adapter, replay protection.
 - `subnation-worker` — defined but not currently provisioned. Reserved for future split.
 
 **External services:**
 
-- **Neon Postgres** (US-West-2, on `pooler` endpoint with `?channel_binding=require`)
-- **Firebase** project `subnation-2571e` — Google + Phone OTP, SMS region policy permits Libya
+- **Neon Postgres** (aws-us-east-1, project calm-art-99771185, pooled endpoint with `?channel_binding=require`)
+- **Firebase** project `subnation-2571e` — Google sign-in (Phone OTP retired)
 - **Sentry** EU ingest, separate frontend + backend DSNs
 - **Domain** `subnation.ly` (apex canonical) + `www.subnation.ly` (301 → apex via Render edge + app middleware as defence)
 
@@ -302,7 +302,7 @@ For a concise full-project reference (features, defects, recommendations) see
 | I-1 | Wire daily `db:backup` to Render cron + verify pg_dump appears in target bucket                        | ops   | 0.5d               |
 | I-2 | Run a restore drill — pg_dump → fresh Neon branch → smoke test login                                   | ops   | 0.5d               |
 | I-3 | Add 10-15 vitest cases for auth happy-paths + lockout + CSRF                                           | dev   | 2d                 |
-| I-4 | Configure Telegram in `/admin/settings` + `/setdomain` in @BotFather                                   | owner | 30 min             |
+| I-4 | ~~Configure Telegram~~ DONE 2026-08-25 — @SubNation_USERS_bot active via system_settings; /setdomain still owner-side if widget blocked | owner | — |
 | I-5 | Verify `window.__sentryStatus()` returns `initialized: true` in prod                                   | dev   | 5 min after deploy |
 | I-6 | Soft load test (autocannon `--duration 60 --connections 50` on `/api/products`) — confirm p95 < 500 ms | dev   | 1d                 |
 
@@ -418,7 +418,7 @@ SEV3 (single-feature / single-user):
 ### Deploy & rollback
 
 - **Deploy trigger**: push to `main` → Render autoDeploy=true → `pnpm run build` in Docker → restart container
-- **Migrations**: `db:push` runs as part of `start` script (drizzle-kit). Schema changes are idempotent.
+- **Migrations**: `runMigrations()` executes at boot under a Redis NX lock (idempotent SQL in backend/src/migrate.ts). `db:push` is dev-only.
 - **Rollback**: Render dashboard → Deploys → previous deploy → "Redeploy". Database migrations are forward-additive only (no destructive migrations land in main without an explicit decision).
 - **Feature flags**: env vars (`ALERTING_ENABLED`, `DISABLE_WEB_SCHEDULERS`, `FIREBASE_AUTH_ENABLED`) for major switches. No in-app feature flag service.
 
@@ -434,7 +434,7 @@ SEV3 (single-feature / single-user):
 - **Cookies**: `httpOnly + secure + sameSite=strict` (auth cookies)
 - **Argon2id**: OWASP-2024 params (`memoryCost: 65536, timeCost: 3, parallelism: 1`); `needsRehash` auto-migrates legacy hashes on next login
 - **CSRF**: origin/referer gate on all `/api/*` POST/PATCH/DELETE except whitelisted webhook + Firebase session paths
-- **Rate limiting**: 300 req/min/IP general; 10/15-min auth-specific (skipSuccessfulRequests=true); per-phone OTP limiter
+- **Rate limiting**: 600 req/min/IP general (1200 for authed users); 10/15-min auth limiter counting successes too; per-phone OTP caps
 - **Lockout**: argon2-failure threshold + cooldown, Redis-backed
 - **Admin TOTP**: `otplib`-based, backup codes, gated separately from user JWT
 - **JWT**: `SESSION_SECRET ≥ 32` enforced at boot; user 30-day, admin 8-hour
@@ -706,11 +706,11 @@ SubNation is a competently-engineered Arabic RTL marketplace with modern auth (p
 | **`PLATFORM.md`** (this file)                 | Platform state + roadmap                                      | ✅ current                                     |
 | `README.md`                                   | Project overview + dev setup                                  | ✅ current                                     |
 | `OPERATIONS_RUNBOOK.md`                       | On-call playbook                                              | ✅ current                                     |
-| `OBSERVABILITY_SETUP.md`                      | Sentry + Pino + Prom + alerting architecture                  | ✅ current                                     |
-| `DOMAIN_RUNTIME_ARCHITECTURE.md`              | Cookies, request lifecycle, Firebase, Socket.IO domain config | ✅ current                                     |
-| `RTL_LAYOUT_ARCHITECTURE.md`                  | RTL approach + direction-mutator API                          | ✅ current                                     |
-| `REDIS_RUNTIME_ARCHITECTURE.md`               | Redis topology, who uses it, failure modes                    | ✅ current                                     |
-| `SECRET_ROTATION_RUNBOOK.md`                  | How to rotate any committed-then-purged secret                | ✅ current                                     |
+| `OBSERVABILITY_SETUP.md`                      | Sentry + Pino + Prom + alerting architecture                  | ❌ does not exist (content lives in PLATFORM §2.3) |
+| `DOMAIN_RUNTIME_ARCHITECTURE.md`              | Cookies, request lifecycle, Firebase, Socket.IO domain config | ❌ does not exist                              |
+| `RTL_LAYOUT_ARCHITECTURE.md`                  | RTL approach + direction-mutator API                          | ❌ does not exist                              |
+| `REDIS_RUNTIME_ARCHITECTURE.md`               | Redis topology, who uses it, failure modes                    | ❌ does not exist                              |
+| `SECRET_ROTATION_RUNBOOK.md`                  | How to rotate any committed-then-purged secret                | ❌ never existed — see DISASTER_RECOVERY.md    |
 | `docs/API.md`                                 | API surface reference                                         | ✅ current                                     |
 | `docs/DISASTER_RECOVERY.md`                   | Named DB recovery scenarios                                   | ✅ current                                     |
 | `docs/COMPLIANCE.md`                          | Privacy/legal posture                                         | ✅ current                                     |

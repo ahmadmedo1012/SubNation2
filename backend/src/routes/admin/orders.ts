@@ -1,4 +1,5 @@
 import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
+import { logger } from "../../lib/logger";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
@@ -133,12 +134,14 @@ router.patch(
           });
           successes.push(result.orderId);
           // Per-refund socket notification — same shape the legacy path used.
-          import("../../lib/socket").then(({ emitToUser }) => {
-            emitToUser(result.userId, "order-updated", { id: result.orderId, status });
-            emitToUser(result.userId, "wallet-updated", {
-              walletBalance: result.walletBalance,
-            });
-          });
+          import("../../lib/socket")
+            .then(({ emitToUser }) => {
+              emitToUser(result.userId, "order-updated", { id: result.orderId, status });
+              emitToUser(result.userId, "wallet-updated", {
+                walletBalance: result.walletBalance,
+              });
+            })
+            .catch((err) => logger.warn({ err }, "socket notify failed (refund)"));
         } catch (err) {
           if (err instanceof RefundError) {
             failures.push({ orderId, code: err.code, message: err.message });
@@ -151,14 +154,16 @@ router.patch(
         }
       }
 
-      import("../../lib/socket").then(({ emitToAdmins }) => {
-        emitToAdmins("admin-stats-update", {
-          type: "order-bulk-update",
-          status,
-          succeeded: successes.length,
-          failed: failures.length,
-        });
-      });
+      import("../../lib/socket")
+        .then(({ emitToAdmins }) => {
+          emitToAdmins("admin-stats-update", {
+            type: "order-bulk-update",
+            status,
+            succeeded: successes.length,
+            failed: failures.length,
+          });
+        })
+        .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
       void writeAuditLog(req, "order.bulk_refund", "order", null, {
         ids: numIds,
@@ -196,13 +201,17 @@ router.patch(
       .where(sql`id = ANY(${numIds})`);
 
     for (const o of updatedOrders) {
-      import("../../lib/socket").then(({ emitToUser }) => {
-        emitToUser(o.userId, "order-updated", { id: o.id, status });
-      });
+      import("../../lib/socket")
+        .then(({ emitToUser }) => {
+          emitToUser(o.userId, "order-updated", { id: o.id, status });
+        })
+        .catch((err) => logger.warn({ err }, "socket notify failed (bulk status)"));
     }
-    import("../../lib/socket").then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "order-bulk-update", status });
-    });
+    import("../../lib/socket")
+      .then(({ emitToAdmins }) => {
+        emitToAdmins("admin-stats-update", { type: "order-bulk-update", status });
+      })
+      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
     void writeAuditLog(req, "order.bulk_status_update", "order", null, {
       ids: numIds,

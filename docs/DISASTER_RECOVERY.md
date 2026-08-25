@@ -1,6 +1,6 @@
 # Disaster Recovery Runbook — SubNation
 
-**Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres + Redis Cloud. This runbook is platform-specific. For background see `PRODUCTION_READINESS_MASTER.md` Phase 2.
+**Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres (project calm-art-99771185, us-east-1) + a Render Redis service. This runbook is platform-specific.
 
 ## RTO / RPO targets
 
@@ -9,7 +9,7 @@
 | Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR) |
 | Application code | < 5 min | 0 — git is source of truth |
 | Render service config | < 15 min | 0 — `render.yaml` is checked in |
-| Redis Cloud | < 15 min | **30 min** (durable state is rate-limit windows + alerting dedup; loss = transient blip, no recovery action needed) |
+| Render Redis | < 15 min | **30 min** (durable state is rate-limit windows + alerting dedup; loss = transient blip, no recovery action needed) |
 | Sentry / observability | n/a | n/a — best-effort capture; loss of error events does not affect product behaviour |
 
 ## Backup inventory
@@ -52,7 +52,10 @@ Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch prote
 
 ### 5. Secrets
 
-Owner-managed. Rotation procedure documented in `SECRET_ROTATION_RUNBOOK.md`. The list of `sync: false` keys on the Render service:
+Owner-managed. Rotation procedure: rotate from the source of truth for each secret
+(e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
+Sentry dashboard for DSNs) then update the matching Render env var and
+redeploy. The list of `sync: false` keys on the Render service:
 - `DATABASE_URL`
 - `SESSION_SECRET`
 - `ENCRYPTION_KEY`
@@ -85,7 +88,7 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 ### Scenario B — Full DB loss / Neon project deleted
 
-1. Spin up a new Neon project. Same region (US-West-2). Same role name (`neondb_owner`).
+1. Spin up a new Neon project. Same region (aws-us-east-1). Same role name (`neondb_owner`).
 2. Get the new connection string.
 3. Restore the latest off-site backup:
    ```bash
@@ -119,7 +122,7 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 ### Scenario E — Security breach (suspected unauthorized access)
 
-1. Rotate every secret listed in `SECRET_ROTATION_RUNBOOK.md`. Order matters: Firebase admin first (highest blast radius), then SESSION_SECRET (forces all users to log out — this is desirable), then DATABASE_URL.
+1. Rotate every `sync: false` secret in the Render dashboard. Order matters: Firebase admin first (highest blast radius), then SESSION_SECRET (forces all users to log out — this is desirable), then DATABASE_URL.
 2. Open `/admin/system` → review:
    - Recent alerts panel
    - Auth & Security panel (failure rate, lockouts, Firebase failures)
@@ -167,7 +170,7 @@ Sentry alerts: routed to operator email + Telegram via webhook
 ## Lessons learned log
 
 - **2026-05-16:** Neon free-tier compute hours exhausted during the secret-rotation window. Symptom: every Postgres query timed out at exactly 937 ms (Neon edge proxy fast-fail). Resolution: upgraded to Neon Launch tier; queries resumed. Prevention: monitor Neon usage page weekly; budget alarm at 70% of monthly compute hours.
-- **2026-05-16:** `DATABASE_URL` was accidentally cleared from Render env during rotation — new deploys failed at boot with "DATABASE_URL is not set". Resolution: restored from password manager. Prevention: `SECRET_ROTATION_RUNBOOK.md` Phase 3 reworded to emphasize "Edit (don't delete)".
+- **2026-05-16:** `DATABASE_URL` was accidentally cleared from Render env during rotation — new deploys failed at boot with "DATABASE_URL is not set". Resolution: restored from password manager. Prevention: always Edit (don't delete) secret values during rotation.
 
 ## Documentation updates
 

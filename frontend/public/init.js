@@ -1,31 +1,10 @@
 /* eslint-disable */
-if (window.trustedTypes && trustedTypes.createPolicy) {
-  try {
-    trustedTypes.createPolicy("default", {
-      createHTML: function (string) {
-        return string;
-      },
-      createScriptURL: function (string) {
-        return string;
-      },
-      createScript: function (string) {
-        return string;
-      },
-    });
-  } catch (e) {
-    // Policy might already exist
-  }
-}
-
+// Early theme boot — prevents a light/dark flash before React mounts.
+// (Service-worker registration lives in the Workbox build output injected
+// by vite-plugin-pwa; a second hand-rolled register() here raced it.)
 (function () {
   try {
     var t = localStorage.getItem("sn_theme");
     if (t === "light") document.documentElement.classList.add("light");
   } catch (e) {}
 })();
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("/sw.js").catch(function () {});
-  });
-}

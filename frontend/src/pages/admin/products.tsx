@@ -180,6 +180,13 @@ export default function AdminProductsPage() {
         setForm({ ...EMPTY_FORM });
         toast({ title: "تمت الإضافة" });
       },
+      onError(err: unknown) {
+        toast({
+          title: "خطأ",
+          description: err instanceof Error ? err.message : "فشلت العملية",
+          variant: "destructive",
+        });
+      },
     },
   });
   const updateMutation = useUpdateProduct({
@@ -192,6 +199,13 @@ export default function AdminProductsPage() {
         setShowForm(false);
         toast({ title: "تم التحديث" });
       },
+      onError(err: unknown) {
+        toast({
+          title: "خطأ",
+          description: err instanceof Error ? err.message : "فشلت العملية",
+          variant: "destructive",
+        });
+      },
     },
   });
   const deleteMutation = useDeleteProduct({
@@ -201,6 +215,13 @@ export default function AdminProductsPage() {
         invalidate();
         toast({ title: "تمت الأرشفة" });
         setDeleteConfirm(null);
+      },
+      onError(err: unknown) {
+        toast({
+          title: "خطأ",
+          description: err instanceof Error ? err.message : "فشلت العملية",
+          variant: "destructive",
+        });
       },
     },
   });
@@ -221,10 +242,11 @@ export default function AdminProductsPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [showForm]);
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,11 +316,27 @@ export default function AdminProductsPage() {
 
   const bulkDelete = async () => {
     if (!selectedIds.size) return;
+    if (!window.confirm(`تأكيد أرشفة ${selectedIds.size} منتج؟`)) return;
     setBulkProcessing(true);
+    let successCount = 0;
+    let failedCount = 0;
     for (const id of selectedIds) {
-      await fetch(`/api/admin/products/${id}`, { method: "DELETE", headers }).catch(() => {});
+      try {
+        const r = await fetch(`/api/admin/products/${id}`, { method: "DELETE", headers });
+        if (!r.ok) throw new Error(String(r.status));
+        successCount++;
+      } catch {
+        failedCount++;
+      }
     }
-    toast({ title: `تمت أرشفة ${selectedIds.size} منتج` });
+    if (failedCount > 0) {
+      toast({
+        title: "خطأ",
+        description: `فشل تنفيذ العملية على ${failedCount} منتج`,
+        variant: "destructive",
+      });
+    }
+    toast({ title: `تمت أرشفة ${successCount} منتج` });
     setSelectedIds(new Set());
     invalidate();
     setBulkProcessing(false);
@@ -307,16 +345,31 @@ export default function AdminProductsPage() {
   const bulkToggleActive = async (active: boolean) => {
     if (!selectedIds.size) return;
     setBulkProcessing(true);
+    let failedCount = 0;
     for (const id of selectedIds) {
       const p = products.find((pr) => pr.id === id);
       if (!p) continue;
-      await fetch(`/api/admin/products/${id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: active }),
-      }).catch(() => {});
+      try {
+        const r = await fetch(`/api/admin/products/${id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: active }),
+        });
+        if (!r.ok) throw new Error(String(r.status));
+      } catch {
+        failedCount++;
+      }
     }
-    toast({ title: `تم ${active ? "تفعيل" : "إخفاء"} ${selectedIds.size} منتج` });
+    if (failedCount > 0) {
+      toast({
+        title: "خطأ",
+        description: `فشل تنفيذ العملية على ${failedCount} منتج`,
+        variant: "destructive",
+      });
+    }
+    toast({
+      title: `تم ${active ? "تفعيل" : "إخفاء"} ${selectedIds.size - failedCount} منتج`,
+    });
     setSelectedIds(new Set());
     invalidate();
     setBulkProcessing(false);

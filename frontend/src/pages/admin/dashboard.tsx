@@ -239,10 +239,11 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (adminToken) fetchChart(chartDays);
   }, [adminToken, chartDays]);
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const handleRefresh = () => {
     refetch();

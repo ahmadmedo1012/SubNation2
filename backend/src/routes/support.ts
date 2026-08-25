@@ -16,7 +16,8 @@ router.get("/", requireUser, async (req, res) => {
     .select()
     .from(supportTicketsTable)
     .where(eq(supportTicketsTable.userId, userId))
-    .orderBy(desc(supportTicketsTable.createdAt));
+    .orderBy(desc(supportTicketsTable.createdAt))
+    .limit(200);
 
   if (tickets.length === 0) return res.json([]);
 

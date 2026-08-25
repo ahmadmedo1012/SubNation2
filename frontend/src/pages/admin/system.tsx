@@ -513,10 +513,11 @@ export default function AdminSystemPage(): ReactElement | null {
     if (buf.length > MAX_SAMPLES) buf.splice(0, buf.length - MAX_SAMPLES);
   }, [metricsQ.data, diagQ.data]);
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const handleRefresh = () => {
     healthQ.refetch();

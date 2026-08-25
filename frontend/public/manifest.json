@@ -10,19 +10,34 @@
   "theme_color": "#e11d48",
   "lang": "ar",
   "dir": "rtl",
-  "categories": ["shopping", "entertainment"],
+  "categories": [
+    "shopping",
+    "entertainment"
+  ],
   "icons": [
     {
-      "src": "/subnation-logo.png",
+      "src": "/pwa-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/subnation-logo.png",
+      "src": "/pwa-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [],
@@ -32,14 +47,24 @@
       "short_name": "المتجر",
       "description": "تصفح الاشتراكات المتاحة",
       "url": "/",
-      "icons": [{ "src": "/subnation-logo.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/pwa-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
     },
     {
       "name": "طلباتي",
       "short_name": "الطلبات",
       "description": "عرض طلباتي",
       "url": "/orders",
-      "icons": [{ "src": "/subnation-logo.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/pwa-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }

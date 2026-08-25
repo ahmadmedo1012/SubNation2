@@ -356,8 +356,15 @@ export const ProductCard = memo(
   ProductCardInner,
   (prev, next) =>
     prev.product.id === next.product.id &&
+    prev.product.slug === next.product.slug &&
+    prev.product.name === next.product.name &&
+    prev.product.description === next.product.description &&
+    prev.product.image_url === next.product.image_url &&
     prev.product.price === next.product.price &&
     prev.product.sale_price === next.product.sale_price &&
+    prev.product.category === next.product.category &&
+    prev.product.discount_percent === next.product.discount_percent &&
+    prev.product.order_count === next.product.order_count &&
     prev.product.stock_count === next.product.stock_count &&
     prev.product.is_available === next.product.is_available &&
     prev.index === next.index,

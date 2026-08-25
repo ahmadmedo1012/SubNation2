@@ -55,6 +55,18 @@ router.post("/logout", requireUser, async (req, res) => {
     ...clientInfo,
   });
 
+  // Clear the session cookie — previously logout only revoked Firebase
+  // refresh tokens and left `auth_token` set, so for non-Firebase users
+  // (WhatsApp/Telegram) the browser kept sending a valid JWT after
+  // "logout". Mirror the cookie options used at issuance (sameSite lax,
+  // secure in prod, 30d maxAge) so the removal actually matches.
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+
   return res.json({ success: true, message: "تم تسجيل الخروج" });
 });
 

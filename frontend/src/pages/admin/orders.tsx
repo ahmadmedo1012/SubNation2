@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
@@ -94,6 +95,7 @@ export default function AdminOrdersPage() {
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -124,6 +126,12 @@ export default function AdminOrdersPage() {
   const allOrders = allOrdersRaw as AdminOrderRow[];
 
   const applyBulkStatus = async (status: string) => {
+    if (selectedIds.size === 0) return;
+    const confirmMessage =
+      status === "refunded"
+        ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين.`
+        : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
+    if (!window.confirm(confirmMessage)) return;
     setBulkUpdating(true);
     setBulkStatusOpen(false);
     try {
@@ -134,14 +142,21 @@ export default function AdminOrdersPage() {
       // a fresh "Refund 5 orders" click generates a new key.
       // (Per-order refund atomicity / idempotency lives in
       // RefundService server-side — see security audit S-01.)
-      await fetch("/api/admin/orders/bulk-status", {
+      const r = await fetch("/api/admin/orders/bulk-status", {
         method: "PATCH",
         headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
+      if (!r.ok) throw new Error(String(r.status));
       setSelectedIds(new Set());
       refetch();
       qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({}) });
+    } catch {
+      toast({
+        title: "خطأ",
+        description: "فشل تنفيذ العملية، حاول مرة أخرى",
+        variant: "destructive",
+      });
     } finally {
       setBulkUpdating(false);
     }
@@ -160,13 +175,15 @@ export default function AdminOrdersPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Guard AFTER all hooks so hook order is identical every render
-  // (rules-of-hooks). A return before the useEffect above would change
-  // the hook count once adminToken resolves.
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  // Redirect effect AFTER all hooks so hook order is identical every
+  // render (rules-of-hooks). The null return below keeps the guard
+  // semantics: unauthenticated admins render nothing until the
+  // redirect lands.
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const statusCounts = allOrders.reduce((acc: Record<string, number>, o) => {
     acc[o.status] = (acc[o.status] ?? 0) + 1;

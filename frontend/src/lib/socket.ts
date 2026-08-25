@@ -2,6 +2,31 @@ import type { Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
+// The CURRENT authenticated user at connect time. The shared "connect"
+// handler below reads this when the event fires (initial connect AND
+// every auto-reconnect), so after an account switch the room re-join
+// always uses the new identity — never a stale closure over an old
+// userId.
+let currentUserId: number | string | undefined;
+
+const handleUserConnect = () => {
+  const s = socket;
+  if (!s || currentUserId === undefined) return;
+  // Server-side authorizeJoinUser strictly verifies that this
+  // userId matches the verified identity from the auth_token
+  // cookie. Forged values are silently dropped.
+  s.emit("join-user", currentUserId);
+};
+
+const handleAdminConnect = () => {
+  const s = socket;
+  if (!s) return;
+  // Server-side authorizeJoinAdmin requires socket.data.isAdmin
+  // === true (admin_token cookie verified). A forged join-admin
+  // from a non-admin socket is silently dropped.
+  s.emit("join-admin");
+};
+
 export async function getSocket() {
   if (!socket) {
     try {
@@ -30,18 +55,24 @@ export async function getSocket() {
 export async function connectSocket(userId?: number | string) {
   const s = await getSocket();
   if (!s) return null;
-  if (s.connected) return s;
 
-  s.connect();
+  currentUserId = userId;
 
-  s.on("connect", () => {
-    if (userId) {
-      // Server-side authorizeJoinUser strictly verifies that this
-      // userId matches the verified identity from the auth_token
-      // cookie. Forged values are silently dropped.
-      s.emit("join-user", userId);
-    }
-  });
+  // Dedup: named module-level handlers make `.off()` before `.on()` a
+  // no-op on repeat calls, so repeated connectSocket() invocations
+  // (remounts, account switches) never stack duplicate "connect"
+  // listeners that would each emit join-user under stale ids.
+  s.off("connect", handleUserConnect);
+  s.on("connect", handleUserConnect);
+
+  if (!s.connected) {
+    s.connect();
+  } else {
+    // Already connected (e.g. switching accounts mid-session): join
+    // under the current userId right away instead of waiting for a
+    // reconnect to fire the handler.
+    handleUserConnect();
+  }
 
   return s;
 }
@@ -49,16 +80,13 @@ export async function connectSocket(userId?: number | string) {
 export async function connectAdminSocket() {
   const s = await getSocket();
   if (!s) return null;
-  if (s.connected) return s;
 
-  s.connect();
+  s.off("connect", handleAdminConnect);
+  s.on("connect", handleAdminConnect);
 
-  s.on("connect", () => {
-    // Server-side authorizeJoinAdmin requires socket.data.isAdmin
-    // === true (admin_token cookie verified). A forged join-admin
-    // from a non-admin socket is silently dropped.
-    s.emit("join-admin");
-  });
+  if (!s.connected) {
+    s.connect();
+  }
 
   return s;
 }
@@ -67,5 +95,6 @@ export function disconnectSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
+    currentUserId = undefined;
   }
 }

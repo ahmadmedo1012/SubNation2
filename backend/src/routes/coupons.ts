@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
+import { requirePermission } from "../lib/permissions";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
@@ -75,14 +76,14 @@ router.post("/validate", requireUser, async (req, res) => {
 
 // ── Admin: list ───────────────────────────────────────────────────────────────
 
-router.get("/admin", requireAdmin, async (_req, res) => {
+router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, res) => {
   const coupons = await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt));
   return res.json(coupons.map(formatCoupon));
 });
 
 // ── Admin: create ─────────────────────────────────────────────────────────────
 
-router.post("/admin", requireAdmin, async (req, res) => {
+router.post("/admin", requireAdmin, requirePermission("finance"), async (req, res) => {
   const { code, type, value, min_order_amount, max_uses, expires_at, description } = req.body ?? {};
   if (!code?.trim()) return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
   if (!["percentage", "fixed"].includes(type))
@@ -119,7 +120,7 @@ router.post("/admin", requireAdmin, async (req, res) => {
 
 // ── Admin: update ─────────────────────────────────────────────────────────────
 
-router.patch("/admin/:id", requireAdmin, async (req, res) => {
+router.patch("/admin/:id", requireAdmin, requirePermission("finance"), async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
@@ -130,7 +131,20 @@ router.patch("/admin/:id", requireAdmin, async (req, res) => {
   const updates: Partial<typeof couponsTable.$inferInsert> = {};
 
   if (typeof is_active === "boolean") updates.isActive = is_active;
-  if (max_uses !== undefined) updates.maxUses = max_uses;
+  if (max_uses !== undefined) {
+    // Validate: integer ≥ 1 or null (null = unlimited). A string/negative
+    // previously reached Postgres raw → 500, and a negative instantly made
+    // `usedCount >= maxUses` true (dead coupon).
+    if (max_uses === null) {
+      updates.maxUses = null;
+    } else {
+      const n = Number(max_uses);
+      if (!Number.isInteger(n) || n < 1 || n > 1_000_000) {
+        return res.status(400).json(createErrorResponse("حد الاستخدام يجب أن يكون عدداً صحيحاً موجباً", ErrorCode.INVALID_DATA));
+      }
+      updates.maxUses = n;
+    }
+  }
   if (expires_at !== undefined) updates.expiresAt = expires_at ? new Date(expires_at) : null;
   if (description !== undefined) updates.description = description?.trim() || null;
 
@@ -144,7 +158,7 @@ router.patch("/admin/:id", requireAdmin, async (req, res) => {
 
 // ── Admin: delete (soft) ──────────────────────────────────────────────────────
 
-router.delete("/admin/:id", requireAdmin, async (req, res) => {
+router.delete("/admin/:id", requireAdmin, requirePermission("finance"), async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 

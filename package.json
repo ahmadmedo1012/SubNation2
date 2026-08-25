@@ -17,7 +17,6 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter @workspace/api-server --filter @workspace/subnation --filter @workspace/scripts --if-present run typecheck",
     "prepare": "husky",
-    "validate:cwv": "lhci autorun --collect.numberOfRuns=3",
     "validate:suite": "tsx scripts/validate.ts"
   },
   "private": true,

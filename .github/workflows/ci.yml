@@ -173,7 +173,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup pnpm
-        # Version pinned via package.json `packageManager` field (pnpm@10.0.0).
+        # Version pinned via package.json `packageManager` field (pnpm@10.17.0).
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js

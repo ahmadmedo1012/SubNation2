@@ -29,6 +29,7 @@ import {
   verifyOtp as verifyOtpPure,
 } from "../lib/whatsapp-otp";
 import { buildChatId, sendWhatsAppMessage } from "./openwa.service";
+import { insertReferralSignupLedger } from "../lib/ledger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -292,16 +293,22 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult>
   );
   if (!verdict.ok) {
     // Increment attempts on a real mismatch; if we hit the cap, hard-consume
-    // the row so it cannot be brute-forced further.
+    // the row so it cannot be brute-forced further. Atomic SQL increment —
+    // the previous JS read-modify-write let N concurrent guesses all read
+    // the same count and blow past the cap.
     if (verdict.reason === "mismatch") {
-      const newAttempts = row.attempts + 1;
-      await db
+      const [bumped] = await db
         .update(whatsappOtpsTable)
-        .set({
-          attempts: newAttempts,
-          consumedAt: newAttempts >= OTP_MAX_ATTEMPTS ? new Date() : null,
-        })
-        .where(eq(whatsappOtpsTable.id, row.id));
+        .set({ attempts: sql`${whatsappOtpsTable.attempts} + 1` })
+        .where(eq(whatsappOtpsTable.id, row.id))
+        .returning({ attempts: whatsappOtpsTable.attempts });
+      const newAttempts = bumped?.attempts ?? (row.attempts ?? 0) + 1;
+      if (newAttempts >= OTP_MAX_ATTEMPTS) {
+        await db
+          .update(whatsappOtpsTable)
+          .set({ consumedAt: new Date() })
+          .where(and(eq(whatsappOtpsTable.id, row.id), isNull(whatsappOtpsTable.consumedAt)));
+      }
     }
     await safeLog({
       identifier: `wa:${phone}`,
@@ -383,18 +390,25 @@ async function findOrCreateWhatsAppUser(
     if (referrer) referredById = referrer.id;
   }
 
-  const [created] = await db
-    .insert(usersTable)
-    .values({
-      phone,
-      phoneVerified: true,
-      authProvider: "whatsapp_phone",
-      referralCode: generateReferralCode(),
-      referredBy: referredById,
-      walletBalance: referredById ? "5.00" : "0.00",
-      lastAuthAt: now,
-    })
-    .returning();
+  const [created] = await db.transaction(async (tx) => {
+    const [u] = await tx
+      .insert(usersTable)
+      .values({
+        phone,
+        phoneVerified: true,
+        authProvider: "whatsapp_phone",
+        referralCode: generateReferralCode(),
+        referredBy: referredById,
+        walletBalance: referredById ? "5.00" : "0.00",
+        lastAuthAt: now,
+      })
+      .returning();
+
+    // Ledger parity for the signup bonus (Constitution §I).
+    if (referredById) await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
+
+    return [u];
+  });
 
   return { user: created, isNewUser: true };
 }

@@ -165,28 +165,12 @@ export default defineConfig({
     fontPreloadInject(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
-      manifest: {
-        name: "SubNation",
-        short_name: "SubNation",
-        description: "Premium SaaS Subscription Platform",
-        theme_color: "#0f172a",
-        background_color: "#0f172a",
-        display: "standalone",
-        icons: [
-          {
-            src: "/pwa-192x192.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "/pwa-512x512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any maskable",
-          },
-        ],
-      },
+      // The hand-written public/manifest.json is the single source of truth
+      // (Arabic-first metadata + shortcuts). Generating a second webmanifest
+      // here created two <link rel="manifest"> candidates with conflicting
+      // theme colors.
+      manifest: false,
+      includeAssets: ["favicon.svg", "subnation-logo.png"],
       workbox: {
         // Fonts are now bundled into /assets/ via @fontsource (no longer
         // fetched from fonts.googleapis.com), so the previous

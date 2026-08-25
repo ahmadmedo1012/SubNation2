@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { requireAdmin } from "../middlewares/requireAdmin";
+import { requirePermission } from "../lib/permissions";
 import healthRouter from "./health";
 import { authRouter } from "./auth";
 import {
@@ -50,6 +52,6 @@ router.use("/coupons", couponsRouter);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 router.use("/admin", adminRouter);
-router.use("/admin/settings", authProviderAdminRouter); // /api/admin/settings/auth
+router.use("/admin/settings", requireAdmin, requirePermission("settings"), authProviderAdminRouter); // /api/admin/settings/auth
 
 export default router;

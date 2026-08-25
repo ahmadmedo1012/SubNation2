@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
@@ -91,11 +91,11 @@ export default function ReferralsPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  // Redirect to login if not authenticated. Doing this in render rather
-  // than an effect avoids a flash of "loading" state on a guest user.
-  if (!token && typeof window !== "undefined") {
-    navigate("/login");
-  }
+  // Redirect to login if not authenticated. Runs in an effect so we
+  // never trigger a router state update during the render phase.
+  useEffect(() => {
+    if (!token) navigate("/login");
+  }, [token, navigate]);
 
   const headers: HeadersInit = { Authorization: token ? `Bearer ${token}` : "" };
 

@@ -33,6 +33,7 @@ import {
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
+import { insertReferralSignupLedger } from "../lib/ledger";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -367,22 +368,28 @@ async function findOrCreateTelegramUser(
 
   const displayName = [fields.first_name, fields.last_name].filter(Boolean).join(" ").trim();
 
-  const [created] = await db
-    .insert(usersTable)
-    .values({
-      // Placeholder phone — Telegram doesn't expose phone via the widget.
-      // Profile flow can later let the user add a real phone & link OTP.
-      phone: `tg_${tgId}`,
-      telegramId: tgId,
-      displayName: displayName || undefined,
-      photoUrl: fields.photo_url ?? undefined,
-      authProvider: "telegram",
-      referralCode: generateReferralCode(),
-      referredBy: referredById,
-      walletBalance: referredById ? "5.00" : "0.00",
-      lastAuthAt: now,
-    })
-    .returning();
+  const [created] = await db.transaction(async (tx) => {
+    const [u] = await tx
+      .insert(usersTable)
+      .values({
+        // Placeholder phone — Telegram doesn't expose phone via the widget.
+        // Profile flow can later let the user add a real phone & link OTP.
+        phone: `tg_${tgId}`,
+        telegramId: tgId,
+        displayName: displayName || undefined,
+        photoUrl: fields.photo_url ?? undefined,
+        authProvider: "telegram",
+        referralCode: generateReferralCode(),
+        referredBy: referredById,
+        walletBalance: referredById ? "5.00" : "0.00",
+        lastAuthAt: now,
+      })
+      .returning();
+
+    if (referredById) await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
+
+    return [u];
+  });
 
   // Mirror the user into user_auth_identities so /api/auth/providers/linked
   // surfaces Telegram alongside Google and Phone OTP. Provider string

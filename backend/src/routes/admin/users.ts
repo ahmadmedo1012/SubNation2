@@ -1,5 +1,5 @@
 import { db, ordersTable, usersTable } from "@workspace/db";
-import { count, desc, eq, like } from "drizzle-orm";
+import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
@@ -23,10 +23,21 @@ router.get("/users", requireAdmin, async (req, res) => {
           .limit(100)
       : await db.select().from(usersTable).orderBy(desc(usersTable.createdAt)).limit(100);
 
+  // Completed-order counts scoped to the page's user ids. The previous
+  // unfiltered GROUP BY scanned the entire orders table on every dashboard
+  // load just to display counts for ≤100 users.
   const orderCounts = await db
     .select({ userId: ordersTable.userId, count: count() })
     .from(ordersTable)
-    .where(eq(ordersTable.status, "completed"))
+    .where(
+      and(
+        eq(ordersTable.status, "completed"),
+        inArray(
+          ordersTable.userId,
+          users.map((u) => u.id),
+        ),
+      ),
+    )
     .groupBy(ordersTable.userId);
   const orderMap = new Map(orderCounts.map((r) => [r.userId, Number(r.count)]));
 

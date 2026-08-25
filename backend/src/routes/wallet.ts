@@ -66,7 +66,8 @@ router.get("/topups", requireUser, async (req, res) => {
     .select()
     .from(walletTopupsTable)
     .where(eq(walletTopupsTable.userId, userId))
-    .orderBy(desc(walletTopupsTable.createdAt));
+    .orderBy(desc(walletTopupsTable.createdAt))
+    .limit(200);
 
   return res.json(topups.map(formatTopup));
 });

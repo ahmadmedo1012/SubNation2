@@ -855,10 +855,11 @@ export default function AdminSettingsPage() {
       .finally(() => setLoading(false));
   }, [adminToken]);
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const enabledCount = providers.filter((p) => p.enabled).length;
 

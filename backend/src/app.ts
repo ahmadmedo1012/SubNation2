@@ -398,7 +398,11 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   store: rateLimiterStore,
   skipFailedRequests: false,
-  skipSuccessfulRequests: true,
+  // Counting successes too: /api/auth/whatsapp/start sits behind this
+  // limiter, and skipping successes let one IP SMS-bomb unlimited phone
+  // numbers as long as each attempt "worked". 10 sends / 15 min / IP is
+  // still far above any legitimate login cadence.
+  skipSuccessfulRequests: false,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
 });
 
@@ -513,10 +517,23 @@ app.use((req, res, next) => {
     // a loud warning. Operations should treat the warning below as
     // an immediate page.
     if (csrfAllowedOrigins.length > 0) {
+      // Exact-origin comparison only. The previous `startsWith(allowed)`
+      // form was a bypass: an attacker origin like `https://subnation.ly
+      // .evil.com` (or any subdomain-path prefix) matched the allow-list
+      // entry. We normalize by parsing the URL and comparing scheme+
+      // host(+port) so trailing slashes/paths on either side don't matter.
+      const originAllowed = (candidate: string, allowed: string): boolean => {
+        try {
+          const c = new URL(candidate);
+          const a = new URL(allowed);
+          return c.protocol === a.protocol && c.host === a.host;
+        } catch {
+          return false;
+        }
+      };
       const isValid =
-        (origin &&
-          csrfAllowedOrigins.some((allowed) => origin === allowed || origin.startsWith(allowed))) ||
-        (referer && csrfAllowedOrigins.some((allowed) => referer.startsWith(allowed)));
+        (origin && csrfAllowedOrigins.some((allowed) => originAllowed(origin, allowed))) ||
+        (referer && csrfAllowedOrigins.some((allowed) => originAllowed(referer, allowed)));
 
       if (!isValid) {
         logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
@@ -538,6 +555,9 @@ app.use((req, res, next) => {
 // ── Routes ────────────────────────────────────────────────────────────────────
 // Auth limiter applies to login/register only (NOT /me — it's polled frequently)
 app.use("/api/auth/firebase/session", authLimiter);
+// refresh mints a fresh 30-day JWT from a Firebase ID token — same
+// credential-equivalence as the session mint, so it gets the same budget.
+app.use("/api/auth/firebase/refresh", authLimiter);
 app.use("/api/admin/login", authLimiter);
 app.use("/api/admin/login/verify-2fa", authLimiter);
 // Telegram-Login is a credential-equivalent endpoint (signature-verified

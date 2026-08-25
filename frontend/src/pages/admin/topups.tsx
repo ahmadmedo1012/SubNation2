@@ -33,7 +33,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -398,10 +398,11 @@ export default function AdminTopupsPage() {
     },
   });
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const pendingTopups = allTopups.filter((t) => t.status === "pending");
   const allPendingSelected =
@@ -471,19 +472,21 @@ export default function AdminTopupsPage() {
     // is its own logical action — generate a fresh key per iteration.
     for (const id of ids) {
       try {
+        let r: Response;
         if (action === "approve") {
-          await fetch(`/api/admin/topups/${id}/approve`, {
+          r = await fetch(`/api/admin/topups/${id}/approve`, {
             method: "POST",
             headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
           });
         } else {
-          await fetch(`/api/admin/topups/${id}/reject`, {
+          r = await fetch(`/api/admin/topups/${id}/reject`, {
             method: "POST",
             headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "مرفوض جماعياً" }),
           });
         }
+        if (!r.ok) throw new Error(String(r.status));
         successCount++;
       } catch (e) {
         console.error(`Failed to ${action} topup ${id}`, e);
@@ -494,6 +497,13 @@ export default function AdminTopupsPage() {
     setBulkAction(null);
     setIsBulkProcessing(false);
     invalidate();
+    if (successCount < ids.length) {
+      toast({
+        title: "خطأ",
+        description: `فشل تنفيذ العملية على ${ids.length - successCount} من ${ids.length} طلب`,
+        variant: "destructive",
+      });
+    }
     toast({
       title: action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي",
       description: `${successCount}/${ids.length} طلب تمت معالجته`,
@@ -502,15 +512,36 @@ export default function AdminTopupsPage() {
 
   const approveAll = async () => {
     const pending = allTopups.filter((t) => t.status === "pending");
+    if (
+      !window.confirm(`تأكيد الموافقة على جميع الطلبات المعلقة (${pending.length})؟`)
+    )
+      return;
+    let approvedCount = 0;
+    let failedCount = 0;
     for (const t of pending) {
-      await fetch(`/api/admin/topups/${t.id}/approve`, {
-        method: "POST",
-        // Same per-iteration key generation as handleBulkAction above.
-        headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-        body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
+      try {
+        const r = await fetch(`/api/admin/topups/${t.id}/approve`, {
+          method: "POST",
+          // Same per-iteration key generation as handleBulkAction above.
+          headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+          body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
+        });
+        if (!r.ok) throw new Error(String(r.status));
+        approvedCount++;
+      } catch {
+        failedCount++;
+      }
+    }
+    if (failedCount > 0) {
+      toast({
+        title: "خطأ",
+        description: `فشل تنفيذ العملية على ${failedCount} طلب، حاول مرة أخرى`,
+        variant: "destructive",
       });
     }
-    toast({ title: `✓ تمت الموافقة على ${pending.length} طلب` });
+    if (approvedCount > 0) {
+      toast({ title: `✓ تمت الموافقة على ${approvedCount} طلب` });
+    }
     invalidate();
   };
 

@@ -18,13 +18,17 @@ async function checkLowStock(): Promise<void> {
       .from(productsTable)
       .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
 
-    for (const product of products) {
-      const [row] = await db
-        .select({ count: count() })
-        .from(inventoryTable)
-        .where(and(eq(inventoryTable.productId, product.id), eq(inventoryTable.isSold, false)));
+    // One grouped COUNT for the whole catalog instead of a per-product
+    // query (N+1 — this runs every 30 minutes under the scheduler lock).
+    const stockRows = await db
+      .select({ productId: inventoryTable.productId, count: count() })
+      .from(inventoryTable)
+      .where(eq(inventoryTable.isSold, false))
+      .groupBy(inventoryTable.productId);
+    const stockMap = new Map(stockRows.map((r) => [r.productId, Number(r.count)]));
 
-      const stock = Number(row?.count ?? 0);
+    for (const product of products) {
+      const stock = stockMap.get(product.id) ?? 0;
 
       if (stock === 0 && !alertedZero.has(product.id)) {
         notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });

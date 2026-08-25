@@ -13,6 +13,7 @@ import {
   maskPhone,
 } from "../lib/account-link-consent";
 import { logger } from "../lib/logger";
+import { insertReferralSignupLedger } from "../lib/ledger";
 
 export class FirebaseAuthError extends Error {
   constructor(
@@ -456,24 +457,32 @@ export async function resolveFirebaseSession(
   }
 
   const phoneValue = phone ?? firebasePhonePlaceholder(uid);
-  const [created] = await db
-    .insert(usersTable)
-    .values({
-      phone: phoneValue,
-      firebaseUid: uid,
-      googleId: provider === "google.com" ? providerUid : undefined,
-      email,
-      emailVerified,
-      phoneVerified,
-      displayName,
-      photoUrl,
-      authProvider: provider === "google.com" ? "firebase_google" : "firebase",
-      lastAuthAt: now,
-      referralCode: generateReferralCode(),
-      referredBy: referredById,
-      walletBalance: referredById ? "5.00" : "0.00",
-    })
-    .returning();
+  const [created] = await db.transaction(async (tx) => {
+    const [u] = await tx
+      .insert(usersTable)
+      .values({
+        phone: phoneValue,
+        firebaseUid: uid,
+        googleId: provider === "google.com" ? providerUid : undefined,
+        email,
+        emailVerified,
+        phoneVerified,
+        displayName,
+        photoUrl,
+        authProvider: provider === "google.com" ? "firebase_google" : "firebase",
+        lastAuthAt: now,
+        referralCode: generateReferralCode(),
+        referredBy: referredById,
+        walletBalance: referredById ? "5.00" : "0.00",
+      })
+      .returning();
+
+    if (referredById && referredById !== u.id) {
+      await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
+    }
+
+    return [u];
+  });
 
   if (referredById && referredById !== created.id) {
     await db

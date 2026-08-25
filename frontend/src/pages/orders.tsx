@@ -13,7 +13,7 @@ import {
   Tag,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 type OrderFilter = "all" | "pending" | "completed" | "failed";
@@ -135,10 +135,11 @@ export default function OrdersPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  if (!token) {
-    navigate("/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!token) navigate("/login");
+  }, [token, navigate]);
+
+  if (!token) return null;
 
   const pending = orders.filter((o) => o.status === "pending");
   const completed = orders.filter((o) => o.status === "completed");

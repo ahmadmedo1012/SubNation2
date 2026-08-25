@@ -18,7 +18,7 @@ import { Link } from "wouter";
  */
 
 const STATUS_META: Record<
-  CheckStatus,
+  CheckStatus | "unknown",
   {
     color: string;
     bg: string;
@@ -52,6 +52,14 @@ const STATUS_META: Record<
     description: "نعمل حالياً على إصلاح المشكلة. يرجى المحاولة لاحقاً.",
     icon: XCircle,
   },
+  unknown: {
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+    border: "border-red-400/30",
+    label: "تعطل — حالة غير معروفة",
+    description: "لم نتمكن من التحقق من حالة المنصة. نعمل حالياً على إصلاح المشكلة.",
+    icon: XCircle,
+  },
 };
 
 export default function StatusPage(): ReactElement {
@@ -73,7 +81,14 @@ export default function StatusPage(): ReactElement {
     retry: false,
   });
 
-  const aggregate = data?.status ?? "ok";
+  // Only an explicitly ok/degraded/failing probe result may drive the
+  // banner. Anything else (missing data, unrecognized status string
+  // from a proxy/CDN fault) renders as a failure — never green.
+  const rawStatus = data?.status;
+  const aggregate: CheckStatus | "unknown" =
+    rawStatus === "ok" || rawStatus === "degraded" || rawStatus === "failing"
+      ? rawStatus
+      : "unknown";
   const meta = STATUS_META[aggregate];
   const Icon = meta.icon;
 

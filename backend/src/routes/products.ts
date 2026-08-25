@@ -114,6 +114,10 @@ router.get("/", catalogCache, async (req, res) => {
     .leftJoin(stockSub, eq(stockSub.productId, productsTable.id))
     .leftJoin(orderSub, eq(orderSub.productId, productsTable.id))
     .where(and(...conditions))
+    // Hard ceiling — the storefront renders categories from this list;
+    // 500 products is far beyond current catalog size but prevents an
+    // unbounded scan if the catalog ever balloons.
+    .limit(500)
     .$dynamic();
 
   if (sort === "price_asc") query = query.orderBy(productsTable.price);

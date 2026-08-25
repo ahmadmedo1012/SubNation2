@@ -184,11 +184,19 @@ export default function AdminCouponsPage() {
   };
 
   const handleDelete = async (id: number) => {
+    if (!window.confirm("تأكيد تعطيل هذا الكوبون؟")) return;
     try {
-      await fetch(`/api/coupons/admin/${id}`, { method: "DELETE", headers });
+      const r = await fetch(`/api/coupons/admin/${id}`, { method: "DELETE", headers });
+      if (!r.ok) throw new Error((await r.json()).error);
       fetchCoupons(true);
       toast({ title: "تم تعطيل الكوبون" });
-    } catch {}
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
+        variant: "destructive",
+      });
+    }
   };
 
   const activeCount = coupons.filter((c) => c.is_active).length;

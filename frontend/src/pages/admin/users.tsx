@@ -33,7 +33,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -129,6 +129,7 @@ export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tierFilter, setTierFilter] = useState("");
   const [sortBy, setSortBy] = useState("wallet_desc");
   const [showFilters, setShowFilters] = useState(false);
@@ -141,8 +142,15 @@ export default function AdminUsersPage() {
     loyalty_tier: "",
   });
 
+  // 300ms debounce (same pattern as admin/referrals) so the users
+  // query doesn't fire per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const params: Record<string, string> = {};
-  if (search) params.search = search;
+  if (debouncedSearch) params.search = debouncedSearch;
 
   const {
     data: usersRaw = [],
@@ -160,10 +168,11 @@ export default function AdminUsersPage() {
 
   const users: AdminUser[] = usersRaw;
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const totalWallet = users.reduce((sum: number, u) => sum + (u.wallet_balance ?? 0), 0);
   const totalSpend = users.reduce((sum: number, u) => sum + (u.lifetime_spend ?? 0), 0);

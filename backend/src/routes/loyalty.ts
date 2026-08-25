@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { db, usersTable, referralEventsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { insertLedgerEntry } from "../lib/ledger";
+
+/** Internal control-flow error for transactional conflicts. */
+class ConflictError extends Error {}
 
 const router = Router();
 
@@ -37,7 +41,8 @@ router.get("/", requireUser, async (req, res) => {
     .select()
     .from(referralEventsTable)
     .where(eq(referralEventsTable.referrerId, userId))
-    .orderBy(desc(referralEventsTable.createdAt));
+    .orderBy(desc(referralEventsTable.createdAt))
+    .limit(200);
 
   const creditedCount = referrals.filter((r) => r.status === "credited").length;
   const pendingCount = referrals.filter((r) => r.status === "pending").length;
@@ -74,33 +79,82 @@ router.post("/convert-points", requireUser, async (req, res) => {
     return res.status(400).json(createErrorResponse(`يجب أن تكون النقاط من مضاعفات ${POINTS_PER_LYD}`, ErrorCode.INVALID_DATA));
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+  const lydValue = +(pointsToConvert / POINTS_PER_LYD).toFixed(2);
 
-  if (user.loyaltyPoints < pointsToConvert) {
-    return res.status(400).json(createErrorResponse("رصيد النقاط غير كافٍ", ErrorCode.INVALID_DATA));
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Fresh read INSIDE the tx — the pre-transaction state may be stale
+      // under concurrency (this route previously did a bare read-modify-
+      // write: two concurrent converts double-spent points, and an
+      // interleaved topup approval could be silently erased because the
+      // whole row was overwritten from stale values).
+      const [user] = await tx
+        .select({ loyaltyPoints: usersTable.loyaltyPoints, walletBalance: usersTable.walletBalance })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (!user) throw new ConflictError("المستخدم غير موجود");
+
+      if (user.loyaltyPoints < pointsToConvert) {
+        return { ok: false as const, status: 400, error: "رصيد النقاط غير كافٍ" };
+      }
+
+      const newPoints = user.loyaltyPoints - pointsToConvert;
+      const balanceBefore = parseFloat(String(user.walletBalance));
+      const newBalance = +(balanceBefore + lydValue).toFixed(2);
+
+      // Optimistic lock on BOTH mutated columns: a concurrent wallet or
+      // loyalty write between our SELECT and UPDATE makes this match 0
+      // rows → rollback → client retries with fresh state.
+      const updated = await tx
+        .update(usersTable)
+        .set({ loyaltyPoints: newPoints, walletBalance: String(newBalance) })
+        .where(
+          and(
+            eq(usersTable.id, userId),
+            eq(usersTable.loyaltyPoints, user.loyaltyPoints),
+            eq(usersTable.walletBalance, String(balanceBefore)),
+          ),
+        )
+        .returning({ id: usersTable.id });
+      if (updated.length !== 1) throw new ConflictError("تغيّرت النقاط أو الرصيد أثناء التحويل، حاول مجدداً");
+
+      // Ledger parity with every other balance mutation (Constitution §I):
+      // without this row the credit is unreconstructable from wallet_ledger.
+      await insertLedgerEntry(
+        {
+          userId,
+          type: "adjustment",
+          amount: String(lydValue),
+          balanceBefore: String(balanceBefore),
+          balanceAfter: String(newBalance),
+          referenceType: "loyalty_conversion",
+          description: `تحويل ${pointsToConvert} نقطة ولاء إلى رصيد`,
+        },
+        tx as unknown as typeof db,
+      );
+
+      return { ok: true as const, newPoints, newBalance };
+    });
+
+    if (!result.ok) {
+      return res.status(result.status).json(createErrorResponse(result.error, ErrorCode.INVALID_DATA));
+    }
+
+    return res.json({
+      success: true,
+      points_spent: pointsToConvert,
+      lyd_credited: lydValue,
+      new_points: result.newPoints,
+      new_balance: result.newBalance,
+      message: `تم تحويل ${pointsToConvert} نقطة إلى ${lydValue.toFixed(2)} د.ل`,
+    });
+  } catch (err) {
+    if (err instanceof ConflictError) {
+      return res.status(409).json(createErrorResponse(err.message, ErrorCode.CONFLICT));
+    }
+    throw err;
   }
-
-  const lydValue = pointsToConvert / POINTS_PER_LYD;
-  const newPoints = user.loyaltyPoints - pointsToConvert;
-  const newBalance = (parseFloat(String(user.walletBalance)) + lydValue).toFixed(2);
-
-  await db
-    .update(usersTable)
-    .set({
-      loyaltyPoints: newPoints,
-      walletBalance: newBalance,
-    })
-    .where(eq(usersTable.id, userId));
-
-  return res.json({
-    success: true,
-    points_spent: pointsToConvert,
-    lyd_credited: lydValue,
-    new_points: newPoints,
-    new_balance: parseFloat(newBalance),
-    message: `تم تحويل ${pointsToConvert} نقطة إلى ${lydValue.toFixed(2)} د.ل`,
-  });
 });
 
 router.get("/referrals", requireUser, async (req, res) => {
@@ -117,7 +171,8 @@ router.get("/referrals", requireUser, async (req, res) => {
     .from(referralEventsTable)
     .innerJoin(usersTable, eq(usersTable.id, referralEventsTable.refereeId))
     .where(eq(referralEventsTable.referrerId, userId))
-    .orderBy(desc(referralEventsTable.createdAt));
+    .orderBy(desc(referralEventsTable.createdAt))
+    .limit(200);
 
   const maskPhone = (p: string) => (p.length >= 7 ? p.slice(0, 3) + "****" + p.slice(-3) : p);
 

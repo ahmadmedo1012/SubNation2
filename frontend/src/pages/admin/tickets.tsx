@@ -128,10 +128,11 @@ export default function AdminTicketsPage() {
     if (selected) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selected?.replies?.length]);
 
-  if (!adminToken) {
-    navigate("/admin/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,13 +161,22 @@ export default function AdminTicketsPage() {
   };
 
   const handleStatus = async (id: number, status: string) => {
-    await fetch(`/api/admin/tickets/${id}/status`, {
-      method: "PATCH",
-      headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    if (selected?.id === id) await openTicket(id);
-    fetchTickets();
+    try {
+      const res = await fetch(`/api/admin/tickets/${id}/status`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      if (selected?.id === id) await openTicket(id);
+      fetchTickets();
+    } catch (err: unknown) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
+        variant: "destructive",
+      });
+    }
   };
 
   const openCount = tickets.filter((t) => t.status === "open").length;

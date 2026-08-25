@@ -74,7 +74,10 @@ If the MCP connection fails:
 
 The project uses Neon PostgreSQL:
 
-- Host: ep-noisy-dream-aqltup8y-pooler.c-8.us-east-1.aws.neon.tech
+- Host: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
+  (project `calm-art-99771185` "SubNation2" — created 2026-08-25 after the
+  quota exhaustion of the original project; see PLATFORM.md incident section.
+  The old host `ep-noisy-dream-aqltup8y…` is DEAD — never wire tooling to it.)
 - Database: neondb
 - User: neondb_owner
 

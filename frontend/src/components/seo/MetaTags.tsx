@@ -65,7 +65,7 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): ReactElement {
       <title>{title}</title>
       <meta name="description" content={description} />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="theme-color" content="#5c7cfa" />
+      <meta name="theme-color" content="#e11d48" />
       <meta name="robots" content={input.robots ?? "index,follow"} />
       <link rel="canonical" href={url} />
 

@@ -23,7 +23,7 @@ import {
   Tag,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 
 function CopyField({ label, value }: { label: string; value: string }) {
@@ -114,10 +114,11 @@ export default function OrderDetailPage() {
     toast({ title: "تم نسخ رقم الطلب" });
   };
 
-  if (!token) {
-    navigate("/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!token) navigate("/login");
+  }, [token, navigate]);
+
+  if (!token) return null;
 
   if (isLoading)
     return (

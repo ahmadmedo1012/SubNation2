@@ -48,7 +48,8 @@ router.get("/", requireUser, async (req, res) => {
     .from(ordersTable)
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(eq(ordersTable.userId, userId))
-    .orderBy(desc(ordersTable.createdAt));
+    .orderBy(desc(ordersTable.createdAt))
+    .limit(200);
 
   return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });

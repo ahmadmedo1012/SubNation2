@@ -103,7 +103,9 @@ export default function AdminLoginPage() {
                   <Label htmlFor="username">اسم المستخدم</Label>
                   <Input
                     id="username"
+                    name="username"
                     type="text"
+                    autoComplete="username"
                     placeholder="admin"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -118,7 +120,9 @@ export default function AdminLoginPage() {
                   <div className="relative">
                     <Input
                       id="password"
+                      name="password"
                       type={showPass ? "text" : "password"}
+                      autoComplete="current-password"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -142,7 +146,9 @@ export default function AdminLoginPage() {
                 <Label htmlFor="otpCode">رمز التحقق (6 أرقام)</Label>
                 <Input
                   id="otpCode"
+                  name="otpCode"
                   type="text"
+                  autoComplete="one-time-code"
                   placeholder="000000"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}

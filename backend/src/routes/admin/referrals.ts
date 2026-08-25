@@ -1,5 +1,5 @@
 import { db, referralEventsTable, usersTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { intParam, queryString, rowsFromResult } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -106,15 +106,32 @@ router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
   if (event.status === "credited") return res.status(400).json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
 
   const POINTS = 50;
-  await db
-    .update(referralEventsTable)
-    .set({ status: "credited", creditedAt: new Date() })
-    .where(eq(referralEventsTable.id, id));
+  // Status flip is guarded at the UPDATE level (WHERE status='pending') and
+  // runs in a transaction with the points grant: two concurrent credits
+  // serialize on the row lock and the second matches 0 rows → 409, instead
+  // of double-granting the referrer's points.
+  let credited = false;
+  try {
+    await db.transaction(async (tx) => {
+      const flipped = await tx
+        .update(referralEventsTable)
+        .set({ status: "credited", creditedAt: new Date() })
+        .where(and(eq(referralEventsTable.id, id), eq(referralEventsTable.status, "pending")))
+        .returning({ id: referralEventsTable.id });
+      if (flipped.length !== 1) return; // lost the race — already credited
 
-  await db
-    .update(usersTable)
-    .set({ loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS}` })
-    .where(eq(usersTable.id, event.referrerId));
+      await tx
+        .update(usersTable)
+        .set({ loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS}` })
+        .where(eq(usersTable.id, event.referrerId));
+      credited = true;
+    });
+  } catch {
+    return res.status(500).json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));
+  }
+  if (!credited) {
+    return res.status(409).json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
+  }
 
   await createNotification(
     event.referrerId,

@@ -112,8 +112,15 @@ docker run -p 8080:8080 --env-file .env subnation
 
 ### Render (production)
 
-Deployed via Docker from `render.yaml` (web + worker + Redis). Push to `main`
-to auto-deploy; secrets are set in the Render dashboard (`sync: false`).
+Services: **web** (`subnation`, serves API + SPA) + **Redis** + a separate
+**openwa-gateway** web service (WhatsApp OTP relay, built from the
+`ahmadmedo1012/openwa` repo). Deploys to production happen ONLY after green
+CI — `.github/workflows/deploy.yml` triggers the Render deploy hook via
+`workflow_run` gated on the CI conclusion (`autoDeploy: false` on the
+service). Secrets live in the Render dashboard (`sync: false`).
+
+A public keep-alive repo (`ahmadmedo1012/keep-alive`) pings both health
+endpoints every 10 minutes so free-tier instances never idle-spin-down.
 
 ---
 
