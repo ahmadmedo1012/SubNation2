@@ -144,3 +144,12 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+  # ── Security overrides (CI CVE gate blocks on critical --prod findings) ──
+  # websocket-driver — GHSA-xv26-6w52-cph6 (critical): message corruption via
+  #   protocol length headers. Transitive via firebase → @firebase/database →
+  #   faye-websocket, whose own range (>=0.5.1) accepts the patched release.
+  # path-to-regexp — DoS via sequential optional groups (high) in the express
+  #   5 router chain; 8.3.0 was the only version in the tree, so nothing older
+  #   is disturbed by forcing the patched line.
+  "websocket-driver": ">=0.7.5"
+  "path-to-regexp": ">=8.4.0"
