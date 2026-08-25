@@ -33,6 +33,18 @@ export async function runMigrations() {
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ledger_entry_type') THEN
           CREATE TYPE ledger_entry_type AS ENUM ('topup', 'purchase', 'refund', 'adjustment', 'referral_credit');
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_event_type') THEN
+          CREATE TYPE risk_event_type AS ENUM ('login_attempt', 'login_success', 'login_failure', 'otp_request', 'otp_verify', 'topup_attempt', 'topup_success', 'order_create', 'order_deliver', 'coupon_apply', 'referral_event', 'admin_force_reauth');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_level') THEN
+          CREATE TYPE risk_level AS ENUM ('low', 'medium', 'high', 'critical');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_action_taken') THEN
+          CREATE TYPE risk_action_taken AS ENUM ('none', 'log', 'soft_block', 'hard_block', 'alert');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'risk_label_kind') THEN
+          CREATE TYPE risk_label_kind AS ENUM ('confirmed_fraud', 'false_positive', 'escalated');
+        END IF;
       END $$;
     `);
 
@@ -1296,6 +1308,91 @@ export async function runMigrations() {
         ON enrichment_drafts (product_id, field_name, state, rejected_at);
       CREATE INDEX IF NOT EXISTS idx_enrichment_drafts_run
         ON enrichment_drafts (run_id);
+    `);
+
+    // ── 003-anomaly-detection: risk pipeline tables ─────────────────────────
+    //
+    // Four entities from specs/003-anomaly-detection/data-model.md. The
+    // pipeline itself is gated by RISK_PIPELINE_ENABLED (default off) and
+    // degrades to rules-only fallback, so these tables were historically
+    // absent from this migration — enabling the pipeline on a fresh boot
+    // crashed with "relation does not exist". They are now part of the
+    // canonical schema so the feature flag is safe to flip anywhere.
+    //
+    // Mirrors shared/db/src/schema/risk.ts exactly (serial PKs per project
+    // convention; enums via pg_type guard above).
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS risk_events (
+        id                  SERIAL       PRIMARY KEY,
+        user_id             INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+        event_type          risk_event_type NOT NULL,
+        score               INTEGER      NOT NULL,
+        level               risk_level   NOT NULL,
+        confidence          NUMERIC(4,3) NOT NULL,
+        rule_fired          TEXT[]       NOT NULL DEFAULT '{}',
+        statistical_signals JSONB        NOT NULL DEFAULT '{}'::jsonb,
+        ml_score            NUMERIC(4,3),
+        top_features        JSONB,
+        action_taken        risk_action_taken NOT NULL DEFAULT 'log',
+        ip_address          VARCHAR(45),
+        user_agent          VARCHAR(256),
+        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        shown_at            TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_risk_events_user_created
+        ON risk_events (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_risk_events_level_created
+        ON risk_events (level, created_at);
+      CREATE INDEX IF NOT EXISTS idx_risk_events_created
+        ON risk_events (created_at);
+      CREATE INDEX IF NOT EXISTS idx_risk_events_type_created
+        ON risk_events (event_type, created_at);
+
+      CREATE TABLE IF NOT EXISTS risk_rules (
+        id            SERIAL       PRIMARY KEY,
+        name          VARCHAR(100) NOT NULL UNIQUE,
+        description   TEXT         NOT NULL,
+        expression    JSONB        NOT NULL,
+        enabled       BOOLEAN      NOT NULL DEFAULT TRUE,
+        version       INTEGER      NOT NULL DEFAULT 1,
+        created_by    INTEGER      REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_by    INTEGER      REFERENCES admin_users(id) ON DELETE SET NULL,
+        updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_risk_rules_name
+        ON risk_rules (name);
+      CREATE INDEX IF NOT EXISTS idx_risk_rules_enabled
+        ON risk_rules (enabled);
+
+      CREATE TABLE IF NOT EXISTS risk_config (
+        id                       INTEGER  PRIMARY KEY DEFAULT 1,
+        thresholds               JSONB    NOT NULL DEFAULT '{"low":0,"medium":30,"high":60,"critical":85}'::jsonb,
+        allowlist                JSONB    NOT NULL DEFAULT '{"ips":[],"devices":[],"phones":[]}'::jsonb,
+        auto_block_enabled       JSONB    NOT NULL DEFAULT '{"softBlock":true,"hardBlock":false,"alert":true}'::jsonb,
+        require_approval_user_ids JSONB   NOT NULL DEFAULT '[]'::jsonb,
+        model_enabled            BOOLEAN  NOT NULL DEFAULT FALSE,
+        updated_by               INTEGER  REFERENCES admin_users(id) ON DELETE SET NULL,
+        updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS risk_labels (
+        id             SERIAL       PRIMARY KEY,
+        risk_event_id  INTEGER      REFERENCES risk_events(id) ON DELETE SET NULL,
+        label          risk_label_kind NOT NULL,
+        labeled_by     INTEGER      REFERENCES admin_users(id) ON DELETE SET NULL,
+        labeled_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        notes          TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_risk_labels_event
+        ON risk_labels (risk_event_id);
+      CREATE INDEX IF NOT EXISTS idx_risk_labels_label_labeled_at
+        ON risk_labels (label, labeled_at);
+      CREATE INDEX IF NOT EXISTS idx_risk_labels_labeled_at
+        ON risk_labels (labeled_at);
     `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
