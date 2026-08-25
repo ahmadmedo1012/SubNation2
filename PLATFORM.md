@@ -11,15 +11,15 @@ Features shipped June 2026 (specs 010–012 — AI Admin Copilot, inventory dema
 forecast, Arabic catalog enrichment) were verified fully wired: routes,
 migrations, cron registration, admin UI. Fixes landed in this pass:
 
-| # | Fix                                                                                                    | Why it matters                                                                          |
-| - | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 1 | Test-harness DDL drift: `inventory.updated_at` added to `backend/src/test/db.ts`                        | Un-breaks the 12 checkout tests that failed CI on the last three June commits           |
-| 2 | `deploy.yml` now gates on CI success (`workflow_run` + conclusion check)                                 | Root cause of "failing tests deployed anyway" in June 2026 is structurally closed       |
-| 3 | `Dockerfile` passes `VITE_GSC_VERIFICATION` as ARG/ENV                                                  | Search Console verification token actually reaches production builds now                |
-| 4 | `render.yaml`: `COPILOT_*` / `ENRICHMENT_*` / `FORECAST_RUNNER_ENABLED` placeholders + worker-flip docs | AI features have a documented, inert-by-default enable path                             |
-| 5 | `safeDecrypt` logs a warning on decryption failure                                                      | Key-mismatch/corruption is visible in logs instead of silent raw-value fallback         |
-| 6 | Product-page recommendations skeleton matches real card height                                          | Removes layout jump (cosmetic)                                                          |
-| 7 | GH Actions bumped to Node-24-compatible versions (`checkout@v5`, `setup-node@v5`, `codeql-action@v4`)   | Silences Node-20 deprecation warnings before the Sep 2026 forced migration              |
+| #   | Fix                                                                                                     | Why it matters                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1   | Test-harness DDL drift: `inventory.updated_at` added to `backend/src/test/db.ts`                        | Un-breaks the 12 checkout tests that failed CI on the last three June commits     |
+| 2   | `deploy.yml` now gates on CI success (`workflow_run` + conclusion check)                                | Root cause of "failing tests deployed anyway" in June 2026 is structurally closed |
+| 3   | `Dockerfile` passes `VITE_GSC_VERIFICATION` as ARG/ENV                                                  | Search Console verification token actually reaches production builds now          |
+| 4   | `render.yaml`: `COPILOT_*` / `ENRICHMENT_*` / `FORECAST_RUNNER_ENABLED` placeholders + worker-flip docs | AI features have a documented, inert-by-default enable path                       |
+| 5   | `safeDecrypt` logs a warning on decryption failure                                                      | Key-mismatch/corruption is visible in logs instead of silent raw-value fallback   |
+| 6   | Product-page recommendations skeleton matches real card height                                          | Removes layout jump (cosmetic)                                                    |
+| 7   | GH Actions bumped to Node-24-compatible versions (`checkout@v5`, `setup-node@v5`, `codeql-action@v4`)   | Silences Node-20 deprecation warnings before the Sep 2026 forced migration        |
 
 ### 🔴→✅ PRODUCTION INCIDENT (2026-08-25) — RESOLVED same day
 
@@ -35,6 +35,7 @@ branch. Boot migrations had succeeded before exhaustion, so the process stayed
 up while every query failed.
 
 **Resolution:**
+
 1. New Neon project `SubNation2` (`calm-art-99771185`, aws-us-east-1, PG17)
    created via API using the NEON_API_KEY stored in Render env vars.
 2. Full schema applied by running `runMigrations()` against it (33 public
