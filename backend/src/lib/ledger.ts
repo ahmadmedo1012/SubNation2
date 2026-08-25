@@ -52,10 +52,7 @@ export async function insertLedgerEntry(
  * this inside the same transaction, otherwise the balance is not
  * reconstructable from wallet_ledger (Constitution Principle I).
  */
-export async function insertReferralSignupLedger(
-  client: DbOrTx,
-  userId: number,
-): Promise<void> {
+export async function insertReferralSignupLedger(client: DbOrTx, userId: number): Promise<void> {
   await insertLedgerEntry(
     {
       userId,

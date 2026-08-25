@@ -55,6 +55,27 @@ If the quota trips again near month-end, durable options are: (a) Neon Launch
 plan (~$19/mo), (b) a fresh Neon account whose defaults enable autosuspend,
 (c) accept mid-cycle outages that reset on the 1st.
 
+### WhatsApp OTP gateway (2026-08-25)
+
+The WhatsApp relay runs as a separate free-tier Render web service built from
+`ahmadmedo1012/openwa` (Baileys-based REST gateway implementing the contract
+in `backend/src/services/openwa.service.ts`). Ops facts:
+
+- **Pairing**: one-time phone-number pairing code (`POST /api/sessions/{id}/pair-code`)
+  against `https://openwa-gateway-7aaa.onrender.com` with header
+  `X-API-Key: <WHATSAPP_OTP_API_KEY>`. QR scanning proved unreliable.
+- **Self-healing persistence**: credentials are mirrored AES-256-GCM-encrypted
+  into the `openwa_sessions` table (key derived from the API key) and restored
+  automatically at boot — restarts/redeploys recover pairing in seconds with
+  zero operator action. Verified by deliberate-redeploy test.
+- **Keep-alive**: public repo `ahmadmedo1012/keep-alive` pings both services
+  every 5 minutes (GitHub cron jitter tolerated); without it the free instance
+  idled out and dropped pairing.
+- **Gotcha**: Render API env-var updates do NOT trigger a deploy — always
+  trigger one manually after environment changes.
+- If pairing ever must be redone: DELETE the session, create `subnation-otp`,
+  start it, request a pair-code, enter within ~2 minutes.
+
 For a concise full-project reference (features, defects, recommendations) see
 [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md). The on-call playbook lives in
 [`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md); disaster recovery in
@@ -297,14 +318,14 @@ For a concise full-project reference (features, defects, recommendations) see
 
 ### 🟠 Important — week-of-launch
 
-| #   | Task                                                                                                   | Owner | Effort             |
-| --- | ------------------------------------------------------------------------------------------------------ | ----- | ------------------ |
-| I-1 | Wire daily `db:backup` to Render cron + verify pg_dump appears in target bucket                        | ops   | 0.5d               |
-| I-2 | Run a restore drill — pg_dump → fresh Neon branch → smoke test login                                   | ops   | 0.5d               |
-| I-3 | Add 10-15 vitest cases for auth happy-paths + lockout + CSRF                                           | dev   | 2d                 |
-| I-4 | ~~Configure Telegram~~ DONE 2026-08-25 — @SubNation_USERS_bot active via system_settings; /setdomain still owner-side if widget blocked | owner | — |
-| I-5 | Verify `window.__sentryStatus()` returns `initialized: true` in prod                                   | dev   | 5 min after deploy |
-| I-6 | Soft load test (autocannon `--duration 60 --connections 50` on `/api/products`) — confirm p95 < 500 ms | dev   | 1d                 |
+| #   | Task                                                                                                                                    | Owner | Effort             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------ |
+| I-1 | Wire daily `db:backup` to Render cron + verify pg_dump appears in target bucket                                                         | ops   | 0.5d               |
+| I-2 | Run a restore drill — pg_dump → fresh Neon branch → smoke test login                                                                    | ops   | 0.5d               |
+| I-3 | Add 10-15 vitest cases for auth happy-paths + lockout + CSRF                                                                            | dev   | 2d                 |
+| I-4 | ~~Configure Telegram~~ DONE 2026-08-25 — @SubNation_USERS_bot active via system_settings; /setdomain still owner-side if widget blocked | owner | —                  |
+| I-5 | Verify `window.__sentryStatus()` returns `initialized: true` in prod                                                                    | dev   | 5 min after deploy |
+| I-6 | Soft load test (autocannon `--duration 60 --connections 50` on `/api/products`) — confirm p95 < 500 ms                                  | dev   | 1d                 |
 
 ### 🟡 Optional — post-launch
 
@@ -701,22 +722,22 @@ SubNation is a competently-engineered Arabic RTL marketplace with modern auth (p
 
 ## Appendix — Document map
 
-| Doc                                           | Authoritative for                                             | Status                                         |
-| --------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------- |
-| **`PLATFORM.md`** (this file)                 | Platform state + roadmap                                      | ✅ current                                     |
-| `README.md`                                   | Project overview + dev setup                                  | ✅ current                                     |
-| `OPERATIONS_RUNBOOK.md`                       | On-call playbook                                              | ✅ current                                     |
+| Doc                                           | Authoritative for                                             | Status                                             |
+| --------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| **`PLATFORM.md`** (this file)                 | Platform state + roadmap                                      | ✅ current                                         |
+| `README.md`                                   | Project overview + dev setup                                  | ✅ current                                         |
+| `OPERATIONS_RUNBOOK.md`                       | On-call playbook                                              | ✅ current                                         |
 | `OBSERVABILITY_SETUP.md`                      | Sentry + Pino + Prom + alerting architecture                  | ❌ does not exist (content lives in PLATFORM §2.3) |
-| `DOMAIN_RUNTIME_ARCHITECTURE.md`              | Cookies, request lifecycle, Firebase, Socket.IO domain config | ❌ does not exist                              |
-| `RTL_LAYOUT_ARCHITECTURE.md`                  | RTL approach + direction-mutator API                          | ❌ does not exist                              |
-| `REDIS_RUNTIME_ARCHITECTURE.md`               | Redis topology, who uses it, failure modes                    | ❌ does not exist                              |
-| `SECRET_ROTATION_RUNBOOK.md`                  | How to rotate any committed-then-purged secret                | ❌ never existed — see DISASTER_RECOVERY.md    |
-| `docs/API.md`                                 | API surface reference                                         | ✅ current                                     |
-| `docs/DISASTER_RECOVERY.md`                   | Named DB recovery scenarios                                   | ✅ current                                     |
-| `docs/COMPLIANCE.md`                          | Privacy/legal posture                                         | ✅ current                                     |
-| `docs/NEON_MCP_SETUP.md`                      | Neon-specific dev setup                                       | ✅ current                                     |
-| `docs/archive/PRODUCTION_READINESS_MASTER.md` | Pre-stabilization audit (Phases 1–5)                          | 📦 archived; superseded by this file           |
-| `docs/archive/FINAL_RUNTIME_STATE.md`         | May 2026 hardening pass changelog                             | 📦 archived; superseded by git log + this file |
+| `DOMAIN_RUNTIME_ARCHITECTURE.md`              | Cookies, request lifecycle, Firebase, Socket.IO domain config | ❌ does not exist                                  |
+| `RTL_LAYOUT_ARCHITECTURE.md`                  | RTL approach + direction-mutator API                          | ❌ does not exist                                  |
+| `REDIS_RUNTIME_ARCHITECTURE.md`               | Redis topology, who uses it, failure modes                    | ❌ does not exist                                  |
+| `SECRET_ROTATION_RUNBOOK.md`                  | How to rotate any committed-then-purged secret                | ❌ never existed — see DISASTER_RECOVERY.md        |
+| `docs/API.md`                                 | API surface reference                                         | ✅ current                                         |
+| `docs/DISASTER_RECOVERY.md`                   | Named DB recovery scenarios                                   | ✅ current                                         |
+| `docs/COMPLIANCE.md`                          | Privacy/legal posture                                         | ✅ current                                         |
+| `docs/NEON_MCP_SETUP.md`                      | Neon-specific dev setup                                       | ✅ current                                         |
+| `docs/archive/PRODUCTION_READINESS_MASTER.md` | Pre-stabilization audit (Phases 1–5)                          | 📦 archived; superseded by this file               |
+| `docs/archive/FINAL_RUNTIME_STATE.md`         | May 2026 hardening pass changelog                             | 📦 archived; superseded by git log + this file     |
 
 ---
 

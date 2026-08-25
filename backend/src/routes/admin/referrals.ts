@@ -95,15 +95,20 @@ router.get("/referrals", requireAdmin, async (req, res) => {
 
 router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [event] = await db
     .select()
     .from(referralEventsTable)
     .where(eq(referralEventsTable.id, id))
     .limit(1);
-  if (!event) return res.status(404).json(createErrorResponse("الإحالة غير موجودة", ErrorCode.NOT_FOUND));
-  if (event.status === "credited") return res.status(400).json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
+  if (!event)
+    return res.status(404).json(createErrorResponse("الإحالة غير موجودة", ErrorCode.NOT_FOUND));
+  if (event.status === "credited")
+    return res
+      .status(400)
+      .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
 
   const POINTS = 50;
   // Status flip is guarded at the UPDATE level (WHERE status='pending') and
@@ -127,10 +132,14 @@ router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
       credited = true;
     });
   } catch {
-    return res.status(500).json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));
+    return res
+      .status(500)
+      .json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));
   }
   if (!credited) {
-    return res.status(409).json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
+    return res
+      .status(409)
+      .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
   }
 
   await createNotification(

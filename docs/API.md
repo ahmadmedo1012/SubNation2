@@ -13,6 +13,7 @@ WhatsApp OTP. Sessions are httpOnly cookie `auth_token` (JWT, 30d).
 Admin surface: separate JWT (8h) + TOTP.
 
 ## Rate limits (per IP)
+
 - General: 600/min (1200/min for authenticated users)
 - Auth endpoints: 10 per 15 min (successes count)
 - WhatsApp OTP: additional per-phone cooldown + hourly caps

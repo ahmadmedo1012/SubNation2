@@ -29,7 +29,8 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 
 router.post("/validate", requireUser, async (req, res) => {
   const { code, order_amount } = req.body ?? {};
-  if (!code?.trim()) return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
+  if (!code?.trim())
+    return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
   if (typeof order_amount !== "number" || order_amount <= 0) {
     return res.status(400).json(createErrorResponse("مبلغ الطلب غير صالح", ErrorCode.INVALID_DATA));
   }
@@ -40,18 +41,31 @@ router.post("/validate", requireUser, async (req, res) => {
     .where(eq(couponsTable.code, code.trim().toUpperCase()))
     .limit(1);
 
-  if (!coupon) return res.status(404).json(createErrorResponse("كوبون غير موجود", ErrorCode.NOT_FOUND));
-  if (!coupon.isActive) return res.status(400).json(createErrorResponse("هذا الكوبون غير نشط", ErrorCode.INVALID_DATA));
+  if (!coupon)
+    return res.status(404).json(createErrorResponse("كوبون غير موجود", ErrorCode.NOT_FOUND));
+  if (!coupon.isActive)
+    return res.status(400).json(createErrorResponse("هذا الكوبون غير نشط", ErrorCode.INVALID_DATA));
   if (coupon.expiresAt && coupon.expiresAt < new Date()) {
-    return res.status(400).json(createErrorResponse("انتهت صلاحية هذا الكوبون", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("انتهت صلاحية هذا الكوبون", ErrorCode.INVALID_DATA));
   }
   if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
-    return res.status(400).json(createErrorResponse("تم استخدام هذا الكوبون بالحد الأقصى", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("تم استخدام هذا الكوبون بالحد الأقصى", ErrorCode.INVALID_DATA));
   }
 
   const minOrder = parseFloat(String(coupon.minOrderAmount));
   if (order_amount < minOrder) {
-    return res.status(400).json(createErrorResponse(`هذا الكوبون يتطلب حد أدنى للطلب ${minOrder.toFixed(2)} د.ل`, ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          `هذا الكوبون يتطلب حد أدنى للطلب ${minOrder.toFixed(2)} د.ل`,
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
 
   let discountAmount: number;
@@ -85,13 +99,18 @@ router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, re
 
 router.post("/admin", requireAdmin, requirePermission("finance"), async (req, res) => {
   const { code, type, value, min_order_amount, max_uses, expires_at, description } = req.body ?? {};
-  if (!code?.trim()) return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
+  if (!code?.trim())
+    return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
   if (!["percentage", "fixed"].includes(type))
     return res.status(400).json(createErrorResponse("نوع الخصم غير صالح", ErrorCode.INVALID_DATA));
   if (typeof value !== "number" || value <= 0)
-    return res.status(400).json(createErrorResponse("قيمة الخصم غير صالحة", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("قيمة الخصم غير صالحة", ErrorCode.INVALID_DATA));
   if (type === "percentage" && value > 100)
-    return res.status(400).json(createErrorResponse("نسبة الخصم لا يمكن أن تتجاوز 100%", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("نسبة الخصم لا يمكن أن تتجاوز 100%", ErrorCode.INVALID_DATA));
 
   const upperCode = code.trim().toUpperCase();
   const existing = await db
@@ -99,7 +118,10 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
     .from(couponsTable)
     .where(eq(couponsTable.code, upperCode))
     .limit(1);
-  if (existing.length > 0) return res.status(409).json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
+  if (existing.length > 0)
+    return res
+      .status(409)
+      .json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
 
   const [coupon] = await db
     .insert(couponsTable)
@@ -122,10 +144,12 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
 
 router.patch("/admin/:id", requireAdmin, requirePermission("finance"), async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [existing] = await db.select().from(couponsTable).where(eq(couponsTable.id, id)).limit(1);
-  if (!existing) return res.status(404).json(createErrorResponse("الكوبون غير موجود", ErrorCode.NOT_FOUND));
+  if (!existing)
+    return res.status(404).json(createErrorResponse("الكوبون غير موجود", ErrorCode.NOT_FOUND));
 
   const { is_active, max_uses, expires_at, description } = req.body ?? {};
   const updates: Partial<typeof couponsTable.$inferInsert> = {};
@@ -140,7 +164,14 @@ router.patch("/admin/:id", requireAdmin, requirePermission("finance"), async (re
     } else {
       const n = Number(max_uses);
       if (!Number.isInteger(n) || n < 1 || n > 1_000_000) {
-        return res.status(400).json(createErrorResponse("حد الاستخدام يجب أن يكون عدداً صحيحاً موجباً", ErrorCode.INVALID_DATA));
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "حد الاستخدام يجب أن يكون عدداً صحيحاً موجباً",
+              ErrorCode.INVALID_DATA,
+            ),
+          );
       }
       updates.maxUses = n;
     }
@@ -160,7 +191,8 @@ router.patch("/admin/:id", requireAdmin, requirePermission("finance"), async (re
 
 router.delete("/admin/:id", requireAdmin, requirePermission("finance"), async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   await db.update(couponsTable).set({ isActive: false }).where(eq(couponsTable.id, id));
   return res.json({ success: true });

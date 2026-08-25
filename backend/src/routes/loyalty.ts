@@ -35,7 +35,8 @@ router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+  if (!user)
+    return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
 
   const referrals = await db
     .select()
@@ -73,10 +74,21 @@ router.post("/convert-points", requireUser, async (req, res) => {
   const pointsToConvert = parseInt(points);
 
   if (!pointsToConvert || pointsToConvert < POINTS_PER_LYD) {
-    return res.status(400).json(createErrorResponse(`الحد الأدنى للتحويل ${POINTS_PER_LYD} نقطة`, ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(`الحد الأدنى للتحويل ${POINTS_PER_LYD} نقطة`, ErrorCode.INVALID_DATA),
+      );
   }
   if (pointsToConvert % POINTS_PER_LYD !== 0) {
-    return res.status(400).json(createErrorResponse(`يجب أن تكون النقاط من مضاعفات ${POINTS_PER_LYD}`, ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          `يجب أن تكون النقاط من مضاعفات ${POINTS_PER_LYD}`,
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
 
   const lydValue = +(pointsToConvert / POINTS_PER_LYD).toFixed(2);
@@ -89,7 +101,10 @@ router.post("/convert-points", requireUser, async (req, res) => {
       // interleaved topup approval could be silently erased because the
       // whole row was overwritten from stale values).
       const [user] = await tx
-        .select({ loyaltyPoints: usersTable.loyaltyPoints, walletBalance: usersTable.walletBalance })
+        .select({
+          loyaltyPoints: usersTable.loyaltyPoints,
+          walletBalance: usersTable.walletBalance,
+        })
         .from(usersTable)
         .where(eq(usersTable.id, userId))
         .limit(1);
@@ -117,7 +132,8 @@ router.post("/convert-points", requireUser, async (req, res) => {
           ),
         )
         .returning({ id: usersTable.id });
-      if (updated.length !== 1) throw new ConflictError("تغيّرت النقاط أو الرصيد أثناء التحويل، حاول مجدداً");
+      if (updated.length !== 1)
+        throw new ConflictError("تغيّرت النقاط أو الرصيد أثناء التحويل، حاول مجدداً");
 
       // Ledger parity with every other balance mutation (Constitution §I):
       // without this row the credit is unreconstructable from wallet_ledger.
@@ -138,7 +154,9 @@ router.post("/convert-points", requireUser, async (req, res) => {
     });
 
     if (!result.ok) {
-      return res.status(result.status).json(createErrorResponse(result.error, ErrorCode.INVALID_DATA));
+      return res
+        .status(result.status)
+        .json(createErrorResponse(result.error, ErrorCode.INVALID_DATA));
     }
 
     return res.json({

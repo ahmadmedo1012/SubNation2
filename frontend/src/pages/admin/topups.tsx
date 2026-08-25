@@ -512,10 +512,7 @@ export default function AdminTopupsPage() {
 
   const approveAll = async () => {
     const pending = allTopups.filter((t) => t.status === "pending");
-    if (
-      !window.confirm(`تأكيد الموافقة على جميع الطلبات المعلقة (${pending.length})؟`)
-    )
-      return;
+    if (!window.confirm(`تأكيد الموافقة على جميع الطلبات المعلقة (${pending.length})؟`)) return;
     let approvedCount = 0;
     let failedCount = 0;
     for (const t of pending) {

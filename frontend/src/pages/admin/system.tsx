@@ -41,11 +41,7 @@ import { AdminLayout } from "./layout";
 
 // ── Backend response shapes (mirror what the deployed API returns) ─────────
 
-import {
-  type CheckStatus,
-  type HealthCheck,
-  type HealthzReadyResponse,
-} from "@/lib/healthz";
+import { type CheckStatus, type HealthCheck, type HealthzReadyResponse } from "@/lib/healthz";
 
 // Re-export the shared types under their existing local names so the rest
 // of this large file's prop signatures remain unchanged.
@@ -334,25 +330,15 @@ function HealthTile({
       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${meta.bg} ${meta.border} min-w-0`}
       title={hint}
     >
-      <div
-        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.bg}`}
-      >
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.bg}`}>
         <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1 truncate">
           {label}
         </div>
-        <div
-          className={`text-sm font-black tabular-nums leading-none ${meta.color}`}
-        >
-          {value}
-        </div>
-        {hint && (
-          <div className="text-[9px] text-muted-foreground mt-1 truncate">
-            {hint}
-          </div>
-        )}
+        <div className={`text-sm font-black tabular-nums leading-none ${meta.color}`}>{value}</div>
+        {hint && <div className="text-[9px] text-muted-foreground mt-1 truncate">{hint}</div>}
       </div>
     </div>
   );
@@ -437,8 +423,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const summaryQ = useQuery<ObservabilitySummary>({
     queryKey: ["admin-observability-summary"],
-    queryFn: () =>
-      fetch("/api/admin/observability/summary", { headers }).then((r) => r.json()),
+    queryFn: () => fetch("/api/admin/observability/summary", { headers }).then((r) => r.json()),
     // 30 s → 60 s. Aggregate counters update slowly.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
@@ -462,8 +447,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const metricsQ = useQuery<MetricsSnapshot>({
     queryKey: ["admin-observability-metrics"],
-    queryFn: () =>
-      fetch("/api/admin/observability/metrics", { headers }).then((r) => r.json()),
+    queryFn: () => fetch("/api/admin/observability/metrics", { headers }).then((r) => r.json()),
     // Kept at 15 s — realtime CWV + event-loop is the highest-value
     // panel for live operator triage.
     refetchInterval: 15_000,
@@ -474,8 +458,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const schedulerQ = useQuery<SchedulerResponse>({
     queryKey: ["admin-observability-scheduler"],
-    queryFn: () =>
-      fetch("/api/admin/observability/scheduler", { headers }).then((r) => r.json()),
+    queryFn: () => fetch("/api/admin/observability/scheduler", { headers }).then((r) => r.json()),
     // 30 s → 90 s. Scheduler state changes slowly (leader rotation,
     // worker heartbeat). Sub-minute precision is unnecessary.
     refetchInterval: 90_000,
@@ -678,11 +661,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={c ? STATUS_META[c.status].label : "—"}
                     status={c?.status ?? "degraded"}
                     icon={Database}
-                    hint={
-                      c?.latencyMs != null
-                        ? `${c.latencyMs}ms`
-                        : (c?.error ?? undefined)
-                    }
+                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : (c?.error ?? undefined)}
                   />
                 );
               })()}
@@ -696,11 +675,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={c ? STATUS_META[c.status].label : "—"}
                     status={c?.status ?? "degraded"}
                     icon={Database}
-                    hint={
-                      c?.latencyMs != null
-                        ? `${c.latencyMs}ms`
-                        : (c?.error ?? undefined)
-                    }
+                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : (c?.error ?? undefined)}
                   />
                 );
               })()}
@@ -730,13 +705,7 @@ export default function AdminSystemPage(): ReactElement | null {
               {(() => {
                 const p95 = metrics?.http.latency.p95Ms ?? null;
                 const tone: CheckStatus | "neutral" =
-                  p95 == null
-                    ? "neutral"
-                    : p95 > 1000
-                      ? "failing"
-                      : p95 > 500
-                        ? "degraded"
-                        : "ok";
+                  p95 == null ? "neutral" : p95 > 1000 ? "failing" : p95 > 500 ? "degraded" : "ok";
                 return (
                   <HealthTile
                     label="زمن الاستجابة p95"
@@ -756,13 +725,7 @@ export default function AdminSystemPage(): ReactElement | null {
               {(() => {
                 const er = metrics?.http.errorRate ?? null;
                 const tone: CheckStatus | "neutral" =
-                  er == null
-                    ? "neutral"
-                    : er > 0.05
-                      ? "failing"
-                      : er > 0.01
-                        ? "degraded"
-                        : "ok";
+                  er == null ? "neutral" : er > 0.05 ? "failing" : er > 0.01 ? "degraded" : "ok";
                 const errCount = metrics?.http.requestsByStatusClass["5xx"] ?? 0;
                 return (
                   <HealthTile
@@ -846,12 +809,8 @@ export default function AdminSystemPage(): ReactElement | null {
                 <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className={`font-bold text-xs ${schedMeta.color} truncate`}>
-                  {schedTitle}
-                </p>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {schedMessage}
-                </p>
+                <p className={`font-bold text-xs ${schedMeta.color} truncate`}>{schedTitle}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{schedMessage}</p>
               </div>
             </div>
           )}
@@ -868,588 +827,598 @@ export default function AdminSystemPage(): ReactElement | null {
               <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
               التشخيص المتقدّم
             </h2>
-            <span className="text-[10px] text-muted-foreground">
-              انقر لتوسيع أي قسم
-            </span>
+            <span className="text-[10px] text-muted-foreground">انقر لتوسيع أي قسم</span>
           </div>
 
           <div className="space-y-2">
-
-        {/* ── Scheduler details (was Panel 2) ── */}
-        <DetailsSection title="تفاصيل الجدولة">
-          <div
-            className={`flex items-center justify-between gap-4 p-3 rounded-xl border ${schedMeta.bg} ${schedMeta.border}`}
-          >
-            <div className="flex items-center gap-3">
+            {/* ── Scheduler details (was Panel 2) ── */}
+            <DetailsSection title="تفاصيل الجدولة">
               <div
-                className={`w-9 h-9 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
+                className={`flex items-center justify-between gap-4 p-3 rounded-xl border ${schedMeta.bg} ${schedMeta.border}`}
               >
-                <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
-              </div>
-              <div className="min-w-0">
-                <p className={`font-bold text-sm ${schedMeta.color}`}>{schedTitle}</p>
-                <p className="text-xs text-muted-foreground">{schedMessage}</p>
-                {scheduler && (
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
-                      mode: {scheduler.mode}
-                    </span>
-                    {scheduler.isLeader && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
-                        leader
-                      </span>
-                    )}
-                    {scheduler.startedAt && (
-                      <span
-                        className="text-[10px] text-muted-foreground"
-                        title={scheduler.startedAt}
-                      >
-                        منذ {formatRelativeTime(scheduler.startedAt)}
-                      </span>
-                    )}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
+                  >
+                    <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </DetailsSection>
-
-        {/* ── Panel 3: Runtime diagnostics grid ── */}
-        <DetailsSection title="وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)">
-          {diagQ.isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-[88px] rounded-2xl skeleton-shimmer" />
-              ))}
-            </div>
-          ) : diagQ.isError || !diag ? (
-            <div className="bg-card border border-yellow-400/20 rounded-2xl p-4 flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />
-              <span className="text-xs text-muted-foreground">
-                تعذّر جلب تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
-              </span>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <MetricCard
-                  label="مدة التشغيل"
-                  value={formatUptime(diag.runtime.uptimeSec)}
-                  sub={`بيئة: ${diag.runtime.env}`}
-                  icon={Clock}
-                  color="text-emerald-400"
-                  bg="bg-emerald-400/10"
-                  border="border-emerald-400/20"
-                />
-                <MetricCard
-                  label="الذاكرة (RSS)"
-                  value={`${diag.memory.rssMb}MB`}
-                  sub={`heap: ${diag.memory.heapUsedMb}/${diag.memory.heapTotalMb}MB`}
-                  icon={MemoryStick}
-                  color="text-blue-400"
-                  bg="bg-blue-400/10"
-                  border="border-blue-400/20"
-                  spark={memorySeries}
-                  sparkColor="#3b82f6"
-                />
-                <MetricCard
-                  label="event-loop p99"
-                  value={diag.eventLoop ? `${diag.eventLoop.p99Ms.toFixed(1)}ms` : "—"}
-                  sub={
-                    diag.eventLoop
-                      ? `p50: ${diag.eventLoop.p50Ms.toFixed(1)}ms · p95: ${diag.eventLoop.p95Ms.toFixed(1)}ms`
-                      : "غير متاح"
-                  }
-                  icon={Cpu}
-                  color={
-                    diag.eventLoop && diag.eventLoop.p99Ms > 100 ? "text-red-400" : "text-cyan-400"
-                  }
-                  bg={
-                    diag.eventLoop && diag.eventLoop.p99Ms > 100
-                      ? "bg-red-400/10"
-                      : "bg-cyan-400/10"
-                  }
-                  border={
-                    diag.eventLoop && diag.eventLoop.p99Ms > 100
-                      ? "border-red-400/20"
-                      : "border-cyan-400/20"
-                  }
-                  spark={eventLoopSeries}
-                  sparkColor="#22d3ee"
-                />
-                <MetricCard
-                  label="الإصدار"
-                  value={diag.runtime.version}
-                  sub={`Node ${diag.node.version} · ${diag.runtime.service}`}
-                  icon={Layers}
-                  color="text-orange-400"
-                  bg="bg-orange-400/10"
-                  border="border-orange-400/20"
-                />
-              </div>
-
-              <div className="bg-card border border-border/60 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Flag className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-                    الأعلام التشغيلية
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(diag.flags).map(([key, val]) => {
-                    const enabled = val === "true";
-                    return (
-                      <span
-                        key={key}
-                        className={`text-[10px] px-2 py-1 rounded-lg border font-mono ${
-                          enabled
-                            ? "bg-emerald-400/8 border-emerald-400/20 text-emerald-400"
-                            : "bg-muted/30 border-border/50 text-muted-foreground"
-                        }`}
-                      >
-                        {key}: {val}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </DetailsSection>
-
-        {/* ── Panel 4: HTTP Request Analytics ── */}
-        {metrics && (
-          <DetailsSection title="تحليلات الطلبات HTTP (المسارات · حالات الاستجابة · زمن p50/p99)">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MetricCard
-                label="إجمالي الطلبات"
-                value={formatNumber(metrics.http.totalRequests)}
-                sub={`منذ آخر إقلاع · ${metrics.http.topRoutes.length} مسار نشط`}
-                icon={Radio}
-                color="text-primary"
-                bg="bg-primary/10"
-                border="border-primary/20"
-                spark={reqRate}
-                sparkColor="#e11d48"
-              />
-              <MetricCard
-                label="معدل الأخطاء (5xx)"
-                value={`${(metrics.http.errorRate * 100).toFixed(2)}%`}
-                sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} خطأ`}
-                icon={AlertCircle}
-                color={metrics.http.errorRate > 0.01 ? "text-red-400" : "text-emerald-400"}
-                bg={metrics.http.errorRate > 0.01 ? "bg-red-400/10" : "bg-emerald-400/10"}
-                border={
-                  metrics.http.errorRate > 0.01 ? "border-red-400/20" : "border-emerald-400/20"
-                }
-                spark={errRate}
-                sparkColor="#f87171"
-              />
-              <MetricCard
-                label="زمن الاستجابة p95"
-                value={formatMs(metrics.http.latency.p95Ms)}
-                sub={`p50: ${formatMs(metrics.http.latency.p50Ms)} · p99: ${formatMs(metrics.http.latency.p99Ms)}`}
-                icon={Clock}
-                color={
-                  (metrics.http.latency.p95Ms ?? 0) > 1000 ? "text-red-400" : "text-cyan-400"
-                }
-                bg={(metrics.http.latency.p95Ms ?? 0) > 1000 ? "bg-red-400/10" : "bg-cyan-400/10"}
-                border={
-                  (metrics.http.latency.p95Ms ?? 0) > 1000
-                    ? "border-red-400/20"
-                    : "border-cyan-400/20"
-                }
-                spark={p95Series}
-                sparkColor="#22d3ee"
-              />
-              <MetricCard
-                label="حالات الاستجابة"
-                value={`${formatNumber(metrics.http.requestsByStatusClass["2xx"] ?? 0)} / ${formatNumber(metrics.http.requestsByStatusClass["4xx"] ?? 0)}`}
-                sub={`2xx ناجح · 4xx خطأ من العميل`}
-                icon={ShieldCheck}
-                color="text-emerald-400"
-                bg="bg-emerald-400/10"
-                border="border-emerald-400/20"
-              />
-            </div>
-
-            {/* Top routes table */}
-            {metrics.http.topRoutes.length > 0 && (
-              <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-                  <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-                    أكثر المسارات نشاطاً
-                  </span>
-                </div>
-                <div className="divide-y divide-border/40">
-                  {metrics.http.topRoutes.slice(0, 6).map((r) => {
-                    const errPct = r.count === 0 ? 0 : (r.errorCount / r.count) * 100;
-                    return (
-                      <div
-                        key={`${r.method}-${r.route}`}
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                      >
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground shrink-0">
-                          {r.method}
+                  <div className="min-w-0">
+                    <p className={`font-bold text-sm ${schedMeta.color}`}>{schedTitle}</p>
+                    <p className="text-xs text-muted-foreground">{schedMessage}</p>
+                    {scheduler && (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
+                          mode: {scheduler.mode}
                         </span>
-                        <span className="font-mono text-xs flex-1 min-w-0 truncate" dir="ltr">
-                          {r.route}
-                        </span>
-                        <span className="text-xs font-bold tabular-nums shrink-0">
-                          {formatNumber(r.count)}
-                        </span>
-                        {errPct > 0 && (
-                          <span
-                            className={`text-[10px] font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-yellow-400"}`}
-                          >
-                            {errPct.toFixed(1)}% أخطاء
+                        {scheduler.isLeader && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                            leader
                           </span>
                         )}
+                        {scheduler.startedAt && (
+                          <span
+                            className="text-[10px] text-muted-foreground"
+                            title={scheduler.startedAt}
+                          >
+                            منذ {formatRelativeTime(scheduler.startedAt)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </DetailsSection>
+
+            {/* ── Panel 3: Runtime diagnostics grid ── */}
+            <DetailsSection title="وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)">
+              {diagQ.isLoading ? (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="h-[88px] rounded-2xl skeleton-shimmer" />
+                  ))}
+                </div>
+              ) : diagQ.isError || !diag ? (
+                <div className="bg-card border border-yellow-400/20 rounded-2xl p-4 flex items-center gap-3">
+                  <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />
+                  <span className="text-xs text-muted-foreground">
+                    تعذّر جلب تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <MetricCard
+                      label="مدة التشغيل"
+                      value={formatUptime(diag.runtime.uptimeSec)}
+                      sub={`بيئة: ${diag.runtime.env}`}
+                      icon={Clock}
+                      color="text-emerald-400"
+                      bg="bg-emerald-400/10"
+                      border="border-emerald-400/20"
+                    />
+                    <MetricCard
+                      label="الذاكرة (RSS)"
+                      value={`${diag.memory.rssMb}MB`}
+                      sub={`heap: ${diag.memory.heapUsedMb}/${diag.memory.heapTotalMb}MB`}
+                      icon={MemoryStick}
+                      color="text-blue-400"
+                      bg="bg-blue-400/10"
+                      border="border-blue-400/20"
+                      spark={memorySeries}
+                      sparkColor="#3b82f6"
+                    />
+                    <MetricCard
+                      label="event-loop p99"
+                      value={diag.eventLoop ? `${diag.eventLoop.p99Ms.toFixed(1)}ms` : "—"}
+                      sub={
+                        diag.eventLoop
+                          ? `p50: ${diag.eventLoop.p50Ms.toFixed(1)}ms · p95: ${diag.eventLoop.p95Ms.toFixed(1)}ms`
+                          : "غير متاح"
+                      }
+                      icon={Cpu}
+                      color={
+                        diag.eventLoop && diag.eventLoop.p99Ms > 100
+                          ? "text-red-400"
+                          : "text-cyan-400"
+                      }
+                      bg={
+                        diag.eventLoop && diag.eventLoop.p99Ms > 100
+                          ? "bg-red-400/10"
+                          : "bg-cyan-400/10"
+                      }
+                      border={
+                        diag.eventLoop && diag.eventLoop.p99Ms > 100
+                          ? "border-red-400/20"
+                          : "border-cyan-400/20"
+                      }
+                      spark={eventLoopSeries}
+                      sparkColor="#22d3ee"
+                    />
+                    <MetricCard
+                      label="الإصدار"
+                      value={diag.runtime.version}
+                      sub={`Node ${diag.node.version} · ${diag.runtime.service}`}
+                      icon={Layers}
+                      color="text-orange-400"
+                      bg="bg-orange-400/10"
+                      border="border-orange-400/20"
+                    />
+                  </div>
+
+                  <div className="bg-card border border-border/60 rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Flag className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                        الأعلام التشغيلية
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(diag.flags).map(([key, val]) => {
+                        const enabled = val === "true";
+                        return (
+                          <span
+                            key={key}
+                            className={`text-[10px] px-2 py-1 rounded-lg border font-mono ${
+                              enabled
+                                ? "bg-emerald-400/8 border-emerald-400/20 text-emerald-400"
+                                : "bg-muted/30 border-border/50 text-muted-foreground"
+                            }`}
+                          >
+                            {key}: {val}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </DetailsSection>
+
+            {/* ── Panel 4: HTTP Request Analytics ── */}
+            {metrics && (
+              <DetailsSection title="تحليلات الطلبات HTTP (المسارات · حالات الاستجابة · زمن p50/p99)">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <MetricCard
+                    label="إجمالي الطلبات"
+                    value={formatNumber(metrics.http.totalRequests)}
+                    sub={`منذ آخر إقلاع · ${metrics.http.topRoutes.length} مسار نشط`}
+                    icon={Radio}
+                    color="text-primary"
+                    bg="bg-primary/10"
+                    border="border-primary/20"
+                    spark={reqRate}
+                    sparkColor="#e11d48"
+                  />
+                  <MetricCard
+                    label="معدل الأخطاء (5xx)"
+                    value={`${(metrics.http.errorRate * 100).toFixed(2)}%`}
+                    sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} خطأ`}
+                    icon={AlertCircle}
+                    color={metrics.http.errorRate > 0.01 ? "text-red-400" : "text-emerald-400"}
+                    bg={metrics.http.errorRate > 0.01 ? "bg-red-400/10" : "bg-emerald-400/10"}
+                    border={
+                      metrics.http.errorRate > 0.01 ? "border-red-400/20" : "border-emerald-400/20"
+                    }
+                    spark={errRate}
+                    sparkColor="#f87171"
+                  />
+                  <MetricCard
+                    label="زمن الاستجابة p95"
+                    value={formatMs(metrics.http.latency.p95Ms)}
+                    sub={`p50: ${formatMs(metrics.http.latency.p50Ms)} · p99: ${formatMs(metrics.http.latency.p99Ms)}`}
+                    icon={Clock}
+                    color={
+                      (metrics.http.latency.p95Ms ?? 0) > 1000 ? "text-red-400" : "text-cyan-400"
+                    }
+                    bg={
+                      (metrics.http.latency.p95Ms ?? 0) > 1000 ? "bg-red-400/10" : "bg-cyan-400/10"
+                    }
+                    border={
+                      (metrics.http.latency.p95Ms ?? 0) > 1000
+                        ? "border-red-400/20"
+                        : "border-cyan-400/20"
+                    }
+                    spark={p95Series}
+                    sparkColor="#22d3ee"
+                  />
+                  <MetricCard
+                    label="حالات الاستجابة"
+                    value={`${formatNumber(metrics.http.requestsByStatusClass["2xx"] ?? 0)} / ${formatNumber(metrics.http.requestsByStatusClass["4xx"] ?? 0)}`}
+                    sub={`2xx ناجح · 4xx خطأ من العميل`}
+                    icon={ShieldCheck}
+                    color="text-emerald-400"
+                    bg="bg-emerald-400/10"
+                    border="border-emerald-400/20"
+                  />
+                </div>
+
+                {/* Top routes table */}
+                {metrics.http.topRoutes.length > 0 && (
+                  <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+                      <Box className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                        أكثر المسارات نشاطاً
+                      </span>
+                    </div>
+                    <div className="divide-y divide-border/40">
+                      {metrics.http.topRoutes.slice(0, 6).map((r) => {
+                        const errPct = r.count === 0 ? 0 : (r.errorCount / r.count) * 100;
+                        return (
+                          <div
+                            key={`${r.method}-${r.route}`}
+                            className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                          >
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground shrink-0">
+                              {r.method}
+                            </span>
+                            <span className="font-mono text-xs flex-1 min-w-0 truncate" dir="ltr">
+                              {r.route}
+                            </span>
+                            <span className="text-xs font-bold tabular-nums shrink-0">
+                              {formatNumber(r.count)}
+                            </span>
+                            {errPct > 0 && (
+                              <span
+                                className={`text-[10px] font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-yellow-400"}`}
+                              >
+                                {errPct.toFixed(1)}% أخطاء
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </DetailsSection>
+            )}
+
+            {/* ── Panel 5: Auth & Security ── */}
+            {metrics && (
+              <DetailsSection title="المصادقة والأمان (المحاولات · معدل الفشل · حالات القفل)">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <MetricCard
+                    label="إجمالي المحاولات"
+                    value={formatNumber(metrics.auth.totalAttempts)}
+                    sub={`${formatNumber(
+                      Object.entries(metrics.auth.outcomes)
+                        .filter(([k]) => k.endsWith(":success"))
+                        .reduce((a, [, v]) => a + v, 0),
+                    )} نجاح`}
+                    icon={ShieldCheck}
+                    color="text-emerald-400"
+                    bg="bg-emerald-400/10"
+                    border="border-emerald-400/20"
+                  />
+                  <MetricCard
+                    label="معدل الفشل"
+                    value={`${(metrics.auth.failureRate * 100).toFixed(1)}%`}
+                    sub="فشل + قفل / إجمالي"
+                    icon={AlertTriangle}
+                    color={metrics.auth.failureRate > 0.1 ? "text-red-400" : "text-yellow-400"}
+                    bg={metrics.auth.failureRate > 0.1 ? "bg-red-400/10" : "bg-yellow-400/10"}
+                    border={
+                      metrics.auth.failureRate > 0.1 ? "border-red-400/20" : "border-yellow-400/20"
+                    }
+                    spark={authFailRate}
+                    sparkColor="#f59e0b"
+                  />
+                  <MetricCard
+                    label="فشل Firebase"
+                    value={formatNumber(metrics.auth.outcomes["firebase:failure"] ?? 0)}
+                    sub="جلسة Firebase / OTP"
+                    icon={Zap}
+                    color="text-orange-400"
+                    bg="bg-orange-400/10"
+                    border="border-orange-400/20"
+                  />
+                  <MetricCard
+                    label="حالات قفل الحساب"
+                    value={formatNumber(
+                      Object.entries(metrics.auth.outcomes)
+                        .filter(([k]) => k.endsWith(":lockout"))
+                        .reduce((a, [, v]) => a + v, 0),
+                    )}
+                    sub="بسبب محاولات متكررة"
+                    icon={ShieldCheck}
+                    color="text-red-400"
+                    bg="bg-red-400/10"
+                    border="border-red-400/20"
+                  />
+                </div>
+              </DetailsSection>
+            )}
+
+            {/* ── Panel 6: Redis Performance ── */}
+            {metrics && (
+              <DetailsSection title="أداء Redis (الاتصال · العمليات · ping latency · الأخطاء)">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <MetricCard
+                    label="حالة الاتصال"
+                    value={metrics.redis.available ? "متصل" : "غير متصل"}
+                    sub={
+                      metrics.redis.degradedEvents > 0
+                        ? `${metrics.redis.degradedEvents} تخفيض`
+                        : "بدون تخفيضات"
+                    }
+                    icon={Wifi}
+                    color={metrics.redis.available ? "text-emerald-400" : "text-red-400"}
+                    bg={metrics.redis.available ? "bg-emerald-400/10" : "bg-red-400/10"}
+                    border={metrics.redis.available ? "border-emerald-400/20" : "border-red-400/20"}
+                  />
+                  <MetricCard
+                    label="إجمالي العمليات"
+                    value={formatNumber(
+                      Object.values(metrics.redis.opsTotal).reduce((a, b) => a + b, 0),
+                    )}
+                    sub="get/set/ping/etc"
+                    icon={Zap}
+                    color="text-primary"
+                    bg="bg-primary/10"
+                    border="border-primary/20"
+                    spark={redisOpsRate}
+                    sparkColor="#e11d48"
+                  />
+                  <MetricCard
+                    label="ping latency p95"
+                    value={formatMs(metrics.redis.pingLatencyMs.p95)}
+                    sub={`p50: ${formatMs(metrics.redis.pingLatencyMs.p50)} · p99: ${formatMs(metrics.redis.pingLatencyMs.p99)}`}
+                    icon={Clock}
+                    color={
+                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
+                        ? "text-red-400"
+                        : "text-cyan-400"
+                    }
+                    bg={
+                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
+                        ? "bg-red-400/10"
+                        : "bg-cyan-400/10"
+                    }
+                    border={
+                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
+                        ? "border-red-400/20"
+                        : "border-cyan-400/20"
+                    }
+                  />
+                  <MetricCard
+                    label="إجمالي الأخطاء"
+                    value={formatNumber(
+                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0),
+                    )}
+                    sub={
+                      Object.entries(metrics.redis.errorsTotal)
+                        .sort(([, a], [, b]) => b - a)
+                        .slice(0, 1)
+                        .map(([k]) => k)[0] ?? "بدون"
+                    }
+                    icon={AlertCircle}
+                    color={
+                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
+                        ? "text-red-400"
+                        : "text-emerald-400"
+                    }
+                    bg={
+                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
+                        ? "bg-red-400/10"
+                        : "bg-emerald-400/10"
+                    }
+                    border={
+                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
+                        ? "border-red-400/20"
+                        : "border-emerald-400/20"
+                    }
+                  />
+                </div>
+              </DetailsSection>
+            )}
+
+            {/* ── Panel 7: Socket.IO + Job Activity ── */}
+            {metrics && (
+              <DetailsSection title="Socket.IO والمهام الخلفية (cron · watchers · heartbeat)">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {/* Socket.IO */}
+                  <div className="bg-card border border-border/60 rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Wifi className="w-4 h-4 text-cyan-400" />
+                      <h3 className="text-sm font-bold">Socket.IO</h3>
+                      <span className="text-[10px] text-muted-foreground mr-auto">
+                        واجهات لحظية
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                          عملاء متّصلون
+                        </div>
+                        <div className="font-black text-2xl text-cyan-400 tabular-nums">
+                          {metrics.socket.connectedClients}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                          إجمالي الأحداث
+                        </div>
+                        <div className="font-black text-2xl tabular-nums">
+                          {formatNumber(
+                            Object.values(metrics.socket.eventsTotal).reduce((a, b) => a + b, 0),
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Background jobs */}
+                  <div className="bg-card border border-border/60 rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <TimerReset className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-sm font-bold">المهام الخلفية</h3>
+                      <span className="text-[10px] text-muted-foreground mr-auto">
+                        cron · watchers · heartbeat
+                      </span>
+                    </div>
+                    {Object.keys(metrics.worker.jobsTotal).length === 0 ? (
+                      <div className="text-xs text-muted-foreground py-3 text-center">
+                        لم تُسجَّل أي مهمة بعد
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                        {Object.entries(metrics.worker.jobsTotal)
+                          .sort(([, a], [, b]) => b - a)
+                          .slice(0, 8)
+                          .map(([key, count]) => {
+                            const [job, status] = key.split(":");
+                            const isFailed = status === "failed";
+                            return (
+                              <div
+                                key={key}
+                                className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0"
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    isFailed ? "bg-red-400" : "bg-emerald-400"
+                                  }`}
+                                />
+                                <span
+                                  className="font-mono text-muted-foreground truncate"
+                                  dir="ltr"
+                                >
+                                  {job}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                  {status}
+                                </span>
+                                <span className="font-bold tabular-nums shrink-0 mr-auto">
+                                  {count}
+                                </span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DetailsSection>
+            )}
+
+            {/* ── Panel 7.5: Core Web Vitals p75 ── */}
+            {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
+              <DetailsSection title="Core Web Vitals (LCP · FCP · INP · CLS · TTFB — p75)">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                  {(
+                    [
+                      { key: "lcp", label: "LCP", good: 2500, poor: 4000, unit: "ms" as const },
+                      { key: "fcp", label: "FCP", good: 1800, poor: 3000, unit: "ms" as const },
+                      { key: "inp", label: "INP", good: 200, poor: 500, unit: "ms" as const },
+                      { key: "cls", label: "CLS", good: 0.1, poor: 0.25, unit: "" as const },
+                      { key: "ttfb", label: "TTFB", good: 800, poor: 1800, unit: "ms" as const },
+                    ] as const
+                  ).map(({ key, label, good, poor, unit }) => {
+                    const p75 = metrics.cwv.p75[key];
+                    const samples = metrics.cwv.samples[key] ?? 0;
+                    let tone: "ok" | "degraded" | "failing" = "ok";
+                    let display = "—";
+                    if (p75 !== null && p75 !== undefined) {
+                      if (p75 > poor) tone = "failing";
+                      else if (p75 > good) tone = "degraded";
+                      display =
+                        unit === "ms"
+                          ? p75 < 1000
+                            ? `${Math.round(p75)}ms`
+                            : `${(p75 / 1000).toFixed(2)}s`
+                          : p75.toFixed(3);
+                    } else if (samples === 0) {
+                      display = "بدون عيّنات";
+                    }
+                    const meta = STATUS_META[tone];
+                    return (
+                      <div
+                        key={key}
+                        className={`bg-card border ${meta.border} rounded-2xl p-4`}
+                        title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                            {label}
+                          </span>
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              tone === "ok"
+                                ? "bg-emerald-400"
+                                : tone === "degraded"
+                                  ? "bg-yellow-400"
+                                  : "bg-red-400"
+                            }`}
+                          />
+                        </div>
+                        <div
+                          className={`font-black text-base leading-none tabular-nums ${meta.color}`}
+                        >
+                          {display}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          {samples} عيّنة
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </DetailsSection>
             )}
-          </DetailsSection>
-        )}
 
-        {/* ── Panel 5: Auth & Security ── */}
-        {metrics && (
-          <DetailsSection title="المصادقة والأمان (المحاولات · معدل الفشل · حالات القفل)">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MetricCard
-                label="إجمالي المحاولات"
-                value={formatNumber(metrics.auth.totalAttempts)}
-                sub={`${formatNumber(
-                  Object.entries(metrics.auth.outcomes)
-                    .filter(([k]) => k.endsWith(":success"))
-                    .reduce((a, [, v]) => a + v, 0),
-                )} نجاح`}
-                icon={ShieldCheck}
-                color="text-emerald-400"
-                bg="bg-emerald-400/10"
-                border="border-emerald-400/20"
-              />
-              <MetricCard
-                label="معدل الفشل"
-                value={`${(metrics.auth.failureRate * 100).toFixed(1)}%`}
-                sub="فشل + قفل / إجمالي"
-                icon={AlertTriangle}
-                color={metrics.auth.failureRate > 0.1 ? "text-red-400" : "text-yellow-400"}
-                bg={metrics.auth.failureRate > 0.1 ? "bg-red-400/10" : "bg-yellow-400/10"}
-                border={
-                  metrics.auth.failureRate > 0.1
-                    ? "border-red-400/20"
-                    : "border-yellow-400/20"
-                }
-                spark={authFailRate}
-                sparkColor="#f59e0b"
-              />
-              <MetricCard
-                label="فشل Firebase"
-                value={formatNumber(metrics.auth.outcomes["firebase:failure"] ?? 0)}
-                sub="جلسة Firebase / OTP"
-                icon={Zap}
-                color="text-orange-400"
-                bg="bg-orange-400/10"
-                border="border-orange-400/20"
-              />
-              <MetricCard
-                label="حالات قفل الحساب"
-                value={formatNumber(
-                  Object.entries(metrics.auth.outcomes)
-                    .filter(([k]) => k.endsWith(":lockout"))
-                    .reduce((a, [, v]) => a + v, 0),
-                )}
-                sub="بسبب محاولات متكررة"
-                icon={ShieldCheck}
-                color="text-red-400"
-                bg="bg-red-400/10"
-                border="border-red-400/20"
-              />
-            </div>
-          </DetailsSection>
-        )}
-
-        {/* ── Panel 6: Redis Performance ── */}
-        {metrics && (
-          <DetailsSection title="أداء Redis (الاتصال · العمليات · ping latency · الأخطاء)">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <MetricCard
-                label="حالة الاتصال"
-                value={metrics.redis.available ? "متصل" : "غير متصل"}
-                sub={
-                  metrics.redis.degradedEvents > 0
-                    ? `${metrics.redis.degradedEvents} تخفيض`
-                    : "بدون تخفيضات"
-                }
-                icon={Wifi}
-                color={metrics.redis.available ? "text-emerald-400" : "text-red-400"}
-                bg={metrics.redis.available ? "bg-emerald-400/10" : "bg-red-400/10"}
-                border={metrics.redis.available ? "border-emerald-400/20" : "border-red-400/20"}
-              />
-              <MetricCard
-                label="إجمالي العمليات"
-                value={formatNumber(
-                  Object.values(metrics.redis.opsTotal).reduce((a, b) => a + b, 0),
-                )}
-                sub="get/set/ping/etc"
-                icon={Zap}
-                color="text-primary"
-                bg="bg-primary/10"
-                border="border-primary/20"
-                spark={redisOpsRate}
-                sparkColor="#e11d48"
-              />
-              <MetricCard
-                label="ping latency p95"
-                value={formatMs(metrics.redis.pingLatencyMs.p95)}
-                sub={`p50: ${formatMs(metrics.redis.pingLatencyMs.p50)} · p99: ${formatMs(metrics.redis.pingLatencyMs.p99)}`}
-                icon={Clock}
-                color={
-                  (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                    ? "text-red-400"
-                    : "text-cyan-400"
-                }
-                bg={
-                  (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                    ? "bg-red-400/10"
-                    : "bg-cyan-400/10"
-                }
-                border={
-                  (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                    ? "border-red-400/20"
-                    : "border-cyan-400/20"
-                }
-              />
-              <MetricCard
-                label="إجمالي الأخطاء"
-                value={formatNumber(
-                  Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0),
-                )}
-                sub={
-                  Object.entries(metrics.redis.errorsTotal)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 1)
-                    .map(([k]) => k)[0] ?? "بدون"
-                }
-                icon={AlertCircle}
-                color={
-                  Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                    ? "text-red-400"
-                    : "text-emerald-400"
-                }
-                bg={
-                  Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                    ? "bg-red-400/10"
-                    : "bg-emerald-400/10"
-                }
-                border={
-                  Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                    ? "border-red-400/20"
-                    : "border-emerald-400/20"
-                }
-              />
-            </div>
-          </DetailsSection>
-        )}
-
-        {/* ── Panel 7: Socket.IO + Job Activity ── */}
-        {metrics && (
-          <DetailsSection title="Socket.IO والمهام الخلفية (cron · watchers · heartbeat)">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {/* Socket.IO */}
-            <div className="bg-card border border-border/60 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Wifi className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-bold">Socket.IO</h3>
-                <span className="text-[10px] text-muted-foreground mr-auto">واجهات لحظية</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
-                    عملاء متّصلون
+            {/* ── Panel 8: Request rate trend chart (visual centerpiece) ── */}
+            {samples.length >= 4 && (
+              <DetailsSection title="مخطط معدل الطلبات (rps · آخر 60 عيّنة)">
+                <div className="bg-card border border-border/60 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <h3 className="text-sm font-bold">معدل الطلبات (طلب/ث)</h3>
+                    <span className="text-[10px] text-muted-foreground mr-auto">
+                      آخر {Math.min(samples.length, 60)} عيّنة · ~
+                      {Math.min(samples.length, 60) * 15}ث
+                    </span>
                   </div>
-                  <div className="font-black text-2xl text-cyan-400 tabular-nums">
-                    {metrics.socket.connectedClients}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
-                    إجمالي الأحداث
-                  </div>
-                  <div className="font-black text-2xl tabular-nums">
-                    {formatNumber(
-                      Object.values(metrics.socket.eventsTotal).reduce((a, b) => a + b, 0),
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Background jobs */}
-            <div className="bg-card border border-border/60 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <TimerReset className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-bold">المهام الخلفية</h3>
-                <span className="text-[10px] text-muted-foreground mr-auto">
-                  cron · watchers · heartbeat
-                </span>
-              </div>
-              {Object.keys(metrics.worker.jobsTotal).length === 0 ? (
-                <div className="text-xs text-muted-foreground py-3 text-center">
-                  لم تُسجَّل أي مهمة بعد
-                </div>
-              ) : (
-                <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                  {Object.entries(metrics.worker.jobsTotal)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 8)
-                    .map(([key, count]) => {
-                      const [job, status] = key.split(":");
-                      const isFailed = status === "failed";
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0"
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                              isFailed ? "bg-red-400" : "bg-emerald-400"
-                            }`}
-                          />
-                          <span className="font-mono text-muted-foreground truncate" dir="ltr">
-                            {job}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            {status}
-                          </span>
-                          <span className="font-bold tabular-nums shrink-0 mr-auto">{count}</span>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-            </div>
-          </DetailsSection>
-        )}
-
-        {/* ── Panel 7.5: Core Web Vitals p75 ── */}
-        {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
-          <DetailsSection title="Core Web Vitals (LCP · FCP · INP · CLS · TTFB — p75)">
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              {(
-                [
-                  { key: "lcp", label: "LCP", good: 2500, poor: 4000, unit: "ms" as const },
-                  { key: "fcp", label: "FCP", good: 1800, poor: 3000, unit: "ms" as const },
-                  { key: "inp", label: "INP", good: 200, poor: 500, unit: "ms" as const },
-                  { key: "cls", label: "CLS", good: 0.1, poor: 0.25, unit: "" as const },
-                  { key: "ttfb", label: "TTFB", good: 800, poor: 1800, unit: "ms" as const },
-                ] as const
-              ).map(({ key, label, good, poor, unit }) => {
-                const p75 = metrics.cwv.p75[key];
-                const samples = metrics.cwv.samples[key] ?? 0;
-                let tone: "ok" | "degraded" | "failing" = "ok";
-                let display = "—";
-                if (p75 !== null && p75 !== undefined) {
-                  if (p75 > poor) tone = "failing";
-                  else if (p75 > good) tone = "degraded";
-                  display =
-                    unit === "ms"
-                      ? p75 < 1000
-                        ? `${Math.round(p75)}ms`
-                        : `${(p75 / 1000).toFixed(2)}s`
-                      : p75.toFixed(3);
-                } else if (samples === 0) {
-                  display = "بدون عيّنات";
-                }
-                const meta = STATUS_META[tone];
-                return (
-                  <div
-                    key={key}
-                    className={`bg-card border ${meta.border} rounded-2xl p-4`}
-                    title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-                        {label}
-                      </span>
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          tone === "ok"
-                            ? "bg-emerald-400"
-                            : tone === "degraded"
-                              ? "bg-yellow-400"
-                              : "bg-red-400"
-                        }`}
+                  <ResponsiveContainer width="100%" height={120}>
+                    <AreaChart
+                      data={reqRate.map((v, i) => ({ i, rps: v, errs: errRate[i] ?? 0 }))}
+                      margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="rpsGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#e11d48" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(255,255,255,0.04)"
+                        vertical={false}
                       />
-                    </div>
-                    <div className={`font-black text-base leading-none tabular-nums ${meta.color}`}>
-                      {display}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground mt-1">{samples} عيّنة</div>
-                  </div>
-                );
-              })}
-            </div>
-          </DetailsSection>
-        )}
-
-        {/* ── Panel 8: Request rate trend chart (visual centerpiece) ── */}
-        {samples.length >= 4 && (
-          <DetailsSection title="مخطط معدل الطلبات (rps · آخر 60 عيّنة)">
-            <div className="bg-card border border-border/60 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Activity className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-bold">معدل الطلبات (طلب/ث)</h3>
-                <span className="text-[10px] text-muted-foreground mr-auto">
-                  آخر {Math.min(samples.length, 60)} عيّنة · ~{Math.min(samples.length, 60) * 15}ث
-                </span>
-              </div>
-              <ResponsiveContainer width="100%" height={120}>
-                <AreaChart
-                  data={reqRate.map((v, i) => ({ i, rps: v, errs: errRate[i] ?? 0 }))}
-                  margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="rpsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#e11d48" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="rgba(255,255,255,0.04)"
-                    vertical={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: "rgb(20 20 20 / 0.95)",
-                      border: "1px solid rgb(80 80 80 / 0.4)",
-                      borderRadius: 12,
-                      fontSize: 11,
-                    }}
-                    labelStyle={{ display: "none" }}
-                    formatter={(v: number) => [v.toFixed(2), "طلب/ث"]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="rps"
-                    stroke="#e11d48"
-                    fill="url(#rpsGrad)"
-                    strokeWidth={2}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </DetailsSection>
-        )}
-
+                      <Tooltip
+                        contentStyle={{
+                          background: "rgb(20 20 20 / 0.95)",
+                          border: "1px solid rgb(80 80 80 / 0.4)",
+                          borderRadius: 12,
+                          fontSize: 11,
+                        }}
+                        labelStyle={{ display: "none" }}
+                        formatter={(v: number) => [v.toFixed(2), "طلب/ث"]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="rps"
+                        stroke="#e11d48"
+                        fill="url(#rpsGrad)"
+                        strokeWidth={2}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </DetailsSection>
+            )}
           </div>
         </section>
         {/* End of SECTION 2 — ADVANCED DIAGNOSTICS */}
@@ -1501,9 +1470,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
         {/* ── Panel 10: External dashboards ── */}
         {summary &&
-          (summary.dashboards.render ||
-            summary.dashboards.sentry ||
-            summary.dashboards.neon) && (
+          (summary.dashboards.render || summary.dashboards.sentry || summary.dashboards.neon) && (
             <section className="space-y-3 float-in stagger-10">
               <h2 className="text-sm font-bold">لوحات خارجية</h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1519,9 +1486,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Render</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        النشرات والسجلات
-                      </div>
+                      <div className="text-[10px] text-muted-foreground">النشرات والسجلات</div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                   </a>
@@ -1538,9 +1503,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Sentry</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        الأخطاء والتتبع
-                      </div>
+                      <div className="text-[10px] text-muted-foreground">الأخطاء والتتبع</div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                   </a>

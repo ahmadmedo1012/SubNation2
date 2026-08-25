@@ -71,9 +71,12 @@ router.post("/", requireUser, async (req, res) => {
 
   const { title, message, category } = req.body ?? {};
   if (!title?.trim() || !message?.trim()) {
-    return res.status(400).json(createErrorResponse("العنوان والرسالة مطلوبان", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("العنوان والرسالة مطلوبان", ErrorCode.INVALID_DATA));
   }
-  if (title.length > 255) return res.status(400).json(createErrorResponse("العنوان طويل جداً", ErrorCode.INVALID_DATA));
+  if (title.length > 255)
+    return res.status(400).json(createErrorResponse("العنوان طويل جداً", ErrorCode.INVALID_DATA));
 
   const [ticket] = await db
     .insert(supportTicketsTable)
@@ -103,7 +106,8 @@ router.get("/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [ticket] = await db
     .select()
@@ -111,7 +115,8 @@ router.get("/:id", requireUser, async (req, res) => {
     .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.userId, userId)))
     .limit(1);
 
-  if (!ticket) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
+  if (!ticket)
+    return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
   const replies = await db
     .select()
@@ -138,7 +143,8 @@ router.post("/:id/reply", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [ticket] = await db
     .select()
@@ -146,11 +152,14 @@ router.post("/:id/reply", requireUser, async (req, res) => {
     .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.userId, userId)))
     .limit(1);
 
-  if (!ticket) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
-  if (ticket.status === "closed") return res.status(400).json(createErrorResponse("التذكرة مغلقة", ErrorCode.INVALID_DATA));
+  if (!ticket)
+    return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
+  if (ticket.status === "closed")
+    return res.status(400).json(createErrorResponse("التذكرة مغلقة", ErrorCode.INVALID_DATA));
 
   const { message } = req.body ?? {};
-  if (!message?.trim()) return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
+  if (!message?.trim())
+    return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
 
   const [reply] = await db
     .insert(ticketRepliesTable)

@@ -4,13 +4,13 @@
 
 ## RTO / RPO targets
 
-| System | RTO | RPO |
-|---|---|---|
-| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR) |
-| Application code | < 5 min | 0 — git is source of truth |
-| Render service config | < 15 min | 0 — `render.yaml` is checked in |
-| Render Redis | < 15 min | **30 min** (durable state is rate-limit windows + alerting dedup; loss = transient blip, no recovery action needed) |
-| Sentry / observability | n/a | n/a — best-effort capture; loss of error events does not affect product behaviour |
+| System                                 | RTO                                             | RPO                                                                                                                 |
+| -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR)                                     |
+| Application code                       | < 5 min                                         | 0 — git is source of truth                                                                                          |
+| Render service config                  | < 15 min                                        | 0 — `render.yaml` is checked in                                                                                     |
+| Render Redis                           | < 15 min                                        | **30 min** (durable state is rate-limit windows + alerting dedup; loss = transient blip, no recovery action needed) |
+| Sentry / observability                 | n/a                                             | n/a — best-effort capture; loss of error events does not affect product behaviour                                   |
 
 ## Backup inventory
 
@@ -28,11 +28,13 @@ Behaviour: streams `pg_dump --no-owner --no-privileges --format=plain` through `
 Optional upload: set `BACKUP_PRESIGNED_PUT_URL` to a presigned PUT URL from any S3-compatible provider (Backblaze B2, Cloudflare R2, AWS S3) — file is HTTP PUT after the local write completes.
 
 **Local invocation (any Postgres-client-equipped shell):**
+
 ```bash
 DATABASE_URL=postgresql://... pnpm run db:backup
 ```
 
 **Render Cron Job invocation (provision separately):**
+
 1. Create a new Render Cron Job (free tier supports cron jobs ≤ 15 min runtime).
 2. Build command: `pnpm install --frozen-lockfile`.
 3. Start command: `pnpm run db:backup`.
@@ -56,6 +58,7 @@ Owner-managed. Rotation procedure: rotate from the source of truth for each secr
 (e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
 Sentry dashboard for DSNs) then update the matching Render env var and
 redeploy. The list of `sync: false` keys on the Render service:
+
 - `DATABASE_URL`
 - `SESSION_SECRET`
 - `ENCRYPTION_KEY`
@@ -138,6 +141,7 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 Quarterly. Calendar events on the 1st of January / April / July / October.
 
 **Drill procedure:**
+
 1. Take a fresh `pg_dump` via `pnpm run db:backup` (write to local).
 2. Spin up a throwaway Neon branch via Console → "New branch from main".
 3. `psql "<branch-url>" < backup-file`.
@@ -157,9 +161,9 @@ Quarterly. Calendar events on the 1st of January / April / July / October.
 7. Delete the throwaway branch.
 8. Document in this file: drill date, backup age tested, rows verified, anomalies found.
 
-| Drill date | Backup tested | Rows verified | Anomalies | Operator |
-|---|---|---|---|---|
-| _(none yet — first drill due before public launch)_ | | | | |
+| Drill date                                          | Backup tested | Rows verified | Anomalies | Operator |
+| --------------------------------------------------- | ------------- | ------------- | --------- | -------- |
+| _(none yet — first drill due before public launch)_ |               |               |           |          |
 
 ## Emergency contacts
 
@@ -175,6 +179,7 @@ Sentry alerts: routed to operator email + Telegram via webhook
 ## Documentation updates
 
 Update this runbook after every:
+
 - Real incident (add to Lessons Learned).
 - Drill (update the table above).
 - Infrastructure change (Neon tier upgrade, region change, new managed service).

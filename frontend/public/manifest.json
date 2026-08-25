@@ -10,10 +10,7 @@
   "theme_color": "#e11d48",
   "lang": "ar",
   "dir": "rtl",
-  "categories": [
-    "shopping",
-    "entertainment"
-  ],
+  "categories": ["shopping", "entertainment"],
   "icons": [
     {
       "src": "/pwa-96x96.png",

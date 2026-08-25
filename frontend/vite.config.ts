@@ -84,10 +84,7 @@ function seoHeadInject(): Plugin {
         const tag = `<meta name="google-site-verification" content="${token}" />`;
         // Inject right after the viewport meta so it lives near the top
         // of <head> where Search Console looks for it.
-        return html.replace(
-          /(<meta name="viewport"[^>]*>)/,
-          `$1\n    ${tag}`,
-        );
+        return html.replace(/(<meta name="viewport"[^>]*>)/, `$1\n    ${tag}`);
       },
     },
   };

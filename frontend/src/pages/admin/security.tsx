@@ -99,14 +99,10 @@ export function AdminSecurityDashboard() {
       a.createdAt,
     ]);
 
-    const escapeCsvField = (value: unknown) =>
-      `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const escapeCsvField = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
     const csvContent =
-      "\uFEFF" +
-      [headers, ...rows]
-        .map((row) => row.map(escapeCsvField).join(","))
-        .join("\n");
+      "\uFEFF" + [headers, ...rows].map((row) => row.map(escapeCsvField).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -132,128 +128,128 @@ export function AdminSecurityDashboard() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
               <Shield className="w-5 h-5 text-primary" />
             </div>
-          <h1 className="text-2xl font-bold">لوحة أمان المصادقة</h1>
+            <h1 className="text-2xl font-bold">لوحة أمان المصادقة</h1>
+          </div>
+          <Button onClick={exportToCSV} variant="outline" size="sm">
+            <Download className="w-4 h-4 ml-2" />
+            تصدير CSV
+          </Button>
         </div>
-        <Button onClick={exportToCSV} variant="outline" size="sm">
-          <Download className="w-4 h-4 ml-2" />
-          تصدير CSV
-        </Button>
-      </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-card border border-border/55 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <Activity className="w-5 h-5 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">إجمالي الأنشطة</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card border border-border/55 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-emerald-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">ناجحة</p>
-                <p className="text-2xl font-bold text-emerald-500">{stats.success}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card border border-border/55 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <XCircle className="w-5 h-5 text-destructive" />
-              <div>
-                <p className="text-sm text-muted-foreground">فاشلة</p>
-                <p className="text-2xl font-bold text-destructive">{stats.failure}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-card border border-border/55 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">آخر 24 ساعة</p>
-                <p className="text-2xl font-bold">{stats.last24h}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">الإجراء:</label>
-          <select
-            value={filters.action}
-            onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-            className="px-3 py-1.5 border rounded text-sm"
-          >
-            <option value="all">الكل</option>
-            <option value="login">تسجيل دخول</option>
-            <option value="register">تسجيل</option>
-            <option value="logout">تسجيل خروج</option>
-            <option value="change_password">تغيير كلمة المرور</option>
-            <option value="unlink_provider">فصل مزود</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">الحالة:</label>
-          <select
-            value={filters.success}
-            onChange={(e) => setFilters({ ...filters, success: e.target.value })}
-            className="px-3 py-1.5 border rounded text-sm"
-          >
-            <option value="all">الكل</option>
-            <option value="true">ناجح</option>
-            <option value="false">فاشل</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Activity Timeline */}
-      <div className="bg-card border border-border/55 rounded-xl p-4">
-        <h2 className="text-lg font-bold mb-4">سجل النشاط</h2>
-        {activities.length === 0 ? (
-          <p className="text-center text-muted-foreground py-8">لا توجد أنشطة</p>
-        ) : (
-          <div className="space-y-3">
-            {activities.map((activity) => (
-              <div
-                key={activity.id}
-                className="flex items-start gap-4 p-4 border border-border/40 rounded-lg bg-muted/20"
-              >
-                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
-                  {activity.success ? (
-                    <CheckCircle className="w-4 h-4 text-emerald-500" />
-                  ) : (
-                    <XCircle className="w-4 h-4 text-destructive" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium">{activity.action}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(activity.createdAt).toLocaleString("ar-LY")}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{activity.identifier}</p>
-                  {activity.failureReason && (
-                    <p className="text-xs text-destructive mt-1">{activity.failureReason}</p>
-                  )}
-                  <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                    {activity.provider && <span>المزود: {activity.provider}</span>}
-                    {activity.ipAddress && <span>IP: {activity.ipAddress}</span>}
-                  </div>
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-card border border-border/55 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <Activity className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">إجمالي الأنشطة</p>
+                  <p className="text-2xl font-bold">{stats.total}</p>
                 </div>
               </div>
-            ))}
+            </div>
+            <div className="bg-card border border-border/55 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-emerald-500" />
+                <div>
+                  <p className="text-sm text-muted-foreground">ناجحة</p>
+                  <p className="text-2xl font-bold text-emerald-500">{stats.success}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border border-border/55 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <XCircle className="w-5 h-5 text-destructive" />
+                <div>
+                  <p className="text-sm text-muted-foreground">فاشلة</p>
+                  <p className="text-2xl font-bold text-destructive">{stats.failure}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card border border-border/55 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <Shield className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">آخر 24 ساعة</p>
+                  <p className="text-2xl font-bold">{stats.last24h}</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
+
+        {/* Filters */}
+        <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">الإجراء:</label>
+            <select
+              value={filters.action}
+              onChange={(e) => setFilters({ ...filters, action: e.target.value })}
+              className="px-3 py-1.5 border rounded text-sm"
+            >
+              <option value="all">الكل</option>
+              <option value="login">تسجيل دخول</option>
+              <option value="register">تسجيل</option>
+              <option value="logout">تسجيل خروج</option>
+              <option value="change_password">تغيير كلمة المرور</option>
+              <option value="unlink_provider">فصل مزود</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">الحالة:</label>
+            <select
+              value={filters.success}
+              onChange={(e) => setFilters({ ...filters, success: e.target.value })}
+              className="px-3 py-1.5 border rounded text-sm"
+            >
+              <option value="all">الكل</option>
+              <option value="true">ناجح</option>
+              <option value="false">فاشل</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Activity Timeline */}
+        <div className="bg-card border border-border/55 rounded-xl p-4">
+          <h2 className="text-lg font-bold mb-4">سجل النشاط</h2>
+          {activities.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">لا توجد أنشطة</p>
+          ) : (
+            <div className="space-y-3">
+              {activities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-4 p-4 border border-border/40 rounded-lg bg-muted/20"
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                    {activity.success ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-destructive" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium">{activity.action}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(activity.createdAt).toLocaleString("ar-LY")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{activity.identifier}</p>
+                    {activity.failureReason && (
+                      <p className="text-xs text-destructive mt-1">{activity.failureReason}</p>
+                    )}
+                    <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                      {activity.provider && <span>المزود: {activity.provider}</span>}
+                      {activity.ipAddress && <span>IP: {activity.ipAddress}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
     </AdminLayout>
   );
 }

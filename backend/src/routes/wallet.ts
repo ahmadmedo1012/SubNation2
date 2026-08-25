@@ -16,7 +16,8 @@ router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return res.status(401).json(createErrorResponse("المستخدم غير موجود", ErrorCode.UNAUTHORIZED));
+  if (!user)
+    return res.status(401).json(createErrorResponse("المستخدم غير موجود", ErrorCode.UNAUTHORIZED));
 
   const recentOrders = await db
     .select({
@@ -76,7 +77,8 @@ router.post("/topups", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateTopupBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const {
     amount,
     payment_method,
@@ -87,7 +89,9 @@ router.post("/topups", requireUser, async (req, res) => {
   } = parse.data;
 
   if (amount <= 0 || amount > 10000) {
-    return res.status(400).json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
   }
 
   const method = payment_method ?? "mobile_transfer";
@@ -96,12 +100,16 @@ router.post("/topups", requireUser, async (req, res) => {
     return res.status(400).json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
   }
   if (method === "lypay" && !sender_account) {
-    return res.status(400).json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
   }
 
   if (method === "mobile_transfer" && sender_phone) {
     if (!normalizeLibyanPhone(sender_phone)) {
-      return res.status(400).json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
+      return res
+        .status(400)
+        .json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
     }
   }
 
