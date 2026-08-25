@@ -21,23 +21,38 @@ migrations, cron registration, admin UI. Fixes landed in this pass:
 | 6 | Product-page recommendations skeleton matches real card height                                          | Removes layout jump (cosmetic)                                                          |
 | 7 | GH Actions bumped to Node-24-compatible versions (`checkout@v5`, `setup-node@v5`, `codeql-action@v4`)   | Silences Node-20 deprecation warnings before the Sep 2026 forced migration              |
 
-### 🔴 OPEN PRODUCTION INCIDENT (2026-08-25)
+### 🔴→✅ PRODUCTION INCIDENT (2026-08-25) — RESOLVED same day
 
-The live process at subnation.ly is healthy (`/api/healthz` = 200) but every
-DB-backed public endpoint returns 500 (`/api/products`, `/api/products/stats`,
-`/api/products/flash-sale`, `/api/auth/providers`). Failure latency (~1 s
-rejection, not timeout, not instant DNS error) points to Postgres connection
-refusal from Neon. Because boot migrations exit the process on critical
-failure in production, the DB was reachable at last boot and broke afterwards.
-**Operator actions required (Render + Neon dashboards):**
+**Symptom:** live process healthy (`/api/healthz` 200) while every DB-backed
+endpoint returned 500 (`/api/products`, `/api/products/stats`,
+`/api/products/flash-sale`, `/api/auth/providers`).
 
-1. Render → `subnation` service → Logs: read the exact Postgres error text.
-2. Render → Environment → `DATABASE_URL` → use "Test connection"; re-paste the
-   current Neon pooled connection string if the endpoint changed.
-3. Neon console: verify the project/branch is active (free-tier branches can be
-   suspended or archived after inactivity), compute is not disabled, and the
-   storage/connection limits are not exhausted.
-4. After fixing, redeploy and smoke-test `/api/products` (expect 200).
+**Root cause:** Neon free-tier compute quota exhausted ("exceeded the compute
+time quota"). The old project's endpoint had autosuspend disabled
+(`suspend_timeout_seconds: 0`) and the org pooled quota across projects;
+~583 active hours in August burned the monthly budget, and Neon archived the
+branch. Boot migrations had succeeded before exhaustion, so the process stayed
+up while every query failed.
+
+**Resolution:**
+1. New Neon project `SubNation2` (`calm-art-99771185`, aws-us-east-1, PG17)
+   created via API using the NEON_API_KEY stored in Render env vars.
+2. Full schema applied by running `runMigrations()` against it (33 public
+   tables, idempotent re-run verified). Risk-pipeline tables added to
+   migrate.ts first (see fix above) so the schema is genuinely complete.
+3. Admins seeded from Render's ADMIN_USERNAME/ADMIN_PASSWORD; the default
+   `admin/SubNation@2026` account created by migration bootstrap was deleted.
+4. `DATABASE_URL` on Render switched to the new pooled URI; redeployed and
+   verified end-to-end (products/stats/flash-sale/providers/sitemap all 200).
+
+**Sustainability warning (read this):** this org's plan forbids changing
+autosuspend (API returns 412), and the endpoint reports
+`suspend_timeout_seconds: 0`. With any query keeping compute awake forever,
+expect ~180 CU-hours/month burn from SubNation alone — right at the free-tier
+ceiling. Mitigations shipped: copilot-reaper cron reduced 5 min → hourly.
+If the quota trips again near month-end, durable options are: (a) Neon Launch
+plan (~$19/mo), (b) a fresh Neon account whose defaults enable autosuspend,
+(c) accept mid-cycle outages that reset on the 1st.
 
 For a concise full-project reference (features, defects, recommendations) see
 [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md). The on-call playbook lives in
