@@ -129,10 +129,46 @@ services:
         sync: false
       - key: GENERIC_ALERT_WEBHOOK_URL
         sync: false
+      # --- AI Admin Copilot (010) + Catalog Enrichment (012) --------------
+      # The LLM client speaks the OpenAI-compatible protocol (OpenRouter /
+      # NVIDIA / any compatible gateway). All four keys below are REQUIRED
+      # as a set for the admin copilot UI and for the enrichment runner to
+      # produce drafts; leaving them unset keeps both features cleanly
+      # disabled (copilot replies "unavailable", runner refuses to start).
+      # Set them in the Render Dashboard when enabling AI features.
+      - key: COPILOT_PROVIDER
+        sync: false
+      - key: COPILOT_API_KEY
+        sync: false
+      - key: COPILOT_MODEL
+        sync: false
+      - key: COPILOT_BASE_URL
+        sync: false
+      # Enrichment cron (012). The runner additionally refuses to run unless
+      # WORKER_TIER=true — i.e. only after the subnation-worker tier below is
+      # actually provisioned AND carries WORKER_TIER=true (see its comment).
+      # Until then these placeholders are inert documentation.
+      - key: ENRICHMENT_RUNNER_ENABLED
+        value: "false"
+      - key: ENRICHMENT_DAILY_TOKEN_CAP
+        sync: false
+      - key: ENRICHMENT_PER_RUN_CAP
+        sync: false
+      # Inventory demand forecast cron (011). Same tier rule as enrichment.
+      - key: FORECAST_RUNNER_ENABLED
+        value: "false"
       # Migration switch for the worker tier. Today the web process runs
       # the heartbeat + alerting evaluator + cron under a Redis-backed
-      # leader lock. Once `subnation-worker` is provisioned, set this to
-      # `true` so the web tier stops running them and the worker takes over.
+      # leader lock. To split tiers you must do BOTH of these together:
+      #   1. Provision `subnation-worker` below (Render Dashboard →
+      #      Apply Blueprint / create from yaml), then set on the WEB
+      #      service: DISABLE_WEB_SCHEDULERS=true.
+      #   2. Set on the WORKER service: WORKER_TIER=true (+ its own
+      #      SENTRY_DSN / TELEGRAM_* / DISCORD_WEBHOOK_URL so alerting
+      #      works from the worker tier too).
+      # Flipping only one side either stops all crons (no worker running
+      # them) or double-runs them (both tiers racing under the leader
+      # lock — harmless but wasteful).
       - key: DISABLE_WEB_SCHEDULERS
         value: "false"
       # Operator escape hatch for the boot-time migration runner. When
@@ -166,6 +202,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # DORMANT BY DESIGN: this service only takes over cron + alerting when
+      # BOTH of the following are true (see the DISABLE_WEB_SCHEDULERS comment
+      # on the web service for the full flip procedure):
+      #   - here: WORKER_TIER=true (+ WORKER_TIER_ID=worker for run records)
+      #   - web:  DISABLE_WEB_SCHEDULERS=true
+      # While the worker is not provisioned, the web tier owns all schedulers.
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL

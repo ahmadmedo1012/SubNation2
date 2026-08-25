@@ -93,7 +93,8 @@ CREATE TABLE inventory (
   extra_details text,
   is_sold boolean NOT NULL DEFAULT false,
   sold_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE orders (

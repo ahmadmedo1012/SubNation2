@@ -1091,8 +1091,14 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
           ? Array.from({ length: 2 }).map((_, i) => (
               <div
                 key={i}
-                className="bg-card border border-border/50 rounded-xl h-48 skeleton-shimmer"
-              />
+                // Mirrors the real card below (rounded-2xl p-3.5 + aspect-[4/3]
+                // image + two text rows) so the grid doesn't jump on load.
+                className="bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 skeleton-shimmer"
+              >
+                <div className="aspect-[4/3] rounded-xl" />
+                <div className="h-4 w-3/4 rounded-md" />
+                <div className="h-3 w-1/2 rounded-md" />
+              </div>
             ))
           : recommendations.map((r) => (
               <div

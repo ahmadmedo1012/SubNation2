@@ -1,7 +1,15 @@
 name: Deploy to Render
 
+# Gate deploys on CI success. `workflow_run` fires after the CI workflow
+# completes on the default branch; the guard job re-checks the conclusion so
+# a red CI (lint/typecheck/tests/build) can NEVER reach production again.
+# (Root cause this fixes: in June 2026, three commits landed on main with
+# failing backend tests and were deployed anyway because this workflow
+# triggered directly on push without inspecting CI.)
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 # Serialise deploys by main: a second push waits for the first deploy hook
@@ -17,6 +25,8 @@ permissions:
 jobs:
   deploy:
     name: Trigger Render Deploy Hook
+    # Skip silently when CI failed — the commit stays undeployed until fixed.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -24,10 +34,11 @@ jobs:
       - name: Announce deploy intent
         run: |
           echo "::notice::Triggering Render deploy"
-          echo "  ref:    $GITHUB_REF"
-          echo "  sha:    $GITHUB_SHA"
-          echo "  actor:  $GITHUB_ACTOR"
-          echo "  run_id: $GITHUB_RUN_ID"
+          echo "  ref:        ${{ github.event.workflow_run.head_branch }}"
+          echo "  sha:        ${{ github.event.workflow_run.head_sha }}"
+          echo "  actor:      ${{ github.actor }}"
+          echo "  run_id:     $GITHUB_RUN_ID"
+          echo "  ci_run_id:  ${{ github.event.workflow_run.id }}"
 
       - name: Validate RENDER_DEPLOY_HOOK_URL secret presence
         env:

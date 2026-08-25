@@ -1,9 +1,43 @@
 # SubNation — Platform State & Operational Roadmap
 
 **Authoritative document.** Single source of truth for platform state, production readiness, and forward roadmap.
-**Last audit:** 2026-05-17.
+**Last audit:** 2026-08-25 (post-hiatus full review; prior audit 2026-05-17).
 **Production canonical:** [`https://subnation.ly`](https://subnation.ly).
-**Codebase scale:** 25,449 LOC frontend (TS/TSX) + 17,477 LOC backend (TS) + 22 Drizzle tables + 14 admin pages + 14 admin API routes + 98 vitest cases.
+**Codebase scale:** 25,449 LOC frontend (TS/TSX) + 17,477 LOC backend (TS) + 22 Drizzle tables + 14 admin pages + 14 admin API routes + 312 vitest cases (286 backend + 26 frontend).
+
+### 2026-08-25 hardening pass (what changed since the May audit)
+
+Features shipped June 2026 (specs 010–012 — AI Admin Copilot, inventory demand
+forecast, Arabic catalog enrichment) were verified fully wired: routes,
+migrations, cron registration, admin UI. Fixes landed in this pass:
+
+| # | Fix                                                                                                    | Why it matters                                                                          |
+| - | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| 1 | Test-harness DDL drift: `inventory.updated_at` added to `backend/src/test/db.ts`                        | Un-breaks the 12 checkout tests that failed CI on the last three June commits           |
+| 2 | `deploy.yml` now gates on CI success (`workflow_run` + conclusion check)                                 | Root cause of "failing tests deployed anyway" in June 2026 is structurally closed       |
+| 3 | `Dockerfile` passes `VITE_GSC_VERIFICATION` as ARG/ENV                                                  | Search Console verification token actually reaches production builds now                |
+| 4 | `render.yaml`: `COPILOT_*` / `ENRICHMENT_*` / `FORECAST_RUNNER_ENABLED` placeholders + worker-flip docs | AI features have a documented, inert-by-default enable path                             |
+| 5 | `safeDecrypt` logs a warning on decryption failure                                                      | Key-mismatch/corruption is visible in logs instead of silent raw-value fallback         |
+| 6 | Product-page recommendations skeleton matches real card height                                          | Removes layout jump (cosmetic)                                                          |
+| 7 | GH Actions bumped to Node-24-compatible versions (`checkout@v5`, `setup-node@v5`, `codeql-action@v4`)   | Silences Node-20 deprecation warnings before the Sep 2026 forced migration              |
+
+### 🔴 OPEN PRODUCTION INCIDENT (2026-08-25)
+
+The live process at subnation.ly is healthy (`/api/healthz` = 200) but every
+DB-backed public endpoint returns 500 (`/api/products`, `/api/products/stats`,
+`/api/products/flash-sale`, `/api/auth/providers`). Failure latency (~1 s
+rejection, not timeout, not instant DNS error) points to Postgres connection
+refusal from Neon. Because boot migrations exit the process on critical
+failure in production, the DB was reachable at last boot and broke afterwards.
+**Operator actions required (Render + Neon dashboards):**
+
+1. Render → `subnation` service → Logs: read the exact Postgres error text.
+2. Render → Environment → `DATABASE_URL` → use "Test connection"; re-paste the
+   current Neon pooled connection string if the endpoint changed.
+3. Neon console: verify the project/branch is active (free-tier branches can be
+   suspended or archived after inactivity), compute is not disabled, and the
+   storage/connection limits are not exhausted.
+4. After fixing, redeploy and smoke-test `/api/products` (expect 200).
 
 For a concise full-project reference (features, defects, recommendations) see
 [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md). The on-call playbook lives in

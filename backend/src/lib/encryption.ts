@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { logger } from "./logger";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
@@ -45,7 +46,16 @@ export function safeDecrypt(value: string | null): string | null {
   if (isEncrypted(value)) {
     try {
       return decrypt(value);
-    } catch {
+    } catch (err) {
+      // Encrypted-format value that failed authentication/decryption — almost
+      // always an ENCRYPTION_KEY mismatch or a corrupted row. Return the raw
+      // value for backward compatibility, but never silently: operators must
+      // be able to spot key-rotation drift in the logs. The raw value is NOT
+      // logged (it is credential material).
+      logger.warn(
+        { category: "security", err },
+        "safeDecrypt: decryption failed — returning raw value (check ENCRYPTION_KEY consistency)",
+      );
       return value;
     }
   }
