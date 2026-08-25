@@ -107,17 +107,17 @@ export function signUserToken(payload: Record<string, unknown>): string {
 export type TokenError = "expired" | "invalid";
 export type VerifyResult<T> = { ok: true; payload: T } | { ok: false; reason: TokenError };
 
-export function verifyUserToken(token: string): { userId: number } | null {
+export function verifyUserToken(token: string): { userId: number; sessionId?: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: number };
+    return jwt.verify(token, JWT_SECRET) as { userId: number; sessionId?: string };
   } catch {
     return null;
   }
 }
 
-export function verifyUserTokenDetailed(token: string): VerifyResult<{ userId: number }> {
+export function verifyUserTokenDetailed(token: string): VerifyResult<{ userId: number; sessionId?: string }> {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: number };
+    const payload = jwt.verify(token, JWT_SECRET) as { userId: number; sessionId?: string };
     return { ok: true, payload };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };

@@ -7,6 +7,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -85,6 +86,9 @@ export const productsTable = pgTable(
     activeIdx: index("idx_products_active").on(t.isActive),
     archivedIdx: index("idx_products_archived").on(t.isArchived),
     activeCategoryIdx: index("idx_products_active_category").on(t.isActive, t.category),
+    // Mirrors boot migration `idx_products_slug_unique` (migrate.ts) — kept
+    // in-schema so drizzle-kit introspection doesn't report drift.
+    slugUniqueIdx: uniqueIndex("idx_products_slug_unique").on(t.slug),
   }),
 );
 

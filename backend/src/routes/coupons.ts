@@ -113,29 +113,31 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
       .json(createErrorResponse("نسبة الخصم لا يمكن أن تتجاوز 100%", ErrorCode.INVALID_DATA));
 
   const upperCode = code.trim().toUpperCase();
-  const existing = await db
-    .select()
-    .from(couponsTable)
-    .where(eq(couponsTable.code, upperCode))
-    .limit(1);
-  if (existing.length > 0)
-    return res
-      .status(409)
-      .json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
 
-  const [coupon] = await db
-    .insert(couponsTable)
-    .values({
-      code: upperCode,
-      type,
-      value: String(value),
-      minOrderAmount: String(min_order_amount ?? 0),
-      maxUses: max_uses ?? null,
-      expiresAt: expires_at ? new Date(expires_at) : null,
-      description: description?.trim() || null,
-      isActive: true,
-    })
-    .returning();
+  // Insert directly and map the unique-violation to 409 — the previous
+  // select-then-insert had a TOCTOU window where two concurrent creates
+  // both passed the check and the loser surfaced as a raw 500.
+  let coupon: typeof couponsTable.$inferSelect;
+  try {
+    [coupon] = await db
+      .insert(couponsTable)
+      .values({
+        code: upperCode,
+        type,
+        value: String(value),
+        minOrderAmount: String(min_order_amount ?? 0),
+        maxUses: max_uses ?? null,
+        expiresAt: expires_at ? new Date(expires_at) : null,
+        description: description?.trim() || null,
+        isActive: true,
+      })
+      .returning();
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "23505") {
+      return res.status(409).json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
+    }
+    throw err;
+  }
 
   return res.status(201).json(formatCoupon(coupon));
 });

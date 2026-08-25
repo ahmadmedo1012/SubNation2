@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "idx_products_slug_unique" ON "products" USING btree ("slug");

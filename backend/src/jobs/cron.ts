@@ -84,7 +84,7 @@ export function initCronJobs() {
     }
   });
 
-  // 4. Every 5 minutes: copilot preview reaper (010-ai-admin-copilot).
+  // 4. Hourly at :45: copilot preview reaper (010-ai-admin-copilot).
   //    Deletes copilot_previews rows older than 24h past their expiry. The
   //    audit chain stays intact because copilot_actions.preview_id is
   //    `ON DELETE SET NULL`.
@@ -93,7 +93,7 @@ export function initCronJobs() {
   //    so a 5-minute reap cadence bought nothing except keeping the Neon
   //    compute from ever idling (each wake resets autosuspend — the direct
   //    cause of the Aug 2026 free-tier quota exhaustion).
-  cron.schedule("15 * * * *", async () => {
+  cron.schedule("45 * * * *", async () => {
     try {
       const removed = await reapExpiredCopilotPreviews();
       if (removed > 0) {

@@ -8,6 +8,13 @@
       "when": 1787657086847,
       "tag": "0000_nifty_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787700343467,
+      "tag": "0001_smooth_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

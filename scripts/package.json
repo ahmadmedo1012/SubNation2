@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
+    "argon2": "^0.44.0",
     "drizzle-orm": "catalog:",
     "pg": "^8.20.0"
   },

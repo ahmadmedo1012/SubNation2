@@ -5,9 +5,26 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router = Router();
 
+// ── Day boundaries in Libya wall-clock time ──────────────────────────────────
+// Libya = Africa/Tripoli = fixed UTC+2 (no DST since 2013). All "today"/chart
+// buckets must align three layers that previously disagreed (server-local
+// midnight = UTC on Render; SQL DATE() truncation in the session TZ; and
+// UTC-based toISOString keys) — flipping the dashboard's "today" at 02:00
+// local. Everything below computes Tripoli calendar days explicitly.
+const TRIPOLI_OFFSET_MS = 2 * 60 * 60 * 1000;
+
+/** UTC instant of Tripoli midnight for the day containing `now`. */
+function tripoliDayStartUtc(now: number): number {
+  return Math.floor((now + TRIPOLI_OFFSET_MS) / 86_400_000) * 86_400_000 - TRIPOLI_OFFSET_MS;
+}
+
+/** YYYY-MM-DD Tripoli calendar key from a UTC day-start instant. */
+function tripoliKey(dayStartUtcMs: number): string {
+  return new Date(dayStartUtcMs + TRIPOLI_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 router.get("/stats", requireAdmin, async (_req, res) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date(tripoliDayStartUtc(Date.now()));
 
   const [
     [totalUsers],
@@ -56,46 +73,45 @@ router.get("/stats", requireAdmin, async (_req, res) => {
 router.get("/chart-data", requireAdmin, async (req, res) => {
   const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
 
-  // Single aggregate query instead of N+1 sequential queries
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - (days - 1));
-  startDate.setHours(0, 0, 0, 0);
+  // Start bound = Tripoli midnight (days-1) ago.
+  const todayStartMs = tripoliDayStartUtc(Date.now());
+  const startDate = new Date(todayStartMs - (days - 1) * 86_400_000);
 
+  // Group by the Tripoli calendar day: shift each timestamp +2h inside SQL
+  // before truncating to DATE (Postgres session TZ is UTC on Neon).
   const [orderRows, userRows] = await Promise.all([
     db.execute(sql`
       SELECT
-        DATE(${ordersTable.createdAt}) AS day,
+        DATE((${ordersTable.createdAt} AT TIME ZONE 'UTC') + INTERVAL '2 hours') AS day,
         COUNT(*)::int AS orders,
         COALESCE(SUM(${ordersTable.amount}), 0) AS revenue,
         COALESCE(SUM(${ordersTable.discountAmount}), 0) AS discounts,
         COUNT(CASE WHEN ${ordersTable.couponCode} IS NOT NULL THEN 1 END)::int AS coupon_orders
       FROM ${ordersTable}
       WHERE ${ordersTable.createdAt} >= ${startDate}
-      GROUP BY DATE(${ordersTable.createdAt})
+      GROUP BY 1
     `),
     db.execute(sql`
       SELECT
-        DATE(${usersTable.createdAt}) AS day,
+        DATE((${usersTable.createdAt} AT TIME ZONE 'UTC') + INTERVAL '2 hours') AS day,
         COUNT(*)::int AS users
       FROM ${usersTable}
       WHERE ${usersTable.createdAt} >= ${startDate}
-      GROUP BY DATE(${usersTable.createdAt})
+      GROUP BY 1
     `),
   ]);
 
-  // Build lookup maps
+  // `r.day` is already a Tripoli calendar date — use it verbatim as key.
   const orderMap = new Map<string, any>();
   for (const r of orderRows.rows ?? orderRows) {
-    const key = new Date(r.day as string).toISOString().slice(0, 10);
-    orderMap.set(key, r);
+    orderMap.set(String(r.day).slice(0, 10), r);
   }
   const userMap = new Map<string, number>();
   for (const r of userRows.rows ?? userRows) {
-    const key = new Date(r.day as string).toISOString().slice(0, 10);
-    userMap.set(key, Number(r.users));
+    userMap.set(String(r.day).slice(0, 10), Number(r.users));
   }
 
-  // Generate result for each day
+  // Generate result for each Tripoli calendar day
   const result: Array<{
     date: string;
     orders: number;
@@ -106,9 +122,9 @@ router.get("/chart-data", requireAdmin, async (req, res) => {
   }> = [];
 
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const dayStartMs = todayStartMs - i * 86_400_000;
+    const key = tripoliKey(dayStartMs);
+    const d = new Date(dayStartMs);
     const oRow = orderMap.get(key);
 
     result.push({

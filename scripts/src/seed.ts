@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import argon2 from "argon2";
 import { count, eq } from "drizzle-orm";
 import { loadLocalEnv } from "./runtime";
 
@@ -8,10 +8,16 @@ loadLocalEnv();
 const { db, pool, usersTable, productsTable, adminUsersTable, loginAttemptsTable } =
   await import("@workspace/db");
 
-function hashPassword(password: string): string {
-  return createHash("sha256")
-    .update(password + "subnation_salt")
-    .digest("hex");
+// Argon2id with the same OWASP-2024 parameters as backend/src/lib/crypto.ts —
+// seeded admins previously landed on the legacy SHA-256 tier (valid but
+// weakest hash, flagged needsRehash on first login).
+async function hashPassword(password: string): Promise<string> {
+  return argon2.hash(password, {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 1,
+  });
 }
 
 async function seed() {
@@ -32,7 +38,7 @@ async function seed() {
     if (resetAdminPassword) {
       await db
         .update(adminUsersTable)
-        .set({ passwordHash: hashPassword(adminPassword) })
+        .set({ passwordHash: await hashPassword(adminPassword) })
         .where(eq(adminUsersTable.id, existingAdmin.id));
       await db
         .delete(loginAttemptsTable)
@@ -44,7 +50,7 @@ async function seed() {
   } else {
     await db.insert(adminUsersTable).values({
       username: adminUsername,
-      passwordHash: hashPassword(adminPassword),
+      passwordHash: await hashPassword(adminPassword),
       displayName: "SubNation Admin",
     });
     console.log(`✅ Created admin: ${adminUsername}`);

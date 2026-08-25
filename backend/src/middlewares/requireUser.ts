@@ -4,6 +4,9 @@ import { verifyUserTokenDetailed } from "../lib/jwt";
 
 export interface AuthenticatedRequest extends Request {
   userId: number;
+  /** Session row id embedded in the JWT (lib/session.ts) — may be absent on
+   * legacy tokens minted before session unification. */
+  sessionId?: string;
 }
 
 export function requireUser(req: Request, res: Response, next: NextFunction): void {
@@ -24,6 +27,8 @@ export function requireUser(req: Request, res: Response, next: NextFunction): vo
     }
     return;
   }
-  (req as AuthenticatedRequest).userId = result.payload.userId;
+  const authReq = req as AuthenticatedRequest;
+  authReq.userId = result.payload.userId;
+  authReq.sessionId = result.payload.sessionId;
   next();
 }

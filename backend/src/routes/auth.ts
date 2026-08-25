@@ -1,5 +1,5 @@
 import { db, sessionsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { Router } from "express";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -82,6 +82,11 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
     .where(eq(usersTable.id, userId))
     .limit(1);
 
+  // Revoke every session row for this user FIRST — the device list is
+  // backed by these rows, and previously the Firebase branch returned
+  // early without touching them (and without clearing the cookie).
+  await db.delete(sessionsTable).where(eq(sessionsTable.userId, userId));
+
   // Revoke Firebase refresh tokens to logout from all devices
   if (auth && userId) {
     try {
@@ -94,6 +99,14 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
           action: "logout_all",
           success: true,
           ...clientInfo,
+        });
+
+        // Clear httpOnly cookie (the firebase branch used to skip this)
+        res.clearCookie("auth_token", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          path: "/",
         });
 
         return res.json({ success: true, message: "تم تسجيل الخروج من جميع الأجهزة" });
@@ -599,23 +612,27 @@ router.post("/firebase/refresh", async (req, res) => {
 });
 
 router.get("/sessions", requireUser, async (req, res) => {
-  const userId = (req as AuthenticatedRequest).userId;
+  const authReq = req as AuthenticatedRequest;
 
-  const [user] = await db
-    .select({ lastAuthAt: usersTable.lastAuthAt })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
+  // Real session rows written by createUserSession at every login. The
+  // previous implementation returned a single hardcoded "current" row —
+  // pure cosmetics that made the device list meaningless.
+  const rows = await db
+    .select()
+    .from(sessionsTable)
+    .where(and(eq(sessionsTable.userId, authReq.userId), gte(sessionsTable.expiresAt, new Date())))
+    .orderBy(desc(sessionsTable.createdAt));
 
   return res.json({
-    sessions: [
-      {
-        id: "current",
-        device: "الجهاز الحالي",
-        lastActive: user?.lastAuthAt?.toISOString() ?? new Date().toISOString(),
-        current: true,
-      },
-    ],
+    sessions: rows.map((r) => ({
+      id: r.id,
+      device: r.userAgent?.slice(0, 120) || "جهاز غير معروف",
+      ip: r.ipAddress ?? null,
+      created_at: r.createdAt?.toISOString() ?? null,
+      expires_at: r.expiresAt?.toISOString() ?? null,
+      lastActive: r.createdAt?.toISOString() ?? new Date().toISOString(),
+      current: authReq.sessionId ? r.id === authReq.sessionId : false,
+    })),
   });
 });
 
@@ -640,7 +657,7 @@ export function formatUser(user: typeof usersTable.$inferSelect) {
     display_name: user.displayName ?? null,
     photo_url: user.photoUrl ?? null,
     auth_provider: user.authProvider,
-    wallet_balance: user.walletBalance,
+    wallet_balance: parseFloat(String(user.walletBalance)),
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,
     lifetime_spend: parseFloat(String(user.lifetimeSpend)),

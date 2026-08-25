@@ -52,7 +52,17 @@ import type { NextFunction, Request, Response } from "express";
  */
 export function cloudflareClientIp(req: Request, _res: Response, next: NextFunction): void {
   const cfIp = req.headers["cf-connecting-ip"];
-  if (typeof cfIp === "string" && cfIp.length > 0 && cfIp.length < 64) {
+  // Sanity-check the value looks like an IP before overriding req.ip — a
+  // malformed/garbage header would otherwise poison rate-limit keys and
+  // audit logs for that request.
+  const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const IPV6_RE = /^[0-9a-fA-F:]{2,45}$/;
+  if (
+    typeof cfIp === "string" &&
+    cfIp.length > 0 &&
+    cfIp.length < 64 &&
+    (IPV4_RE.test(cfIp) || IPV6_RE.test(cfIp))
+  ) {
     // Override the read-only req.ip getter via Object.defineProperty so
     // express-rate-limit, getClientInfo, audit-log, and Sentry user
     // context all read the corrected value transparently.
