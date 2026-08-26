@@ -158,48 +158,46 @@ router.post("/topups", requireUser, async (req, res) => {
     })
     .returning();
 
-    // ── Telegram approval request (fire-and-forget) ────────────────────────
-    // Operators approve/reject directly from the admin group via inline
-    // buttons; the webhook at /api/webhook/telegram executes the decision
-    // (allowlist-gated by TELEGRAM_ADMIN_IDS). Never blocks the user.
-    if ((initialStatus as string) === "pending") {
-      void (async () => {
-        try {
-          const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
-          const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
-          if (!botToken || !chatId) return;
-          const text =
-            `💰 *طلب شحن جديد #${topup.id}\n` +
-            `• الهاتف: ${sender_phone ?? "—"}\n` +
-            `• المبلغ: ${amount} د.ل\n` +
-            `• الطريقة: ${method}${payment_network ? ` (${payment_network})` : ""}*`;
-          const res = await fetch(
-            `https://api.telegram.org/bot${botToken}/sendMessage`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text,
-                parse_mode: "Markdown",
-                reply_markup: {
-                  inline_keyboard: [
-                    [
-                      { text: "✅ موافقة", callback_data: `topup_app:${topup.id}` },
-                      { text: "❌ رفض", callback_data: `topup_rej:${topup.id}` },
-                    ],
-                  ],
-                },
-              }),
-              signal: AbortSignal.timeout(10_000),
+  // ── Telegram approval request (fire-and-forget) ────────────────────────
+  // Operators approve/reject directly from the admin group via inline
+  // buttons; the webhook at /api/webhook/telegram executes the decision
+  // (allowlist-gated by TELEGRAM_ADMIN_IDS). Never blocks the user.
+  if ((initialStatus as string) === "pending") {
+    void (async () => {
+      try {
+        const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
+        const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
+        if (!botToken || !chatId) return;
+        const text =
+          `💰 *طلب شحن جديد #${topup.id}\n` +
+          `• الهاتف: ${sender_phone ?? "—"}\n` +
+          `• المبلغ: ${amount} د.ل\n` +
+          `• الطريقة: ${method}${payment_network ? ` (${payment_network})` : ""}*`;
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text,
+            parse_mode: "Markdown",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "✅ موافقة", callback_data: `topup_app:${topup.id}` },
+                  { text: "❌ رفض", callback_data: `topup_rej:${topup.id}` },
+                ],
+              ],
             },
-          );
-          if (!res.ok) logger.warn({ status: res.status }, "[wallet] telegram approval notify failed");
-        } catch (err) {
-          logger.warn({ err }, "[wallet] telegram approval notify threw");
-        }
-      })();
-    }
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok)
+          logger.warn({ status: res.status }, "[wallet] telegram approval notify failed");
+      } catch (err) {
+        logger.warn({ err }, "[wallet] telegram approval notify threw");
+      }
+    })();
+  }
 
   const [currentUser] = await db
     .select()

@@ -72,7 +72,9 @@ export function parseTopupCallback(
   return { action: m[1] === "app" ? "approve" : "reject", topupId: id };
 }
 
-async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
+async function handleCallbackQuery(
+  cq: NonNullable<TelegramUpdate["callback_query"]>,
+): Promise<void> {
   const botToken = getBotToken();
   if (!botToken) return;
 
@@ -83,7 +85,12 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
       { fromId: cq.from.id, data: cq.data },
       "[telegram-webhook] unauthorized callback attempt",
     );
-    await answerCallbackQuery(botToken, cq.id, "عذراً، لا تمتلك الصلاحية لتنفيذ هذا الإجراء.", true);
+    await answerCallbackQuery(
+      botToken,
+      cq.id,
+      "عذراً، لا تمتلك الصلاحية لتنفيذ هذا الإجراء.",
+      true,
+    );
     return;
   }
 
@@ -153,10 +160,7 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
     action === "approve" ? "✅ تمت الموافقة وإضافة الرصيد" : "❌ تم رفض الطلب",
   );
 
-  logger.info(
-    { topupId, action, actor: actorTag },
-    "[telegram-webhook] topup decision executed",
-  );
+  logger.info({ topupId, action, actor: actorTag }, "[telegram-webhook] topup decision executed");
 }
 
 router.post("/telegram", async (req, res) => {
