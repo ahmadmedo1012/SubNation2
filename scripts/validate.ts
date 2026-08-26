@@ -10,7 +10,6 @@
  * Responsibilities:
  *   1. Run Firebase Google Sign-In E2E (Playwright)
  *   2. Run OTP login validation
- *   3. Run password login validation
  *   4. Run Redis ping + rate-limit round-trip
  *   5. Run Socket.IO connect → emit → receive on `user:{userId}`
  *   6. Run worker heartbeat freshness check

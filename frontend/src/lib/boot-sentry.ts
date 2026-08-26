@@ -87,7 +87,11 @@ const opQueue: SentryOp[] = [];
  */
 export function enqueueSentryOp(op: SentryOp): void {
   if (sentryReady) {
-    try { op(sentryReady); } catch { /* never break app flow */ }
+    try {
+      op(sentryReady);
+    } catch {
+      /* never break app flow */
+    }
     return;
   }
   if (opQueue.length < MAX_BUFFER) opQueue.push(op);
@@ -151,7 +155,13 @@ export function scheduleSentryBoot(): void {
       // Drain deferred operations.
       while (opQueue.length) {
         const op = opQueue.shift();
-        if (op) { try { op(SentryModule); } catch { /* noop */ } }
+        if (op) {
+          try {
+            op(SentryModule);
+          } catch {
+            /* noop */
+          }
+        }
       }
     });
   };
