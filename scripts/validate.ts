@@ -141,8 +141,7 @@ async function dispatchValidationFailureAlert(
 ): Promise<void> {
   try {
     // Import alerting service dynamically to avoid circular dependencies
-    const { alertingService } =
-      await import("../backend/src/services/alerting.service.js");
+    const { alertingService } = await import("../backend/src/services/alerting.service.js");
 
     // Build a validation failure alert event
     const alertEvent = {

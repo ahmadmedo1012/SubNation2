@@ -3,6 +3,7 @@ import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
 import healthRouter from "./health";
 import { authRouter } from "./auth";
+import { telegramWebhookRouter } from "./telegram-webhook";
 import {
   productsRouter,
   getProductStatsHandler,
@@ -30,7 +31,8 @@ router.use(cwvRouter);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.use("/auth", authRouter);
-router.use("/auth", authProviderPublicRouter); // /api/auth/providers, /api/auth/telegram, etc.
+router.use("/auth", authProviderPublicRouter);
+router.use("/webhook", telegramWebhookRouter); // /api/webhook/telegram — CSRF-skipped via "/api/webhook" prefix // /api/auth/providers, /api/auth/telegram, etc.
 router.use("/auth", whatsappAuthRouter); // /api/auth/whatsapp/start, /api/auth/whatsapp/verify
 
 // ── Products ──────────────────────────────────────────────────────────────────

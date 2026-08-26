@@ -115,6 +115,15 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      # Telegram approval-gateway webhook (port of the smart-menu pattern).
+      # Secret must match the value passed to setWebhook's secret_token.
+      # TELEGRAM_ADMIN_IDS = comma-separated personal Telegram IDs allowed to
+      # press the approve/reject buttons (bootstrap: send /start to the bot,
+      # it replies with your IDs).
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_ADMIN_IDS
+        sync: false
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD
