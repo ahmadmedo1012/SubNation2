@@ -460,10 +460,23 @@ async function computeReadyState(): Promise<HealthCheckResponseExtended> {
       const result = await checkRedis(redis);
       checks.redis = result;
       fold(result);
+    } else if (!process.env.REDIS_URL) {
+      // Intentional single-tier mode (redis-client.ts CASE 1): no URL set,
+      // in-memory stores active. This is a deliberate operator choice —
+      // degraded (yellow), NOT failing (red). Marking it "failing" made the
+      // public /status page show an outage during normal operation.
+      checks.redis = {
+        status: "degraded",
+        optional: true,
+        error: "REDIS_URL not configured — in-memory fallback (single-instance mode)",
+        lastCheckedAt: new Date().toISOString(),
+      };
+      fold(checks.redis);
     } else {
+      // URL is configured but the client failed to connect — real outage.
       checks.redis = {
         status: "failing",
-        error: "Redis not configured",
+        error: "Redis configured but unavailable",
         lastCheckedAt: new Date().toISOString(),
       };
       fold(checks.redis);

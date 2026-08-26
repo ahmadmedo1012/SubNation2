@@ -61,6 +61,9 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <Logo size="lg" />
           </div>
+          {/* Screen-reader heading — the page previously had no h1 (axe
+              page-has-heading-one); the visual tabs carry the title. */}
+          <h1 className="sr-only">تسجيل الدخول إلى SubNation</h1>
         </div>
 
         {/* Tabs — clear login vs register */}

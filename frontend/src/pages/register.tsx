@@ -44,6 +44,7 @@ export default function RegisterPage() {
           <div className="flex justify-center mb-4">
             <Logo size="lg" />
           </div>
+          <h1 className="sr-only">إنشاء حساب جديد في SubNation</h1>
         </div>
 
         {/* Tabs — clear login vs register */}

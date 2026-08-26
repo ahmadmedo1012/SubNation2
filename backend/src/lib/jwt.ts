@@ -115,7 +115,9 @@ export function verifyUserToken(token: string): { userId: number; sessionId?: st
   }
 }
 
-export function verifyUserTokenDetailed(token: string): VerifyResult<{ userId: number; sessionId?: string }> {
+export function verifyUserTokenDetailed(
+  token: string,
+): VerifyResult<{ userId: number; sessionId?: string }> {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as { userId: number; sessionId?: string };
     return { ok: true, payload };

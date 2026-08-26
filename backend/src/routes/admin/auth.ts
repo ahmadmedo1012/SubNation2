@@ -35,7 +35,8 @@ const ADMIN_COOKIE_OPTIONS: CookieOptions = {
 
 router.post("/login", async (req, res) => {
   const parse = AdminLoginBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { username, password } = parse.data;
 
   const lockoutKey = `admin:${username}`;
@@ -54,18 +55,24 @@ router.post("/login", async (req, res) => {
     .limit(1);
   if (!admin) {
     await recordFailedAttempt(lockoutKey);
-    return res.status(401).json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
   if (!admin.isActive) {
     // Soft-disabled admin — same 401 response as a wrong password so
     // we don't leak account-state to a brute-forcer.
     await recordFailedAttempt(lockoutKey);
-    return res.status(401).json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
   const { valid, needsRehash } = await verifyPassword(password, admin.passwordHash);
   if (!valid) {
     await recordFailedAttempt(lockoutKey);
-    return res.status(401).json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
   if (needsRehash) {
     await db
@@ -92,7 +99,8 @@ router.post("/login", async (req, res) => {
 
 router.post("/login/verify-2fa", async (req, res) => {
   const { temp_token, code } = req.body ?? {};
-  if (!temp_token || !code) return res.status(400).json(createErrorResponse("بيانات غير مكتملة", ErrorCode.INVALID_DATA));
+  if (!temp_token || !code)
+    return res.status(400).json(createErrorResponse("بيانات غير مكتملة", ErrorCode.INVALID_DATA));
 
   try {
     const decoded = jwt.verify(temp_token, ADMIN_JWT_SECRET) as {
@@ -111,12 +119,16 @@ router.post("/login/verify-2fa", async (req, res) => {
       .limit(1);
 
     if (!admin || !admin.totpEnabled || !admin.totpSecret) {
-      return res.status(401).json(createErrorResponse("بيانات الاعتماد غير صالحة", ErrorCode.UNAUTHORIZED));
+      return res
+        .status(401)
+        .json(createErrorResponse("بيانات الاعتماد غير صالحة", ErrorCode.UNAUTHORIZED));
     }
 
     const isValid = verifySync({ token: code, secret: admin.totpSecret });
     if (!isValid) {
-      return res.status(401).json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
+      return res
+        .status(401)
+        .json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
     }
 
     const token = signAdminToken({ adminId: admin.id, role: admin.role });
@@ -128,7 +140,9 @@ router.post("/login/verify-2fa", async (req, res) => {
       permissions: admin.permissions ?? [],
     });
   } catch {
-    return res.status(401).json(createErrorResponse("جلسة غير صالحة أو منتهية الصلاحية", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("جلسة غير صالحة أو منتهية الصلاحية", ErrorCode.UNAUTHORIZED));
   }
 });
 
@@ -148,8 +162,7 @@ router.get("/probe", async (req, res) => {
   res.set("Cache-Control", "private, max-age=0, no-store");
 
   const token =
-    req.cookies?.[ADMIN_COOKIE_NAME] ||
-    req.headers.authorization?.replace("Bearer ", "");
+    req.cookies?.[ADMIN_COOKIE_NAME] || req.headers.authorization?.replace("Bearer ", "");
   if (!token) {
     return res.status(200).json({ authenticated: false });
   }
@@ -214,7 +227,9 @@ router.get("/session", requireAdmin, async (req, res) => {
     .limit(1);
 
   if (!admin) {
-    return res.status(401).json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
   }
 
   return res.json({
@@ -261,12 +276,12 @@ router.post("/change-password", requireAdmin, async (req, res) => {
   };
 
   if (!current_password || !new_password) {
-    return res.status(400).json(createErrorResponse("كلمة المرور الحالية والجديدة مطلوبتان", ErrorCode.INVALID_DATA));
-  }
-  if (new_password.length < 8) {
     return res
       .status(400)
-      .json({ error: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" });
+      .json(createErrorResponse("كلمة المرور الحالية والجديدة مطلوبتان", ErrorCode.INVALID_DATA));
+  }
+  if (new_password.length < 8) {
+    return res.status(400).json({ error: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" });
   }
 
   const [admin] = await db
@@ -275,16 +290,16 @@ router.post("/change-password", requireAdmin, async (req, res) => {
     .where(eq(adminUsersTable.id, adminId))
     .limit(1);
   if (!admin) {
-    return res.status(401).json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
   }
 
   const lockoutKey = `admin-pwchange:${admin.username}`;
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
-    return res
-      .status(429)
-      .json({ error: `محاولات كثيرة. حاول بعد ${mins} دقيقة.` });
+    return res.status(429).json({ error: `محاولات كثيرة. حاول بعد ${mins} دقيقة.` });
   }
 
   const { valid } = await verifyPassword(current_password, admin.passwordHash);
@@ -293,7 +308,9 @@ router.post("/change-password", requireAdmin, async (req, res) => {
     void writeAuditLog(req, "admin.password_change_failed", "admin_user", adminId, {
       reason: "wrong_current_password",
     });
-    return res.status(401).json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
   await resetAttempts(lockoutKey);
 
@@ -326,21 +343,21 @@ router.patch("/profile", requireAdmin, async (req, res) => {
   };
 
   if (!current_password) {
-    return res
-      .status(400)
-      .json({ error: "كلمة المرور الحالية مطلوبة لتأكيد التغيير" });
+    return res.status(400).json({ error: "كلمة المرور الحالية مطلوبة لتأكيد التغيير" });
   }
   if (!username && !display_name) {
-    return res.status(400).json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
   }
   if (username !== undefined) {
     if (typeof username !== "string" || username.trim().length < 3) {
-      return res
-        .status(400)
-        .json({ error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" });
+      return res.status(400).json({ error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" });
     }
     if (username.trim().length > 100) {
-      return res.status(400).json(createErrorResponse("اسم المستخدم طويل جداً", ErrorCode.INVALID_DATA));
+      return res
+        .status(400)
+        .json(createErrorResponse("اسم المستخدم طويل جداً", ErrorCode.INVALID_DATA));
     }
   }
 
@@ -350,7 +367,9 @@ router.patch("/profile", requireAdmin, async (req, res) => {
     .where(eq(adminUsersTable.id, adminId))
     .limit(1);
   if (!admin) {
-    return res.status(401).json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
   }
 
   const { valid } = await verifyPassword(current_password, admin.passwordHash);
@@ -358,7 +377,9 @@ router.patch("/profile", requireAdmin, async (req, res) => {
     void writeAuditLog(req, "admin.profile_change_failed", "admin_user", adminId, {
       reason: "wrong_current_password",
     });
-    return res.status(401).json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
+    return res
+      .status(401)
+      .json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
 
   const updates: Partial<typeof adminUsersTable.$inferInsert> = {};
@@ -389,7 +410,9 @@ router.patch("/profile", requireAdmin, async (req, res) => {
       "code" in err &&
       (err as { code: string }).code === "23505"
     ) {
-      return res.status(409).json(createErrorResponse("اسم المستخدم مستخدم بالفعل", ErrorCode.ALREADY_EXISTS));
+      return res
+        .status(409)
+        .json(createErrorResponse("اسم المستخدم مستخدم بالفعل", ErrorCode.ALREADY_EXISTS));
     }
     throw err;
   }
@@ -411,7 +434,8 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
 router.post("/2fa/verify-setup", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
   const { code } = req.body ?? {};
-  if (!code) return res.status(400).json(createErrorResponse("الرمز مطلوب", ErrorCode.INVALID_DATA));
+  if (!code)
+    return res.status(400).json(createErrorResponse("الرمز مطلوب", ErrorCode.INVALID_DATA));
 
   const [admin] = await db
     .select()

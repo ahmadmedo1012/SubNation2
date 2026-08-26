@@ -133,8 +133,15 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
       })
       .returning();
   } catch (err) {
-    if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "23505") {
-      return res.status(409).json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code?: string }).code === "23505"
+    ) {
+      return res
+        .status(409)
+        .json(createErrorResponse("رمز الكوبون موجود مسبقاً", ErrorCode.ALREADY_EXISTS));
     }
     throw err;
   }
