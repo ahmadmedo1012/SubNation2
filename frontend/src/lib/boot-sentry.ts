@@ -76,6 +76,23 @@ function flushOne(Sentry: typeof import("@sentry/react"), event: BufferedEvent):
   }
 }
 
+type SentryOp = (S: typeof import("@sentry/react")) => void;
+const opQueue: SentryOp[] = [];
+
+/**
+ * Run a Sentry operation (setUser/setTag/captureMessage/…) as soon as the
+ * SDK is available; queued otherwise. Lets app modules avoid a STATIC
+ * @sentry/react import — which would drag vendor-sentry back into the
+ * entry graph and defeat this module's whole deferral.
+ */
+export function enqueueSentryOp(op: SentryOp): void {
+  if (sentryReady) {
+    try { op(sentryReady); } catch { /* never break app flow */ }
+    return;
+  }
+  if (opQueue.length < MAX_BUFFER) opQueue.push(op);
+}
+
 /** Install window error listeners. Call EARLY in main.tsx. */
 export function installBootErrorBuffer(): void {
   if (typeof window === "undefined") return;
@@ -126,10 +143,15 @@ export function scheduleSentryBoot(): void {
       // @sentry/react here to get a typed handle without a cyclic dep.
       const SentryModule = await import("@sentry/react");
       sentryReady = SentryModule;
-      // Drain the buffer in arrival order.
+      // Drain the event buffer in arrival order.
       while (buffer.length) {
         const event = buffer.shift();
         if (event) flushOne(SentryModule, event);
+      }
+      // Drain deferred operations.
+      while (opQueue.length) {
+        const op = opQueue.shift();
+        if (op) { try { op(SentryModule); } catch { /* noop */ } }
       }
     });
   };
