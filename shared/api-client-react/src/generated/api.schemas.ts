@@ -47,7 +47,10 @@ export interface AuthResponse {
   token: string;
 }
 
-export type ProductFaqItem = { [key: string]: unknown };
+export type ProductFaqItem = {
+  question: string;
+  answer: string;
+};
 
 export interface Product {
   id: number;

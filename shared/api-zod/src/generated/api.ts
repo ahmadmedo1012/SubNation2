@@ -79,7 +79,14 @@ export const ListProductsResponseItem = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   description_long: zod.string().nullish(),
-  faq: zod.array(zod.object({}).passthrough()).nullish(),
+  faq: zod
+    .array(
+      zod.object({
+        question: zod.string(),
+        answer: zod.string(),
+      }),
+    )
+    .nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
   category: zod.string().nullish(),
@@ -106,7 +113,14 @@ export const GetProductResponse = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   description_long: zod.string().nullish(),
-  faq: zod.array(zod.object({}).passthrough()).nullish(),
+  faq: zod
+    .array(
+      zod.object({
+        question: zod.string(),
+        answer: zod.string(),
+      }),
+    )
+    .nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
   category: zod.string().nullish(),
@@ -172,7 +186,14 @@ export const GetProductBySlugResponse = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   description_long: zod.string().nullish(),
-  faq: zod.array(zod.object({}).passthrough()).nullish(),
+  faq: zod
+    .array(
+      zod.object({
+        question: zod.string(),
+        answer: zod.string(),
+      }),
+    )
+    .nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
   category: zod.string().nullish(),

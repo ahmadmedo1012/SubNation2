@@ -1124,6 +1124,12 @@ components:
           type: ["array", "null"]
           items:
             type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+            required: [question, answer]
         image_url:
           type: ["string", "null"]
         price:
