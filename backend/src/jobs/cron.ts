@@ -93,7 +93,7 @@ export function initCronJobs() {
   //    so a 5-minute reap cadence bought nothing except keeping the Neon
   //    compute from ever idling (each wake resets autosuspend — the direct
   //    cause of the Aug 2026 free-tier quota exhaustion).
-// 8. Every 10 minutes: deterministic keep-alive self-ping + gateway ping.
+  // 8. Every 10 minutes: deterministic keep-alive self-ping + gateway ping.
   //    GitHub-cron external pings jitter 30-55 min under load, breaching
   //    Render's ~15-min idle window. In-process schedule has no jitter: this
   //    keeps THIS service warm and the openwa gateway's WhatsApp session
@@ -113,7 +113,7 @@ export function initCronJobs() {
     }
   });
 
-    cron.schedule("45 * * * *", async () => {
+  cron.schedule("45 * * * *", async () => {
     try {
       const removed = await reapExpiredCopilotPreviews();
       if (removed > 0) {

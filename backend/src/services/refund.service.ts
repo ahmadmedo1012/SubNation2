@@ -42,6 +42,7 @@
 import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
+import { computeTier } from "../lib/loyalty-tiers";
 
 export class RefundError extends Error {
   constructor(
@@ -112,7 +113,11 @@ export class RefundService {
       const amount = parseFloat(String(order.amount));
 
       const [user] = await tx
-        .select({ walletBalance: usersTable.walletBalance })
+        .select({
+          walletBalance: usersTable.walletBalance,
+          loyaltyPoints: usersTable.loyaltyPoints,
+          lifetimeSpend: usersTable.lifetimeSpend,
+        })
         .from(usersTable)
         .where(eq(usersTable.id, order.userId))
         .limit(1);
@@ -127,11 +132,27 @@ export class RefundService {
       const balanceBefore = parseFloat(String(user.walletBalance));
       const balanceAfter = +(balanceBefore + amount).toFixed(2);
 
+      // Loyalty reversal — mirror of checkout.service award: refunded money
+      // must not keep its points, lifetime spend, or tier. Floor at zero so a
+      // partially-spent balance can't go negative.
+      const pointsToRevoke = Math.min(Math.floor(amount), user.loyaltyPoints);
+      const newPoints = user.loyaltyPoints - pointsToRevoke;
+      const newLifetimeSpend = +Math.max(
+        0,
+        parseFloat(String(user.lifetimeSpend)) - amount,
+      ).toFixed(2);
+
       // Optimistic-lock wallet credit (same pattern as topup approval +
-      // checkout debit).
+      // checkout debit) extended to the loyalty columns so a concurrent
+      // purchase/refund can't lose either side.
       const walletUpdated = await tx
         .update(usersTable)
-        .set({ walletBalance: String(balanceAfter) })
+        .set({
+          walletBalance: String(balanceAfter),
+          loyaltyPoints: newPoints,
+          lifetimeSpend: String(newLifetimeSpend),
+          loyaltyTier: computeTier(newLifetimeSpend),
+        })
         .where(
           and(eq(usersTable.id, order.userId), eq(usersTable.walletBalance, String(balanceBefore))),
         )

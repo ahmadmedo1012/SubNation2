@@ -26,7 +26,7 @@ import { eq } from "drizzle-orm";
 import { Router } from "express";
 import { computePricing, isAppliedCoupon } from "../../lib/pricing";
 import { requireAdmin } from "../../middlewares/requireAdmin";
-import { POINTS_PER_LYD, POINTS_PER_REFERRAL } from "../loyalty";
+import { POINTS_PER_LYD, POINTS_PER_REFERRAL } from "../../lib/loyalty-tiers";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();

@@ -4,22 +4,17 @@ import { eq, desc, and } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { insertLedgerEntry } from "../lib/ledger";
+import { POINTS_PER_LYD, POINTS_PER_REFERRAL, TIER_THRESHOLDS } from "../lib/loyalty-tiers";
 
 /** Internal control-flow error for transactional conflicts. */
 class ConflictError extends Error {}
 
 const router = Router();
 
-export const POINTS_PER_LYD = 100;
-export const POINTS_PER_REFERRAL = 50;
-export const TIER_THRESHOLDS = { silver: 500, gold: 2000, platinum: 5000 } as const;
-
-export function computeTier(lifetimeSpend: number): string {
-  if (lifetimeSpend >= TIER_THRESHOLDS.platinum) return "platinum";
-  if (lifetimeSpend >= TIER_THRESHOLDS.gold) return "gold";
-  if (lifetimeSpend >= TIER_THRESHOLDS.silver) return "silver";
-  return "bronze";
-}
+// Single source of truth moved to lib/loyalty-tiers (services import from
+// there; this route re-exports for backward compatibility).
+import { computeTier as _computeTier } from "../lib/loyalty-tiers";
+void _computeTier;
 
 function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
   if (spend < TIER_THRESHOLDS.silver)

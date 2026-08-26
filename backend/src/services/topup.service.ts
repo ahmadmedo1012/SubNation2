@@ -1,7 +1,7 @@
 import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
-import { POINTS_PER_REFERRAL } from "../routes/loyalty";
+import { POINTS_PER_REFERRAL } from "../lib/loyalty-tiers";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";

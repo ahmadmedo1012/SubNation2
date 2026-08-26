@@ -13,7 +13,7 @@ import { safeDecrypt } from "../lib/encryption";
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
-import { computeTier } from "../routes/loyalty";
+import { computeTier } from "../lib/loyalty-tiers";
 
 /**
  * Checkout service — the single owner of the purchase flow.
