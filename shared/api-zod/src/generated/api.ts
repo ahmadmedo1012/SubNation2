@@ -15,6 +15,25 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary List the current user's active session rows
+ */
+export const ListSessionsResponse = zod.object({
+  sessions: zod
+    .array(
+      zod.object({
+        id: zod.string().optional(),
+        device: zod.string().optional(),
+        ip: zod.string().nullish(),
+        created_at: zod.string().nullish(),
+        expires_at: zod.string().nullish(),
+        lastActive: zod.string().optional(),
+        current: zod.boolean().optional(),
+      }),
+    )
+    .optional(),
+});
+
+/**
  * @summary Logout current user
  */
 export const LogoutResponse = zod.object({
@@ -56,8 +75,11 @@ export const ListProductsQueryParams = zod.object({
 
 export const ListProductsResponseItem = zod.object({
   id: zod.number(),
+  slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
+  description_long: zod.string().nullish(),
+  faq: zod.array(zod.object({}).passthrough()).nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
   category: zod.string().nullish(),
@@ -80,8 +102,11 @@ export const GetProductParams = zod.object({
 
 export const GetProductResponse = zod.object({
   id: zod.number(),
+  slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
+  description_long: zod.string().nullish(),
+  faq: zod.array(zod.object({}).passthrough()).nullish(),
   image_url: zod.string().nullish(),
   price: zod.number(),
   category: zod.string().nullish(),
@@ -135,6 +160,32 @@ export const GetFlashSaleResponse = zod.object({
 });
 
 /**
+ * @summary Product detail by slug (SEO route + crawler hits)
+ */
+export const GetProductBySlugParams = zod.object({
+  slug: zod.coerce.string(),
+});
+
+export const GetProductBySlugResponse = zod.object({
+  id: zod.number(),
+  slug: zod.string().nullish(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  description_long: zod.string().nullish(),
+  faq: zod.array(zod.object({}).passthrough()).nullish(),
+  image_url: zod.string().nullish(),
+  price: zod.number(),
+  category: zod.string().nullish(),
+  is_active: zod.boolean(),
+  usage_terms: zod.string().nullish(),
+  stock_count: zod.number(),
+  is_available: zod.boolean(),
+  sale_price: zod.number().nullish(),
+  discount_percent: zod.number().nullish(),
+  order_count: zod.number(),
+});
+
+/**
  * @summary List current user's orders
  */
 export const ListOrdersResponseItem = zod.object({
@@ -150,6 +201,10 @@ export const ListOrdersResponseItem = zod.object({
   delivered_extra_details: zod.string().nullish(),
   delivered_usage_terms: zod.string().nullish(),
   delivered_at: zod.string().nullish(),
+  coupon_code: zod.string().nullish(),
+  discount_amount: zod.number().optional(),
+  wallet_balance_before: zod.number().optional(),
+  wallet_balance_after: zod.number().optional(),
   created_at: zod.string(),
 });
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
@@ -159,6 +214,7 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
  */
 export const CreateOrderBody = zod.object({
   product_id: zod.number(),
+  coupon_code: zod.string().nullish(),
 });
 
 /**
@@ -181,6 +237,10 @@ export const GetOrderResponse = zod.object({
   delivered_extra_details: zod.string().nullish(),
   delivered_usage_terms: zod.string().nullish(),
   delivered_at: zod.string().nullish(),
+  coupon_code: zod.string().nullish(),
+  discount_amount: zod.number().optional(),
+  wallet_balance_before: zod.number().optional(),
+  wallet_balance_after: zod.number().optional(),
   created_at: zod.string(),
 });
 
@@ -206,6 +266,10 @@ export const GetWalletResponse = zod.object({
       delivered_extra_details: zod.string().nullish(),
       delivered_usage_terms: zod.string().nullish(),
       delivered_at: zod.string().nullish(),
+      coupon_code: zod.string().nullish(),
+      discount_amount: zod.number().optional(),
+      wallet_balance_before: zod.number().optional(),
+      wallet_balance_after: zod.number().optional(),
       created_at: zod.string(),
     }),
   ),

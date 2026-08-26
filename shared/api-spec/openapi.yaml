@@ -36,6 +36,23 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 
   # ── Auth ────────────────────────────────────────────────────────────────────
+  /auth/sessions:
+    get:
+      operationId: listSessions
+      tags: [auth]
+      summary: List the current user's active session rows
+      responses:
+        "200":
+          description: Session rows written at each login
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserSession"
   /auth/logout:
     post:
       operationId: logout
@@ -181,6 +198,31 @@ paths:
                 $ref: "#/components/schemas/FlashSaleResponse"
 
   # ── Orders ──────────────────────────────────────────────────────────────────
+  /products/by-slug/{slug}:
+    get:
+      operationId: getProductBySlug
+      tags: [products]
+      summary: Product detail by slug (SEO route + crawler hits)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product detail (same shape as /products/{id}, plus faq)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /orders:
     get:
       operationId: listOrders
@@ -232,6 +274,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Product not found or out of stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Concurrent conflict — inventory claimed by another buyer, or coupon exhausted
           content:
             application/json:
               schema:
@@ -1064,10 +1112,18 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: ["string", "null"]
         name:
           type: string
         description:
           type: ["string", "null"]
+        description_long:
+          type: ["string", "null"]
+        faq:
+          type: ["array", "null"]
+          items:
+            type: object
         image_url:
           type: ["string", "null"]
         price:
@@ -1141,6 +1197,8 @@ components:
       properties:
         product_id:
           type: integer
+        coupon_code:
+          type: ["string", "null"]
       required: [product_id]
 
     Order:
@@ -1171,9 +1229,35 @@ components:
           type: ["string", "null"]
         delivered_at:
           type: ["string", "null"]
+        coupon_code:
+          type: ["string", "null"]
+        discount_amount:
+          type: number
+        wallet_balance_before:
+          type: number
+        wallet_balance_after:
+          type: number
         created_at:
           type: string
       required: [id, order_code, product_id, product_name, amount, status, created_at]
+
+    UserSession:
+      type: object
+      properties:
+        id:
+          type: string
+        device:
+          type: string
+        ip:
+          type: ["string", "null"]
+        created_at:
+          type: ["string", "null"]
+        expires_at:
+          type: ["string", "null"]
+        lastActive:
+          type: string
+        current:
+          type: boolean
 
     # ── Wallet ────────────────────────────────────────────────────────────────
     WalletInfo:

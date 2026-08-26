@@ -47,11 +47,19 @@ export interface AuthResponse {
   token: string;
 }
 
+export type ProductFaqItem = { [key: string]: unknown };
+
 export interface Product {
   id: number;
+  /** @nullable */
+  slug?: string | null;
   name: string;
   /** @nullable */
   description?: string | null;
+  /** @nullable */
+  description_long?: string | null;
+  /** @nullable */
+  faq?: ProductFaqItem[] | null;
   /** @nullable */
   image_url?: string | null;
   price: number;
@@ -103,6 +111,8 @@ export interface FlashSaleResponse {
 
 export interface CreateOrderBody {
   product_id: number;
+  /** @nullable */
+  coupon_code?: string | null;
 }
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
@@ -133,7 +143,25 @@ export interface Order {
   delivered_usage_terms?: string | null;
   /** @nullable */
   delivered_at?: string | null;
+  /** @nullable */
+  coupon_code?: string | null;
+  discount_amount?: number;
+  wallet_balance_before?: number;
+  wallet_balance_after?: number;
   created_at: string;
+}
+
+export interface UserSession {
+  id?: string;
+  device?: string;
+  /** @nullable */
+  ip?: string | null;
+  /** @nullable */
+  created_at?: string | null;
+  /** @nullable */
+  expires_at?: string | null;
+  lastActive?: string;
+  current?: boolean;
 }
 
 export interface WalletInfo {
@@ -520,6 +548,10 @@ export interface CopilotHistoryEntry {
   /** @nullable */
   failure_reason?: string | null;
 }
+
+export type ListSessions200 = {
+  sessions?: UserSession[];
+};
 
 export type ListProductsParams = {
   /**
