@@ -73,6 +73,7 @@ const AdminAdminsPage = lazyWithRetry(() => import("@/pages/admin/admins"));
 const AdminRiskPage = lazyWithRetry(() => import("@/pages/admin/risk"));
 const AdminRiskEventPage = lazyWithRetry(() => import("@/pages/admin/risk-event"));
 const AdminEnrichmentPage = lazyWithRetry(() => import("@/pages/admin/enrichment"));
+const AdminWhatsAppPage = lazyWithRetry(() => import("@/pages/admin/whatsapp"));
 
 // Public pages without customer chrome
 const StatusPage = lazyWithRetry(() => import("@/pages/status"));
@@ -214,6 +215,7 @@ function AdminProtectedRoutes() {
         <Route path="/admin/risk" component={AdminRiskPage} />
         <Route path="/admin/risk/events/:id" component={AdminRiskEventPage} />
         <Route path="/admin/products/enrichment" component={AdminEnrichmentPage} />
+        <Route path="/admin/whatsapp" component={AdminWhatsAppPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

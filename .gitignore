@@ -62,6 +62,7 @@ Thumbs.db
 
 # Vite / tooling caches
 frontend/.vite/
+/.lighthouseci/
 .turbo/
 .eslintcache
 .pnpm-debug.log*

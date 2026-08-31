@@ -22,6 +22,7 @@ import {
   Moon,
   Package,
   Plus,
+  QrCode,
   RefreshCw,
   Search,
   Settings,
@@ -92,6 +93,7 @@ const NAV_SECTIONS = [
       { href: "/admin/admins", label: "إدارة المسؤولين", icon: ShieldCheck, scope: "admins" },
       { href: "/admin/risk", label: "مراقبة المخاطر", icon: Shield, scope: "users" },
       { href: "/admin/system", label: "حالة النظام", icon: Activity, scope: "settings" },
+      { href: "/admin/whatsapp", label: "جلسة واتساب", icon: QrCode, scope: "settings" },
       { href: "/admin/settings", label: "الإعدادات", icon: Settings },
     ],
   },
@@ -183,6 +185,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/alerts": "صندوق التنبيهات",
   "/admin/security": "الأمان",
   "/admin/system": "حالة النظام",
+  "/admin/whatsapp": "جلسة واتساب",
   "/admin/admins": "إدارة المسؤولين",
 };
 

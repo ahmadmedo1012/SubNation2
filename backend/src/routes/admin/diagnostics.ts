@@ -1,13 +1,21 @@
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { getRedisClient } from "../../lib/redis-client";
-import {
-  captureMessage,
-  captureSubsystemException,
-} from "../../lib/sentry";
+import { captureMessage, captureSubsystemException } from "../../lib/sentry";
+import { writeAuditLog } from "../../lib/audit";
 import { getIO } from "../../lib/socket";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { diagnosticPing } from "../../telegram";
+import {
+  createWhatsAppSession,
+  deleteWhatsAppSession,
+  getWhatsAppSessionQr,
+  listWhatsAppSessions,
+  requestWhatsAppPairCode,
+  startWhatsAppSession,
+  WhatsAppGatewayError,
+} from "../../services/openwa.service";
 
 const router: IRouter = Router();
 
@@ -123,11 +131,9 @@ router.get("/sentry-debug", requireAdmin, (req, res, next) => {
   }
 
   if (mode === "subsystem") {
-    captureSubsystemException(
-      "test",
-      new Error("[sentry-debug] admin-triggered subsystem test"),
-      { triggered_by: "diagnostics endpoint" },
-    );
+    captureSubsystemException("test", new Error("[sentry-debug] admin-triggered subsystem test"), {
+      triggered_by: "diagnostics endpoint",
+    });
     return res.json({
       ok: true,
       mode: "subsystem",
@@ -161,6 +167,104 @@ router.get("/sentry-debug", requireAdmin, (req, res, next) => {
       subsystem: "?mode=subsystem   — sends via captureSubsystemException",
     },
   });
+});
+
+// ── WhatsApp session management ─────────────────────────────────────────────
+//
+// The OpenWA API key is server-only. These admin endpoints proxy the small
+// operator surface needed to provision, pair, inspect, and remove a session;
+// only an authenticated admin with the `settings` permission reaches them via
+// the parent admin router mount.
+
+function whatsappGatewayError(res: Response, err: unknown) {
+  if (err instanceof WhatsAppGatewayError) {
+    const code =
+      err.statusCode === 400
+        ? ErrorCode.INVALID_DATA
+        : err.statusCode === 404
+          ? ErrorCode.NOT_FOUND
+          : err.statusCode === 409
+            ? ErrorCode.CONFLICT
+            : ErrorCode.SERVICE_UNAVAILABLE;
+    return res
+      .status(err.statusCode)
+      .json(createErrorResponse("تعذر تنفيذ عملية جلسة واتساب", code));
+  }
+  return res
+    .status(502)
+    .json(createErrorResponse("بوابة واتساب غير متاحة حالياً", ErrorCode.SERVICE_UNAVAILABLE));
+}
+
+function sessionIdParam(req: Request): string {
+  const value = req.params.id;
+  return typeof value === "string" ? value : "";
+}
+
+router.get("/whatsapp/sessions", requireAdmin, async (_req, res) => {
+  try {
+    return res.json({ sessions: await listWhatsAppSessions() });
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
+});
+
+router.post("/whatsapp/sessions", requireAdmin, async (req, res) => {
+  try {
+    const name = typeof req.body?.name === "string" ? req.body.name : "";
+    const session = await createWhatsAppSession(name);
+    void writeAuditLog(req, "whatsapp.session_create", "whatsapp_session", null, {
+      sessionId: session.id,
+      name: session.name,
+    });
+    return res.status(201).json({ session });
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
+});
+
+router.post("/whatsapp/sessions/:id/start", requireAdmin, async (req, res) => {
+  try {
+    const session = await startWhatsAppSession(sessionIdParam(req));
+    void writeAuditLog(req, "whatsapp.session_start", "whatsapp_session", null, {
+      sessionId: session.id,
+    });
+    return res.json({ session });
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
+});
+
+router.post("/whatsapp/sessions/:id/pair-code", requireAdmin, async (req, res) => {
+  try {
+    const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
+    const result = await requestWhatsAppPairCode(sessionIdParam(req), phone);
+    void writeAuditLog(req, "whatsapp.session_pair_code", "whatsapp_session", null, {
+      sessionId: result.session.id,
+    });
+    return res.json(result);
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
+});
+
+router.get("/whatsapp/sessions/:id/qr", requireAdmin, async (req, res) => {
+  try {
+    return res.json(await getWhatsAppSessionQr(sessionIdParam(req)));
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
+});
+
+router.delete("/whatsapp/sessions/:id", requireAdmin, async (req, res) => {
+  try {
+    const result = await deleteWhatsAppSession(sessionIdParam(req));
+    void writeAuditLog(req, "whatsapp.session_delete", "whatsapp_session", null, {
+      sessionId: result.id,
+    });
+    return res.json(result);
+  } catch (err) {
+    return whatsappGatewayError(res, err);
+  }
 });
 
 // ── Telegram diagnostic ping ─────────────────────────────────────────────────

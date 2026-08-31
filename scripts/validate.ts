@@ -29,8 +29,17 @@
  *     pnpm tsx scripts/validate.ts --help      # show all options
  */
 
-import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -57,10 +66,11 @@ interface ValidationReport {
 interface JourneyTimeouts {
   firebase: number;
   otp: number;
-  password: number;
   redis: number;
   socket: number;
   admin: number;
+  mobile: number;
+  lighthouse: number;
   sitemapRobots: number;
   sentry: number;
 }
@@ -79,10 +89,11 @@ const validationRunsDir = path.join(
 const JOURNEY_TIMEOUTS: JourneyTimeouts = Object.freeze({
   firebase: 60_000,
   otp: 60_000,
-  password: 60_000,
   redis: 10_000,
   socket: 30_000,
   admin: 10_000,
+  mobile: 10_000,
+  lighthouse: 5 * 60_000,
   sitemapRobots: 10_000,
   sentry: 60_000,
 });
@@ -185,44 +196,107 @@ async function checkLighthouse(): Promise<ValidationResult> {
   try {
     const appOrigin = process.env.APP_ORIGIN || "https://subnation.ly";
 
-    // Check if Lighthouse is installed
+    // Resolve the workspace-local binary. Never use bare `npx lhci`: if the
+    // binary is absent, npx may download a different package named `lhci`.
     try {
-      execSync("npx --version", { stdio: "ignore" });
+      execSync("pnpm exec lhci --version", { stdio: "ignore" });
     } catch {
       return {
         name: "lighthouse",
         status: "fail",
         durationMs: Math.round(performance.now() - start),
-        error: "Lighthouse CLI not available. Install with: npm install -g @lhci/cli",
+        error: "Lighthouse CI is not available from the workspace dependency graph",
       };
     }
 
-    // Run Lighthouse for mobile (Moto G Power) - 3 runs as per spec
-    const mobileOutput = execSync(
-      `npx lhci autorun --collect.url=${appOrigin} --collect.numberOfRuns=3 --collect.chromeFlags='--no-sandbox --disable-gpu' --config.lighthouse.config=performance`,
-      { encoding: "utf8", stdio: "pipe", timeout: 120000 },
-    ).trim();
+    const collectScores = (preset: "mobile" | "desktop"): number[] => {
+      const outputDir = mkdtempSync(path.join(tmpdir(), "subnation-lhci-"));
+      try {
+        try {
+          execFileSync(
+            "pnpm",
+            [
+              "exec",
+              "lhci",
+              "collect",
+              `--url=${appOrigin}`,
+              "--numberOfRuns=3",
+              "--settings.onlyCategories=performance",
+              ...(preset === "desktop" ? ["--settings.preset=desktop"] : []),
+              "--settings.chromeFlags=--no-sandbox --disable-gpu",
+              `--outputDir=${outputDir}`,
+            ],
+            { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 },
+          );
+        } catch (err: unknown) {
+          // LHCI writes a useful runtimeError report even when collection
+          // exits non-zero. Prefer that concise, actionable reason over the
+          // CLI's enormous JSON/stderr dump (especially on a suspended host).
+          const report = readdirSync(outputDir).find((file) => /^lhr-.*\.json$/.test(file));
+          let runtimeErrorMessage: string | undefined;
+          if (report) {
+            try {
+              const lhr = JSON.parse(readFileSync(path.join(outputDir, report), "utf8")) as {
+                runtimeError?: { code?: string; message?: string };
+              };
+              if (lhr.runtimeError) {
+                runtimeErrorMessage = `${preset} Lighthouse runtime error: ${lhr.runtimeError.code ?? "unknown"}: ${lhr.runtimeError.message ?? "unknown"}`;
+              }
+            } catch {
+              // Fall through to the concise process-level failure below.
+            }
+          }
+          if (runtimeErrorMessage) throw new Error(runtimeErrorMessage, { cause: err });
+          const exitCode =
+            err && typeof err === "object" && "status" in err && typeof err.status === "number"
+              ? ` (exit code ${err.status})`
+              : "";
+          throw new Error(`${preset} Lighthouse collection failed${exitCode}`, { cause: err });
+        }
 
-    // Parse mobile score from Lighthouse output
-    const mobileMatch = mobileOutput.match(/"performance":\s*(\d+)/);
-    const mobileScore = mobileMatch ? parseInt(mobileMatch[1], 10) : 0;
+        const scores = readdirSync(outputDir)
+          .filter((file) => /^lhr-.*\.json$/.test(file))
+          .map(
+            (file) =>
+              JSON.parse(readFileSync(path.join(outputDir, file), "utf8")) as {
+                categories?: { performance?: { score?: unknown } };
+                runtimeError?: { code?: string; message?: string };
+              },
+          )
+          .map((lhr) => {
+            if (lhr.runtimeError) {
+              throw new Error(
+                `${lhr.runtimeError.code ?? "lighthouse_runtime_error"}: ${lhr.runtimeError.message ?? "unknown error"}`,
+              );
+            }
+            const score = lhr.categories?.performance?.score;
+            if (typeof score !== "number" || !Number.isFinite(score)) {
+              throw new Error("Lighthouse output did not contain a performance score");
+            }
+            return Math.round(score * 100);
+          });
 
-    // Run Lighthouse for desktop - 3 runs as per spec
-    const desktopOutput = execSync(
-      `npx lhci autorun --collect.url=${appOrigin} --collect.numberOfRuns=3 --collect.chromeFlags='--no-sandbox --disable-gpu --window-size=1920,1080' --config.lighthouse.config=performance`,
-      { encoding: "utf8", stdio: "pipe", timeout: 120000 },
-    ).trim();
+        if (scores.length !== 3) {
+          throw new Error(`Expected 3 Lighthouse reports, found ${scores.length}`);
+        }
+        return scores;
+      } finally {
+        rmSync(outputDir, { recursive: true, force: true });
+      }
+    };
 
-    // Parse desktop score
-    const desktopMatch = desktopOutput.match(/"performance":\s*(\d+)/);
-    const desktopScore = desktopMatch ? parseInt(desktopMatch[1], 10) : 0;
+    const mobileScores = collectScores("mobile");
+    const desktopScores = collectScores("desktop");
+    const median = (scores: number[]) => scores.slice().sort((a, b) => a - b)[1];
+    const mobileScore = median(mobileScores);
+    const desktopScore = median(desktopScores);
 
     const passed = mobileScore >= 90 && desktopScore >= 98;
 
     return {
       name: "lighthouse",
       status: passed ? "pass" : "fail",
-      observed: `mobile=${mobileScore}, desktop=${desktopScore}`,
+      observed: `mobile=${mobileScore} (${mobileScores.join(",")}), desktop=${desktopScore} (${desktopScores.join(",")})`,
       expected: "mobile≥90, desktop≥98",
       durationMs: Math.round(performance.now() - start),
       error: passed
@@ -336,14 +410,18 @@ async function checkSentry(): Promise<ValidationResult> {
   const start = performance.now();
 
   try {
-    const sentryDsn = process.env.SENTRY_DSN_BACKEND || process.env.SENTRY_DSN_FRONTEND;
+    const sentryDsn =
+      process.env.SENTRY_DSN_BACKEND ||
+      process.env.SENTRY_DSN ||
+      process.env.SENTRY_DSN_FRONTEND ||
+      process.env.VITE_SENTRY_DSN;
 
     if (!sentryDsn) {
       return {
         name: "sentry",
         status: "fail",
         durationMs: Math.round(performance.now() - start),
-        error: "SENTRY_DSN_BACKEND or SENTRY_DSN_FRONTEND not configured",
+        error: "A Sentry DSN is not configured",
       };
     }
 
@@ -369,10 +447,12 @@ async function checkSentry(): Promise<ValidationResult> {
       console.log("[sentry] SENTRY_AUTH_TOKEN not configured, skipping synthetic error send");
       return {
         name: "sentry",
-        status: "pass",
-        observed: "DSN configured, auth token not available for synthetic test",
+        status: "fail",
+        observed: "DSN configured, synthetic event not sent",
         expected: "Error received with source-mapped frame",
         durationMs: Math.round(performance.now() - start),
+        error:
+          "SENTRY_AUTH_TOKEN is not configured; use the authenticated /api/admin/diagnostics/sentry-debug?mode=throw check",
       };
     }
 
@@ -429,13 +509,16 @@ async function checkSentry(): Promise<ValidationResult> {
 
     console.log(`[sentry] Would send synthetic error with correlation_id=${correlationId}`);
 
-    // For now, assume success if DSN and auth are configured
+    // Preparing an event is not a receipt test. Do not report success until
+    // a real event is sent and queried back with its source-mapped frame.
     return {
       name: "sentry",
-      status: "pass",
+      status: "fail",
       observed: `DSN configured, synthetic error prepared (correlation_id=${correlationId})`,
       expected: "Error received with source-mapped frame",
       durationMs: Math.round(performance.now() - start),
+      error:
+        "Synthetic event transport/receipt verification is not implemented; use the authenticated diagnostics endpoint",
     };
   } catch (err: unknown) {
     return {
@@ -450,65 +533,68 @@ async function checkSentry(): Promise<ValidationResult> {
 // ── Existing Validation Checks (from task 43.1) ─────────────────────────────
 
 async function checkFirebase(): Promise<ValidationResult> {
-  // Placeholder for Firebase Google Sign-In E2E (Playwright)
   return {
     name: "firebase",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "Google Sign-In E2E completes",
+    durationMs: 0,
+    error: "Firebase E2E requires a configured Playwright test account",
   };
 }
 
 async function checkOtp(): Promise<ValidationResult> {
-  // Placeholder for OTP login validation
   return {
     name: "otp",
-    status: "pass",
-    durationMs: 100,
-  };
-}
-
-async function checkPassword(): Promise<ValidationResult> {
-  // Placeholder for password login validation
-  return {
-    name: "password",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "WhatsApp OTP issue + verify completes",
+    durationMs: 0,
+    error: "OTP E2E requires a disposable test phone and a ready OpenWA session",
   };
 }
 
 async function checkRedis(): Promise<ValidationResult> {
-  // Placeholder for Redis ping + rate-limit round-trip
   return {
     name: "redis",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "Redis ping and rate-limit round-trip succeed",
+    durationMs: 0,
+    error: "Redis journey is not wired to a live test target",
   };
 }
 
 async function checkSocket(): Promise<ValidationResult> {
-  // Placeholder for Socket.IO connect → emit → receive
   return {
     name: "socket",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "Socket.IO connect, emit, and receive succeed",
+    durationMs: 0,
+    error: "Socket.IO E2E is not wired to a live authenticated test target",
   };
 }
 
 async function checkAdmin(): Promise<ValidationResult> {
-  // Placeholder for admin dashboard load smoke test
   return {
     name: "admin",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "Admin dashboard loads with a test admin account",
+    durationMs: 0,
+    error: "Admin E2E requires a disposable admin account",
   };
 }
 
 async function checkMobile(): Promise<ValidationResult> {
-  // Placeholder for mobile rendering smoke test
   return {
     name: "mobile",
-    status: "pass",
-    durationMs: 100,
+    status: "fail",
+    observed: "not executed",
+    expected: "Home page renders at mobile viewport",
+    durationMs: 0,
+    error: "Mobile rendering E2E requires a configured browser runner",
   };
 }
 
@@ -522,13 +608,12 @@ async function runValidation(): Promise<ValidationReport> {
   const checks = [
     { name: "firebase", fn: checkFirebase, timeout: JOURNEY_TIMEOUTS.firebase },
     { name: "otp", fn: checkOtp, timeout: JOURNEY_TIMEOUTS.otp },
-    { name: "password", fn: checkPassword, timeout: JOURNEY_TIMEOUTS.password },
     { name: "redis", fn: checkRedis, timeout: JOURNEY_TIMEOUTS.redis },
     { name: "socket", fn: checkSocket, timeout: JOURNEY_TIMEOUTS.socket },
     { name: "admin", fn: checkAdmin, timeout: JOURNEY_TIMEOUTS.admin },
-    { name: "mobile", fn: checkMobile, timeout: JOURNEY_TIMEOUTS.sitemapRobots },
+    { name: "mobile", fn: checkMobile, timeout: JOURNEY_TIMEOUTS.mobile },
     // 43.2 additions
-    { name: "lighthouse", fn: checkLighthouse, timeout: JOURNEY_TIMEOUTS.sitemapRobots },
+    { name: "lighthouse", fn: checkLighthouse, timeout: JOURNEY_TIMEOUTS.lighthouse },
     { name: "sitemap", fn: checkSitemap, timeout: JOURNEY_TIMEOUTS.sitemapRobots },
     { name: "robots", fn: checkRobots, timeout: JOURNEY_TIMEOUTS.sitemapRobots },
     { name: "sentry", fn: checkSentry, timeout: JOURNEY_TIMEOUTS.sentry },
@@ -536,10 +621,12 @@ async function runValidation(): Promise<ValidationReport> {
 
   for (const check of checks) {
     try {
-      const { durationMs } = await measure(check.fn, check.timeout);
+      const { result, durationMs } = await measure(check.fn, check.timeout);
       results.push({
+        ...result,
+        // The runner owns the measured duration. A check must not be able to
+        // report a stale or fabricated duration in the persisted report.
         name: check.name,
-        status: "pass",
         durationMs,
       });
     } catch (err: unknown) {
@@ -628,7 +715,6 @@ function printHelp(): void {
     "Checks:",
     "  - Firebase Google Sign-In E2E (Playwright)",
     "  - OTP login validation",
-    "  - Password login validation",
     "  - Redis ping + rate-limit round-trip",
     "  - Socket.IO connect → emit → receive",
     "  - Worker heartbeat freshness",
@@ -646,10 +732,10 @@ function printHelp(): void {
     "Timeouts (per journey):",
     `  Firebase:     ${JOURNEY_TIMEOUTS.firebase / 1000}s`,
     `  OTP:          ${JOURNEY_TIMEOUTS.otp / 1000}s`,
-    `  Password:     ${JOURNEY_TIMEOUTS.password / 1000}s`,
     `  Redis:        ${JOURNEY_TIMEOUTS.redis / 1000}s`,
     `  Socket.IO:    ${JOURNEY_TIMEOUTS.socket / 1000}s`,
     `  Admin:        ${JOURNEY_TIMEOUTS.admin / 1000}s`,
+    `  Lighthouse:   ${JOURNEY_TIMEOUTS.lighthouse / 1000}s`,
     `  Sitemap/Robots: ${JOURNEY_TIMEOUTS.sitemapRobots / 1000}s`,
     `  Sentry:       ${JOURNEY_TIMEOUTS.sentry / 1000}s`,
     `  Total:        ${TOTAL_TIMEOUT_MS / 1000}s`,
@@ -669,7 +755,7 @@ async function main(): Promise<number> {
 
   let report: ValidationReport;
   try {
-    report = await measure(runValidation, TOTAL_TIMEOUT_MS);
+    report = (await measure(runValidation, TOTAL_TIMEOUT_MS)).result;
   } catch (err: unknown) {
     process.stderr.write(
       `[validate] total timeout: ${err instanceof Error ? err.message : String(err)}\n`,

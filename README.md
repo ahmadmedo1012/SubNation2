@@ -143,6 +143,9 @@ Most important keys:
 
 See `config/env.example` for the full annotated reference.
 
+For pairing and removing the WhatsApp OTP session, see
+[`docs/WHATSAPP_OPERATIONS.md`](./docs/WHATSAPP_OPERATIONS.md).
+
 ---
 
 ## Main API routes

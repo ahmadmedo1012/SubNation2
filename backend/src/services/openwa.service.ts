@@ -61,25 +61,35 @@
 
 import { logger } from "../lib/logger";
 
-interface GatewayConfig {
+interface GatewayAuthConfig {
   baseUrl: string;
   apiKey: string;
+}
+
+interface GatewayConfig extends GatewayAuthConfig {
   /** Either an existing session id (`sess_…`) or a session name. */
   sessionRef: string;
   autoCreate: boolean;
 }
 
-function readGatewayConfig(): GatewayConfig | null {
+function readGatewayAuthConfig(): GatewayAuthConfig | null {
   const baseUrl = (process.env.WHATSAPP_OTP_BASE_URL ?? "").trim().replace(/\/+$/, "");
   const apiKey = (process.env.WHATSAPP_OTP_API_KEY ?? "").trim();
+  if (!baseUrl || !apiKey) return null;
+
+  return { baseUrl, apiKey };
+}
+
+function readGatewayConfig(): GatewayConfig | null {
+  const auth = readGatewayAuthConfig();
   const sessionRef = (process.env.WHATSAPP_OTP_SESSION ?? "").trim();
-  if (!baseUrl || !apiKey || !sessionRef) return null;
+  if (!auth || !sessionRef) return null;
 
   const autoCreateRaw = (process.env.WHATSAPP_OTP_AUTO_CREATE_SESSION ?? "").trim().toLowerCase();
   // Default ON. Only disable when the operator explicitly opts out.
   const autoCreate = !["0", "false", "no", "off"].includes(autoCreateRaw);
 
-  return { baseUrl, apiKey, sessionRef, autoCreate };
+  return { ...auth, sessionRef, autoCreate };
 }
 
 /**
@@ -144,7 +154,7 @@ interface SessionRecord {
 
 const REQUEST_TIMEOUT_MS = 8_000;
 
-function authHeaders(config: GatewayConfig): Record<string, string> {
+function authHeaders(config: GatewayAuthConfig): Record<string, string> {
   return {
     "Content-Type": "application/json",
     "X-API-Key": config.apiKey,
@@ -152,7 +162,7 @@ function authHeaders(config: GatewayConfig): Record<string, string> {
 }
 
 async function gatewayFetch(
-  config: GatewayConfig,
+  config: GatewayAuthConfig,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -175,9 +185,7 @@ function looksLikeValidSessionName(value: string): boolean {
   return SESSION_NAME_RE.test(value);
 }
 
-async function findSession(
-  config: GatewayConfig,
-): Promise<SessionRecord | null> {
+async function findSession(config: GatewayConfig): Promise<SessionRecord | null> {
   // 1) Try the configured ref as an id (works for both `sess_…`-prefixed
   //    examples in the docs AND plain UUIDs the live API actually emits).
   const direct = await gatewayFetch(
@@ -200,9 +208,7 @@ async function findSession(
   return sessions.find((s) => s.name === config.sessionRef) ?? null;
 }
 
-async function createAndStartSession(
-  config: GatewayConfig,
-): Promise<SessionRecord> {
+async function createAndStartSession(config: GatewayConfig): Promise<SessionRecord> {
   const createRes = await gatewayFetch(config, "/api/sessions", {
     method: "POST",
     body: JSON.stringify({ name: config.sessionRef }),
@@ -221,10 +227,7 @@ async function createAndStartSession(
 
   // Re-fetch to surface the current status (will usually be qr_ready or
   // initializing — operator must scan via the dashboard).
-  const after = await gatewayFetch(
-    config,
-    `/api/sessions/${encodeURIComponent(created.id)}`,
-  );
+  const after = await gatewayFetch(config, `/api/sessions/${encodeURIComponent(created.id)}`);
   if (after.ok) {
     return (await after.json()) as SessionRecord;
   }
@@ -284,10 +287,7 @@ async function ensureSession(
         return { ok: false, reason: "request_failed" };
       }
     } else {
-      logger.warn(
-        { category: "whatsapp.gateway" },
-        "[whatsapp-otp] configured session not found",
-      );
+      logger.warn({ category: "whatsapp.gateway" }, "[whatsapp-otp] configured session not found");
       return { ok: false, reason: "session_not_found" };
     }
   }
@@ -295,12 +295,14 @@ async function ensureSession(
   if (session.status !== "ready") {
     // Try to nudge a disconnected/failed session back to life — but
     // don't block the OTP attempt waiting for the QR scan.
-    if (session.status === "disconnected" || session.status === "failed" || session.status === "created") {
-      await gatewayFetch(
-        config,
-        `/api/sessions/${encodeURIComponent(session.id)}/start`,
-        { method: "POST" },
-      ).catch(() => undefined);
+    if (
+      session.status === "disconnected" ||
+      session.status === "failed" ||
+      session.status === "created"
+    ) {
+      await gatewayFetch(config, `/api/sessions/${encodeURIComponent(session.id)}/start`, {
+        method: "POST",
+      }).catch(() => undefined);
     }
     logger.warn(
       {
@@ -374,9 +376,7 @@ async function preflightCheckNumber(
       );
       return null;
     }
-    const body = (await res.json().catch(() => null)) as
-      | { exists?: boolean }
-      | null;
+    const body = (await res.json().catch(() => null)) as { exists?: boolean } | null;
     if (!body || typeof body.exists !== "boolean") return null;
     return { exists: body.exists };
   } catch (err) {
@@ -416,10 +416,7 @@ function chatIdToDigits(chatId: string): string {
  *   - On failure, only the chatId + HTTP status are recorded; the
  *     full response body is dropped on the floor for the same reason.
  */
-export async function sendWhatsAppMessage(
-  chatId: string,
-  text: string,
-): Promise<SendResult> {
+export async function sendWhatsAppMessage(chatId: string, text: string): Promise<SendResult> {
   const config = readGatewayConfig();
   if (!config) {
     logger.warn(
@@ -487,6 +484,178 @@ export async function sendWhatsAppMessage(
 /** Probe used by `/api/auth/providers` and admin diagnostics. */
 export function isWhatsAppGatewayConfigured(): boolean {
   return readGatewayConfig() !== null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Operator session management
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// These functions intentionally live behind the backend rather than exposing
+// WHATSAPP_OTP_API_KEY to a browser. The admin UI receives only the gateway's
+// public session metadata and the rendered QR image/pairing code requested by
+// an authenticated administrator.
+
+const ADMIN_SESSION_NAME_RE = /^[A-Za-z0-9-]{3,50}$/;
+const E164_PHONE_RE = /^\d{10,15}$/;
+
+/** Safe subset exposed to the admin session-management surface. */
+export interface WhatsAppSessionRecord {
+  id: string;
+  name: string;
+  status: string;
+}
+
+export class WhatsAppGatewayError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "WhatsAppGatewayError";
+  }
+}
+
+function requireGatewayAdminConfig(): GatewayAuthConfig {
+  const config = readGatewayAuthConfig();
+  if (!config) throw new WhatsAppGatewayError("gateway_not_configured", 503);
+  return config;
+}
+
+function sessionPath(sessionId: string): string {
+  return `/api/sessions/${encodeURIComponent(sessionId)}`;
+}
+
+function assertSessionId(sessionId: string): string {
+  const value = sessionId.trim();
+  if (!/^[A-Za-z0-9_-]{1,120}$/.test(value)) {
+    throw new WhatsAppGatewayError("invalid_session_id", 400);
+  }
+  return value;
+}
+
+function normalizeSession(value: unknown): WhatsAppSessionRecord {
+  if (!value || typeof value !== "object") {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.name !== "string" ||
+    typeof candidate.status !== "string"
+  ) {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  return { id: candidate.id, name: candidate.name, status: candidate.status };
+}
+
+async function gatewayJson<T>(
+  config: GatewayAuthConfig,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await gatewayFetch(config, path, init);
+  } catch {
+    throw new WhatsAppGatewayError("gateway_request_failed", 502);
+  }
+  if (!response.ok) {
+    throw new WhatsAppGatewayError("gateway_request_failed", response.status);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+}
+
+export async function listWhatsAppSessions(): Promise<WhatsAppSessionRecord[]> {
+  const config = requireGatewayAdminConfig();
+  const payload = await gatewayJson<unknown>(config, "/api/sessions");
+  if (!Array.isArray(payload)) {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  return payload.map(normalizeSession);
+}
+
+export async function createWhatsAppSession(name: string): Promise<WhatsAppSessionRecord> {
+  const normalizedName = name.trim();
+  if (!ADMIN_SESSION_NAME_RE.test(normalizedName)) {
+    throw new WhatsAppGatewayError("invalid_session_name", 400);
+  }
+  const config = requireGatewayAdminConfig();
+  const payload = await gatewayJson<unknown>(config, "/api/sessions", {
+    method: "POST",
+    body: JSON.stringify({ name: normalizedName }),
+  });
+  return normalizeSession(payload);
+}
+
+export async function startWhatsAppSession(sessionId: string): Promise<WhatsAppSessionRecord> {
+  const config = requireGatewayAdminConfig();
+  const id = assertSessionId(sessionId);
+  const payload = await gatewayJson<unknown>(config, `${sessionPath(id)}/start`, {
+    method: "POST",
+  });
+  return normalizeSession(payload);
+}
+
+export async function requestWhatsAppPairCode(
+  sessionId: string,
+  phone: string,
+): Promise<{ session: WhatsAppSessionRecord; code: string }> {
+  const normalizedPhone = phone.trim().replace(/^\+/, "");
+  if (!E164_PHONE_RE.test(normalizedPhone)) {
+    throw new WhatsAppGatewayError("invalid_phone", 400);
+  }
+  const config = requireGatewayAdminConfig();
+  const id = assertSessionId(sessionId);
+  const payload = await gatewayJson<unknown>(config, `${sessionPath(id)}/pair-code`, {
+    method: "POST",
+    body: JSON.stringify({ phone: normalizedPhone }),
+  });
+  if (!payload || typeof payload !== "object") {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  const candidate = payload as Record<string, unknown>;
+  if (typeof candidate.code !== "string") {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  return { session: normalizeSession(payload), code: candidate.code };
+}
+
+export async function getWhatsAppSessionQr(
+  sessionId: string,
+): Promise<{ session: WhatsAppSessionRecord; qrImage: string | null }> {
+  const config = requireGatewayAdminConfig();
+  const id = assertSessionId(sessionId);
+  const payload = await gatewayJson<unknown>(config, `${sessionPath(id)}/qr`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!payload || typeof payload !== "object") {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  const candidate = payload as Record<string, unknown>;
+  return {
+    session: normalizeSession(payload),
+    qrImage: typeof candidate.qrImage === "string" ? candidate.qrImage : null,
+  };
+}
+
+export async function deleteWhatsAppSession(
+  sessionId: string,
+): Promise<{ deleted: true; id: string }> {
+  const config = requireGatewayAdminConfig();
+  const id = assertSessionId(sessionId);
+  const payload = await gatewayJson<unknown>(config, sessionPath(id), { method: "DELETE" });
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    (payload as Record<string, unknown>).deleted !== true
+  ) {
+    throw new WhatsAppGatewayError("invalid_gateway_response", 502);
+  }
+  return { deleted: true, id };
 }
 
 /**

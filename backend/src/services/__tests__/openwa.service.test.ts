@@ -268,13 +268,87 @@ describe("openwa transport — wire format", () => {
     const mod = await import("../openwa.service");
     mod.__resetWhatsAppGatewayCacheForTests();
 
-    const result = await mod.sendWhatsAppMessage(
-      mod.buildChatId("913456789"),
-      "code",
-    );
+    const result = await mod.sendWhatsAppMessage(mod.buildChatId("913456789"), "code");
 
     // Preflight failure must NOT block delivery — engine's own LID
     // cache may already have the recipient resolved from a prior run.
     expect(result).toEqual({ ok: true });
+  });
+
+  it("proxies operator session management without exposing gateway metadata", async () => {
+    const calls = installFetchMock(({ url, init }) => {
+      const path = new URL(url).pathname;
+      if (path === "/api/sessions" && !init?.method) {
+        return jsonResponse([{ id: "sess-1", name: "otp", status: "ready", internal: "hidden" }]);
+      }
+      if (path === "/api/sessions" && init?.method === "POST") {
+        return jsonResponse({ id: "sess-2", name: "backup", status: "created" });
+      }
+      if (path === "/api/sessions/sess-2/start") {
+        return jsonResponse({ id: "sess-2", name: "backup", status: "qr_ready" });
+      }
+      if (path === "/api/sessions/sess-2/pair-code") {
+        return jsonResponse({
+          id: "sess-2",
+          name: "backup",
+          status: "authenticating",
+          code: "ABCD-1234",
+        });
+      }
+      if (path === "/api/sessions/sess-2/qr") {
+        return jsonResponse({
+          id: "sess-2",
+          name: "backup",
+          status: "qr_ready",
+          qr: "private-qr-payload",
+          qrImage: "data:image/png;base64,encoded",
+        });
+      }
+      if (path === "/api/sessions/sess-2" && init?.method === "DELETE") {
+        return jsonResponse({ deleted: true, id: "sess-2" });
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+
+    const mod = await import("../openwa.service");
+    const listed = await mod.listWhatsAppSessions();
+    const created = await mod.createWhatsAppSession("backup");
+    const started = await mod.startWhatsAppSession(created.id);
+    const paired = await mod.requestWhatsAppPairCode(created.id, "+218913456789");
+    const qr = await mod.getWhatsAppSessionQr(created.id);
+    const deleted = await mod.deleteWhatsAppSession(created.id);
+
+    expect(listed).toEqual([{ id: "sess-1", name: "otp", status: "ready" }]);
+    expect(created).toEqual({ id: "sess-2", name: "backup", status: "created" });
+    expect(started.status).toBe("qr_ready");
+    expect(paired.code).toBe("ABCD-1234");
+    expect(qr).toEqual({
+      session: { id: "sess-2", name: "backup", status: "qr_ready" },
+      qrImage: "data:image/png;base64,encoded",
+    });
+    expect(deleted).toEqual({ deleted: true, id: "sess-2" });
+
+    for (const call of calls) {
+      const headers = (call.init?.headers as Record<string, string>) ?? {};
+      expect(headers["X-API-Key"]).toBe("owa_k1_test_key");
+    }
+    const createCall = calls.find(
+      (call) => new URL(call.url).pathname === "/api/sessions" && call.init?.method === "POST",
+    );
+    expect(JSON.parse(String(createCall?.init?.body))).toEqual({ name: "backup" });
+    const pairCall = calls.find((call) => new URL(call.url).pathname.endsWith("/pair-code"));
+    expect(JSON.parse(String(pairCall?.init?.body))).toEqual({ phone: "218913456789" });
+  });
+
+  it("rejects invalid operator session input before making a gateway request", async () => {
+    const calls = installFetchMock(() => jsonResponse({}, 200));
+    const mod = await import("../openwa.service");
+
+    await expect(mod.createWhatsAppSession("bad name")).rejects.toMatchObject({ statusCode: 400 });
+    await expect(mod.requestWhatsAppPairCode("sess-1", "091234567")).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    await expect(mod.deleteWhatsAppSession("../escape")).rejects.toMatchObject({ statusCode: 400 });
+    expect(calls).toHaveLength(0);
   });
 });

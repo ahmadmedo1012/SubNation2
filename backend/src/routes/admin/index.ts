@@ -24,118 +24,104 @@ import { adminUsersRouter } from "./users";
 
 const router = Router();
 
-// ── Mount sub-routers + permission scopes ─────────────────────────────────
-//
-// Every privileged sub-router below is gated by `requireAdmin` (auth)
-// + `requirePermission(scope)` (RBAC). The middleware runs once at the
-// parent mount so every leaf route inherits the same scope check —
-// no per-handler decoration needed, no risk of forgetting one.
-//
-// Auth + stats are intentionally scope-free:
-//   • adminAuthRouter      — login/logout/probe/profile = self-service
-//   • adminStatsRouter     — dashboard summary = read-only, all admins
-//
-// Existing admins were backfilled with permissions=["all"] so they
-// pass every scope check (the wildcard short-circuits hasPermission).
-// New scoped admins created via /admin/admins pick from the same
-// scope catalog declared in lib/permissions.ts.
+// ── Auth + stats routes ────────────────────────────────────────────────────
+// Keep these routers mounted at the admin root: the public contract and the
+// SPA both use /api/admin/login, /api/admin/session, /api/admin/stats, and
+// /api/admin/chart-data. The leaf auth/stats handlers apply their own
+// authentication where required; login and probe remain public by design.
+router.use("/", adminAuthRouter);
+router.use("/", adminStatsRouter);
 
-router.use("/", adminAuthRouter); // /login, /logout, /probe, /profile, /change-password, /session, /2fa/*
-router.use("/", adminStatsRouter); // /stats, /chart-data — all admins (dashboard)
-
-router.use(
-  "/",
-  requireAdmin,
-  requirePermission("orders"),
-  adminOrdersRouter, // /orders, /orders/bulk-status
-);
+// ── Protected routes (require admin auth) ───────────────────────────────────
+const protectedRouter = Router();
+protectedRouter.use(requireAdmin);
 
 // AI Admin Copilot (010-ai-admin-copilot). Each leaf route inside enforces
 // its own phase + scope gate; the parent mount only attaches the router.
-router.use("/", copilotRouter);
+protectedRouter.use("/", copilotRouter);
 
 // Anomaly detection (003-anomaly-detection). Risk events are user-related
 // investigative data; the `users` scope is the closest fit in the existing
 // permission catalog.
-router.use("/", requireAdmin, requirePermission("users"), adminRiskRouter);
+protectedRouter.use("/", requirePermission("users"), adminRiskRouter);
 
 // Inventory demand forecasting (011-inventory-demand-forecast). Read-only
 // admin surface; gated on the existing `inventory` scope (matches the
 // /admin/products gate the panel mounts above).
-router.use("/", requireAdmin, requirePermission("inventory"), adminForecastRouter);
+protectedRouter.use("/", requirePermission("inventory"), adminForecastRouter);
 
 // Catalog enrichment review panel (012-arabic-catalog-enrichment).
 // Admin-only review surface for batched LLM-drafted descriptions / FAQ.
 // Same `inventory` gate as the existing product-edit pages; the cron
 // itself runs separately on the worker tier.
-router.use("/", requireAdmin, requirePermission("inventory"), adminEnrichmentRouter);
+protectedRouter.use("/", requirePermission("inventory"), adminEnrichmentRouter);
 
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("finance"),
   adminTopupsRouter, // /topups/*
 );
 
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("inventory"),
   adminProductsRouter, // /products/*
 );
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("inventory"),
   adminPricingCalculatorRouter, // /pricing/calculate
 );
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("inventory"),
   adminFlashSalesRouter, // /flash-sales, /flash-sales/:id
 );
 
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("users"),
   adminUsersRouter, // /users/*
 );
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("users"),
   adminReferralsRouter, // /referrals/*
 );
 
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("support"),
   adminTicketsRouter, // /tickets/*
 );
 
-router.use("/alerts", requireAdmin, requirePermission("support"), adminAlertsRouter);
+protectedRouter.use("/alerts", requirePermission("support"), adminAlertsRouter);
 
-router.use(
+protectedRouter.use(
   "/",
-  requireAdmin,
   requirePermission("admins"),
   adminSecurityRouter, // /auth-activity, /auth-stats — admin security audit
 );
 
-router.use(
+protectedRouter.use(
   "/admins",
-  requireAdmin,
   requirePermission("admins"),
   adminAdminsRouter, // /admins, /admins/:id, /admins/:id/permissions
 );
 
-router.use("/settings", requireAdmin, requirePermission("settings"), adminSettingsRouter);
+protectedRouter.use("/settings", requirePermission("settings"), adminSettingsRouter);
 
-router.use("/observability", requireAdmin, requirePermission("settings"), adminObservabilityRouter);
+protectedRouter.use("/observability", requirePermission("settings"), adminObservabilityRouter);
 
-router.use("/diagnostics", requireAdmin, requirePermission("settings"), adminDiagnosticsRouter);
+protectedRouter.use("/diagnostics", requirePermission("settings"), adminDiagnosticsRouter);
+
+protectedRouter.use(
+  "/",
+  requirePermission("orders"),
+  adminOrdersRouter, // /orders, /orders/bulk-status
+);
+
+// Mount protected routes
+router.use("/", protectedRouter);
 
 export { router as adminRouter };

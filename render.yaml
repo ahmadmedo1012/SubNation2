@@ -97,10 +97,10 @@ services:
       # The gateway is a SEPARATE Render web service built from the
       # ahmadmedo1012/openwa repo:
       #   srv-da6piju7bikc739anbtg → https://openwa-gateway-7aaa.onrender.com
-      # Its OPENWA_API_KEY must match WHATSAPP_OTP_API_KEY here. The paired
-      # WhatsApp session lives in the gateway's in-memory registry — a
-      # gateway REDEPLOY requires re-pairing (issue a fresh pair-code via
-      # POST /api/sessions/{id}/pair-code). A keep-alive workflow in the
+      # Its OPENWA_API_KEY must match WHATSAPP_OTP_API_KEY here. Session
+      # credentials are persisted by the current gateway when its persistence
+      # connection is configured; verify that setting on the gateway service
+      # before relying on redeploy recovery. A keep-alive workflow in the
       # public github.com/ahmadmedo1012/keep-alive repo pings both services
       # every 10 minutes so free-tier instances never idle-spin-down.
       - key: WHATSAPP_OTP_BASE_URL

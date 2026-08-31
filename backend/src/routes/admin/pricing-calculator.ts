@@ -74,11 +74,15 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
     listPrice = body.price;
     costPrice = typeof body.cost_price === "number" ? body.cost_price : null;
   } else {
-    return res.status(400).json(createErrorResponse("أدخل معرف منتج أو سعراً مباشراً", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("أدخل معرف منتج أو سعراً مباشراً", ErrorCode.INVALID_DATA));
   }
 
   if (listPrice < 0) {
-    return res.status(400).json(createErrorResponse("السعر لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("السعر لا يمكن أن يكون سالباً", ErrorCode.INVALID_DATA));
   }
 
   // ── Discount stack (delegates to lib/pricing.ts) ─────────────────────
@@ -138,9 +142,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
   // Gross: revenue minus operator cost (procurement)
   const grossLyd = costPrice != null ? +(finalPrice - costPrice).toFixed(4) : null;
   const grossPct =
-    costPrice != null && finalPrice > 0
-      ? +((grossLyd! / finalPrice) * 100).toFixed(2)
-      : null;
+    costPrice != null && finalPrice > 0 ? +((grossLyd! / finalPrice) * 100).toFixed(2) : null;
 
   // Net: gross minus loyalty accrual (1% perpetual dilution)
   const netLyd = grossLyd != null ? +(grossLyd - loyaltyLydAccrued).toFixed(4) : null;
@@ -192,12 +194,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       });
     }
   }
-  if (
-    couponInfo &&
-    couponInfo.valid &&
-    couponInfo.type === "percentage" &&
-    couponInfo.value > 50
-  ) {
+  if (couponInfo && couponInfo.valid && couponInfo.type === "percentage" && couponInfo.value > 50) {
     warnings.push({
       severity: "low_margin",
       code: "aggressive_coupon",
