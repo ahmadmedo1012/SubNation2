@@ -120,3 +120,8 @@ PageSpeed*.json
 *.dump
 *.sql.gz
 .vercel
+
+# Operator-only secret references (Render dashboard env var values).
+# Real secrets NEVER live in this repo — these are the values the
+# operator pasted from their local generation into the Render UI.
+.secrets/

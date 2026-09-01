@@ -583,6 +583,18 @@ router.get("/healthz/ready", requireAdmin, async (_req, res) => {
   }
 });
 
+// Liveness probe — PUBLIC, no auth, no DB, no Redis, no I/O.
+// Pure "is this process alive and serving HTTP?" signal for
+// Kubernetes / Render / load balancers. Always returns 200 as long
+// as the event loop is responsive. A failing dependency is NOT a
+// liveness failure — that is what /healthz/ready (admin-gated) is
+// for. Conflating the two caused false-positive pod restarts in
+// the past when the DB blipped.
+router.get("/healthz/live", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=5");
+  res.status(200).json({ status: "ok" });
+});
+
 // Per-subsystem health endpoints — admin-gated. Each leaks latency +
 // error messages + state details that are not safe to expose
 // publicly. The public surface is /healthz/summary.

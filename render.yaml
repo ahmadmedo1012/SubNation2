@@ -40,8 +40,14 @@ services:
       # Add the deployed Vercel origin here (or in FRONTEND_ORIGINS) before
       # switching browser traffic to Vercel. Keep exact origins only; do not
       # use a wildcard. These values are read by CORS, CSRF and Socket.IO.
+      # sync:true is safe here — this is a public URL (CORS allow-list), not
+      # a secret. sync:false would make the value disappear on every blueprint
+      # re-apply; the deploy hook would then see an empty origin and CORS
+      # would 403 the Vercel SPA. Keep secrets (API keys, tokens) on
+      # sync:false — those live in the Render dashboard only.
       - key: VERCEL_FRONTEND_ORIGIN
-        sync: false
+        value: "https://subnation-seven.vercel.app"
+        sync: true
       - key: FRONTEND_ORIGINS
         sync: false
       # Required when the browser origin differs from the Render API origin.
