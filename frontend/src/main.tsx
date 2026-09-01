@@ -25,6 +25,7 @@ import "./index.css";
 import { initAnalytics } from "./lib/analytics";
 import { applyDocumentDirection } from "./lib/direction";
 import { initWebVitals } from "./lib/web-vitals";
+import { getApiBaseUrl, installApiFetchBridge } from "./lib/api-config";
 
 // Lock document direction synchronously, before React renders. The static
 // index.html already declares <html lang="ar" dir="rtl">; this re-affirms
@@ -36,10 +37,11 @@ applyDocumentDirection("ar");
 // Empty / unset => same-origin (relative /api paths). Set VITE_API_URL to an
 // absolute origin (e.g. https://api.example.com) when deploying the frontend
 // separately from the backend.
-const apiBaseUrl = (import.meta.env.VITE_API_URL ?? "").trim();
+const apiBaseUrl = getApiBaseUrl();
 if (apiBaseUrl) {
   setBaseUrl(apiBaseUrl);
 }
+installApiFetchBridge();
 
 // ── Phase 4: Core Web Vitals — defer past initial paint so the import and
 // the very first sample collection cannot delay LCP. requestIdleCallback

@@ -9,6 +9,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useLocation } from "wouter";
+import { apiUrl } from "@/lib/api-config";
 import { LinkConsentModal } from "./LinkConsentModal";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
@@ -131,7 +132,7 @@ function ProviderButton({
     setLoading(true);
     try {
       if (provider.auth_type === "oauth_redirect") {
-        window.location.href = `/api/auth/${provider.id}`;
+        window.location.href = apiUrl(`/api/auth/${provider.id}`);
         return;
       }
 

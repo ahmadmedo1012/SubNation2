@@ -22,6 +22,7 @@ import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import seoRouter from "./routes/seo";
 import { ErrorCode, createErrorResponse } from "./lib/errors";
+import { getConfiguredOrigins } from "./lib/origins";
 
 const app = express();
 
@@ -37,11 +38,7 @@ function resolveFrontendDist(): string | null {
 
 // ── CORS / Allowed Origins ────────────────────────────────────────────────────
 // In production restrict to APP_ORIGINS; in dev allow all origins.
-const allowedOrigins = process.env.APP_ORIGINS
-  ? process.env.APP_ORIGINS.split(",")
-      .map((d) => d.trim())
-      .filter(Boolean)
-  : [];
+const allowedOrigins = getConfiguredOrigins();
 const isProduction = process.env.NODE_ENV === "production";
 
 /**
@@ -62,7 +59,7 @@ const isProduction = process.env.NODE_ENV === "production";
  */
 const csrfAllowedOrigins = (() => {
   const fromExplicit = process.env.CSRF_ALLOWED_ORIGINS;
-  const fromCors = process.env.APP_ORIGINS;
+  const fromCors = getConfiguredOrigins().join(",");
   const fromAppUrl = process.env.APP_URL;
   const raw = fromExplicit || fromCors || fromAppUrl || "";
   const parsed = raw
@@ -265,7 +262,10 @@ app.use(cloudflareClientIp);
 // Skips /api/healthz/* so Render's own probes (which always hit the onrender
 // hostname internally) never get a 301. Production-only.
 const CANONICAL_HOST = "subnation.ly";
-const LEGACY_HOSTS = new Set(["www.subnation.ly", "subnation2.onrender.com"]);
+// subnation2.onrender.com is the API origin for the Vercel split deployment;
+// it must remain reachable instead of redirecting API and Socket.IO traffic
+// to the frontend origin.
+const LEGACY_HOSTS = new Set(["www.subnation.ly"]);
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== "production") return next();
   if (req.path === "/api/healthz" || req.path.startsWith("/api/healthz/")) return next();

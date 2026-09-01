@@ -10,6 +10,7 @@ import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../../lib/lockout";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { getAuthCookieOptions } from "../../lib/cookie-options";
 
 const router = Router();
 
@@ -28,9 +29,7 @@ const ADMIN_COOKIE_NAME = "admin_token";
 const ADMIN_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
-  maxAge: 8 * 60 * 60 * 1000, // 8h — matches signAdminToken expiry exactly
-  path: "/",
+  ...getAuthCookieOptions(8 * 60 * 60 * 1000),
 };
 
 router.post("/login", async (req, res) => {

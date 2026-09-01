@@ -508,6 +508,19 @@ export async function runMigrations() {
         ON whatsapp_otps(expires_at);
     `);
 
+    // ── openwa_sessions (durable OpenWA/Baileys credentials) ───────────────
+    // The external OpenWA gateway owns encryption and reads/writes this table
+    // through PERSISTENCE_URL. Creating it here keeps a fresh Neon database
+    // ready before the gateway is started, while IF NOT EXISTS makes this safe
+    // for gateways that already provisioned it on their first boot.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS openwa_sessions (
+        name        TEXT PRIMARY KEY,
+        creds       BYTEA NOT NULL,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
     // Organizations table + users.organization_id (added in drizzle migration 0001)
     await db.execute(sql`

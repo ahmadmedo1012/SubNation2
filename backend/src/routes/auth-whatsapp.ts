@@ -7,6 +7,7 @@ import * as Sentry from "@sentry/node";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
 import { startOtp, verifyOtp } from "../services/whatsapp-otp.service";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { getAuthCookieOptions } from "../lib/cookie-options";
 
 /**
  * WhatsApp OTP — public auth router.
@@ -205,11 +206,7 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
     // Success — set httpOnly cookie + return JWT exactly the same way
     // the Telegram/Firebase paths do. 30-day expiry matches signUserToken.
     res.cookie("auth_token", result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
     return res.json({

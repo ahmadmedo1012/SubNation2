@@ -14,10 +14,11 @@
  */
 
 import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals";
+import { apiUrl } from "./api-config";
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-const BEACON_ENDPOINT = "/api/cwv";
+const BEACON_ENDPOINT = apiUrl("/api/cwv");
 const MAX_BUFFER_AGE_MS = 60_000;
 const RETRY_COUNT = 2;
 const RETRY_DELAY_MS = 5_000;

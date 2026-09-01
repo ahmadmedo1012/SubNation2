@@ -1,5 +1,6 @@
 import type { Auth, User } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
+import { getApiBaseUrl as resolveApiBaseUrl } from "./api-config";
 
 export interface FirebaseSessionResponse {
   token: string;
@@ -11,8 +12,7 @@ export interface FirebaseSessionResponse {
 
 /** Get the API base URL (handles split deployments where frontend != backend) */
 function getApiBaseUrl(): string {
-  const base = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/+$/, "");
-  return base;
+  return resolveApiBaseUrl();
 }
 
 export async function requireFirebaseAuth(): Promise<Auth> {

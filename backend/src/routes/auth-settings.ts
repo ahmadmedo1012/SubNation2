@@ -34,6 +34,7 @@ import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
 import { insertReferralSignupLedger } from "../lib/ledger";
+import { getAuthCookieOptions } from "../lib/cookie-options";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -787,11 +788,7 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
     //   secure — prod only (Render terminates TLS, browser sees https).
     //   maxAge — 30 days, matches the JWT expiry signed in signUserToken.
     res.cookie("auth_token", result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
     return res.json({ token: result.token, is_new_user: result.isNewUser });
   } catch (err) {
@@ -830,11 +827,7 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
       return res.status(result.status).json({ error: result.error, reason: result.reason });
     }
     res.cookie("auth_token", result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
     return res.json({ token: result.token, is_new_user: result.isNewUser });
   } catch (err) {
@@ -898,11 +891,7 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
     // is the sole transport now; AuthCallbackPage detects the cookie
     // session via the existing /api/auth/probe endpoint.
     res.cookie("auth_token", result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
     return res.redirect("/auth/callback");
   } catch (err) {

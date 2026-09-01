@@ -1,4 +1,5 @@
 import type { Socket } from "socket.io-client";
+import { getSocketUrl } from "./api-config";
 
 let socket: Socket | null = null;
 
@@ -31,7 +32,7 @@ export async function getSocket() {
   if (!socket) {
     try {
       const { io } = await import("socket.io-client");
-      const socketUrl = (import.meta.env.VITE_API_URL ?? "").trim();
+      const socketUrl = getSocketUrl();
       socket = io(socketUrl || undefined, {
         autoConnect: false,
         reconnectionAttempts: 5,

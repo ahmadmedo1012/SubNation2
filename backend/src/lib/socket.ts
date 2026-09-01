@@ -57,6 +57,7 @@ import { createClient } from "redis";
 import { Server as SocketServer, type Socket } from "socket.io";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
 import { logger } from "./logger";
+import { getConfiguredOrigins } from "./origins";
 import {
   getRegistry,
   safeGaugeDec,
@@ -81,10 +82,7 @@ export interface SocketIdentity {
 }
 
 function getAllowedOrigins(): string[] {
-  return (process.env.APP_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  return getConfiguredOrigins();
 }
 
 /**

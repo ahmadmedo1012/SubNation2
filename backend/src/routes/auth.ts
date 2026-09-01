@@ -20,6 +20,7 @@ import {
   verifyFirebaseIdToken,
 } from "../services/firebase-auth.service";
 import { notifyNewUser } from "../telegram";
+import { getAuthCookieOptions, getAuthCookieSameSite } from "../lib/cookie-options";
 
 const router = Router();
 
@@ -63,7 +64,7 @@ router.post("/logout", requireUser, async (req, res) => {
   res.clearCookie("auth_token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: getAuthCookieSameSite(),
     path: "/",
   });
 
@@ -105,7 +106,7 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
         res.clearCookie("auth_token", {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
+          sameSite: getAuthCookieSameSite(),
           path: "/",
         });
 
@@ -141,7 +142,7 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
   res.clearCookie("auth_token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: getAuthCookieSameSite(),
     path: "/",
   });
 
@@ -460,11 +461,7 @@ router.post("/firebase/session", async (req, res) => {
 
     // Set httpOnly cookie for better security
     res.cookie("auth_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax", // Lax for OAuth redirects
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
     return res.status(result.isNewUser ? 201 : 200).json({
@@ -558,11 +555,7 @@ router.post("/firebase/refresh", async (req, res) => {
 
     // Set httpOnly cookie
     res.cookie("auth_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-      path: "/",
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
     return res.json({

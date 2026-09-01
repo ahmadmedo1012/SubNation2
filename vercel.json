@@ -1,0 +1,7 @@
+{
+  "framework": null,
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @workspace/subnation run build",
+  "outputDirectory": "frontend/dist/public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

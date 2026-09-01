@@ -37,13 +37,29 @@ services:
         # Canonical apex + www. Pre-launch state: no legacy origin
         # compatibility — the platform is still in development.
         value: "https://subnation.ly,https://www.subnation.ly"
+      # Add the deployed Vercel origin here (or in FRONTEND_ORIGINS) before
+      # switching browser traffic to Vercel. Keep exact origins only; do not
+      # use a wildcard. These values are read by CORS, CSRF and Socket.IO.
+      - key: VERCEL_FRONTEND_ORIGIN
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
+      # Required when the browser origin differs from the Render API origin.
+      # Secure is enforced automatically in production.
+      - key: AUTH_COOKIE_SAMESITE
+        value: "none"
       # Absolute origin used to build deep-links inside admin alerts and
       # copilot/enrichment/forecast panel references. Same value as APP_URL;
       # kept separate so alert links survive an APP_URL change.
       - key: APP_ORIGIN
         value: "https://subnation.ly"
+      - key: VITE_API_BASE_URL
+        value: "https://subnation2.onrender.com"
+      - key: VITE_SOCKET_URL
+        value: "https://subnation2.onrender.com"
+      # Backward-compatible alias for older frontend bundles.
       - key: VITE_API_URL
-        value: "https://subnation.ly"
+        value: "https://subnation2.onrender.com"
       - key: VITE_APP_ORIGIN
         value: "https://subnation.ly"
       - key: BASE_PATH
@@ -98,9 +114,10 @@ services:
       # ahmadmedo1012/openwa repo:
       #   srv-da6piju7bikc739anbtg → https://openwa-gateway-7aaa.onrender.com
       # Its OPENWA_API_KEY must match WHATSAPP_OTP_API_KEY here. Session
-      # credentials are persisted by the current gateway when its persistence
-      # connection is configured; verify that setting on the gateway service
-      # before relying on redeploy recovery. A keep-alive workflow in the
+      # credentials are persisted in Neon when PERSISTENCE_URL is configured
+      # on that separate gateway service (use the same Neon URL as DATABASE_URL)
+      # and OPENWA_API_KEY is set. Verify those two settings before relying on
+      # redeploy recovery. A keep-alive workflow in the
       # public github.com/ahmadmedo1012/keep-alive repo pings both services
       # every 10 minutes so free-tier instances never idle-spin-down.
       - key: WHATSAPP_OTP_BASE_URL
