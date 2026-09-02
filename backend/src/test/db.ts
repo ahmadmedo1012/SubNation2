@@ -178,6 +178,15 @@ CREATE TABLE flash_sales (
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE cart_items (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL,
+  product_id integer NOT NULL,
+  quantity integer NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 const TABLES = [
@@ -188,6 +197,7 @@ const TABLES = [
   "referral_events",
   "coupons",
   "flash_sales",
+  "cart_items",
   "products",
   "users",
 ];

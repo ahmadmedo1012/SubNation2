@@ -326,6 +326,24 @@ export async function runMigrations() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS cart_items (
+        id         SERIAL PRIMARY KEY,
+        user_id    INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity   INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_cart_items_user_product
+        ON cart_items (user_id, product_id);
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admin_alerts (
         id         SERIAL PRIMARY KEY,
         type       VARCHAR(30) NOT NULL DEFAULT 'system',

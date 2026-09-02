@@ -36,20 +36,16 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       return res
         .status(503)
         .json(
-          createErrorResponse(
-            "خدمة WhatsApp غير مفعّلة حالياً",
-            ErrorCode.SERVICE_UNAVAILABLE,
-            { reason: "gateway_disabled" },
-          ),
+          createErrorResponse("خدمة WhatsApp غير مفعّلة حالياً", ErrorCode.SERVICE_UNAVAILABLE, {
+            reason: "gateway_disabled",
+          }),
         );
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const phone = typeof body.phone === "string" ? body.phone : "";
     if (!phone) {
-      return res
-        .status(400)
-        .json(createErrorResponse("رقم الهاتف مطلوب", ErrorCode.INVALID_DATA));
+      return res.status(400).json(createErrorResponse("رقم الهاتف مطلوب", ErrorCode.INVALID_DATA));
     }
 
     const client = getClientInfo(req);
@@ -87,8 +83,7 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         gateway_disabled: "خدمة WhatsApp غير مفعّلة حالياً",
       };
       const status =
-        result.reason === "invalid_phone" ||
-        result.reason === "recipient_not_on_whatsapp"
+        result.reason === "invalid_phone" || result.reason === "recipient_not_on_whatsapp"
           ? 400
           : result.reason === "cooldown" || result.reason === "hourly_limit"
             ? 429
@@ -101,12 +96,16 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       }
       res.set(headers as Record<string, string>);
       return res.status(status).json(
-        createErrorResponse(messages[result.reason] ?? "تعذّر إرسال الرمز", ErrorCode.INVALID_DATA, {
-          reason: result.reason,
-          ...(result.reason === "cooldown" && result.retryAfterSec
-            ? { retry_after_sec: result.retryAfterSec }
-            : {}),
-        }),
+        createErrorResponse(
+          messages[result.reason] ?? "تعذّر إرسال الرمز",
+          ErrorCode.INVALID_DATA,
+          {
+            reason: result.reason,
+            ...(result.reason === "cooldown" && result.retryAfterSec
+              ? { retry_after_sec: result.retryAfterSec }
+              : {}),
+          },
+        ),
       );
     }
 
@@ -165,7 +164,7 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
     const verifyEvent = result.ok ? "otp_verify" : "login_failure";
     scoreEventFireAndForget({
       eventType: verifyEvent,
-      userId: result.ok ? result.user?.id ?? null : null,
+      userId: result.ok ? (result.user?.id ?? null) : null,
       ipAddress: client.ipAddress ?? null,
       userAgent: client.userAgent ?? null,
       phone,
@@ -189,18 +188,16 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
         mismatch: "الرمز غير صحيح",
       };
       const status =
-        result.reason === "invalid_phone"
-          ? 400
-          : result.reason === "exhausted"
-            ? 429
-            : 401;
-      return res.status(status).json(
-        createErrorResponse(
-          messages[result.reason] ?? "فشل التحقق من الرمز",
-          status === 400 ? ErrorCode.INVALID_DATA : ErrorCode.UNAUTHORIZED,
-          { reason: result.reason },
-        ),
-      );
+        result.reason === "invalid_phone" ? 400 : result.reason === "exhausted" ? 429 : 401;
+      return res
+        .status(status)
+        .json(
+          createErrorResponse(
+            messages[result.reason] ?? "فشل التحقق من الرمز",
+            status === 400 ? ErrorCode.INVALID_DATA : ErrorCode.UNAUTHORIZED,
+            { reason: result.reason },
+          ),
+        );
     }
 
     // Success — set httpOnly cookie + return JWT exactly the same way

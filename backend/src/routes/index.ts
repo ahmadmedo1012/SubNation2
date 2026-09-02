@@ -18,6 +18,7 @@ import { supportRouter } from "./support";
 import { loyaltyRouter } from "./loyalty";
 import { notificationsRouter } from "./notifications";
 import { couponsRouter } from "./coupons";
+import { cartRouter } from "./cart";
 import { authProviderPublicRouter, authProviderAdminRouter } from "./auth-settings";
 import { whatsappAuthRouter } from "./auth-whatsapp";
 import metricsRouter from "./metrics";
@@ -51,6 +52,7 @@ router.use("/support/tickets", supportRouter);
 router.use("/loyalty", loyaltyRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/coupons", couponsRouter);
+router.use("/cart", cartRouter);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 router.use("/admin", adminRouter);

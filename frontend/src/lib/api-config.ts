@@ -43,7 +43,8 @@ export function installApiFetchBridge(): void {
 
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const rawUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const rawUrl =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const isApiPath = rawUrl === "/api" || rawUrl.startsWith("/api/");
     if (!isApiPath) return nativeFetch(input, init);
 

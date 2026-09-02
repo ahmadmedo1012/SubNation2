@@ -98,10 +98,7 @@ function getAllowedOrigins(): string[] {
  *   - non-empty allowlist → strict. The Origin header MUST match
  *     one of the entries exactly. Missing/empty Origin is rejected.
  */
-export function isOriginAllowed(
-  origin: string | undefined,
-  allowedOrigins: string[],
-): boolean {
+export function isOriginAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
   // Permissive mode (dev) — empty allowlist accepts everything.
   if (allowedOrigins.length === 0) return true;
   if (!origin || typeof origin !== "string") return false;
@@ -147,9 +144,7 @@ export interface SocketHandshakeLike {
   auth?: { userToken?: string; adminToken?: string };
 }
 
-export function authenticateSocketHandshake(
-  handshake: SocketHandshakeLike,
-): SocketIdentity | null {
+export function authenticateSocketHandshake(handshake: SocketHandshakeLike): SocketIdentity | null {
   const cookies = parseCookieHeader(handshake.headers?.cookie);
   const identity: SocketIdentity = { isAdmin: false };
 
@@ -244,10 +239,7 @@ type RejectionReason =
  * without alert fatigue. If a real user reports an issue and Sentry
  * captures their session, the breadcrumb chain shows the rejection.
  */
-function recordRejection(
-  reason: RejectionReason,
-  context: Record<string, unknown>,
-): void {
+function recordRejection(reason: RejectionReason, context: Record<string, unknown>): void {
   try {
     getAuthRejectedCounter().inc({ reason });
   } catch {
