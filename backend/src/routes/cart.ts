@@ -33,17 +33,13 @@ async function buildCartItemResponse(row: {
     .where(eq(productsTable.id, row.productId))
     .limit(1);
 
-  const flashSale = await applyFlashSale(
-    product ? parseFloat(String(product.price)) : 0,
-  );
+  const flashSale = await applyFlashSale(product ? parseFloat(String(product.price)) : 0);
   const basePrice = product ? parseFloat(String(product.price)) : 0;
   const discountPercent = flashSale.flashSale
     ? parseFloat(String(flashSale.flashSale.discountPercent))
     : 0;
   const salePrice =
-    discountPercent > 0
-      ? +(basePrice * (1 - discountPercent / 100)).toFixed(2)
-      : null;
+    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
   const effectivePrice = salePrice ?? basePrice;
 
   return {
@@ -85,13 +81,13 @@ router.post("/items", requireUser, async (req, res) => {
   const { product_id, quantity = 1 } = req.body ?? {};
 
   if (!product_id || typeof product_id !== "number")
-    return res
-      .status(400)
-      .json(createErrorResponse("معرف المنتج مطلوب", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("معرف المنتج مطلوب", ErrorCode.INVALID_DATA));
   if (typeof quantity !== "number" || quantity < 1 || !Number.isInteger(quantity))
     return res
       .status(400)
-      .json(createErrorResponse("الكمية يجب أن تكون رقماً صحيحاً أكبر من صفر", ErrorCode.INVALID_DATA));
+      .json(
+        createErrorResponse("الكمية يجب أن تكون رقماً صحيحاً أكبر من صفر", ErrorCode.INVALID_DATA),
+      );
 
   const [product] = await db
     .select()
@@ -100,9 +96,7 @@ router.post("/items", requireUser, async (req, res) => {
     .limit(1);
 
   if (!product)
-    return res
-      .status(404)
-      .json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const [existing] = await db
     .select()
@@ -133,13 +127,12 @@ router.post("/items", requireUser, async (req, res) => {
 // PATCH /api/cart/items/:id — update quantity
 router.patch("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
-  const id = parseInt(req.params.id ?? "", 10);
+  const idParam = req.params.id;
+  const id = parseInt(Array.isArray(idParam) ? idParam[0] ?? "" : idParam ?? "", 10);
   const { quantity } = req.body ?? {};
 
   if (isNaN(id))
-    return res
-      .status(400)
-      .json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
   if (typeof quantity !== "number" || quantity < 1 || !Number.isInteger(quantity))
     return res
       .status(400)
@@ -169,12 +162,11 @@ router.patch("/items/:id", requireUser, async (req, res) => {
 // DELETE /api/cart/items/:id — remove item
 router.delete("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
-  const id = parseInt(req.params.id ?? "", 10);
+  const idParam = req.params.id;
+  const id = parseInt(Array.isArray(idParam) ? idParam[0] ?? "" : idParam ?? "", 10);
 
   if (isNaN(id))
-    return res
-      .status(400)
-      .json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [existing] = await db
     .select()

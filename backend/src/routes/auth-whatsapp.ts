@@ -33,13 +33,11 @@ export const whatsappAuthRouter = Router();
 whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
   try {
     if (!isWhatsAppGatewayConfigured()) {
-      return res
-        .status(503)
-        .json(
-          createErrorResponse("خدمة WhatsApp غير مفعّلة حالياً", ErrorCode.SERVICE_UNAVAILABLE, {
-            reason: "gateway_disabled",
-          }),
-        );
+      return res.status(503).json(
+        createErrorResponse("خدمة WhatsApp غير مفعّلة حالياً", ErrorCode.SERVICE_UNAVAILABLE, {
+          reason: "gateway_disabled",
+        }),
+      );
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;

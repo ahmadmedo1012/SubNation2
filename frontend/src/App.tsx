@@ -52,6 +52,9 @@ const RegisterPage = lazyWithRetry(() => import("@/pages/register"));
 const SupportPage = lazyWithRetry(() => import("@/pages/support"));
 const TermsPage = lazyWithRetry(() => import("@/pages/terms"));
 const WalletPage = lazyWithRetry(() => import("@/pages/wallet"));
+const CartPage = lazyWithRetry(() => import("@/pages/cart"));
+const CheckoutPage = lazyWithRetry(() => import("@/pages/checkout"));
+const FlashSalesPage = lazyWithRetry(() => import("@/pages/flash-sales"));
 
 // Admin pages — lazy loaded so customer bundles stay small.
 const AdminLoginPage = lazyWithRetry(() => import("@/pages/admin/login"));
@@ -100,9 +103,11 @@ const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   [/^\/referrals/, "list"],
   [/^\/support/, "list"],
   [/^\/profile/, "form"],
-  [/^\/onboarding/, "form"],
   [/^\/login/, "form"],
   [/^\/register/, "form"],
+  [/^\/cart/, "list"],
+  [/^\/checkout/, "form"],
+  [/^\/flash-sales/, "catalog"],
   [/^\/admin/, "admin"],
 ];
 
@@ -282,6 +287,9 @@ function AppRoutes() {
               <Route path="/status" component={StatusPage} />
               <Route path="/terms" component={TermsPage} />
               <Route path="/profile" component={ProfilePage} />
+              <Route path="/cart" component={CartPage} />
+              <Route path="/checkout" component={CheckoutPage} />
+              <Route path="/flash-sales" component={FlashSalesPage} />
               <Route path="/auth/callback" component={AuthCallbackPage} />
               <Route path="/auth/telegram-callback" component={TelegramCallbackPage} />
 

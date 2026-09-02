@@ -21,6 +21,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
+import { CartProvider } from "./lib/cart";
 import "./index.css";
 import { initAnalytics } from "./lib/analytics";
 import { applyDocumentDirection } from "./lib/direction";
@@ -88,6 +89,8 @@ createRoot(document.getElementById("root")!, {
   onRecoverableError: bufferedReactErrorHandler(),
 }).render(
   <HelmetProvider>
-    <App />
+    <CartProvider>
+      <App />
+    </CartProvider>
   </HelmetProvider>,
 );

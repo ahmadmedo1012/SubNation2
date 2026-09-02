@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
-import { Wallet, LogOut, Menu, X, Sun, Moon, User } from "lucide-react";
+import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
@@ -17,6 +18,7 @@ const NotificationBell = lazyWithRetry(() =>
 export function Navbar() {
   const { token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { itemCount } = useCart();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -193,6 +195,21 @@ export function Navbar() {
               </Link>
             </div>
           )}
+
+          {/* Cart icon — always visible */}
+          <Link href="/cart">
+            <div
+              className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
+              title="السلة"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              {itemCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-text text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                  {itemCount > 99 ? "99+" : itemCount}
+                </span>
+              )}
+            </div>
+          </Link>
         </div>
       </div>
 
