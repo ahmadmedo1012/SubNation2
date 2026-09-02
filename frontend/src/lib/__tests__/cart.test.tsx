@@ -10,11 +10,7 @@
 import { render, screen, act } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import React, { createContext, useContext } from "react";
-import {
-  CartProvider,
-  useCart,
-  type LocalCartItem,
-} from "@/lib/cart";
+import { CartProvider, useCart, type LocalCartItem } from "@/lib/cart";
 
 function LocalCartConsumer() {
   const { items, itemCount, totalLYD, addItem, removeItem, updateQuantity, clear } = useCart();
@@ -28,7 +24,20 @@ function LocalCartConsumer() {
           {it.productId}:{it.quantity}
         </span>
       ))}
-      <button data-testid="add" onClick={() => addItem({ productId: 1, name: "P1", slug: null, imageUrl: null, priceLYD: 10, salePriceLYD: null, discountPercent: null })} />
+      <button
+        data-testid="add"
+        onClick={() =>
+          addItem({
+            productId: 1,
+            name: "P1",
+            slug: null,
+            imageUrl: null,
+            priceLYD: 10,
+            salePriceLYD: null,
+            discountPercent: null,
+          })
+        }
+      />
       <button
         data-testid="add-sale"
         onClick={() =>
@@ -219,10 +228,7 @@ describe("CartProvider", () => {
     await act(async () => {
       screen.getByTestId("add").click();
     });
-    expect(window.localStorage.setItem).toHaveBeenCalledWith(
-      STORAGE_KEY,
-      expect.any(String),
-    );
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(STORAGE_KEY, expect.any(String));
   });
 
   it("throws when useCart is called outside CartProvider", () => {

@@ -71,9 +71,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         let next: LocalCartItem[];
         if (existing) {
           next = prev.map((i) =>
-            i.productId === incoming.productId
-              ? { ...i, quantity: i.quantity + qty }
-              : i,
+            i.productId === incoming.productId ? { ...i, quantity: i.quantity + qty } : i,
           );
         } else {
           next = [...prev, { ...incoming, quantity: qty }];
@@ -104,9 +102,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const updateQuantity = useCallback((productId: number, quantity: number) => {
     if (quantity < 1) return;
     setItems((prev) => {
-      const next = prev.map((i) =>
-        i.productId === productId ? { ...i, quantity } : i,
-      );
+      const next = prev.map((i) => (i.productId === productId ? { ...i, quantity } : i));
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       } catch {

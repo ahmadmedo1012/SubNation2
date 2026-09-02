@@ -56,7 +56,10 @@ function CartSkeleton() {
   return (
     <div className="space-y-2.5">
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5">
+        <div
+          key={i}
+          className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5"
+        >
           <div className="w-14 h-14 rounded-xl bg-muted skeleton-shimmer shrink-0" />
           <div className="flex-1 space-y-2">
             <div className="h-4 bg-muted skeleton-shimmer rounded w-2/5" />
@@ -152,9 +155,7 @@ export default function CartPage() {
           <div>
             <h1 className="text-2xl font-black leading-tight">سلة المشتريات</h1>
             <p className="text-sm text-muted-foreground">
-              {items.length === 0
-                ? "سلتك فارغة حالياً"
-                : `${items.length} منتج في السلة`}
+              {items.length === 0 ? "سلتك فارغة حالياً" : `${items.length} منتج في السلة`}
             </p>
           </div>
         </div>

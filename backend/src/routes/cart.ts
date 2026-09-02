@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, cartItemsTable, productsTable, flashSalesTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { db, cartItemsTable, productsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { applyFlashSale } from "../lib/pricing";
@@ -128,7 +128,7 @@ router.post("/items", requireUser, async (req, res) => {
 router.patch("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const idParam = req.params.id;
-  const id = parseInt(Array.isArray(idParam) ? idParam[0] ?? "" : idParam ?? "", 10);
+  const id = parseInt(Array.isArray(idParam) ? (idParam[0] ?? "") : (idParam ?? ""), 10);
   const { quantity } = req.body ?? {};
 
   if (isNaN(id))
@@ -163,7 +163,7 @@ router.patch("/items/:id", requireUser, async (req, res) => {
 router.delete("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const idParam = req.params.id;
-  const id = parseInt(Array.isArray(idParam) ? idParam[0] ?? "" : idParam ?? "", 10);
+  const id = parseInt(Array.isArray(idParam) ? (idParam[0] ?? "") : (idParam ?? ""), 10);
 
   if (isNaN(id))
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));

@@ -5,7 +5,16 @@ import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
-import { CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag, Wallet, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  ShoppingBag,
+  Tag,
+  Wallet,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -153,7 +162,9 @@ export default function CheckoutPage() {
               >
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    method === "wallet" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                    method === "wallet"
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <Wallet className="w-5 h-5" />
@@ -182,7 +193,9 @@ export default function CheckoutPage() {
               >
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    method === "cod" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                    method === "cod"
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <ShoppingBag className="w-5 h-5" />

@@ -77,8 +77,7 @@ function FlashCard({
 
           {isDeal && (
             <div className="absolute top-3 right-3 bg-status-error text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
-              <Tag className="w-3 h-3" />
-              -{discount}%
+              <Tag className="w-3 h-3" />-{discount}%
             </div>
           )}
 
@@ -91,12 +90,16 @@ function FlashCard({
         </div>
 
         <div className="p-4">
-          <div className="text-xs text-muted-foreground font-bold mb-1.5 truncate">{product.category ?? "عروض"}</div>
+          <div className="text-xs text-muted-foreground font-bold mb-1.5 truncate">
+            {product.category ?? "عروض"}
+          </div>
           <div className="font-black text-sm leading-snug mb-2.5 truncate group-hover:text-primary transition-colors">
             {product.name}
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="font-black text-lg text-primary tabular-nums">{formatCurrency(salePrice)}</span>
+            <span className="font-black text-lg text-primary tabular-nums">
+              {formatCurrency(salePrice)}
+            </span>
             {isDeal && (
               <span className="text-xs text-muted-foreground line-through tabular-nums">
                 {formatCurrency(product.price)}
@@ -192,9 +195,7 @@ export default function FlashSalesPage() {
       ) : (
         <>
           <div className="flex items-center justify-between mb-5">
-            <p className="text-sm font-bold text-muted-foreground">
-              {onSale.length} عرض متاح
-            </p>
+            <p className="text-sm font-bold text-muted-foreground">{onSale.length} عرض متاح</p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {onSale.map((p, i) => (

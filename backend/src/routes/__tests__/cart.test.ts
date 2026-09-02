@@ -28,14 +28,13 @@ function buildApp() {
 }
 
 async function seedUser(phone = "91100001") {
-  const [u] = await db
-    .insert(usersTable)
-    .values({ phone, walletBalance: "100.00" })
-    .returning();
+  const [u] = await db.insert(usersTable).values({ phone, walletBalance: "100.00" }).returning();
   return u;
 }
 
-async function seedProduct(overrides: Partial<{ name: string; price: string; isActive: boolean }> = {}) {
+async function seedProduct(
+  overrides: Partial<{ name: string; price: string; isActive: boolean }> = {},
+) {
   const [p] = await db
     .insert(productsTable)
     .values({
