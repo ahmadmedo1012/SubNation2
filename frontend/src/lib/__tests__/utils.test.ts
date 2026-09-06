@@ -30,13 +30,19 @@ import {
   statusLabel,
   tierColor,
   tierLabel,
+  formatCount,
 } from "../utils";
 
 describe("formatCurrency", () => {
   it("formats positive numbers with two decimals + Libyan dinar suffix", () => {
     expect(formatCurrency(12.5)).toBe("12.50 د.ل");
     expect(formatCurrency(0)).toBe("0.00 د.ل");
-    expect(formatCurrency(1234.567)).toBe("1234.57 د.ل");
+    expect(formatCurrency(1234.567)).toBe("1,234.57 د.ل");
+  });
+
+  it("groups thousands (round-3 fix: wallet/revenue tiles exceeded 4 digits with unreadable ungrouped runs)", () => {
+    expect(formatCurrency(12345.5)).toBe("12,345.50 د.ل");
+    expect(formatCurrency(1000000)).toBe("1,000,000.00 د.ل");
   });
 
   it("returns the zero-Libyan-dinar fallback for null / undefined / NaN", () => {
@@ -158,5 +164,34 @@ describe("cn", () => {
   it("returns an empty string for empty / falsy inputs", () => {
     expect(cn()).toBe("");
     expect(cn(false, null, undefined, "")).toBe("");
+  });
+});
+
+describe("formatCount (Arabic pluralization, round-3)", () => {
+  it("selects the correct Arabic plural form per CLDR category", () => {
+    expect(
+      formatCount(1, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+    ).toBe("1 منتج");
+    expect(
+      formatCount(2, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+    ).toBe("2 منتجان");
+    expect(
+      formatCount(3, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+    ).toBe("3 منتجات");
+    expect(
+      formatCount(11, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+    ).toBe("11 منتجاً");
+    expect(
+      formatCount(100, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+    ).toBe("100 منتج");
+  });
+
+  it("falls back to `other` when a category has no provided form", () => {
+    expect(formatCount(3, { other: "عنصر" })).toBe("3 عنصر");
+    expect(formatCount(0, { other: "عنصر" })).toBe("0 عنصر");
+  });
+
+  it("groups large counts like money values do", () => {
+    expect(formatCount(1234567, { other: "طلب" })).toBe("1,234,567 طلب");
   });
 });

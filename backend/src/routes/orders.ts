@@ -10,6 +10,7 @@ import { idempotency } from "../middlewares/idempotency";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewOrder } from "../telegram";
 import { CheckoutService } from "../services/checkout.service";
+import { toNumber } from "../lib/numeric";
 
 const router = Router();
 
@@ -24,9 +25,9 @@ function formatOrder(
     product_id: order.productId,
     product_name: productName,
     product_image_url: productImageUrl ?? null,
-    amount: parseFloat(String(order.amount)),
+    amount: toNumber(order.amount),
     coupon_code: order.couponCode ?? null,
-    discount_amount: order.discountAmount ? parseFloat(String(order.discountAmount)) : 0,
+    discount_amount: toNumber(order.discountAmount),
     status: order.status,
     delivered_email: order.deliveredEmail ?? null,
     delivered_password: safeDecrypt(order.deliveredPassword),
@@ -40,6 +41,13 @@ function formatOrder(
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
+  // Round-3 (8-c §2.4): the storefront home page renders 4 rows but the
+  // only available fetch returned the full 200-row list (with a
+  // safeDecrypt per row server-side). ?limit= gives callers exactly what
+  // they display. Default stays 200 (profile page), clamped to [1, 200].
+  const limitRaw = parseInt(String(req.query.limit ?? "200"), 10);
+  const limit = Number.isNaN(limitRaw) ? 200 : Math.min(Math.max(limitRaw, 1), 200);
+
   const orders = await db
     .select({
       order: ordersTable,
@@ -50,7 +58,7 @@ router.get("/", requireUser, async (req, res) => {
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(eq(ordersTable.userId, userId))
     .orderBy(desc(ordersTable.createdAt))
-    .limit(200);
+    .limit(limit);
 
   return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
@@ -107,6 +115,17 @@ router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async 
           .status(404)
           .json(
             createErrorResponse("المنتج غير متوفر حالياً. حاول لاحقاً.", ErrorCode.OUT_OF_STOCK),
+          );
+      case "INVALID_PRICE":
+        // M1 defense-in-depth gate — non-finite/non-positive final price.
+        // The client can't fix this; it's a data-integrity signal.
+        return res
+          .status(500)
+          .json(
+            createErrorResponse(
+              "تعذر إتمام الشراء بسبب خطأ في بيانات السعر. تواصل مع الدعم.",
+              ErrorCode.INTERNAL_ERROR,
+            ),
           );
       case "INVENTORY_CLAIMED":
         return res

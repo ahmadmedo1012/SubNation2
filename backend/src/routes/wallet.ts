@@ -10,36 +10,40 @@ import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewTopup } from "../telegram";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { toNumber } from "../lib/numeric";
 
 const router = Router();
 
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // Round-3 (8-c §2.6): user → orders → pending-count was 3 sequential
+  // round trips; the two aggregates only depend on userId, so all three
+  // queries now run concurrently.
+  const [[user], recentOrders, [{ pendingCount }]] = await Promise.all([
+    db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
+    db
+      .select({
+        order: ordersTable,
+        productName: productsTable.name,
+        productImageUrl: productsTable.imageUrl,
+      })
+      .from(ordersTable)
+      .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
+      .where(eq(ordersTable.userId, userId))
+      .orderBy(desc(ordersTable.createdAt))
+      .limit(5),
+    // Count only THIS user's pending topups
+    db
+      .select({ pendingCount: count() })
+      .from(walletTopupsTable)
+      .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending"))),
+  ]);
   if (!user)
     return res.status(401).json(createErrorResponse("المستخدم غير موجود", ErrorCode.UNAUTHORIZED));
 
-  const recentOrders = await db
-    .select({
-      order: ordersTable,
-      productName: productsTable.name,
-      productImageUrl: productsTable.imageUrl,
-    })
-    .from(ordersTable)
-    .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
-    .where(eq(ordersTable.userId, userId))
-    .orderBy(desc(ordersTable.createdAt))
-    .limit(5);
-
-  // Count only THIS user's pending topups
-  const [{ pendingCount }] = await db
-    .select({ pendingCount: count() })
-    .from(walletTopupsTable)
-    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
-
   return res.json({
-    balance: parseFloat(String(user.walletBalance)),
+    balance: toNumber(user.walletBalance),
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,
     pending_topups_count: Number(pendingCount),
@@ -49,7 +53,7 @@ router.get("/", requireUser, async (req, res) => {
       product_id: r.order.productId,
       product_name: r.productName ?? "",
       product_image_url: r.productImageUrl ?? null,
-      amount: parseFloat(String(r.order.amount)),
+      amount: toNumber(r.order.amount),
       status: r.order.status,
       delivered_email: r.order.deliveredEmail ?? null,
       delivered_password: safeDecrypt(r.order.deliveredPassword),
@@ -240,7 +244,7 @@ router.post("/topups", requireUser, async (req, res) => {
 function formatTopup(topup: typeof walletTopupsTable.$inferSelect) {
   return {
     id: topup.id,
-    amount: parseFloat(String(topup.amount)),
+    amount: toNumber(topup.amount),
     payment_method: topup.paymentMethod,
     payment_network: topup.paymentNetwork ?? null,
     sender_phone: topup.senderPhone ?? null,

@@ -1,5 +1,5 @@
 import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
-import { applyFlashSale } from "../lib/pricing";
+import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
 import { and, count, eq, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
@@ -130,8 +130,7 @@ router.get("/", catalogCache, async (req, res) => {
 
   const result = rows.map((p) => {
     const basePrice = parseFloat(String(p.price));
-    const salePrice =
-      discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+    const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
     const stockCount = Number(p.stockCount ?? 0);
     return {
       id: p.id,
@@ -156,7 +155,10 @@ router.get("/", catalogCache, async (req, res) => {
 
 export async function getProductStatsHandler(_req: Request, res: Response) {
   // Aggregate everything in SQL — no in-memory spread, no full table scan in JS.
-  const [[{ totalProducts, lowestPrice }], [{ totalUnits }], inventoryCounts, flashSale] =
+  // Round-3 (8-c §3.3): `available_products` used to fetch one row per
+  // stocked product into JS just to take `.length` — COUNT(DISTINCT)
+  // computes it in the database in one row.
+  const [[{ totalProducts, lowestPrice }], [{ totalUnits }], [{ availableProducts }], flashSale] =
     await Promise.all([
       db
         .select({
@@ -171,16 +173,17 @@ export async function getProductStatsHandler(_req: Request, res: Response) {
         })
         .from(inventoryTable),
       db
-        .select({ productId: inventoryTable.productId })
+        .select({
+          availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
+        })
         .from(inventoryTable)
-        .where(eq(inventoryTable.isSold, false))
-        .groupBy(inventoryTable.productId),
+        .where(eq(inventoryTable.isSold, false)),
       getActiveFlashSale(),
     ]);
 
   return res.json({
     total_products: Number(totalProducts ?? 0),
-    available_products: inventoryCounts.length,
+    available_products: Number(availableProducts ?? 0),
     total_units: Number(totalUnits ?? 0),
     lowest_price:
       lowestPrice !== null && lowestPrice !== undefined ? parseFloat(String(lowestPrice)) : null,
@@ -214,30 +217,37 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
       .json(createErrorResponse("معرف المنتج غير صالح", ErrorCode.INVALID_DATA));
   }
 
-  const [product] = await db
-    .select()
-    .from(productsTable)
-    .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
-    .limit(1);
+  // Round-3 (8-c §2.6): 4 sequential round trips → 2. The flash-sale row
+  // doesn't depend on the product, so it rides the first Promise.all;
+  // stock + order counts ride the second. Also routes the sale-price
+  // arithmetic through computeFlashSalePrice (lib/pricing single source
+  // — this file previously carried a 4th copy of the formula).
+  const [[product], flashSale] = await Promise.all([
+    db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
+      .limit(1),
+    getActiveFlashSale(),
+  ]);
 
   if (!product)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
-  const [stockResult] = await db
-    .select({ count: count() })
-    .from(inventoryTable)
-    .where(and(eq(inventoryTable.productId, product.id), eq(inventoryTable.isSold, false)));
+  const [[stockResult], [orderResult]] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.productId, product.id), eq(inventoryTable.isSold, false))),
+    db
+      .select({ count: count() })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed"))),
+  ]);
 
-  const [orderResult] = await db
-    .select({ count: count() })
-    .from(ordersTable)
-    .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed")));
-
-  const flashSale = await getActiveFlashSale();
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const salePrice =
-    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+  const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
   const stockCount = Number(stockResult?.count ?? 0);
 
   return res.json({
@@ -265,30 +275,33 @@ router.get("/:id", catalogCache, async (req, res) => {
   if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  const [product] = await db
-    .select()
-    .from(productsTable)
-    .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
-    .limit(1);
+  // Round-3 (8-c §2.6): same 4→2 parallelization as /by-slug above.
+  const [[product], flashSale] = await Promise.all([
+    db
+      .select()
+      .from(productsTable)
+      .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
+      .limit(1),
+    getActiveFlashSale(),
+  ]);
 
   if (!product)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
-  const [stockResult] = await db
-    .select({ count: count() })
-    .from(inventoryTable)
-    .where(and(eq(inventoryTable.productId, id), eq(inventoryTable.isSold, false)));
+  const [[stockResult], [orderResult]] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.productId, id), eq(inventoryTable.isSold, false))),
+    db
+      .select({ count: count() })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed"))),
+  ]);
 
-  const [orderResult] = await db
-    .select({ count: count() })
-    .from(ordersTable)
-    .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed")));
-
-  const flashSale = await getActiveFlashSale();
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const salePrice =
-    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+  const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
   const stockCount = Number(stockResult?.count ?? 0);
 
   return res.json({

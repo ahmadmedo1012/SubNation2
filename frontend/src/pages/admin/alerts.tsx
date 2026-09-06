@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import {
   AlertTriangle,
   Bell,
@@ -127,7 +128,10 @@ export default function AdminAlertsPage() {
 
   const { data, isLoading, refetch } = useQuery<{ alerts: AdminAlertItem[]; unreadCount: number }>({
     queryKey: ["admin-alerts"],
-    queryFn: () => fetch("/api/admin/alerts", { headers }).then((r) => r.json()),
+    queryFn: () =>
+      customFetch<{ alerts: AdminAlertItem[]; unreadCount: number }>("/api/admin/alerts", {
+        headers,
+      }),
     refetchInterval: 20_000,
     refetchIntervalInBackground: false,
     enabled: !!adminToken,

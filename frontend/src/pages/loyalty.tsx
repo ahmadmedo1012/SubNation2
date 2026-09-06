@@ -171,7 +171,12 @@ export default function LoyaltyPage() {
                 نقاطي
               </div>
               <div className="text-3xl font-black text-yellow-400 mb-1 tabular-nums">
-                {data.points.toLocaleString()}
+                {/* Round-3 (8-e §2): bare toLocaleString() follows the
+                    DEVICE locale — Arabic-locale devices rendered Arabic-Indic
+                    numerals (١٢٣٤) on this tile while the wallet balance one
+                    screen over shows Latin digits. Pin the same Latin-digit
+                    grouping as the rest of the money UI. */}
+                {data.points.toLocaleString("en-US")}
               </div>
               <div className="text-sm text-muted-foreground flex items-center gap-1">
                 <span className="font-bold text-foreground tabular-nums">
@@ -258,13 +263,19 @@ export default function LoyaltyPage() {
 
             <div className="space-y-2 mb-4">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-black tracking-widest truncate">
+                <div
+                  dir="ltr"
+                  className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-black tracking-widest truncate text-left"
+                >
                   {data.referral_code}
                 </div>
                 <CopyButton text={data.referral_code} label="نسخ" />
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="flex-1 bg-background/40 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono">
+                <div
+                  dir="ltr"
+                  className="flex-1 bg-background/40 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono text-left"
+                >
                   {data.referral_link ||
                     `${window.location.origin}/register?ref=${data.referral_code}`}
                 </div>

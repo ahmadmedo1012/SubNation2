@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { formatCount } from "@/lib/utils";
 
 const MAX_PENDING = 3;
 
@@ -563,7 +564,15 @@ export default function WalletPage() {
               <div>
                 <p className="font-bold text-sm text-status-warning">طلبات الشحن موقوفة مؤقتاً</p>
                 <p className="text-xs text-status-warning/75 mt-0.5">
-                  لديك {pendingCount} طلبات قيد المراجعة (الحد الأقصى {MAX_PENDING})
+                  لديك{" "}
+                  {formatCount(pendingCount, {
+                    one: "طلب",
+                    two: "طلبان",
+                    few: "طلبات",
+                    many: "طلباً",
+                    other: "طلب",
+                  })}{" "}
+                  قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
                 {oldestPending && (
                   <p className="text-[11px] text-status-warning/75 mt-1">

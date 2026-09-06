@@ -126,7 +126,24 @@ router.patch(
       return res.status(400).json(createErrorResponse("ids مطلوبة", ErrorCode.INVALID_DATA));
     if (!status || !ALLOWED.includes(status))
       return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
-    const numIds: number[] = ids.map(Number).filter((n) => !isNaN(n));
+    // M4 — the old `.map(Number).filter(!isNaN)` silently DROPPED
+    // non-numeric ids and reported them as updated. A client sending
+    // ["12", 13] had both processed (string coercion), while ["abc", 13]
+    // reported `updated: 1` with no mention of the dropped id. Now the
+    // invalid entries are surfaced explicitly in the response so the
+    // admin UI can render "N skipped" instead of a silent lie.
+    const seen = new Set<number>();
+    const numIds: number[] = [];
+    const skippedInvalid: unknown[] = [];
+    for (const raw of ids) {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0 || seen.has(n)) {
+        skippedInvalid.push(raw);
+        continue;
+      }
+      seen.add(n);
+      numIds.push(n);
+    }
     if (numIds.length === 0)
       return res.status(400).json(createErrorResponse("لا معرّفات صالحة", ErrorCode.INVALID_DATA));
 
@@ -234,9 +251,14 @@ router.patch(
       ids: numIds,
       new_status: status,
       count: numIds.length,
+      skipped_invalid: skippedInvalid.length,
     });
 
-    return res.json({ success: true, updated: numIds.length });
+    return res.json({
+      success: true,
+      updated: numIds.length,
+      ...(skippedInvalid.length > 0 ? { skipped_invalid: skippedInvalid.length } : {}),
+    });
   },
 );
 

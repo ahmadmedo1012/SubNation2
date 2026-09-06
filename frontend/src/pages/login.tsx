@@ -4,8 +4,8 @@ import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { Gift, ShieldCheck, ShoppingBag } from "lucide-react";
-import { useMemo } from "react";
-import { Link } from "wouter";
+import { useCallback, useMemo } from "react";
+import { Link, useLocation } from "wouter";
 
 /**
  * Public login page — passwordless.
@@ -45,9 +45,35 @@ function readLoginIntent(): LoginIntent {
   return { type: "generic" };
 }
 
+/**
+ * Round-3 (8-f §4 — dead redirect flow): guarded pages (checkout, cart,
+ * orders, wallet, …) navigate to `/login?redirect=<path>`, but the login
+ * page NEVER read the param — every successful sign-in landed on "/" and
+ * the user had to find their way back. Honor it now: same-origin internal
+ * paths only (slash-prefixed, no protocol/host) so the param can't be
+ * abused as an open redirect.
+ */
+function readRedirectTarget(): string | null {
+  if (typeof window === "undefined") return null;
+  const target = new URLSearchParams(window.location.search).get("redirect");
+  if (!target || !target.startsWith("/") || target.startsWith("//")) return null;
+  try {
+    const url = new URL(target, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return url.pathname + url.search;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const { whatsappEnabled } = usePublicAuthProviders();
   const intent = useMemo(() => readLoginIntent(), []);
+  const redirectTarget = useMemo(() => readRedirectTarget(), []);
+  const [, navigate] = useLocation();
+  const handleLoginSuccess = useCallback(() => {
+    if (redirectTarget) navigate(redirectTarget);
+  }, [redirectTarget, navigate]);
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
       {/* Ambient background glows */}
@@ -119,7 +145,7 @@ export default function LoginPage() {
           )}
 
           {/* PRIMARY: One-click providers (Google + Telegram when enabled). */}
-          <AuthProviders />
+          <AuthProviders onSuccess={redirectTarget ? handleLoginSuccess : undefined} />
 
           {/* WhatsApp — peer of Google + Telegram. Pristine button →
               expands inline. Backend handles new + returning users

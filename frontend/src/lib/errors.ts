@@ -1,57 +1,11 @@
 // Error code enum (must match backend)
-export enum ErrorCode {
-  // Validation errors
-  INVALID_DATA = "INVALID_DATA",
-  INVALID_PHONE = "INVALID_PHONE",
-  INVALID_PASSWORD_LENGTH = "INVALID_PASSWORD_LENGTH",
-  INVALID_PASSWORD_WEAK = "INVALID_PASSWORD_WEAK",
-  INVALID_OTP = "INVALID_OTP",
-  INVALID_CREDENTIAL = "INVALID_CREDENTIAL",
+// Round-3 (8-a §1D): the enum moved to @workspace/error-codes (shared
+// with the backend) so the two sides can never drift again — the
+// CONFLICT/INVALID_TOKEN lag incident was exactly this class of bug.
+import { ErrorCode } from "@workspace/error-codes";
 
-  // Authentication errors
-  UNAUTHORIZED = "UNAUTHORIZED",
-  SESSION_EXPIRED = "SESSION_EXPIRED",
-  ACCOUNT_LOCKED = "ACCOUNT_LOCKED",
-  ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND",
-  PHONE_ALREADY_REGISTERED = "PHONE_ALREADY_REGISTERED",
+export { ErrorCode };
 
-  // Authorization errors
-  FORBIDDEN = "FORBIDDEN",
-  INSUFFICIENT_PERMISSIONS = "INSUFFICIENT_PERMISSIONS",
-
-  // Resource errors
-  NOT_FOUND = "NOT_FOUND",
-  ALREADY_EXISTS = "ALREADY_EXISTS",
-  OUT_OF_STOCK = "OUT_OF_STOCK",
-  PRODUCT_UNAVAILABLE = "PRODUCT_UNAVAILABLE",
-
-  // Wallet errors
-  INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
-  INVALID_AMOUNT = "INVALID_AMOUNT",
-  TOPUP_LIMIT_EXCEEDED = "TOPUP_LIMIT_EXCEEDED",
-
-  // Order errors
-  ORDER_NOT_FOUND = "ORDER_NOT_FOUND",
-  ORDER_ALREADY_COMPLETED = "ORDER_ALREADY_COMPLETED",
-  ORDER_CANNOT_CANCEL = "ORDER_CANNOT_CANCEL",
-
-  // Google OAuth errors
-  GOOGLE_TOKEN_INVALID = "GOOGLE_TOKEN_INVALID",
-  GOOGLE_VERIFICATION_FAILED = "GOOGLE_VERIFICATION_FAILED",
-
-  // Server errors
-  INTERNAL_ERROR = "INTERNAL_ERROR",
-  SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
-
-  // P2 (deep-audit 2026-09-06): backend enum was 3 codes ahead of the
-  // frontend map — CONFLICT (409 races, e.g. checkout wallet-deduction
-  // races now surfaced by H5), INVALID_TOKEN and FEATURE_DISABLED all
-  // fell through to the generic fallback. Adding them here keeps the
-  // money-path retry hints readable in Arabic.
-  CONFLICT = "CONFLICT",
-  INVALID_TOKEN = "INVALID_TOKEN",
-  FEATURE_DISABLED = "FEATURE_DISABLED",
-}
 
 // Arabic error messages for each error code
 const errorMessages: Record<ErrorCode, string> = {
@@ -102,6 +56,13 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.CONFLICT]: "تعارض في العملية. أعد المحاولة بعد لحظات",
   [ErrorCode.INVALID_TOKEN]: "رمز الجلسة غير صالح. سجّل الدخول مرة أخرى",
   [ErrorCode.FEATURE_DISABLED]: "هذه الميزة معطّلة حالياً",
+  [ErrorCode.RATE_LIMITED]: "تم تجاوز الحد الأقصى للطلبات. حاول مرة أخرى بعد دقيقة",
+  [ErrorCode.COPILOT_INVALID_INPUT]: "طلب غير صالح للمساعد الذكي",
+  [ErrorCode.COPILOT_LLM_ERROR]: "تعذر الوصول إلى المساعد الذكي. حاول مرة أخرى",
+  [ErrorCode.COPILOT_NO_ADMIN_SESSION]: "جلسة المسؤول مطلوبة لاستخدام المساعد الذكي",
+  [ErrorCode.COPILOT_BAD_METHOD]: "طريقة طلب غير مدعومة",
+  [ErrorCode.IDEMPOTENCY_IN_FLIGHT]: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول بعد قليل",
+  [ErrorCode.IDEMPOTENCY_KEY_REUSE]: "تمت إعادة استخدام معرف العملية مع طلب مختلف",
 };
 
 type ErrorLike = {
@@ -152,8 +113,21 @@ export function getErrorMessage(error: unknown): string {
     return err.response.data.error;
   }
 
-  if (typeof err.message === "string" && err.message.trim()) {
-    return err.message;
+  // Round-3 (8-e §1/§7): network-level failures surfaced as English —
+  // browser TypeError("Failed to fetch") and customFetch's
+  // "HTTP 502 Bad Gateway: …" prefix landed verbatim in Arabic toasts.
+  // Detect the known network-failure shapes and speak Arabic.
+  const message = typeof err.message === "string" ? err.message.trim() : "";
+  if (message) {
+    if (
+      message === "Failed to fetch" ||
+      message === "NetworkError when attempting to fetch resource." ||
+      message === "Load failed" ||
+      /^HTTP 5\d\d/.test(message)
+    ) {
+      return "تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.";
+    }
+    return message;
   }
 
   if (error instanceof Error && error.message) {

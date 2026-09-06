@@ -162,7 +162,12 @@ router.patch("/:id", async (req, res) => {
   if (adminReq.adminId === id) {
     return res
       .status(400)
-      .json({ error: "لا يمكنك تعديل صلاحيات حسابك من هنا. استخدم صفحة 'حسابي'." });
+      .json(
+        createErrorResponse(
+          "لا يمكنك تعديل صلاحيات حسابك من هنا. استخدم صفحة 'حسابي'.",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
 
   const { display_name, permissions } = (req.body ?? {}) as {

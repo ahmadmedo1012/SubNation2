@@ -4,6 +4,7 @@ import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey, getListTopupsQueryKey } from "@workspace/api-client-react";
 import { connectSocket } from "../lib/socket";
+import { formatCurrency, statusLabel } from "@/lib/utils";
 
 /**
  * Subscribe to user-scoped Socket.IO events.
@@ -38,7 +39,10 @@ export function useSocket(userId?: number | string) {
         socket.on("order-updated", (data: { id: number | string; status: string }) => {
           toast({
             title: `تم تحديث حالة طلبك #${data.id}`,
-            description: `الحالة الجديدة: ${data.status}`,
+            // Round-3 (8-e §3): raw English status enum ("processing",
+            // "completed") leaked into an Arabic toast — route it through
+            // the same statusLabel() mapping every storefront page uses.
+            description: `الحالة الجديدة: ${statusLabel(data.status)}`,
             id: `order-${data.id}-${data.status}`,
           });
         });
@@ -54,7 +58,9 @@ export function useSocket(userId?: number | string) {
           if (data.status === "approved") {
             toast({
               title: `تم شحن المحفظة`,
-              description: `${data.amount} د.ل أُضيفت إلى رصيدك`,
+              // Round-3 (8-e §1.3): raw data.amount rendered "5" instead of
+              // the money-formatted "5.00" every other topup surface shows.
+              description: `${formatCurrency(data.amount)} أُضيفت إلى رصيدك`,
               id: `topup-${data.amount}-approved`,
             });
           } else {

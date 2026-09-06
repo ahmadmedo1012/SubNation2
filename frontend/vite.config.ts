@@ -175,6 +175,40 @@ export default defineConfig({
         // woff2 are covered by the standard precache + the 1y immutable
         // cache header on /assets/.
         runtimeCaching: [],
+        // Round-3 (8-c §1.1 — precache diet): the default
+        // precacheAndRoute globbed the ENTIRE build — 78 files / ~760 KB
+        // gzip including vendor-sentry (156 KB gz), vendor-charts
+        // (109 KB gz) and every admin page chunk — downloaded right
+        // after first paint on a phone, competing with the LCP image.
+        // A storefront visitor never opens admin pages or charts.
+        // Allowlist the offline-critical shell only; everything else is
+        // runtime-cached on first use (see runtimeCaching note above).
+        // NOTE: robots.txt/sitemap.xml are served dynamically by the
+        // backend routes — they don't exist in the build output and must
+        // not appear here (workbox hard-fails on unmatched globs).
+        globPatterns: [
+          "index.html",
+          "favicon.svg",
+          "subnation-logo.png",
+          "opengraph.jpg",
+          "manifest.json",
+          "assets/*.css",
+          "assets/*.woff2",
+        ],
+        // Belt & suspenders: even if a future glob somehow matches the
+        // deferred-vendor chunks, refuse to precache anything heavy —
+        // runtime caching exists precisely for the rarely/never-visited
+        // routes. 256 KB raw (≈ 64 KB gz) comfortably admits the largest
+        // allowlisted font subsets while excluding every vendor chunk.
+        maximumFileSizeToCacheInBytes: 256 * 1024,
+        // Never precache JS: the entry HTML already links the entry
+        // chunk, and a stale precached entry + freshly runtime-cached
+        // chunks is the classic "partially updated PWA" failure mode.
+        // JS chunks rely on the server's immutable /assets/ caching +
+        // lazyWithRetry recovery instead.
+        globIgnores: ["**/*.js"],
+        navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],
       },
     }),
     // Sentry source-map upload — only active when SENTRY_AUTH_TOKEN is set

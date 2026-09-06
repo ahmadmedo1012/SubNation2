@@ -342,6 +342,15 @@ export async function customFetch<T = unknown>(
 
   // Attach bearer token when an auth getter is configured and no
   // Authorization header has been explicitly provided.
+  // Round-3 (8-f §1): ~18 call sites pass `token ? \`Bearer ${token}\` : ""`,
+  // which leaves an EMPTY Authorization header — `headers.has()` is then
+  // true, so the registered getter could never take over. Treat an
+  // empty/whitespace header as absent: delete it so the getter wins
+  // and logged-out requests stop shipping a junk header at all.
+  const explicitAuth = headers.get("authorization");
+  if (explicitAuth !== null && explicitAuth.trim() === "") {
+    headers.delete("authorization");
+  }
   if (_authTokenGetter && !headers.has("authorization")) {
     const token = await _authTokenGetter();
     if (token) {

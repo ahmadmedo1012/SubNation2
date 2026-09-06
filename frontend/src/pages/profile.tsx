@@ -23,7 +23,7 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 const TIER_GRADIENTS: Record<string, string> = {
@@ -60,29 +60,45 @@ export default function ProfilePage() {
 
   const user = userData as ProfileUser | undefined;
 
-  // Fetch linked providers
-  useEffect(() => {
-    if (token) {
-      fetchLinkedProviders();
-    }
-  }, [token]);
+  // Fetch linked providers. Round-3 (8-f §6): no abort + a stale-response
+  // race — a slow response from a previous token could land after a
+  // logout/login flip and render the WRONG account's provider list.
+  // AbortController + cancelled flag close the race. `providersVersion`
+  // lets unlink/link handlers trigger a refetch without re-defining the
+  // fetch function (the old pattern's missing dep).
+  const [providersVersion, setProvidersVersion] = useState(0);
+  const refetchProviders = useCallback(() => setProvidersVersion((v) => v + 1), []);
 
-  const fetchLinkedProviders = async () => {
-    setLoadingProviders(true);
-    try {
-      const res = await fetch("/api/auth/providers/linked", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLinkedProviders(data.providers || []);
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    (async () => {
+      setLoadingProviders(true);
+      try {
+        const res = await fetch("/api/auth/providers/linked", {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          setLinkedProviders(data.providers || []);
+        }
+      } catch (err) {
+        if ((err as { name?: string })?.name !== "AbortError") {
+          console.error("Failed to fetch linked providers:", err);
+        }
+      } finally {
+        if (!cancelled) setLoadingProviders(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch linked providers:", err);
-    } finally {
-      setLoadingProviders(false);
-    }
-  };
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [token, providersVersion]);
 
   const handleUnlinkProvider = async (provider: string, providerUid: string) => {
     setUnlinkingProvider(providerUid);
@@ -96,7 +112,7 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(data.error ?? "فشل فصل مزود المصادقة");
 
       toast({ title: "تم فصل الحساب", description: "تم فصل مزود المصادقة بنجاح." });
-      await fetchLinkedProviders();
+      await refetchProviders();
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
     } catch (err: unknown) {
       toast({
@@ -371,7 +387,7 @@ export default function ProfilePage() {
                     buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
                     onSuccess={() => {
                       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-                      fetchLinkedProviders();
+                      refetchProviders();
                     }}
                   />
                 )}

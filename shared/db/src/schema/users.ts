@@ -59,6 +59,9 @@ export const usersTable = pgTable(
     referredByIdx: index("idx_users_referred_by").on(t.referredBy),
     firebaseUidIdx: index("idx_users_firebase_uid").on(t.firebaseUid),
     emailIdx: index("idx_users_email").on(t.email),
+    // Round-3 (8-c §4.1): admin users list sorts by createdAt DESC LIMIT 100
+    // with no index — sequential scan on every dashboard visit.
+    createdIdx: index("idx_users_created").on(t.createdAt),
   }),
 );
 

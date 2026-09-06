@@ -2,6 +2,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import {
   Activity,
   AlertCircle,
@@ -414,7 +415,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const diagQ = useQuery<DiagnosticsResponse>({
     queryKey: ["admin-diagnostics"],
-    queryFn: () => fetch("/api/admin/diagnostics", { headers }).then((r) => r.json()),
+    queryFn: () => customFetch<DiagnosticsResponse>("/api/admin/diagnostics", { headers }),
     // 30 s → 60 s. Memory + CPU + event-loop p99 don't need 30 s precision.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
@@ -424,7 +425,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const summaryQ = useQuery<ObservabilitySummary>({
     queryKey: ["admin-observability-summary"],
-    queryFn: () => fetch("/api/admin/observability/summary", { headers }).then((r) => r.json()),
+    queryFn: () => customFetch<ObservabilitySummary>("/api/admin/observability/summary", { headers }),
     // 30 s → 60 s. Aggregate counters update slowly.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,

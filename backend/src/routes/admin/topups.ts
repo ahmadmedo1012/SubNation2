@@ -1,14 +1,31 @@
 import { db, usersTable, walletTopupsTable } from "@workspace/db";
+import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { intParam } from "../../lib/http";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { mapServiceErrorToCode } from "../../lib/service-error";
 import { idempotency } from "../../middlewares/idempotency";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
-import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
+
+// M3 — admin_note was read raw from the body: an object/array value
+// reached Postgres as "[object Object]" → 500 on a money-approval
+// route. One shared schema for both approve and reject.
+const TopupActionBody = z
+  .object({
+    admin_note: z.string().trim().max(500).nullish(),
+  })
+  .strict();
+
+function parseTopupActionBody(req: { body?: unknown }): string | null {
+  const parse = TopupActionBody.safeParse(req.body ?? {});
+  if (!parse.success) return null;
+  return parse.data.admin_note ?? null;
+}
 
 router.get("/topups", requireAdmin, async (req, res) => {
   const { status } = req.query;
@@ -72,15 +89,19 @@ router.post(
     if (id === null)
       return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
+    const adminNote = parseTopupActionBody(req);
+    if (adminNote === null)
+      return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+
     try {
-      const result = await TopupService.approve(id, req.body?.admin_note ?? null);
-      void writeAuditLog(req, "topup.approve", "topup", id, {
-        admin_note: req.body?.admin_note ?? null,
-      });
+      const result = await TopupService.approve(id, adminNote);
+      void writeAuditLog(req, "topup.approve", "topup", id, { admin_note: adminNote });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {
-        return res.status(err.statusCode).json({ error: err.message });
+        return res
+          .status(err.statusCode)
+          .json(createErrorResponse(err.message, mapServiceErrorToCode(err)));
       }
       throw err;
     }
@@ -101,15 +122,19 @@ router.post(
     if (id === null)
       return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
+    const adminNote = parseTopupActionBody(req);
+    if (adminNote === null)
+      return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+
     try {
-      const result = await TopupService.reject(id, req.body?.admin_note ?? null);
-      void writeAuditLog(req, "topup.reject", "topup", id, {
-        admin_note: req.body?.admin_note ?? null,
-      });
+      const result = await TopupService.reject(id, adminNote);
+      void writeAuditLog(req, "topup.reject", "topup", id, { admin_note: adminNote });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {
-        return res.status(err.statusCode).json({ error: err.message });
+        return res
+          .status(err.statusCode)
+          .json(createErrorResponse(err.message, mapServiceErrorToCode(err)));
       }
       throw err;
     }

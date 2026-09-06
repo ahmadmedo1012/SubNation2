@@ -130,7 +130,7 @@ export default function OrdersPage() {
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<OrderFilter>("all");
 
-  const { data: orders = [], isLoading } = useListOrders({
+  const { data: orders = [], isLoading } = useListOrders(undefined, {
     query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -139,8 +139,9 @@ export default function OrdersPage() {
     if (!token) navigate("/login");
   }, [token, navigate]);
 
-  if (!token) return null;
-
+  // Round-3 (react-hooks/rules-of-hooks): this memo previously sat after
+  // `if (!token) return null;` — a conditional hook. The guard moved to
+  // render-time below; hooks always run in the same order now.
   const pending = orders.filter((o) => o.status === "pending");
   const completed = orders.filter((o) => o.status === "completed");
   const failed = orders.filter((o) => o.status === "failed" || o.status === "refunded");
@@ -153,6 +154,8 @@ export default function OrdersPage() {
     if (filter === "completed") return completed;
     return failed;
   }, [filter, orders, pending, completed, failed]);
+
+  if (!token) return null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -319,7 +322,7 @@ export default function OrdersPage() {
                         {(order as { coupon_code?: string }).coupon_code && (
                           <span className="flex items-center gap-0.5 text-[10px] font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
                             <Tag className="w-2.5 h-2.5" />
-                            {(order as { coupon_code?: string }).coupon_code}
+                            <span dir="ltr">{(order as { coupon_code?: string }).coupon_code}</span>
                           </span>
                         )}
                       </div>

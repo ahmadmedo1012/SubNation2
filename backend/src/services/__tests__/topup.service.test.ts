@@ -105,3 +105,70 @@ describe("Wallet top-up (pglite-isolated)", () => {
     );
   });
 });
+
+describe("TopupService.approve/reject — state machine (round-3 regression, 8-d #10)", () => {
+  it("double-approve does NOT double-credit: second approve fails, balance unchanged", async () => {
+    const user = await makeUser("0.00");
+    const [topup] = await db
+      .insert(walletTopupsTable)
+      .values({ userId: user.id, amount: "50.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .returning();
+
+    await TopupService.approve(topup.id, null);
+    const [afterFirst] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(afterFirst.walletBalance))).toBe(50);
+
+    // The exact double-click / network-retry scenario the idempotency
+    // middleware guards at the route level — the service-level status
+    // guard is the last line of defense.
+    await expect(TopupService.approve(topup.id, null)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+
+    const [afterSecond] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(afterSecond.walletBalance))).toBe(50); // STILL 50
+
+    // Exactly one ledger row — the ledger invariant auditors rely on.
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
+    expect(ledger).toHaveLength(1);
+  });
+
+  it("approve-then-reject credits nothing: reject on an approved topup fails, balance intact", async () => {
+    const user = await makeUser("0.00");
+    const [topup] = await db
+      .insert(walletTopupsTable)
+      .values({ userId: user.id, amount: "75.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .returning();
+
+    await TopupService.approve(topup.id, null);
+    await expect(TopupService.reject(topup.id, "too late")).rejects.toMatchObject({
+      statusCode: 400,
+    });
+
+    const [after] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(after.walletBalance))).toBe(75);
+  });
+
+  it("reject on a pending topup credits nothing and flips status", async () => {
+    const user = await makeUser("0.00");
+    const [topup] = await db
+      .insert(walletTopupsTable)
+      .values({ userId: user.id, amount: "75.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .returning();
+
+    await TopupService.reject(topup.id, "bad reference");
+
+    const [row] = await db.select().from(walletTopupsTable).where(eq(walletTopupsTable.id, topup.id));
+    expect(row.status).toBe("rejected");
+    const [after] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(after.walletBalance))).toBe(0);
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
+    expect(ledger).toHaveLength(0);
+  });
+});

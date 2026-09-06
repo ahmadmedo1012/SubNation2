@@ -315,8 +315,16 @@ export interface CreateProductBody {
   description?: string | null;
   /** @nullable */
   image_url?: string | null;
+  /**
+   * @minimum 0.01
+   * @maximum 1000000
+   */
   price: number;
-  /** @nullable */
+  /**
+   * @minimum 0
+   * @maximum 1000000
+   * @nullable
+   */
   cost_price?: number | null;
   /** @nullable */
   category?: string | null;
@@ -332,9 +340,17 @@ export interface UpdateProductBody {
   description?: string | null;
   /** @nullable */
   image_url?: string | null;
-  /** @nullable */
+  /**
+   * @minimum 0.01
+   * @maximum 1000000
+   * @nullable
+   */
   price?: number | null;
-  /** @nullable */
+  /**
+   * @minimum 0
+   * @maximum 1000000
+   * @nullable
+   */
   cost_price?: number | null;
   /** @nullable */
   category?: string | null;
@@ -583,6 +599,18 @@ export const ListProductsSort = {
   popular: "popular",
   newest: "newest",
 } as const;
+
+export type ListOrdersParams = {
+  /**
+ * Page size cap. The storefront home passes 4 (it renders four
+recent-order cards); the profile page uses the default 200.
+Clamped server-side to [1, 200].
+
+ * @minimum 1
+ * @maximum 200
+ */
+  limit?: number;
+};
 
 export type ListAdminOrdersParams = {
   /**

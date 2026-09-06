@@ -1,6 +1,7 @@
 import { db, inventoryTable, ordersTable, usersTable, walletTopupsTable } from "@workspace/db";
 import { and, count, eq, gte, sql, sum } from "drizzle-orm";
 import { Router } from "express";
+import { cacheWrap } from "../../lib/cache";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router = Router();
@@ -26,54 +27,75 @@ function tripoliKey(dayStartUtcMs: number): string {
 router.get("/stats", requireAdmin, async (_req, res) => {
   const today = new Date(tripoliDayStartUtc(Date.now()));
 
-  const [
-    [totalUsers],
-    [totalOrders],
-    [totalRevenue],
-    [pendingTopups],
-    [todayOrders],
-    [todayRevenue],
-    [availableStock],
-    [totalWallet],
-  ] = await Promise.all([
-    db.select({ count: count() }).from(usersTable),
-    db.select({ count: count() }).from(ordersTable).where(eq(ordersTable.status, "completed")),
-    db
-      .select({ sum: sum(ordersTable.amount) })
-      .from(ordersTable)
-      .where(eq(ordersTable.status, "completed")),
-    db
-      .select({ count: count() })
-      .from(walletTopupsTable)
-      .where(eq(walletTopupsTable.status, "pending")),
-    db
-      .select({ count: count() })
-      .from(ordersTable)
-      .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-    db
-      .select({ sum: sum(ordersTable.amount) })
-      .from(ordersTable)
-      .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-    db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
-    db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable),
-  ]);
+  // Round-3 (8-c §5.2): the dashboard polls this every 30s and each poll
+  // ran 8 full-table aggregates (COUNT users/orders, SUM revenue ×2,
+  // SUM wallet, pending topups, stock). `lib/cache.ts` existed for exactly
+  // this and had ZERO callers — wiring it here makes the dead module live
+  // and cuts 8 aggregates/poll to 8 aggregates/30s (Redis or in-memory LRU
+  // fallback, whichever is active).
+  const payload = await cacheWrap("admin:stats", 30, async () => {
+    const [
+      [totalUsers],
+      [totalOrders],
+      [totalRevenue],
+      [pendingTopups],
+      [todayOrders],
+      [todayRevenue],
+      [availableStock],
+      [totalWallet],
+    ] = await Promise.all([
+      db.select({ count: count() }).from(usersTable),
+      db.select({ count: count() }).from(ordersTable).where(eq(ordersTable.status, "completed")),
+      db
+        .select({ sum: sum(ordersTable.amount) })
+        .from(ordersTable)
+        .where(eq(ordersTable.status, "completed")),
+      db
+        .select({ count: count() })
+        .from(walletTopupsTable)
+        .where(eq(walletTopupsTable.status, "pending")),
+      db
+        .select({ count: count() })
+        .from(ordersTable)
+        .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
+      db
+        .select({ sum: sum(ordersTable.amount) })
+        .from(ordersTable)
+        .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
+      db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
+      db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable),
+    ]);
 
-  return res.json({
-    total_users: Number(totalUsers?.count ?? 0),
-    total_orders: Number(totalOrders?.count ?? 0),
-    total_revenue: parseFloat(String(totalRevenue?.sum ?? 0)),
-    pending_topups: Number(pendingTopups?.count ?? 0),
-    today_orders: Number(todayOrders?.count ?? 0),
-    today_revenue: parseFloat(String(todayRevenue?.sum ?? 0)),
-    available_stock: Number(availableStock?.count ?? 0),
-    total_wallet_balance: parseFloat(String(totalWallet?.sum ?? 0)),
+    return {
+      total_users: Number(totalUsers?.count ?? 0),
+      total_orders: Number(totalOrders?.count ?? 0),
+      total_revenue: parseFloat(String(totalRevenue?.sum ?? 0)),
+      pending_topups: Number(pendingTopups?.count ?? 0),
+      today_orders: Number(todayOrders?.count ?? 0),
+      today_revenue: parseFloat(String(todayRevenue?.sum ?? 0)),
+      available_stock: Number(availableStock?.count ?? 0),
+      total_wallet_balance: parseFloat(String(totalWallet?.sum ?? 0)),
+    };
   });
+
+  return res.json(payload);
 });
 
 router.get("/chart-data", requireAdmin, async (req, res) => {
   const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
 
-  // Start bound = Tripoli midnight (days-1) ago.
+  // Round-3 (8-c §5.4): re-aggregating the whole order/user history per
+  // dashboard mount (and per days-toggle) — cache per (days, day-bucket)
+  // for 30s. The day bucket in the key means the cache flips automatically
+  // at Tripoli midnight instead of serving yesterday's partial bucket.
+  const todayBucket = tripoliKey(tripoliDayStartUtc(Date.now()));
+  const payload = await cacheWrap(`admin:chart:${days}:${todayBucket}`, 30, () =>
+    computeChartData(days),
+  );
+  return res.json(payload);
+});
+
+async function computeChartData(days: number) {
   const todayStartMs = tripoliDayStartUtc(Date.now());
   const startDate = new Date(todayStartMs - (days - 1) * 86_400_000);
 
@@ -137,7 +159,7 @@ router.get("/chart-data", requireAdmin, async (req, res) => {
     });
   }
 
-  return res.json(result);
-});
+  return result;
+}
 
 export { router as adminStatsRouter };

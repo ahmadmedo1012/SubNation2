@@ -95,6 +95,10 @@ export const riskEventsTable = pgTable(
     levelCreatedIdx: index("idx_risk_events_level_created").on(t.level, t.createdAt),
     createdIdx: index("idx_risk_events_created").on(t.createdAt),
     typeCreatedIdx: index("idx_risk_events_type_created").on(t.eventType, t.createdAt),
+    // Round-3 (8-c §4.4): keyset pagination cursor for the admin risk list
+    // (ORDER BY created_at DESC, id DESC) — the tiebreaker column makes
+    // the cursor stable across same-second events.
+    createdIdDescIdx: index("idx_risk_events_created_id_desc").on(t.createdAt.desc(), t.id.desc()),
   }),
 );
 

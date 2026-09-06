@@ -1,9 +1,22 @@
 import eslint from "@eslint/js";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Round-3 (8-f §6): the hooks plugin was NOT installed — meaning
+    // `exhaustive-deps` never ran and ~6 real missing-dependency effects
+    // shipped silently (stale closures on navigate/fetchData). Warn
+    // level (not error) so the existing codebase gates cleanly while
+    // new code gets flagged in review.
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+  },
   {
     ignores: [
       "**/node_modules/**",

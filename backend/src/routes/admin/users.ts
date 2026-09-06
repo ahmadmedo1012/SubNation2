@@ -143,8 +143,28 @@ router.patch(
 
     // ── Non-financial fields: direct UPDATE, no ledger ────────────────
     const nonFinancialUpdates: Record<string, unknown> = {};
-    if (typeof loyalty_points === "number" && loyalty_points >= 0) {
+    // M5 — loyalty_points was bounded only by `>= 0`: a compromised or
+    // fat-fingered admin could set 1e15 points, which the user then
+    // converts into 1e13 LYD of wallet credit via /loyalty/convert-points.
+    // Cap at 10M points (= 100k LYD at the 100 pts/LYD rate) — still
+    // orders of magnitude above any legitimate balance, but no longer
+    // a nation-state money-printer. Ints only: fractional points would
+    // corrupt the convert-points math.
+    const MAX_ADMIN_SET_LOYALTY_POINTS = 10_000_000;
+    if (
+      typeof loyalty_points === "number" &&
+      Number.isInteger(loyalty_points) &&
+      loyalty_points >= 0 &&
+      loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
+    ) {
       nonFinancialUpdates.loyaltyPoints = loyalty_points;
+    } else if (loyalty_points !== undefined) {
+      return res.status(400).json(
+        createErrorResponse(
+          "نقاط الولاء يجب أن تكون عدداً صحيحاً بين 0 و 10,000,000",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
     }
     if (
       typeof loyalty_tier === "string" &&

@@ -228,6 +228,18 @@ paths:
       operationId: listOrders
       tags: [orders]
       summary: List current user's orders
+      parameters:
+        - name: limit
+          in: query
+          description: |
+            Page size cap. The storefront home passes 4 (it renders four
+            recent-order cards); the profile page uses the default 200.
+            Clamped server-side to [1, 200].
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 200
       responses:
         "200":
           description: User's orders
@@ -1482,8 +1494,19 @@ components:
           type: ["string", "null"]
         price:
           type: number
+          # Money-perimeter bound (audit M1): an unbounded price is the
+          # deepest money hole in the API — a negative price makes
+          # checkout CREDIT the wallet on every purchase (finalPrice
+          # negated flips the balance comparison), and Infinity/NaN
+          # corrupts every storefront aggregate. 0.01 .. 1,000,000 LYD
+          # covers every real product in the catalog with orders of
+          # magnitude to spare.
+          minimum: 0.01
+          maximum: 1000000
         cost_price:
           type: ["number", "null"]
+          minimum: 0
+          maximum: 1000000
         category:
           type: ["string", "null"]
         usage_terms:
@@ -1503,8 +1526,13 @@ components:
           type: ["string", "null"]
         price:
           type: ["number", "null"]
+          # Same money-perimeter bounds as CreateProductBody (audit M1).
+          minimum: 0.01
+          maximum: 1000000
         cost_price:
           type: ["number", "null"]
+          minimum: 0
+          maximum: 1000000
         category:
           type: ["string", "null"]
         usage_terms:

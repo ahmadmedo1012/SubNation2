@@ -195,10 +195,18 @@ export default function HomePage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const { data: recentOrders = [] } = useListOrders({
-    query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
-    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
-  });
+  // Round-3 (8-c §2.4): fetched up to 200 orders (each row with a
+  // safeDecrypt'd credential payload server-side) just to render 4 rows.
+  // The orders route now supports ?limit= — ask for exactly what we show.
+  // The params object is part of the query key, so the profile/orders
+  // full list stays cached separately.
+  const { data: recentOrders = [] } = useListOrders(
+    { limit: 4 },
+    {
+      query: { enabled: !!token, queryKey: getListOrdersQueryKey({ limit: 4 }) },
+      request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+    },
+  );
   const latestOrders = recentOrders.slice(0, 4);
 
   const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(

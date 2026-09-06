@@ -155,6 +155,9 @@ export function idempotency(opts: IdempotencyOptions) {
         if (raw === IN_FLIGHT_SENTINEL) {
           res.status(409).json({
             success: false,
+            // Round-3 envelope drift fix: `message` → `error` (message kept
+            // for any client still reading the old field).
+            error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
             message: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
             code: "IDEMPOTENCY_IN_FLIGHT",
           });
@@ -171,6 +174,9 @@ export function idempotency(opts: IdempotencyOptions) {
       if (cached.hash !== reqHash) {
         res.status(409).json({
           success: false,
+          // Round-3 envelope drift fix: `message` → `error` (kept).
+          error:
+            "تمت إعادة استخدام معرف العملية مع طلب مختلف. استخدم معرفًا جديدًا للعمليات الجديدة.",
           message:
             "تمت إعادة استخدام معرف العملية مع طلب مختلف. استخدم معرفًا جديدًا للعمليات الجديدة.",
           code: "IDEMPOTENCY_KEY_REUSE",

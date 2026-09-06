@@ -42,9 +42,15 @@ router.post("/login", async (req, res) => {
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    // Round-3 envelope drift fix: 429 without `code`.
     return res
       .status(429)
-      .json({ error: `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.` });
+      .json(
+        createErrorResponse(
+          `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.`,
+          ErrorCode.ACCOUNT_LOCKED,
+        ),
+      );
   }
 
   const [admin] = await db
@@ -132,9 +138,15 @@ router.post("/login/verify-2fa", async (req, res) => {
     const { locked, lockedUntil } = await checkLockout(lockoutKey);
     if (locked) {
       const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+      // Round-3 envelope drift fix: 429 without `code`.
       return res
         .status(429)
-        .json({ error: `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.` });
+        .json(
+          createErrorResponse(
+            `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.`,
+            ErrorCode.ACCOUNT_LOCKED,
+          ),
+        );
     }
 
     const isValid = verifySync({ token: code, secret: admin.totpSecret });
@@ -296,13 +308,29 @@ router.post("/change-password", requireAdmin, async (req, res) => {
     new_password?: string;
   };
 
+  // Round-3 (8-b §5): type-guard first — a non-string new_password
+  // previously sailed past the `.length` check (undefined) and crashed
+  // argon2 with a 500-for-user-input.
+  if (typeof current_password !== "string" || typeof new_password !== "string") {
+    return res
+      .status(400)
+      .json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  }
   if (!current_password || !new_password) {
     return res
       .status(400)
       .json(createErrorResponse("كلمة المرور الحالية والجديدة مطلوبتان", ErrorCode.INVALID_DATA));
   }
   if (new_password.length < 8) {
-    return res.status(400).json({ error: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" });
+    // Round-3 envelope drift fix: 400 without `code`.
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل",
+          ErrorCode.INVALID_PASSWORD_LENGTH,
+        ),
+      );
   }
 
   const [admin] = await db
@@ -365,8 +393,13 @@ router.patch("/profile", requireAdmin, async (req, res) => {
     current_password?: string;
   };
 
-  if (!current_password) {
-    return res.status(400).json({ error: "كلمة المرور الحالية مطلوبة لتأكيد التغيير" });
+  if (typeof current_password !== "string" || !current_password) {
+    // Round-3: type-guard + envelope code on the 400.
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("كلمة المرور الحالية مطلوبة لتأكيد التغيير", ErrorCode.INVALID_DATA),
+      );
   }
   if (!username && !display_name) {
     return res
@@ -459,7 +492,7 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
 router.post("/2fa/verify-setup", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
   const { code } = req.body ?? {};
-  if (!code)
+  if (typeof code !== "string" || !code.trim())
     return res.status(400).json(createErrorResponse("الرمز مطلوب", ErrorCode.INVALID_DATA));
 
   const [admin] = await db

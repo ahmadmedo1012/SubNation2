@@ -80,11 +80,15 @@ const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
   );
 };
 
+// Round-3 (8-e §2): period chips hardcoded Arabic-Indic digits ("٧
+// أيام") while the same screen shows Latin percentages, Latin money
+// tiles and Latin chart counts — three numeral regimes on one dashboard.
+// Latin everywhere (the site-wide numeral policy); the Arabic words stay.
 const PERIOD_OPTIONS = [
-  { label: "٧ أيام", days: 7 },
-  { label: "١٤ يوماً", days: 14 },
+  { label: "7 أيام", days: 7 },
+  { label: "14 يوماً", days: 14 },
   { label: "شهر", days: 30 },
-  { label: "٣ أشهر", days: 90 },
+  { label: "3 أشهر", days: 90 },
 ];
 
 const GRANULARITY_OPTIONS = [
@@ -102,12 +106,17 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
   data.forEach((d) => {
     const date = new Date(d.date);
     let key: string;
+    // Round-3 (8-e §1.4): locale tag "ar" (not "ar-LY") resolves to
+    // Arabic-Indic digits on pre-CLDR-45 browsers — flipping the chart
+    // axis numerals vs the Latin stat tiles on the same page depending
+    // on the viewer's device. "ar-LY" is Latin-digit by CLDR policy,
+    // matching every other date label in the app.
     if (granularity === "weekly") {
       const week = new Date(date);
       week.setDate(date.getDate() - date.getDay());
-      key = week.toLocaleDateString("ar", { month: "short", day: "numeric" });
+      key = week.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
     } else {
-      key = date.toLocaleDateString("ar", { year: "numeric", month: "short" });
+      key = date.toLocaleDateString("ar-LY", { year: "numeric", month: "short" });
     }
 
     if (!buckets[key])
@@ -554,6 +563,20 @@ export default function AdminDashboardPage() {
                       />
                       <XAxis
                         dataKey="date"
+                        // Round-3 (8-e §1.4): daily buckets carry the raw
+                        // backend ISO key ("2026-09-06") — unlocalized and
+                        // inconsistent with the Arabic month names the same
+                        // axis shows in weekly/monthly mode. Format it.
+                        tickFormatter={(value: string) => {
+                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                          return Number.isNaN(d.getTime())
+                            ? value
+                            : d.toLocaleDateString("ar-LY", {
+                                month: "short",
+                                day: "numeric",
+                                timeZone: "UTC",
+                              });
+                        }}
                         tick={{ fontSize: 9, fill: "#6b7280" }}
                         axisLine={false}
                         tickLine={false}
@@ -641,6 +664,20 @@ export default function AdminDashboardPage() {
                       />
                       <XAxis
                         dataKey="date"
+                        // Round-3 (8-e §1.4): daily buckets carry the raw
+                        // backend ISO key ("2026-09-06") — unlocalized and
+                        // inconsistent with the Arabic month names the same
+                        // axis shows in weekly/monthly mode. Format it.
+                        tickFormatter={(value: string) => {
+                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                          return Number.isNaN(d.getTime())
+                            ? value
+                            : d.toLocaleDateString("ar-LY", {
+                                month: "short",
+                                day: "numeric",
+                                timeZone: "UTC",
+                              });
+                        }}
                         tick={{ fontSize: 9, fill: "#6b7280" }}
                         axisLine={false}
                         tickLine={false}
@@ -723,6 +760,20 @@ export default function AdminDashboardPage() {
                       />
                       <XAxis
                         dataKey="date"
+                        // Round-3 (8-e §1.4): daily buckets carry the raw
+                        // backend ISO key ("2026-09-06") — unlocalized and
+                        // inconsistent with the Arabic month names the same
+                        // axis shows in weekly/monthly mode. Format it.
+                        tickFormatter={(value: string) => {
+                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                          return Number.isNaN(d.getTime())
+                            ? value
+                            : d.toLocaleDateString("ar-LY", {
+                                month: "short",
+                                day: "numeric",
+                                timeZone: "UTC",
+                              });
+                        }}
                         tick={{ fontSize: 9, fill: "#6b7280" }}
                         axisLine={false}
                         tickLine={false}

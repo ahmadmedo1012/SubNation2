@@ -128,7 +128,14 @@ router.delete("/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
   try {
-    await db.delete(adminAlertsTable).where(eq(adminAlertsTable.id, id));
+    // Silent no-op → 404 (audit §5): deleting a non-existent alert used
+    // to return `{success:true}`.
+    const deleted = await db
+      .delete(adminAlertsTable)
+      .where(eq(adminAlertsTable.id, id))
+      .returning({ id: adminAlertsTable.id });
+    if (deleted.length === 0)
+      return res.status(404).json(createErrorResponse("التنبيه غير موجود", ErrorCode.NOT_FOUND));
     return res.json({ success: true });
   } catch (err) {
     req.log.error({ err }, "Failed to delete alert");

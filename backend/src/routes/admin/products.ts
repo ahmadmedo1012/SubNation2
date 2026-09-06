@@ -22,6 +22,12 @@ router.get("/products", requireAdmin, async (req, res) => {
   // Use an explicit projection (mirrors routes/products.ts) so a future
   // schema column added before its migration runs cannot break this
   // endpoint. We only select what we render.
+  // Round-3 (8-c §3.4): the stock/order aggregates were UNCORRELATED full-
+  // table GROUP BYs (every inventory row + every completed order) on a
+  // 60s-polled admin endpoint, and the product list itself had no LIMIT.
+  // Pattern from admin/users.ts: fetch the page's product ids first, then
+  // scope both aggregates to exactly those ids (empty-set guarded), and
+  // cap the list at 200 like every other admin table.
   const products = await db
     .select({
       id: productsTable.id,
@@ -42,24 +48,32 @@ router.get("/products", requireAdmin, async (req, res) => {
       searchLike
         ? and(
             eq(productsTable.isArchived, false),
-            sql`(LOWER(${productsTable.name}) LIKE ${searchLike} OR LOWER(${productsTable.category}) LIKE ${searchLike})`,
+            // Round-3 (8-c §4.7): ILIKE (not LOWER LIKE) so the trigram
+            // GIN index on products.name actually serves admin search.
+            sql`(${productsTable.name} ILIKE ${searchLike} OR LOWER(${productsTable.category}) LIKE ${searchLike})`,
           )
         : eq(productsTable.isArchived, false),
     )
-    .orderBy(desc(productsTable.createdAt));
+    .orderBy(desc(productsTable.createdAt))
+    .limit(200);
 
-  const [stockCounts, orderCounts] = await Promise.all([
-    db
-      .select({ productId: inventoryTable.productId, count: count() })
-      .from(inventoryTable)
-      .where(eq(inventoryTable.isSold, false))
-      .groupBy(inventoryTable.productId),
-    db
-      .select({ productId: ordersTable.productId, count: count() })
-      .from(ordersTable)
-      .where(eq(ordersTable.status, "completed"))
-      .groupBy(ordersTable.productId),
-  ]);
+  const productIds = products.map((p) => p.id);
+
+  const [stockCounts, orderCounts] =
+    productIds.length > 0
+      ? await Promise.all([
+          db
+            .select({ productId: inventoryTable.productId, count: count() })
+            .from(inventoryTable)
+            .where(and(eq(inventoryTable.isSold, false), inArray(inventoryTable.productId, productIds)))
+            .groupBy(inventoryTable.productId),
+          db
+            .select({ productId: ordersTable.productId, count: count() })
+            .from(ordersTable)
+            .where(and(eq(ordersTable.status, "completed"), inArray(ordersTable.productId, productIds)))
+            .groupBy(ordersTable.productId),
+        ])
+      : [[], []];
 
   const stockMap = new Map(stockCounts.map((r) => [r.productId, Number(r.count)]));
   const orderMap = new Map(orderCounts.map((r) => [r.productId, Number(r.count)]));
@@ -229,10 +243,16 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  await db
+  // Silent no-op → 404 (audit §5): archiving a non-existent product used
+  // to return success — now the admin gets a truthful signal that the
+  // id was stale (e.g. another admin already archived it).
+  const archived = await db
     .update(productsTable)
     .set({ isArchived: true, isActive: false })
-    .where(eq(productsTable.id, id));
+    .where(eq(productsTable.id, id))
+    .returning({ id: productsTable.id });
+  if (archived.length === 0)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
   bumpSitemapCache();
   void writeAuditLog(req, "product.archive", "product", id);
   return res.json({ success: true, message: "تم أرشفة المنتج" });

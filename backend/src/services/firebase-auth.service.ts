@@ -1,6 +1,6 @@
 import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import { createHash, randomBytes } from "crypto";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import jwt from "jsonwebtoken";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
@@ -561,11 +561,13 @@ async function findLinkCandidates(
 
   if (identityRows.length > 0) {
     const matchedUserIds = identityRows.map((r) => r.userId);
-    // Use a simpler approach to avoid sql template issues if possible, or just be careful
-    for (const userId of matchedUserIds) {
-      if (users.has(userId)) continue;
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-      if (user) users.set(user.id, user);
+    // Round-3 (8-c §3.1): N+1 on the LOGIN path — one select per matched
+    // identity user. One inArray() batch instead; login latency is the
+    // one place every millisecond is user-visible.
+    const unseen = matchedUserIds.filter((id) => !users.has(id));
+    if (unseen.length > 0) {
+      const rows = await db.select().from(usersTable).where(inArray(usersTable.id, unseen));
+      for (const user of rows) users.set(user.id, user);
     }
   }
 

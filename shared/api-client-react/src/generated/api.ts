@@ -43,6 +43,7 @@ import type {
   ListAdminOrdersParams,
   ListAdminTopupsParams,
   ListAdminUsersParams,
+  ListOrdersParams,
   ListProductsParams,
   ListSessions200,
   Order,
@@ -699,34 +700,50 @@ export function useGetProductBySlug<
 /**
  * @summary List current user's orders
  */
-export const getListOrdersUrl = () => {
-  return `/api/orders`;
+export const getListOrdersUrl = (params?: ListOrdersParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/orders?${stringifiedParams}` : `/api/orders`;
 };
 
-export const listOrders = async (options?: RequestInit): Promise<Order[]> => {
-  return customFetch<Order[]>(getListOrdersUrl(), {
+export const listOrders = async (
+  params?: ListOrdersParams,
+  options?: RequestInit,
+): Promise<Order[]> => {
+  return customFetch<Order[]>(getListOrdersUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListOrdersQueryKey = () => {
-  return [`/api/orders`] as const;
+export const getListOrdersQueryKey = (params?: ListOrdersParams) => {
+  return [`/api/orders`, ...(params ? [params] : [])] as const;
 };
 
 export const getListOrdersQueryOptions = <
   TData = Awaited<ReturnType<typeof listOrders>>,
   TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListOrdersParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListOrdersQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListOrdersQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listOrders>>> = ({ signal }) =>
-    listOrders({ signal, ...requestOptions });
+    listOrders(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listOrders>>,
@@ -745,11 +762,14 @@ export type ListOrdersQueryError = ErrorType<ErrorResponse>;
 export function useListOrders<
   TData = Awaited<ReturnType<typeof listOrders>>,
   TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListOrdersQueryOptions(options);
+>(
+  params?: ListOrdersParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListOrdersQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

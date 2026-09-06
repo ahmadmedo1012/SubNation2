@@ -87,6 +87,11 @@ interface TicketDetail extends TicketSummary {
 }
 
 export default function AdminTicketsPage() {
+  // Round-3 (react-hooks/rules-of-hooks): this useState previously sat
+  // AFTER an early return — a conditional hook that would crash React
+  // on the logged-out render path. Hoisted to the top of the component.
+  const [statusBusy, setStatusBusy] = useState<number | null>(null);
+
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -159,8 +164,6 @@ export default function AdminTicketsPage() {
       setSending(false);
     }
   };
-
-  const [statusBusy, setStatusBusy] = useState<number | null>(null);
 
   const handleStatus = async (id: number, status: string) => {
     // In-flight guard: without it a double-click fired two PATCHes and

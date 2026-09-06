@@ -209,6 +209,20 @@ export const GetProductBySlugResponse = zod.object({
 /**
  * @summary List current user's orders
  */
+export const listOrdersQueryLimitDefault = 200;
+export const listOrdersQueryLimitMax = 200;
+
+export const ListOrdersQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listOrdersQueryLimitMax)
+    .default(listOrdersQueryLimitDefault)
+    .describe(
+      "Page size cap. The storefront home passes 4 (it renders four\nrecent-order cards); the profile page uses the default 200.\nClamped server-side to [1, 200].\n",
+    ),
+});
+
 export const ListOrdersResponseItem = zod.object({
   id: zod.number(),
   order_code: zod.string(),
@@ -443,12 +457,22 @@ export const ListAdminProductsResponse = zod.array(ListAdminProductsResponseItem
 /**
  * @summary Create a new product
  */
+export const createProductBodyPriceMin = 0.01;
+export const createProductBodyPriceMax = 1000000;
+
+export const createProductBodyCostPriceMin = 0;
+export const createProductBodyCostPriceMax = 1000000;
+
 export const CreateProductBody = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
-  price: zod.number(),
-  cost_price: zod.number().nullish(),
+  price: zod.number().min(createProductBodyPriceMin).max(createProductBodyPriceMax),
+  cost_price: zod
+    .number()
+    .min(createProductBodyCostPriceMin)
+    .max(createProductBodyCostPriceMax)
+    .nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
   is_active: zod.boolean().optional(),
@@ -461,12 +485,22 @@ export const UpdateProductParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const updateProductBodyPriceMin = 0.01;
+export const updateProductBodyPriceMax = 1000000;
+
+export const updateProductBodyCostPriceMin = 0;
+export const updateProductBodyCostPriceMax = 1000000;
+
 export const UpdateProductBody = zod.object({
   name: zod.string().nullish(),
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
-  price: zod.number().nullish(),
-  cost_price: zod.number().nullish(),
+  price: zod.number().min(updateProductBodyPriceMin).max(updateProductBodyPriceMax).nullish(),
+  cost_price: zod
+    .number()
+    .min(updateProductBodyCostPriceMin)
+    .max(updateProductBodyCostPriceMax)
+    .nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
   is_active: zod.boolean().nullish(),

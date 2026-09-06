@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { formatRelativeTime } from "@/lib/utils";
@@ -109,7 +110,7 @@ export default function ReferralsPage() {
   // was the source of the "data feels stale" complaint.
   const overviewQ = useQuery<LoyaltyOverview>({
     queryKey: ["loyalty-overview", token],
-    queryFn: () => fetch("/api/loyalty", { headers }).then((r) => r.json()),
+    queryFn: () => customFetch<LoyaltyOverview>("/api/loyalty", { headers }),
     enabled: !!token,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
@@ -117,10 +118,10 @@ export default function ReferralsPage() {
 
   const eventsQ = useQuery<ReferralEvent[]>({
     queryKey: ["loyalty-referrals", token],
-    queryFn: () =>
-      fetch("/api/loyalty/referrals", { headers })
-        .then((r) => r.json())
-        .then((d) => (Array.isArray(d) ? d : [])),
+    queryFn: async () => {
+      const d = await customFetch<ReferralEvent[]>("/api/loyalty/referrals", { headers });
+      return Array.isArray(d) ? d : [];
+    },
     enabled: !!token,
     staleTime: 60_000,
     refetchOnWindowFocus: true,

@@ -201,8 +201,15 @@ function AdminProtectedRoutes() {
 
   return (
     <Suspense fallback={<RouteSuspenseFallback adminOnly />}>
-      <Switch>
-        <Route path="/admin" component={AdminDashboardPage} />
+      {/* Round-3 (8-f §7): a render crash in any of the 900-1500-line
+          admin pages previously took out the WHOLE app shell (the only
+          ErrorBoundary wrapped the public Switch). Admin pages keep the
+          admin nav (layout renders inside each page) and get their own
+          blast radius — the storefront keeps working while the admin
+          page shows its error screen. */}
+      <ErrorBoundary>
+        <Switch>
+          <Route path="/admin" component={AdminDashboardPage} />
         <Route path="/admin/topups" component={AdminTopupsPage} />
         <Route path="/admin/orders" component={AdminOrdersPage} />
         <Route path="/admin/products" component={AdminProductsPage} />
@@ -220,11 +227,26 @@ function AdminProtectedRoutes() {
         <Route path="/admin/risk" component={AdminRiskPage} />
         <Route path="/admin/risk/events/:id" component={AdminRiskEventPage} />
         <Route path="/admin/products/enrichment" component={AdminEnrichmentPage} />
-        <Route path="/admin/whatsapp" component={AdminWhatsAppPage} />
-        <Route component={NotFound} />
-      </Switch>
+          <Route path="/admin/whatsapp" component={AdminWhatsAppPage} />
+          <Route component={NotFound} />
+        </Switch>
+      </ErrorBoundary>
     </Suspense>
   );
+}
+
+/**
+ * Round-3 (8-f §4 — scroll restoration): wouter doesn't restore scroll
+ * on navigation, and nothing else did — navigating from a 4000px-scrolled
+ * home landed you MID-PAGE on /wallet. Scroll to top on every location
+ * change.
+ */
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
 }
 
 function AppRoutes() {
@@ -242,6 +264,7 @@ function AppRoutes() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <ScrollToTop />
       <NavigationProgress />
       {/* ── Default SEO tags ────────────────────────────────────────────
           FALLBACK instance (V3-A1): applies only when no page-level

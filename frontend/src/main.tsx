@@ -17,13 +17,13 @@ import {
 installBootErrorBuffer();
 scheduleSentryBoot();
 
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import { createRoot } from "react-dom/client";
-import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
 import { CartProvider } from "./lib/cart";
 import "./index.css";
 import { initAnalytics } from "./lib/analytics";
+import { getUserAuthToken } from "./lib/auth-token-holder";
 import { applyDocumentDirection } from "./lib/direction";
 import { initWebVitals } from "./lib/web-vitals";
 import { getApiBaseUrl, installApiFetchBridge } from "./lib/api-config";
@@ -42,6 +42,12 @@ const apiBaseUrl = getApiBaseUrl();
 if (apiBaseUrl) {
   setBaseUrl(apiBaseUrl);
 }
+// Round-3 (8-f §1): ONE global bearer-token getter for every orval/customFetch
+// request. Backed by the auth-token holder that AuthProvider keeps in sync
+// with the session JWT. Returns null when running on cookie auth (the
+// httpOnly cookie speaks for itself) — call sites that hand-pass a REAL
+// Authorization header still win (customFetch only fills empty/absent).
+setAuthTokenGetter(() => getUserAuthToken());
 installApiFetchBridge();
 
 // ── Phase 4: Core Web Vitals — defer past initial paint so the import and
@@ -88,9 +94,10 @@ createRoot(document.getElementById("root")!, {
   onCaughtError: bufferedReactErrorHandler(),
   onRecoverableError: bufferedReactErrorHandler(),
 }).render(
-  <HelmetProvider>
-    <CartProvider>
-      <App />
-    </CartProvider>
-  </HelmetProvider>,
+  // Round-3 (8-a §2 / 8-c 1.2): HelmetProvider removed — SEO moved to
+  // direct head management (a006e2c) and zero <Helmet> components remain
+  // repo-wide; the wrapper was dead weight in the entry chunk.
+  <CartProvider>
+    <App />
+  </CartProvider>,
 );

@@ -10,6 +10,7 @@ import path from "node:path";
 import pinoHttp from "pino-http";
 import RedisStore from "rate-limit-redis";
 import * as Sentry from "@sentry/node";
+import { ZodError } from "zod";
 import { getCorrelationId } from "./lib/correlation";
 import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
@@ -356,15 +357,30 @@ const rateLimiterStore = redisClient
  * route authenticated traffic to the per-user limiter without
  * threading state through middleware.
  */
+// Round-3 (8-c §6.1): apiLimiter.skip, userLimiter.skip, userLimiter
+// .keyGenerator AND requireUser all call this — up to 4 redundant
+// HMAC-SHA256 verifications of the SAME token on every authed request.
+// Memoize the result on the request object (per-request lifetime, no
+// cross-request cache; null is also cached — "no identity" is stable
+// within a request because token extraction is deterministic).
+const REQUEST_USER_ID = Symbol("requestUserId");
+
 function getRequestUserId(req: Request): number | null {
+  const cached = (req as unknown as Record<symbol, number | null | undefined>)[REQUEST_USER_ID];
+  if (cached !== undefined) return cached;
+
   const token =
     req.cookies?.auth_token ??
     (req.headers.authorization?.startsWith("Bearer ")
       ? req.headers.authorization.slice(7)
       : undefined);
-  if (!token || token === "__cookie_session__") return null;
-  const payload = verifyUserToken(token);
-  return payload?.userId ?? null;
+  let userId: number | null = null;
+  if (token && token !== "__cookie_session__") {
+    const payload = verifyUserToken(token);
+    userId = payload?.userId ?? null;
+  }
+  (req as unknown as Record<symbol, number | null>)[REQUEST_USER_ID] = userId;
+  return userId;
 }
 
 const apiLimiter = rateLimit({
@@ -378,10 +394,30 @@ const apiLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   store: rateLimiterStore,
+  // Round-3 (audit §4 #13): without a `message`, express-rate-limit
+  // responds with a PLAIN-TEXT "Too many requests." body — the only
+  // non-JSON response in the entire /api surface, breaking every
+  // client that assumes `r.json()`. userLimiter/authLimiter already
+  // had Arabic JSON messages; this brings the last limiter in line.
+  message: {
+    error: "تم تجاوز الحد الأقصى للطلبات. حاول مرة أخرى بعد دقيقة.",
+    code: "RATE_LIMITED",
+  },
   skip: (req) => {
-    // Skip rate limiting for health checks and static assets
+    // Skip rate limiting for health checks and static assets.
+    // NOTE (round-3 audit): this middleware is mounted at `/api`, so
+    // `req.path` is mount-relative — the health routes live at
+    // `/healthz*` (NOT "/health", which never matched and made Render
+    // probes + admin polling burn the per-IP budget). Fixed alongside
+    // the static-asset prefixes which are already mount-relative.
     const path = req.path;
-    if (path === "/health" || path.startsWith("/assets/") || path.startsWith("/static/")) {
+    if (
+      path === "/healthz" ||
+      path.startsWith("/healthz/") ||
+      path === "/health" ||
+      path.startsWith("/assets/") ||
+      path.startsWith("/static/")
+    ) {
       return true;
     }
     // Skip when the caller has a verified user identity — the per-
@@ -670,7 +706,18 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 
   if (err instanceof SyntaxError && "status" in err && err.status === 400 && "body" in err) {
     res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
-  } else if ("errors" in err) {
+  } else if (err instanceof ZodError) {
+    // Round-3 (audit §5): zod 3's ZodError exposes `.errors` as a
+    // deprecated getter, but matching the class explicitly is the
+    // robust shape (zod 4 drops the alias) and avoids accidentally
+    // catching arbitrary objects that happen to carry an `errors`
+    // property.
+    res.status(400).json(
+      createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
+        details: { issues: err.issues },
+      }),
+    );
+  } else if (err instanceof Error && "errors" in err && Array.isArray((err as { errors?: unknown }).errors)) {
     const errorWithErrors = err as { errors?: unknown[] };
     res.status(400).json(
       createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {

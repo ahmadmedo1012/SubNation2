@@ -3,7 +3,7 @@ import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
-import { formatCurrency } from "@/lib/utils";
+import { formatCount, formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -199,7 +199,20 @@ export function Navbar() {
           )}
 
           {/* Cart icon — always visible */}
-          <Link href="/cart" aria-label={`السلة، ${itemCount > 0 ? `${itemCount} منتجات` : "فارغة"}`}>
+          <Link
+            href="/cart"
+            aria-label={`السلة، ${
+              itemCount > 0
+                ? formatCount(itemCount, {
+                    one: "منتج",
+                    two: "منتجان",
+                    few: "منتجات",
+                    many: "منتجاً",
+                    other: "منتج",
+                  })
+                : "فارغة"
+            }`}
+          >
             <div
               className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
             >

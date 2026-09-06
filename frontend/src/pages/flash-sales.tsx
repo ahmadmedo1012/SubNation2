@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
-import { formatCurrency } from "@/lib/utils";
+import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
 import { useListProducts, type Product } from "@workspace/api-client-react";
 import { Flame, Clock, Sparkles, Tag, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -119,7 +119,10 @@ function FlashCard({
 
         <div className="p-4">
           <div className="text-xs text-muted-foreground font-bold mb-1.5 truncate">
-            {product.category ?? "عروض"}
+            {/* Round-3 (8-e §3): raw English category enum ("streaming",
+                "gaming") leaked onto flash-sale cards — every other surface
+                maps it through categoryLabel(). */}
+            {product.category ? categoryLabel(product.category) : "عروض"}
           </div>
           <div className="font-black text-sm leading-snug mb-2.5 truncate group-hover:text-primary transition-colors">
             {product.name}
@@ -244,7 +247,15 @@ export default function FlashSalesPage() {
       ) : (
         <>
           <div className="flex items-center justify-between mb-5">
-            <p className="text-sm font-bold text-muted-foreground">{onSale.length} عرض متاح</p>
+            <p className="text-sm font-bold text-muted-foreground">
+              {formatCount(onSale.length, {
+                one: "عرض متاح",
+                two: "عرضان متاحان",
+                few: "عروض متاحة",
+                many: "عرضاً متاحاً",
+                other: "عرض متاح",
+              })}
+            </p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {onSale.map((p, i) => (

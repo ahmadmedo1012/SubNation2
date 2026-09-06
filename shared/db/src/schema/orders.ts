@@ -63,6 +63,9 @@ export const ordersTable = pgTable(
     statusIdx: index("idx_orders_status").on(t.status),
     createdIdx: index("idx_orders_created").on(t.createdAt),
     statusCreatedIdx: index("idx_orders_status_created").on(t.status, t.createdAt),
+    // Round-3 (8-c §4.5): the user's own orders list sorts by createdAt
+    // DESC filtered by user_id — composite covers both in one index.
+    userCreatedIdx: index("idx_orders_user_created").on(t.userId, t.createdAt),
   }),
 );
 

@@ -167,6 +167,54 @@ describe("POST /api/cart/items", () => {
     expect(res.status).toBe(400);
   });
 
+  // ── Round-3 regression tests (8-d #8): the 99-unit server cap shipped
+  // in Round 2 with ZERO boundary tests — these pin the exact contract.
+  it("accepts quantity at the cap boundary (99)", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const res = await call<{ quantity: number }>(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, quantity: 99 },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.quantity).toBe(99);
+  });
+
+  it("rejects quantity above the cap (100) with 400", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const res = await call(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, quantity: 100 },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-integer quantity (1.5) with 400", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const res = await call(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, quantity: 1.5 },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("clamps accumulate-then-cap: adding 10 ten times lands on 99, never above", async () => {
+    const token = signUserToken({ userId: userA.id });
+    for (let i = 0; i < 10; i++) {
+      await call(app, "POST", "/api/cart/items", {
+        token,
+        body: { product_id: product1.id, quantity: 10 },
+      });
+    }
+    const res = await call<{ items: Array<{ quantity: number; product_id: number }> }>(
+      app,
+      "GET",
+      "/api/cart",
+      { token },
+    );
+    const line = res.body.items.find((i) => i.product_id === product1.id);
+    expect(line?.quantity).toBe(99);
+  });
+
   it("returns 404 when the product does not exist", async () => {
     const token = signUserToken({ userId: userA.id });
     const res = await call(app, "POST", "/api/cart/items", {

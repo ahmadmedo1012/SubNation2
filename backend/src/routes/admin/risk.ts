@@ -32,6 +32,7 @@ import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { parseDsl } from "../../lib/risk-dsl";
+import { recordLabel } from "../../lib/risk-metrics";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { invalidateRiskConfig } from "../../services/risk-config-cache.service";
 import { invalidateRulesCache } from "../../services/risk-rules.service";
@@ -254,6 +255,11 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
       notes,
     })
     .returning({ id: riskLabelsTable.id });
+
+  // Round-3 (8-a §2): this inline insert re-implemented lib/risk-labels
+  // but silently DROPPED the recordLabel() metrics call — the
+  // risk_labels_total{label} counter never incremented for admin labels.
+  recordLabel(label);
 
   await writeAuditLog(req, "risk.label", "risk_event", id, {
     label,
@@ -567,13 +573,31 @@ router.get("/risk/dashboard", requireAdmin, async (req, res) => {
     720,
   );
 
-  // Counts grouped by level in the lookback window.
-  const byLevelResult = await db.execute(sql`
-    SELECT level, COUNT(*)::int AS n
-    FROM risk_events
-    WHERE created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
-    GROUP BY level
-  `);
+  // Round-3 (8-c §2.6): the dashboard's three aggregates (by-level,
+  // unresolved backlog, top rules) were three sequential round trips —
+  // they only share the lookback window, so they run concurrently now.
+  const [byLevelResult, unresolvedResult, topRulesResult] = await Promise.all([
+    db.execute(sql`
+      SELECT level, COUNT(*)::int AS n
+      FROM risk_events
+      WHERE created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+      GROUP BY level
+    `),
+    db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM risk_events e
+      WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+        AND NOT EXISTS (SELECT 1 FROM risk_labels l WHERE l.risk_event_id = e.id)
+    `),
+    db.execute(sql`
+      SELECT rule, COUNT(*)::int AS n
+      FROM risk_events e, UNNEST(e.rule_fired) AS rule
+      WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
+      GROUP BY rule
+      ORDER BY n DESC
+      LIMIT 5
+    `),
+  ]);
   type LevelRow = { level: string; n: number };
   const lR = byLevelResult as unknown as { rows?: LevelRow[] } | LevelRow[];
   const levelRows = Array.isArray(lR) ? lR : (lR.rows ?? []);
@@ -587,25 +611,11 @@ router.get("/risk/dashboard", requireAdmin, async (req, res) => {
   const total = Object.values(byLevel).reduce((a, b) => a + b, 0);
 
   // Unresolved (no risk_labels row yet) — admins use this to gauge backlog.
-  const unresolvedResult = await db.execute(sql`
-    SELECT COUNT(*)::int AS n
-    FROM risk_events e
-    WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
-      AND NOT EXISTS (SELECT 1 FROM risk_labels l WHERE l.risk_event_id = e.id)
-  `);
   type CountRow = { n: number };
   const uR = unresolvedResult as unknown as { rows?: CountRow[] } | CountRow[];
   const unresolved = Number((Array.isArray(uR) ? uR[0]?.n : uR.rows?.[0]?.n) ?? 0);
 
   // Top fired rules — flatten the rule_fired text[] column.
-  const topRulesResult = await db.execute(sql`
-    SELECT rule, COUNT(*)::int AS n
-    FROM risk_events e, UNNEST(e.rule_fired) AS rule
-    WHERE e.created_at >= NOW() - (${hours}::int * INTERVAL '1 hour')
-    GROUP BY rule
-    ORDER BY n DESC
-    LIMIT 5
-  `);
   type RuleRow = { rule: string; n: number };
   const rR = topRulesResult as unknown as { rows?: RuleRow[] } | RuleRow[];
   const ruleRows = Array.isArray(rR) ? rR : (rR.rows ?? []);

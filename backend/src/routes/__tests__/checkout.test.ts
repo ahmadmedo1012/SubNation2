@@ -86,6 +86,34 @@ describe("CheckoutService — success path", () => {
   });
 });
 
+describe("CheckoutService — money-integrity gate (round-3 regression, M1)", () => {
+  // The gate added in round 3: a non-finite or non-positive final price
+  // fails closed BEFORE any balance comparison — a negative price
+  // previously flipped `currentBalance < finalPrice` false and CREDITED
+  // the wallet on every purchase. Legacy bad rows or a schema bypass
+  // must never transact.
+  // (Postgres rejects literal garbage like "not-a-number" at INSERT time,
+  // so the storable-but-evil rows below are the real attack surface.)
+  it.each([
+    ["negative price (wallet-credit attack)", "-30.00"],
+    ["zero price (free goods)", "0.00"],
+  ])("returns INVALID_PRICE for %s and writes nothing", async (_label, price) => {
+    const user = await seedUser("50.00");
+    const product = await seedProductWithStock(1, price);
+
+    const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
+    expect(result).toMatchObject({ ok: false, reason: "INVALID_PRICE" });
+
+    // Balance untouched, no order, no ledger, inventory unsold.
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(50);
+    expect(await db.select().from(ordersTable)).toHaveLength(0);
+    expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
+    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    expect(inv.every((i) => i.isSold === false)).toBe(true);
+  });
+});
+
 describe("CheckoutService — insufficient funds", () => {
   it("rejects cleanly, leaves balance + inventory untouched, writes nothing", async () => {
     const user = await seedUser("10.00");

@@ -284,16 +284,19 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
 router.get("/me", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // Round-3 (8-c §2.6): user + identities read concurrently — /me sits
+  // on the critical path of every page load (Navbar boot probe).
+  const [[user], identities] = await Promise.all([
+    db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
+    db
+      .select()
+      .from(userAuthIdentitiesTable)
+      .where(eq(userAuthIdentitiesTable.userId, userId)),
+  ]);
   if (!user)
     return res
       .status(401)
       .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
-
-  const identities = await db
-    .select()
-    .from(userAuthIdentitiesTable)
-    .where(eq(userAuthIdentitiesTable.userId, user.id));
 
   // 30 s private browser cache. Concurrency win: 6 components on the
   // page (Navbar, Footer, profile, product, home, SocketInitializer)
@@ -356,15 +359,17 @@ router.get("/probe", async (req, res) => {
   }
 
   const userId = result.payload.userId;
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // Round-3 (8-c §2.6): concurrent user + identities read.
+  const [[user], identities] = await Promise.all([
+    db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
+    db
+      .select()
+      .from(userAuthIdentitiesTable)
+      .where(eq(userAuthIdentitiesTable.userId, userId)),
+  ]);
   if (!user) {
     return res.status(200).json({ authenticated: false });
   }
-
-  const identities = await db
-    .select()
-    .from(userAuthIdentitiesTable)
-    .where(eq(userAuthIdentitiesTable.userId, user.id));
 
   return res.status(200).json({
     authenticated: true,
@@ -504,6 +509,9 @@ router.post("/firebase/session", async (req, res) => {
       );
       return res.status(err.statusCode).json({
         success: false,
+        // Round-3 envelope drift fix: include the standard `error` field
+        // (the consent screen parses `reason` — kept unchanged).
+        error: "هذا الحساب مرتبط بمستخدم آخر. أكمل ربط الحسابات للمتابعة.",
         reason: err.reason,
         link_token: err.linkToken,
         candidate_hint: err.candidateHint,
@@ -618,6 +626,35 @@ router.post("/firebase/refresh", async (req, res) => {
   }
 });
 
+/**
+ * Round-3 (8-e §3): human-readable Arabic device label from a user-agent
+ * string — "كروم على ويندوز" instead of the raw UA blob. Deliberately
+ * coarse (browser family + OS family); version numbers would age the
+ * label and leak fingerprinting detail users never asked to see.
+ */
+function describeDeviceInArabic(ua: string | null | undefined): string {
+  if (!ua) return "جهاز غير معروف";
+  const s = ua.toLowerCase();
+
+  let browser = "متصفح غير معروف";
+  if (s.includes("edg/")) browser = "إيدج";
+  else if (s.includes("opr/") || s.includes("opera")) browser = "أوبرا";
+  else if (s.includes("samsungbrowser")) browser = "متصفح سامسونج";
+  else if (s.includes("firefox")) browser = "فيرفكس";
+  else if (s.includes("chrome") || s.includes("crios")) browser = "كروم";
+  else if (s.includes("safari")) browser = "سفاري";
+
+  let os = "جهاز غير معروف";
+  if (s.includes("android")) os = "أندرويد";
+  else if (s.includes("iphone") || s.includes("ipad") || s.includes("ios")) {
+    os = s.includes("ipad") ? "آيباد" : "آيفون";
+  } else if (s.includes("windows")) os = "ويندوز";
+  else if (s.includes("mac os") || s.includes("macintosh")) os = "ماك";
+  else if (s.includes("linux")) os = "لينكس";
+
+  return `${browser} على ${os}`;
+}
+
 router.get("/sessions", requireUser, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
 
@@ -633,7 +670,13 @@ router.get("/sessions", requireUser, async (req, res) => {
   return res.json({
     sessions: rows.map((r) => ({
       id: r.id,
-      device: r.userAgent?.slice(0, 120) || "جهاز غير معروف",
+      // Round-3 (8-e §3): the raw user-agent string (120 chars of
+      // "Mozilla/5.0 (Windows NT 10.0…) Chrome/126…") was shown verbatim
+      // in the user's "الأجهزة النشطة" list. Parse it into an Arabic
+      // "browser on OS" label instead; the full UA stays available for
+      // support via the API response below.
+      device: describeDeviceInArabic(r.userAgent),
+      user_agent: r.userAgent?.slice(0, 120) ?? null,
       ip: r.ipAddress ?? null,
       created_at: r.createdAt?.toISOString() ?? null,
       expires_at: r.expiresAt?.toISOString() ?? null,
@@ -678,10 +721,18 @@ export function formatUser(user: typeof usersTable.$inferSelect) {
 router.delete("/sessions/:id", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
   const sessionId = req.params.id;
-  await db
+  // Silent no-op → 404 (audit §5): revoking a non-existent or non-owned
+  // session used to return `{success:true}` — the user believed a device
+  // was logged out when nothing happened. Security-relevant honesty.
+  const deleted = await db
     .delete(sessionsTable)
-    .where(and(eq(sessionsTable.id, String(sessionId)), eq(sessionsTable.userId, userId)));
-  res.json({ success: true });
+    .where(and(eq(sessionsTable.id, String(sessionId)), eq(sessionsTable.userId, userId)))
+    .returning({ id: sessionsTable.id });
+  if (deleted.length === 0)
+    return res
+      .status(404)
+      .json(createErrorResponse("الجلسة غير موجودة", ErrorCode.NOT_FOUND));
+  return res.json({ success: true });
 });
 
 export { router as authRouter };

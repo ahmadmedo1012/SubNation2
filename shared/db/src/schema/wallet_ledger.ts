@@ -38,6 +38,11 @@ export const walletLedgerTable = pgTable(
     userIdx: index("idx_wallet_ledger_user").on(t.userId),
     typeIdx: index("idx_wallet_ledger_type").on(t.type),
     createdIdx: index("idx_wallet_ledger_created").on(t.createdAt),
+    // Round-3 (8-c §4.3): per-user "recent ledger" reads (copilot tools,
+    // future wallet statement pages) sort a user's full ledger by date —
+    // one row per money event, so this index keeps that O(log n) as the
+    // ledger grows.
+    userCreatedIdx: index("idx_wallet_ledger_user_created").on(t.userId, t.createdAt),
   }),
 );
 

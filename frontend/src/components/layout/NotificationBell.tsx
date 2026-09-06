@@ -192,9 +192,12 @@ export function NotificationBell() {
     [markRead, navigate],
   );
 
-  // Poll every 15 s. Effect re-runs only when token changes; the closure
-  // reads the latest refs on each tick, so we don't need to rebuild the
-  // interval on every render.
+  // Poll every 15 s — but ONLY while the tab is visible. Round-3 (8-c
+  // §2.2): a backgrounded tab kept firing every 15 s (~240 requests/hour
+  // per idle authed tab) even though the user can't see the result.
+  // visibilitychange now pauses the timer when hidden and fires one
+  // immediate catch-up fetch when the tab returns (the moment users
+  // actually care about fresh notifications).
   useEffect(() => {
     if (!token) {
       // Reset refs on logout so a re-login starts clean.
@@ -203,8 +206,23 @@ export function NotificationBell() {
       return;
     }
     void fetchAll();
-    const id = setInterval(() => void fetchAll(), 15_000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = setInterval(() => void fetchAll(), 15_000);
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (id !== null) {
+          clearInterval(id);
+          id = null;
+        }
+      } else {
+        void fetchAll();
+        if (id === null) id = setInterval(() => void fetchAll(), 15_000);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      if (id !== null) clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [token, fetchAll]);
 
   // Close on outside click. The ref closure is fine here because

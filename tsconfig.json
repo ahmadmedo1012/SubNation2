@@ -11,6 +11,9 @@
     },
     {
       "path": "./shared/api-zod"
+    },
+    {
+      "path": "./shared/error-codes"
     }
   ]
 }

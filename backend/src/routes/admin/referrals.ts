@@ -2,6 +2,7 @@ import { db, referralEventsTable, usersTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { intParam, queryString, rowsFromResult } from "../../lib/http";
+import { idempotency } from "../../middlewares/idempotency";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -12,51 +13,53 @@ router.get("/referrals", requireAdmin, async (req, res) => {
   const status = queryString(req, "status");
   const search = queryString(req, "search");
 
-  const rows = rowsFromResult<any>(
-    await db.execute(sql`
-    SELECT
-      re.id,
-      re.status,
-      re.created_at,
-      re.credited_at,
-      r.phone  AS referrer_phone,
-      r.id     AS referrer_id,
-      e.phone  AS referee_phone,
-      50       AS points_earned
-    FROM referral_events re
-    JOIN users r ON r.id = re.referrer_id
-    JOIN users e ON e.id = re.referee_id
-    ${status !== "" ? sql`WHERE re.status = ${status}` : sql``}
-    ORDER BY re.created_at DESC
-    LIMIT 200
-  `),
-  );
-
-  const topReferrers = rowsFromResult<any>(
-    await db.execute(sql`
-    SELECT
-      u.phone,
-      u.id,
-      COUNT(*) FILTER (WHERE re.status = 'credited') AS credited_count,
-      COUNT(*) AS total_count
-    FROM referral_events re
-    JOIN users u ON u.id = re.referrer_id
-    GROUP BY u.id, u.phone
-    ORDER BY credited_count DESC
-    LIMIT 10
-  `),
-  );
-
-  const [statsRow = {}] = rowsFromResult<any>(
-    await db.execute(sql`
-    SELECT
-      COUNT(*) AS total,
-      COUNT(*) FILTER (WHERE status = 'credited') AS credited,
-      COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
-      COUNT(*) FILTER (WHERE status = 'credited') * 50 AS total_points
-    FROM referral_events
-  `),
-  );
+  // Round-3 (8-c §2.6): the three list/aggregate queries were sequential;
+  // they share nothing but the (optional) status filter — run concurrently.
+  // The `50` literals below duplicate lib/loyalty-tiers POINTS_PER_REFERRAL;
+  // inlined into SQL because the constant lives in TypeScript (parameterize
+  // here if the rate ever becomes per-referral configurable).
+  const [rowsRaw, topReferrersRaw, statsRaw] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        re.id,
+        re.status,
+        re.created_at,
+        re.credited_at,
+        r.phone  AS referrer_phone,
+        r.id     AS referrer_id,
+        e.phone  AS referee_phone,
+        50       AS points_earned
+      FROM referral_events re
+      JOIN users r ON r.id = re.referrer_id
+      JOIN users e ON e.id = re.referee_id
+      ${status !== "" ? sql`WHERE re.status = ${status}` : sql``}
+      ORDER BY re.created_at DESC
+      LIMIT 200
+    `),
+    db.execute(sql`
+      SELECT
+        u.phone,
+        u.id,
+        COUNT(*) FILTER (WHERE re.status = 'credited') AS credited_count,
+        COUNT(*) AS total_count
+      FROM referral_events re
+      JOIN users u ON u.id = re.referrer_id
+      GROUP BY u.id, u.phone
+      ORDER BY credited_count DESC
+      LIMIT 10
+    `),
+    db.execute(sql`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE status = 'credited') AS credited,
+        COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
+        COUNT(*) FILTER (WHERE status = 'credited') * 50 AS total_points
+      FROM referral_events
+    `),
+  ]);
+  const rows = rowsFromResult<any>(rowsRaw);
+  const topReferrers = rowsFromResult<any>(topReferrersRaw);
+  const [statsRow = {}] = rowsFromResult<any>(statsRaw);
 
   const searchStr = search.toLowerCase();
   let list = rows.map((r) => ({
@@ -93,7 +96,15 @@ router.get("/referrals", requireAdmin, async (req, res) => {
   });
 });
 
-router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
+router.post(
+  "/referrals/:id/credit",
+  requireAdmin,
+  // Round-3 (8-b bonus): the only money-adjacent admin write without
+  // idempotency — a double-click created 409 noise (the in-tx status
+  // guard prevents a true double-grant, but the second attempt surfaced
+  // as a raw 500 from the catch-all before this). Dedup at the door.
+  idempotency({ routeKey: "admin.referrals.credit" }),
+  async (req, res) => {
   const id = intParam(req, "id");
   if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
@@ -151,6 +162,7 @@ router.post("/referrals/:id/credit", requireAdmin, async (req, res) => {
   );
 
   return res.json({ success: true, points_credited: POINTS });
-});
+  },
+);
 
 export { router as adminReferralsRouter };

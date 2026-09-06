@@ -184,9 +184,16 @@
   --chart-4: 215 20% 60%;
   --chart-5: 0 80% 58%;
 
-  --app-font-sans: "Inter", "Readex Pro", sans-serif;
+  /* Round-3 (8-e §6): "Inter" was a phantom font — never installed or
+     @font-face'd anywhere; production rendered Readex Pro for everything
+     (correct by accident) while dev machines with Inter installed showed
+     a DIFFERENT typeface. Document reality: Readex Pro first. The mono
+     stack gains an Arabic-capable fallback so Arabic glyphs inside
+     font-mono spans (codes with Arabic labels) don't drop to a random
+     system Arabic face. */
+  --app-font-sans: "Readex Pro", "Inter", sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
+  --app-font-mono: "SFMono-Regular", Menlo, Consolas, "Readex Pro", monospace;
   --radius: 0.75rem;
 
   /* Premium dark shadows with real depth */

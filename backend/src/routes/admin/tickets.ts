@@ -204,7 +204,15 @@ router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
   if (!["open", "in_progress", "closed"].includes(status))
     return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
 
-  await db.update(supportTicketsTable).set({ status }).where(eq(supportTicketsTable.id, id));
+  // Silent no-op → 404 (audit §5): PATCHing a non-existent ticket used
+  // to return `{success:true}` — the admin UI silently "closed" nothing.
+  const updated = await db
+    .update(supportTicketsTable)
+    .set({ status })
+    .where(eq(supportTicketsTable.id, id))
+    .returning({ id: supportTicketsTable.id });
+  if (updated.length === 0)
+    return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
   return res.json({ success: true });
 });
 

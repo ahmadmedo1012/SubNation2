@@ -13,6 +13,7 @@ import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
 import { computeTier } from "../lib/loyalty-tiers";
+import { toNumber } from "../lib/numeric";
 
 /**
  * Checkout service — the single owner of the purchase flow.
@@ -41,7 +42,10 @@ export type CheckoutFailureReason =
   // race (e.g. a concurrent topup-approval + purchase). Previously this
   // escaped as a raw 500 on the most money-sensitive endpoint; now it is
   // a first-class 409-retryable failure.
-  | "CONCURRENCY_ERROR";
+  | "CONCURRENCY_ERROR"
+  // M1 (round-3 audit): final-price integrity gate tripped — the computed
+  // price is non-finite or non-positive. Fail closed, never transact.
+  | "INVALID_PRICE";
 
 export type CheckoutResult =
   | {
@@ -78,7 +82,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
   // ── Discount stack (flash sale → coupon → final) — single source: lib/pricing.ts
   const pricing = await computePricing({
-    listPrice: parseFloat(String(product.price)),
+    listPrice: toNumber(product.price),
     couponCode,
   });
   if (pricing.coupon && isInvalidCoupon(pricing.coupon)) {
@@ -89,10 +93,23 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   const finalPrice = pricing.finalPrice;
   const appliedCoupon = isAppliedCoupon(pricing.coupon) ? pricing.coupon.record : null;
 
+  // ── Money-integrity gate (audit M1, defense-in-depth) ────────────────────
+  // The zod perimeter now bounds product prices at write time, but the
+  // checkout math is the last line of defense for every unit sold. A
+  // non-finite or non-positive final price here means either a legacy
+  // bad row, a future schema bypass, or a pricing regression — any of
+  // which would flip the balance comparison below and CREDIT the
+  // wallet on a purchase (finalPrice < 0 makes `currentBalance <
+  // finalPrice` false and `newBalance = balance - (negative)` adds
+  // funds). Fail closed with an explicit reason instead.
+  if (!Number.isFinite(finalPrice) || finalPrice <= 0 || !Number.isFinite(discountAmount) || discountAmount < 0) {
+    return { ok: false, reason: "INVALID_PRICE" };
+  }
+
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return { ok: false, reason: "USER_NOT_FOUND" };
 
-  const currentBalance = parseFloat(String(user.walletBalance));
+  const currentBalance = toNumber(user.walletBalance);
   if (currentBalance < finalPrice) return { ok: false, reason: "INSUFFICIENT_BALANCE" };
 
   // Cheap lock-free OUT_OF_STOCK fast-fail — the authoritative,
@@ -136,7 +153,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         .returning();
       if (!inv) throw new Error("INVENTORY_CLAIMED");
 
-      const newLifetimeSpend = +(parseFloat(String(user.lifetimeSpend)) + finalPrice).toFixed(2);
+      const newLifetimeSpend = +(toNumber(user.lifetimeSpend) + finalPrice).toFixed(2);
       const [updatedUser] = await tx
         .update(usersTable)
         .set({

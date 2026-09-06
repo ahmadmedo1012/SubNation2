@@ -43,10 +43,18 @@ router.post("/:id/read", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
-  await db
+  // Silent no-op → 404 (audit §5): marking a non-existent or non-owned
+  // notification read used to return `{success:true}` — the client could
+  // never distinguish success from a stale list / wrong id.
+  const marked = await db
     .update(notificationsTable)
     .set({ isRead: true })
-    .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, userId)));
+    .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, userId)))
+    .returning({ id: notificationsTable.id });
+  if (marked.length === 0)
+    return res
+      .status(404)
+      .json(createErrorResponse("الإشعار غير موجود", ErrorCode.NOT_FOUND));
   return res.json({ success: true });
 });
 

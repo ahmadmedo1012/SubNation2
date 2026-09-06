@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Loader2, Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { formatCount } from "@/lib/utils";
 
 interface ServerCartItem {
   id: number;
@@ -163,7 +164,15 @@ export default function CartPage() {
           <div>
             <h1 className="text-2xl font-black leading-tight">سلة المشتريات</h1>
             <p className="text-sm text-muted-foreground">
-              {items.length === 0 ? "سلتك فارغة حالياً" : `${items.length} منتج في السلة`}
+              {items.length === 0
+                ? "سلتك فارغة حالياً"
+                : formatCount(items.length, {
+                    one: "منتج في السلة",
+                    two: "منتجان في السلة",
+                    few: "منتجات في السلة",
+                    many: "منتجاً في السلة",
+                    other: "منتج في السلة",
+                  })}
             </p>
           </div>
         </div>

@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { setupFirebaseTokenRefresh } from "./firebase-auth";
+import { setUserAuthToken } from "./auth-token-holder";
 
 interface AuthContextType {
   token: string | null;
@@ -65,6 +66,14 @@ const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [adminToken, setAdminTokenState] = useState<string | null>(null);
+
+  // Round-3 (8-f §1): mirror the session token into the module-level
+  // holder consumed by customFetch's registered auth-token getter, so
+  // every orval request gains a correct bearer (or none, when running
+  // on cookie auth) without per-call-site header plumbing.
+  useEffect(() => {
+    setUserAuthToken(token);
+  }, [token]);
   const [adminPermissions, setAdminPermissionsState] = useState<string[]>([]);
   const [initializing, setInitializing] = useState(true);
   const queryClient = useQueryClient();

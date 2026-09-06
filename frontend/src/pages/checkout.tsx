@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { formatCount } from "@/lib/utils";
 
 // `/api/auth/me` returns the user FLAT ({...formatUser(user), linked_identities})
 // — there is no `user` wrapper. The old `data?.user?.wallet_balance` read
@@ -197,7 +198,13 @@ export default function CheckoutPage() {
         clear();
         toast({
           title: "تم تأكيد الطلب",
-          description: `تم إنشاء ${created.length} طلب بنجاح`,
+          description: `تم إنشاء ${formatCount(created.length, {
+            one: "طلب",
+            two: "طلبين",
+            few: "طلبات",
+            many: "طلباً",
+            other: "طلب",
+          })} بنجاح`,
         });
         if (firstOrderCode) navigate(`/orders/${firstOrderCode}`);
       }
@@ -376,7 +383,17 @@ export default function CheckoutPage() {
                     <div className="flex-1 leading-relaxed">
                       {partialCount > 0 ? (
                         <>
-                          <p>تم إنشاء {partialCount} طلب بنجاح قبل توقف العملية.</p>
+                          <p>
+                            تم إنشاء{" "}
+                            {formatCount(partialCount, {
+                              one: "طلب",
+                              two: "طلبين",
+                              few: "طلبات",
+                              many: "طلباً",
+                              other: "طلب",
+                            })}{" "}
+                            بنجاح قبل توقف العملية.
+                          </p>
                           <p className="mt-1 font-normal">{orderError}</p>
                           <Link
                             href="/orders"

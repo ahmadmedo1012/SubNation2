@@ -778,7 +778,11 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
       getClientInfo(req),
     );
     if (!result.ok) {
-      return res.status(result.status).json({ error: result.error, reason: result.reason });
+      // Round-3 envelope drift fix: `reason` → `code` (keep `reason` for
+      // backward compatibility with any client reading the old field).
+      return res
+        .status(result.status)
+        .json({ error: result.error, code: result.reason, reason: result.reason });
     }
     // Set httpOnly cookie so the session survives page refresh. Same
     // config as /api/auth/firebase/session (auth.ts line ~915):
@@ -824,7 +828,10 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
 
     const result = await handleTelegramWebAppAuth(initData, referralCode, getClientInfo(req));
     if (!result.ok) {
-      return res.status(result.status).json({ error: result.error, reason: result.reason });
+      // Round-3 envelope drift fix: `reason` → `code` (old field kept).
+      return res
+        .status(result.status)
+        .json({ error: result.error, code: result.reason, reason: result.reason });
     }
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),

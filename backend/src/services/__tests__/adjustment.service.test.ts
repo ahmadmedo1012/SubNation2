@@ -108,6 +108,35 @@ describe("AdjustmentService.adjust — F-004", () => {
 
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
   });
+
+  // ── Round-3 regression tests (8-d #4): assertFiniteAmount shipped in
+  // Round 2 (H6 — 1e999/NaN JSON payloads) with NO tests. These pin the
+  // exact fail-closed contract: no ledger row, no balance mutation.
+  it.each([
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["-Infinity", Number.NEGATIVE_INFINITY],
+    ["NaN", Number.NaN],
+  ])("rejects a non-finite delta (%s) with INVALID_AMOUNT and writes nothing", async (_label, bad) => {
+    const user = await makeUser("100.00");
+    await expect(
+      AdjustmentService.adjust(user.id, bad, { adminId: ADMIN_ID, note: "bad" }),
+    ).rejects.toMatchObject({ code: "INVALID_AMOUNT" });
+
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(100);
+    expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
+  });
+
+  it("rejects an out-of-bounds delta (1e999 parsed from JSON) with INVALID_AMOUNT", async () => {
+    const user = await makeUser("100.00");
+    // JSON.parse turns 1e999 into Infinity — the exact H6 payload.
+    const parsed = JSON.parse('{"delta": 1e999}').delta;
+    expect(parsed).toBe(Number.POSITIVE_INFINITY);
+    await expect(
+      AdjustmentService.adjust(user.id, parsed, { adminId: ADMIN_ID, note: "huge" }),
+    ).rejects.toMatchObject({ code: "INVALID_AMOUNT" });
+    expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
+  });
 });
 
 describe("AdjustmentService.setBalance — F-004", () => {

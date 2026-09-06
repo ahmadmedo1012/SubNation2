@@ -3,6 +3,7 @@ import "./instrument";
 
 import { startCouponWatcher } from "./jobs/couponWatcher";
 import { initCronJobs } from "./jobs/cron";
+import { startFlashSaleWatcher } from "./jobs/flashSaleWatcher";
 import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient, requireRedisClient } from "./lib/redis-client";
@@ -30,6 +31,13 @@ async function startWorker() {
 
   startCouponWatcher();
   startStockWatcher();
+  // Round-3 (8-c §8.1): the dedicated worker previously started only
+  // coupon + stock watchers + cron — flashSaleWatcher ran ONLY in the
+  // web scheduler. In worker-only mode (DISABLE_WEB_SCHEDULERS=true),
+  // expired flash sales stayed is_active forever and the active-
+  // singleton partial unique index BLOCKED creating the next sale.
+  // Worker/web parity: whichever process is scheduled runs it.
+  startFlashSaleWatcher();
   initCronJobs();
 
   logger.info("Background worker started");

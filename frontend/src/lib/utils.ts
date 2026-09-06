@@ -5,9 +5,57 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Round-3 (8-e §1.1): group thousands with Intl so money-critical surfaces
+// stop rendering "12345.50 د.ل" (digit-count misreads on wallet balances
+// and revenue tiles). Deliberately en-US grouping ("1,234.50") — the
+// site's established numeral language is Latin digits, and ar-LY's CLDR
+// separators ("1.234,50" + a trailing-dot currency glyph "د.ل.") would
+// flip every separator on every screen at once. Currency label stays the
+// hand-written " د.ل" suffix. Cached formatter instance per call pattern
+// — Intl.NumberFormat construction is the expensive part, so we reuse a
+// module-level formatter (options never vary).
+const CURRENCY_NUMBER_FORMATTER = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatCurrency(amount: number | null | undefined): string {
   if (amount === null || amount === undefined || isNaN(amount)) return "0.00 د.ل";
-  return `${Number(amount).toFixed(2)} د.ل`;
+  return `${CURRENCY_NUMBER_FORMATTER.format(amount)} د.ل`;
+}
+
+// Round-3 (8-e §4 — Arabic pluralization): Arabic needs one/two/few/many
+// forms (منتج واحد / منتجان / منتجات / منتجاً). Every count+noun site
+// previously froze a single form. This helper implements the six-way
+// Arabic plural rules via Intl.PluralRules so count labels read natively.
+// Usage: formatCount(3, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" })
+const AR_PLURAL_RULES =
+  typeof Intl !== "undefined" && Intl.PluralRules ? new Intl.PluralRules("ar") : null;
+
+// Integer count formatter (no forced decimals — counts are whole).
+const COUNT_FORMATTER = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
+
+export type ArabicPluralForms = {
+  zero?: string;
+  one?: string;
+  two?: string;
+  few?: string;
+  many?: string;
+  other: string;
+};
+
+export function formatCount(count: number, forms: ArabicPluralForms): string {
+  const category = AR_PLURAL_RULES ? AR_PLURAL_RULES.select(count) : count === 1 ? "one" : "other";
+  // "one" (and any category without a provided form) falls back to
+  // `other`; "zero" is a real Arabic plural category (CLDR) and is
+  // honored when the caller provides it.
+  const label =
+    category === "other"
+      ? forms.other
+      : ((forms[category as keyof ArabicPluralForms] as string | undefined) ?? forms.other);
+  return `${COUNT_FORMATTER.format(count)} ${label}`;
 }
 
 export function formatDate(dateStr: string): string {
