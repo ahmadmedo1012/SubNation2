@@ -14,8 +14,96 @@ export interface SuccessResponse {
   message?: string;
 }
 
+/**
+ * Optional structured context — zod `issues` on validation
+failures, `{field}` hints on flash-sale validation errors,
+`{skipped_duplicates}` on inventory uploads.
+
+ */
+export type ErrorResponseDetails = { [key: string]: unknown };
+
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export const ErrorCode = {
+  INVALID_DATA: "INVALID_DATA",
+  INVALID_PHONE: "INVALID_PHONE",
+  INVALID_PASSWORD_LENGTH: "INVALID_PASSWORD_LENGTH",
+  INVALID_PASSWORD_WEAK: "INVALID_PASSWORD_WEAK",
+  INVALID_OTP: "INVALID_OTP",
+  INVALID_CREDENTIAL: "INVALID_CREDENTIAL",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  INVALID_TOKEN: "INVALID_TOKEN",
+  SESSION_EXPIRED: "SESSION_EXPIRED",
+  ACCOUNT_LOCKED: "ACCOUNT_LOCKED",
+  ACCOUNT_NOT_FOUND: "ACCOUNT_NOT_FOUND",
+  PHONE_ALREADY_REGISTERED: "PHONE_ALREADY_REGISTERED",
+  FEATURE_DISABLED: "FEATURE_DISABLED",
+  FORBIDDEN: "FORBIDDEN",
+  INSUFFICIENT_PERMISSIONS: "INSUFFICIENT_PERMISSIONS",
+  NOT_FOUND: "NOT_FOUND",
+  ALREADY_EXISTS: "ALREADY_EXISTS",
+  CONFLICT: "CONFLICT",
+  OUT_OF_STOCK: "OUT_OF_STOCK",
+  PRODUCT_UNAVAILABLE: "PRODUCT_UNAVAILABLE",
+  INSUFFICIENT_BALANCE: "INSUFFICIENT_BALANCE",
+  INVALID_AMOUNT: "INVALID_AMOUNT",
+  TOPUP_LIMIT_EXCEEDED: "TOPUP_LIMIT_EXCEEDED",
+  ORDER_NOT_FOUND: "ORDER_NOT_FOUND",
+  ORDER_ALREADY_COMPLETED: "ORDER_ALREADY_COMPLETED",
+  ORDER_CANNOT_CANCEL: "ORDER_CANNOT_CANCEL",
+  GOOGLE_TOKEN_INVALID: "GOOGLE_TOKEN_INVALID",
+  GOOGLE_VERIFICATION_FAILED: "GOOGLE_VERIFICATION_FAILED",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+  RATE_LIMITED: "RATE_LIMITED",
+  IDEMPOTENCY_IN_FLIGHT: "IDEMPOTENCY_IN_FLIGHT",
+  IDEMPOTENCY_KEY_REUSE: "IDEMPOTENCY_KEY_REUSE",
+  COPILOT_INVALID_INPUT: "COPILOT_INVALID_INPUT",
+  COPILOT_LLM_ERROR: "COPILOT_LLM_ERROR",
+  COPILOT_NO_ADMIN_SESSION: "COPILOT_NO_ADMIN_SESSION",
+  COPILOT_BAD_METHOD: "COPILOT_BAD_METHOD",
+} as const;
+
 export interface ErrorResponse {
   error: string;
+  code: ErrorCode;
+  /** Optional structured context — zod `issues` on validation
+failures, `{field}` hints on flash-sale validation errors,
+`{skipped_duplicates}` on inventory uploads.
+ */
+  details?: ErrorResponseDetails;
+}
+
+export type IdempotencyConflictResponseCode =
+  (typeof IdempotencyConflictResponseCode)[keyof typeof IdempotencyConflictResponseCode];
+
+export const IdempotencyConflictResponseCode = {
+  IDEMPOTENCY_IN_FLIGHT: "IDEMPOTENCY_IN_FLIGHT",
+  IDEMPOTENCY_KEY_REUSE: "IDEMPOTENCY_KEY_REUSE",
+} as const;
+
+export interface IdempotencyConflictResponse {
+  /** Always false on these conflicts. */
+  success: boolean;
+  error: string;
+  message: string;
+  code: IdempotencyConflictResponseCode;
+}
+
+export type TopupLimitErrorResponseCode =
+  (typeof TopupLimitErrorResponseCode)[keyof typeof TopupLimitErrorResponseCode];
+
+export const TopupLimitErrorResponseCode = {
+  TOPUP_LIMIT_EXCEEDED: "TOPUP_LIMIT_EXCEEDED",
+} as const;
+
+export interface TopupLimitErrorResponse {
+  error: string;
+  code: TopupLimitErrorResponseCode;
+  /** The user's current pending top-up request count. */
+  pending_count: number;
+  /** Max concurrent pending top-ups per user (3). */
+  limit: number;
 }
 
 export interface RegisterBody {
@@ -183,7 +271,20 @@ export const CreateTopupBodyPaymentMethod = {
   lypay: "lypay",
 } as const;
 
+/**
+ * Conditional requirements enforced by the handler (all 400
+INVALID_DATA): payment_network is required when payment_method is
+mobile_transfer; sender_account is required for lypay;
+sender_phone, when present with mobile_transfer, must be a valid
+Libyan phone number.
+
+ */
 export interface CreateTopupBody {
+  /**
+   * Top-up amount in LYD (0.01 .. 10,000).
+   * @minimum 0.01
+   * @maximum 10000
+   */
   amount: number;
   payment_method?: CreateTopupBodyPaymentMethod;
   /** @nullable */
@@ -192,7 +293,10 @@ export interface CreateTopupBody {
   sender_phone?: string | null;
   /** @nullable */
   sender_account?: string | null;
-  /** @nullable */
+  /**
+   * @maxLength 255
+   * @nullable
+   */
   payment_reference?: string | null;
 }
 
@@ -224,6 +328,446 @@ export interface Topup {
   reviewed_at?: string | null;
 }
 
+/**
+ * Cart line with a pricing snapshot (flash-sale values come from a
+30s in-process cache). `subtotal` = effective price × quantity,
+2dp. product_name is "منتج محذوف" (deleted product) when the row
+outlives its product.
+
+ */
+export interface CartItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  /** @nullable */
+  product_slug?: string | null;
+  /** @nullable */
+  product_image_url?: string | null;
+  /** Base price. */
+  price: number;
+  /**
+   * Flash-sale price (2dp) — null when no active sale.
+   * @nullable
+   */
+  sale_price?: number | null;
+  /**
+   * Flash-sale percent — null when 0.
+   * @nullable
+   */
+  discount_percent?: number | null;
+  /**
+   * @minimum 1
+   * @maximum 99
+   */
+  quantity: number;
+  subtotal: number;
+  created_at: string;
+}
+
+/**
+ * NOTE: the field is snake_case `product_id` — the frontend local
+cart store uses camelCase productId and does not call this
+endpoint today.
+
+ */
+export interface AddCartItemBody {
+  product_id: number;
+  /**
+   * Defaults to 1 when omitted (MAX_QUANTITY cap is 99).
+   * @minimum 1
+   * @maximum 99
+   */
+  quantity?: number;
+}
+
+/**
+ * Replaces the quantity (not an increment).
+ */
+export interface UpdateCartItemBody {
+  /**
+   * @minimum 1
+   * @maximum 99
+   */
+  quantity: number;
+}
+
+export interface ValidateCouponBody {
+  /** Trimmed + uppercased for lookup. */
+  code: string;
+  /**
+   * The order total the coupon is validated against (must be > 0).
+   * @exclusiveMinimum 0
+   */
+  order_amount: number;
+}
+
+export type ValidatedCouponType = (typeof ValidatedCouponType)[keyof typeof ValidatedCouponType];
+
+export const ValidatedCouponType = {
+  percentage: "percentage",
+  fixed: "fixed",
+} as const;
+
+export interface ValidatedCoupon {
+  /** Always true on 200. */
+  valid: boolean;
+  code: string;
+  type: ValidatedCouponType;
+  value: number;
+  discount_amount: number;
+  final_amount: number;
+  /** @nullable */
+  description?: string | null;
+}
+
+export type CouponType = (typeof CouponType)[keyof typeof CouponType];
+
+export const CouponType = {
+  percentage: "percentage",
+  fixed: "fixed",
+} as const;
+
+export interface Coupon {
+  id: number;
+  code: string;
+  type: CouponType;
+  value: number;
+  min_order_amount?: number;
+  /** @nullable */
+  max_uses?: number | null;
+  used_count: number;
+  /** @nullable */
+  expires_at?: string | null;
+  is_active: boolean;
+  /** @nullable */
+  description?: string | null;
+  created_at: string;
+}
+
+export type CreateCouponBodyType = (typeof CreateCouponBodyType)[keyof typeof CreateCouponBodyType];
+
+export const CreateCouponBodyType = {
+  percentage: "percentage",
+  fixed: "fixed",
+} as const;
+
+/**
+ * `code` is uppercased before insert. Percentage coupons must have
+value ≤ 100 (checked after parse with a specific message); fixed
+values are bounded at 10,000 LYD — a direct wallet-debit magnitude
+at checkout.
+
+ */
+export interface CreateCouponBody {
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  code: string;
+  type: CreateCouponBodyType;
+  /**
+   * @maximum 10000
+   * @exclusiveMinimum 0
+   */
+  value: number;
+  /**
+   * Defaults to 0.
+   * @minimum 0
+   * @maximum 1000000
+   */
+  min_order_amount?: number;
+  /**
+   * @minimum 1
+   * @maximum 1000000
+   * @nullable
+   */
+  max_uses?: number | null;
+  /**
+   * ISO date or date-time string; null = never expires.
+   * @nullable
+   */
+  expires_at?: string | null;
+  /**
+   * @maxLength 200
+   * @nullable
+   */
+  description?: string | null;
+}
+
+/**
+ * Strict body — unknown keys are a 400 (zod .strict()).
+ */
+export interface PatchCouponBody {
+  is_active?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 1000000
+   * @nullable
+   */
+  max_uses?: number | null;
+  /**
+   * ISO date or date-time string; null = never expires.
+   * @nullable
+   */
+  expires_at?: string | null;
+  /**
+   * @maxLength 200
+   * @nullable
+   */
+  description?: string | null;
+}
+
+export type LoyaltySummaryTier = (typeof LoyaltySummaryTier)[keyof typeof LoyaltySummaryTier];
+
+export const LoyaltySummaryTier = {
+  bronze: "bronze",
+  silver: "silver",
+  gold: "gold",
+  platinum: "platinum",
+} as const;
+
+/**
+ * null at platinum.
+ * @nullable
+ */
+export type LoyaltySummaryNextTier = {
+  tier: string;
+  /** Arabic tier label ("فضي" / "ذهبي" / "بلاتيني"). */
+  label: string;
+  /** Lifetime spend still needed for the next tier. */
+  remaining: number;
+} | null;
+
+export type LoyaltySummaryTierThresholds = {
+  silver: number;
+  gold: number;
+  platinum: number;
+};
+
+export type LoyaltySummaryPointsRate = {
+  points_per_referral: number;
+  points_per_lyd: number;
+};
+
+/**
+ * Constants: POINTS_PER_LYD = 100, POINTS_PER_REFERRAL = 50; tiers
+silver=500 / gold=2000 / platinum=5000 lifetime spend. NOTE:
+points_value_lyd is a STRING (toFixed(2)).
+
+ */
+export interface LoyaltySummary {
+  points: number;
+  tier: LoyaltySummaryTier;
+  lifetime_spend: number;
+  /** Empty string when unset. */
+  referral_code: string;
+  referral_link: string;
+  /** @nullable */
+  referred_by?: string | null;
+  referrals_total: number;
+  referrals_credited: number;
+  referrals_pending: number;
+  /** points / 100, formatted with 2 decimals (e.g. "12.00"). */
+  points_value_lyd: string;
+  /**
+   * null at platinum.
+   * @nullable
+   */
+  next_tier: LoyaltySummaryNextTier;
+  tier_thresholds: LoyaltySummaryTierThresholds;
+  points_rate: LoyaltySummaryPointsRate;
+}
+
+/**
+ * The handler parseInt()s the raw body value, so a numeric string
+("500") is also accepted — a JSON number is the documented shape.
+Values below 100 or not a multiple of 100 → 400 INVALID_DATA.
+
+ */
+export interface ConvertPointsBody {
+  points: number | string;
+}
+
+export interface ConvertPointsResult {
+  success: boolean;
+  points_spent: number;
+  lyd_credited: number;
+  new_points: number;
+  new_balance: number;
+  /** Arabic success message with the converted amount. */
+  message: string;
+}
+
+export type ReferralEventItemStatus =
+  (typeof ReferralEventItemStatus)[keyof typeof ReferralEventItemStatus];
+
+export const ReferralEventItemStatus = {
+  pending: "pending",
+  credited: "credited",
+} as const;
+
+export interface ReferralEventItem {
+  id: number;
+  status: ReferralEventItemStatus;
+  /** Referee phone masked ("091****789"). */
+  phone_masked: string;
+  created_at: string;
+  /** @nullable */
+  credited_at: string | null;
+  /** 50 when credited, else 0. */
+  points_earned: number;
+}
+
+export type SupportTicketSummaryCategory =
+  (typeof SupportTicketSummaryCategory)[keyof typeof SupportTicketSummaryCategory];
+
+export const SupportTicketSummaryCategory = {
+  billing: "billing",
+  technical: "technical",
+  order: "order",
+  account: "account",
+  other: "other",
+} as const;
+
+export type SupportTicketSummaryStatus =
+  (typeof SupportTicketSummaryStatus)[keyof typeof SupportTicketSummaryStatus];
+
+export const SupportTicketSummaryStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+/**
+ * Most recent reply (first 80 chars) — null when the ticket has no replies.
+ * @nullable
+ */
+export type SupportTicketSummaryLastReply = {
+  author_type: "user" | "admin";
+  message: string;
+  created_at: string;
+} | null;
+
+export interface SupportTicketSummary {
+  id: number;
+  title: string;
+  category: SupportTicketSummaryCategory;
+  status: SupportTicketSummaryStatus;
+  created_at: string;
+  /**
+   * Most recent reply (first 80 chars) — null when the ticket has no replies.
+   * @nullable
+   */
+  last_reply: SupportTicketSummaryLastReply;
+}
+
+export type CreateSupportTicketBodyCategory =
+  (typeof CreateSupportTicketBodyCategory)[keyof typeof CreateSupportTicketBodyCategory];
+
+export const CreateSupportTicketBodyCategory = {
+  billing: "billing",
+  technical: "technical",
+  order: "order",
+  account: "account",
+  other: "other",
+} as const;
+
+/**
+ * title and message are trimmed; an unknown category silently
+falls back to "other".
+
+ */
+export interface CreateSupportTicketBody {
+  /**
+   * @minLength 1
+   * @maxLength 255
+   */
+  title: string;
+  /**
+   * Becomes the first reply (author_type=user).
+   * @minLength 1
+   */
+  message: string;
+  category?: CreateSupportTicketBodyCategory;
+}
+
+export type SupportTicketCreatedStatus =
+  (typeof SupportTicketCreatedStatus)[keyof typeof SupportTicketCreatedStatus];
+
+export const SupportTicketCreatedStatus = {
+  open: "open",
+} as const;
+
+export interface SupportTicketCreated {
+  id: number;
+  title: string;
+  status: SupportTicketCreatedStatus;
+  created_at: string;
+}
+
+export type SupportTicketDetailCategory =
+  (typeof SupportTicketDetailCategory)[keyof typeof SupportTicketDetailCategory];
+
+export const SupportTicketDetailCategory = {
+  billing: "billing",
+  technical: "technical",
+  order: "order",
+  account: "account",
+  other: "other",
+} as const;
+
+export type SupportTicketDetailStatus =
+  (typeof SupportTicketDetailStatus)[keyof typeof SupportTicketDetailStatus];
+
+export const SupportTicketDetailStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+export type TicketReplyAuthorType =
+  (typeof TicketReplyAuthorType)[keyof typeof TicketReplyAuthorType];
+
+export const TicketReplyAuthorType = {
+  user: "user",
+  admin: "admin",
+} as const;
+
+export interface TicketReply {
+  id: number;
+  author_type: TicketReplyAuthorType;
+  message: string;
+  created_at: string;
+}
+
+export interface SupportTicketDetail {
+  id: number;
+  title: string;
+  category: SupportTicketDetailCategory;
+  status: SupportTicketDetailStatus;
+  created_at: string;
+  /** Full messages, oldest first. */
+  replies: TicketReply[];
+}
+
+export interface ReplySupportTicketBody {
+  /** @minLength 1 */
+  message: string;
+}
+
+export interface NotificationItem {
+  id: number;
+  /** e.g. "order" | "loyalty" | "system". */
+  type: string;
+  title: string;
+  /** @nullable */
+  message?: string | null;
+  /** @nullable */
+  link?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface AdminLoginBody {
   username: string;
   password: string;
@@ -247,31 +791,85 @@ export interface AdminStats {
   total_wallet_balance: number;
 }
 
+export type AdminOrderStatus = (typeof AdminOrderStatus)[keyof typeof AdminOrderStatus];
+
+export const AdminOrderStatus = {
+  pending: "pending",
+  completed: "completed",
+  failed: "failed",
+  refunded: "refunded",
+} as const;
+
 export interface AdminOrder {
   id: number;
   order_code: string;
   user_phone: string;
+  /** @nullable */
+  user_display_name?: string | null;
+  /** @nullable */
+  user_email?: string | null;
+  /** @nullable */
+  user_auth_provider?: string | null;
+  user_has_google?: boolean;
+  user_has_telegram?: boolean;
+  user_has_firebase?: boolean;
+  user_has_whatsapp?: boolean;
   product_name: string;
   amount: number;
-  status: string;
+  status: AdminOrderStatus;
   /** @nullable */
   delivered_email?: string | null;
   /** @nullable */
   delivered_password?: string | null;
+  /** @nullable */
+  delivered_extra_details?: string | null;
+  /** @nullable */
+  coupon_code?: string | null;
+  discount_amount?: number;
   created_at: string;
 }
+
+export type AdminTopupPaymentMethod =
+  (typeof AdminTopupPaymentMethod)[keyof typeof AdminTopupPaymentMethod];
+
+export const AdminTopupPaymentMethod = {
+  mobile_transfer: "mobile_transfer",
+  lypay: "lypay",
+} as const;
+
+export type AdminTopupStatus = (typeof AdminTopupStatus)[keyof typeof AdminTopupStatus];
+
+export const AdminTopupStatus = {
+  pending: "pending",
+  approved: "approved",
+  rejected: "rejected",
+} as const;
 
 export interface AdminTopup {
   id: number;
   user_id: number;
   user_phone: string;
+  /** @nullable */
+  user_display_name?: string | null;
+  /** @nullable */
+  user_email?: string | null;
+  /** @nullable */
+  user_auth_provider?: string | null;
+  user_has_google?: boolean;
+  user_has_telegram?: boolean;
+  user_has_firebase?: boolean;
+  user_has_whatsapp?: boolean;
   amount: number;
-  payment_network: string;
+  payment_method: AdminTopupPaymentMethod;
+  /** @nullable */
+  payment_network?: string | null;
   /** @nullable */
   sender_phone?: string | null;
   /** @nullable */
+  sender_account?: string | null;
+  /** @nullable */
   payment_reference?: string | null;
-  status: string;
+  status: AdminTopupStatus;
   /** @nullable */
   admin_note?: string | null;
   created_at: string;
@@ -284,6 +882,8 @@ export interface AdminTopupActionBody {
 
 export interface AdminProduct {
   id: number;
+  /** @nullable */
+  slug?: string | null;
   name: string;
   /** @nullable */
   description?: string | null;
@@ -360,17 +960,152 @@ export interface UpdateProductBody {
   is_active?: boolean | null;
 }
 
+export type AdminUserLoyaltyTier = (typeof AdminUserLoyaltyTier)[keyof typeof AdminUserLoyaltyTier];
+
+export const AdminUserLoyaltyTier = {
+  bronze: "bronze",
+  silver: "silver",
+  gold: "gold",
+  platinum: "platinum",
+} as const;
+
 export interface AdminUser {
   id: number;
   phone: string;
+  /** @nullable */
+  display_name?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  photo_url?: string | null;
+  /** "firebase_phone" | "firebase_google" | "firebase" |
+"telegram" | "whatsapp_phone" | "legacy_password".
+ */
+  auth_provider?: string;
+  has_google?: boolean;
+  has_telegram?: boolean;
+  has_firebase?: boolean;
+  has_whatsapp?: boolean;
+  /** @nullable */
+  last_auth_at?: string | null;
   wallet_balance: number;
   loyalty_points: number;
-  loyalty_tier: string;
+  loyalty_tier: AdminUserLoyaltyTier;
   lifetime_spend: number;
+  /** Completed-order count for this user. */
   order_count: number;
   /** @nullable */
   referral_code?: string | null;
   created_at: string;
+}
+
+/**
+ * `is_currently_active` is derived (is_active AND ends_at in the
+future) — the admin UI can show historical rows without
+recomputing.
+
+ */
+export interface AdminFlashSale {
+  id: number;
+  title: string;
+  /**
+   * @minimum 0
+   * @maximum 95
+   */
+  discount_percent: number;
+  ends_at: string;
+  is_active: boolean;
+  is_currently_active: boolean;
+  created_at: string;
+}
+
+/**
+ * 95% ceiling rationale: prevents a "free goods" state when a
+fixed-amount coupon stacks on the sale — use a coupon for deeper
+discounts.
+
+ */
+export interface CreateFlashSaleBody {
+  /**
+   * Defaults to "Flash Sale" when omitted.
+   * @maxLength 255
+   */
+  title?: string;
+  /**
+   * @minimum 0
+   * @maximum 95
+   */
+  discount_percent: number;
+  /** ISO date-time — between 5 minutes and 30 days in the future. */
+  ends_at: string;
+}
+
+/**
+ * At least one field required — an empty body is a 400.
+ */
+export interface UpdateFlashSaleBody {
+  /** @maxLength 255 */
+  title?: string;
+  /**
+   * @minimum 0
+   * @maximum 95
+   */
+  discount_percent?: number;
+  /** ISO date-time — at least 5 minutes in the future. */
+  ends_at?: string;
+  is_active?: boolean;
+}
+
+export type BulkUpdateOrderStatusBodyStatus =
+  (typeof BulkUpdateOrderStatusBodyStatus)[keyof typeof BulkUpdateOrderStatusBodyStatus];
+
+export const BulkUpdateOrderStatusBodyStatus = {
+  pending: "pending",
+  completed: "completed",
+  failed: "failed",
+  refunded: "refunded",
+} as const;
+
+/**
+ * `ids` accepts numbers or numeric strings (coerced via Number());
+invalid entries and duplicates are dropped and reported
+(skipped_invalid on the 200 response).
+
+ */
+export interface BulkUpdateOrderStatusBody {
+  /** @minItems 1 */
+  ids: (number | string)[];
+  status: BulkUpdateOrderStatusBodyStatus;
+  /** Optional audit note (stored on refund ledger entries). */
+  note?: string;
+}
+
+export interface BulkUpdateOrderStatusResult {
+  success: boolean;
+  /** Count of orders transitioned (or successfully refunded). */
+  updated: number;
+  /** Count of non-numeric / duplicate ids dropped from the request
+— present only when non-zero.
+ */
+  skipped_invalid?: number;
+}
+
+export type BulkUpdateOrderStatusPartialFailedItem = {
+  orderId: number;
+  /** RefundError code for the failed order. */
+  code: string;
+  message: string;
+};
+
+/**
+ * 207 (Multi-Status) body — refund batch with per-order failures.
+ */
+export interface BulkUpdateOrderStatusPartial {
+  /** false — at least one refund failed. */
+  success: boolean;
+  /** Count of orders successfully refunded. */
+  updated: number;
+  failed: BulkUpdateOrderStatusPartialFailedItem[];
 }
 
 export interface CopilotAskContext {
@@ -612,19 +1347,34 @@ Clamped server-side to [1, 200].
   limit?: number;
 };
 
+export type GetCart200 = {
+  items: CartItem[];
+  total: number;
+};
+
 export type ListAdminOrdersParams = {
   /**
+   * Optional order status filter.
    * @nullable
    */
   status?: string | null;
   /**
+   * 1-based page number (default 1).
    * @nullable
    */
   page?: number | null;
   /**
+   * Page size, clamped to [1, 200] (default 100).
    * @nullable
    */
   limit?: number | null;
+  /**
+ * LOWER LIKE across order code, user phone / email / display
+name, or product name (the admin command palette filter).
+
+ * @nullable
+ */
+  search?: string | null;
 };
 
 export type ListAdminTopupsParams = {
@@ -632,6 +1382,27 @@ export type ListAdminTopupsParams = {
    * @nullable
    */
   status?: string | null;
+};
+
+export type ListAdminFlashSales200 = {
+  flash_sales: AdminFlashSale[];
+};
+
+export type CreditReferral200 = {
+  success: boolean;
+  /** Points granted (POINTS_PER_REFERRAL = 50). */
+  points_credited: number;
+};
+
+export type ListAdminProductsParams = {
+  /**
+ * ILIKE match on product name or category (the admin command
+palette filter; capped at 100 chars server-side). Non-archived
+rows only, ≤200 newest first.
+
+ * @nullable
+ */
+  search?: string | null;
 };
 
 export type ListAdminUsersParams = {

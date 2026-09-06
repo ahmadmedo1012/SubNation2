@@ -16,10 +16,7 @@ import {
   Sparkles,
   Info,
 } from "lucide-react";
-import {
-  useListAdminProducts,
-  getListAdminProductsQueryKey,
-} from "@workspace/api-client-react";
+import { useListAdminProducts, getListAdminProductsQueryKey } from "@workspace/api-client-react";
 import { AdminLayout } from "./layout";
 
 /**
@@ -148,7 +145,7 @@ export default function AdminPricingPage() {
 
   const headers = useAdminHeaders();
 
-  const { data: products = [] } = useListAdminProducts({
+  const { data: products = [] } = useListAdminProducts(undefined, {
     query: {
       queryKey: getListAdminProductsQueryKey(),
       enabled: !!adminToken,
@@ -162,7 +159,7 @@ export default function AdminPricingPage() {
   }, [adminToken, navigate]);
 
   const selectedProduct = useMemo(
-    () => (productId === "custom" ? null : products.find((p) => p.id === productId) ?? null),
+    () => (productId === "custom" ? null : (products.find((p) => p.id === productId) ?? null)),
     [productId, products],
   );
 
@@ -241,207 +238,207 @@ export default function AdminPricingPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* ── INPUTS ─────────────────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
-          <h2 className="font-black text-sm flex items-center gap-2">
-            <Tag className="w-4 h-4 text-primary" /> المدخلات
-          </h2>
+          {/* ── INPUTS ─────────────────────────────────────────────── */}
+          <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
+            <h2 className="font-black text-sm flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary" /> المدخلات
+            </h2>
 
-          {/* Product picker */}
-          <div>
-            <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-              المنتج
-            </Label>
-            <select
-              value={productId === "custom" ? "custom" : String(productId)}
-              onChange={(e) =>
-                setProductId(e.target.value === "custom" ? "custom" : Number(e.target.value))
-              }
-              className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
-            >
-              <option value="custom">— سعر مخصّص (للاختبار) —</option>
-              {products.map((p) => {
-                const cp = (p as { cost_price?: number | null }).cost_price;
-                return (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — {p.price.toFixed(2)} د.ل
-                    {cp != null ? ` (تكلفة ${cp.toFixed(2)})` : " (تكلفة غير محددة)"}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Custom price + cost (only when "custom") */}
-          {productId === "custom" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-                  السعر (د.ل)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                  placeholder="0.00"
-                  dir="ltr"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-                  التكلفة (د.ل)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={customCost}
-                  onChange={(e) => setCustomCost(e.target.value)}
-                  placeholder="0.00"
-                  dir="ltr"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Coupon code */}
-          <div>
-            <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-              كود الكوبون (اختياري)
-            </Label>
-            <Input
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              placeholder="WELCOME10"
-              dir="ltr"
-            />
-          </div>
-
-          {/* Simulate referred */}
-          <div className="flex items-center justify-between p-3 bg-muted/20 border border-border/40 rounded-lg">
+            {/* Product picker */}
             <div>
-              <div className="text-xs font-bold">محاكاة مشتري مُحال</div>
-              <div className="text-[10px] text-muted-foreground">
-                يحسم 5 د.ل مكافأة الترحيب + 0.50 د.ل نقاط المُحيل
-              </div>
+              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">المنتج</Label>
+              <select
+                value={productId === "custom" ? "custom" : String(productId)}
+                onChange={(e) =>
+                  setProductId(e.target.value === "custom" ? "custom" : Number(e.target.value))
+                }
+                className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="custom">— سعر مخصّص (للاختبار) —</option>
+                {products.map((p) => {
+                  const cp = (p as { cost_price?: number | null }).cost_price;
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {p.price.toFixed(2)} د.ل
+                      {cp != null ? ` (تكلفة ${cp.toFixed(2)})` : " (تكلفة غير محددة)"}
+                    </option>
+                  );
+                })}
+              </select>
             </div>
-            <Switch checked={simulateReferred} onCheckedChange={setSimulateReferred} />
+
+            {/* Custom price + cost (only when "custom") */}
+            {productId === "custom" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                    السعر (د.ل)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={customPrice}
+                    onChange={(e) => setCustomPrice(e.target.value)}
+                    placeholder="0.00"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                    التكلفة (د.ل)
+                  </Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={customCost}
+                    onChange={(e) => setCustomCost(e.target.value)}
+                    placeholder="0.00"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Coupon code */}
+            <div>
+              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                كود الكوبون (اختياري)
+              </Label>
+              <Input
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                placeholder="WELCOME10"
+                dir="ltr"
+              />
+            </div>
+
+            {/* Simulate referred */}
+            <div className="flex items-center justify-between p-3 bg-muted/20 border border-border/40 rounded-lg">
+              <div>
+                <div className="text-xs font-bold">محاكاة مشتري مُحال</div>
+                <div className="text-[10px] text-muted-foreground">
+                  يحسم 5 د.ل مكافأة الترحيب + 0.50 د.ل نقاط المُحيل
+                </div>
+              </div>
+              <Switch checked={simulateReferred} onCheckedChange={setSimulateReferred} />
+            </div>
+
+            <Button onClick={calculate} disabled={!canCalculate || loading} className="w-full">
+              {loading ? "جارٍ الحساب…" : "إعادة الحساب"}
+            </Button>
           </div>
 
-          <Button onClick={calculate} disabled={!canCalculate || loading} className="w-full">
-            {loading ? "جارٍ الحساب…" : "إعادة الحساب"}
-          </Button>
-        </div>
+          {/* ── OUTPUTS ────────────────────────────────────────────── */}
+          <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-3">
+            <h2 className="font-black text-sm flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" /> النتائج
+            </h2>
 
-        {/* ── OUTPUTS ────────────────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-3">
-          <h2 className="font-black text-sm flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" /> النتائج
-          </h2>
-
-          {!result ? (
-            <p className="text-xs text-muted-foreground py-8 text-center">
-              أدخل سعراً أو اختر منتجاً لرؤية الحساب.
-            </p>
-          ) : (
-            <>
-              {/* Pricing waterfall */}
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between py-1">
-                  <span className="text-muted-foreground">السعر المعروض</span>
-                  <span className="tabular-nums font-bold">
-                    {fmt(result.pricing.list_price)} د.ل
-                  </span>
-                </div>
-                {result.flash_sale && (
-                  <div className="flex justify-between py-1 text-amber-500">
-                    <span>↳ تخفيضات الموقع ({result.flash_sale.discount_percent}%)</span>
-                    <span className="tabular-nums">{fmt(result.pricing.base_price)} د.ل</span>
-                  </div>
-                )}
-                {result.coupon && result.coupon.valid && (
-                  <div className="flex justify-between py-1 text-violet-500">
-                    <span>
-                      ↳ كوبون {result.coupon.code} (
-                      {result.coupon.type === "percentage"
-                        ? `${result.coupon.value}%`
-                        : `−${fmt(result.coupon.value)}`}
-                      )
+            {!result ? (
+              <p className="text-xs text-muted-foreground py-8 text-center">
+                أدخل سعراً أو اختر منتجاً لرؤية الحساب.
+              </p>
+            ) : (
+              <>
+                {/* Pricing waterfall */}
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">السعر المعروض</span>
+                    <span className="tabular-nums font-bold">
+                      {fmt(result.pricing.list_price)} د.ل
                     </span>
-                    <span className="tabular-nums">−{fmt(result.pricing.discount_amount)} د.ل</span>
                   </div>
-                )}
-                {result.coupon && !result.coupon.valid && (
-                  <div className="flex justify-between py-1 text-destructive text-[10px]">
-                    <span>⚠️ كوبون غير صالح</span>
-                    <span>{result.coupon.reason_invalid}</span>
+                  {result.flash_sale && (
+                    <div className="flex justify-between py-1 text-amber-500">
+                      <span>↳ تخفيضات الموقع ({result.flash_sale.discount_percent}%)</span>
+                      <span className="tabular-nums">{fmt(result.pricing.base_price)} د.ل</span>
+                    </div>
+                  )}
+                  {result.coupon && result.coupon.valid && (
+                    <div className="flex justify-between py-1 text-violet-500">
+                      <span>
+                        ↳ كوبون {result.coupon.code} (
+                        {result.coupon.type === "percentage"
+                          ? `${result.coupon.value}%`
+                          : `−${fmt(result.coupon.value)}`}
+                        )
+                      </span>
+                      <span className="tabular-nums">
+                        −{fmt(result.pricing.discount_amount)} د.ل
+                      </span>
+                    </div>
+                  )}
+                  {result.coupon && !result.coupon.valid && (
+                    <div className="flex justify-between py-1 text-destructive text-[10px]">
+                      <span>⚠️ كوبون غير صالح</span>
+                      <span>{result.coupon.reason_invalid}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-2 border-t border-border/40 mt-2">
+                    <span className="font-bold">السعر النهائي</span>
+                    <span className="tabular-nums font-black text-primary text-base">
+                      {fmt(result.pricing.final_price)} د.ل
+                    </span>
                   </div>
-                )}
-                <div className="flex justify-between py-2 border-t border-border/40 mt-2">
-                  <span className="font-bold">السعر النهائي</span>
-                  <span className="tabular-nums font-black text-primary text-base">
-                    {fmt(result.pricing.final_price)} د.ل
-                  </span>
                 </div>
-              </div>
 
-              <div className="border-t border-border/40 pt-3 space-y-2">
-                <MarginRow
-                  label="الربح الإجمالي"
-                  hint="السعر النهائي ناقص التكلفة"
-                  lyd={result.margins.gross_lyd}
-                  pct={result.margins.gross_pct}
-                />
-                <MarginRow
-                  label="الربح الصافي"
-                  hint={`بعد ${result.loyalty.points_earned} نقطة ولاء (~${fmt(result.loyalty.lyd_accrued)} د.ل)`}
-                  lyd={result.margins.net_lyd}
-                  pct={result.margins.net_pct}
-                />
-                {result.inputs.simulate_referred && (
-                  <MarginRow
-                    label="الربح بعد تكلفة الإحالة"
-                    hint={`بعد ${fmt(result.referral_cost.total_referral_cost_lyd)} د.ل (مكافأة ترحيب + نقاط مُحيل)`}
-                    lyd={result.margins.referral_adjusted_lyd}
-                    pct={result.margins.referral_adjusted_pct}
-                  />
-                )}
-              </div>
-
-              {/* Warnings */}
-              {result.warnings.length > 0 && (
                 <div className="border-t border-border/40 pt-3 space-y-2">
-                  {result.warnings.map((w, i) => {
-                    const tone =
-                      w.severity === "loss"
-                        ? "border-destructive/40 bg-destructive/10 text-destructive"
-                        : w.severity === "low_margin"
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
-                          : "border-blue-500/40 bg-blue-500/10 text-blue-400";
-                    return (
-                      <div
-                        key={i}
-                        className={`flex items-start gap-2 p-2.5 border rounded-lg text-[11px] ${tone}`}
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span className="font-medium">{w.message_ar}</span>
-                      </div>
-                    );
-                  })}
+                  <MarginRow
+                    label="الربح الإجمالي"
+                    hint="السعر النهائي ناقص التكلفة"
+                    lyd={result.margins.gross_lyd}
+                    pct={result.margins.gross_pct}
+                  />
+                  <MarginRow
+                    label="الربح الصافي"
+                    hint={`بعد ${result.loyalty.points_earned} نقطة ولاء (~${fmt(result.loyalty.lyd_accrued)} د.ل)`}
+                    lyd={result.margins.net_lyd}
+                    pct={result.margins.net_pct}
+                  />
+                  {result.inputs.simulate_referred && (
+                    <MarginRow
+                      label="الربح بعد تكلفة الإحالة"
+                      hint={`بعد ${fmt(result.referral_cost.total_referral_cost_lyd)} د.ل (مكافأة ترحيب + نقاط مُحيل)`}
+                      lyd={result.margins.referral_adjusted_lyd}
+                      pct={result.margins.referral_adjusted_pct}
+                    />
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
 
-      {/* Footer note */}
-      <div className="text-[10px] text-muted-foreground text-center pt-2">
-        تستخدم الحاسبة منطق نظام الطلبات الفعلي (تخفيضات + كوبونات + ولاء + إحالات). أي تغيير في
-        النظام الفعلي يجب أن ينعكس هنا.
-      </div>
+                {/* Warnings */}
+                {result.warnings.length > 0 && (
+                  <div className="border-t border-border/40 pt-3 space-y-2">
+                    {result.warnings.map((w, i) => {
+                      const tone =
+                        w.severity === "loss"
+                          ? "border-destructive/40 bg-destructive/10 text-destructive"
+                          : w.severity === "low_margin"
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                            : "border-blue-500/40 bg-blue-500/10 text-blue-400";
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-start gap-2 p-2.5 border rounded-lg text-[11px] ${tone}`}
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <span className="font-medium">{w.message_ar}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Footer note */}
+        <div className="text-[10px] text-muted-foreground text-center pt-2">
+          تستخدم الحاسبة منطق نظام الطلبات الفعلي (تخفيضات + كوبونات + ولاء + إحالات). أي تغيير في
+          النظام الفعلي يجب أن ينعكس هنا.
+        </div>
       </div>
     </AdminLayout>
   );

@@ -15,8 +15,18 @@ tags:
     description: Product catalog
   - name: orders
     description: Orders and checkout
+  - name: cart
+    description: Server-side cart (cart_items rows; snake_case product_id contract)
+  - name: coupons
+    description: Coupon validation (user) and coupon management (admin, finance scope)
   - name: wallet
     description: Wallet and top-ups
+  - name: loyalty
+    description: Loyalty points, tiers, and referral rewards
+  - name: support
+    description: User support tickets
+  - name: notifications
+    description: In-app notifications
   - name: admin
     description: Admin operations
   - name: copilot
@@ -259,6 +269,27 @@ paths:
       operationId: createOrder
       tags: [orders]
       summary: Purchase a product
+      description: |
+        THE customer charge path (atomic wallet deduction + inventory
+        claim). Mounted behind the idempotency middleware — send a fresh
+        Idempotency-Key per purchase (checkout generates one per unit) so a
+        network retry or double-click cannot double-charge.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Client-generated idempotency key. The middleware only engages
+            when the key is at least 8 characters; shorter (or absent) keys
+            pass through (transitional). With a valid key, duplicate
+            submissions of the same body replay the cached response for
+            24h (per user + route), the same key re-sent with a different
+            body returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while
+            the original request is still executing returns 409
+            IDEMPOTENCY_IN_FLIGHT.
+          schema:
+            type: string
+            maxLength: 100
       requestBody:
         required: true
         content:
@@ -268,12 +299,26 @@ paths:
       responses:
         "201":
           description: Order created
+          headers:
+            Idempotent-Replayed:
+              description: |
+                "true" when this body is a cached replay of the original
+                request (same Idempotency-Key + body).
+              schema:
+                type: string
+                enum: ["true"]
+            Idempotent-Original-At:
+              description: |
+                ISO-8601 completion timestamp of the original request —
+                present on idempotent replays.
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
         "400":
-          description: Insufficient balance or validation error
+          description: Insufficient balance, invalid coupon, or validation error
           content:
             application/json:
               schema:
@@ -291,7 +336,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Concurrent conflict — inventory claimed by another buyer, or coupon exhausted
+          description: |
+            Conflict — inventory claimed by another buyer, coupon
+            exhausted by a concurrent purchase, wallet-deduction
+            concurrency loss, or an idempotency-key mismatch (same key
+            re-used with a different body / same key still in flight —
+            those bodies carry success:false and a legacy `message`
+            alias alongside `error`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
+        "500":
+          description: |
+            Price data-integrity failure (INVALID_PRICE guard — non-finite
+            or non-positive computed price). Not client-fixable; contact
+            support.
           content:
             application/json:
               schema:
@@ -391,6 +453,714 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            Too many pending top-up requests — max 3 concurrent pending
+            per user (TOPUP_LIMIT_EXCEEDED). Body carries pending_count
+            and limit extras beyond the standard error envelope. Note:
+            serial abusers (≥3 previously rejected topups) still get a
+            201, with the row auto-rejected (admin_note explains).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopupLimitErrorResponse"
+
+  # ── Cart ─────────────────────────────────────────────────────────────────
+  # Server-side cart (cart_items rows). NOTE: the body/response field for
+  # product references is snake_case `product_id` — the frontend local
+  # cart store uses camelCase `productId` and only consumes GET /cart and
+  # DELETE /cart today; wire mutations carefully before adopting them.
+  /cart:
+    get:
+      operationId: getCart
+      tags: [cart]
+      summary: Get the current user's cart with live pricing
+      description: |
+        Items ordered by insertion; pricing snapshot uses the flash-sale
+        stage from a 30s in-process cache. Empty cart →
+        {items: [], total: 0}.
+      responses:
+        "200":
+          description: Cart items and total (sum of subtotals, 2dp)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CartItem"
+                  total:
+                    type: number
+                required: [items, total]
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: clearCart
+      tags: [cart]
+      summary: Clear all cart rows for the current user
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cart/items:
+    post:
+      operationId: addCartItem
+      tags: [cart]
+      summary: Add a product to the cart (upsert — merges into an existing line)
+      description: |
+        If the user already has a line for the product, quantity becomes
+        min(existing + quantity, 99) and the merged row is returned —
+        still 201. No idempotency middleware and no route-specific rate
+        limit (global limiters only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddCartItemBody"
+      responses:
+        "201":
+          description: Cart item created (or merged — see description)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "400":
+          description: Missing/invalid product_id or out-of-range quantity (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found (or inactive)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /cart/items/{id}:
+    patch:
+      operationId: updateCartItem
+      tags: [cart]
+      summary: Replace a cart item's quantity (REPLACE, not increment)
+      description: Ownership-scoped — another user's cart item id is a 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCartItemBody"
+      responses:
+        "200":
+          description: Updated cart item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "400":
+          description: Invalid id or quantity (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Cart item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCartItem
+      tags: [cart]
+      summary: Remove one cart item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Cart item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Coupons ──────────────────────────────────────────────────────────────
+  /coupons/validate:
+    post:
+      operationId: validateCoupon
+      tags: [coupons]
+      summary: Validate a coupon against an order amount (checkout screen)
+      description: |
+        Runs on the product page for every coupon apply. `code` is trimmed
+        and uppercased for lookup; `order_amount` is the effective product
+        price (sale_price ?? price).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateCouponBody"
+      responses:
+        "200":
+          description: Coupon valid — discount computed for this order amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidatedCoupon"
+        "400":
+          description: |
+            Invalid body, or the coupon exists but is not applicable:
+            inactive, expired, max-uses reached, or order below
+            min_order_amount (all INVALID_DATA).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown coupon code (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /coupons/admin:
+    get:
+      operationId: listAdminCoupons
+      tags: [coupons]
+      summary: List all coupons (requireAdmin + finance scope)
+      description: Newest first; includes inactive/soft-deactivated rows.
+      responses:
+        "200":
+          description: All coupons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Coupon"
+        "401":
+          description: Not authenticated as admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCoupon
+      tags: [coupons]
+      summary: Create a coupon (requireAdmin + finance scope)
+      description: |
+        zod-validated (CreateCouponBody in routes/coupons.ts). `code` is
+        uppercased before insert. Percentage coupons must have value ≤ 100
+        (checked after parse); fixed coupons are bounded at 10,000 LYD.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCouponBody"
+      responses:
+        "201":
+          description: Coupon created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+        "400":
+          description: Validation error, or percentage value above 100 (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated as admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Coupon code already exists (ALREADY_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /coupons/admin/{id}:
+    patch:
+      operationId: updateCoupon
+      tags: [coupons]
+      summary: Update coupon mutable fields (requireAdmin + finance scope)
+      description: Strict zod body — unknown keys are a 400.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchCouponBody"
+      responses:
+        "200":
+          description: Updated coupon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+        "400":
+          description: Invalid id or body (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated as admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Coupon not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCoupon
+      tags: [coupons]
+      summary: Soft-deactivate a coupon (requireAdmin + finance scope)
+      description: Sets is_active=false — the row is kept for audit history.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated as admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Coupon not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Loyalty ──────────────────────────────────────────────────────────────
+  /loyalty:
+    get:
+      operationId: getLoyalty
+      tags: [loyalty]
+      summary: Loyalty summary — points, tier, referral stats, conversion rate
+      responses:
+        "200":
+          description: Loyalty summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoyaltySummary"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User row vanished (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /loyalty/convert-points:
+    post:
+      operationId: convertPoints
+      tags: [loyalty]
+      summary: Convert loyalty points to wallet credit (money-creation path)
+      description: |
+        Points must be ≥ 100 and a multiple of 100 (POINTS_PER_LYD).
+        Runs in a DB transaction: fresh read inside the tx, optimistic
+        lock on both mutated columns, and a wallet_ledger row
+        (type=adjustment, referenceType=loyalty_conversion). Concurrent
+        mutations lose the optimistic lock → 409 CONFLICT (retry-safe).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConvertPointsBody"
+      responses:
+        "200":
+          description: Points converted and wallet credited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvertPointsResult"
+        "400":
+          description: |
+            Below the 100-point minimum, not a multiple of 100, or
+            insufficient points balance (all INVALID_DATA).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Points/balance changed concurrently (CONFLICT — retry with fresh state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /loyalty/referrals:
+    get:
+      operationId: listReferrals
+      tags: [loyalty]
+      summary: List the current user's referral events (≤200, newest first)
+      responses:
+        "200":
+          description: Referral events with masked referee phones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReferralEventItem"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Support ──────────────────────────────────────────────────────────────
+  /support/tickets:
+    get:
+      operationId: listSupportTickets
+      tags: [support]
+      summary: List the current user's tickets (≤200, newest first)
+      description: Each row carries the latest reply (first 80 chars) when present.
+      responses:
+        "200":
+          description: Ticket summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupportTicketSummary"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createSupportTicket
+      tags: [support]
+      summary: "Open a support ticket (rate-limited: 5/hour/user)"
+      description: |
+        The message becomes the first reply (author_type=user). An
+        unknown category silently falls back to "other". 429 bodies are
+        the standard {error, code: RATE_LIMITED} envelope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportTicketBody"
+      responses:
+        "201":
+          description: Ticket created with status "open"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicketCreated"
+        "400":
+          description: Missing title/message or title over 255 chars (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Ticket creation rate limit (5/hour/user, RATE_LIMITED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /support/tickets/{id}:
+    get:
+      operationId: getSupportTicket
+      tags: [support]
+      summary: Ticket detail with the full reply thread
+      description: Ownership-scoped — replies ordered oldest first.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Ticket with full replies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicketDetail"
+        "400":
+          description: Invalid id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticket not found (or not owned by the caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /support/tickets/{id}/reply:
+    post:
+      operationId: replySupportTicket
+      tags: [support]
+      summary: "Reply to one of the caller's tickets (side-effect: status → in_progress)"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplySupportTicketBody"
+      responses:
+        "201":
+          description: Reply created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketReply"
+        "400":
+          description: Invalid id, missing message, or ticket closed (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticket not found (or not owned by the caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Notifications ─────────────────────────────────────────────────────────
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List the current user's notifications (≤40, newest first)
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationItem"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all of the caller's notifications read
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark one notification read (owned rows only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Notification not found (or not owned by the caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Admin ───────────────────────────────────────────────────────────────────
   /admin/stats:
@@ -416,20 +1186,30 @@ paths:
     get:
       operationId: listAdminOrders
       tags: [admin]
-      summary: List all orders
+      summary: List all orders (requireAdmin + orders scope)
       parameters:
         - name: status
           in: query
           schema:
             type: ["string", "null"]
+          description: Optional order status filter.
         - name: page
           in: query
           schema:
             type: ["integer", "null"]
+          description: 1-based page number (default 1).
         - name: limit
           in: query
           schema:
             type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 100).
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            LOWER LIKE across order code, user phone / email / display
+            name, or product name (the admin command palette filter).
       responses:
         "200":
           description: All orders
@@ -441,6 +1221,75 @@ paths:
                   $ref: "#/components/schemas/AdminOrder"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/orders/bulk-status:
+    patch:
+      operationId: bulkUpdateOrderStatus
+      tags: [admin]
+      summary: Bulk-update order statuses (requireAdmin + orders scope; mass refunds move wallet money)
+      description: |
+        status="refunded" processes each id through RefundService.refundOrder
+        (status-guard + optimistic wallet credit + wallet_ledger type=refund)
+        — partial failures return 207 with a per-order breakdown.
+        Non-refund statuses use a direct UPDATE. Mounted behind the
+        idempotency middleware (routeKey admin.orders.bulk-status) — send
+        an Idempotency-Key so a double-clicked bulk refund cannot
+        double-credit.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Idempotency key (≥ 8 chars to engage; 24h dedup per admin +
+            route). Same key with a different body → 409
+            IDEMPOTENCY_KEY_REUSE; same key in flight → 409
+            IDEMPOTENCY_IN_FLIGHT; replays carry Idempotent-Replayed /
+            Idempotent-Original-At response headers.
+          schema:
+            type: string
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkUpdateOrderStatusBody"
+      responses:
+        "200":
+          description: |
+            All requested transitions applied (non-refund path) or all
+            refunds succeeded (refund path).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkUpdateOrderStatusResult"
+        "207":
+          description: |
+            Multi-Status — some (but not all) refunds failed. Body carries
+            a per-order breakdown so the admin UI can render exactly which
+            orders were refunded and which were not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkUpdateOrderStatusPartial"
+        "400":
+          description: ids missing/empty, invalid status, or no valid ids (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing (UNAUTHORIZED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing orders permission scope
           content:
             application/json:
               schema:
@@ -532,11 +1381,283 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/flash-sales:
+    get:
+      operationId: listAdminFlashSales
+      tags: [admin]
+      summary: List flash sales — active + historical (requireAdmin + inventory scope)
+      description: |
+        ≤100 rows, newest first. `is_currently_active` is derived
+        (is_active AND ends_at in the future).
+      responses:
+        "200":
+          description: Flash sales
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flash_sales:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminFlashSale"
+                required: [flash_sales]
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createFlashSale
+      tags: [admin]
+      summary: Create a flash sale (activates immediately; requireAdmin + inventory scope)
+      description: |
+        One ACTIVE sale at a time (DB partial unique index). 400 bodies
+        carry details: {field} naming the rejected input. Discount is
+        capped at 95% so a stacked fixed coupon can never reach free
+        goods — use a coupon for deeper discounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFlashSaleBody"
+      responses:
+        "201":
+          description: Flash sale created and active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFlashSale"
+        "400":
+          description: |
+            Validation error (INVALID_DATA + details {field} — discount
+            out of 0..95, ends_at not 5min..30d in the future, bad title).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Another active sale exists (ALREADY_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/flash-sales/{id}:
+    patch:
+      operationId: updateFlashSale
+      tags: [admin]
+      summary: Update a flash sale (requireAdmin + inventory scope)
+      description: |
+        At least one field required. Activating a sale while another is
+        active hits the singleton index → 409 ALREADY_EXISTS.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFlashSaleBody"
+      responses:
+        "200":
+          description: Updated flash sale
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFlashSale"
+        "400":
+          description: Invalid id or body (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Flash sale not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Activation conflicts with another active sale (ALREADY_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteFlashSale
+      tags: [admin]
+      summary: Soft-deactivate a flash sale (requireAdmin + inventory scope)
+      description: |
+        Sets is_active=false and returns the row — the row is kept for
+        audit history. Reactivate via PATCH (subject to the singleton
+        constraint).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deactivated flash sale (current state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminFlashSale"
+        "400":
+          description: Invalid id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Flash sale not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/referrals/{id}/credit:
+    post:
+      operationId: creditReferral
+      tags: [admin]
+      summary: Credit the referrer +50 loyalty points for a referral event (requireAdmin + users scope)
+      description: |
+        Status-guarded in a transaction (WHERE status='pending') — a
+        concurrent credit loses the race and gets 409 ALREADY_EXISTS
+        instead of double-granting. Mounted behind the idempotency
+        middleware (routeKey admin.referrals.credit). A loyalty
+        notification is created for the referrer.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: referral_events.id
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Idempotency key (≥ 8 chars to engage; 24h dedup per admin +
+            route) — dedupes admin double-clicks.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: Points granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  points_credited:
+                    type: integer
+                    description: Points granted (POINTS_PER_REFERRAL = 50).
+                required: [success, points_credited]
+        "400":
+          description: Event already credited (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Referral event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Concurrent credit race (ALREADY_EXISTS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transaction failure (INTERNAL_ERROR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/products:
     get:
       operationId: listAdminProducts
       tags: [admin]
       summary: List all products (including inactive)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            ILIKE match on product name or category (the admin command
+            palette filter; capped at 100 chars server-side). Non-archived
+            rows only, ≤200 newest first.
       responses:
         "200":
           description: All products
@@ -1060,12 +2181,111 @@ components:
           type: string
       required: [success]
 
+    # Standard error envelope. Every non-2xx /api response carries
+    # {error, code} — createErrorResponse (backend/src/lib/errors.ts), the
+    # rate limiters, mapServiceErrorToCode and the global handler all
+    # produce it. Zod-backed ValidationError bodies may additionally carry
+    # `details` (zod issue arrays) or other extra keys, but the guaranteed
+    # contract is {error, code}.
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-      required: [error]
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        details:
+          type: object
+          additionalProperties: true
+          description: |
+            Optional structured context — zod `issues` on validation
+            failures, `{field}` hints on flash-sale validation errors,
+            `{skipped_duplicates}` on inventory uploads.
+      required: [error, code]
+
+    # Machine-readable error codes — mirrors the shared ErrorCode enum
+    # in @workspace/error-codes (shared/error-codes/src/index.ts), the
+    # single source both backend and frontend re-export.
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_DATA
+        - INVALID_PHONE
+        - INVALID_PASSWORD_LENGTH
+        - INVALID_PASSWORD_WEAK
+        - INVALID_OTP
+        - INVALID_CREDENTIAL
+        - UNAUTHORIZED
+        - INVALID_TOKEN
+        - SESSION_EXPIRED
+        - ACCOUNT_LOCKED
+        - ACCOUNT_NOT_FOUND
+        - PHONE_ALREADY_REGISTERED
+        - FEATURE_DISABLED
+        - FORBIDDEN
+        - INSUFFICIENT_PERMISSIONS
+        - NOT_FOUND
+        - ALREADY_EXISTS
+        - CONFLICT
+        - OUT_OF_STOCK
+        - PRODUCT_UNAVAILABLE
+        - INSUFFICIENT_BALANCE
+        - INVALID_AMOUNT
+        - TOPUP_LIMIT_EXCEEDED
+        - ORDER_NOT_FOUND
+        - ORDER_ALREADY_COMPLETED
+        - ORDER_CANNOT_CANCEL
+        - GOOGLE_TOKEN_INVALID
+        - GOOGLE_VERIFICATION_FAILED
+        - INTERNAL_ERROR
+        - SERVICE_UNAVAILABLE
+        - RATE_LIMITED
+        - IDEMPOTENCY_IN_FLIGHT
+        - IDEMPOTENCY_KEY_REUSE
+        - COPILOT_INVALID_INPUT
+        - COPILOT_LLM_ERROR
+        - COPILOT_NO_ADMIN_SESSION
+        - COPILOT_BAD_METHOD
+
+    # 409 body returned by the idempotency middleware
+    # (backend/src/middlewares/idempotency.ts): the same Idempotency-Key
+    # re-sent with a different body (IDEMPOTENCY_KEY_REUSE) or the same
+    # key while the original request is still executing
+    # (IDEMPOTENCY_IN_FLIGHT). `message` is a legacy alias kept for older
+    # clients — `error` is the canonical field.
+    IdempotencyConflictResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Always false on these conflicts.
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+          enum: [IDEMPOTENCY_IN_FLIGHT, IDEMPOTENCY_KEY_REUSE]
+      required: [success, error, message, code]
+
+    # 429 body from POST /wallet/topups — the standard {error, code}
+    # envelope plus pending-count context (wallet.ts MAX_PENDING guard;
+    # not produced by createErrorResponse).
+    TopupLimitErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [TOPUP_LIMIT_EXCEEDED]
+        pending_count:
+          type: integer
+          description: The user's current pending top-up request count.
+        limit:
+          type: integer
+          description: Max concurrent pending top-ups per user (3).
+      required: [error, code, pending_count, limit]
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     RegisterBody:
@@ -1297,9 +2517,18 @@ components:
 
     CreateTopupBody:
       type: object
+      description: |
+        Conditional requirements enforced by the handler (all 400
+        INVALID_DATA): payment_network is required when payment_method is
+        mobile_transfer; sender_account is required for lypay;
+        sender_phone, when present with mobile_transfer, must be a valid
+        Libyan phone number.
       properties:
         amount:
           type: number
+          description: Top-up amount in LYD (0.01 .. 10,000).
+          minimum: 0.01
+          maximum: 10000
         payment_method:
           type: string
           enum: [mobile_transfer, lypay]
@@ -1311,6 +2540,7 @@ components:
           type: ["string", "null"]
         payment_reference:
           type: ["string", "null"]
+          maxLength: 255
       required: [amount]
 
     Topup:
@@ -1340,6 +2570,445 @@ components:
         reviewed_at:
           type: ["string", "null"]
       required: [id, amount, payment_method, status, created_at]
+
+    # ── Cart ─────────────────────────────────────────────────────────────────
+    CartItem:
+      type: object
+      description: |
+        Cart line with a pricing snapshot (flash-sale values come from a
+        30s in-process cache). `subtotal` = effective price × quantity,
+        2dp. product_name is "منتج محذوف" (deleted product) when the row
+        outlives its product.
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        product_slug:
+          type: ["string", "null"]
+        product_image_url:
+          type: ["string", "null"]
+        price:
+          type: number
+          description: Base price.
+        sale_price:
+          type: ["number", "null"]
+          description: Flash-sale price (2dp) — null when no active sale.
+        discount_percent:
+          type: ["number", "null"]
+          description: Flash-sale percent — null when 0.
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+        subtotal:
+          type: number
+        created_at:
+          type: string
+      required: [id, product_id, product_name, price, quantity, subtotal, created_at]
+
+    AddCartItemBody:
+      type: object
+      description: |
+        NOTE: the field is snake_case `product_id` — the frontend local
+        cart store uses camelCase productId and does not call this
+        endpoint today.
+      properties:
+        product_id:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+          description: Defaults to 1 when omitted (MAX_QUANTITY cap is 99).
+      required: [product_id]
+
+    UpdateCartItemBody:
+      type: object
+      description: Replaces the quantity (not an increment).
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 99
+      required: [quantity]
+
+    # ── Coupons ──────────────────────────────────────────────────────────────
+    ValidateCouponBody:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Trimmed + uppercased for lookup.
+        order_amount:
+          type: number
+          description: The order total the coupon is validated against (must be > 0).
+          exclusiveMinimum: 0
+      required: [code, order_amount]
+
+    ValidatedCoupon:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: Always true on 200.
+        code:
+          type: string
+        type:
+          type: string
+          enum: [percentage, fixed]
+        value:
+          type: number
+        discount_amount:
+          type: number
+        final_amount:
+          type: number
+        description:
+          type: ["string", "null"]
+      required: [valid, code, type, value, discount_amount, final_amount]
+
+    Coupon:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        type:
+          type: string
+          enum: [percentage, fixed]
+        value:
+          type: number
+        min_order_amount:
+          type: number
+        max_uses:
+          type: ["integer", "null"]
+        used_count:
+          type: integer
+        expires_at:
+          type: ["string", "null"]
+        is_active:
+          type: boolean
+        description:
+          type: ["string", "null"]
+        created_at:
+          type: string
+      required: [id, code, type, value, used_count, is_active, created_at]
+
+    CreateCouponBody:
+      type: object
+      description: |
+        `code` is uppercased before insert. Percentage coupons must have
+        value ≤ 100 (checked after parse with a specific message); fixed
+        values are bounded at 10,000 LYD — a direct wallet-debit magnitude
+        at checkout.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 40
+        type:
+          type: string
+          enum: [percentage, fixed]
+        value:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 10000
+        min_order_amount:
+          type: number
+          minimum: 0
+          maximum: 1000000
+          description: Defaults to 0.
+        max_uses:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 1000000
+        expires_at:
+          type: ["string", "null"]
+          description: ISO date or date-time string; null = never expires.
+        description:
+          type: ["string", "null"]
+          maxLength: 200
+      required: [code, type, value]
+
+    PatchCouponBody:
+      type: object
+      description: Strict body — unknown keys are a 400 (zod .strict()).
+      properties:
+        is_active:
+          type: boolean
+        max_uses:
+          type: ["integer", "null"]
+          minimum: 1
+          maximum: 1000000
+        expires_at:
+          type: ["string", "null"]
+          description: ISO date or date-time string; null = never expires.
+        description:
+          type: ["string", "null"]
+          maxLength: 200
+
+    # ── Loyalty ──────────────────────────────────────────────────────────────
+    LoyaltySummary:
+      type: object
+      description: |
+        Constants: POINTS_PER_LYD = 100, POINTS_PER_REFERRAL = 50; tiers
+        silver=500 / gold=2000 / platinum=5000 lifetime spend. NOTE:
+        points_value_lyd is a STRING (toFixed(2)).
+      properties:
+        points:
+          type: integer
+        tier:
+          type: string
+          enum: [bronze, silver, gold, platinum]
+        lifetime_spend:
+          type: number
+        referral_code:
+          type: string
+          description: "Empty string when unset."
+        referral_link:
+          type: string
+        referred_by:
+          type: ["string", "null"]
+        referrals_total:
+          type: integer
+        referrals_credited:
+          type: integer
+        referrals_pending:
+          type: integer
+        points_value_lyd:
+          type: string
+          description: points / 100, formatted with 2 decimals (e.g. "12.00").
+        next_tier:
+          type: ["object", "null"]
+          description: null at platinum.
+          properties:
+            tier:
+              type: string
+            label:
+              type: string
+              description: Arabic tier label ("فضي" / "ذهبي" / "بلاتيني").
+            remaining:
+              type: number
+              description: Lifetime spend still needed for the next tier.
+          required: [tier, label, remaining]
+        tier_thresholds:
+          type: object
+          properties:
+            silver:
+              type: number
+            gold:
+              type: number
+            platinum:
+              type: number
+          required: [silver, gold, platinum]
+        points_rate:
+          type: object
+          properties:
+            points_per_referral:
+              type: integer
+            points_per_lyd:
+              type: integer
+          required: [points_per_referral, points_per_lyd]
+      required:
+        [
+          points,
+          tier,
+          lifetime_spend,
+          referral_code,
+          referral_link,
+          referrals_total,
+          referrals_credited,
+          referrals_pending,
+          points_value_lyd,
+          next_tier,
+          tier_thresholds,
+          points_rate,
+        ]
+
+    ConvertPointsBody:
+      type: object
+      description: |
+        The handler parseInt()s the raw body value, so a numeric string
+        ("500") is also accepted — a JSON number is the documented shape.
+        Values below 100 or not a multiple of 100 → 400 INVALID_DATA.
+      properties:
+        points:
+          oneOf:
+            - type: integer
+              minimum: 100
+              multipleOf: 100
+            - type: string
+              description: Numeric string, coerced via parseInt.
+      required: [points]
+
+    ConvertPointsResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        points_spent:
+          type: integer
+        lyd_credited:
+          type: number
+        new_points:
+          type: integer
+        new_balance:
+          type: number
+        message:
+          type: string
+          description: Arabic success message with the converted amount.
+      required: [success, points_spent, lyd_credited, new_points, new_balance, message]
+
+    ReferralEventItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, credited]
+        phone_masked:
+          type: string
+          description: Referee phone masked ("091****789").
+        created_at:
+          type: string
+        credited_at:
+          type: ["string", "null"]
+        points_earned:
+          type: integer
+          description: 50 when credited, else 0.
+      required: [id, status, phone_masked, created_at, credited_at, points_earned]
+
+    # ── Support ──────────────────────────────────────────────────────────────
+    SupportTicketSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        category:
+          type: string
+          enum: [billing, technical, order, account, other]
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+        created_at:
+          type: string
+        last_reply:
+          type: ["object", "null"]
+          description: Most recent reply (first 80 chars) — null when the ticket has no replies.
+          properties:
+            author_type:
+              type: string
+              enum: [user, admin]
+            message:
+              type: string
+            created_at:
+              type: string
+          required: [author_type, message, created_at]
+      required: [id, title, category, status, created_at, last_reply]
+
+    CreateSupportTicketBody:
+      type: object
+      description: |
+        title and message are trimmed; an unknown category silently
+        falls back to "other".
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        message:
+          type: string
+          minLength: 1
+          description: Becomes the first reply (author_type=user).
+        category:
+          type: string
+          enum: [billing, technical, order, account, other]
+      required: [title, message]
+
+    SupportTicketCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+          enum: [open]
+        created_at:
+          type: string
+      required: [id, title, status, created_at]
+
+    SupportTicketDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        category:
+          type: string
+          enum: [billing, technical, order, account, other]
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+        created_at:
+          type: string
+        replies:
+          type: array
+          description: Full messages, oldest first.
+          items:
+            $ref: "#/components/schemas/TicketReply"
+      required: [id, title, category, status, created_at, replies]
+
+    ReplySupportTicketBody:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+      required: [message]
+
+    TicketReply:
+      type: object
+      properties:
+        id:
+          type: integer
+        author_type:
+          type: string
+          enum: [user, admin]
+        message:
+          type: string
+        created_at:
+          type: string
+      required: [id, author_type, message, created_at]
+
+    # ── Notifications ─────────────────────────────────────────────────────────
+    NotificationItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          description: e.g. "order" | "loyalty" | "system".
+        title:
+          type: string
+        message:
+          type: ["string", "null"]
+        link:
+          type: ["string", "null"]
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+      required: [id, type, title, is_read, created_at]
 
     # ── Admin ─────────────────────────────────────────────────────────────────
     AdminLoginBody:
@@ -1394,6 +3063,9 @@ components:
           total_wallet_balance,
         ]
 
+    # Identity-enrichment fields (user_display_name … user_has_whatsapp)
+    # feed the admin display helper (frontend lib/admin/user-display.ts):
+    # best human-readable name + provider badges.
     AdminOrder:
       type: object
       properties:
@@ -1403,20 +3075,43 @@ components:
           type: string
         user_phone:
           type: string
+        user_display_name:
+          type: ["string", "null"]
+        user_email:
+          type: ["string", "null"]
+        user_auth_provider:
+          type: ["string", "null"]
+        user_has_google:
+          type: boolean
+        user_has_telegram:
+          type: boolean
+        user_has_firebase:
+          type: boolean
+        user_has_whatsapp:
+          type: boolean
         product_name:
           type: string
         amount:
           type: number
         status:
           type: string
+          enum: [pending, completed, failed, refunded]
         delivered_email:
           type: ["string", "null"]
         delivered_password:
           type: ["string", "null"]
+        delivered_extra_details:
+          type: ["string", "null"]
+        coupon_code:
+          type: ["string", "null"]
+        discount_amount:
+          type: number
         created_at:
           type: string
       required: [id, order_code, user_phone, product_name, amount, status, created_at]
 
+    # Identity-enrichment fields (user_display_name … user_has_whatsapp)
+    # feed the admin display helper — same pattern as AdminOrder.
     AdminTopup:
       type: object
       properties:
@@ -1426,21 +3121,41 @@ components:
           type: integer
         user_phone:
           type: string
+        user_display_name:
+          type: ["string", "null"]
+        user_email:
+          type: ["string", "null"]
+        user_auth_provider:
+          type: ["string", "null"]
+        user_has_google:
+          type: boolean
+        user_has_telegram:
+          type: boolean
+        user_has_firebase:
+          type: boolean
+        user_has_whatsapp:
+          type: boolean
         amount:
           type: number
-        payment_network:
+        payment_method:
           type: string
+          enum: [mobile_transfer, lypay]
+        payment_network:
+          type: ["string", "null"]
         sender_phone:
+          type: ["string", "null"]
+        sender_account:
           type: ["string", "null"]
         payment_reference:
           type: ["string", "null"]
         status:
           type: string
+          enum: [pending, approved, rejected]
         admin_note:
           type: ["string", "null"]
         created_at:
           type: string
-      required: [id, user_id, user_phone, amount, payment_network, status, created_at]
+      required: [id, user_id, user_phone, amount, payment_method, status, created_at]
 
     AdminTopupActionBody:
       type: object
@@ -1453,6 +3168,8 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: ["string", "null"]
         name:
           type: string
         description:
@@ -1540,6 +3257,9 @@ components:
         is_active:
           type: ["boolean", "null"]
 
+    # Identity fields (display_name … last_auth_at) let the admin users
+    # page render provider badges and search by name when the phone is a
+    # placeholder (e.g. tg_<id> for Telegram-first accounts).
     AdminUser:
       type: object
       properties:
@@ -1547,16 +3267,39 @@ components:
           type: integer
         phone:
           type: string
+        display_name:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        photo_url:
+          type: ["string", "null"]
+        auth_provider:
+          type: string
+          description: |
+            "firebase_phone" | "firebase_google" | "firebase" |
+            "telegram" | "whatsapp_phone" | "legacy_password".
+        has_google:
+          type: boolean
+        has_telegram:
+          type: boolean
+        has_firebase:
+          type: boolean
+        has_whatsapp:
+          type: boolean
+        last_auth_at:
+          type: ["string", "null"]
         wallet_balance:
           type: number
         loyalty_points:
           type: integer
         loyalty_tier:
           type: string
+          enum: [bronze, silver, gold, platinum]
         lifetime_spend:
           type: number
         order_count:
           type: integer
+          description: Completed-order count for this user.
         referral_code:
           type: ["string", "null"]
         created_at:
@@ -1572,6 +3315,133 @@ components:
           order_count,
           created_at,
         ]
+
+    # ── Admin flash sales ─────────────────────────────────────────────────
+    AdminFlashSale:
+      type: object
+      description: |
+        `is_currently_active` is derived (is_active AND ends_at in the
+        future) — the admin UI can show historical rows without
+        recomputing.
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        discount_percent:
+          type: number
+          minimum: 0
+          maximum: 95
+        ends_at:
+          type: string
+        is_active:
+          type: boolean
+        is_currently_active:
+          type: boolean
+        created_at:
+          type: string
+      required: [id, title, discount_percent, ends_at, is_active, is_currently_active, created_at]
+
+    CreateFlashSaleBody:
+      type: object
+      description: |
+        95% ceiling rationale: prevents a "free goods" state when a
+        fixed-amount coupon stacks on the sale — use a coupon for deeper
+        discounts.
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          description: Defaults to "Flash Sale" when omitted.
+        discount_percent:
+          type: number
+          minimum: 0
+          maximum: 95
+        ends_at:
+          type: string
+          description: ISO date-time — between 5 minutes and 30 days in the future.
+      required: [discount_percent, ends_at]
+
+    UpdateFlashSaleBody:
+      type: object
+      description: At least one field required — an empty body is a 400.
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        discount_percent:
+          type: number
+          minimum: 0
+          maximum: 95
+        ends_at:
+          type: string
+          description: ISO date-time — at least 5 minutes in the future.
+        is_active:
+          type: boolean
+
+    # ── Admin bulk order status ────────────────────────────────────────────
+    BulkUpdateOrderStatusBody:
+      type: object
+      description: |
+        `ids` accepts numbers or numeric strings (coerced via Number());
+        invalid entries and duplicates are dropped and reported
+        (skipped_invalid on the 200 response).
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          items:
+            oneOf:
+              - type: integer
+              - type: string
+                description: Numeric string, coerced via Number().
+        status:
+          type: string
+          enum: [pending, completed, failed, refunded]
+        note:
+          type: string
+          description: Optional audit note (stored on refund ledger entries).
+      required: [ids, status]
+
+    BulkUpdateOrderStatusResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        updated:
+          type: integer
+          description: Count of orders transitioned (or successfully refunded).
+        skipped_invalid:
+          type: integer
+          description: |
+            Count of non-numeric / duplicate ids dropped from the request
+            — present only when non-zero.
+      required: [success, updated]
+
+    BulkUpdateOrderStatusPartial:
+      type: object
+      description: 207 (Multi-Status) body — refund batch with per-order failures.
+      properties:
+        success:
+          type: boolean
+          description: false — at least one refund failed.
+        updated:
+          type: integer
+          description: Count of orders successfully refunded.
+        failed:
+          type: array
+          items:
+            type: object
+            properties:
+              orderId:
+                type: integer
+              code:
+                type: string
+                description: RefundError code for the failed order.
+              message:
+                type: string
+            required: [orderId, code, message]
+      required: [success, updated, failed]
 
     # ──────────────────────────────────────────────────────────────────────
     # AI Admin Copilot schemas (010-ai-admin-copilot)

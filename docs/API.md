@@ -34,17 +34,25 @@ POST /api/auth/logout                 clears session cookie
 GET  /api/products?category=&search=&sort=&available_only=
 GET  /api/products/:id | /by-slug/:slug
 GET  /api/products/stats | /flash-sale
-POST  /api/orders                     atomic purchase (wallet)
+POST  /api/orders                     atomic purchase (wallet; Idempotency-Key header, 409 IDEMPOTENCY_*)
 GET   /api/orders                     latest 200 for user
 GET   /api/wallet                     balance + ledger summary
 GET   /api/wallet/topups              latest 200
-POST  /api/wallet/topups              request topup
+POST  /api/wallet/topups              request topup (429 TOPUP_LIMIT_EXCEEDED at 3 pending)
 GET   /api/loyalty                    points/tier/referrals
-POST  /api/loyalty/convert-points     {points} → wallet (transactional)
-GET   /api/support/tickets            latest 200
-GET   /api/coupons/validate?code=
+POST  /api/loyalty/convert-points     {points} → wallet (transactional; 409 on race)
+GET   /api/loyalty/referrals          masked referee list
+GET   /api/support/tickets            latest 200 (+/:id, POST /, POST /:id/reply; 5 tickets/h)
+POST  /api/coupons/validate           {code, order_amount} → discount preview
+GET/POST/PATCH/DELETE /api/coupons/admin(/:id)  coupon management (finance scope)
+GET/DELETE /api/cart; POST/PATCH/DELETE /api/cart/items(/:id)  server cart (snake_case product_id)
+GET/POST /api/notifications; POST /api/notifications/:id/read, /read-all
 
 Admin: /api/admin/* — requireAdmin + RBAC scopes
 (orders|finance|inventory|support|users|admins|settings), audited.
+Money-critical admin routes: PATCH /api/admin/orders/bulk-status (refunds via
+RefundService; 207 multi-status on partial failure),
+GET/POST/PATCH/DELETE /api/admin/flash-sales(/:id) (discount 0–95%),
+POST /api/admin/referrals/:id/credit (+50 points, idempotent).
 Observability: /api/metrics (token-gated), /api/healthz/{ready,redis,neon,worker,socket,firebase} (admin).
 ```

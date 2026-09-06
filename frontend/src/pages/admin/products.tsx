@@ -175,7 +175,7 @@ export default function AdminProductsPage() {
     data: products = [],
     isLoading,
     refetch,
-  } = useListAdminProducts({
+  } = useListAdminProducts(undefined, {
     query: {
       queryKey: getListAdminProductsQueryKey(),
       enabled: !!adminToken,

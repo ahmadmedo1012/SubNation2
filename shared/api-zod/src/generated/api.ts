@@ -245,8 +245,25 @@ export const ListOrdersResponseItem = zod.object({
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 
 /**
+ * THE customer charge path (atomic wallet deduction + inventory
+claim). Mounted behind the idempotency middleware — send a fresh
+Idempotency-Key per purchase (checkout generates one per unit) so a
+network retry or double-click cannot double-charge.
+
  * @summary Purchase a product
  */
+export const createOrderHeaderIdempotencyKeyMax = 100;
+
+export const CreateOrderHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(createOrderHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Client-generated idempotency key. The middleware only engages\nwhen the key is at least 8 characters; shorter (or absent) keys\npass through (transitional). With a valid key, duplicate\nsubmissions of the same body replay the cached response for\n24h (per user + route), the same key re-sent with a different\nbody returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while\nthe original request is still executing returns 409\nIDEMPOTENCY_IN_FLIGHT.\n",
+    ),
+});
+
 export const CreateOrderBody = zod.object({
   product_id: zod.number(),
   coupon_code: zod.string().nullish(),
@@ -331,13 +348,480 @@ export const ListTopupsResponse = zod.array(ListTopupsResponseItem);
 /**
  * @summary Submit a top-up request
  */
-export const CreateTopupBody = zod.object({
-  amount: zod.number(),
-  payment_method: zod.enum(["mobile_transfer", "lypay"]).optional(),
-  payment_network: zod.string().nullish(),
-  sender_phone: zod.string().nullish(),
-  sender_account: zod.string().nullish(),
-  payment_reference: zod.string().nullish(),
+export const createTopupBodyAmountMin = 0.01;
+export const createTopupBodyAmountMax = 10000;
+
+export const createTopupBodyPaymentReferenceMax = 255;
+
+export const CreateTopupBody = zod
+  .object({
+    amount: zod
+      .number()
+      .min(createTopupBodyAmountMin)
+      .max(createTopupBodyAmountMax)
+      .describe("Top-up amount in LYD (0.01 .. 10,000)."),
+    payment_method: zod.enum(["mobile_transfer", "lypay"]).optional(),
+    payment_network: zod.string().nullish(),
+    sender_phone: zod.string().nullish(),
+    sender_account: zod.string().nullish(),
+    payment_reference: zod.string().max(createTopupBodyPaymentReferenceMax).nullish(),
+  })
+  .describe(
+    "Conditional requirements enforced by the handler (all 400\nINVALID_DATA): payment_network is required when payment_method is\nmobile_transfer; sender_account is required for lypay;\nsender_phone, when present with mobile_transfer, must be a valid\nLibyan phone number.\n",
+  );
+
+/**
+ * Items ordered by insertion; pricing snapshot uses the flash-sale
+stage from a 30s in-process cache. Empty cart →
+{items: [], total: 0}.
+
+ * @summary Get the current user's cart with live pricing
+ */
+export const getCartResponseItemsItemQuantityMax = 99;
+
+export const GetCartResponse = zod.object({
+  items: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        product_id: zod.number(),
+        product_name: zod.string(),
+        product_slug: zod.string().nullish(),
+        product_image_url: zod.string().nullish(),
+        price: zod.number().describe("Base price."),
+        sale_price: zod
+          .number()
+          .nullish()
+          .describe("Flash-sale price (2dp) — null when no active sale."),
+        discount_percent: zod.number().nullish().describe("Flash-sale percent — null when 0."),
+        quantity: zod.number().min(1).max(getCartResponseItemsItemQuantityMax),
+        subtotal: zod.number(),
+        created_at: zod.string(),
+      })
+      .describe(
+        'Cart line with a pricing snapshot (flash-sale values come from a\n30s in-process cache). `subtotal` = effective price × quantity,\n2dp. product_name is \"منتج محذوف\" (deleted product) when the row\noutlives its product.\n',
+      ),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Clear all cart rows for the current user
+ */
+export const ClearCartResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * If the user already has a line for the product, quantity becomes
+min(existing + quantity, 99) and the merged row is returned —
+still 201. No idempotency middleware and no route-specific rate
+limit (global limiters only).
+
+ * @summary Add a product to the cart (upsert — merges into an existing line)
+ */
+export const addCartItemBodyQuantityMax = 99;
+
+export const AddCartItemBody = zod
+  .object({
+    product_id: zod.number(),
+    quantity: zod
+      .number()
+      .min(1)
+      .max(addCartItemBodyQuantityMax)
+      .optional()
+      .describe("Defaults to 1 when omitted (MAX_QUANTITY cap is 99)."),
+  })
+  .describe(
+    "NOTE: the field is snake_case `product_id` — the frontend local\ncart store uses camelCase productId and does not call this\nendpoint today.\n",
+  );
+
+/**
+ * Ownership-scoped — another user's cart item id is a 404.
+ * @summary Replace a cart item's quantity (REPLACE, not increment)
+ */
+export const UpdateCartItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateCartItemBodyQuantityMax = 99;
+
+export const UpdateCartItemBody = zod
+  .object({
+    quantity: zod.number().min(1).max(updateCartItemBodyQuantityMax),
+  })
+  .describe("Replaces the quantity (not an increment).");
+
+export const updateCartItemResponseQuantityMax = 99;
+
+export const UpdateCartItemResponse = zod
+  .object({
+    id: zod.number(),
+    product_id: zod.number(),
+    product_name: zod.string(),
+    product_slug: zod.string().nullish(),
+    product_image_url: zod.string().nullish(),
+    price: zod.number().describe("Base price."),
+    sale_price: zod
+      .number()
+      .nullish()
+      .describe("Flash-sale price (2dp) — null when no active sale."),
+    discount_percent: zod.number().nullish().describe("Flash-sale percent — null when 0."),
+    quantity: zod.number().min(1).max(updateCartItemResponseQuantityMax),
+    subtotal: zod.number(),
+    created_at: zod.string(),
+  })
+  .describe(
+    'Cart line with a pricing snapshot (flash-sale values come from a\n30s in-process cache). `subtotal` = effective price × quantity,\n2dp. product_name is \"منتج محذوف\" (deleted product) when the row\noutlives its product.\n',
+  );
+
+/**
+ * @summary Remove one cart item
+ */
+export const DeleteCartItemParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCartItemResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Runs on the product page for every coupon apply. `code` is trimmed
+and uppercased for lookup; `order_amount` is the effective product
+price (sale_price ?? price).
+
+ * @summary Validate a coupon against an order amount (checkout screen)
+ */
+export const validateCouponBodyOrderAmountExclusiveMin = 0;
+
+export const ValidateCouponBody = zod.object({
+  code: zod.string().describe("Trimmed + uppercased for lookup."),
+  order_amount: zod
+    .number()
+    .gt(validateCouponBodyOrderAmountExclusiveMin)
+    .describe("The order total the coupon is validated against (must be > 0)."),
+});
+
+export const ValidateCouponResponse = zod.object({
+  valid: zod.boolean().describe("Always true on 200."),
+  code: zod.string(),
+  type: zod.enum(["percentage", "fixed"]),
+  value: zod.number(),
+  discount_amount: zod.number(),
+  final_amount: zod.number(),
+  description: zod.string().nullish(),
+});
+
+/**
+ * Newest first; includes inactive/soft-deactivated rows.
+ * @summary List all coupons (requireAdmin + finance scope)
+ */
+export const ListAdminCouponsResponseItem = zod.object({
+  id: zod.number(),
+  code: zod.string(),
+  type: zod.enum(["percentage", "fixed"]),
+  value: zod.number(),
+  min_order_amount: zod.number().optional(),
+  max_uses: zod.number().nullish(),
+  used_count: zod.number(),
+  expires_at: zod.string().nullish(),
+  is_active: zod.boolean(),
+  description: zod.string().nullish(),
+  created_at: zod.string(),
+});
+export const ListAdminCouponsResponse = zod.array(ListAdminCouponsResponseItem);
+
+/**
+ * zod-validated (CreateCouponBody in routes/coupons.ts). `code` is
+uppercased before insert. Percentage coupons must have value ≤ 100
+(checked after parse); fixed coupons are bounded at 10,000 LYD.
+
+ * @summary Create a coupon (requireAdmin + finance scope)
+ */
+export const createCouponBodyCodeMax = 40;
+
+export const createCouponBodyValueExclusiveMin = 0;
+export const createCouponBodyValueMax = 10000;
+
+export const createCouponBodyMinOrderAmountMin = 0;
+export const createCouponBodyMinOrderAmountMax = 1000000;
+
+export const createCouponBodyMaxUsesMax = 1000000;
+
+export const createCouponBodyDescriptionMax = 200;
+
+export const CreateCouponBody = zod
+  .object({
+    code: zod.string().min(1).max(createCouponBodyCodeMax),
+    type: zod.enum(["percentage", "fixed"]),
+    value: zod.number().gt(createCouponBodyValueExclusiveMin).max(createCouponBodyValueMax),
+    min_order_amount: zod
+      .number()
+      .min(createCouponBodyMinOrderAmountMin)
+      .max(createCouponBodyMinOrderAmountMax)
+      .optional()
+      .describe("Defaults to 0."),
+    max_uses: zod.number().min(1).max(createCouponBodyMaxUsesMax).nullish(),
+    expires_at: zod
+      .string()
+      .nullish()
+      .describe("ISO date or date-time string; null = never expires."),
+    description: zod.string().max(createCouponBodyDescriptionMax).nullish(),
+  })
+  .describe(
+    "`code` is uppercased before insert. Percentage coupons must have\nvalue ≤ 100 (checked after parse with a specific message); fixed\nvalues are bounded at 10,000 LYD — a direct wallet-debit magnitude\nat checkout.\n",
+  );
+
+/**
+ * Strict zod body — unknown keys are a 400.
+ * @summary Update coupon mutable fields (requireAdmin + finance scope)
+ */
+export const UpdateCouponParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateCouponBodyMaxUsesMax = 1000000;
+
+export const updateCouponBodyDescriptionMax = 200;
+
+export const UpdateCouponBody = zod
+  .object({
+    is_active: zod.boolean().optional(),
+    max_uses: zod.number().min(1).max(updateCouponBodyMaxUsesMax).nullish(),
+    expires_at: zod
+      .string()
+      .nullish()
+      .describe("ISO date or date-time string; null = never expires."),
+    description: zod.string().max(updateCouponBodyDescriptionMax).nullish(),
+  })
+  .describe("Strict body — unknown keys are a 400 (zod .strict()).");
+
+export const UpdateCouponResponse = zod.object({
+  id: zod.number(),
+  code: zod.string(),
+  type: zod.enum(["percentage", "fixed"]),
+  value: zod.number(),
+  min_order_amount: zod.number().optional(),
+  max_uses: zod.number().nullish(),
+  used_count: zod.number(),
+  expires_at: zod.string().nullish(),
+  is_active: zod.boolean(),
+  description: zod.string().nullish(),
+  created_at: zod.string(),
+});
+
+/**
+ * Sets is_active=false — the row is kept for audit history.
+ * @summary Soft-deactivate a coupon (requireAdmin + finance scope)
+ */
+export const DeleteCouponParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteCouponResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Loyalty summary — points, tier, referral stats, conversion rate
+ */
+export const GetLoyaltyResponse = zod
+  .object({
+    points: zod.number(),
+    tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
+    lifetime_spend: zod.number(),
+    referral_code: zod.string().describe("Empty string when unset."),
+    referral_link: zod.string(),
+    referred_by: zod.string().nullish(),
+    referrals_total: zod.number(),
+    referrals_credited: zod.number(),
+    referrals_pending: zod.number(),
+    points_value_lyd: zod
+      .string()
+      .describe('points \/ 100, formatted with 2 decimals (e.g. \"12.00\").'),
+    next_tier: zod
+      .object({
+        tier: zod.string(),
+        label: zod.string().describe('Arabic tier label (\"فضي\" \/ \"ذهبي\" \/ \"بلاتيني\").'),
+        remaining: zod.number().describe("Lifetime spend still needed for the next tier."),
+      })
+      .nullable()
+      .describe("null at platinum."),
+    tier_thresholds: zod.object({
+      silver: zod.number(),
+      gold: zod.number(),
+      platinum: zod.number(),
+    }),
+    points_rate: zod.object({
+      points_per_referral: zod.number(),
+      points_per_lyd: zod.number(),
+    }),
+  })
+  .describe(
+    "Constants: POINTS_PER_LYD = 100, POINTS_PER_REFERRAL = 50; tiers\nsilver=500 \/ gold=2000 \/ platinum=5000 lifetime spend. NOTE:\npoints_value_lyd is a STRING (toFixed(2)).\n",
+  );
+
+/**
+ * Points must be ≥ 100 and a multiple of 100 (POINTS_PER_LYD).
+Runs in a DB transaction: fresh read inside the tx, optimistic
+lock on both mutated columns, and a wallet_ledger row
+(type=adjustment, referenceType=loyalty_conversion). Concurrent
+mutations lose the optimistic lock → 409 CONFLICT (retry-safe).
+
+ * @summary Convert loyalty points to wallet credit (money-creation path)
+ */
+export const convertPointsBodyPointsOneMin = 100;
+export const convertPointsBodyPointsOneMultipleOf = 100;
+
+export const ConvertPointsBody = zod
+  .object({
+    points: zod.union([
+      zod
+        .number()
+        .min(convertPointsBodyPointsOneMin)
+        .multipleOf(convertPointsBodyPointsOneMultipleOf),
+      zod.string().describe("Numeric string, coerced via parseInt."),
+    ]),
+  })
+  .describe(
+    'The handler parseInt()s the raw body value, so a numeric string\n(\"500\") is also accepted — a JSON number is the documented shape.\nValues below 100 or not a multiple of 100 → 400 INVALID_DATA.\n',
+  );
+
+export const ConvertPointsResponse = zod.object({
+  success: zod.boolean(),
+  points_spent: zod.number(),
+  lyd_credited: zod.number(),
+  new_points: zod.number(),
+  new_balance: zod.number(),
+  message: zod.string().describe("Arabic success message with the converted amount."),
+});
+
+/**
+ * @summary List the current user's referral events (≤200, newest first)
+ */
+export const ListReferralsResponseItem = zod.object({
+  id: zod.number(),
+  status: zod.enum(["pending", "credited"]),
+  phone_masked: zod.string().describe('Referee phone masked (\"091\*\*\*\*789\").'),
+  created_at: zod.string(),
+  credited_at: zod.string().nullable(),
+  points_earned: zod.number().describe("50 when credited, else 0."),
+});
+export const ListReferralsResponse = zod.array(ListReferralsResponseItem);
+
+/**
+ * Each row carries the latest reply (first 80 chars) when present.
+ * @summary List the current user's tickets (≤200, newest first)
+ */
+export const ListSupportTicketsResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  category: zod.enum(["billing", "technical", "order", "account", "other"]),
+  status: zod.enum(["open", "in_progress", "closed"]),
+  created_at: zod.string(),
+  last_reply: zod
+    .object({
+      author_type: zod.enum(["user", "admin"]),
+      message: zod.string(),
+      created_at: zod.string(),
+    })
+    .nullable()
+    .describe("Most recent reply (first 80 chars) — null when the ticket has no replies."),
+});
+export const ListSupportTicketsResponse = zod.array(ListSupportTicketsResponseItem);
+
+/**
+ * The message becomes the first reply (author_type=user). An
+unknown category silently falls back to "other". 429 bodies are
+the standard {error, code: RATE_LIMITED} envelope.
+
+ * @summary Open a support ticket (rate-limited: 5/hour/user)
+ */
+export const createSupportTicketBodyTitleMax = 255;
+
+export const CreateSupportTicketBody = zod
+  .object({
+    title: zod.string().min(1).max(createSupportTicketBodyTitleMax),
+    message: zod.string().min(1).describe("Becomes the first reply (author_type=user)."),
+    category: zod.enum(["billing", "technical", "order", "account", "other"]).optional(),
+  })
+  .describe(
+    'title and message are trimmed; an unknown category silently\nfalls back to \"other\".\n',
+  );
+
+/**
+ * Ownership-scoped — replies ordered oldest first.
+ * @summary Ticket detail with the full reply thread
+ */
+export const GetSupportTicketParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetSupportTicketResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  category: zod.enum(["billing", "technical", "order", "account", "other"]),
+  status: zod.enum(["open", "in_progress", "closed"]),
+  created_at: zod.string(),
+  replies: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        author_type: zod.enum(["user", "admin"]),
+        message: zod.string(),
+        created_at: zod.string(),
+      }),
+    )
+    .describe("Full messages, oldest first."),
+});
+
+/**
+ * @summary Reply to one of the caller's tickets (side-effect: status → in_progress)
+ */
+export const ReplySupportTicketParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ReplySupportTicketBody = zod.object({
+  message: zod.string().min(1),
+});
+
+/**
+ * @summary List the current user's notifications (≤40, newest first)
+ */
+export const ListNotificationsResponseItem = zod.object({
+  id: zod.number(),
+  type: zod.string().describe('e.g. \"order\" | \"loyalty\" | \"system\".'),
+  title: zod.string(),
+  message: zod.string().nullish(),
+  link: zod.string().nullish(),
+  is_read: zod.boolean(),
+  created_at: zod.string(),
+});
+export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem);
+
+/**
+ * @summary Mark all of the caller's notifications read
+ */
+export const MarkAllNotificationsReadResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Mark one notification read (owned rows only)
+ */
+export const MarkNotificationReadParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const MarkNotificationReadResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
 });
 
 /**
@@ -355,26 +839,93 @@ export const GetAdminStatsResponse = zod.object({
 });
 
 /**
- * @summary List all orders
+ * @summary List all orders (requireAdmin + orders scope)
  */
 export const ListAdminOrdersQueryParams = zod.object({
-  status: zod.coerce.string().nullish(),
-  page: zod.coerce.number().nullish(),
-  limit: zod.coerce.number().nullish(),
+  status: zod.coerce.string().nullish().describe("Optional order status filter."),
+  page: zod.coerce.number().nullish().describe("1-based page number (default 1)."),
+  limit: zod.coerce.number().nullish().describe("Page size, clamped to [1, 200] (default 100)."),
+  search: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "LOWER LIKE across order code, user phone \/ email \/ display\nname, or product name (the admin command palette filter).\n",
+    ),
 });
 
 export const ListAdminOrdersResponseItem = zod.object({
   id: zod.number(),
   order_code: zod.string(),
   user_phone: zod.string(),
+  user_display_name: zod.string().nullish(),
+  user_email: zod.string().nullish(),
+  user_auth_provider: zod.string().nullish(),
+  user_has_google: zod.boolean().optional(),
+  user_has_telegram: zod.boolean().optional(),
+  user_has_firebase: zod.boolean().optional(),
+  user_has_whatsapp: zod.boolean().optional(),
   product_name: zod.string(),
   amount: zod.number(),
-  status: zod.string(),
+  status: zod.enum(["pending", "completed", "failed", "refunded"]),
   delivered_email: zod.string().nullish(),
   delivered_password: zod.string().nullish(),
+  delivered_extra_details: zod.string().nullish(),
+  coupon_code: zod.string().nullish(),
+  discount_amount: zod.number().optional(),
   created_at: zod.string(),
 });
 export const ListAdminOrdersResponse = zod.array(ListAdminOrdersResponseItem);
+
+/**
+ * status="refunded" processes each id through RefundService.refundOrder
+(status-guard + optimistic wallet credit + wallet_ledger type=refund)
+— partial failures return 207 with a per-order breakdown.
+Non-refund statuses use a direct UPDATE. Mounted behind the
+idempotency middleware (routeKey admin.orders.bulk-status) — send
+an Idempotency-Key so a double-clicked bulk refund cannot
+double-credit.
+
+ * @summary Bulk-update order statuses (requireAdmin + orders scope; mass refunds move wallet money)
+ */
+export const bulkUpdateOrderStatusHeaderIdempotencyKeyMax = 100;
+
+export const BulkUpdateOrderStatusHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(bulkUpdateOrderStatusHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Idempotency key (≥ 8 chars to engage; 24h dedup per admin +\nroute). Same key with a different body → 409\nIDEMPOTENCY_KEY_REUSE; same key in flight → 409\nIDEMPOTENCY_IN_FLIGHT; replays carry Idempotent-Replayed \/\nIdempotent-Original-At response headers.\n",
+    ),
+});
+
+export const BulkUpdateOrderStatusBody = zod
+  .object({
+    ids: zod
+      .array(
+        zod.union([zod.number(), zod.string().describe("Numeric string, coerced via Number().")]),
+      )
+      .min(1),
+    status: zod.enum(["pending", "completed", "failed", "refunded"]),
+    note: zod
+      .string()
+      .optional()
+      .describe("Optional audit note (stored on refund ledger entries)."),
+  })
+  .describe(
+    "`ids` accepts numbers or numeric strings (coerced via Number());\ninvalid entries and duplicates are dropped and reported\n(skipped_invalid on the 200 response).\n",
+  );
+
+export const BulkUpdateOrderStatusResponse = zod.object({
+  success: zod.boolean(),
+  updated: zod.number().describe("Count of orders transitioned (or successfully refunded)."),
+  skipped_invalid: zod
+    .number()
+    .optional()
+    .describe(
+      "Count of non-numeric \/ duplicate ids dropped from the request\n— present only when non-zero.\n",
+    ),
+});
 
 /**
  * @summary List all top-up requests
@@ -387,11 +938,20 @@ export const ListAdminTopupsResponseItem = zod.object({
   id: zod.number(),
   user_id: zod.number(),
   user_phone: zod.string(),
+  user_display_name: zod.string().nullish(),
+  user_email: zod.string().nullish(),
+  user_auth_provider: zod.string().nullish(),
+  user_has_google: zod.boolean().optional(),
+  user_has_telegram: zod.boolean().optional(),
+  user_has_firebase: zod.boolean().optional(),
+  user_has_whatsapp: zod.boolean().optional(),
   amount: zod.number(),
-  payment_network: zod.string(),
+  payment_method: zod.enum(["mobile_transfer", "lypay"]),
+  payment_network: zod.string().nullish(),
   sender_phone: zod.string().nullish(),
+  sender_account: zod.string().nullish(),
   payment_reference: zod.string().nullish(),
-  status: zod.string(),
+  status: zod.enum(["pending", "approved", "rejected"]),
   admin_note: zod.string().nullish(),
   created_at: zod.string(),
 });
@@ -430,10 +990,189 @@ export const RejectTopupResponse = zod.object({
 });
 
 /**
+ * ≤100 rows, newest first. `is_currently_active` is derived
+(is_active AND ends_at in the future).
+
+ * @summary List flash sales — active + historical (requireAdmin + inventory scope)
+ */
+export const listAdminFlashSalesResponseFlashSalesItemDiscountPercentMin = 0;
+export const listAdminFlashSalesResponseFlashSalesItemDiscountPercentMax = 95;
+
+export const ListAdminFlashSalesResponse = zod.object({
+  flash_sales: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        title: zod.string(),
+        discount_percent: zod
+          .number()
+          .min(listAdminFlashSalesResponseFlashSalesItemDiscountPercentMin)
+          .max(listAdminFlashSalesResponseFlashSalesItemDiscountPercentMax),
+        ends_at: zod.string(),
+        is_active: zod.boolean(),
+        is_currently_active: zod.boolean(),
+        created_at: zod.string(),
+      })
+      .describe(
+        "`is_currently_active` is derived (is_active AND ends_at in the\nfuture) — the admin UI can show historical rows without\nrecomputing.\n",
+      ),
+  ),
+});
+
+/**
+ * One ACTIVE sale at a time (DB partial unique index). 400 bodies
+carry details: {field} naming the rejected input. Discount is
+capped at 95% so a stacked fixed coupon can never reach free
+goods — use a coupon for deeper discounts.
+
+ * @summary Create a flash sale (activates immediately; requireAdmin + inventory scope)
+ */
+export const createFlashSaleBodyTitleMax = 255;
+
+export const createFlashSaleBodyDiscountPercentMin = 0;
+export const createFlashSaleBodyDiscountPercentMax = 95;
+
+export const CreateFlashSaleBody = zod
+  .object({
+    title: zod
+      .string()
+      .max(createFlashSaleBodyTitleMax)
+      .optional()
+      .describe('Defaults to \"Flash Sale\" when omitted.'),
+    discount_percent: zod
+      .number()
+      .min(createFlashSaleBodyDiscountPercentMin)
+      .max(createFlashSaleBodyDiscountPercentMax),
+    ends_at: zod.string().describe("ISO date-time — between 5 minutes and 30 days in the future."),
+  })
+  .describe(
+    '95% ceiling rationale: prevents a \"free goods\" state when a\nfixed-amount coupon stacks on the sale — use a coupon for deeper\ndiscounts.\n',
+  );
+
+/**
+ * At least one field required. Activating a sale while another is
+active hits the singleton index → 409 ALREADY_EXISTS.
+
+ * @summary Update a flash sale (requireAdmin + inventory scope)
+ */
+export const UpdateFlashSaleParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateFlashSaleBodyTitleMax = 255;
+
+export const updateFlashSaleBodyDiscountPercentMin = 0;
+export const updateFlashSaleBodyDiscountPercentMax = 95;
+
+export const UpdateFlashSaleBody = zod
+  .object({
+    title: zod.string().max(updateFlashSaleBodyTitleMax).optional(),
+    discount_percent: zod
+      .number()
+      .min(updateFlashSaleBodyDiscountPercentMin)
+      .max(updateFlashSaleBodyDiscountPercentMax)
+      .optional(),
+    ends_at: zod.string().optional().describe("ISO date-time — at least 5 minutes in the future."),
+    is_active: zod.boolean().optional(),
+  })
+  .describe("At least one field required — an empty body is a 400.");
+
+export const updateFlashSaleResponseDiscountPercentMin = 0;
+export const updateFlashSaleResponseDiscountPercentMax = 95;
+
+export const UpdateFlashSaleResponse = zod
+  .object({
+    id: zod.number(),
+    title: zod.string(),
+    discount_percent: zod
+      .number()
+      .min(updateFlashSaleResponseDiscountPercentMin)
+      .max(updateFlashSaleResponseDiscountPercentMax),
+    ends_at: zod.string(),
+    is_active: zod.boolean(),
+    is_currently_active: zod.boolean(),
+    created_at: zod.string(),
+  })
+  .describe(
+    "`is_currently_active` is derived (is_active AND ends_at in the\nfuture) — the admin UI can show historical rows without\nrecomputing.\n",
+  );
+
+/**
+ * Sets is_active=false and returns the row — the row is kept for
+audit history. Reactivate via PATCH (subject to the singleton
+constraint).
+
+ * @summary Soft-deactivate a flash sale (requireAdmin + inventory scope)
+ */
+export const DeleteFlashSaleParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const deleteFlashSaleResponseDiscountPercentMin = 0;
+export const deleteFlashSaleResponseDiscountPercentMax = 95;
+
+export const DeleteFlashSaleResponse = zod
+  .object({
+    id: zod.number(),
+    title: zod.string(),
+    discount_percent: zod
+      .number()
+      .min(deleteFlashSaleResponseDiscountPercentMin)
+      .max(deleteFlashSaleResponseDiscountPercentMax),
+    ends_at: zod.string(),
+    is_active: zod.boolean(),
+    is_currently_active: zod.boolean(),
+    created_at: zod.string(),
+  })
+  .describe(
+    "`is_currently_active` is derived (is_active AND ends_at in the\nfuture) — the admin UI can show historical rows without\nrecomputing.\n",
+  );
+
+/**
+ * Status-guarded in a transaction (WHERE status='pending') — a
+concurrent credit loses the race and gets 409 ALREADY_EXISTS
+instead of double-granting. Mounted behind the idempotency
+middleware (routeKey admin.referrals.credit). A loyalty
+notification is created for the referrer.
+
+ * @summary Credit the referrer +50 loyalty points for a referral event (requireAdmin + users scope)
+ */
+export const CreditReferralParams = zod.object({
+  id: zod.coerce.number().describe("referral_events.id"),
+});
+
+export const creditReferralHeaderIdempotencyKeyMax = 100;
+
+export const CreditReferralHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(creditReferralHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Idempotency key (≥ 8 chars to engage; 24h dedup per admin +\nroute) — dedupes admin double-clicks.\n",
+    ),
+});
+
+export const CreditReferralResponse = zod.object({
+  success: zod.boolean(),
+  points_credited: zod.number().describe("Points granted (POINTS_PER_REFERRAL = 50)."),
+});
+
+/**
  * @summary List all products (including inactive)
  */
+export const ListAdminProductsQueryParams = zod.object({
+  search: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "ILIKE match on product name or category (the admin command\npalette filter; capped at 100 chars server-side). Non-archived\nrows only, ≤200 newest first.\n",
+    ),
+});
+
 export const ListAdminProductsResponseItem = zod.object({
   id: zod.number(),
+  slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
@@ -508,6 +1247,7 @@ export const UpdateProductBody = zod.object({
 
 export const UpdateProductResponse = zod.object({
   id: zod.number(),
+  slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
   image_url: zod.string().nullish(),
@@ -550,11 +1290,25 @@ export const ListAdminUsersQueryParams = zod.object({
 export const ListAdminUsersResponseItem = zod.object({
   id: zod.number(),
   phone: zod.string(),
+  display_name: zod.string().nullish(),
+  email: zod.string().nullish(),
+  photo_url: zod.string().nullish(),
+  auth_provider: zod
+    .string()
+    .optional()
+    .describe(
+      '\"firebase_phone\" | \"firebase_google\" | \"firebase\" |\n\"telegram\" | \"whatsapp_phone\" | \"legacy_password\".\n',
+    ),
+  has_google: zod.boolean().optional(),
+  has_telegram: zod.boolean().optional(),
+  has_firebase: zod.boolean().optional(),
+  has_whatsapp: zod.boolean().optional(),
+  last_auth_at: zod.string().nullish(),
   wallet_balance: zod.number(),
   loyalty_points: zod.number(),
-  loyalty_tier: zod.string(),
+  loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
   lifetime_spend: zod.number(),
-  order_count: zod.number(),
+  order_count: zod.number().describe("Completed-order count for this user."),
   referral_code: zod.string().nullish(),
   created_at: zod.string(),
 });
