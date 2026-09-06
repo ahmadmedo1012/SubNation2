@@ -37,7 +37,13 @@ export function MobileNav() {
               ? location === "/"
               : location === tab.href || location.startsWith(`${tab.href}/`);
           return (
-            <Link key={tab.href} href={tab.href} className="min-w-0" aria-label={tab.label}>
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className="min-w-0"
+              aria-label={tab.label}
+              aria-current={active ? "page" : undefined}
+            >
               <div
                 className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none press-spring"
                 style={{ WebkitTapHighlightColor: "transparent" }}
@@ -68,7 +74,7 @@ export function MobileNav() {
                 {/* Label */}
                 <span
                   className={`
-                  relative z-10 text-[9.5px] leading-none font-semibold transition-all duration-200
+                  relative z-10 text-[10px] leading-none font-semibold transition-all duration-200
                   ${active ? "text-primary-text font-bold" : "text-muted-foreground"}
                 `}
                 >

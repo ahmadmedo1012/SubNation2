@@ -504,10 +504,16 @@ export default function AdminTopupsPage() {
         variant: "destructive",
       });
     }
-    toast({
-      title: action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي",
-      description: `${successCount}/${ids.length} طلب تمت معالجته`,
-    });
+    // Only announce success when at least one item actually succeeded —
+    // the unconditional toast used to show "✓ تمت الموافقة 0/N" right
+    // after the failure toast on a total failure.
+    if (successCount > 0) {
+      toast({
+        title: action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي",
+        description: `${successCount}/${ids.length} طلب تمت معالجته`,
+        variant: "success",
+      });
+    }
   };
 
   const approveAll = async () => {
@@ -600,7 +606,10 @@ export default function AdminTopupsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* flex-wrap: bulk actions + status tabs overflow the 375px
+              viewport without it (select-all + approve-all + reject + 4
+              status chips on one row). */}
+          <div className="flex items-center gap-2 flex-wrap">
             {selectedPendingCount > 0 && (
               <>
                 <Button

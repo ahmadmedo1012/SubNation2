@@ -486,8 +486,10 @@ export default function AdminAlertsPage() {
                           </div>
                         </div>
 
-                        {/* Actions — visible on hover */}
-                        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Actions — visible on hover (desktop) / always
+                            visible on touch: opacity-0 makes them unreachable
+                            on phones where there is no hover. */}
+                        <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           {!alert.isRead && (
                             <button
                               onClick={(e) => {

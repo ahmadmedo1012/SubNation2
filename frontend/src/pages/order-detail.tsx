@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
+  copyToClipboard,
   formatCurrency,
   formatDate,
   formatRelativeTime,
@@ -9,11 +10,14 @@ import {
   statusLabel,
 } from "@/lib/utils";
 import { getGetOrderQueryKey, useGetOrder } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   CheckCircle,
   Clock,
   Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   Info,
   Package,
@@ -26,10 +30,21 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 
-function CopyField({ label, value }: { label: string; value: string }) {
+function CopyField({
+  label,
+  value,
+  secret = false,
+}: {
+  label: string;
+  value: string;
+  /** Mask the value until explicitly revealed (passwords). */
+  secret?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(value);
+  const [revealed, setRevealed] = useState(!secret);
+  const copy = async () => {
+    const ok = await copyToClipboard(value);
+    if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -39,19 +54,39 @@ function CopyField({ label, value }: { label: string; value: string }) {
         <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">
           {label}
         </div>
-        <div className="font-mono font-bold text-sm break-all leading-snug">{value}</div>
+        {/* dir="ltr": credentials are LTR runs — without it the bidi
+            algorithm visually scrambles values ending in digits/symbols
+            even though the copied text is correct. */}
+        <div
+          dir="ltr"
+          className="font-mono font-bold text-sm break-all leading-snug text-left"
+        >
+          {revealed ? value : "•".repeat(Math.min(value.length, 12))}
+        </div>
       </div>
-      <button
-        onClick={copy}
-        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring ${
-          copied
-            ? "bg-status-success/12 text-status-success border-status-success/22"
-            : "bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
-        }`}
-      >
-        {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-        {copied ? "تم" : "نسخ"}
-      </button>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {secret && (
+          <button
+            onClick={() => setRevealed((r) => !r)}
+            aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+          >
+            {revealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {revealed ? "إخفاء" : "إظهار"}
+          </button>
+        )}
+        <button
+          onClick={copy}
+          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring ${
+            copied
+              ? "bg-status-success/12 text-status-success border-status-success/22"
+              : "bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+          }`}
+        >
+          {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          {copied ? "تم" : "نسخ"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -102,16 +137,17 @@ export default function OrderDetailPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const { data: order, isLoading } = useGetOrder(orderCode ?? "", {
+  const { data: order, isLoading, isError } = useGetOrder(orderCode ?? "", {
     query: { queryKey: getGetOrderQueryKey(orderCode ?? ""), enabled: !!orderCode && !!token },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const copyOrderCode = () => {
+  const copyOrderCode = async () => {
     if (!order?.order_code) return;
-    navigator.clipboard.writeText(order.order_code);
-    toast({ title: "تم نسخ رقم الطلب" });
+    const ok = await copyToClipboard(order.order_code);
+    toast({ title: ok ? "تم نسخ رقم الطلب" : "تعذّر نسخ رقم الطلب", variant: ok ? "default" : "destructive" });
   };
 
   useEffect(() => {
@@ -128,6 +164,32 @@ export default function OrderDetailPage() {
           <div className="h-[180px] skeleton-shimmer rounded-2xl border border-border/35" />
           <div className="h-[140px] skeleton-shimmer rounded-2xl border border-border/35" />
           <div className="h-[80px] skeleton-shimmer rounded-2xl border border-border/35" />
+        </div>
+      </div>
+    );
+
+  if (isError)
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
+          <XCircle className="w-7 h-7 text-status-error" />
+        </div>
+        <p className="font-bold text-lg mb-1">تعذّر تحميل الطلب</p>
+        <p className="text-sm text-muted-foreground mb-5">
+          حدث خطأ في الاتصال — تحقّق من اتصالك ثم أعد المحاولة. إن استمرت المشكلة تواصل مع الدعم.
+        </p>
+        <div className="flex items-center justify-center gap-2.5">
+          <Button
+            onClick={() => queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderCode ?? "") })}
+            className="gap-1.5 rounded-xl"
+          >
+            <Clock className="w-4 h-4" />
+            إعادة المحاولة
+          </Button>
+          <Button onClick={() => navigate("/orders")} variant="outline" className="gap-2 rounded-xl">
+            <ArrowRight className="w-4 h-4" />
+            العودة للطلبات
+          </Button>
         </div>
       </div>
     );
@@ -279,7 +341,7 @@ export default function OrderDetailPage() {
                 <CopyField label="البريد الإلكتروني" value={order.delivered_email} />
               )}
               {order.delivered_password && (
-                <CopyField label="كلمة المرور" value={order.delivered_password} />
+                <CopyField label="كلمة المرور" value={order.delivered_password} secret />
               )}
               {order.delivered_extra_details && (
                 <div className="px-5 py-3.5 text-sm text-muted-foreground leading-relaxed">

@@ -5,20 +5,9 @@ import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
-import {
-  CheckCircle2,
-  Loader2,
-  Lock,
-  ShieldCheck,
-  ShoppingBag,
-  Tag,
-  Wallet,
-  X,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-
-type PaymentMethod = "wallet" | "cod";
 
 interface MeResponse {
   user: {
@@ -37,16 +26,31 @@ function formatBalance(value: number | null | undefined): string {
   return formatCurrency(value ?? 0);
 }
 
+/**
+ * Checkout — the money path.
+ *
+ * Payment method is wallet-only BY DESIGN: the backend's POST /api/orders
+ * reads only product_id + coupon_code and ALWAYS charges the wallet — a
+ * "cash on delivery" option that the server silently drops (previously
+ * selectable here) let users believe they would pay on delivery while the
+ * wallet was charged anyway. Removing the fake option is the honest UX.
+ */
 export default function CheckoutPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { items, totalLYD, clear } = useCart();
-  const [method, setMethod] = useState<PaymentMethod>("wallet");
+  const { items, totalLYD, clear, removeItem } = useCart();
   const [coupon, setCoupon] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState(false);
+  // Persistent in-page failure banner (critical money errors must NOT
+  // live in a 4-second toast). Cleared on a new submission attempt.
+  const [orderError, setOrderError] = useState<string | null>(null);
+  // Partial-success bookkeeping: orders that DID go through before a
+  // failure — shown in the banner so the user knows what was charged.
+  const [partialCount, setPartialCount] = useState(0);
 
   useEffect(() => {
     if (!token) {
@@ -58,14 +62,24 @@ export default function CheckoutPage() {
     if (!token) return;
     let aborted = false;
     setBalanceLoading(true);
+    setBalanceError(false);
     fetch("/api/auth/me", { credentials: "include" })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("balance fetch failed");
+        return res.json();
+      })
       .then((data: MeResponse) => {
         if (aborted) return;
         setBalance(data?.user?.wallet_balance ?? 0);
       })
       .catch(() => {
-        if (!aborted) setBalance(0);
+        // Do NOT fake balance=0 — a failed probe used to render the
+        // "insufficient balance" banner for solvent users. Show a
+        // retry-able error instead of lying about the balance.
+        if (!aborted) {
+          setBalance(null);
+          setBalanceError(true);
+        }
       })
       .finally(() => {
         if (!aborted) setBalanceLoading(false);
@@ -75,51 +89,83 @@ export default function CheckoutPage() {
     };
   }, [token]);
 
-  const insufficient = method === "wallet" && balance !== null && balance < totalLYD;
+  // A wallet-method purchase only blocks on a CONFIRMED insufficient
+  // balance — an unknown balance (probe failed) must not hard-block,
+  // the server remains the source of truth on submission.
+  const insufficient = !balanceLoading && !balanceError && balance !== null && balance < totalLYD;
   const isEmpty = items.length === 0;
 
   const canSubmit = useMemo(() => {
     if (!token || isEmpty || submitting) return false;
-    if (method === "wallet" && insufficient) return false;
+    if (insufficient) return false;
     return true;
-  }, [token, isEmpty, submitting, method, insufficient]);
+  }, [token, isEmpty, submitting, insufficient]);
 
   async function handleConfirm() {
     if (!token || items.length === 0) return;
     setSubmitting(true);
+    setOrderError(null);
+    setPartialCount(0);
+    const created: CreatedOrder[] = [];
+    let firstOrderCode: string | null = null;
+    let failureMessage: string | null = null;
+    // Items that were fully ordered are removed from the cart even when a
+    // LATER item fails — previously a mid-loop failure kept ALL items in
+    // the cart (including already-charged ones), so a retry would
+    // double-charge for the ordered prefix.
+    const orderedProductIds: number[] = [];
+
     try {
-      const created: CreatedOrder[] = [];
-      let firstOrderCode: string | null = null;
-      // Place each cart item as its own order — `CreateOrderBody` only
-      // accepts a single product_id. The cart UI guarantees that all
-      // items reference real products; pricing/finalization is handled
-      // by the backend checkout service so we don't need to pass
-      // price here.
       for (const it of items) {
-        const body: Record<string, unknown> = { product_id: it.productId };
-        if (coupon.trim()) body.coupon_code = coupon.trim();
-        if (method === "cod") body.payment_method = "cod";
-        const res = await fetch("/api/orders", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(body),
-        });
-        const orderData = await res.json();
-        if (!res.ok) {
-          throw new Error((orderData as { message?: string }).message ?? "فشل في إنشاء الطلب");
+        // `CreateOrderBody` accepts a single product_id with quantity 1
+        // per order — a qty>1 cart line becomes N unit orders.
+        for (let unit = 0; unit < it.quantity; unit++) {
+          const body: Record<string, unknown> = { product_id: it.productId };
+          if (coupon.trim()) body.coupon_code = coupon.trim();
+          const res = await fetch("/api/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(body),
+          });
+          const orderData = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            failureMessage =
+              (orderData as { message?: string }).message ?? "فشل في إنشاء الطلب";
+            break;
+          }
+          created.push(orderData as CreatedOrder);
+          if (!firstOrderCode) firstOrderCode = (orderData as CreatedOrder).order_code;
         }
-        created.push(orderData as CreatedOrder);
-        if (!firstOrderCode) firstOrderCode = (orderData as CreatedOrder).order_code;
+        if (failureMessage) break;
+        orderedProductIds.push(it.productId);
       }
-      clear();
-      toast({
-        title: "تم تأكيد الطلب",
-        description: `تم إنشاء ${created.length} طلب بنجاح`,
-      });
-      if (firstOrderCode) navigate(`/orders/${firstOrderCode}`);
+
+      if (created.length > 0) {
+        orderedProductIds.forEach((id) => removeItem(id));
+      }
+
+      if (failureMessage && created.length === 0) {
+        // Complete failure — persistent in-page banner + toast cue.
+        setOrderError(failureMessage);
+        toast({ title: failureMessage, variant: "destructive" });
+      } else if (failureMessage && created.length > 0) {
+        // Partial success: some orders were charged, then one failed.
+        // Tell the user EXACTLY what happened — never silently retry.
+        setPartialCount(created.length);
+        setOrderError(failureMessage);
+      } else {
+        // Full success.
+        clear();
+        toast({
+          title: "تم تأكيد الطلب",
+          description: `تم إنشاء ${created.length} طلب بنجاح`,
+        });
+        if (firstOrderCode) navigate(`/orders/${firstOrderCode}`);
+      }
     } catch (e) {
-      const msg = e instanceof Error ? getErrorMessage(e) : "تعذّر إكمال الطلب";
+      const msg = getErrorMessage(e);
+      setOrderError(msg);
       toast({ title: msg, variant: "destructive" });
     } finally {
       setSubmitting(false);
@@ -143,77 +189,52 @@ export default function CheckoutPage() {
       <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-5">
         {/* Payment details (left on desktop) */}
         <div className="space-y-4">
-          {/* Payment method */}
+          {/* Payment method — wallet only (see component docblock) */}
           <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
             <div className="flex items-center gap-2 mb-4">
               <Lock className="w-4 h-4 text-muted-foreground" />
               <h2 className="font-black text-base">طريقة الدفع</h2>
             </div>
-            <div className="space-y-2.5">
-              <button
-                type="button"
-                onClick={() => setMethod("wallet")}
-                className={`w-full flex items-start gap-3 p-4 rounded-xl border text-right transition-all duration-150 ${
-                  method === "wallet"
-                    ? "border-primary/50 bg-primary/8 shadow-sm"
-                    : "border-border/60 bg-card hover:border-border hover:bg-secondary/40"
-                }`}
-                aria-pressed={method === "wallet"}
-              >
-                <div
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    method === "wallet"
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  <Wallet className="w-5 h-5" />
+            <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/50 bg-primary/8 shadow-sm">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary/15 text-primary">
+                <Wallet className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-sm flex items-center gap-2">
+                  خصم من المحفظة
+                  <CheckCircle2 className="w-4 h-4 text-primary" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm">خصم من المحفظة</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    رصيدك:{" "}
-                    <span className="font-black text-foreground tabular-nums">
-                      {balanceLoading ? "…" : formatBalance(balance)}
-                    </span>
-                  </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  رصيدك:{" "}
+                  <span className="font-black text-foreground tabular-nums">
+                    {balanceLoading ? "…" : formatBalance(balance)}
+                  </span>
                 </div>
-                {method === "wallet" && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMethod("cod")}
-                className={`w-full flex items-start gap-3 p-4 rounded-xl border text-right transition-all duration-150 ${
-                  method === "cod"
-                    ? "border-primary/50 bg-primary/8 shadow-sm"
-                    : "border-border/60 bg-card hover:border-border hover:bg-secondary/40"
-                }`}
-                aria-pressed={method === "cod"}
-              >
-                <div
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    method === "cod"
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  <ShoppingBag className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm">دفع عند الاستلام</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    ادفع نقداً عند استلام الطلب
-                  </div>
-                </div>
-                {method === "cod" && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
-              </button>
+              </div>
             </div>
+            <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+              سيُخصم ثمن طلباتك من رصيد المحفظة فوراً، وتُسلَّم بيانات الحسابات مباشرة بعد الدفع.
+            </p>
 
-            {method === "wallet" && insufficient && (
+            {balanceError && (
+              <div className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                <span>تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند التأكيد.</span>
+              </div>
+            )}
+
+            {insufficient && (
               <div className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2">
                 <X className="w-4 h-4 shrink-0 mt-px" />
-                <span>رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.</span>
+                <div className="flex-1">
+                  <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(totalLYD - (balance ?? 0))}).</p>
+                  <Link
+                    href="/wallet?return=/checkout"
+                    className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
+                  >
+                    اشحن المحفظة ثم عُد لإكمال الطلب
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -232,6 +253,9 @@ export default function CheckoutPage() {
               className="font-mono uppercase"
               dir="ltr"
             />
+            <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+              يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند تأكيد الطلب.
+            </p>
           </div>
 
           {/* Trust */}
@@ -301,13 +325,56 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {/* Persistent money-failure banner: an error here must be
+                    actionable, not a 4-second toast. */}
+                {orderError && (
+                  <div
+                    role="alert"
+                    className="mb-4 p-3.5 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-xs font-bold flex items-start gap-2"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                    <div className="flex-1 leading-relaxed">
+                      {partialCount > 0 ? (
+                        <>
+                          <p>تم إنشاء {partialCount} طلب بنجاح قبل توقف العملية.</p>
+                          <p className="mt-1 font-normal">{orderError}</p>
+                          <Link
+                            href="/orders"
+                            className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
+                          >
+                            راجع طلباتك المنشأة
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <p>تعذّر إتمام الطلب: {orderError}</p>
+                          <p className="mt-1 font-normal text-muted-foreground">
+                            لم يتم خصم أي مبلغ. راجع الرصيد والمخزون ثم أعد المحاولة.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOrderError(null)}
+                      aria-label="إغلاق رسالة الخطأ"
+                      className="shrink-0 p-1 -m-1 rounded-md hover:bg-status-error/10"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
                 <Button
                   onClick={handleConfirm}
                   disabled={!canSubmit}
                   className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
                 >
                   {submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      جارٍ المعالجة… ({formatCurrency(totalLYD)})
+                    </>
                   ) : (
                     <>تأكيد الطلب ({formatCurrency(totalLYD)})</>
                   )}

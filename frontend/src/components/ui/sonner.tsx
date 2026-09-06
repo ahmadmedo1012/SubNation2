@@ -1,6 +1,6 @@
 "use client";
 
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { Toaster as Sonner } from "sonner";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, Loader2 } from "lucide-react";
 
@@ -24,11 +24,15 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
  * variant renders with consistent stroke-width and visual weight.
  */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  // App theme (sn_theme), NOT the OS preference. The previous import of
+  // next-themes' useTheme resolved to "system" because no NextThemeProvider
+  // is ever mounted in this SPA — toasts then followed the OS theme instead
+  // of the theme the user picked in the app.
+  const { theme } = useTheme();
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={theme}
       className="toaster group"
       position="top-center"
       duration={4000}

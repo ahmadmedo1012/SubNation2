@@ -57,6 +57,10 @@ const TYPE_CONFIG: Record<
     border: "border-blue-500/20",
     actionLabel: "تفاصيل الطلب",
     actionIcon: ExternalLink,
+    // Fallback destination when a notification carries no deep link —
+    // without it the action chip (and the row's open affordance)
+    // silently disappears for link-less order notifications.
+    actionHref: "/orders",
   },
   support: {
     icon: MessageSquare,
@@ -321,14 +325,21 @@ function NotificationPanel({
       }
     : (() => {
         const top = (anchorRect?.bottom ?? 56) + 8;
-        // Right edge of the panel sits at `anchorRect.right`, panel grows leftward.
-        const rightEdge = anchorRect?.right ?? vw - 16;
-        const right = Math.max(8, vw - rightEdge);
+        // RTL anchoring: in this app the bell sits in the Navbar actions
+        // cluster on the LEFT side of the screen (inline-end in RTL), so
+        // a right-edge-anchored panel that grows leftward extends past
+        // the left viewport edge and gets clipped on 480–1300px screens.
+        // Anchor the panel's LEFT edge to the bell's left edge instead
+        // (grows rightward, toward the reading flow origin), and clamp
+        // so a narrow viewport can still fit a (shrunk) panel.
+        const leftEdge = anchorRect?.left ?? 8;
+        const width = Math.min(360, vw - leftEdge - 8);
+        const left = Math.max(8, Math.min(leftEdge, vw - width - 8));
         return {
           position: "fixed",
           top,
-          right,
-          width: 360,
+          left,
+          width,
           maxHeight: `calc(100vh - ${top + 16}px)`,
           zIndex: 70,
         };
@@ -348,7 +359,7 @@ function NotificationPanel({
           <Bell className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="font-bold text-sm">الإشعارات</span>
           {unread > 0 && (
-            <span className="bg-primary text-white text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+            <span className="bg-primary text-primary-foreground text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
               {unread}
             </span>
           )}
@@ -404,8 +415,12 @@ function NotificationPanel({
                   <div className="absolute right-0 top-3 bottom-3 w-0.5 bg-primary/60 rounded-full" />
                 )}
 
-                <div
-                  className="flex items-start gap-3 cursor-pointer hover:opacity-85 transition-opacity"
+                {/* Row body as a real button so keyboard/screen-reader users
+                    can open the notification (previously a clickable div
+                    with no focus path). */}
+                <button
+                  type="button"
+                  className="flex items-start gap-3 text-start cursor-pointer hover:opacity-85 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl -m-1 p-1"
                   onClick={() => {
                     if (!n.is_read) onMarkRead(n.id);
                     if (actionHref) {
@@ -442,7 +457,7 @@ function NotificationPanel({
                       {formatRelativeTime(n.created_at)}
                     </p>
                   </div>
-                </div>
+                </button>
 
                 {(actionHref || cfg.actionLabel) && (
                   <div className="flex items-center gap-2 mt-2 mr-11">

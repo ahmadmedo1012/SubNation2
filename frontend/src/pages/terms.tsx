@@ -200,7 +200,8 @@ export default function TermsPage() {
         <Link href="/">
           <span className="hover:text-foreground cursor-pointer transition-colors">الرئيسية</span>
         </Link>
-        <ChevronLeft className="w-3 h-3" />
+        {/* RTL breadcrumb separator points right (unified icon-direction decision) */}
+        <ChevronLeft className="w-3 h-3 rotate-180 opacity-50" />
         <span className="text-foreground/70">{TABS.find((t) => t.id === tab)?.label}</span>
       </div>
 

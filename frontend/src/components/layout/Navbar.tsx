@@ -204,7 +204,7 @@ export function Navbar() {
             >
               <ShoppingCart className="w-4 h-4" />
               {itemCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-text text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
                   {itemCount > 99 ? "99+" : itemCount}
                 </span>
               )}

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Home, ArrowLeft, Compass } from "lucide-react";
+import { Home, ArrowRight, Compass } from "lucide-react";
 import { useSeo } from "@/hooks/useSeo";
 
 export default function NotFound() {
@@ -53,7 +53,8 @@ export default function NotFound() {
             onClick={() => window.history.back()}
             className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-medium px-6 py-3 rounded-xl transition-all duration-150 w-full sm:w-auto"
           >
-            <ArrowLeft className="w-4 h-4" />
+            {/* RTL: "back" points right (unified icon-direction decision) */}
+            <ArrowRight className="w-4 h-4" />
             الصفحة السابقة
           </button>
         </div>

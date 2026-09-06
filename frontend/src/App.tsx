@@ -95,8 +95,8 @@ const StatusPage = lazyWithRetry(() => import("@/pages/status"));
 const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   [/^\/$/, "catalog"],
   [/^\/category\//, "catalog"],
-  [/^\/product\//, "detail"],
-  [/^\/orders\/[^/]+/, "detail"],
+  [/^\/product\//, "product"],
+  [/^\/orders\/[^/]+/, "order"],
   [/^\/orders$/, "list"],
   [/^\/wallet/, "list"],
   [/^\/loyalty/, "detail"],
@@ -266,7 +266,7 @@ function AppRoutes() {
       )}
       <main
         className={
-          !isAdmin && !isAuth && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""
+          !isAdmin && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""
         }
       >
         <ErrorBoundary>

@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useCart, type LocalCartItem } from "@/lib/cart";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
-import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
+import { Loader2, Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -94,21 +94,17 @@ export default function CartPage() {
   }, [items]);
 
   async function handleUpdate(productId: number, qty: number) {
-    if (qty < 1) return;
-    if (token) {
-      // Local-only updates — we sync full cart on checkout. This keeps the
-      // UX responsive without thrashing the API for every +/-.
-      updateQuantity(productId, qty);
+    // qty 0 means "remove" — the previous code early-returned here, which
+    // made the X-shown-at-qty-1 button a silent no-op with delete
+    // affordance. Route it to removeItem instead.
+    if (qty < 1) {
+      removeItem(productId);
       return;
     }
     updateQuantity(productId, qty);
   }
 
   async function handleRemove(productId: number) {
-    if (token) {
-      removeItem(productId);
-      return;
-    }
     removeItem(productId);
   }
 
@@ -167,8 +163,12 @@ export default function CartPage() {
             disabled={busy}
             className="text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
           >
-            <Trash2 className="w-3.5 h-3.5 ml-1.5" />
-            إفراغ السلة
+            {busy ? (
+              <Loader2 className="w-3.5 h-3.5 ml-1.5 animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5 ml-1.5" />
+            )}
+            {busy ? "جارٍ الإفراغ..." : "إفراغ السلة"}
           </Button>
         )}
       </div>
@@ -253,7 +253,7 @@ export default function CartPage() {
                           type="button"
                           onClick={() => handleUpdate(it.product_id, it.quantity - 1)}
                           className="p-1.5 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground"
-                          aria-label="إنقاص الكمية"
+                          aria-label={it.quantity === 1 ? "حذف المنتج" : "إنقاص الكمية"}
                         >
                           {it.quantity === 1 ? (
                             <X className="w-3.5 h-3.5 text-status-error" />

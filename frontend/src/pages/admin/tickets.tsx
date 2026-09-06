@@ -160,7 +160,13 @@ export default function AdminTicketsPage() {
     }
   };
 
+  const [statusBusy, setStatusBusy] = useState<number | null>(null);
+
   const handleStatus = async (id: number, status: string) => {
+    // In-flight guard: without it a double-click fired two PATCHes and
+    // no UI state ever reflected the pending transition.
+    if (statusBusy !== null) return;
+    setStatusBusy(id);
     try {
       const res = await fetch(`/api/admin/tickets/${id}/status`, {
         method: "PATCH",
@@ -170,12 +176,18 @@ export default function AdminTicketsPage() {
       if (!res.ok) throw new Error((await res.json()).error);
       if (selected?.id === id) await openTicket(id);
       fetchTickets();
+      toast({
+        title: status === "closed" ? "تم إغلاق التذكرة" : "تمت إعادة فتح التذكرة",
+        variant: "success",
+      });
     } catch (err: unknown) {
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
         variant: "destructive",
       });
+    } finally {
+      setStatusBusy(null);
     }
   };
 
@@ -344,16 +356,28 @@ export default function AdminTicketsPage() {
                   {selected.status !== "closed" ? (
                     <button
                       onClick={() => handleStatus(selected.id, "closed")}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors font-medium"
+                      disabled={statusBusy === selected.id}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <CheckCircle className="w-3.5 h-3.5" /> إغلاق
+                      {statusBusy === selected.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      )}{" "}
+                      إغلاق
                     </button>
                   ) : (
                     <button
                       onClick={() => handleStatus(selected.id, "open")}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/15 transition-colors font-medium"
+                      disabled={statusBusy === selected.id}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/15 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <AlertCircle className="w-3.5 h-3.5" /> إعادة فتح
+                      {statusBusy === selected.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5" />
+                      )}{" "}
+                      إعادة فتح
                     </button>
                   )}
                   <button

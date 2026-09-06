@@ -11,7 +11,7 @@ export function Footer() {
   return (
     <footer
       className={`relative border-t border-border/30 bg-gradient-to-b from-background via-background to-card/40 mt-12 ${
-        token ? "mb-[72px] md:mb-0" : ""
+        token ? "mb-[calc(60px+env(safe-area-inset-bottom))] md:mb-0" : ""
       }`}
     >
       {/* Hairline brand tint at the top — barely visible but unifies

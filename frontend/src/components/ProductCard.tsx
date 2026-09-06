@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { useCart } from "@/lib/cart";
 import {
   AlertTriangle,
   Briefcase,
@@ -145,6 +147,31 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const unavailable = !product.is_available;
   const staggerClass = STAGGER[Math.min(index, 8)] ?? "";
   const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
+  const { addItem } = useCart();
+  const { toast } = useToast();
+
+  // ── Add to cart ─────────────────────────────────────────────
+  // The card CTA is a real <button> (sibling of the details <Link>,
+  // not nested inside it) — the previous markup was a visual-only
+  // div that navigated to the product page while labeled "اشترِ
+  // الآن", so the cart page and the Navbar badge were permanently
+  // empty: the whole cart → checkout funnel was unreachable.
+  const handleAddToCart = () => {
+    if (unavailable) return;
+    addItem({
+      productId: product.id,
+      slug: product.slug ?? null,
+      name: product.name ?? "",
+      imageUrl: product.image_url ?? null,
+      priceLYD: product.price,
+      salePriceLYD: product.sale_price ?? null,
+      discountPercent: product.discount_percent ?? null,
+    });
+    toast({
+      title: "أُضيف إلى السلة",
+      description: product.name ?? undefined,
+    });
+  };
 
   // ── Accessibility ─────────────────────────────────────────────────
   // Compose a single descriptive aria-label for the whole card so
@@ -161,19 +188,20 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const ariaLabel = ariaLabelParts.join("، ");
 
   return (
-    <Link
-      href={`/product/${product.slug ?? product.id}`}
-      aria-label={ariaLabel}
-      aria-disabled={unavailable || undefined}
-    >
-      <div
-        className={`
+    <div
+      className={`
         group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
         card-spring hover:border-border/80 hover:shadow-2xl hover:shadow-black/40
         ${unavailable ? "opacity-45 saturate-[0.3] pointer-events-none" : ""}
       `}
+    >
+      <Link
+        href={`/product/${product.slug ?? product.id}`}
+        aria-label={ariaLabel}
+        aria-disabled={unavailable || undefined}
+        className="flex flex-col flex-1"
       >
         {product.discount_percent && !unavailable && (
           <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
@@ -317,38 +345,51 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               <span className="text-[10px] font-bold text-muted-foreground/80">نفد</span>
             )}
           </div>
-
-          {product.is_available ? (
-            <div className="mt-3 md:hidden h-9 rounded-xl bg-primary flex items-center justify-center gap-1.5 text-white text-xs font-black shadow-lg shadow-primary/25">
-              <ShoppingCart className="w-3.5 h-3.5" />
-              اشترِ الآن
-            </div>
-          ) : (
-            // Mobile: keep card height stable when unavailable by
-            // rendering a static muted bar in place of the buy CTA.
-            // Same h-9 as the active button so the card visual rhythm
-            // is identical across states. Desktop uses a hover-reveal
-            // CTA that's already absent for unavailable products.
-            <div
-              className="mt-3 md:hidden h-9 rounded-xl bg-muted/40 border border-border/40 flex items-center justify-center gap-1.5 text-muted-foreground text-xs font-bold"
-              aria-hidden="true"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              نفد المخزون
-            </div>
-          )}
         </div>
+      </Link>
 
-        {product.is_available && (
-          <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-220 ease-out">
-            <div className="mx-3 mb-3 h-9 rounded-xl bg-primary flex items-center justify-center gap-1.5 text-white text-xs font-black shadow-lg shadow-primary/35">
-              <ShoppingCart className="w-3.5 h-3.5" />
-              اشترِ الآن
-            </div>
-          </div>
-        )}
-      </div>
-    </Link>
+      {/* ── Add-to-cart CTA ────────────────────────────────────────────
+          Real buttons (siblings of the details Link — valid HTML,
+          keyboard-focusable, no nested interactive elements). The old
+          markup was a <div> that looked like a button but the whole
+          card navigated to the product page instead. */}
+      {product.is_available ? (
+        <button
+          type="button"
+          onClick={handleAddToCart}
+          className="mx-3.5 mb-3.5 mt-0 md:hidden h-9 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/25 transition-all cursor-pointer"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" />
+          أضف للسلة
+        </button>
+      ) : (
+        // Mobile: keep card height stable when unavailable by
+        // rendering a static muted bar in place of the buy CTA.
+        // Same h-9 as the active button so the card visual rhythm
+        // is identical across states. Desktop uses a hover-reveal
+        // CTA that's already absent for unavailable products.
+        <div
+          className="mx-3.5 mb-3.5 mt-0 md:hidden h-9 rounded-xl bg-muted/40 border border-border/40 flex items-center justify-center gap-1.5 text-muted-foreground text-xs font-bold"
+          aria-hidden="true"
+        >
+          <Lock className="w-3.5 h-3.5" />
+          نفد المخزون
+        </div>
+      )}
+
+      {product.is_available && (
+        <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 transition-transform duration-220 ease-out">
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            className="mx-3 mb-3 h-9 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/35 transition-all cursor-pointer"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            أضف للسلة
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

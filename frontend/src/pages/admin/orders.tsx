@@ -20,7 +20,6 @@ import {
   Calendar,
   CheckSquare,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Download,
   RefreshCw,
@@ -519,7 +518,7 @@ export default function AdminOrdersPage() {
                     </>
                   ) : (
                     <>
-                      <ChevronRight className="w-3 h-3 rotate-90" /> تغيير الحالة
+                      <ChevronDown className="w-3 h-3" /> تغيير الحالة
                     </>
                   )}
                 </Button>

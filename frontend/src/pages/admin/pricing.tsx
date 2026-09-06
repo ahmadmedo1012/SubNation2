@@ -1,5 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -208,10 +208,18 @@ export default function AdminPricingPage() {
     }
   }
 
-  // Auto-recalculate when any input changes (debounced via React batching)
+  // Auto-recalculate when any input changes — ACTUALLY debounced.
+  // The previous comment claimed React batching debounced this effect,
+  // but batching only coalesces renders, not effect runs: every keystroke
+  // fired a full POST /api/admin/pricing/calculate. 300ms of quiet is
+  // the standard feel for type-ahead server calls.
+  const calculateRef = useRef(calculate);
+  calculateRef.current = calculate;
   useEffect(() => {
-    if (canCalculate) calculate();
-  }, [productId, customPrice, customCost, couponCode, simulateReferred]);
+    if (!canCalculate) return;
+    const t = setTimeout(() => calculateRef.current(), 300);
+    return () => clearTimeout(t);
+  }, [productId, customPrice, customCost, couponCode, simulateReferred, canCalculate]);
 
   if (!adminToken) return null;
 

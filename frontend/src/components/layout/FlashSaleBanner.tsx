@@ -83,8 +83,9 @@ export function FlashSaleBanner() {
           </span>
         </div>
 
-        {/* Center: title — clickable */}
-        <Link href="/" className="flex-1 min-w-0">
+        {/* Center: title — clickable, goes to the flash-sales page so the
+            trailing "go" arrow delivers the destination it promises */}
+        <Link href="/flash-sales" className="flex-1 min-w-0">
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
             <span className="text-primary-text font-black shrink-0">
@@ -122,7 +123,7 @@ export function FlashSaleBanner() {
 
           <button
             onClick={() => setDismissed(true)}
-            className="p-1 rounded-md hover:bg-card/60 text-muted-foreground hover:text-muted-foreground transition-colors"
+            className="-m-1.5 p-2.5 rounded-md hover:bg-card/60 text-muted-foreground hover:text-muted-foreground transition-colors flex items-center justify-center"
             aria-label="إغلاق الشريط"
           >
             <X className="w-3 h-3" />

@@ -530,7 +530,7 @@ function DialogShell({
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border/60 rounded-2xl p-5 w-full max-w-md shadow-xl"
+        className="bg-card border border-border/60 rounded-2xl p-5 w-full max-w-md shadow-xl max-h-[90vh] flex flex-col overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

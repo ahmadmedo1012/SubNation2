@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils";
 
 interface CopyButtonProps {
   text: string;
@@ -11,7 +12,8 @@ export function CopyButton({ text, label = "نسخ", size = "sm" }: CopyButtonPr
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
-    await navigator.clipboard.writeText(text);
+    const ok = await copyToClipboard(text);
+    if (!ok) return; // permission denied — keep "نسخ" state instead of lying
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

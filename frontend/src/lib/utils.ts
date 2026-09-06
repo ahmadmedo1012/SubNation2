@@ -103,3 +103,39 @@ export function formatDateShort(dateStr: string): string {
   if (hours < 48) return formatRelativeTime(dateStr);
   return d.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
 }
+
+/**
+ * Clipboard copy with graceful degradation. navigator.clipboard can be
+ * unavailable (insecure context, permission denied, Firefox strict mode)
+ * — every previous copy site either swallowed the rejection silently or
+ * left the "copied" state stuck. This helper:
+ *   1. tries the async Clipboard API,
+ *   2. falls back to a hidden textarea + document.execCommand("copy")
+ *      for legacy/embedded browsers,
+ *   3. resolves false on failure so callers can surface an error instead
+ *      of failing silently.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.setAttribute("readonly", "");
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}

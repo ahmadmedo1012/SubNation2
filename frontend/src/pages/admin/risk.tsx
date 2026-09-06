@@ -8,6 +8,8 @@
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
+import { TableSkeleton } from "@/components/admin/TableSkeleton";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -226,7 +228,9 @@ export default function AdminRiskPage() {
 
         {/* Empty / loading / error / list */}
         {query.isLoading && (
-          <div className="text-sm text-muted-foreground py-12 text-center">جاري التحميل…</div>
+          <TableSkeleton
+            cells={["w-20 rounded-full", "flex-1", "w-24", "flex-1", "w-14", "w-20", "w-28"]}
+          />
         )}
         {query.isError && (
           <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
@@ -234,70 +238,106 @@ export default function AdminRiskPage() {
           </div>
         )}
         {!query.isLoading && events.length === 0 && (
-          <div className="border border-border/40 rounded-2xl bg-muted/10 p-8 text-center text-sm text-muted-foreground space-y-2">
-            <ShieldCheck className="w-8 h-8 mx-auto text-emerald-500/70" />
-            <div>لا توجد أحداث في النطاق المحدد.</div>
-            <div className="text-xs">
-              لتفعيل خط الأنابيب: اضبط <code dir="ltr">RISK_PIPELINE_ENABLED=true</code> في الخادم
-              ثم انتظر حتى يعالج الخادم طلبات تسجيل الدخول والشحن.
-            </div>
-          </div>
+          <EmptyState
+            icon={ShieldCheck}
+            title="لا توجد أحداث في النطاق المحدد"
+            description="لتفعيل خط الأنابيب: اضبط RISK_PIPELINE_ENABLED=true في الخادم ثم انتظر معالجة طلبات الدخول والشحن."
+          />
         )}
         {events.length > 0 && (
-          <div className="border border-border/40 rounded-2xl overflow-hidden bg-card/60">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 text-right font-bold">المستوى</th>
-                  <th className="px-3 py-2 text-right font-bold">النوع</th>
-                  <th className="px-3 py-2 text-right font-bold">المستخدم</th>
-                  <th className="px-3 py-2 text-right font-bold">القاعدة</th>
-                  <th className="px-3 py-2 text-right font-bold">النقاط</th>
-                  <th className="px-3 py-2 text-right font-bold">الإجراء</th>
-                  <th className="px-3 py-2 text-right font-bold">الوقت</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => {
-                  const tone = LEVEL_META[e.level];
-                  const userLabel =
-                    e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
-                  return (
-                    <tr
-                      key={e.id}
-                      className="border-t border-border/30 hover:bg-muted/30 transition-colors"
-                    >
-                      <td className="px-3 py-2">
+          <>
+            {/* Canonical admin table chrome + horizontal scroll on mobile —
+                previously a bespoke border-border/40 bg-card/60 card with
+                no overflow handling (7 columns crushed at 375px). */}
+            <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[720px]">
+                  <thead className="bg-muted/30 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2.5 text-right font-bold">المستوى</th>
+                      <th className="px-4 py-2.5 text-right font-bold">النوع</th>
+                      <th className="px-4 py-2.5 text-right font-bold">المستخدم</th>
+                      <th className="px-4 py-2.5 text-right font-bold">القاعدة</th>
+                      <th className="px-4 py-2.5 text-right font-bold">النقاط</th>
+                      <th className="px-4 py-2.5 text-right font-bold">الإجراء</th>
+                      <th className="px-4 py-2.5 text-right font-bold">الوقت</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((e, i) => {
+                      const tone = LEVEL_META[e.level];
+                      const userLabel =
+                        e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
+                      return (
+                        <tr
+                          key={e.id}
+                          className={`border-t border-border/30 hover:bg-muted/30 transition-colors ${
+                            i % 2 !== 0 ? "bg-muted/[0.035]" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-2.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone.bg} ${tone.text} ${tone.border}`}
+                            >
+                              {tone.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
+                          <td className="px-4 py-2.5 text-xs">{userLabel}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground">
+                            {e.rule_fired.slice(0, 2).join(", ") || "—"}
+                            {e.rule_fired.length > 2 && ` +${e.rule_fired.length - 2}`}
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-xs">{e.score}</td>
+                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground">
+                            {e.action_taken}
+                          </td>
+                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                            <Link
+                              href={`/admin/risk/events/${e.id}`}
+                              className="text-primary hover:underline"
+                            >
+                              {new Date(e.created_at).toLocaleString("ar-LY")}
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* Mobile card list (parity with orders/users pattern) */}
+            <div className="md:hidden space-y-2.5">
+              {events.map((e) => {
+                const tone = LEVEL_META[e.level];
+                const userLabel =
+                  e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
+                return (
+                  <Link key={e.id} href={`/admin/risk/events/${e.id}`}>
+                    <div className="bg-card border border-border/60 rounded-2xl p-4 hover:border-primary/30 transition-colors">
+                      <div className="flex items-center justify-between gap-2 mb-2">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone.bg} ${tone.text} ${tone.border}`}
                         >
                           {tone.label}
                         </span>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{e.event_type}</td>
-                      <td className="px-3 py-2 text-xs">{userLabel}</td>
-                      <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                        {e.rule_fired.slice(0, 2).join(", ") || "—"}
-                        {e.rule_fired.length > 2 && ` +${e.rule_fired.length - 2}`}
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{e.score}</td>
-                      <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                        {e.action_taken}
-                      </td>
-                      <td className="px-3 py-2 text-[11px] text-muted-foreground whitespace-nowrap">
-                        <Link
-                          href={`/admin/risk/events/${e.id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {new Date(e.created_at).toLocaleString("ar-LY")}
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                          {e.score} نقطة
+                        </span>
+                      </div>
+                      <div className="font-mono text-xs font-bold mb-1">{e.event_type}</div>
+                      <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/30 pt-2">
+                        <span>{e.action_taken}</span>
+                        <span>{new Date(e.created_at).toLocaleString("ar-LY")}</span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </AdminLayout>

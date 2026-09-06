@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   AlertTriangle,
-  ArrowUpRight,
+  ArrowUpLeft,
   BarChart2,
   CheckCircle,
   Clock,
@@ -213,7 +213,7 @@ export default function AdminDashboardPage() {
     request: { headers },
   });
 
-  const { data: recentOrders = [] } = useListAdminOrders(
+  const { data: recentOrders = [], isLoading: recentOrdersLoading } = useListAdminOrders(
     { limit: 8 },
     {
       query: {
@@ -401,7 +401,8 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       {card.sparkKey && <TrendBadge data={chartData} dataKey={card.sparkKey} />}
-                      <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                      {/* RTL: forward/"go to" points left (unified icon-direction decision) */}
+                      <ArrowUpLeft className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
                   </div>
                   <div className="font-black text-xl leading-none mb-0.5 tabular-nums">
@@ -763,7 +764,25 @@ export default function AdminDashboardPage() {
               </Link>
             </div>
             <div className="flex-1 divide-y divide-border/40 overflow-y-auto">
-              {recentOrders.length === 0 ? (
+              {recentOrdersLoading ? (
+                /* Skeleton rows — the "no orders yet" empty state used to
+                   flash before the first fetch resolved. */
+                <div className="space-y-1 p-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-muted skeleton-shimmer shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 bg-muted skeleton-shimmer rounded w-2/5" />
+                        <div className="h-2.5 bg-muted skeleton-shimmer rounded w-1/4" />
+                      </div>
+                      <div className="h-4 bg-muted skeleton-shimmer rounded w-14" />
+                    </div>
+                  ))}
+                </div>
+              ) : recentOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ShoppingBag className="w-8 h-8 mb-2 opacity-20" />
                   <p className="text-sm">لا توجد طلبات بعد</p>

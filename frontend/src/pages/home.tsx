@@ -36,6 +36,7 @@ import {
   Star,
   Truck,
   Tv2,
+  WifiOff,
   Wallet,
   XCircle,
 } from "lucide-react";
@@ -144,6 +145,15 @@ export default function HomePage() {
     }, 320);
   };
 
+  // Clear the pending debounce on unmount — navigating away mid-debounce
+  // used to fire setSearch + a localStorage write for a page already gone.
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+
   const handleSearchHistoryClick = (query: string) => {
     setSearchInput(query);
     setSearch(query);
@@ -161,7 +171,12 @@ export default function HomePage() {
   if (sort) params.sort = sort;
   if (availableOnly) params.available_only = "true";
 
-  const { data: products = [], isLoading } = useListProducts(params, {
+  const {
+    data: products = [],
+    isLoading,
+    isError: productsError,
+    refetch: refetchProducts,
+  } = useListProducts(params, {
     query: {
       queryKey: getListProductsQueryKey(params),
       staleTime: 3 * 60 * 1000, // 3 minutes for products
@@ -175,7 +190,7 @@ export default function HomePage() {
     },
   });
 
-  const { data: user } = useGetMe({
+  const { data: user, isError: userError } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -229,7 +244,11 @@ export default function HomePage() {
       {seoBlock}
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
         {/* ── Hero ─────────────────────────────────────────── */}
-        {token && !user ? (
+        {/* `userError` breaks the infinite skeleton: a failed /me probe
+            (expired session, network) previously left the shimmer hero
+            on screen forever. Show the guest hero instead — a degraded but
+            honest state that still lets the visitor browse the catalog. */}
+        {token && !user && !userError ? (
           <div className="mb-5 page-in">
             <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15 h-[100px] sm:h-[120px] skeleton-shimmer" />
           </div>
@@ -667,6 +686,25 @@ export default function HomePage() {
               <ProductSkeleton key={i} />
             ))}
           </div>
+        ) : productsError ? (
+          /* Distinct from "no results": a failed products API previously
+             rendered the empty-search state — an outage read as "no products
+             match your search", which is actively misleading. */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-3xl float-in shadow-sm shadow-black/8">
+            <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/20 mx-auto mb-4 flex items-center justify-center">
+              <WifiOff className="w-6 h-6 text-status-error/70" />
+            </div>
+            <p className="font-bold text-base mb-1.5 text-foreground">تعذّر تحميل المنتجات</p>
+            <p className="text-sm text-muted-foreground mb-5">
+              حدث خطأ في الاتصال بالخدمة — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <button
+              onClick={() => refetchProducts()}
+              className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
         ) : products.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-3xl float-in shadow-sm shadow-black/8">
             <div className="w-14 h-14 rounded-2xl bg-muted/60 mx-auto mb-4 flex items-center justify-center">
@@ -735,8 +773,11 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Bottom padding for mobile nav */}
-        <div className={`md:h-0 ${token ? "mobile-nav-safe-pad" : "h-6"}`} />
+        {/* Bottom breathing room for guests. Authed users are covered by
+            main's mobile-nav-safe-pad (which reserves the MobileNav
+            clearance) — stacking a second mobile-nav-safe-pad here used to
+            double the pad on mobile AND leak 72px onto desktop. */}
+        {!token && <div className="h-6 md:h-0" />}
       </div>
     </div>
   );

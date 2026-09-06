@@ -1163,7 +1163,7 @@ function AskAnswer({
         <MarkdownLite text={answer} />
         <button
           onClick={handleCopy}
-          className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-secondary text-muted-foreground transition-all"
+          className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-md hover:bg-secondary text-muted-foreground transition-all"
           title="نسخ"
           aria-label="نسخ"
         >

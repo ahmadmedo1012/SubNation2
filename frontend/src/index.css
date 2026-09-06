@@ -1126,26 +1126,42 @@
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
 
-  .mobile-nav-safe-pad {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  /* ── Mobile-only layout utilities ──────────────────────────────────
+     All utilities below are scoped to the breakpoints where their
+     companion elements actually render (MobileNav is `md:hidden`,
+     product sticky bar is `sm:hidden`). Without the media queries a
+     later-defined same-specificity rule silently beats Tailwind's
+     `md:pb-0`/`sm:pb-8` overrides (hand-written utilities are emitted
+     after generated ones) — that shipped a phantom 72px desktop pad
+     on every authed page. Scoping here makes the utilities and the
+     Tailwind responsive overrides agree at every viewport. */
+  @media (max-width: 767.98px) {
+    .mobile-nav-safe-pad {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
   }
 
-  .mobile-sticky-above-nav {
-    bottom: calc(60px + env(safe-area-inset-bottom));
-  }
+  @media (max-width: 639.98px) {
+    .mobile-sticky-above-nav {
+      bottom: calc(60px + env(safe-area-inset-bottom));
+    }
 
-  .mobile-sticky-bottom-safe {
-    bottom: 0;
-    padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
-  }
+    .mobile-sticky-bottom-safe {
+      bottom: 0;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+    }
 
-  /* Product page body padding: sticky bar (~68px) + nav (60px) + safe-area */
-  .mobile-product-pad-auth {
-    padding-bottom: calc(68px + 60px + env(safe-area-inset-bottom) + 0.5rem);
-  }
-  /* Guest: sticky bar (~68px) + safe-area, no nav */
-  .mobile-product-pad-guest {
-    padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem);
+    /* Product page body padding. `main` already reserves the MobileNav
+       clearance via mobile-nav-safe-pad (72px ≥ 60px nav), so the auth
+       variant only needs the sticky buy bar height + breathing room —
+       the old 68+60 stack double-counted the nav (~76px of dead space). */
+    .mobile-product-pad-auth {
+      padding-bottom: calc(68px + 0.5rem);
+    }
+    /* Guest: sticky bar (~68px) + safe-area, no nav (main is unpadded) */
+    .mobile-product-pad-guest {
+      padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem);
+    }
   }
 }
 

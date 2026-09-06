@@ -2,25 +2,52 @@ import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
 import { formatCurrency } from "@/lib/utils";
 import { useListProducts, type Product } from "@workspace/api-client-react";
-import { Flame, Loader2, Clock, Sparkles, Tag } from "lucide-react";
+import { Flame, Clock, Sparkles, Tag, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
 const STAGGER = ["", "stagger-1", "stagger-2", "stagger-3", "stagger-4"];
 
-function useCountdown(target: Date | null) {
-  const [remaining, setRemaining] = useState<number>(0);
+interface Countdown {
+  h: number;
+  m: number;
+  s: number;
+  expired: boolean;
+}
+
+/**
+ * Single page-level countdown. The previous design called useCountdown
+ * once PER CARD (N timers for N cards, all ticking on the same end time)
+ * and kept firing setInterval forever after expiry (perpetual re-render
+ * loop). One timer + a hard stop at zero.
+ */
+function useCountdown(target: Date | null): Countdown {
+  const [remaining, setRemaining] = useState<number>(() =>
+    target ? Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000)) : 0,
+  );
 
   useEffect(() => {
     if (!target) return;
     const endTime = target.getTime();
-    function tick() {
-      const ms = endTime - Date.now();
-      setRemaining(Math.max(0, Math.floor(ms / 1000)));
-    }
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | undefined;
+    const start = () => {
+      id = setInterval(() => {
+        const ms = endTime - Date.now();
+        if (ms <= 0) {
+          // Expired: stop the timer instead of re-setting 0 every second.
+          setRemaining(0);
+          if (id) clearInterval(id);
+          return;
+        }
+        setRemaining(Math.floor(ms / 1000));
+      }, 1000);
+    };
+    const ms = endTime - Date.now();
+    setRemaining(Math.max(0, Math.floor(ms / 1000)));
+    if (ms > 0) start();
+    return () => {
+      if (id) clearInterval(id);
+    };
   }, [target]);
 
   if (!target) return { h: 0, m: 0, s: 0, expired: true };
@@ -32,14 +59,15 @@ function useCountdown(target: Date | null) {
 
 function FlashCard({
   product,
-  endsAt,
+  countdown,
   stagger,
 }: {
   product: Product;
-  endsAt: Date | null;
+  countdown: Countdown;
   stagger: string;
 }) {
-  const { h, m, s, expired } = useCountdown(endsAt);
+  const { expired } = countdown;
+  const { h, m, s } = countdown;
 
   const salePrice = product.sale_price ?? product.price;
   const discount = product.discount_percent ?? 0;
@@ -51,7 +79,7 @@ function FlashCard({
       : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 
   return (
-    <Link href={product.slug ? `/product/${product.slug}` : "/"}>
+    <Link href={product.slug ? `/product/${product.slug}` : `/product/${product.id}`}>
       <div
         className={`float-in ${stagger}
           bg-card border border-border/60 rounded-2xl overflow-hidden
@@ -81,8 +109,8 @@ function FlashCard({
             </div>
           )}
 
-          {endsAt && !expired && (
-            <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-[11px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5">
+          {!expired && (
+            <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-[11px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
               <Clock className="w-3 h-3 text-status-warning" />
               {timeLabel}
             </div>
@@ -122,7 +150,7 @@ export default function FlashSalesPage() {
     robots: "index,follow",
   });
 
-  const { data: products = [], isLoading } = useListProducts({});
+  const { data: products = [], isLoading, isError, refetch } = useListProducts({});
 
   // Products with a flash-sale price are considered "on sale"
   const onSale = useMemo(() => {
@@ -149,8 +177,11 @@ export default function FlashSalesPage() {
     return end;
   }, [onSale.length]);
 
+  // ONE countdown for the whole page (all cards share the same endsAt).
+  const countdown = useCountdown(endsAt);
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="text-center mb-9 page-in">
         <div className="relative w-16 h-16 mx-auto mb-5">
@@ -175,6 +206,24 @@ export default function FlashSalesPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : isError ? (
+        /* Distinct from "no offers": an API outage previously rendered the
+           empty state — misleading during incidents. */
+        <div className="text-center py-20 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-status-error/70" />
+          </div>
+          <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
+          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+          </p>
+          <Button
+            onClick={() => refetch()}
+            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+          >
+            إعادة المحاولة
+          </Button>
         </div>
       ) : onSale.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
@@ -202,7 +251,7 @@ export default function FlashSalesPage() {
               <FlashCard
                 key={p.id}
                 product={p}
-                endsAt={endsAt}
+                countdown={countdown}
                 stagger={STAGGER[i % STAGGER.length]}
               />
             ))}

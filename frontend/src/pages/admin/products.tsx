@@ -82,6 +82,7 @@ function InlineStockEdit({
   onDone: () => void;
 }) {
   const jsonHeaders = useAdminHeaders({ json: true });
+  const { toast } = useToast();
   const [val, setVal] = useState(String(current));
   const [saving, setSaving] = useState(false);
 
@@ -92,13 +93,29 @@ function InlineStockEdit({
       return;
     }
     setSaving(true);
-    await fetch(`/api/admin/products/${productId}/inventory/set-count`, {
-      method: "POST",
-      headers: jsonHeaders,
-      body: JSON.stringify({ count: n }),
-    }).catch(() => {});
-    setSaving(false);
-    onDone();
+    try {
+      // Stock edits are money-adjacent: a silent catch() here meant a
+      // failed save looked identical to a successful one.
+      const res = await fetch(`/api/admin/products/${productId}/inventory/set-count`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ count: n }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        throw new Error(err.error ?? err.message ?? `فشل الحفظ (${res.status})`);
+      }
+      toast({ title: "تم تحديث المخزون", variant: "success" });
+    } catch (e) {
+      toast({
+        title: "تعذّر تحديث المخزون",
+        description: e instanceof Error ? e.message : "خطأ غير معروف",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+      onDone();
+    }
   };
 
   return (

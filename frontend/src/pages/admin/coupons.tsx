@@ -247,7 +247,7 @@ export default function AdminCouponsPage() {
             className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-center justify-center px-4"
             onClick={(e) => e.target === e.currentTarget && setShowCreate(false)}
           >
-            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md float-in">
+            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md float-in max-h-[90vh] flex flex-col">
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border">
                 <h2 className="font-black text-sm flex items-center gap-2">
@@ -264,7 +264,7 @@ export default function AdminCouponsPage() {
                 </button>
               </div>
 
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 overflow-y-auto">
                 {/* Code */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold">رمز الكوبون</Label>

@@ -3,9 +3,10 @@ import { Input } from "@/components/ui/input";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useCart } from "@/lib/cart";
 import { getErrorMessage } from "@/lib/errors";
 import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
-import { categoryLabel, formatCurrency } from "@/lib/utils";
+import { categoryLabel, copyToClipboard, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getGetMeQueryKey,
@@ -29,6 +30,7 @@ import {
   Loader2,
   Lock,
   Package,
+  PlusCircle,
   ShieldCheck,
   ShoppingCart,
   Tag,
@@ -78,11 +80,11 @@ const TRUST_SIGNALS = [
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    });
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(value);
+    if (!ok) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   };
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -114,6 +116,7 @@ export default function ProductPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { addItem } = useCart();
   const [orderResult, setOrderResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [couponInput, setCouponInput] = useState("");
@@ -177,6 +180,12 @@ export default function ProductPage() {
     | (typeof byIdQuery.data & { slug?: string | null })
     | undefined;
   const isLoading = isLegacyNumeric ? byIdQuery.isLoading : bySlugQuery.isLoading;
+  const isError = isLegacyNumeric ? byIdQuery.isError : bySlugQuery.isError;
+  const refetchProduct = isLegacyNumeric ? byIdQuery.refetch : bySlugQuery.refetch;
+  // A 404 is a genuine "product not found"; any other error is an
+  // outage/connection failure that deserves its own state (below).
+  const fetchError = isLegacyNumeric ? byIdQuery.error : bySlugQuery.error;
+  const isNotFoundError = isError && (fetchError as { status?: number } | null)?.status === 404;
 
   // After a numeric-id fetch resolves and the product carries a slug,
   // rewrite the URL to the canonical slug form via history.replaceState.
@@ -246,8 +255,31 @@ export default function ProductPage() {
     setCouponError("");
   };
 
-  const copyField = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => toast({ title: `تم نسخ ${label}` }));
+  const copyField = async (text: string, label: string) => {
+    const ok = await copyToClipboard(text);
+    toast({
+      title: ok ? `تم نسخ ${label}` : `تعذّر نسخ ${label}`,
+      variant: ok ? "default" : "destructive",
+    });
+  };
+
+  // Add current product (at its effective post-coupon price context is
+  // revalidated at checkout) to the local cart — the multi-item funnel.
+  const handleAddToCart = () => {
+    if (!product) return;
+    addItem({
+      productId: product.id,
+      slug: product.slug ?? null,
+      name: product.name ?? "",
+      imageUrl: product.image_url ?? null,
+      priceLYD: product.price,
+      salePriceLYD: product.sale_price ?? null,
+      discountPercent: product.discount_percent ?? null,
+    });
+    toast({
+      title: "أُضيف إلى السلة",
+      description: product.name ?? undefined,
+    });
   };
 
   // SEO — called unconditionally (before the loading/not-found early
@@ -327,6 +359,33 @@ export default function ProductPage() {
             <div className="h-20 bg-muted skeleton-shimmer rounded-xl" />
             <div className="h-12 bg-muted skeleton-shimmer rounded-xl" />
           </div>
+        </div>
+      </div>
+    );
+
+  if (isError && !isLoading && !isNotFoundError)
+    /* Distinguish a network/server failure from a real 404 — both used to
+       render "المنتج غير موجود", which hides outages from shoppers. */
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center text-muted-foreground">
+        <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
+          <Package className="w-7 h-7 text-status-error/70" />
+        </div>
+        <p className="font-bold mb-1 text-foreground/80">تعذّر تحميل المنتج</p>
+        <p className="text-sm mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة</p>
+        <div className="flex items-center justify-center gap-2.5">
+          <button
+            onClick={() => refetchProduct()}
+            className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+          >
+            إعادة المحاولة
+          </button>
+          <button
+            onClick={() => navigate("/")}
+            className="text-sm text-muted-foreground hover:text-foreground border border-border/50 px-5 py-2 rounded-xl transition-colors press-spring"
+          >
+            العودة للكتالوج
+          </button>
         </div>
       </div>
     );
@@ -666,6 +725,7 @@ export default function ProductPage() {
                   },
                 });
               }}
+              onAddToCart={handleAddToCart}
               onLogin={() =>
                 // Pass buy-intent context so /login can render the
                 // "complete your purchase of X" banner instead of the
@@ -791,7 +851,9 @@ function CouponField({
               if (couponResult) onCouponClear();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !couponResult) onCouponValidate();
+              // Gate on `couponValidating` too — a double-Enter during an
+              // in-flight validate used to fire a second POST.
+              if (e.key === "Enter" && !couponResult && !couponValidating) onCouponValidate();
             }}
             placeholder="رمز الكوبون"
             className="pr-9 h-9 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
@@ -801,6 +863,7 @@ function CouponField({
         {couponResult ? (
           <button
             onClick={onCouponClear}
+            aria-label="إزالة الكوبون"
             className="h-9 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
           >
             <X className="w-3.5 h-3.5" />
@@ -856,6 +919,7 @@ function CtaBlock({
   shortfall,
   isPending,
   onBuy,
+  onAddToCart,
   onLogin,
   onWallet,
   compact,
@@ -875,6 +939,7 @@ function CtaBlock({
   shortfall: number;
   isPending: boolean;
   onBuy: () => void;
+  onAddToCart?: () => void;
   onLogin: () => void;
   onWallet: () => void;
   compact?: boolean;
@@ -1056,6 +1121,18 @@ function CtaBlock({
             ? "اشترِ"
             : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
       </Button>
+      {/* Secondary path: multi-item funnel. Only in the full (non-sticky)
+          CTA — the compact sticky bar stays a single direct action. */}
+      {!compact && onAddToCart && product.is_available && (
+        <Button
+          onClick={onAddToCart}
+          variant="outline"
+          className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
+        >
+          <PlusCircle className="w-4 h-4" />
+          أضف للسلة — أكمل الشراء مع منتجات أخرى
+        </Button>
+      )}
       {/* Reassurance: tells the user exactly what will be deducted and
           what's left after — eliminates a hesitation moment where users
           tap and pause to mentally calculate "wait, will I still have

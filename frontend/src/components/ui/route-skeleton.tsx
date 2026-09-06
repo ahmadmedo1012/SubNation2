@@ -17,7 +17,15 @@ import { cn } from "@/lib/utils";
  * All shells use `skeleton-shimmer` so they share the brand-tinted
  * sweep introduced in the theme polish pass.
  */
-export type RouteSkeletonShape = "catalog" | "list" | "detail" | "form" | "admin" | "blank";
+export type RouteSkeletonShape =
+  | "catalog"
+  | "list"
+  | "detail"
+  | "form"
+  | "admin"
+  | "blank"
+  | "product"
+  | "order";
 
 interface RouteSkeletonProps {
   shape?: RouteSkeletonShape;
@@ -38,6 +46,8 @@ export function RouteSkeleton({ shape = "blank", className }: RouteSkeletonProps
       {shape === "form" && <FormShell />}
       {shape === "admin" && <AdminShell />}
       {shape === "blank" && <BlankShell />}
+      {shape === "product" && <ProductShell />}
+      {shape === "order" && <OrderShell />}
     </div>
   );
 }
@@ -125,6 +135,61 @@ function DetailShell() {
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-24 rounded-2xl skeleton-shimmer" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Product-page shell. Mirrors pages/product.tsx exactly — max-w-xl
+ * container, 16:9 media area inside a card, price/CTA row, then the
+ * trust/sections stack — so the chunk-load swap causes zero horizontal
+ * reflow (the generic DetailShell at max-w-4xl used to shift the layout
+ * by 256px on this highest-traffic page).
+ */
+function ProductShell() {
+  return (
+    <div className="max-w-xl mx-auto px-4 py-6">
+      <div className="h-5 w-28 skeleton-shimmer rounded-lg mb-5" />
+      <div className="bg-card border border-border/55 rounded-2xl overflow-hidden">
+        <div className="aspect-[16/9] skeleton-shimmer" />
+        <div className="p-5 space-y-3">
+          <div className="h-6 skeleton-shimmer rounded-lg w-3/4" />
+          <div className="h-4 skeleton-shimmer rounded w-full" />
+          <div className="h-4 skeleton-shimmer rounded w-2/3" />
+          <div className="pt-4 mt-2 flex justify-between items-center border-t border-border/25">
+            <div className="h-7 w-24 skeleton-shimmer rounded-lg" />
+            <div className="h-11 w-36 skeleton-shimmer rounded-xl" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 space-y-2.5">
+        <div className="h-4 w-40 skeleton-shimmer rounded-lg" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-16 rounded-2xl skeleton-shimmer" style={{ animationDelay: `${i * 40}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Order-detail shell. Mirrors pages/order-detail.tsx — max-w-2xl,
+ * status hero strip + stacked timeline rows.
+ */
+function OrderShell() {
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="h-7 w-48 skeleton-shimmer rounded-lg mb-4" />
+      <div className="h-20 rounded-2xl skeleton-shimmer mb-5" />
+      <div className="space-y-2.5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-16 rounded-2xl skeleton-shimmer"
+            style={{ animationDelay: `${i * 40}ms` }}
+          />
         ))}
       </div>
     </div>

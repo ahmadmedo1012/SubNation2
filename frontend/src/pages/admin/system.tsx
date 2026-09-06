@@ -9,6 +9,7 @@ import {
   Box,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   Clock,
   Cpu,
   Database,
@@ -1429,7 +1430,8 @@ export default function AdminSystemPage(): ReactElement | null {
             <h2 className="text-sm font-bold">آخر التنبيهات</h2>
             <Link href="/admin/alerts">
               <span className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
-                عرض الكل ←
+                {/* RTL: forward link arrow points left (unified icon-direction decision) */}
+                عرض الكل <ChevronLeft className="w-3 h-3 inline" />
               </span>
             </Link>
           </div>

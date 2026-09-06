@@ -8,7 +8,7 @@ import {
   useListProducts,
   type Product,
 } from "@workspace/api-client-react";
-import { Briefcase, ChevronLeft, Gamepad2, Music2, Tv2 } from "lucide-react";
+import { Briefcase, ChevronLeft, Gamepad2, Music2, Tv2, WifiOff } from "lucide-react";
 import { useMemo, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
@@ -99,7 +99,12 @@ export default function CategoryPage() {
   // ProductCard's mute treatment + 'نفد المخزون' badge handle the
   // visual differentiation; an empty category page would be a soft-404.
   const params = meta ? { category: meta.slug } : {};
-  const { data: products = [], isLoading } = useListProducts(params, {
+  const {
+    data: products = [],
+    isLoading,
+    isError: productsError,
+    refetch: refetchProducts,
+  } = useListProducts(params, {
     query: {
       queryKey: getListProductsQueryKey(params),
       enabled: !!meta,
@@ -160,7 +165,8 @@ export default function CategoryPage() {
           href="/"
           className="inline-flex items-center gap-1.5 text-primary-text font-bold hover:text-primary transition-colors press-spring"
         >
-          <ChevronLeft className="w-4 h-4" />
+          {/* RTL: "back" points right (unified icon-direction decision) */}
+          <ChevronLeft className="w-4 h-4 rotate-180" />
           العودة للرئيسية
         </Link>
       </div>
@@ -230,6 +236,20 @@ export default function CategoryPage() {
               <ProductCardShell key={i} />
             ))}
           </div>
+        ) : productsError ? (
+          /* Distinct from "no products": an outage previously rendered the
+             empty-category state — misleading during API incidents. */
+          <div className="bg-card border border-status-error/22 rounded-2xl py-12 text-center float-in">
+            <WifiOff className="w-6 h-6 text-status-error/70 mx-auto mb-3" />
+            <p className="font-bold mb-2 text-foreground/80">تعذّر تحميل منتجات الفئة</p>
+            <p className="text-sm text-muted-foreground mb-5">حدث خطأ في الاتصال — أعد المحاولة</p>
+            <button
+              onClick={() => refetchProducts()}
+              className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
         ) : products.length === 0 ? (
           <div className="bg-card border border-border/55 rounded-2xl py-12 text-center float-in">
             <p className="font-bold mb-2 text-foreground/80">لا توجد منتجات في هذه الفئة حالياً.</p>
@@ -237,7 +257,7 @@ export default function CategoryPage() {
               href="/"
               className="text-primary-text text-sm font-bold hover:text-primary transition-colors press-spring"
             >
-              تصفّح كل المنتجات →
+              تصفّح كل المنتجات <ChevronLeft className="w-3 h-3 inline" />
             </Link>
           </div>
         ) : (

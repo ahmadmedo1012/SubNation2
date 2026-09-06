@@ -349,7 +349,10 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const { data: topups = [] } = useListTopups({
+  const {
+    data: topups = [],
+    isLoading: topupsLoading,
+  } = useListTopups({
     query: { enabled: !!token, queryKey: getListTopupsQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -990,7 +993,25 @@ export default function WalletPage() {
               )}
             </div>
 
-            {topups.length === 0 ? (
+            {topupsLoading ? (
+              /* Ledger skeleton — prevents the "no topups yet" empty state
+                 from flashing during the initial fetch. */
+              <div className="space-y-2.5">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4 flex items-center gap-4"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-muted skeleton-shimmer rounded-lg w-2/5" />
+                      <div className="h-3 bg-muted skeleton-shimmer rounded w-1/3" />
+                    </div>
+                    <div className="h-5 bg-muted skeleton-shimmer rounded-full w-16 shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : topups.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-7 h-7 opacity-25" />

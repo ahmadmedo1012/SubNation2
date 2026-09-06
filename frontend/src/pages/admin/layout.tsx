@@ -27,6 +27,7 @@ import {
   Search,
   Settings,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
@@ -92,6 +93,10 @@ const NAV_SECTIONS = [
     items: [
       { href: "/admin/admins", label: "إدارة المسؤولين", icon: ShieldCheck, scope: "admins" },
       { href: "/admin/risk", label: "مراقبة المخاطر", icon: Shield, scope: "users" },
+      // /admin/security was routed + titled but missing from the nav —
+      // URL-only access for a security page is the worst place for an
+      // orphan route.
+      { href: "/admin/security", label: "سجل الأمان", icon: ShieldAlert, scope: "admins" },
       { href: "/admin/system", label: "حالة النظام", icon: Activity, scope: "settings" },
       { href: "/admin/whatsapp", label: "جلسة واتساب", icon: QrCode, scope: "settings" },
       { href: "/admin/settings", label: "الإعدادات", icon: Settings },
@@ -107,6 +112,7 @@ type NavItemShape = (typeof NAV_SECTIONS)[number]["items"][number];
 function NavItem({
   item,
   location,
+  activeHref,
   badge,
   collapsed,
   contextActions,
@@ -114,12 +120,16 @@ function NavItem({
 }: {
   item: NavItemShape;
   location: string;
+  /** Longest-prefix-matching nav href for the current location — see
+      computeActiveHref in AdminLayout. Exact `location === item.href`
+      matching left detail routes (risk-event, enrichment) unlit. */
+  activeHref: string;
   badge: number | undefined;
   collapsed: boolean;
   contextActions: { label: string; icon: React.ElementType; href: string }[];
   onNavigate: () => void;
 }) {
-  const active = location === item.href;
+  const active = item.href === activeHref;
   return (
     <div>
       <Link href={item.href} onClick={onNavigate}>
@@ -175,6 +185,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/topups": "طلبات الشحن",
   "/admin/orders": "الطلبات",
   "/admin/products": "المنتجات",
+  "/admin/products/enrichment": "مراجعة المحتوى",
   "/admin/pricing": "حاسبة الأسعار",
   "/admin/users": "المستخدمون",
   "/admin/tickets": "الدعم الفني",
@@ -187,7 +198,31 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/system": "حالة النظام",
   "/admin/whatsapp": "جلسة واتساب",
   "/admin/admins": "إدارة المسؤولين",
+  "/admin/risk": "مراقبة المخاطر",
 };
+
+/** Detail-route title fallbacks (no exact PAGE_TITLES entry possible). */
+function pageTitleFor(location: string): string {
+  if (PAGE_TITLES[location]) return PAGE_TITLES[location];
+  if (location.startsWith("/admin/risk/events/")) return "تفاصيل الحدث — مراقبة المخاطر";
+  return "الإدارة";
+}
+
+/**
+ * Longest-prefix match across all nav hrefs: the most specific nav item
+ * stays highlighted on detail/sub routes (e.g. /admin/risk/events/:id
+ * lights up مراقبة المخاطر, /admin/products/enrichment lights up its own
+ * entry rather than المنتجات). Exact-match only used to leave these
+ * routes dark.
+ */
+const ALL_NAV_HREFS = NAV_SECTIONS.flatMap((s) => s.items.map((i) => i.href));
+function computeActiveHref(location: string): string {
+  const matches = ALL_NAV_HREFS.filter(
+    (h) => h === location || location.startsWith(h + "/"),
+  );
+  if (matches.length === 0) return location;
+  return matches.sort((a, b) => b.length - a.length)[0];
+}
 
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; href: string }[]> =
   {
@@ -519,7 +554,8 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       : secondsAgo < 60
         ? `${secondsAgo}ث`
         : `${Math.round(secondsAgo / 60)}د`;
-  const pageTitle = PAGE_TITLES[location] ?? "الإدارة";
+  const pageTitle = pageTitleFor(location);
+  const activeHref = computeActiveHref(location);
   const totalBadges =
     (mergedBadges.pendingTopups ?? 0) +
     (mergedBadges.openTickets ?? 0) +
@@ -590,6 +626,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
                     key={item.href}
                     item={item}
                     location={location}
+                    activeHref={activeHref}
                     badge={
                       item.badgeKey
                         ? (mergedBadges as Record<string, number>)?.[item.badgeKey]
