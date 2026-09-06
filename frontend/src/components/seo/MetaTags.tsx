@@ -1,5 +1,4 @@
-import { type ReactElement } from "react";
-import { Helmet } from "react-helmet-async";
+import { useEffect } from "react";
 
 export interface SeoInput {
   /** ≤ 60 chars title shown in `<title>` and og:title */
@@ -10,20 +9,46 @@ export interface SeoInput {
   image?: string;
   /** OpenGraph type — defaults to "website"; "product" for product detail */
   type?: "website" | "product" | "article";
-  /** Public path for canonical link, e.g. "/" or "/product/42" */
+  /** Public path for the canonical link, e.g. "/" or "/product/42" */
   path: string;
   /** Locale code: "ar" forces dir=rtl + og:locale=ar_LY */
   locale?: "ar" | "en";
   /** Optional robots directive override */
   robots?: string;
+  /** App-level default instance: only applies when no page-level SEO is active */
+  fallback?: boolean;
   /** Optional JSON-LD blocks rendered by JsonLd component */
   jsonLd?: object[];
 }
 
-// V3-A5: /opengraph.jpg (1280x720, 1.91:1) ships in dist but was never
-// referenced — the 1536x1024 logo PNG gets center-cropped in WhatsApp /
-// Telegram / X previews.
+// V3-A1 (SEO audit 2026-09-06): react-helmet-async does not reliably
+// apply page-level <head> changes under React 19 — the production build
+// rendered 3× <title>, 2× canonical and never replaced the static
+// index.html tags (verified live in headless Chromium). This component
+// now manages document.head DIRECTLY:
+//
+//   - update-in-place semantics (upsert by selector) — duplicates are
+//     collapsed instead of accumulated, which also fixes the
+//     "more than one title tag" Lighthouse failure at the root;
+//   - single-slot ownership: the most recently mounted page-level
+//     instance owns the head; an App-level `fallback` instance applies
+//     only when no page-level SEO is active, and re-applies whenever a
+//     page unmounts (leaving an SEO-less route with a clean default);
+//   - child-before-parent effect ordering (React guarantees) makes the
+//     page's tags win over the App default on the same commit.
+//
+// Trusted Types / CSP: only attribute writes and <meta>/<link>/<script
+// type="application/ld+json"> creation — no inline executable script.
+
 const DEFAULT_IMAGE = "/opengraph.jpg";
+
+/** Ownership epoch — 0 means "no page-level SEO active". */
+let pageOwnerEpoch = 0;
+const fallbackListeners = new Set<() => void>();
+
+function notifyFallback(): void {
+  for (const fn of fallbackListeners) fn();
+}
 
 function getAppOrigin(): string {
   // Vite-injected build-time origin, falling back to runtime origin.
@@ -37,14 +62,40 @@ function clamp(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)).trim() + "…";
 }
 
+function upsertMeta(selector: string, attr: "name" | "property", key: string, content: string): void {
+  let el = document.head.querySelector<HTMLMetaElement>(selector);
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute(attr, key);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+
+function upsertLink(rel: string, href: string): void {
+  let el = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (!el) {
+    el = document.createElement("link");
+    el.setAttribute("rel", rel);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href", href);
+}
+
+function setTitle(title: string): void {
+  document.title = title;
+  // Collapse any duplicate <title> elements (the static index.html one
+  // plus whatever history left behind) — only the first is honored.
+  const titles = document.head.querySelectorAll("title");
+  titles.forEach((t, i) => {
+    if (i > 0) t.remove();
+  });
+}
+
 /**
  * Renders the canonical SEO `<head>` block for a route.
- *
- * Trusted Types policy: this component never renders an inline `<script>` —
- * only `<meta>`, `<link>`, `<title>`, and `<html>` attribute mutations through
- * react-helmet-async, which is CSP-safe.
  */
-export function MetaTags(input: Omit<SeoInput, "jsonLd">): ReactElement {
+export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const origin = getAppOrigin();
   const url = `${origin}${input.path.startsWith("/") ? input.path : "/" + input.path}`;
   const image = input.image ?? `${origin}${DEFAULT_IMAGE}`;
@@ -53,40 +104,59 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): ReactElement {
   const ogLocaleAlt = lang === "ar" ? "en_US" : "ar_LY";
   const title = clamp(input.title.trim(), 60);
   const description = clamp(input.description.trim(), 160);
+  const robots = input.robots ?? "index,follow";
+  const ogType = input.type ?? "website";
+  const isFallback = input.fallback === true;
 
-  return (
-    <Helmet>
-      {/*
-        NOTE: We intentionally do NOT declare `<html lang dir>` here.
-        react-helmet-async strips attributes it declared on unmount,
-        which caused the document direction to flip on every route
-        change that left a SEO-aware page. Document direction is now
-        locked once at App boot via `lib/direction.ts`. The static
-        `<html lang="ar" dir="rtl">` from index.html provides the
-        baseline; the boot effect re-confirms it.
-      */}
-      <title>{title}</title>
-      <meta name="description" content={description} />
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="theme-color" content="#e11d48" />
-      <meta name="robots" content={input.robots ?? "index,follow"} />
-      <link rel="canonical" href={url} />
+  const apply = (): void => {
+    setTitle(title);
+    upsertMeta('meta[name="description"]', "name", "description", description);
+    upsertMeta('meta[name="viewport"]', "name", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
+    upsertMeta('meta[name="theme-color"]', "name", "theme-color", "#e11d48");
+    upsertMeta('meta[name="robots"]', "name", "robots", robots);
+    upsertLink("canonical", url);
 
-      {/* OpenGraph */}
-      <meta property="og:title" content={title} />
-      <meta property="og:description" content={description} />
-      <meta property="og:type" content={input.type ?? "website"} />
-      <meta property="og:url" content={url} />
-      <meta property="og:image" content={image} />
-      <meta property="og:locale" content={ogLocale} />
-      <meta property="og:locale:alternate" content={ogLocaleAlt} />
-      <meta property="og:site_name" content="SubNation" />
+    upsertMeta('meta[property="og:title"]', "property", "og:title", title);
+    upsertMeta('meta[property="og:description"]', "property", "og:description", description);
+    upsertMeta('meta[property="og:type"]', "property", "og:type", ogType);
+    upsertMeta('meta[property="og:url"]', "property", "og:url", url);
+    upsertMeta('meta[property="og:image"]', "property", "og:image", image);
+    upsertMeta('meta[property="og:locale"]', "property", "og:locale", ogLocale);
+    upsertMeta('meta[property="og:locale:alternate"]', "property", "og:locale:alternate", ogLocaleAlt);
+    upsertMeta('meta[property="og:site_name"]', "property", "og:site_name", "SubNation");
 
-      {/* Twitter Card */}
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={title} />
-      <meta name="twitter:description" content={description} />
-      <meta name="twitter:image" content={image} />
-    </Helmet>
-  );
+    upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
+    upsertMeta('meta[name="twitter:title"]', "name", "twitter:title", title);
+    upsertMeta('meta[name="twitter:description"]', "name", "twitter:description", description);
+    upsertMeta('meta[name="twitter:image"]', "name", "twitter:image", image);
+  };
+
+  useEffect(() => {
+    if (isFallback) {
+      // App-level default: apply only when no page-level SEO owns the
+      // head; re-apply whenever a page-level block unmounts.
+      const conditionalApply = () => {
+        if (pageOwnerEpoch === 0) apply();
+      };
+      fallbackListeners.add(conditionalApply);
+      conditionalApply();
+      return () => {
+        fallbackListeners.delete(conditionalApply);
+      };
+    }
+
+    // Page-level: claim ownership and write. If another page-level block
+    // mounts later (route change), it claims a newer epoch and ours
+    // silently stops mattering.
+    const epoch = ++pageOwnerEpoch;
+    apply();
+    return () => {
+      if (pageOwnerEpoch === epoch) {
+        pageOwnerEpoch = 0;
+        notifyFallback();
+      }
+    };
+  }, [title, description, url, image, robots, ogType, ogLocale, isFallback]);
+
+  return null;
 }

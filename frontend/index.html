@@ -12,18 +12,16 @@
          VITE_GSC_VERIFICATION is unset, the meta is emitted with
          content="" — harmless, ignored by Search Console. When set,
          the operator's token appears here. -->
-    <!-- ── Why data-rh="true" on the SEO tags below ───────────────────
-         react-helmet-async tracks the tags it owns via the data-rh
-         attribute. On a route that uses useSeo()/MetaTags, Helmet
-         renders fresh <title>/<meta name="description">/<meta og:*>
-         tags into <head>. Without data-rh on the static defaults,
-         the static tags would remain AND Helmet would append its own,
-         shipping two of each — which Lighthouse / SEO crawlers flag
-         as "more than one title tag" and "more than one description
-         tag". Marking the statics as Helmet-managed lets Helmet
-         replace them in place. Tags without data-rh (charset, icons,
-         preconnect, manifest…) are left alone because MetaTags never
-         renders them. -->
+    <!-- ── Static SEO defaults ────────────────────────────────────────
+         These are the no-JS baseline (non-rendering crawlers, link
+         unfurlers). At runtime MetaTags (components/seo/MetaTags.tsx)
+         upserts each of these IN PLACE by selector — one <title>, one
+         description, one og set — so no duplicates ever ship (V3-A1:
+         react-helmet-async tripled these under React 19 and was
+         removed). The legacy data-rh attributes are inert markers
+         kept only for cache-busting safety. -->
+    <meta data-rh="true" name="robots" content="index,follow" />
+    <meta data-rh="true" property="og:image" content="/opengraph.jpg" />
     <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
     <meta
       data-rh="true"
