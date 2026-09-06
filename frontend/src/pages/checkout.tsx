@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
+import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag, Wallet, X } from "lucide-react";
@@ -38,6 +40,13 @@ function formatBalance(value: number | null | undefined): string {
  * wallet was charged anyway. Removing the fake option is the honest UX.
  */
 export default function CheckoutPage() {
+  // V3-A2: transactional funnel — never index (robots.txt also Disallows).
+  useSeo({
+    title: "إتمام الطلب — SubNation",
+    description: "أكمل عملية الدفع من محفظة SubNation.",
+    path: "/checkout",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -135,9 +144,16 @@ export default function CheckoutPage() {
         for (let unit = 0; unit < unitsWanted; unit++) {
           const body: Record<string, unknown> = { product_id: it.productId };
           if (coupon.trim()) body.coupon_code = coupon.trim();
+          // V4-P0: one fresh Idempotency-Key PER UNIT ORDER — a network
+          // retry or double-click of this exact unit replays the cached
+          // server response instead of charging the wallet twice, while
+          // different units (and a NEW confirm click) stay distinct.
           const res = await fetch("/api/orders", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": generateIdempotencyKey(),
+            },
             credentials: "include",
             body: JSON.stringify(body),
           });

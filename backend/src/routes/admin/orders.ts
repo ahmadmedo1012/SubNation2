@@ -22,6 +22,23 @@ router.get("/orders", requireAdmin, async (req, res) => {
   const conditions =
     status && typeof status === "string" ? [eq(ordersTable.status, status as any)] : [];
 
+  // V4: the admin command palette sends ?search= — previously ignored
+  // (silently unfiltered results). Match order code, user phone/email/
+  // name, or product name (case-insensitive).
+  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  if (search.length > 0) {
+    const like = `%${search.toLowerCase()}%`;
+    conditions.push(
+      sql`(
+        LOWER(${ordersTable.orderCode}) LIKE ${like}
+        OR LOWER(COALESCE(${usersTable.phone}, '')) LIKE ${like}
+        OR LOWER(COALESCE(${usersTable.email}, '')) LIKE ${like}
+        OR LOWER(COALESCE(${usersTable.displayName}, '')) LIKE ${like}
+        OR LOWER(COALESCE(${productsTable.name}, '')) LIKE ${like}
+      )`,
+    );
+  }
+
   const orders = await db
     .select({
       order: ordersTable,

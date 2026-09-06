@@ -55,8 +55,9 @@ interface CachedResponse {
   completedAt: string; // ISO-8601 for audit
 }
 
-interface AdminAttachedRequest extends Request {
+interface SubjectAttachedRequest extends Request {
   adminId?: number;
+  userId?: number;
 }
 
 function bodyHash(body: unknown): string {
@@ -69,12 +70,18 @@ function bodyHash(body: unknown): string {
 }
 
 /**
- * Build the Redis cache key. Scoping to (adminId, route, userKey)
- * means two different admins can use the same Idempotency-Key string
- * without colliding — the dedup is per-admin.
+ * Build the Redis cache key. Scoping to (subject, route, userKey)
+ * means two different actors can use the same Idempotency-Key string
+ * without colliding — the dedup is per-admin AND per-end-user (V4-P0:
+ * POST /api/orders now mounts this middleware with the userId subject).
  */
-function buildCacheKey(adminId: number, routeKey: string, userKey: string): string {
-  return `idempotent:${adminId}:${routeKey}:${userKey}`;
+function buildCacheKey(
+  subjectKind: "admin" | "user",
+  subjectId: number,
+  routeKey: string,
+  userKey: string,
+): string {
+  return `idempotent:${subjectKind}:${subjectId}:${routeKey}:${userKey}`;
 }
 
 export interface IdempotencyOptions {
@@ -89,31 +96,36 @@ export function idempotency(opts: IdempotencyOptions) {
   const { routeKey } = opts;
 
   return async function idempotencyMiddleware(
-    req: AdminAttachedRequest,
+    req: SubjectAttachedRequest,
     res: Response,
     next: NextFunction,
   ): Promise<void> {
     const userKey = req.header("idempotency-key") ?? req.header("Idempotency-Key");
-    const adminId = req.adminId;
 
-    // No admin context (route mounted without requireAdmin upstream)
+    // Subject: admin routes decorate adminId (requireAdmin); user routes
+    // decorate userId (requireUser). Either scope dedups correctly.
+    const isAdmin = typeof req.adminId === "number";
+    const subjectId = isAdmin ? req.adminId : req.userId;
+
+    // No subject (route mounted without an auth middleware upstream)
     // — refuse to dedup; this is a programming error, not user input.
-    if (typeof adminId !== "number") {
+    if (typeof subjectId !== "number") {
       logger.warn(
         { route: routeKey, path: req.path },
-        "idempotency middleware reached without an authenticated admin — passing through",
+        "idempotency middleware reached without an authenticated subject — passing through",
       );
       next();
       return;
     }
+    const subjectKind = isAdmin ? ("admin" as const) : ("user" as const);
 
     if (!userKey || typeof userKey !== "string" || userKey.length < 8) {
       // Phase-1 transitional path (see file header). Log so ops can
       // measure how many admin mutations still arrive without the
       // header; tighten to 400 once the UI is updated.
       logger.warn(
-        { route: routeKey, path: req.path, adminId },
-        "admin mutation arrived without Idempotency-Key — pass-through; tighten in follow-up",
+        { route: routeKey, path: req.path, subjectKind, subjectId },
+        "mutation arrived without Idempotency-Key — pass-through; tighten in follow-up",
       );
       next();
       return;
@@ -133,7 +145,7 @@ export function idempotency(opts: IdempotencyOptions) {
       return;
     }
 
-    const cacheKey = buildCacheKey(adminId, routeKey, userKey);
+    const cacheKey = buildCacheKey(subjectKind, subjectId, routeKey, userKey);
     const reqHash = bodyHash(req.body);
 
     let cached: CachedResponse | null = null;

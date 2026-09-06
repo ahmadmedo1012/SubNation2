@@ -20,7 +20,10 @@ export interface SeoInput {
   jsonLd?: object[];
 }
 
-const DEFAULT_IMAGE = "/subnation-logo.png";
+// V3-A5: /opengraph.jpg (1280x720, 1.91:1) ships in dist but was never
+// referenced — the 1536x1024 logo PNG gets center-cropped in WhatsApp /
+// Telegram / X previews.
+const DEFAULT_IMAGE = "/opengraph.jpg";
 
 function getAppOrigin(): string {
   // Vite-injected build-time origin, falling back to runtime origin.

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { useCart, type LocalCartItem } from "@/lib/cart";
 import { getErrorMessage } from "@/lib/errors";
@@ -73,6 +74,14 @@ function CartSkeleton() {
 }
 
 export default function CartPage() {
+  // V3-A2: transactional funnel — never index (robots.txt also Disallows).
+  useSeo({
+    title: "سلة المشتريات — SubNation",
+    description: "راجع مشترياتك قبل إتمام الطلب.",
+    path: "/cart",
+    robots: "noindex,follow",
+  });
+
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();

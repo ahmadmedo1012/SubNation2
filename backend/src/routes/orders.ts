@@ -6,6 +6,7 @@ import { safeDecrypt } from "../lib/encryption";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
+import { idempotency } from "../middlewares/idempotency";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { notifyNewOrder } from "../telegram";
 import { CheckoutService } from "../services/checkout.service";
@@ -54,7 +55,13 @@ router.get("/", requireUser, async (req, res) => {
   return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
 
-router.post("/", requireUser, async (req, res) => {
+// V4-P0 (contract audit 2026-09-06): the customer money path now mounts
+// the idempotency middleware (subject = userId). A network-level retry
+// or double-click of the same unit-order (the checkout loop sends N of
+// them) replays the cached response instead of charging the wallet a
+// second time. The frontend sends a fresh Idempotency-Key per unit
+// order (checkout.tsx) so distinct units stay distinct.
+router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateOrderBody.safeParse(req.body);

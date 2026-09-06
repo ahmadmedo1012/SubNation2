@@ -104,6 +104,17 @@ const csrfAllowedOrigins = (() => {
 //
 // 5. connectSrc must include all Firebase/Google API endpoints.
 //
+// V3-C1a: helmet v8 dropped its permissionsPolicy middleware — set the
+// header directly. Default-deny powerful features the SPA never uses;
+// payment=(self) keeps a future Payment Request door open.
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), usb=(), payment=(self), midi=(), accelerometer=()",
+  );
+  next();
+});
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -287,7 +298,19 @@ app.use(
     origin: (origin, cb) => {
       // Allow same-origin (no origin header) and server-to-server calls
       if (!origin) return cb(null, true);
-      if (allowedOrigins.length === 0) return cb(null, true); // dev: allow all
+      // V3-C2: an empty allow-list means REFLECT ANY ORIGIN with
+      // credentials — fine in dev, a credential-leaking misconfiguration
+      // in production (one missing APP_ORIGINS env var silently opened
+      // the API to every site). Fail closed in prod.
+      if (allowedOrigins.length === 0) {
+        if (process.env.NODE_ENV === "production") {
+          logger.error(
+            "CORS allow-list empty in production (APP_ORIGINS unset) — rejecting cross-origin request",
+          );
+          return cb(new Error("CORS: origin not allowed"));
+        }
+        return cb(null, true); // dev: allow all
+      }
       if (allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error("CORS: origin not allowed"));
     },
@@ -388,6 +411,7 @@ const userLimiter = rateLimit({
   },
   message: {
     error: "تم تجاوز الحد الأقصى للطلبات لهذه الجلسة. حاول مرة أخرى بعد دقيقة.",
+    code: "RATE_LIMITED",
   },
 });
 
@@ -403,7 +427,7 @@ const authLimiter = rateLimit({
   // numbers as long as each attempt "worked". 10 sends / 15 min / IP is
   // still far above any legitimate login cadence.
   skipSuccessfulRequests: false,
-  message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة." },
+  message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة.", code: "RATE_LIMITED" },
 });
 
 // ── Phase 2 instrumentation pipeline ─────────────────────────────────────────

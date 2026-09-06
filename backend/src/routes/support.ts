@@ -1,6 +1,7 @@
 import { db, supportTicketsTable, ticketRepliesTable } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { intParam } from "../lib/http";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -66,7 +67,21 @@ router.get("/", requireUser, async (req, res) => {
   return res.json(result);
 });
 
-router.post("/", requireUser, async (req, res) => {
+// V3-C5a: ticket-creation spam guard — the global userLimiter (1200/min)
+// was the only ceiling on this route; 5 tickets/hour/user is far above
+// any human cadence. Keyed by userId (requireUser has already run), so
+// the express-rate-limit IPv6 keyGenerator validation does not apply.
+const ticketCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  keyGenerator: (req) => `ticket:${(req as AuthenticatedRequest).userId}`,
+  message: {
+    error: "لقد أنشأت عدداً كافياً من التذاكر في هذه الساعة. انتظر قليلاً أو أضف رداً على تذكرة قائمة.",
+    code: "RATE_LIMITED",
+  },
+});
+
+router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const { title, message, category } = req.body ?? {};

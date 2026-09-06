@@ -320,7 +320,9 @@ router.post("/change-password", requireAdmin, async (req, res) => {
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
-    return res.status(429).json({ error: `محاولات كثيرة. حاول بعد ${mins} دقيقة.` });
+    return res
+      .status(429)
+      .json(createErrorResponse(`محاولات كثيرة. حاول بعد ${mins} دقيقة.`, ErrorCode.INVALID_DATA));
   }
 
   const { valid } = await verifyPassword(current_password, admin.passwordHash);
@@ -373,7 +375,9 @@ router.patch("/profile", requireAdmin, async (req, res) => {
   }
   if (username !== undefined) {
     if (typeof username !== "string" || username.trim().length < 3) {
-      return res.status(400).json({ error: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" });
+      return res
+        .status(400)
+        .json(createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA));
     }
     if (username.trim().length > 100) {
       return res

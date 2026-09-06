@@ -234,7 +234,7 @@ export default function HomePage() {
       // Emit ItemList only when products are loaded — an empty list LD
       // is treated by Google as a thin/low-quality structured-data block.
       ...(products.length > 0
-        ? [buildItemListLd(products.slice(0, 50).map((p) => ({ id: p.id, name: p.name })))]
+        ? [buildItemListLd(products.slice(0, 50).map((p) => ({ id: p.slug ?? p.id, name: p.name })))]
         : []),
     ],
   });

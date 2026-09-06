@@ -66,9 +66,9 @@ function getConnectionType(): string | undefined {
 }
 
 function getCurrentRoute(): string {
-  if (window.location.hash) {
-    return window.location.hash.slice(1) || "/";
-  }
+  // V3-B7: the router is PATH-based (wouter) — preferring location.hash
+  // misattributed /terms#privacy metrics to a phantom "/privacy" route.
+  // Drop the hash entirely: it is anchor state, never a route.
   return window.location.pathname || "/";
 }
 

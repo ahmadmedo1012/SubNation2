@@ -65,6 +65,10 @@ const ROBOTS_BODY = [
   "Disallow: /onboarding",
   "Disallow: /auth/",
   "",
+  "# Cart + checkout — transactional funnels, never index (V3-A2)",
+  "Disallow: /cart",
+  "Disallow: /checkout",
+  "",
   "# User-private pages (anonymous crawlers see redirects / empty state)",
   "Disallow: /wallet",
   "Disallow: /orders",
@@ -129,6 +133,9 @@ const STATIC_ROUTES: Array<{ path: string; changefreq: string; priority: string 
   { path: "/category/productivity", changefreq: "weekly", priority: "0.9" },
   { path: "/support", changefreq: "monthly", priority: "0.4" },
   { path: "/terms", changefreq: "yearly", priority: "0.3" },
+  // V3-A4: money page missing from the sitemap — index,follow but
+  // never listed for discovery.
+  { path: "/flash-sales", changefreq: "daily", priority: "0.8" },
 ];
 
 function escapeXml(value: string): string {

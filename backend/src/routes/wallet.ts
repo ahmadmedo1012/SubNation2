@@ -124,6 +124,9 @@ router.post("/topups", requireUser, async (req, res) => {
   if (Number(pendingCount) >= MAX_PENDING) {
     return res.status(429).json({
       error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
+      // V4-P1: the code field is what the frontend getErrorMessage maps
+      // to the Arabic message — without it this fell to the raw string.
+      code: ErrorCode.TOPUP_LIMIT_EXCEEDED,
       pending_count: Number(pendingCount),
       limit: MAX_PENDING,
     });

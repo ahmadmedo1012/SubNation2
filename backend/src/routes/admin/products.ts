@@ -1,6 +1,6 @@
 import { CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
 import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { encrypt } from "../../lib/encryption";
@@ -12,7 +12,13 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
-router.get("/products", requireAdmin, async (_req, res) => {
+router.get("/products", requireAdmin, async (req, res) => {
+  // V4: the admin command palette sends ?search= — previously ignored
+  // (the handler didn't even read req). Match name or category,
+  // case-insensitive, capped at 100 chars.
+  const searchRaw = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const searchLike = searchRaw.length > 0 ? `%${searchRaw.toLowerCase().slice(0, 100)}%` : null;
+
   // Use an explicit projection (mirrors routes/products.ts) so a future
   // schema column added before its migration runs cannot break this
   // endpoint. We only select what we render.
@@ -32,7 +38,14 @@ router.get("/products", requireAdmin, async (_req, res) => {
       createdAt: productsTable.createdAt,
     })
     .from(productsTable)
-    .where(eq(productsTable.isArchived, false))
+    .where(
+      searchLike
+        ? and(
+            eq(productsTable.isArchived, false),
+            sql`(LOWER(${productsTable.name}) LIKE ${searchLike} OR LOWER(${productsTable.category}) LIKE ${searchLike})`,
+          )
+        : eq(productsTable.isArchived, false),
+    )
     .orderBy(desc(productsTable.createdAt));
 
   const [stockCounts, orderCounts] = await Promise.all([
@@ -267,6 +280,90 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
       is_sold: r.isSold,
     })),
   });
+});
+
+/**
+ * POST /products/:id/inventory/set-count — {count: n}
+ *
+ * V4-P0 (contract audit 2026-09-06): the admin UI's InlineStockEdit has
+ * called this endpoint since it was written — but no route existed, so
+ * EVERY manual stock edit 404'd and surfaced a destructive toast.
+ *
+ * Semantics (honest stock):
+ *   - count < unsold  → DELETE the surplus OLDEST unsold units (an
+ *     unsold row is a real, unclaimed account — removing it is safe and
+ *     reviewable in the audit log).
+ *   - count > unsold  → REJECT. Stock cannot be fabricated: every unit
+ *     delivers real credentials at purchase time. The operator must add
+ *     actual inventory via the upload path (POST /products/:id/inventory).
+ */
+router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) => {
+  const productId = intParam(req, "id");
+  if (productId === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+
+  const { count: target } = (req.body ?? {}) as { count?: unknown };
+  if (
+    typeof target !== "number" ||
+    !Number.isInteger(target) ||
+    target < 0 ||
+    target > 100_000
+  ) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("عدد الوحدات يجب أن يكون رقماً صحيحاً بين 0 و100000", ErrorCode.INVALID_DATA),
+      );
+  }
+
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(eq(productsTable.id, productId))
+    .limit(1);
+  if (!product)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+
+  const [unsoldResult] = await db
+    .select({ unsold: count() })
+    .from(inventoryTable)
+    .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)));
+  const unsold = Number(unsoldResult?.unsold ?? 0);
+
+  if (target > unsold) {
+    return res.status(400).json(
+      createErrorResponse(
+        "لا يمكن زيادة المخزون بإدخال رقم فقط — كل وحدة تحتاج بيانات حساب فعلية. استخدم «رفع مخزون» لإضافة الوحدات",
+        ErrorCode.INVALID_DATA,
+      ),
+    );
+  }
+
+  const surplus = unsold - target;
+  if (surplus > 0) {
+    // Oldest-first (lowest id) — the units that have sat the longest are
+    // the least valuable to keep.
+    const oldest = await db
+      .select({ id: inventoryTable.id })
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
+      .orderBy(asc(inventoryTable.id))
+      .limit(surplus);
+    await db.delete(inventoryTable).where(
+      inArray(
+        inventoryTable.id,
+        oldest.map((r) => r.id),
+      ),
+    );
+  }
+
+  void writeAuditLog(req, "product.inventory.set-count", "product", productId, {
+    before: unsold,
+    after: target,
+    removed: surplus,
+  });
+
+  return res.json({ success: true, product_id: productId, stock_count: target });
 });
 
 router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
