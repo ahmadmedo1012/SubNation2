@@ -42,6 +42,15 @@ export enum ErrorCode {
   // Server errors
   INTERNAL_ERROR = "INTERNAL_ERROR",
   SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
+
+  // P2 (deep-audit 2026-09-06): backend enum was 3 codes ahead of the
+  // frontend map — CONFLICT (409 races, e.g. checkout wallet-deduction
+  // races now surfaced by H5), INVALID_TOKEN and FEATURE_DISABLED all
+  // fell through to the generic fallback. Adding them here keeps the
+  // money-path retry hints readable in Arabic.
+  CONFLICT = "CONFLICT",
+  INVALID_TOKEN = "INVALID_TOKEN",
+  FEATURE_DISABLED = "FEATURE_DISABLED",
 }
 
 // Arabic error messages for each error code
@@ -88,6 +97,11 @@ const errorMessages: Record<ErrorCode, string> = {
   // Server errors
   [ErrorCode.INTERNAL_ERROR]: "حدث خطأ في الخادم. حاول مرة أخرى",
   [ErrorCode.SERVICE_UNAVAILABLE]: "الخدمة غير متاحة حالياً. حاول لاحقاً",
+
+  // P2 (deep-audit 2026-09-06): catch up with the backend enum
+  [ErrorCode.CONFLICT]: "تعارض في العملية. أعد المحاولة بعد لحظات",
+  [ErrorCode.INVALID_TOKEN]: "رمز الجلسة غير صالح. سجّل الدخول مرة أخرى",
+  [ErrorCode.FEATURE_DISABLED]: "هذه الميزة معطّلة حالياً",
 };
 
 type ErrorLike = {

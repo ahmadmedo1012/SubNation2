@@ -1,17 +1,37 @@
-import { pgTable, serial, varchar, numeric, boolean, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  numeric,
+  pgTable,
+  serial,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const flashSalesTable = pgTable("flash_sales", {
-  id: serial("id").primaryKey(),
-  title: varchar("title", { length: 255 }).notNull().default("Flash Sale"),
-  discountPercent: numeric("discount_percent", { precision: 5, scale: 2 })
-    .notNull()
-    .default("0.00"),
-  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const flashSalesTable = pgTable(
+  "flash_sales",
+  {
+    id: serial("id").primaryKey(),
+    title: varchar("title", { length: 255 }).notNull().default("Flash Sale"),
+    discountPercent: numeric("discount_percent", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  () => ({
+    // At-most-one-ACTIVE-flash-sale invariant — mirrors the live boot
+    // SQL. Previously live-only, so a drizzle push dropped it and
+    // concurrent active sales became possible (pricing ambiguity).
+    activeSingleton: uniqueIndex("uniq_flash_sales_active_singleton")
+      .on(sql`true`)
+      .where(sql`is_active = true`),
+  }),
+);
 
 export const insertFlashSaleSchema = createInsertSchema(flashSalesTable).omit({
   id: true,

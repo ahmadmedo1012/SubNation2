@@ -673,24 +673,34 @@ export async function runMigrations() {
     // RBAC permissions + soft-delete flag for admin_users.
     // Idempotent across all four states:
     //   - column missing             → ADD COLUMN with empty default
-    //   - column present, all-empty  → backfill ["all"] for existing super-admins
     //   - column present, populated  → no-op
     //   - is_active column missing   → ADD with TRUE default
     //
-    // The empty-array → ["all"] backfill is the single most important
-    // safety property: pre-RBAC admins must keep current full access
-    // when the new requirePermission middleware activates. New admins
-    // created via the admin-mgmt UI default to a narrower scoped set.
+    // The ["all"] backfill is strictly ONE-TIME — it fires only in the
+    // same statement batch that ADDs the permissions column (pre-RBAC
+    // admins must keep full access when requirePermission activates).
+    // Previously the UPDATE re-ran on EVERY cold boot, which silently
+    // re-granted ["all"] to admins whose permissions had been revoked
+    // (permission revocation never stuck).
+    const permColExisted = await db.execute(sql`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='admin_users' AND column_name='permissions'
+    `);
+    const hadPermissionsColumn =
+      ((permColExisted as any).rows?.length ?? (permColExisted as any).length ?? 0) > 0;
+
     await db.execute(sql`
       ALTER TABLE admin_users
         ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
     `);
-    await db.execute(sql`
-      UPDATE admin_users
-      SET permissions = '["all"]'::jsonb
-      WHERE permissions = '[]'::jsonb OR permissions IS NULL;
-    `);
+    if (!hadPermissionsColumn) {
+      await db.execute(sql`
+        UPDATE admin_users
+        SET permissions = '["all"]'::jsonb
+        WHERE permissions = '[]'::jsonb OR permissions IS NULL;
+      `);
+    }
 
     // OTP brute-force counter (B6)
     await db.execute(sql`
@@ -787,18 +797,32 @@ export async function runMigrations() {
     const adminCount = (adminCountResult as any).rows?.[0] ?? (adminCountResult as any)[0];
     if (Number(adminCount?.c ?? adminCount?.count ?? 0) === 0) {
       const adminUsername = process.env.ADMIN_USERNAME || "admin";
-      const adminPassword = process.env.ADMIN_PASSWORD || "SubNation@2026";
-      await db.execute(sql`
-        INSERT INTO admin_users (username, password_hash, display_name, role)
-        VALUES (${adminUsername}, ${await hashPassword(adminPassword)}, 'مدير النظام', 'superadmin')
-      `);
-      logger.info({ username: adminUsername }, "Default admin user created");
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      if (!adminPassword && process.env.NODE_ENV === "production") {
+        // Never bootstrap a production admin with a known default
+        // password — that is a public credential in the repository.
+        logger.error(
+          "Refusing to seed default-password admin in production: set ADMIN_PASSWORD env",
+        );
+      } else {
+        await db.execute(sql`
+          INSERT INTO admin_users (username, password_hash, display_name, role)
+          VALUES (${adminUsername}, ${await hashPassword(adminPassword || "SubNation@2026")}, 'مدير النظام', 'superadmin')
+        `);
+        logger.info({ username: adminUsername }, "Default admin user created");
+      }
     }
 
     // ── Seed: Products ──────────────────────────────────────────────────────
+    // Demo-catalog seeding is for DEV/STAGING ONLY (opt-in for prod via
+    // ALLOW_DEMO_SEED=true). The <12 trigger previously could fire in
+    // production after archiving, injecting demo Netflix/Spotify rows
+    // into the live catalog.
+    const demoSeedAllowed =
+      process.env.NODE_ENV !== "production" || process.env.ALLOW_DEMO_SEED === "true";
     const productCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM products`);
     const productCount = (productCountResult as any).rows?.[0] ?? (productCountResult as any)[0];
-    if (Number(productCount?.c ?? productCount?.count ?? 0) < 12) {
+    if (demoSeedAllowed && Number(productCount?.c ?? productCount?.count ?? 0) < 12) {
       const products = [
         {
           name: "Netflix Premium",
@@ -1427,5 +1451,10 @@ export async function runMigrations() {
     `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
+    // P0-4: RE-THROW. boot-migrations.ts classifies the error and
+    // server.ts aborts production startup on critical failures — the
+    // old swallow starved that net and served traffic on a truncated
+    // schema (mid-chain failure skipped every later table).
+    throw err;
   }
 }

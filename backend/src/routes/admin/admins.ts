@@ -12,6 +12,19 @@ const router = Router();
 
 const VALID_SCOPES = new Set<string>([PERMISSION_SCOPES.ALL, ...ALL_SCOPES]);
 
+/**
+ * H9 (deep-audit 2026-09-06): an admin holding ONLY the "admins" scope
+ * could mint a brand-new super-admin with permissions=["all"] (or edit
+ * any existing admin into one) — a self-escalation path that defeats the
+ * entire RBAC model. Granting "all" now requires the ACTING admin to
+ * already hold "all". Returns an Express response on violation, or
+ * null when the grant is allowed.
+ */
+function allGrantViolation(req: { adminPermissions?: string[] }, perms: string[]): boolean {
+  const acting = req.adminPermissions ?? [];
+  return perms.includes("all") && !acting.includes("all");
+}
+
 function sanitizePermissions(input: unknown): string[] | null {
   if (!Array.isArray(input)) return null;
   const seen = new Set<string>();
@@ -87,6 +100,9 @@ router.post("/", async (req, res) => {
   const cleanPerms = sanitizePermissions(permissions);
   if (cleanPerms === null || cleanPerms.length === 0) {
     return res.status(400).json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل من القائمة", ErrorCode.INVALID_DATA));
+  }
+  if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
+    return res.status(403).json(createErrorResponse("منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً", ErrorCode.INSUFFICIENT_PERMISSIONS));
   }
 
   try {
@@ -165,6 +181,9 @@ router.patch("/:id", async (req, res) => {
     const cleanPerms = sanitizePermissions(permissions);
     if (cleanPerms === null || cleanPerms.length === 0) {
       return res.status(400).json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل", ErrorCode.INVALID_DATA));
+    }
+    if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
+      return res.status(403).json(createErrorResponse("منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً", ErrorCode.INSUFFICIENT_PERMISSIONS));
     }
     updates.permissions = cleanPerms;
   }

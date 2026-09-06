@@ -115,7 +115,9 @@ export default function CartPage() {
         const res = await fetch("/api/cart", { method: "DELETE", credentials: "include" });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error((err as { message?: string }).message ?? "فشل في إفراغ السلة");
+          // Backend error envelope is {error, code} — `.message` never
+          // exists, so the old read always fell back to the generic text.
+          throw new Error(getErrorMessage(err) || "فشل في إفراغ السلة");
         }
         setServerItems([]);
         clear();

@@ -261,6 +261,21 @@ export const neonInflightQueries = new Gauge({
   registers: [getRegistry()],
 });
 
+/**
+ * Neon pool-level errors (DNS, TLS, auth, peer reset — NOT single query
+ * failures). Rare and critical: each increment should page someone.
+ *
+ * Incremented by the pool 'error' listener in db-instrumentation.ts and
+ * read by the `neon_connection_failure` alert rule. Previously that rule
+ * (wrongly) read `redis_errors_total` — a copy-paste that meant genuine
+ * Neon outages never fired an alert.
+ */
+export const neonPoolErrorsTotal = new Counter({
+  name: "neon_pool_errors_total",
+  help: "Total Neon connection-pool level errors (DNS/TLS/auth/reset)",
+  registers: [getRegistry()],
+});
+
 // ============================================================================
 // Core Web Vitals Metrics
 // ============================================================================

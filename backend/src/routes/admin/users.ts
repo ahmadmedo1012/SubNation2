@@ -200,6 +200,9 @@ function mapAdjustmentErrorToCode(code: string): ErrorCode {
       // upstream HTTP status (409) already conveys the semantics;
       // INVALID_DATA is the closest match for the body code.
       return ErrorCode.INVALID_DATA;
+    case "INVALID_AMOUNT":
+      // H6 — 1e999/NaN adjustment rejected at the service boundary.
+      return ErrorCode.INVALID_AMOUNT;
     default:
       return ErrorCode.INVALID_DATA;
   }

@@ -1,5 +1,5 @@
 import { db, supportTicketsTable, ticketRepliesTable, usersTable } from "@workspace/db";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -30,39 +30,66 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     .orderBy(desc(supportTicketsTable.updatedAt))
     .limit(100);
 
-  const withCounts = await Promise.all(
-    tickets.map(async (row) => {
-      const ticket = row.ticket;
-      const [cntRow] = await db
-        .select({ count: count() })
-        .from(ticketRepliesTable)
-        .where(eq(ticketRepliesTable.ticketId, ticket.id));
-      const [lastReply] = await db
-        .select()
-        .from(ticketRepliesTable)
-        .where(eq(ticketRepliesTable.ticketId, ticket.id))
-        .orderBy(desc(ticketRepliesTable.createdAt))
-        .limit(1);
-      return {
-        id: ticket.id,
-        user_phone: row.userPhone ?? "",
-        user_display_name: row.userDisplayName ?? null,
-        user_email: row.userEmail ?? null,
-        user_auth_provider: row.userAuthProvider ?? null,
-        user_has_google: !!row.userGoogleId,
-        user_has_telegram: !!row.userTelegramId,
-        user_has_firebase: !!row.userFirebaseUid,
-        user_has_whatsapp: row.userAuthProvider === "whatsapp_phone",
-        title: ticket.title,
-        category: ticket.category,
-        status: ticket.status,
-        created_at: ticket.createdAt.toISOString(),
-        reply_count: Number(cntRow?.count ?? 0),
-        last_reply_at: lastReply?.createdAt?.toISOString() ?? null,
-        has_unread_admin: lastReply?.authorType === "user",
-      };
-    }),
+  // H18 (deep-audit 2026-09-06): this was 2N+1 queries — 100 tickets
+  // meant 201 round trips to a 15-connection shared pool (reply-count +
+  // latest-reply per ticket). Two batch queries below (GROUP BY count +
+  // DISTINCT ON latest) do the same work in 2 round trips total.
+  const ticketIds = tickets.map((row) => row.ticket.id);
+
+  const replyCounts = await db
+    .select({ ticketId: ticketRepliesTable.ticketId, replyCount: count() })
+    .from(ticketRepliesTable)
+    .where(sql`${ticketRepliesTable.ticketId} IN (${sql.join(ticketIds, sql`, `)})`)
+    .groupBy(ticketRepliesTable.ticketId);
+  const replyCountMap = new Map<number, number>(
+    replyCounts.map((r) => [r.ticketId, Number(r.replyCount)]),
   );
+
+  const latestReplies = await db.execute<{
+    ticket_id: number;
+    author_type: string;
+    created_at: Date;
+  }>(sql`
+    SELECT DISTINCT ON (ticket_id)
+      ticket_id, author_type, created_at
+    FROM ${ticketRepliesTable}
+    WHERE ticket_id IN (${sql.join(ticketIds, sql`, `)})
+    ORDER BY ticket_id, created_at DESC
+  `);
+  const lastReplyMap = new Map<
+    number,
+    { authorType: string; createdAt: Date }
+  >();
+  for (const r of latestReplies.rows ?? []) {
+    lastReplyMap.set(r.ticket_id, {
+      authorType: r.author_type,
+      createdAt: new Date(r.created_at),
+    });
+  }
+
+  const withCounts = tickets.map((row) => {
+    const ticket = row.ticket;
+    const cnt = replyCountMap.get(ticket.id) ?? 0;
+    const lastReply = lastReplyMap.get(ticket.id);
+    return {
+      id: ticket.id,
+      user_phone: row.userPhone ?? "",
+      user_display_name: row.userDisplayName ?? null,
+      user_email: row.userEmail ?? null,
+      user_auth_provider: row.userAuthProvider ?? null,
+      user_has_google: !!row.userGoogleId,
+      user_has_telegram: !!row.userTelegramId,
+      user_has_firebase: !!row.userFirebaseUid,
+      user_has_whatsapp: row.userAuthProvider === "whatsapp_phone",
+      title: ticket.title,
+      category: ticket.category,
+      status: ticket.status,
+      created_at: ticket.createdAt.toISOString(),
+      reply_count: cnt,
+      last_reply_at: lastReply?.createdAt?.toISOString() ?? null,
+      has_unread_admin: lastReply?.authorType === "user",
+    };
+  });
 
   return res.json(withCounts);
 });

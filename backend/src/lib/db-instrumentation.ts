@@ -31,7 +31,7 @@
 
 import { Histogram } from "prom-client";
 import { logger } from "./logger";
-import { getRegistry, safeObserve } from "./metrics";
+import { getRegistry, neonPoolErrorsTotal, safeObserve } from "./metrics";
 import { captureSubsystemException } from "./sentry";
 
 // Minimal structural types — we don't import pg directly because the
@@ -231,6 +231,7 @@ export function instrumentDbPool(pool: unknown): void {
     on: (event: "error", listener: (err: Error) => void) => void;
   };
   (p as unknown as PgPoolEventEmitter).on("error", (err: Error) => {
+    neonPoolErrorsTotal.inc();
     captureSubsystemException("postgres", err, {
       pool_state: "client_error",
     });

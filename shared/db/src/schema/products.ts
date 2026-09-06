@@ -89,6 +89,11 @@ export const productsTable = pgTable(
     // Mirrors boot migration `idx_products_slug_unique` (migrate.ts) — kept
     // in-schema so drizzle-kit introspection doesn't report drift.
     slugUniqueIdx: uniqueIndex("idx_products_slug_unique").on(t.slug),
+    // Trigram GIN index over the product name — mirrors the live boot SQL
+    // (migrate.ts:1226). Powers the Copilot resolve_product fuzzy/typo/
+    // Arabic-English lookup. Previously live-only: a drizzle push would
+    // drop it and silently degrade fuzzy search to seq scans.
+    nameTrgmIdx: index("idx_products_name_trgm").using("gin", t.name.op("gin_trgm_ops")),
   }),
 );
 

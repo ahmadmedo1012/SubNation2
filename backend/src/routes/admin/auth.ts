@@ -123,12 +123,28 @@ router.post("/login/verify-2fa", async (req, res) => {
         .json(createErrorResponse("بيانات الاعتماد غير صالحة", ErrorCode.UNAUTHORIZED));
     }
 
+    // H10 (deep-audit 2026-09-06): TOTP codes are only 6 digits — without
+    // a per-admin attempt lockout this endpoint was a cheap online
+    // brute-force (and login-side IP limits don't help: the temp token
+    // pins the TARGET, the request source is arbitrary). Same lib +
+    // exponential backoff as the password login above.
+    const lockoutKey = `admin-2fa:${admin.id}`;
+    const { locked, lockedUntil } = await checkLockout(lockoutKey);
+    if (locked) {
+      const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+      return res
+        .status(429)
+        .json({ error: `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.` });
+    }
+
     const isValid = verifySync({ token: code, secret: admin.totpSecret });
     if (!isValid) {
+      await recordFailedAttempt(lockoutKey);
       return res
         .status(401)
         .json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
     }
+    await resetAttempts(lockoutKey);
 
     const token = signAdminToken({ adminId: admin.id, role: admin.role });
     res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);

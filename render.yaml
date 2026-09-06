@@ -182,7 +182,12 @@ services:
       - key: METRICS_ADMIN_TOKEN
         sync: false
       - key: ALERTING_ENABLED
-        value: "false"
+        # Was "false" (dark launch) — flipped 2026-09-06 after the deep
+        # audit: with alerting dark, a dead checkout / Redis crash-loop /
+        # Neon outage would page NOBODY. Channel creds (Telegram bot
+        # token, Discord webhook, generic webhook) remain env-synced
+        # secrets; unset channels degrade per-channel, never silently.
+        value: "true"
       - key: DISCORD_WEBHOOK_URL
         sync: false
       - key: GENERIC_ALERT_WEBHOOK_URL

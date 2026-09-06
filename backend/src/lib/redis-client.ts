@@ -132,24 +132,23 @@ export function initRedisClient(): Promise<RedisClientType | null> {
 
   redisClient.on("error", (err) => {
     safeInc(redisErrorsTotal, { reason: "client_error" });
-    // Capture to Sentry with subsystem tag. In production this is
-    // followed by process.exit(1) so we capture FIRST and rely on
-    // the Sentry SDK's queue-flush before the process actually dies
-    // (Sentry node SDK has a default 2s flush on SIGTERM).
+    // Capture to Sentry with subsystem tag.
     captureSubsystemException("redis", err, {
       redis_url_present: Boolean(process.env.REDIS_URL),
       production: isProduction,
     });
-    if (isProduction) {
-      // CASE 2: REDIS_URL was configured (operator promised Redis would work)
-      // but the client errored. Fail closed rather than silently degrade —
-      // the alternative is serving traffic with broken rate-limits.
-      logger.fatal({ err, category: "monitoring" }, "Redis client error - required for production");
-      process.exit(1);
-    }
-    logger.warn({ err, category: "monitoring" }, "Redis client error - falling back to in-memory rate limiting");
-    redisClient = null;
-    ensureDegradedCounter().inc({ reason: "outage_in_dev" });
+    // H12 (deep-audit 2026-09-06): do NOT process.exit(1) here. This is
+    // a SINGLE-instance deployment — killing the process on any Redis
+    // blip takes down the entire site (SPA included) and enters a
+    // Render restart crash-loop; a brief degraded window (socket
+    // client auto-reconnects with backoff) is strictly cheaper.
+    // The `redis_disconnect` alert rule pages the operator off the
+    // redis_errors_total delta, so the outage is never silent.
+    logger.error(
+      { err, category: "monitoring", redis: { mode: "degraded_reconnecting" } },
+      "Redis client error — staying up, client reconnects with backoff",
+    );
+    ensureDegradedCounter().inc({ reason: "client_error_stayed_up" });
   });
 
   redisClient.on("connect", () => {
@@ -176,14 +175,18 @@ export function initRedisClient(): Promise<RedisClientType | null> {
     })
     .catch((err) => {
       safeInc(redisErrorsTotal, { reason: "connection_failed" });
-      if (isProduction) {
-        logger.fatal({ err, category: "monitoring" }, "Failed to connect to Redis - required for production");
-        process.exit(1);
-      }
-      logger.warn({ err, category: "monitoring" }, "Failed to connect to Redis - falling back to in-memory rate limiting");
+      // H12: same crash-loop rationale as the error handler — boot-time
+      // failure degrades loudly (in-memory fallback + alert + Sentry)
+      // instead of exit(1). Render would restart us into the same dead
+      // Redis; staying up keeps the money path (Postgres) alive.
+      captureSubsystemException("redis", err, { boot: true });
+      logger.fatal(
+        { err, category: "monitoring", redis: { mode: "degraded_boot" } },
+        "Failed to connect to Redis — degraded mode (in-memory fallback), NOT exiting",
+      );
       redisClient = null;
       initialised = true;
-      ensureDegradedCounter().inc({ reason: "connect_failed_in_dev" });
+      ensureDegradedCounter().inc({ reason: "connect_failed_degraded" });
       return null;
     });
 

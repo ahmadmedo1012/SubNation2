@@ -110,6 +110,17 @@ router.post("/", requireUser, async (req, res) => {
               ErrorCode.OUT_OF_STOCK,
             ),
           );
+      case "CONCURRENCY_ERROR":
+        // H5 — optimistic wallet deduction lost a race with a concurrent
+        // balance mutation. Retryable by design (re-reads the balance).
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "تعارض أثناء تنفيذ العملية. أعد المحاولة بعد لحظات.",
+              ErrorCode.CONFLICT,
+            ),
+          );
       case "COUPON_EXHAUSTED":
         // F-006 (security audit 004) — atomic-with-check coupon
         // increment lost the race; another concurrent purchase already

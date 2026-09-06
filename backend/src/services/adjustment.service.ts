@@ -52,7 +52,8 @@ export type AdjustmentErrorCode =
   | "USER_NOT_FOUND"
   | "NEGATIVE_BALANCE"
   | "ZERO_DELTA"
-  | "CONCURRENCY_ERROR";
+  | "CONCURRENCY_ERROR"
+  | "INVALID_AMOUNT";
 
 export interface AdjustmentResult {
   userId: number;
@@ -69,6 +70,22 @@ export interface AdjustOptions {
   note: string; // required — audit trail must explain WHY
 }
 
+/**
+ * H6 (deep-audit 2026-09-06): a JSON body of `wallet_adjustment: 1e999`
+ * parses as Infinity — and Postgres numeric happily stores 'Infinity',
+ * which made the wallet permanently infinite (free purchases, ledger
+ * invariant destroyed). NaN likewise round-trips through JSON in some
+ * clients. Reject non-finite values and absurd magnitudes at the
+ * service boundary, where every caller funnels through.
+ */
+const MAX_ABS_ADJUSTMENT = 1_000_000_000; // 1e9 LYD — far above any legitimate balance
+
+function assertFiniteAmount(value: number): void {
+  if (!Number.isFinite(value) || Math.abs(value) > MAX_ABS_ADJUSTMENT) {
+    throw new AdjustmentError(400, "INVALID_AMOUNT", "قيمة المبلغ غير صالحة");
+  }
+}
+
 export class AdjustmentService {
   /**
    * `wallet_adjustment` shape — add (or subtract when negative) `delta`
@@ -80,6 +97,7 @@ export class AdjustmentService {
     delta: number,
     options: AdjustOptions,
   ): Promise<AdjustmentResult> {
+    assertFiniteAmount(delta);
     if (delta === 0) {
       throw new AdjustmentError(400, "ZERO_DELTA", "لا يمكن تعديل الرصيد بصفر");
     }
@@ -102,6 +120,7 @@ export class AdjustmentService {
     target: number,
     options: AdjustOptions,
   ): Promise<AdjustmentResult> {
+    assertFiniteAmount(target);
     if (target < 0) {
       throw new AdjustmentError(400, "NEGATIVE_BALANCE", "الرصيد لا يمكن أن يكون سالباً");
     }

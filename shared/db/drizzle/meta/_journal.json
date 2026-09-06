@@ -22,6 +22,13 @@
       "when": 1788693991055,
       "tag": "0002_strong_freak",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788703843345,
+      "tag": "0003_secret_invisible_woman",
+      "breakpoints": true
     }
   ]
 }

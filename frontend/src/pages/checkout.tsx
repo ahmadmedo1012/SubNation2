@@ -9,10 +9,12 @@ import { AlertCircle, CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
+// `/api/auth/me` returns the user FLAT ({...formatUser(user), linked_identities})
+// — there is no `user` wrapper. The old `data?.user?.wallet_balance` read
+// always evaluated to undefined -> balance 0 -> the confirm button was
+// permanently disabled for every authed visitor (P0-1, live-confirmed).
 interface MeResponse {
-  user: {
-    wallet_balance?: number | null;
-  };
+  wallet_balance?: number | null;
 }
 
 interface CreatedOrder {
@@ -39,7 +41,7 @@ export default function CheckoutPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { items, totalLYD, clear, removeItem } = useCart();
+  const { items, totalLYD, clear, removeItem, updateQuantity } = useCart();
   const [coupon, setCoupon] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
@@ -51,6 +53,9 @@ export default function CheckoutPage() {
   // Partial-success bookkeeping: orders that DID go through before a
   // failure — shown in the banner so the user knows what was charged.
   const [partialCount, setPartialCount] = useState(0);
+  // Server-side hard cap mirrors the backend validation — protects the
+  // per-unit purchase loop from a self-DoS via huge quantities (H7).
+  const MAX_UNITS_PER_LINE = 99;
 
   useEffect(() => {
     if (!token) {
@@ -70,7 +75,11 @@ export default function CheckoutPage() {
       })
       .then((data: MeResponse) => {
         if (aborted) return;
-        setBalance(data?.user?.wallet_balance ?? 0);
+        setBalance(
+          typeof data?.wallet_balance === "number" && Number.isFinite(data.wallet_balance)
+            ? data.wallet_balance
+            : null,
+        );
       })
       .catch(() => {
         // Do NOT fake balance=0 — a failed probe used to render the
@@ -109,17 +118,21 @@ export default function CheckoutPage() {
     const created: CreatedOrder[] = [];
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
-    // Items that were fully ordered are removed from the cart even when a
-    // LATER item fails — previously a mid-loop failure kept ALL items in
-    // the cart (including already-charged ones), so a retry would
-    // double-charge for the ordered prefix.
-    const orderedProductIds: number[] = [];
+    // Per-line bookkeeping of units that ACTUALLY got ordered (P0-3). A
+    // mid-line failure (e.g. unit 2 of 3) previously left the full qty=3
+    // in the cart while 1 unit was already charged — a retry then bought
+    // 3 more units = 4 charges for 3 products. The cart must mirror
+    // exactly what was charged: fully-ordered lines are removed,
+    // partially-ordered lines keep only the unordered remainder.
+    const orderedUnitsByProduct = new Map<number, number>();
 
     try {
       for (const it of items) {
+        const unitsWanted = Math.min(it.quantity, MAX_UNITS_PER_LINE);
+        let unitsOrdered = 0;
         // `CreateOrderBody` accepts a single product_id with quantity 1
         // per order — a qty>1 cart line becomes N unit orders.
-        for (let unit = 0; unit < it.quantity; unit++) {
+        for (let unit = 0; unit < unitsWanted; unit++) {
           const body: Record<string, unknown> = { product_id: it.productId };
           if (coupon.trim()) body.coupon_code = coupon.trim();
           const res = await fetch("/api/orders", {
@@ -130,20 +143,29 @@ export default function CheckoutPage() {
           });
           const orderData = await res.json().catch(() => ({}));
           if (!res.ok) {
-            failureMessage =
-              (orderData as { message?: string }).message ?? "فشل في إنشاء الطلب";
+            // The backend error envelope is {error, code} — NEVER
+            // `.message` (P0-2). getErrorMessage maps `code` to the
+            // precise Arabic money message (INSUFFICIENT_BALANCE,
+            // OUT_OF_STOCK, ...) and falls back to the raw `error` text.
+            failureMessage = getErrorMessage(orderData) || "فشل في إنشاء الطلب";
             break;
           }
           created.push(orderData as CreatedOrder);
+          unitsOrdered++;
           if (!firstOrderCode) firstOrderCode = (orderData as CreatedOrder).order_code;
         }
+        if (unitsOrdered > 0) orderedUnitsByProduct.set(it.productId, unitsOrdered);
         if (failureMessage) break;
-        orderedProductIds.push(it.productId);
       }
 
-      if (created.length > 0) {
-        orderedProductIds.forEach((id) => removeItem(id));
-      }
+      // Sync the cart to exactly what was charged — remove full lines,
+      // shrink partial lines to the un-bought remainder.
+      orderedUnitsByProduct.forEach((unitsOrdered, productId) => {
+        const line = items.find((i) => i.productId === productId);
+        if (!line) return;
+        if (unitsOrdered >= line.quantity) removeItem(productId);
+        else updateQuantity(productId, line.quantity - unitsOrdered);
+      });
 
       if (failureMessage && created.length === 0) {
         // Complete failure — persistent in-page banner + toast cue.

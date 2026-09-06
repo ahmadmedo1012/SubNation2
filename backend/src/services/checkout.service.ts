@@ -9,7 +9,6 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
-import { safeDecrypt } from "../lib/encryption";
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
@@ -37,7 +36,12 @@ export type CheckoutFailureReason =
   | "INSUFFICIENT_BALANCE"
   | "OUT_OF_STOCK"
   | "INVENTORY_CLAIMED"
-  | "COUPON_EXHAUSTED";
+  | "COUPON_EXHAUSTED"
+  // H5 (deep-audit 2026-09-06): the optimistic wallet deduction lost a
+  // race (e.g. a concurrent topup-approval + purchase). Previously this
+  // escaped as a raw 500 on the most money-sensitive endpoint; now it is
+  // a first-class 409-retryable failure.
+  | "CONCURRENCY_ERROR";
 
 export type CheckoutResult =
   | {
@@ -91,18 +95,39 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   const currentBalance = parseFloat(String(user.walletBalance));
   if (currentBalance < finalPrice) return { ok: false, reason: "INSUFFICIENT_BALANCE" };
 
-  const [inventoryItem] = await db
-    .select()
+  // Cheap lock-free OUT_OF_STOCK fast-fail — the authoritative,
+  // race-free selection happens INSIDE the transaction with
+  // FOR UPDATE SKIP LOCKED (H4).
+  const [inventoryFastCheck] = await db
+    .select({ id: inventoryTable.id })
     .from(inventoryTable)
     .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
     .limit(1);
-  if (!inventoryItem) return { ok: false, reason: "OUT_OF_STOCK" };
+  if (!inventoryFastCheck) return { ok: false, reason: "OUT_OF_STOCK" };
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
   const now = new Date();
   const order = await db
     .transaction(async (tx) => {
+      // H4 (deep-audit 2026-09-06): race-free inventory claim. The old
+      // flow selected one row OUTSIDE the transaction with no ORDER BY —
+      // two concurrent buyers grabbed the SAME row, one won the claim,
+      // and the loser saw a false 409 "claimed" while identical units
+      // sat unsold. FOR UPDATE SKIP LOCKED inside the transaction makes
+      // each buyer take a DIFFERENT row (locked rows are skipped), and
+      // ORDER BY id keeps the pick deterministic.
+      const [lockedInventory] = await tx
+        .select()
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
+        .orderBy(inventoryTable.id)
+        .limit(1)
+        .for("update", { skipLocked: true });
+      if (!lockedInventory) throw new Error("OUT_OF_STOCK");
+
+      const inventoryItem = lockedInventory;
+
       // Atomic inventory claim inside transaction to prevent race conditions
       const [inv] = await tx
         .update(inventoryTable)
@@ -175,7 +200,15 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           walletBalanceAfter: String(newBalance),
           status: "completed",
           deliveredEmail: inventoryItem.accountEmail,
-          deliveredPassword: safeDecrypt(inventoryItem.accountPassword),
+          // H2 (deep-audit 2026-09-06): store the password ENCRYPTED at
+          // rest — the inventory value is already AES-256-GCM ciphertext,
+          // so pass it through unchanged. The old code decrypted it here,
+          // leaving plaintext credentials in every orders row (a DB dump
+          // / backup leak = every delivered account exposed). The API
+          // boundary (routes/orders.ts formatOrder) still decrypts with
+          // safeDecrypt, and legacy plaintext rows pass through it
+          // unchanged — no backfill needed, reads keep working.
+          deliveredPassword: inventoryItem.accountPassword,
           deliveredExtraDetails: inventoryItem.extraDetails ?? null,
           deliveredUsageTerms: product.usageTerms ?? null,
           deliveredAt: now,
@@ -209,6 +242,16 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       if (err.message === "COUPON_EXHAUSTED") {
         // F-006 — atomic-with-check coupon increment lost the race.
         return { failure: "COUPON_EXHAUSTED" as const };
+      }
+      if (err.message === "OUT_OF_STOCK") {
+        // All remaining units were claimed between the fast-fail probe
+        // and the locked in-transaction selection.
+        return { failure: "OUT_OF_STOCK" as const };
+      }
+      if (err.message === "CONCURRENCY_ERROR") {
+        // H5 — optimistic wallet deduction lost a race (concurrent
+        // topup-approval / purchase / adjustment). Retryable by design.
+        return { failure: "CONCURRENCY_ERROR" as const };
       }
       throw err;
     });

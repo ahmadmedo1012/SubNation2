@@ -31,6 +31,10 @@ interface CartContextValue {
 
 const STORAGE_KEY = "subnation_cart_v1";
 
+// Mirror of the backend quantity cap — an uncapped value (1e9 was
+// accepted) turned the per-unit checkout loop into a self-DoS.
+export const MAX_LINE_QUANTITY = 99;
+
 const CartContext = createContext<CartContextValue | null>(null);
 
 function effectivePrice(item: LocalCartItem): number {
@@ -65,13 +69,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(
     (incoming: Omit<LocalCartItem, "quantity"> & { quantity?: number }) => {
-      const qty = incoming.quantity ?? 1;
+      const qty = Math.min(incoming.quantity ?? 1, MAX_LINE_QUANTITY);
       setItems((prev) => {
         const existing = prev.find((i) => i.productId === incoming.productId);
         let next: LocalCartItem[];
         if (existing) {
           next = prev.map((i) =>
-            i.productId === incoming.productId ? { ...i, quantity: i.quantity + qty } : i,
+            i.productId === incoming.productId
+              ? { ...i, quantity: Math.min(i.quantity + qty, MAX_LINE_QUANTITY) }
+              : i,
           );
         } else {
           next = [...prev, { ...incoming, quantity: qty }];
@@ -101,8 +107,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const updateQuantity = useCallback((productId: number, quantity: number) => {
     if (quantity < 1) return;
+    const safeQty = Math.min(quantity, MAX_LINE_QUANTITY);
     setItems((prev) => {
-      const next = prev.map((i) => (i.productId === productId ? { ...i, quantity } : i));
+      const next = prev.map((i) => (i.productId === productId ? { ...i, quantity: safeQty } : i));
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       } catch {

@@ -1,4 +1,4 @@
-import { index, integer, pgTable, serial, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, serial, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Persistent cart — one row per (user, product). Adding the same
@@ -21,7 +21,11 @@ export const cartItemsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    userProductUniqueIdx: index("uniq_cart_items_user_product").on(t.userId, t.productId),
+    // UNIQUE, matching the live table (boot SQL creates it as UNIQUE).
+    // It was previously declared as a plain index while the name said
+    // "uniq" — the schema lied about the invariant. One row per
+    // (user, product) is what the upsert in the cart routes relies on.
+    userProductUniqueIdx: uniqueIndex("uniq_cart_items_user_product").on(t.userId, t.productId),
     userIdx: index("idx_cart_items_user").on(t.userId),
   }),
 );

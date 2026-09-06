@@ -211,7 +211,14 @@ export class AlertingService {
         case "redis_disconnect":
           return this.evalCounterDelta("redis_errors_total", 1, rule);
         case "neon_connection_failure":
-          return this.evalCounterDelta("redis_errors_total", 1, rule);
+          // Reads the REAL pool-error counter. Previously this branch
+          // read `redis_errors_total` (copy-paste) — genuine Neon
+          // outages never fired while Redis blips fired the wrong rule.
+          return this.evalCounterDelta("neon_pool_errors_total", 1, rule);
+        case "api_5xx_rate_high":
+          return this.evalHttp5xxRate(rule);
+        case "api_p95_latency_high":
+          return this.evalHttpP95Latency(rule);
         case "auth_failure_rate_high":
           // 20+ auth failures in the last evaluator tick (60 s).
           // Threshold tunable via ALERT_AUTH_FAILURE_DELTA env.
@@ -279,6 +286,7 @@ export class AlertingService {
    * we keep a small per-rule baseline map.
    */
   private readonly counterBaseline = new Map<string, number>();
+  private readonly histogramBaseline = new Map<string, Record<string, number>>();
   private evalCounterDelta(counterName: string, threshold: number, rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
@@ -341,6 +349,126 @@ export class AlertingService {
       this.counterBaseline.set(rule.name, total);
 
       return delta >= threshold;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 5xx share of HTTP traffic in the evaluator window (delta-based, so
+   * process restarts can't double-fire). Fires when the 5xx rate exceeds
+   * ALERT_5XX_RATE_PCT (default 5%) AND at least ALERT_5XX_MIN_REQUESTS
+   * (default 20) requests were served — the floor prevents low-traffic
+   * false positives (1 request failing = 100% rate at 3am).
+   *
+   * Reads http_requests_total (labels: route, method, status) and treats
+   * every status label starting with "5" as a server-fault.
+   */
+  private evalHttp5xxRate(rule: AlertRuleSpec): boolean {
+    try {
+      const counter = getRegistry().getSingleMetric("http_requests_total") as
+        | import("prom-client").Counter<string>
+        | undefined;
+      if (!counter) return false;
+
+      const collected = counter.get?.() as
+        | { values?: Array<{ value: number; labels?: Record<string, string> }> }
+        | undefined;
+      const entries = collected?.values ?? [];
+      const is5xx = (entry: { labels?: Record<string, string> }): boolean =>
+        (entry.labels?.status ?? "").startsWith("5");
+
+      const totalAll = entries.reduce((sum, v) => sum + Number(v.value || 0), 0);
+      const total5xx = entries.filter(is5xx).reduce((sum, v) => sum + Number(v.value || 0), 0);
+
+      const keyAll = `${rule.name}:all`;
+      const key5xx = `${rule.name}:5xx`;
+      const baseAll = this.counterBaseline.get(keyAll) ?? totalAll;
+      const base5xx = this.counterBaseline.get(key5xx) ?? total5xx;
+      this.counterBaseline.set(keyAll, totalAll);
+      this.counterBaseline.set(key5xx, total5xx);
+
+      const deltaAll = totalAll - baseAll;
+      const delta5xx = total5xx - base5xx;
+      if (deltaAll <= 0) return false;
+
+      const minRequests = Number(process.env.ALERT_5XX_MIN_REQUESTS ?? 20);
+      if (deltaAll < minRequests) return false;
+
+      const ratePct = (delta5xx / deltaAll) * 100;
+      const thresholdPct = Number(process.env.ALERT_5XX_RATE_PCT ?? 5);
+      return ratePct > thresholdPct;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * p95 latency of HTTP traffic in the evaluator window, computed from the
+   * http_request_duration_seconds histogram bucket DELTAS (cumulative
+   * counts differenced against the previous tick, so window semantics
+   * survive restarts and long-running processes alike).
+   *
+   * Fires when window p95 > ALERT_P95_MS (default 1500 ms). Requires at
+   * least ALERT_P95_MIN_SAMPLES (default 20) observations in the window.
+   */
+  private evalHttpP95Latency(rule: AlertRuleSpec): boolean {
+    try {
+      const histogram = getRegistry().getSingleMetric("http_request_duration_seconds") as
+        | import("prom-client").Histogram<string>
+        | undefined;
+      if (!histogram?.get) return false;
+
+      const collected = histogram.get() as {
+        values?: Array<{
+          labels?: Record<string, string>;
+          buckets?: Record<string, number>;
+          count?: number;
+          sum?: number;
+        }>;
+      };
+      // Aggregate the "all routes" series (no route/method/status labels
+      // on the per-bucket entries — prom-client exposes one series per
+      // label combination; we fold them all together).
+      const series = collected.values ?? [];
+      if (series.length === 0) return false;
+
+      // Baselines are per-bucket cumulative counts. Keyed by rule.
+      const bucketKeys = Object.keys(series[0]?.buckets ?? {});
+      const baselineBuckets = this.histogramBaseline.get(rule.name);
+      const deltas: Array<{ upper: number; count: number }> = [];
+      let deltaCount = 0;
+
+      // Note: series entries share identical bucket bounds; sum each
+      // bucket across series to fold label combinations together.
+      const summed: Record<string, number> = {};
+      for (const s of series) {
+        for (const [bound, c] of Object.entries(s.buckets ?? {})) {
+          summed[bound] = (summed[bound] ?? 0) + Number(c || 0);
+        }
+      }
+      const prior = baselineBuckets ?? summed;
+      for (const bound of bucketKeys) {
+        const delta = (summed[bound] ?? 0) - (prior[bound] ?? 0);
+        deltas.push({ upper: Number(bound), count: delta });
+      }
+      this.histogramBaseline.set(rule.name, summed);
+      deltaCount = deltas.length > 0 ? deltas[deltas.length - 1].count : 0;
+
+      const minSamples = Number(process.env.ALERT_P95_MIN_SAMPLES ?? 20);
+      if (deltaCount < minSamples) return false;
+
+      // p95 from the cumulative window distribution.
+      const target = deltaCount * 0.95;
+      let cumulative = 0;
+      for (const b of deltas) {
+        cumulative += b.count;
+        if (cumulative >= target) {
+          const thresholdMs = Number(process.env.ALERT_P95_MS ?? 1500);
+          return b.upper * 1000 > thresholdMs;
+        }
+      }
+      return false;
     } catch {
       return false;
     }
