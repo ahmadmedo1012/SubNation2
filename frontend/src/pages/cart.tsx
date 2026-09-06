@@ -75,7 +75,7 @@ function CartSkeleton() {
 
 export default function CartPage() {
   // V3-A2: transactional funnel — never index (robots.txt also Disallows).
-  useSeo({
+  const seoBlock = useSeo({
     title: "سلة المشتريات — SubNation",
     description: "راجع مشترياتك قبل إتمام الطلب.",
     path: "/cart",
@@ -153,6 +153,7 @@ export default function CartPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-7 page-in flex-wrap">
         <div className="flex items-center gap-3">

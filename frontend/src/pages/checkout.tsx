@@ -41,7 +41,7 @@ function formatBalance(value: number | null | undefined): string {
  */
 export default function CheckoutPage() {
   // V3-A2: transactional funnel — never index (robots.txt also Disallows).
-  useSeo({
+  const seoBlock = useSeo({
     title: "إتمام الطلب — SubNation",
     description: "أكمل عملية الدفع من محفظة SubNation.",
     path: "/checkout",
@@ -214,6 +214,7 @@ export default function CheckoutPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
+      {seoBlock}
       <div className="flex items-center gap-3 mb-7 page-in">
         <div className="w-11 h-11 rounded-xl bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
           <ShoppingBag className="w-5 h-5 text-primary" />
