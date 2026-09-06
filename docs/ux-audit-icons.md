@@ -60,12 +60,14 @@
 - **النمط المرجعي المعتمد للرجوع:** نمط product.tsx/risk-event.tsx (`ArrowRight` + hover يمين + نص "العودة…"). نمط tickets (`ChevronLeft rotate-180`) مسموح أيضاً حرفياً بالقرار.
 - **القرار مطبَّق بلا استبدال نصي أعمى:** ميِّزنا الأكورديونات والروتيتورس (26, 27, 20, 18) عن الأسهم الدلالية، والإرسال والروابط الخارجية عن الاتجاهية.
 
-## التحقق الحي (يُستكمل بعد النشر)
+## التحقق الحي (subnation.ly — نشر 2026-09-06 af61fc9، Render deploy dep-daelfkn40ujc73fnf1rg = live)
 
 | البند | الحالة | الدليل |
 |---|---|---|
-| not-found: السهم السابق يشير يميناً | ⏳ بانتظار النشر | لقطة 375px |
-| category breadcrumb يشير يميناً | ⏳ | لقطة |
-| terms breadcrumb يشير يميناً | ⏳ | لقطة |
-| dashboard KPI: ArrowUpLeft | ⏳ | لقطة 1440px |
-| FlashSaleBanner يذهب لـ/flash-sales | ⏳ | نقر فعلي |
+| not-found: السهم السابق يشير يميناً | ✅ **مُتحقَّق حياً** | SVG path `M5 12h14` = ArrowRight (لقطة `not-found-back-1440.png`) |
+| category breadcrumb يشير يميناً | ✅ **مُتحقَّق حياً** | separator class يحوي `rotate-180` (لقطة `category-breadcrumb-1440.png`) |
+| terms breadcrumb يشير يميناً | ✅ **مُتحقَّق حياً** | `lucide-chevron-left w-3 h-3 rotate-180 opacity-50` (لقطة `terms-breadcrumb-1440.png`) |
+| product: "العودة للكتالوج" ArrowRight | ✅ **مُتحقَّق حياً** | path `M5 12h14` (لقطة `product-crunchyroll-1440.png`) |
+| dashboard KPI: ArrowUpLeft | ✅ مُتحقَّق بالبناء (صفحة أدمن تتطلب دخول أدمن — منفَّذة في الكود وتمرَّت typecheck/build) | code |
+| FlashSaleBanner يذهب لـ/flash-sales | ✅ مُتحقَّق بالكود + لا يظهر حالياً (لا عرض flash نشط — `/api/flash-sale` بلا نتيجة) | code |
+| صفر أخطاء صفحة في الجولات الثلاث (375/768/1440) | ✅ **مُتحقَّق حياً** | `agent-browser errors` فارغ (الوحيد: تحذير Sentry DSN المعرَّف مسبقاً في PROJECT_OVERVIEW) |
