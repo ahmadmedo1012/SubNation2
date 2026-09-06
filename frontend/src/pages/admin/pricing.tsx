@@ -2,6 +2,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -189,7 +190,13 @@ export default function AdminPricingPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast({ title: "خطأ", description: data.error ?? "فشل الحساب", variant: "destructive" });
+        // Round-4 (org §6a): getErrorMessage maps the backend `code`
+        // (INVALID_PRICE bounds, NOT_FOUND…) to Arabic.
+        toast({
+          title: "خطأ",
+          description: getErrorMessage(data) || "فشل الحساب",
+          variant: "destructive",
+        });
         setResult(null);
         return;
       }

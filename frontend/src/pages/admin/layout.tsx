@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
 import { CopilotPanel } from "@/components/admin/copilot/CopilotPanel";
 import { useQuery } from "@tanstack/react-query";
 import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
@@ -217,9 +218,7 @@ function pageTitleFor(location: string): string {
  */
 const ALL_NAV_HREFS = NAV_SECTIONS.flatMap((s) => s.items.map((i) => i.href));
 function computeActiveHref(location: string): string {
-  const matches = ALL_NAV_HREFS.filter(
-    (h) => h === location || location.startsWith(h + "/"),
-  );
+  const matches = ALL_NAV_HREFS.filter((h) => h === location || location.startsWith(h + "/"));
   if (matches.length === 0) return location;
   return matches.sort((a, b) => b.length - a.length)[0];
 }
@@ -469,14 +468,17 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [secondsAgo, setSecondsAgo] = useState(0);
 
-  // Auto-fetch unread alerts count for the badge — works on every page
+  // Auto-fetch unread alerts count for the badge — works on every page.
+  // Round-4 (perf P1-5): the admin-room socket listener invalidates this
+  // query on every `admin-alert-new` push; the 5-minute interval is only
+  // a socket-dropout fallback (was 30 s).
   const { data: alertCountData } = useQuery<{ count: number }>({
     queryKey: ["admin-alerts-unread-count"],
     queryFn: () =>
       fetch("/api/admin/alerts/unread-count", {
         headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" },
       }).then((r) => r.json()),
-    refetchInterval: 30_000,
+    refetchInterval: 300_000,
     refetchIntervalInBackground: false,
     enabled: !!adminToken,
     staleTime: 15_000,
@@ -511,7 +513,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Real-time alert polling: show toast for new alerts every 30s
+  // Real-time alert toasts. Round-4 (perf P1-5): the SocketInitializer's
+  // admin-room listener fires ADMIN_ALERT_NEW_EVENT the moment a row is
+  // inserted (jobs/alertLogger emits on insert) — poll() runs immediately
+  // and toasts land at alert time. The 5-minute interval is only a
+  // socket-dropout fallback (was 30 s).
   useEffect(() => {
     if (!adminToken) return;
 
@@ -544,9 +550,15 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         .catch(() => {});
     };
 
-    const id = setInterval(poll, 30_000);
-    return () => clearInterval(id);
-  }, [adminToken]);
+    poll();
+    const onSocketAlert = () => poll();
+    window.addEventListener(ADMIN_ALERT_NEW_EVENT, onSocketAlert);
+    const id = setInterval(poll, 300_000);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener(ADMIN_ALERT_NEW_EVENT, onSocketAlert);
+    };
+  }, [adminToken, headers]);
 
   const refreshLabel =
     secondsAgo < 10

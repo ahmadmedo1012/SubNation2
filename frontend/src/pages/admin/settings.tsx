@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errors";
 import {
   Bell,
   Bot,
@@ -146,7 +147,7 @@ function ProviderCard({
         enabled?: boolean;
         config?: Record<string, string>;
       };
-      if (!res.ok) throw new Error(data.error ?? "فشل الحفظ");
+      if (!res.ok) throw new Error(getErrorMessage(data) || "فشل الحفظ");
       const nextConfig = data.config ?? config;
       const nextEnabled = data.enabled ?? enabled;
       setConfig(nextConfig);
@@ -340,7 +341,7 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
         headers,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "حدث خطأ أثناء الإعداد");
+      if (!res.ok) throw new Error(getErrorMessage(data) || "حدث خطأ أثناء الإعداد");
 
       import("qrcode").then((QRCode) => {
         QRCode.default.toDataURL(data.otpauth_url, (err: Error | null, url: string) => {
@@ -364,7 +365,7 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "رمز التحقق غير صحيح");
+      if (!res.ok) throw new Error(getErrorMessage(data) || "رمز التحقق غير صحيح");
 
       setSuccess(true);
       setSetupData(null);
@@ -525,7 +526,9 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(body?.error || "فشل التحديث");
+        // Round-4 (org §6a): getErrorMessage maps the backend `code`
+        // (INVALID_PASSWORD_LENGTH…) to Arabic; raw `error` is fallback.
+        throw new Error(getErrorMessage(body) || "فشل التحديث");
       }
       setSession((s) => (s ? { ...s, ...body } : s));
       setProfilePassword("");
@@ -566,7 +569,7 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
         body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "فشل تغيير كلمة المرور");
+      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل تغيير كلمة المرور");
       setPwCurrent("");
       setPwNew("");
       setPwConfirm("");

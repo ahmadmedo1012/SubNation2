@@ -12,6 +12,7 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -164,7 +165,9 @@ function DraftCard({
       });
       if (!resp.ok) {
         const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `HTTP ${resp.status}`);
+        // Round-4 (org §6a): map the backend `code` to Arabic via
+        // getErrorMessage; the raw `error` string stays the fallback.
+        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
       }
       return resp.json();
     },
@@ -184,7 +187,9 @@ function DraftCard({
       });
       if (!resp.ok) {
         const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `HTTP ${resp.status}`);
+        // Round-4 (org §6a): map the backend `code` to Arabic via
+        // getErrorMessage; the raw `error` string stays the fallback.
+        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
       }
       return resp.json();
     },

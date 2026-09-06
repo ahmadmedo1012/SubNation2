@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -103,7 +104,9 @@ function InlineStockEdit({
       });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-        throw new Error(err.error ?? err.message ?? `فشل الحفظ (${res.status})`);
+        // Round-4 (org §6a): route through getErrorMessage so the
+        // backend `code` maps to Arabic; raw error/message stay fallback.
+        throw new Error(getErrorMessage(err) || `فشل الحفظ (${res.status})`);
       }
       toast({ title: "تم تحديث المخزون", variant: "success" });
     } catch (e) {

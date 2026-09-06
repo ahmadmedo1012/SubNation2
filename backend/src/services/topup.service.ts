@@ -1,5 +1,5 @@
 import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { POINTS_PER_REFERRAL } from "../lib/loyalty-tiers";
 import { emitToAdmins, emitToUser } from "../lib/socket";
@@ -98,6 +98,31 @@ export class TopupService {
 
     if (!topup) throw new ServiceError(404, "طلب الشحن غير موجود");
     if (topup.status !== "pending") throw new ServiceError(400, "الطلب تمت معالجته مسبقاً");
+
+    // r4 money-integrity: duplicate payment_reference guard. The same
+    // bank-transfer reference can back multiple pending topups (a user
+    // resubmits the same receipt; MAX_PENDING=3 permits it). Approving
+    // both credits the wallet twice for one real transfer. If another
+    // topup with the SAME non-empty reference has already been APPROVED,
+    // this request is a duplicate receipt — reject it instead of paying
+    // it. (Empty/null references carry no dedup signal and are allowed.)
+    const ref = (topup.paymentReference ?? "").trim();
+    if (ref.length > 0) {
+      const dup = await db
+        .select({ id: walletTopupsTable.id })
+        .from(walletTopupsTable)
+        .where(
+          and(
+            eq(walletTopupsTable.paymentReference, ref),
+            eq(walletTopupsTable.status, "approved"),
+            ne(walletTopupsTable.id, topupId),
+          ),
+        )
+        .limit(1);
+      if (dup.length > 0) {
+        throw new ServiceError(409, "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين");
+      }
+    }
 
     const [user] = await db
       .select()

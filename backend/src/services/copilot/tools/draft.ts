@@ -197,7 +197,13 @@ const draftPriceChangeSpec: Tool = {
         id: { type: "integer" },
         new_price: {
           type: "number",
-          minimum: 0,
+          // r4 red-team F-1: 0.00 prices are poison downstream — the
+          // checkout INVALID_PRICE gate fail-closes on them (every
+          // purchase 500s) and a 100% "free" price is not a legitimate
+          // state for this marketplace. Upper bound mirrors the zod
+          // perimeter (audit M1): 1,000,000 LYD.
+          minimum: 0.01,
+          maximum: 1_000_000,
           description: "New selling price in the platform currency.",
         },
       },
@@ -213,8 +219,15 @@ async function draftPriceChangeHandler(
     return refusal(409, REFUSAL_CODES.INVALID_VALUE, "Missing or invalid product id.");
   }
   const newPrice = Number(input.new_price);
-  if (!Number.isFinite(newPrice) || newPrice < 0) {
-    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "new_price must be a non-negative number.");
+  // r4 red-team F-1: same bounds as the admin zod perimeter — reject 0
+  // and negative prices (checkout INVALID_PRICE fail-closes on them)
+  // and anything above the 1M LYD catalog ceiling.
+  if (!Number.isFinite(newPrice) || newPrice < 0.01 || newPrice > 1_000_000) {
+    return refusal(
+      409,
+      REFUSAL_CODES.INVALID_VALUE,
+      "new_price must be a number between 0.01 and 1000000.",
+    );
   }
   const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
   if (!row) return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);
@@ -277,7 +290,7 @@ const draftCostChangeSpec: Tool = {
       additionalProperties: false,
       properties: {
         id: { type: "integer" },
-        new_cost: { type: "number", minimum: 0 },
+        new_cost: { type: "number", minimum: 0.01, maximum: 1_000_000 },
       },
     },
   },
@@ -291,8 +304,13 @@ async function draftCostChangeHandler(
     return refusal(409, REFUSAL_CODES.INVALID_VALUE, "Missing or invalid product id.");
   }
   const newCost = Number(input.new_cost);
-  if (!Number.isFinite(newCost) || newCost < 0) {
-    return refusal(409, REFUSAL_CODES.INVALID_VALUE, "new_cost must be a non-negative number.");
+  // r4 red-team F-1: mirror the zod perimeter bounds (0.01..1M LYD).
+  if (!Number.isFinite(newCost) || newCost < 0.01 || newCost > 1_000_000) {
+    return refusal(
+      409,
+      REFUSAL_CODES.INVALID_VALUE,
+      "new_cost must be a number between 0.01 and 1000000.",
+    );
   }
   const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
   if (!row) return refusal(404, REFUSAL_CODES.NOT_FOUND, `Product #${id} not found.`);

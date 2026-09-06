@@ -466,6 +466,32 @@ const authLimiter = rateLimit({
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة.", code: "RATE_LIMITED" },
 });
 
+// r4 money-integrity: coupon enumeration guard. /api/coupons/validate
+// distinguishes live codes from dead ones via 404/400/200 — under the
+// blanket 1200/min/user limiter that is a usable oracle for scraping
+// every active coupon code. Legitimate checkout usage is a handful of
+// attempts per minute at most (a user pasting a code they received);
+// 10/min per user makes enumeration useless while staying far above
+// any honest pattern. Keyed per-user via getRequestUserId; anonymous
+// callers fall back to the shared IP key (they also must pass
+// requireUser inside the route, so the per-user key is the one that
+// matters in practice).
+const couponValidateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  store: rateLimiterStore,
+  keyGenerator: (req) => {
+    const userId = getRequestUserId(req);
+    return userId !== null ? `cu:${userId}` : `cu:ip:${req.ip ?? "unknown"}`;
+  },
+  message: {
+    error: "عدد كبير من محاولات التحقق من الكوبونات. حاول مرة أخرى بعد دقيقة.",
+    code: "RATE_LIMITED",
+  },
+});
+
 // ── Phase 2 instrumentation pipeline ─────────────────────────────────────────
 //
 // Order matters:
@@ -626,6 +652,9 @@ app.use("/api/admin/login/verify-2fa", authLimiter);
 app.use("/api/auth/telegram", authLimiter);
 app.use("/api/auth/telegram/callback", authLimiter);
 app.use("/api/auth/whatsapp", authLimiter);
+// Coupon enumeration guard — must mount BEFORE the generic /api limiters
+// so the tighter 10/min budget applies.
+app.use("/api/coupons/validate", couponValidateLimiter);
 app.use("/api", apiLimiter);
 app.use("/api", userLimiter);
 app.use("/api", router);

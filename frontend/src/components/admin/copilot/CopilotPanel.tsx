@@ -41,6 +41,7 @@ import {
   History,
 } from "lucide-react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { getErrorMessage } from "@/lib/errors";
 import { CopilotHistoryView } from "./CopilotHistoryView";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -489,7 +490,11 @@ export function CopilotPanel() {
             await runAsk(turn.id, text, history);
             return;
           }
-          throw new Error(body?.error ?? body?.message ?? `request failed (${resp.status})`);
+          // Round-4 (org §6a): getErrorMessage maps the backend `code`
+          // to Arabic; raw error/message remain the fallbacks.
+          throw new Error(
+            getErrorMessage(body) || body?.message || `request failed (${resp.status})`,
+          );
         }
         const data = (await resp.json()) as DraftResponse;
         if (!data.preview_id || !data.preview) {
@@ -538,7 +543,7 @@ export function CopilotPanel() {
     });
     if (!resp.ok) {
       const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(body?.error ?? `request failed (${resp.status})`);
+      throw new Error(getErrorMessage(body) || `request failed (${resp.status})`);
     }
     // If the server didn't actually start an SSE stream (e.g. proxy
     // stripped it), fall back to JSON parse.
@@ -687,7 +692,7 @@ export function CopilotPanel() {
           code?: string;
           stale_ids?: number[];
         } | null;
-        throw new Error(body?.error ?? `confirm failed (${resp.status})`);
+        throw new Error(getErrorMessage(body) || `confirm failed (${resp.status})`);
       }
       const data = (await resp.json()) as ConfirmResponse;
       if (data.outcome === "awaiting_double_confirm") {
@@ -727,7 +732,7 @@ export function CopilotPanel() {
         } | null;
         // 425 = cooldown not elapsed; route already enforced server-side
         // but the client clock can drift. Surface it cleanly.
-        const msg = body?.error ?? `double-confirm failed (${resp.status})`;
+        const msg = getErrorMessage(body) || `double-confirm failed (${resp.status})`;
         throw new Error(msg);
       }
       const data = (await resp.json()) as ConfirmResponse;

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatDate } from "@/lib/utils";
 import {
   AlertCircle,
@@ -84,6 +85,11 @@ export default function AdminCouponsPage() {
 
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
+  // Round-4 (org §2/§6a): the old fetchCoupons swallowed BOTH network
+  // errors and non-OK HTTP responses with a bare `catch {}` — the admin
+  // list could fail with zero UI signal. The failure now surfaces as an
+  // inline banner (plus a toast on the initial load).
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
@@ -100,8 +106,28 @@ export default function AdminCouponsPage() {
       if (!silent) setLoading(true);
       try {
         const r = await fetch("/api/coupons/admin", { headers });
-        if (r.ok) setCoupons(await r.json());
-      } catch {
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+          // getErrorMessage maps the backend `code` to Arabic.
+          const msg = getErrorMessage(body) || `فشل تحميل الكوبونات (HTTP ${r.status})`;
+          setLoadError(msg);
+          if (!silent) {
+            toast({ title: "تعذّر تحميل الكوبونات", description: msg, variant: "destructive" });
+          }
+          return;
+        }
+        setLoadError(null);
+        setCoupons(await r.json());
+      } catch (err) {
+        // Network-level failure (offline/DNS) — same surfacing.
+        const msg = getErrorMessage(err);
+        setLoadError(msg);
+        if (!silent) {
+          toast({ title: "تعذّر تحميل الكوبونات", description: msg, variant: "destructive" });
+        }
       } finally {
         if (!silent) setLoading(false);
       }
@@ -395,149 +421,173 @@ export default function AdminCouponsPage() {
         {/* Table */}
         {loading ? (
           <TableSkeleton />
-        ) : coupons.length === 0 ? (
-          <EmptyState
-            icon={Tag}
-            title="لا توجد كوبونات بعد"
-            action={
-              <button
-                onClick={() => setShowCreate(true)}
-                className="text-xs text-primary hover:underline press-spring"
-              >
-                + إنشاء أول كوبون
-              </button>
-            }
-          />
         ) : (
-          <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-            {/* Header */}
-            <div className="hidden md:grid grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-bold text-muted-foreground">
-              <span>الكوبون</span>
-              <span>الخصم</span>
-              <span>الحد الأدنى</span>
-              <span>الاستخدام</span>
-              <span>الانتهاء</span>
-              <span>الحالة</span>
-              <span>إجراءات</span>
-            </div>
-
-            <div className="divide-y divide-border/30">
-              {coupons.map((coupon, i) => {
-                const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date();
-                const isMaxed = coupon.max_uses !== null && coupon.used_count >= coupon.max_uses;
-                const effectivelyActive = coupon.is_active && !isExpired && !isMaxed;
-                return (
-                  <div
-                    key={coupon.id}
-                    className={`flex flex-col md:grid md:grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
+          <>
+            {/* Failure banner: shown ABOVE whatever data we already have —
+                a failed refresh (or initial load) never blanks a list the
+                admin was already looking at. */}
+            {loadError && (
+              <div
+                role="alert"
+                className="mb-4 p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{loadError}</span>
+                <button
+                  type="button"
+                  onClick={() => fetchCoupons()}
+                  className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 press-spring"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            )}
+            {coupons.length === 0 && !loadError ? (
+              <EmptyState
+                icon={Tag}
+                title="لا توجد كوبونات بعد"
+                action={
+                  <button
+                    onClick={() => setShowCreate(true)}
+                    className="text-xs text-primary hover:underline press-spring"
                   >
-                    {/* Code + description */}
-                    <div>
-                      <div className="font-mono font-black text-sm tracking-wider text-foreground">
-                        {coupon.code}
-                      </div>
-                      {coupon.description && (
-                        <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
-                          {coupon.description}
+                    + إنشاء أول كوبون
+                  </button>
+                }
+              />
+            ) : coupons.length > 0 ? (
+              <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+                {/* Header */}
+                <div className="hidden md:grid grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-bold text-muted-foreground">
+                  <span>الكوبون</span>
+                  <span>الخصم</span>
+                  <span>الحد الأدنى</span>
+                  <span>الاستخدام</span>
+                  <span>الانتهاء</span>
+                  <span>الحالة</span>
+                  <span>إجراءات</span>
+                </div>
+
+                <div className="divide-y divide-border/30">
+                  {coupons.map((coupon, i) => {
+                    const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date();
+                    const isMaxed =
+                      coupon.max_uses !== null && coupon.used_count >= coupon.max_uses;
+                    const effectivelyActive = coupon.is_active && !isExpired && !isMaxed;
+                    return (
+                      <div
+                        key={coupon.id}
+                        className={`flex flex-col md:grid md:grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
+                      >
+                        {/* Code + description */}
+                        <div>
+                          <div className="font-mono font-black text-sm tracking-wider text-foreground">
+                            {coupon.code}
+                          </div>
+                          {coupon.description && (
+                            <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
+                              {coupon.description}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Value */}
-                    <div className="flex items-center gap-1 font-black text-primary text-sm">
-                      {coupon.type === "percentage" ? (
-                        <>
-                          <Percent className="w-3 h-3" />
-                          {coupon.value}%
-                        </>
-                      ) : (
-                        <>{coupon.value} د.ل</>
-                      )}
-                    </div>
+                        {/* Value */}
+                        <div className="flex items-center gap-1 font-black text-primary text-sm">
+                          {coupon.type === "percentage" ? (
+                            <>
+                              <Percent className="w-3 h-3" />
+                              {coupon.value}%
+                            </>
+                          ) : (
+                            <>{coupon.value} د.ل</>
+                          )}
+                        </div>
 
-                    {/* Min order */}
-                    <div className="text-xs text-muted-foreground tabular-nums">
-                      {coupon.min_order_amount > 0 ? `${coupon.min_order_amount} د.ل` : "—"}
-                    </div>
+                        {/* Min order */}
+                        <div className="text-xs text-muted-foreground tabular-nums">
+                          {coupon.min_order_amount > 0 ? `${coupon.min_order_amount} د.ل` : "—"}
+                        </div>
 
-                    {/* Usage */}
-                    <div className="text-xs tabular-nums font-bold">
-                      <span className="text-foreground">{coupon.used_count}</span>
-                      {coupon.max_uses !== null && (
-                        <span className="text-muted-foreground">/{coupon.max_uses}</span>
-                      )}
-                      {coupon.max_uses === null && (
-                        <InfinityIcon className="w-3 h-3 text-muted-foreground inline mr-1" />
-                      )}
-                    </div>
+                        {/* Usage */}
+                        <div className="text-xs tabular-nums font-bold">
+                          <span className="text-foreground">{coupon.used_count}</span>
+                          {coupon.max_uses !== null && (
+                            <span className="text-muted-foreground">/{coupon.max_uses}</span>
+                          )}
+                          {coupon.max_uses === null && (
+                            <InfinityIcon className="w-3 h-3 text-muted-foreground inline mr-1" />
+                          )}
+                        </div>
 
-                    {/* Expiry */}
-                    <div className="text-xs text-muted-foreground">
-                      {coupon.expires_at ? (
-                        <span className={isExpired ? "text-destructive" : ""}>
-                          {formatDate(coupon.expires_at)}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <InfinityIcon className="w-3 h-3" /> بلا حد
-                        </span>
-                      )}
-                    </div>
+                        {/* Expiry */}
+                        <div className="text-xs text-muted-foreground">
+                          {coupon.expires_at ? (
+                            <span className={isExpired ? "text-destructive" : ""}>
+                              {formatDate(coupon.expires_at)}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <InfinityIcon className="w-3 h-3" /> بلا حد
+                            </span>
+                          )}
+                        </div>
 
-                    {/* Status */}
-                    <div>
-                      {effectivelyActive ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle className="w-2.5 h-2.5" /> نشط
-                        </span>
-                      ) : isExpired ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/40 text-muted-foreground border border-border/40">
-                          <Clock className="w-2.5 h-2.5" /> منتهي
-                        </span>
-                      ) : isMaxed ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                          <AlertCircle className="w-2.5 h-2.5" /> استُنفد
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/30 text-muted-foreground border border-border/40">
-                          <XCircle className="w-2.5 h-2.5" /> معطل
-                        </span>
-                      )}
-                    </div>
+                        {/* Status */}
+                        <div>
+                          {effectivelyActive ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle className="w-2.5 h-2.5" /> نشط
+                            </span>
+                          ) : isExpired ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/40 text-muted-foreground border border-border/40">
+                              <Clock className="w-2.5 h-2.5" /> منتهي
+                            </span>
+                          ) : isMaxed ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                              <AlertCircle className="w-2.5 h-2.5" /> استُنفد
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-muted/30 text-muted-foreground border border-border/40">
+                              <XCircle className="w-2.5 h-2.5" /> معطل
+                            </span>
+                          )}
+                        </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => handleToggle(coupon)}
-                        disabled={toggling === coupon.id}
-                        title={coupon.is_active ? "تعطيل" : "تفعيل"}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                      >
-                        {toggling === coupon.id ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : coupon.is_active ? (
-                          <ToggleRight className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <ToggleLeft className="w-4 h-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(coupon.id)}
-                        title="حذف"
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleToggle(coupon)}
+                            disabled={toggling === coupon.id}
+                            title={coupon.is_active ? "تعطيل" : "تفعيل"}
+                            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          >
+                            {toggling === coupon.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : coupon.is_active ? (
+                              <ToggleRight className="w-4 h-4 text-emerald-400" />
+                            ) : (
+                              <ToggleLeft className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(coupon.id)}
+                            title="حذف"
+                            className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            <div className="px-4 py-2 border-t border-border/40 bg-muted/10 text-xs text-muted-foreground">
-              {coupons.length} كوبون · {activeCount} نشط
-            </div>
-          </div>
+                <div className="px-4 py-2 border-t border-border/40 bg-muted/10 text-xs text-muted-foreground">
+                  {coupons.length} كوبون · {activeCount} نشط
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </AdminLayout>

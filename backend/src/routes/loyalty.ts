@@ -65,8 +65,29 @@ router.get("/", requireUser, async (req, res) => {
 router.post("/convert-points", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
+  // r4 money-integrity: strict input validation for a money-adjacent
+  // write. The old `parseInt(points)` laundered hostile shapes into
+  // valid numbers — ["100"] (array) → 100, "0x64" (hex) → 100,
+  // "1e2" → 1, 100.9 → 100 (silent truncation). Not directly
+  // over-spendable (the in-tx balance check held), but the request
+  // contract must be exact: a finite number OR a decimal string of
+  // an integer, nothing else.
   const { points } = req.body ?? {};
-  const pointsToConvert = parseInt(points);
+  let pointsToConvert: number;
+  if (typeof points === "number") {
+    if (!Number.isInteger(points)) {
+      return res.status(400).json(
+        createErrorResponse("عدد النقاط يجب أن يكون عدداً صحيحاً", ErrorCode.INVALID_DATA),
+      );
+    }
+    pointsToConvert = points;
+  } else if (typeof points === "string" && /^\d{1,9}$/.test(points.trim())) {
+    pointsToConvert = Number(points.trim());
+  } else {
+    return res
+      .status(400)
+      .json(createErrorResponse("عدد النقاط غير صالح", ErrorCode.INVALID_DATA));
+  }
 
   if (!pointsToConvert || pointsToConvert < POINTS_PER_LYD) {
     return res

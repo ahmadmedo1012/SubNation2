@@ -311,7 +311,10 @@ export default function AdminTopupsPage() {
       query: {
         queryKey: getListAdminTopupsQueryKey({}),
         enabled: !!adminToken,
-        refetchInterval: 20_000,
+        // Round-4 (perf P1-3): the admin-room socket listener invalidates
+        // topups on every `admin-stats-update` push (approve/reject) —
+        // 5-min fallback only (was 20 s).
+        refetchInterval: 300_000,
         refetchIntervalInBackground: false,
       },
       request: { headers },

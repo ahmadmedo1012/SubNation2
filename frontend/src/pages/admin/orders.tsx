@@ -115,7 +115,9 @@ export default function AdminOrdersPage() {
       query: {
         queryKey: getListAdminOrdersQueryKey({}),
         enabled: !!adminToken,
-        refetchInterval: 30_000,
+        // Round-4 (perf P1-3): the admin-room socket listener invalidates
+        // orders on every `admin-stats-update` push — 5-min fallback only.
+        refetchInterval: 300_000,
         refetchIntervalInBackground: false,
       },
       request: { headers },

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import {
   PROVIDER_TONE_CLASS,
@@ -160,7 +161,10 @@ export default function AdminUsersPage() {
     query: {
       queryKey: getListAdminUsersQueryKey(params),
       enabled: !!adminToken,
-      refetchInterval: 30_000,
+      // Round-4 (perf P1-3): the admin-room socket listener invalidates
+      // users on every `admin-stats-update` push (wallet/loyalty writes
+      // change user rows) — 5-min fallback only.
+      refetchInterval: 300_000,
       refetchIntervalInBackground: false,
     },
     request: { headers },
@@ -240,7 +244,10 @@ export default function AdminUsersPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "خطأ");
+      // Round-4 (org §6a): money-path admin save — getErrorMessage maps
+      // the backend `code` (INSUFFICIENT_PERMISSIONS, INVALID_DATA…) to
+      // Arabic instead of the bare "خطأ" fallback.
+      if (!res.ok) throw new Error(getErrorMessage(data) || "خطأ");
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey(params) });
       setEditingUser(null);

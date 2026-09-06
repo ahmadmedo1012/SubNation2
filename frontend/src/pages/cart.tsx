@@ -7,51 +7,11 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2, Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
 
-interface ServerCartItem {
-  id: number;
-  product_id: number;
-  product_name: string;
-  product_slug: string | null;
-  product_image_url: string | null;
-  price: number;
-  sale_price: number | null;
-  discount_percent: number | null;
-  quantity: number;
-  subtotal: number;
-}
-
-interface ServerCart {
-  items: ServerCartItem[];
-  total: number;
-}
-
-function effectivePrice(item: {
-  price?: number;
-  priceLYD?: number;
-  sale_price?: number | null;
-  salePriceLYD?: number | null;
-}): number {
-  const base = item.price ?? item.priceLYD ?? 0;
-  const sale = item.sale_price ?? item.salePriceLYD;
-  return sale ?? base;
-}
-
-function localToServerItems(items: LocalCartItem[]): ServerCartItem[] {
-  return items.map((i, idx) => ({
-    id: idx + 1,
-    product_id: i.productId,
-    product_name: i.name,
-    product_slug: i.slug,
-    product_image_url: i.imageUrl,
-    price: i.priceLYD,
-    sale_price: i.salePriceLYD,
-    discount_percent: i.discountPercent,
-    quantity: i.quantity,
-    subtotal: +(effectivePrice(i) * i.quantity).toFixed(2),
-  }));
+function effectivePrice(item: LocalCartItem): number {
+  return item.salePriceLYD ?? item.priceLYD;
 }
 
 function CartSkeleton() {
@@ -84,23 +44,18 @@ export default function CartPage() {
   });
 
   const { token } = useAuth();
-  const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { items: localItems, isLoaded, updateQuantity, removeItem, clear, totalLYD } = useCart();
+  // Round-4 dead-code removal: the "server cart" simulation
+  // (ServerCartItem/ServerCart/localToServerItems + a serverItems state
+  // that was only ever set to []) never had a real server behind it —
+  // the page renders the local cart directly. Verified unused in the
+  // r4-1-c org audit (docs/ux-audit-storefront.md:73 documents the
+  // remnant as known-dead since rounds ago).
+  const { items, isLoaded, updateQuantity, removeItem, clear } = useCart();
   const [busy, setBusy] = useState(false);
-  const [serverItems, setServerItems] = useState<ServerCartItem[] | null>(null);
-
-  // When authed we display server cart; when guest we fall back to local cart.
-  const items: ServerCartItem[] = useMemo(() => {
-    if (token) {
-      if (serverItems) return serverItems;
-      return localToServerItems(localItems);
-    }
-    return localToServerItems(localItems);
-  }, [token, serverItems, localItems]);
 
   const total = useMemo(() => {
-    return +items.reduce((s, i) => s + i.subtotal, 0).toFixed(2);
+    return +items.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0).toFixed(2);
   }, [items]);
 
   async function handleUpdate(productId: number, qty: number) {
@@ -129,7 +84,6 @@ export default function CartPage() {
           // exists, so the old read always fell back to the generic text.
           throw new Error(getErrorMessage(err) || "فشل في إفراغ السلة");
         }
-        setServerItems([]);
         clear();
         toast({ title: "تم إفراغ السلة" });
       } catch (e) {
@@ -224,45 +178,45 @@ export default function CartPage() {
               const price = effectivePrice(it);
               return (
                 <div
-                  key={it.product_id}
+                  key={it.productId}
                   className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 hover:border-border transition-all duration-200 group`}
                 >
                   <div className="flex items-center gap-3.5">
-                    <Link href={it.product_slug ? `/product/${it.product_slug}` : "/"}>
+                    <Link href={it.slug ? `/product/${it.slug}` : "/"}>
                       <div className="w-14 h-14 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
-                        {it.product_image_url ? (
+                        {it.imageUrl ? (
                           <img
-                            src={it.product_image_url}
-                            alt={it.product_name}
+                            src={it.imageUrl}
+                            alt={it.name}
                             loading="lazy"
                             decoding="async"
                             className="w-full h-full object-contain p-1.5"
                           />
                         ) : (
                           <span className="text-lg font-black text-primary/50 select-none">
-                            {(it.product_name ?? "?")[0]}
+                            {(it.name ?? "?")[0]}
                           </span>
                         )}
                       </div>
                     </Link>
                     <div className="flex-1 min-w-0">
-                      <Link href={it.product_slug ? `/product/${it.product_slug}` : "/"}>
+                      <Link href={it.slug ? `/product/${it.slug}` : "/"}>
                         <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors">
-                          {it.product_name}
+                          {it.name}
                         </div>
                       </Link>
                       <div className="flex items-baseline gap-2 mt-0.5">
                         <span className="font-black text-sm tabular-nums text-primary-text">
                           {formatCurrency(price)}
                         </span>
-                        {it.sale_price != null && it.sale_price < it.price && (
+                        {it.salePriceLYD != null && it.salePriceLYD < it.priceLYD && (
                           <span className="text-[11px] text-muted-foreground line-through tabular-nums">
-                            {formatCurrency(it.price)}
+                            {formatCurrency(it.priceLYD)}
                           </span>
                         )}
-                        {it.discount_percent != null && it.discount_percent > 0 && (
+                        {it.discountPercent != null && it.discountPercent > 0 && (
                           <span className="text-[10px] font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
-                            خصم {it.discount_percent}%
+                            خصم {it.discountPercent}%
                           </span>
                         )}
                       </div>
@@ -272,7 +226,7 @@ export default function CartPage() {
                       <div className="flex items-center gap-0 bg-muted/50 border border-border/40 rounded-lg overflow-hidden">
                         <button
                           type="button"
-                          onClick={() => handleUpdate(it.product_id, it.quantity - 1)}
+                          onClick={() => handleUpdate(it.productId, it.quantity - 1)}
                           className="p-1.5 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground"
                           aria-label={it.quantity === 1 ? "حذف المنتج" : "إنقاص الكمية"}
                         >
@@ -287,7 +241,7 @@ export default function CartPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleUpdate(it.product_id, it.quantity + 1)}
+                          onClick={() => handleUpdate(it.productId, it.quantity + 1)}
                           className="p-1.5 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground"
                           aria-label="زيادة الكمية"
                         >
@@ -296,7 +250,7 @@ export default function CartPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleRemove(it.product_id)}
+                        onClick={() => handleRemove(it.productId)}
                         className="p-1.5 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors"
                         aria-label="حذف"
                       >

@@ -9,8 +9,10 @@
 
 import { render, screen, act } from "@testing-library/react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import React, { createContext, useContext } from "react";
-import { CartProvider, useCart, type LocalCartItem } from "@/lib/cart";
+// JSX in this file compiles with the classic runtime (React.createElement)
+// in the vitest transform, so the React default import is load-bearing.
+import React from "react";
+import { CartProvider, useCart } from "@/lib/cart";
 
 function LocalCartConsumer() {
   const { items, itemCount, totalLYD, addItem, removeItem, updateQuantity, clear } = useCart();
@@ -60,20 +62,6 @@ function LocalCartConsumer() {
 }
 
 const STORAGE_KEY = "subnation_cart_v1";
-
-function getStorage(): Record<string, string> {
-  const store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => {
-      store[key] = value;
-    },
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    ...store,
-  };
-}
 
 describe("CartProvider", () => {
   beforeEach(() => {

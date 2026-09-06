@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AdminLayout } from "./layout";
@@ -60,7 +61,9 @@ function statusMeta(status: string) {
 
 async function responseError(response: Response): Promise<string> {
   const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
-  return typeof body?.error === "string" ? body.error : `فشلت العملية (${response.status})`;
+  // Round-4 (org §6a): getErrorMessage maps the backend `code` to Arabic
+  // when present, else falls back to the raw `error` string / HTTP text.
+  return getErrorMessage(body) || `فشلت العملية (${response.status})`;
 }
 
 export default function AdminWhatsAppPage() {

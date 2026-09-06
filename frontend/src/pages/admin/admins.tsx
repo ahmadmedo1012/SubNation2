@@ -1,6 +1,7 @@
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import {
   AlertTriangle,
   CheckCircle,
@@ -97,7 +98,10 @@ export default function AdminAdminsPage() {
         headers,
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || `فشل ${verb} الحساب`);
+      // Round-4 (org §6a): route through getErrorMessage so the backend
+      // `code` (RATE_LIMITED, ALREADY_EXISTS…) maps to its Arabic message
+      // instead of the raw English `error` string leaking into the toast.
+      if (!res.ok) throw new Error(getErrorMessage(body) || `فشل ${verb} الحساب`);
       toast({ title: `تم ${verb} المسؤول @${admin.username}` });
       void reload();
     } catch (err) {
@@ -203,9 +207,7 @@ export default function AdminAdminsPage() {
                   </div>
                   <div className="mt-3 pt-3 border-t border-border/40 flex flex-wrap gap-1.5">
                     {(admin.permissions ?? []).length === 0 ? (
-                      <span className="text-xs text-muted-foreground">
-                        لا توجد صلاحيات ممنوحة
-                      </span>
+                      <span className="text-xs text-muted-foreground">لا توجد صلاحيات ممنوحة</span>
                     ) : (admin.permissions ?? []).includes("all") ? (
                       <span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded">
                         جميع الصلاحيات (مسؤول رئيسي)
@@ -281,9 +283,7 @@ function CreateAdminDialog({
   const [saving, setSaving] = useState(false);
 
   const toggleScope = (id: string) => {
-    setSelectedScopes((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
-    );
+    setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -306,7 +306,7 @@ function CreateAdminDialog({
         }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "فشل الإنشاء");
+      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل الإنشاء");
       toast({ title: "تم إنشاء حساب المسؤول" });
       onCreated();
     } catch (err) {
@@ -361,11 +361,7 @@ function CreateAdminDialog({
         </div>
         <div>
           <label className="text-xs font-bold mb-1 block">الصلاحيات</label>
-          <ScopeCheckboxGrid
-            scopes={scopes}
-            selected={selectedScopes}
-            onToggle={toggleScope}
-          />
+          <ScopeCheckboxGrid scopes={scopes} selected={selectedScopes} onToggle={toggleScope} />
         </div>
         <div className="flex items-center justify-end gap-2 pt-2">
           <button
@@ -380,7 +376,11 @@ function CreateAdminDialog({
             disabled={saving}
             className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {saving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
             إنشاء
           </button>
         </div>
@@ -410,14 +410,12 @@ function EditAdminDialog({
   // the wildcard "all" — preserve the super-admin invariant.
   const isSuper = (admin.permissions ?? []).includes("all");
   const [selectedScopes, setSelectedScopes] = useState<string[]>(
-    isSuper ? [] : admin.permissions ?? [],
+    isSuper ? [] : (admin.permissions ?? []),
   );
   const [saving, setSaving] = useState(false);
 
   const toggleScope = (id: string) => {
-    setSelectedScopes((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
-    );
+    setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -438,7 +436,7 @@ function EditAdminDialog({
         }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "فشل التحديث");
+      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل التحديث");
       toast({ title: "تم تحديث الحساب" });
       onSaved();
     } catch (err) {
@@ -475,17 +473,13 @@ function EditAdminDialog({
               </div>
             </div>
           ) : (
-            <ScopeCheckboxGrid
-              scopes={scopes}
-              selected={selectedScopes}
-              onToggle={toggleScope}
-            />
+            <ScopeCheckboxGrid scopes={scopes} selected={selectedScopes} onToggle={toggleScope} />
           )}
         </div>
         <div className="flex items-start gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-lg text-[11px] text-muted-foreground">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          لتغيير اسم المستخدم أو كلمة المرور لهذا الحساب، يجب أن يقوم المسؤول نفسه بذلك من
-          صفحة "حسابي".
+          لتغيير اسم المستخدم أو كلمة المرور لهذا الحساب، يجب أن يقوم المسؤول نفسه بذلك من صفحة
+          "حسابي".
         </div>
         <div className="flex items-center justify-end gap-2 pt-2">
           <button

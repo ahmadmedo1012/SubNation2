@@ -2,7 +2,13 @@ import { adminAlertsTable, db } from "@workspace/db";
 import { count, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-export type AlertType = "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "flash_sale_expired" | "system";
+export type AlertType =
+  | "coupon_maxed"
+  | "coupon_expiring"
+  | "low_stock"
+  | "no_stock"
+  | "flash_sale_expired"
+  | "system";
 
 export async function logAdminAlert(
   type: AlertType,
@@ -10,7 +16,25 @@ export async function logAdminAlert(
   message: string,
 ): Promise<void> {
   try {
-    await db.insert(adminAlertsTable).values({ type, title, message });
+    const [inserted] = await db
+      .insert(adminAlertsTable)
+      .values({ type, title, message })
+      .returning({ id: adminAlertsTable.id });
+
+    // Round-4 (perf P1-5): fan the alert out to connected admins the
+    // moment it's inserted so the alert drawer/badge + toast land at
+    // alert time instead of up to 5 minutes later (the demoted poll
+    // fallback). Fire-and-forget: a socket failure must never fail the
+    // caller (cron watchers, checkout.service). Dynamic import — same
+    // lazy-socket pattern the admin order routes use — keeps socket.io
+    // and its import-time env reads out of the job/service test graph.
+    import("../lib/socket")
+      .then(({ emitToAdmins }) => {
+        emitToAdmins("admin-alert-new", { id: inserted?.id, type, title, message });
+      })
+      .catch((err) =>
+        logger.warn({ err, type, title }, "logAdminAlert: socket emit failed (non-fatal)"),
+      );
   } catch (err) {
     logger.error({ err, type, title }, "Failed to log admin alert");
   }

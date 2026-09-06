@@ -126,6 +126,22 @@ router.post("/validate", requireUser, async (req, res) => {
 
   const finalAmount = +(order_amount - discountAmount).toFixed(2);
 
+  // r4 red-team F-3: legacy 100% coupons (created before the create-side
+  // bound) and over-discount fixed coupons (min(value, basePrice) ==
+  // basePrice) would validate here as valid:true with final 0.00 — then
+  // 500 at checkout. Validate and checkout must agree: if the post-
+  // discount price is not strictly positive, the coupon is unusable.
+  if (!(finalAmount > 0)) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "هذا الكوبون يغطي كامل قيمة الطلب ولا يمكن استخدامه (السعر النهائي يجب أن يكون أكبر من صفر)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
+
   return res.json({
     valid: true,
     code: coupon.code,
@@ -156,10 +172,21 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { code, type, value, min_order_amount, max_uses, expires_at, description } = parse.data;
 
-  if (type === "percentage" && value > 100)
+  // r4 red-team F-3: reject value >= 100, not just > 100. A 100%
+  // percentage coupon passes `value > 100` but produces finalPrice = 0,
+  // which the checkout INVALID_PRICE gate fail-closes on — every
+  // purchase with that coupon 500s while /coupons/validate happily
+  // reports valid:true, final_amount: 0.00. 100%-off is not a state
+  // this marketplace supports.
+  if (type === "percentage" && value >= 100)
     return res
       .status(400)
-      .json(createErrorResponse("نسبة الخصم لا يمكن أن تتجاوز 100%", ErrorCode.INVALID_DATA));
+      .json(
+        createErrorResponse(
+          "نسبة الخصم يجب أن تكون أقل من 100% (السعر لا يمكن أن يصل إلى صفر)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
 
   const upperCode = code.toUpperCase();
 

@@ -58,15 +58,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setIsLoaded(true);
   }, []);
 
-  function persist(nextItems: LocalCartItem[]) {
-    setItems(nextItems);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextItems));
-    } catch {
-      // ignore quota errors
-    }
-  }
-
   const addItem = useCallback(
     (incoming: Omit<LocalCartItem, "quantity"> & { quantity?: number }) => {
       const qty = Math.min(incoming.quantity ?? 1, MAX_LINE_QUANTITY);

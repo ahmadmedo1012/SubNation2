@@ -7,6 +7,7 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -116,7 +117,9 @@ export default function AdminRiskEventPage() {
       });
       if (!resp.ok) {
         const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `HTTP ${resp.status}`);
+        // Round-4 (org §6a): map the backend `code` to Arabic via
+        // getErrorMessage; the raw `error` string stays the fallback.
+        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
       }
       return resp.json();
     },
@@ -153,7 +156,8 @@ export default function AdminRiskEventPage() {
 
   const { event, labels } = query.data;
   const tone = LEVEL_META[event.level];
-  const userLabel = event.user_phone ?? event.user_email ?? (event.user_id ? `#${event.user_id}` : "—");
+  const userLabel =
+    event.user_phone ?? event.user_email ?? (event.user_id ? `#${event.user_id}` : "—");
   const alreadyLabeled = labels.length > 0;
 
   return (
@@ -184,11 +188,7 @@ export default function AdminRiskEventPage() {
           <Stat label="النقاط" value={String(event.score)} />
           <Stat label="الثقة" value={`${(event.confidence * 100).toFixed(0)}%`} />
           <Stat label="الإجراء" value={event.action_taken} />
-          <Stat
-            label="الوقت"
-            value={new Date(event.created_at).toLocaleString("ar-LY")}
-            mono
-          />
+          <Stat label="الوقت" value={new Date(event.created_at).toLocaleString("ar-LY")} mono />
         </div>
 
         <Section title="المستخدم">
@@ -301,13 +301,9 @@ export default function AdminRiskEventPage() {
               </Button>
             </div>
             {labelMut.isError && (
-              <div className="text-xs text-destructive">
-                {(labelMut.error as Error).message}
-              </div>
+              <div className="text-xs text-destructive">{(labelMut.error as Error).message}</div>
             )}
-            {labelMut.isSuccess && (
-              <div className="text-xs text-emerald-400">تم حفظ التصنيف.</div>
-            )}
+            {labelMut.isSuccess && <div className="text-xs text-emerald-400">تم حفظ التصنيف.</div>}
           </div>
         </Section>
       </div>

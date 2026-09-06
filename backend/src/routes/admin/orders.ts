@@ -222,17 +222,41 @@ router.patch(
       });
     }
 
-    // Non-refund status transitions — direct UPDATE preserved.
-    await db
+    // Non-refund status transitions — direct UPDATE preserved, but with a
+    // state-machine guard (r4 red-team F-1): the raw UPDATE previously
+    // allowed `refunded → completed`, which re-armed RefundService's only
+    // double-refund protection (the status column). Three clicks by an
+    // orders-scope admin = wallet credited twice for one order, two
+    // ledger refund rows. An order that has been refunded can NEVER be
+    // un-refunded through this endpoint — refunds are terminal.
+    //
+    // The UPDATE is also rows-affected honest now (r4 red-team F-4): the
+    // response reports how many rows ACTUALLY transitioned, not
+    // `numIds.length` (valid-but-nonexistent or refunded ids are
+    // silently skipped today and reported as updated).
+    const flippedRows = await db
       .update(ordersTable)
       .set({ status: status as any })
-      .where(sql`id = ANY(${numIds})`);
+      .where(sql`id = ANY(${numIds}) AND ${ordersTable.status} <> 'refunded'`)
+      .returning({ id: ordersTable.id, userId: ordersTable.userId });
+    const updatedCount = flippedRows.length;
+
+    // Distinguish "skipped because refunded" from "id not found" so the
+    // admin sees an honest breakdown instead of a lumped count.
+    const flippedIdSet = new Set(flippedRows.map((r) => r.id));
+    const missedIds = numIds.filter((id) => !flippedIdSet.has(id));
+    let skippedRefunded = 0;
+    if (missedIds.length > 0) {
+      const refundedRows = await db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(and(sql`id = ANY(${missedIds})`, eq(ordersTable.status, "refunded")));
+      skippedRefunded = refundedRows.length;
+    }
+    const skippedMissing = missedIds.length - skippedRefunded;
 
     // Notify affected users
-    const updatedOrders = await db
-      .select({ id: ordersTable.id, userId: ordersTable.userId })
-      .from(ordersTable)
-      .where(sql`id = ANY(${numIds})`);
+    const updatedOrders = flippedRows;
 
     for (const o of updatedOrders) {
       import("../../lib/socket")
@@ -250,14 +274,24 @@ router.patch(
     void writeAuditLog(req, "order.bulk_status_update", "order", null, {
       ids: numIds,
       new_status: status,
-      count: numIds.length,
+      count_updated: updatedCount,
+      count_requested: numIds.length,
       skipped_invalid: skippedInvalid.length,
+      skipped_refunded: skippedRefunded,
+      skipped_missing: skippedMissing,
     });
 
+    // `updated` now reflects actual rows transitioned. Orders already in
+    // the refunded state (terminal — see guard above) and ids that don't
+    // exist are counted separately instead of being reported as successes.
     return res.json({
       success: true,
-      updated: numIds.length,
+      updated: updatedCount,
       ...(skippedInvalid.length > 0 ? { skipped_invalid: skippedInvalid.length } : {}),
+      ...(skippedRefunded > 0
+        ? { skipped_refunded: skippedRefunded, reason: "REFUNDED_IS_TERMINAL" }
+        : {}),
+      ...(skippedMissing > 0 ? { skipped_missing: skippedMissing } : {}),
     });
   },
 );

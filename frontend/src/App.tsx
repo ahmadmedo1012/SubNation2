@@ -4,7 +4,6 @@ import { NavigationProgress } from "@/components/NavigationProgress";
 import { MetaTags } from "@/components/seo/MetaTags";
 import { RouteSkeleton, type RouteSkeletonShape } from "@/components/ui/route-skeleton";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { useTelegramWebAppAutoLogin } from "@/hooks/use-telegram-webapp-auto-login";
 import { useDocumentDirection } from "@/lib/direction";
@@ -13,10 +12,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, useEffect, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
-
-// HelmetProvider is mounted once at the very top of the tree in main.tsx.
-// Mounting it again here would create a second context and silently break
-// the merging react-helmet-async does across nested components.
 
 // Critical layout
 import { Navbar } from "@/components/layout/Navbar";
@@ -210,23 +205,23 @@ function AdminProtectedRoutes() {
       <ErrorBoundary>
         <Switch>
           <Route path="/admin" component={AdminDashboardPage} />
-        <Route path="/admin/topups" component={AdminTopupsPage} />
-        <Route path="/admin/orders" component={AdminOrdersPage} />
-        <Route path="/admin/products" component={AdminProductsPage} />
-        <Route path="/admin/pricing" component={AdminPricingPage} />
-        <Route path="/admin/users" component={AdminUsersPage} />
-        <Route path="/admin/settings" component={AdminSettingsPage} />
-        <Route path="/admin/security" component={AdminSecurityPage} />
-        <Route path="/admin/tickets" component={AdminTicketsPage} />
-        <Route path="/admin/referrals" component={AdminReferralsPage} />
-        <Route path="/admin/coupons" component={AdminCouponsPage} />
-        <Route path="/admin/promotions" component={AdminPromotionsPage} />
-        <Route path="/admin/alerts" component={AdminAlertsPage} />
-        <Route path="/admin/system" component={AdminSystemPage} />
-        <Route path="/admin/admins" component={AdminAdminsPage} />
-        <Route path="/admin/risk" component={AdminRiskPage} />
-        <Route path="/admin/risk/events/:id" component={AdminRiskEventPage} />
-        <Route path="/admin/products/enrichment" component={AdminEnrichmentPage} />
+          <Route path="/admin/topups" component={AdminTopupsPage} />
+          <Route path="/admin/orders" component={AdminOrdersPage} />
+          <Route path="/admin/products" component={AdminProductsPage} />
+          <Route path="/admin/pricing" component={AdminPricingPage} />
+          <Route path="/admin/users" component={AdminUsersPage} />
+          <Route path="/admin/settings" component={AdminSettingsPage} />
+          <Route path="/admin/security" component={AdminSecurityPage} />
+          <Route path="/admin/tickets" component={AdminTicketsPage} />
+          <Route path="/admin/referrals" component={AdminReferralsPage} />
+          <Route path="/admin/coupons" component={AdminCouponsPage} />
+          <Route path="/admin/promotions" component={AdminPromotionsPage} />
+          <Route path="/admin/alerts" component={AdminAlertsPage} />
+          <Route path="/admin/system" component={AdminSystemPage} />
+          <Route path="/admin/admins" component={AdminAdminsPage} />
+          <Route path="/admin/risk" component={AdminRiskPage} />
+          <Route path="/admin/risk/events/:id" component={AdminRiskEventPage} />
+          <Route path="/admin/products/enrichment" component={AdminEnrichmentPage} />
           <Route path="/admin/whatsapp" component={AdminWhatsAppPage} />
           <Route component={NotFound} />
         </Switch>
@@ -254,7 +249,6 @@ function AppRoutes() {
   const { token } = useAuth();
   useTelegramWebAppAutoLogin();
   const isAdmin = location.startsWith("/admin");
-  const isAuth = location === "/login" || location === "/register";
   // /status is a public chromeless page (no Navbar/Footer/MobileNav)
   // — meant to be a quick "is the platform up?" view that loads even
   // when most of the SPA's state is broken. /auth/telegram-callback
@@ -297,9 +291,7 @@ function AppRoutes() {
       )}
       <main
         id="main-content"
-        className={
-          !isAdmin && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""
-        }
+        className={!isAdmin && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""}
       >
         <ErrorBoundary>
           <Suspense fallback={<RouteSuspenseFallback />}>
@@ -382,12 +374,10 @@ function App() {
         <AuthProvider>
           <AuthGate>
             <DeferredSocketInitializer />
-            <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <AppRoutes />
-              </WouterRouter>
-              <Toaster />
-            </TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <AppRoutes />
+            </WouterRouter>
+            <Toaster />
           </AuthGate>
         </AuthProvider>
       </ThemeProvider>

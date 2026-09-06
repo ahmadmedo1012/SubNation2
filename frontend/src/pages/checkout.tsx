@@ -7,8 +7,26 @@ import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
-import { AlertCircle, CheckCircle2, Loader2, Lock, ShieldCheck, ShoppingBag, Tag, Wallet, X } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  ShoppingBag,
+  Tag,
+  Wallet,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  createOrder,
+  getGetMeQueryKey,
+  getGetWalletQueryKey,
+  type CreateOrderBody,
+  type Order,
+} from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
 
@@ -20,15 +38,21 @@ interface MeResponse {
   wallet_balance?: number | null;
 }
 
-interface CreatedOrder {
-  id: number;
-  order_code: string;
-  amount: number;
-  product_name?: string;
-}
-
 function formatBalance(value: number | null | undefined): string {
   return formatCurrency(value ?? 0);
+}
+
+/**
+ * customFetch throws `ApiError` (an Error subclass with `name: "ApiError"`)
+ * for EVERY non-2xx HTTP response, and a browser `TypeError` for network-level
+ * failures (DNS/offline/request never delivered). The distinction matters for
+ * the partial-failure bookkeeping below: an HTTP failure means the server
+ * DEFINITIVELY rejected this unit (safe to shrink the cart to the remainder),
+ * while a network failure means the server state is UNKNOWN (the request may
+ * have landed and charged the wallet) — the cart must be left untouched.
+ */
+function isHttpApiError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ApiError";
 }
 
 /**
@@ -51,6 +75,7 @@ export default function CheckoutPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { items, totalLYD, clear, removeItem, updateQuantity } = useCart();
   const [coupon, setCoupon] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -125,7 +150,7 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setOrderError(null);
     setPartialCount(0);
-    const created: CreatedOrder[] = [];
+    const created: Order[] = [];
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
     // Per-line bookkeeping of units that ACTUALLY got ordered (P0-3). A
@@ -143,33 +168,40 @@ export default function CheckoutPage() {
         // `CreateOrderBody` accepts a single product_id with quantity 1
         // per order — a qty>1 cart line becomes N unit orders.
         for (let unit = 0; unit < unitsWanted; unit++) {
-          const body: Record<string, unknown> = { product_id: it.productId };
+          const body: CreateOrderBody = { product_id: it.productId };
           if (coupon.trim()) body.coupon_code = coupon.trim();
           // V4-P0: one fresh Idempotency-Key PER UNIT ORDER — a network
           // retry or double-click of this exact unit replays the cached
           // server response instead of charging the wallet twice, while
           // different units (and a NEW confirm click) stay distinct.
-          const res = await fetch("/api/orders", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Idempotency-Key": generateIdempotencyKey(),
-            },
-            credentials: "include",
-            body: JSON.stringify(body),
-          });
-          const orderData = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            // The backend error envelope is {error, code} — NEVER
-            // `.message` (P0-2). getErrorMessage maps `code` to the
-            // precise Arabic money message (INSUFFICIENT_BALANCE,
-            // OUT_OF_STOCK, ...) and falls back to the raw `error` text.
-            failureMessage = getErrorMessage(orderData) || "فشل في إنشاء الطلب";
+          // Round-4: raw fetch("/api/orders") replaced by the orval-generated
+          // createOrder() — per-call RequestInit carries the per-unit
+          // Idempotency-Key, and the typed Order response kills the local
+          // CreatedOrder interface. Auth rides the shared customFetch wiring
+          // (cookie session + global bearer-token getter from main.tsx).
+          try {
+            const order = await createOrder(body, {
+              headers: { "Idempotency-Key": generateIdempotencyKey() },
+            });
+            created.push(order);
+            unitsOrdered++;
+            if (!firstOrderCode) firstOrderCode = order.order_code;
+          } catch (e) {
+            if (!isHttpApiError(e)) {
+              // Network-level failure: this unit's server state is UNKNOWN
+              // (it may have been charged). Rethrow to the outer catch —
+              // it shows the error WITHOUT the cart-sync step, so a manual
+              // retry can't double-buy units that actually succeeded.
+              throw e;
+            }
+            // HTTP-level failure: the backend error envelope arrives as
+            // ApiError.data = {error, code} — NEVER `.message` (P0-2).
+            // getErrorMessage maps `code` to the precise Arabic money
+            // message (INSUFFICIENT_BALANCE, OUT_OF_STOCK, ...) and falls
+            // back to the raw `error` text.
+            failureMessage = getErrorMessage(e) || "فشل في إنشاء الطلب";
             break;
           }
-          created.push(orderData as CreatedOrder);
-          unitsOrdered++;
-          if (!firstOrderCode) firstOrderCode = (orderData as CreatedOrder).order_code;
         }
         if (unitsOrdered > 0) orderedUnitsByProduct.set(it.productId, unitsOrdered);
         if (failureMessage) break;
@@ -183,6 +215,16 @@ export default function CheckoutPage() {
         if (unitsOrdered >= line.quantity) removeItem(productId);
         else updateQuantity(productId, line.quantity - unitsOrdered);
       });
+
+      // Round-4: every unit that was charged moved the wallet balance —
+      // invalidate BOTH cached copies of it (the Navbar's useGetMe balance
+      // and the wallet page's useGetWallet) or they stay stale for up to
+      // 60 s (staleTime with refetchOnWindowFocus/reconnect disabled).
+      // product.tsx does the same after its single-unit purchase.
+      if (created.length > 0) {
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+      }
 
       if (failureMessage && created.length === 0) {
         // Complete failure — persistent in-page banner + toast cue.
@@ -209,6 +251,13 @@ export default function CheckoutPage() {
         if (firstOrderCode) navigate(`/orders/${firstOrderCode}`);
       }
     } catch (e) {
+      // Network-level abort (rethrown from the unit loop). If any unit
+      // was already charged, the wallet moved too — refresh the same
+      // caches even though the cart-sync was (deliberately) skipped.
+      if (created.length > 0) {
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+      }
       const msg = getErrorMessage(e);
       setOrderError(msg);
       toast({ title: msg, variant: "destructive" });
@@ -263,14 +312,22 @@ export default function CheckoutPage() {
             </p>
 
             {balanceError && (
-              <div role="alert" className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2">
+              <div
+                role="alert"
+                className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2"
+              >
                 <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                <span>تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند التأكيد.</span>
+                <span>
+                  تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند التأكيد.
+                </span>
               </div>
             )}
 
             {insufficient && (
-              <div role="alert" className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2">
+              <div
+                role="alert"
+                className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2"
+              >
                 <X className="w-4 h-4 shrink-0 mt-px" />
                 <div className="flex-1">
                   <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(totalLYD - (balance ?? 0))}).</p>
@@ -368,7 +425,9 @@ export default function CheckoutPage() {
                   </div>
                   <div className="flex items-center justify-between text-base font-black pt-1">
                     <span>الإجمالي</span>
-                    <span className="tabular-nums text-primary-text">{formatCurrency(totalLYD)}</span>
+                    <span className="tabular-nums text-primary-text">
+                      {formatCurrency(totalLYD)}
+                    </span>
                   </div>
                 </div>
 

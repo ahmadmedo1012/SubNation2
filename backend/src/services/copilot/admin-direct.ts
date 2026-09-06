@@ -363,8 +363,20 @@ const updateProductSpec: Tool = {
             usageTerms: { type: "string", maxLength: 10000 },
             imageUrl: { type: "string", maxLength: 1000 },
             category: { type: "string", maxLength: 100 },
-            price: { type: "string", description: 'Numeric string with 2 decimals, e.g. "49.99".' },
-            costPrice: { type: "string", description: "Numeric string with 2 decimals." },
+            price: {
+              type: "string",
+              description:
+                'Numeric string with 2 decimals, e.g. "49.99". Must be between 0.01 and 1000000.',
+              pattern: "^\\d{1,9}(\\.\\d{1,2})?$",
+              maxLength: 12,
+            },
+            costPrice: {
+              type: "string",
+              description:
+                "Numeric string with 2 decimals. Must be between 0.01 and 1000000.",
+              pattern: "^\\d{1,9}(\\.\\d{1,2})?$",
+              maxLength: 12,
+            },
             isActive: { type: "boolean" },
             isArchived: { type: "boolean" },
           },
@@ -405,12 +417,40 @@ export async function executeUpdateProduct(
     return { ok: false, error: "at least one field required" };
   }
 
-  // Coerce numeric strings.
-  if ("price" in fields && typeof fields.price !== "string") {
-    fields.price = String(fields.price);
-  }
-  if ("costPrice" in fields && typeof fields.costPrice !== "string") {
-    fields.costPrice = String(fields.costPrice);
+  // Coerce numeric strings — and BOUND them (r4 red-team F-1).
+  //
+  // The HTTP admin routes validate price/costPrice through the
+  // generated zod (0.01..1,000,000 LYD, audit M1), but this direct-
+  // execute path is a SECOND write perimeter the zod never sees. A
+  // copilot call storing "-30.00" or "0.00" would put prices into the
+  // catalog that the checkout INVALID_PRICE gate then fails-closed on
+  // — every purchase of that product 500s. Same bounds as the zod
+  // perimeter, enforced here so the invariant holds on every path.
+  const PRICE_MIN = 0.01;
+  const PRICE_MAX = 1_000_000;
+  const PRICE_RE = /^\d{1,9}(\.\d{1,2})?$/;
+  for (const field of ["price", "costPrice"] as const) {
+    if (!(field in fields)) continue;
+    const raw = fields[field];
+    if (typeof raw !== "string" && typeof raw !== "number") {
+      return { ok: false, error: `${field} must be a number or numeric string` };
+    }
+    const s = String(raw).trim();
+    if (!PRICE_RE.test(s)) {
+      return {
+        ok: false,
+        error: `${field} must be a plain decimal like "49.99" (got: ${s.slice(0, 40)})`,
+      };
+    }
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < PRICE_MIN || n > PRICE_MAX) {
+      return {
+        ok: false,
+        error: `${field} must be between ${PRICE_MIN} and ${PRICE_MAX} LYD (got: ${n})`,
+      };
+    }
+    // Normalize to 2-decimal string so the diff + DB store are tidy.
+    fields[field] = n.toFixed(2);
   }
 
   try {

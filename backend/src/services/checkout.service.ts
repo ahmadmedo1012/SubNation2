@@ -162,7 +162,26 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
           loyaltyTier: computeTier(newLifetimeSpend),
         })
-        .where(and(eq(usersTable.id, userId), eq(usersTable.walletBalance, String(currentBalance))))
+        // r4 money-integrity M3: extend the optimistic lock beyond
+        // walletBalance to loyaltyPoints + lifetimeSpend. The user row
+        // was read OUTSIDE this transaction, so those columns are stale
+        // by the time this UPDATE runs. A concurrent operation that
+        // touches ONLY points (referral +50, admin points-set) left the
+        // walletBalance predicate intact — the stale values silently
+        // erased the concurrent award (points are LYD-convertible at
+        // 100:1, so this is money). All three predicates together make
+        // the whole read set part of the lock; any interleaved writer
+        // forces CONCURRENCY_ERROR and a client retry instead of a
+        // silent lost-update. Postgres numeric equality is value-based,
+        // so "100.50" = '100.5' matches regardless of stored scale.
+        .where(
+          and(
+            eq(usersTable.id, userId),
+            eq(usersTable.walletBalance, String(currentBalance)),
+            eq(usersTable.loyaltyPoints, user.loyaltyPoints),
+            eq(usersTable.lifetimeSpend, String(toNumber(user.lifetimeSpend))),
+          ),
+        )
         .returning();
       if (!updatedUser) throw new Error("CONCURRENCY_ERROR");
 

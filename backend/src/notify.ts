@@ -23,7 +23,28 @@ export async function createNotification(
   link?: string,
 ) {
   try {
-    await db.insert(notificationsTable).values({ userId, type, title, message, link });
+    const [inserted] = await db
+      .insert(notificationsTable)
+      .values({ userId, type, title, message, link })
+      .returning({ id: notificationsTable.id });
+
+    // Round-4 (perf P1-4): push the new notification to the user's
+    // socket room the moment it's inserted, so the NotificationBell
+    // refreshes on event instead of waiting for its 60s poll. Fire-and-
+    // forget inside the existing try (a socket failure must never fail
+    // the originating request). The DYNAMIC import follows the same
+    // pattern the admin order routes use (import("../lib/socket")): it
+    // keeps socket.io — and the JWT module's import-time SESSION_SECRET
+    // read — out of every module that imports notify.ts (tests, cron
+    // watchers, services), avoiding both import cycles and test-env
+    // env-var explosions.
+    import("./lib/socket")
+      .then(({ emitToUser }) => {
+        emitToUser(userId, "notification-new", { id: inserted?.id, type });
+      })
+      .catch((err) =>
+        logger.warn({ err, userId, type }, "createNotification: socket emit failed (non-fatal)"),
+      );
   } catch (err) {
     logger.warn(
       {

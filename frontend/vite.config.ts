@@ -174,7 +174,52 @@ export default defineConfig({
         // google-fonts-cache runtime rule has been removed. The bundled
         // woff2 are covered by the standard precache + the 1y immutable
         // cache header on /assets/.
-        runtimeCaching: [],
+        //
+        // Round-4 (perf P1-4 — runtime caching): the precache diet covers
+        // the offline shell, but every REPEAT visit still re-downloaded
+        // the catalog JSON and every product image. Two runtime rules:
+        //   1. Catalog API — StaleWhileRevalidate with a 60s maxAge that
+        //      mirrors the backend's `s-maxage=60` edge-cache window on
+        //      /api/products* and /api/flash-sale (public, read-only GETs
+        //      only — never /api/cart, /api/orders, /api/notifications or
+        //      any authenticated surface). SWR serves the cache instantly
+        //      and refreshes in the background, so no networkTimeout is
+        //      needed (workbox only allows that option on NetworkFirst).
+        //   2. Images — CacheFirst for 30 days (product photos are remote
+        //      originals on image2url.com; no variants exist, so the bytes
+        //      are effectively immutable). Biggest byte win on revisits:
+        //      ~0.8–3 MB per product-grid page view.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, request }) =>
+              request.method === "GET" && /^\/api\/(products|flash-sale)/.test(url.pathname),
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "api-catalog-v1",
+              expiration: {
+                maxEntries: 32,
+                maxAgeSeconds: 60,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ({ request }) => request.destination === "image",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "images-v1",
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 2_592_000, // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
         // Round-3 (8-c §1.1 — precache diet): the default
         // precacheAndRoute globbed the ENTIRE build — 78 files / ~760 KB
         // gzip including vendor-sentry (156 KB gz), vendor-charts
@@ -282,6 +327,23 @@ export default defineConfig({
             id.includes("node_modules/engine.io-client")
           ) {
             return "vendor-socket";
+          }
+          // Round-4 (perf P0-1 — de-eager vendor-radix): Button (eager via
+          // Navbar) imports @radix-ui/react-slot. If slot stays inside the
+          // merged vendor-radix chunk, that single eager static import drags
+          // the whole Radix bundle (dialog/popper/alert-dialog/switch/label,
+          // ~25 KB gz) into the storefront's modulepreload set. Route slot
+          // (and its only dependency, react-compose-refs) into the eager
+          // vendor-utils chunk instead so vendor-radix is referenced ONLY by
+          // lazily-loaded pages (support/wallet/admin) and drops out of the
+          // critical path entirely. compose-refs must follow slot — a
+          // vendor-utils → vendor-radix static import would re-eager the
+          // whole chunk.
+          if (
+            id.includes("node_modules/@radix-ui/react-slot") ||
+            id.includes("node_modules/@radix-ui/react-compose-refs")
+          ) {
+            return "vendor-utils";
           }
           if (id.includes("node_modules/@radix-ui")) {
             return "vendor-radix";

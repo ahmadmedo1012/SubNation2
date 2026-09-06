@@ -4,6 +4,7 @@ import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetWalletQueryKey, getListTopupsQueryKey } from "@workspace/api-client-react";
 import { connectSocket } from "../lib/socket";
+import { NOTIFICATION_NEW_EVENT } from "../lib/socket-events";
 import { formatCurrency, statusLabel } from "@/lib/utils";
 
 /**
@@ -12,6 +13,9 @@ import { formatCurrency, statusLabel } from "@/lib/utils";
  * Emits:
  *   - order-updated → toast "تم تحديث حالة طلبك …"
  *   - topup-updated → toast (success or destructive based on status)
+ *   - notification-new → window event → NotificationBell refetch
+ *     (Round-4, perf P1-4: the backend emits the moment a notification
+ *     row is inserted; the bell's 60s poll is now only a fallback)
  *
  * All toasts route through the unified `@/hooks/use-toast` shim (Sonner
  * under the hood) so a single Toaster instance owns the stack — no
@@ -72,6 +76,13 @@ export function useSocket(userId?: number | string) {
           }
         });
 
+        socket.on("notification-new", (data: { id: number; type: string }) => {
+          // The bell component owns the fetch/toast/badge logic (with
+          // lastSeenMaxId dedupe) — we only nudge it to refetch NOW.
+          // Toasting here as well would double-fire for the same id.
+          window.dispatchEvent(new CustomEvent(NOTIFICATION_NEW_EVENT, { detail: data }));
+        });
+
         socket.on("connect_error", (error: Error) => {
           // Non-critical: Socket.IO retries automatically. Surface in DevTools
           // for debugging without disturbing the user.
@@ -93,6 +104,7 @@ export function useSocket(userId?: number | string) {
       if (socketRef.current) {
         socketRef.current.off("order-updated");
         socketRef.current.off("topup-updated");
+        socketRef.current.off("notification-new");
         socketRef.current.off("connect_error");
         socketRef.current.off("error");
       }

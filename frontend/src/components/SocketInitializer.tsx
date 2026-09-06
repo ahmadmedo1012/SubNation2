@@ -1,8 +1,11 @@
 import { useSocket } from "@/hooks/use-socket";
 import { useAuth } from "@/lib/auth";
 import { connectAdminSocket } from "@/lib/socket";
+import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import type { Socket } from "socket.io-client";
 
 /**
  * Mounted once at the App root (after `<AuthProvider>`). Wires:
@@ -27,6 +30,7 @@ import { useEffect } from "react";
  */
 export function SocketInitializer() {
   const { token, adminToken } = useAuth();
+  const queryClient = useQueryClient();
 
   const { data: user, error: userError } = useGetMe({
     query: {
@@ -48,13 +52,63 @@ export function SocketInitializer() {
 
   useSocket(user?.id);
 
+  // ── Admin room listeners (Round-4, perf P1-3/P1-5) ────────────────────
+  //
+  // The backend has ALWAYS emitted `admin-stats-update` (topup
+  // approve/reject + order bulk updates) but no client ever listened —
+  // every admin page compensated with 20–30 s polling. `admin-alert-new`
+  // is new (jobs/alertLogger emits on insert). With these listeners in
+  // place, the covered admin queries invalidate ON EVENT and their
+  // refetchIntervals are demoted to 5-minute heartbeat fallbacks (see
+  // dashboard/orders/topups/users pages + AdminLayout alert pollers).
   useEffect(() => {
-    if (adminToken) {
-      void connectAdminSocket().catch((err) => {
-        console.warn("Admin socket connection failed (non-critical):", err);
-      });
-    }
-  }, [adminToken]);
+    if (!adminToken) return;
+    let active = true;
+    let socketRef: Socket | null = null;
+
+    const setup = async () => {
+      try {
+        const socket = await connectAdminSocket();
+        if (!active || !socket) return;
+        socketRef = socket;
+
+        const handleStatsUpdate = () => {
+          // Prefix-invalidations cover every params variant of each
+          // list (dashboard's {limit:8} recent orders, the orders
+          // page's {}, users' {search} variants, …).
+          void queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+          void queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
+          void queryClient.invalidateQueries({ queryKey: ["/api/admin/topups"] });
+          void queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+        };
+
+        const handleAlertNew = () => {
+          // Alert drawer (react-query) + unread badge refresh…
+          void queryClient.invalidateQueries({ queryKey: ["admin-alerts"] });
+          void queryClient.invalidateQueries({ queryKey: ["admin-alerts-unread-count"] });
+          // …and the AdminLayout toast poller runs its /new?since= fetch
+          // immediately (it owns the localStorage lastId dedupe + Arabic
+          // toast labels, so toasting here would double-fire).
+          window.dispatchEvent(new CustomEvent(ADMIN_ALERT_NEW_EVENT));
+        };
+
+        socket.on("admin-stats-update", handleStatsUpdate);
+        socket.on("admin-alert-new", handleAlertNew);
+      } catch (err) {
+        console.warn("Admin socket setup failed (non-critical):", err);
+      }
+    };
+
+    void setup();
+
+    return () => {
+      active = false;
+      if (socketRef) {
+        socketRef.off("admin-stats-update");
+        socketRef.off("admin-alert-new");
+      }
+    };
+  }, [adminToken, queryClient]);
 
   return null;
 }

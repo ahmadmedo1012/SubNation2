@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
+import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
 
@@ -192,12 +193,13 @@ export function NotificationBell() {
     [markRead, navigate],
   );
 
-  // Poll every 15 s — but ONLY while the tab is visible. Round-3 (8-c
-  // §2.2): a backgrounded tab kept firing every 15 s (~240 requests/hour
-  // per idle authed tab) even though the user can't see the result.
-  // visibilitychange now pauses the timer when hidden and fires one
-  // immediate catch-up fetch when the tab returns (the moment users
-  // actually care about fresh notifications).
+  // Freshness strategy (Round-4, perf P1-4): the server pushes a
+  // `notification-new` socket event the moment a notification row is
+  // inserted — the socket listener (hooks/use-socket.ts) translates it
+  // into the NOTIFICATION_NEW_EVENT window event and this component
+  // refetches IMMEDIATELY (badge + toast land in ~1 RTT). The 60 s
+  // interval below is only a socket-dropout fallback, still gated to
+  // visible tabs (Round-3 8-c §2.2 — a backgrounded tab fires nothing).
   useEffect(() => {
     if (!token) {
       // Reset refs on logout so a re-login starts clean.
@@ -206,7 +208,9 @@ export function NotificationBell() {
       return;
     }
     void fetchAll();
-    let id: ReturnType<typeof setInterval> | null = setInterval(() => void fetchAll(), 15_000);
+    let id: ReturnType<typeof setInterval> | null = setInterval(() => void fetchAll(), 60_000);
+    const onSocketNotification = () => void fetchAll();
+    window.addEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);
     const onVisibility = () => {
       if (document.hidden) {
         if (id !== null) {
@@ -215,12 +219,13 @@ export function NotificationBell() {
         }
       } else {
         void fetchAll();
-        if (id === null) id = setInterval(() => void fetchAll(), 15_000);
+        if (id === null) id = setInterval(() => void fetchAll(), 60_000);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       if (id !== null) clearInterval(id);
+      window.removeEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [token, fetchAll]);
@@ -320,9 +325,7 @@ function NotificationPanel({
   // Desktop: anchored to the right edge of the bell button. We compute the
   // anchor position once on mount and don't react to window resize — opening
   // the panel during resize is a non-event we don't need to optimize.
-  const [vw, setVw] = useState(() =>
-    typeof window === "undefined" ? 1024 : window.innerWidth,
-  );
+  const [vw, setVw] = useState(() => (typeof window === "undefined" ? 1024 : window.innerWidth));
   useEffect(() => {
     const handler = () => setVw(window.innerWidth);
     window.addEventListener("resize", handler);

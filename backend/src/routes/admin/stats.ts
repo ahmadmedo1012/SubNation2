@@ -146,11 +146,20 @@ async function computeChartData(days: number) {
   for (let i = days - 1; i >= 0; i--) {
     const dayStartMs = todayStartMs - i * 86_400_000;
     const key = tripoliKey(dayStartMs);
-    const d = new Date(dayStartMs);
     const oRow = orderMap.get(key);
 
     result.push({
-      date: d.toLocaleDateString("ar-LY", { month: "short", day: "numeric" }),
+      // r4 red-team F-5: send the RAW ISO calendar key (e.g. "2026-09-06")
+      // — NOT a pre-localized Arabic label. The frontend's
+      // aggregateData() parses `new Date(d.date)` to bucket weekly/
+      // monthly, and the XAxis tickFormatter localizes for display.
+      // Pre-localized strings ("6 سبتمبر") parsed as Invalid Date made
+      // weekly/monthly aggregation collapse into one garbage bucket and
+      // left the tickFormatter fallback carrying the raw string. ISO keys
+      // keep both paths honest; display localization stays client-side.
+      // `key` is tripoliKey(dayStartMs) — the same Tripoli calendar date
+      // the SQL GROUP BY buckets on, so no UTC/UTC+2 off-by-one.
+      date: key,
       orders: oRow ? Number(oRow.orders) : 0,
       revenue: oRow ? parseFloat(String(oRow.revenue)) : 0,
       discounts: oRow ? parseFloat(String(oRow.discounts)) : 0,

@@ -216,7 +216,11 @@ export default function AdminDashboardPage() {
     query: {
       queryKey: getGetAdminStatsQueryKey(),
       enabled: !!adminToken,
-      refetchInterval: 30_000,
+      // Round-4 (perf P1-3): the admin-room socket listener invalidates
+      // stats/orders on every `admin-stats-update` push (topup approve/
+      // reject, order bulk updates) — this 5-min interval is only a
+      // socket-dropout fallback (was 30 s).
+      refetchInterval: 300_000,
       refetchIntervalInBackground: false,
     },
     request: { headers },
@@ -228,7 +232,8 @@ export default function AdminDashboardPage() {
       query: {
         queryKey: getListAdminOrdersQueryKey({ limit: 8 }),
         enabled: !!adminToken,
-        refetchInterval: 30_000,
+        // Socket-driven refresh (see stats above) — fallback only (was 30 s).
+        refetchInterval: 300_000,
         refetchIntervalInBackground: false,
       },
       request: { headers },
@@ -820,10 +825,7 @@ export default function AdminDashboardPage() {
                    flash before the first fetch resolved. */
                 <div className="space-y-1 p-2">
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                    >
+                    <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
                       <div className="w-9 h-9 rounded-lg bg-muted skeleton-shimmer shrink-0" />
                       <div className="flex-1 space-y-1.5">
                         <div className="h-3.5 bg-muted skeleton-shimmer rounded w-2/5" />

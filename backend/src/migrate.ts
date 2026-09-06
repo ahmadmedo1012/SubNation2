@@ -1467,6 +1467,31 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_risk_labels_labeled_at
         ON risk_labels (labeled_at);
     `);
+
+    // ── Round-4 (r4 red-team F-2): port the drizzle 0005 indexes into
+    // the runtime migration path. Prod schema changes flow exclusively
+    // through THIS file (post-merge.sh dropped `drizzle-kit push`), so
+    // when 0005 shipped as a drizzle-kit-only migration none of these
+    // indexes ever reached production — the perf claims were inert and
+    // the drizzle snapshot silently lied about the live schema.
+    // Idempotent CREATE INDEX IF NOT EXISTS keeps cold boots safe.
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_orders_user_created
+        ON orders (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_wallet_ledger_user_created
+        ON wallet_ledger (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_users_created
+        ON users (created_at);
+      CREATE INDEX IF NOT EXISTS idx_risk_events_created_id_desc
+        ON risk_events (created_at DESC NULLS LAST, id DESC NULLS LAST);
+    `);
+    // Admin user search uses LIKE '%x%' on phone — btree can't serve
+    // leading-wildcard patterns; pg_trgm + GIN (same pattern as
+    // idx_products_name_trgm above).
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_users_phone_trgm
+        ON users USING gin (phone gin_trgm_ops);
+    `);
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

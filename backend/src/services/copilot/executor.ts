@@ -266,8 +266,27 @@ export async function executeHighRiskDoubleConfirm(args: {
   const updateValues: Record<string, unknown> = {};
   for (const c of changes) {
     if (preview.toolName === "draft_price_change" && c.field === "price") {
+      // r4 red-team F-1 (defense in depth): the draft handler bounds
+      // new_price at 0.01..1M, but the preview store is a separate
+      // persistence layer — re-validate at the write boundary so a
+      // corrupted/legacy preview can never poison the catalog with a
+      // price the checkout INVALID_PRICE gate would fail-closed on.
+      const n = Number(c.after);
+      if (!Number.isFinite(n) || n < 0.01 || n > 1_000_000) {
+        return {
+          kind: "failure",
+          reason: `price out of bounds (0.01..1000000): ${String(c.after).slice(0, 40)}`,
+        };
+      }
       updateValues.price = c.after as string;
     } else if (preview.toolName === "draft_cost_change" && c.field === "costPrice") {
+      const n = Number(c.after);
+      if (!Number.isFinite(n) || n < 0.01 || n > 1_000_000) {
+        return {
+          kind: "failure",
+          reason: `costPrice out of bounds (0.01..1000000): ${String(c.after).slice(0, 40)}`,
+        };
+      }
       updateValues.costPrice = c.after as string;
     } else if (
       preview.toolName === "draft_status_change" &&
