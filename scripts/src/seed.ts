@@ -48,10 +48,15 @@ async function seed() {
       console.log(`✅ Admin '${adminUsername}' already exists — skipping`);
     }
   } else {
+    // permissions: ["all"] — the first superadmin must be able to DO
+    // things; the column default '[]' + the one-time RBAC backfill (which
+    // runs before this insert) would otherwise lock a fresh install out
+    // of every scoped route.
     await db.insert(adminUsersTable).values({
       username: adminUsername,
       passwordHash: await hashPassword(adminPassword),
       displayName: "SubNation Admin",
+      permissions: ["all"],
     });
     console.log(`✅ Created admin: ${adminUsername}`);
     console.log(`   ⚠️  Change this password after first login!\n`);

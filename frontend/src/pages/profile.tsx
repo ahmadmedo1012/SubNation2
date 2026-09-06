@@ -212,7 +212,7 @@ export default function ProfilePage() {
                   <div className="text-[10px] text-muted-foreground font-medium mb-0.5">
                     رمز الإحالة
                   </div>
-                  <div className="font-mono font-black tracking-widest text-sm">
+                  <div dir="ltr" className="font-mono font-black tracking-widest text-sm text-left">
                     {user.referral_code}
                   </div>
                 </div>

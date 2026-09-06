@@ -233,7 +233,7 @@ export default function CartPage() {
                         </div>
                       </Link>
                       <div className="flex items-baseline gap-2 mt-0.5">
-                        <span className="font-black text-sm tabular-nums text-primary">
+                        <span className="font-black text-sm tabular-nums text-primary-text">
                           {formatCurrency(price)}
                         </span>
                         {it.sale_price != null && it.sale_price < it.price && (

@@ -239,14 +239,14 @@ export default function CheckoutPage() {
             </p>
 
             {balanceError && (
-              <div className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2">
+              <div role="alert" className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
                 <span>تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند التأكيد.</span>
               </div>
             )}
 
             {insufficient && (
-              <div className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2">
+              <div role="alert" className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2">
                 <X className="w-4 h-4 shrink-0 mt-px" />
                 <div className="flex-1">
                   <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(totalLYD - (balance ?? 0))}).</p>
@@ -272,6 +272,7 @@ export default function CheckoutPage() {
               value={coupon}
               onChange={(e) => setCoupon(e.target.value.toUpperCase())}
               placeholder="أدخل كود الكوبون"
+              aria-label="كود الكوبون"
               className="font-mono uppercase"
               dir="ltr"
             />
@@ -343,7 +344,7 @@ export default function CheckoutPage() {
                   </div>
                   <div className="flex items-center justify-between text-base font-black pt-1">
                     <span>الإجمالي</span>
-                    <span className="tabular-nums text-primary">{formatCurrency(totalLYD)}</span>
+                    <span className="tabular-nums text-primary-text">{formatCurrency(totalLYD)}</span>
                   </div>
                 </div>
 

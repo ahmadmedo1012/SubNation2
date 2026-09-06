@@ -466,6 +466,7 @@ export default function SupportPage() {
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder="اكتب ردك هنا..."
+                  aria-label="نص الرد على التذكرة"
                   className="flex-1 h-10 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 transition-all"
                   dir="rtl"
                   onKeyDown={(e) => {
@@ -478,6 +479,7 @@ export default function SupportPage() {
                 <button
                   type="submit"
                   disabled={sending || !replyText.trim()}
+                  aria-label="إرسال الرد"
                   className="w-10 h-10 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/25 press-spring"
                 >
                   {sending ? (

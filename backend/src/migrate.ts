@@ -207,7 +207,7 @@ export async function runMigrations() {
         wallet_balance_after  NUMERIC(10,2) NOT NULL DEFAULT 0.00,
         status                order_status NOT NULL DEFAULT 'pending',
         delivered_email       VARCHAR(255),
-        delivered_password    VARCHAR(255),
+        delivered_password    VARCHAR(512),
         delivered_extra_details TEXT,
         delivered_usage_terms TEXT,
         delivered_at          TIMESTAMPTZ,
@@ -216,6 +216,24 @@ export async function runMigrations() {
         created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+    `);
+
+    // V1-M6 (red-team 2026-09-06): delivered_password now stores the
+    // AES-256-GCM CIPHERTEXT (iv:tag:ct = 58 + 2×len chars). On legacy
+    // databases the column is VARCHAR(255) — any inventory password
+    // ≥ 99 chars overflows the insert and rolls back the WHOLE purchase
+    // transaction with a raw 500. Widen in place (idempotent: a no-op
+    // when the column is already 512).
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='orders' AND column_name='delivered_password'
+            AND character_maximum_length = 255
+        ) THEN
+          ALTER TABLE orders ALTER COLUMN delivered_password TYPE VARCHAR(512);
+        END IF;
+      END $$;
     `);
 
     await db.execute(sql`
@@ -806,8 +824,8 @@ export async function runMigrations() {
         );
       } else {
         await db.execute(sql`
-          INSERT INTO admin_users (username, password_hash, display_name, role)
-          VALUES (${adminUsername}, ${await hashPassword(adminPassword || "SubNation@2026")}, 'مدير النظام', 'superadmin')
+          INSERT INTO admin_users (username, password_hash, display_name, role, permissions)
+          VALUES (${adminUsername}, ${await hashPassword(adminPassword || "SubNation@2026")}, 'مدير النظام', 'superadmin', '["all"]'::jsonb)
         `);
         logger.info({ username: adminUsername }, "Default admin user created");
       }

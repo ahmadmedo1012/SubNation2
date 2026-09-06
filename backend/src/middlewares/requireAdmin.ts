@@ -43,6 +43,20 @@ export async function requireAdmin(
     return;
   }
 
+  // V1-CRITICAL (red-team 2026-09-06): the 2FA temp token minted by
+  // POST /api/admin/login when TOTP is enabled is a HALF session — it
+  // exists so /login/verify-2fa can identify the admin mid-challenge.
+  // requireAdmin previously never checked the flag, so a password-only
+  // attacker could use the temp token as a FULL admin session on every
+  // route (finance approvals, refunds, admin creation) — bypassing 2FA
+  // entirely. Temp tokens are now rejected at the gate.
+  if (result.payload.isTemp === true) {
+    res
+      .status(401)
+      .json(createErrorResponse("جلسة مؤقتة — أكمل التحقق بخطوتين أولاً", ErrorCode.UNAUTHORIZED));
+    return;
+  }
+
   // Look up the row to (a) confirm the admin still exists, (b) check
   // is_active so soft-disabled admins lose access in real time, and
   // (c) read the latest permissions array. One indexed PK lookup —

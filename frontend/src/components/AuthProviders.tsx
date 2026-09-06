@@ -301,7 +301,9 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
           />
         );
       })}
-      {error && <p className="text-xs text-destructive text-center pt-1">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-destructive text-center pt-1">{error}</p>
+      )}
       {pendingLink && (
         <LinkConsentModal
           hint={pendingLink.hint}

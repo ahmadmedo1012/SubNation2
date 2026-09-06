@@ -258,6 +258,17 @@ function AppRoutes() {
         description="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
         path={location || "/"}
       />
+      {/* Skip-to-content (V2-H1, WCAG 2.4.1): keyboard users otherwise
+          Tab through Navbar + banner + search on EVERY page before the
+          content. Visible only on focus. */}
+      {!isAdmin && !isChromeless && (
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:inset-x-2 focus:z-[100] focus:h-11 focus:flex focus:items-center focus:justify-center focus:bg-primary focus:text-primary-foreground focus:text-sm focus:font-bold focus:rounded-xl focus:shadow-lg"
+        >
+          تخطّى إلى المحتوى الرئيسي
+        </a>
+      )}
       {!isAdmin && !isChromeless && <Navbar />}
       {!isAdmin && !isChromeless && (
         <Suspense fallback={null}>
@@ -265,6 +276,7 @@ function AppRoutes() {
         </Suspense>
       )}
       <main
+        id="main-content"
         className={
           !isAdmin && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""
         }

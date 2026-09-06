@@ -141,9 +141,13 @@ export function verifyAdminToken(token: string): { adminId: number; role: string
 
 export function verifyAdminTokenDetailed(
   token: string,
-): VerifyResult<{ adminId: number; role: string }> {
+): VerifyResult<{ adminId: number; role: string; isTemp?: boolean }> {
   try {
-    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number; role: string };
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as {
+      adminId: number;
+      role: string;
+      isTemp?: boolean;
+    };
     return { ok: true, payload };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };

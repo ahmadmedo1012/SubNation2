@@ -106,7 +106,7 @@ function FilterChip({
 
 function OrderCardSkeleton() {
   return (
-    <div className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4">
+    <div className="bg-card border border-border border-s-2 border-l-border/30 rounded-xl p-4">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-xl bg-muted skeleton-shimmer shrink-0" />
         <div className="flex-1 space-y-2">
@@ -278,9 +278,9 @@ export default function OrdersPage() {
                 <div
                   className={`
                   float-in ${staggerClass}
-                  bg-card border border-border/60 border-l-[3px] ${statusLeftBorder(order.status)}
+                  bg-card border border-border/60 border-s-[3px] ${statusLeftBorder(order.status)}
                   rounded-xl p-4
-                  hover:border-border hover:border-l-[3px] hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
+                  hover:border-border hover:border-s-[3px] hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
                   transition-all duration-200 cursor-pointer group active:scale-[0.995] active:translate-y-0
                 `}
                 >
@@ -308,7 +308,7 @@ export default function OrdersPage() {
                         {order.product_name}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30">
+                        <span dir="ltr" className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30">
                           {order.order_code}
                         </span>
                         {order.created_at && (

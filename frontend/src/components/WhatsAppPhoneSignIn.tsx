@@ -225,6 +225,7 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
               value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
               placeholder="09XXXXXXXX"
+              aria-label="رقم الهاتف"
               disabled={loading}
               dir="ltr"
               className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
@@ -289,6 +290,7 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
                 }
               }}
               placeholder="كود التحقق"
+              aria-label="رمز التحقق المكوّن من ٦ أرقام"
               disabled={loading}
               dir="ltr"
               className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-sm outline-none focus:border-primary/50 disabled:opacity-50"
@@ -329,7 +331,10 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
         </div>
       )}
       {error && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 animate-in fade-in slide-in-from-top-1">
+        <div
+          role="alert"
+          className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 animate-in fade-in slide-in-from-top-1"
+        >
           <p className="text-xs text-destructive text-center leading-relaxed">{error}</p>
         </div>
       )}

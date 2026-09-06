@@ -270,6 +270,7 @@ export default function OrderDetailPage() {
                   </h1>
                   <button
                     onClick={copyOrderCode}
+                    dir="ltr"
                     className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[11px] font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
@@ -314,7 +315,7 @@ export default function OrderDetailPage() {
               <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/15 text-xs text-status-success">
                 <Tag className="w-3 h-3 shrink-0" />
                 <span>
-                  كوبون <span className="font-mono font-black">{couponCode}</span>
+                  كوبون <span dir="ltr" className="font-mono font-black">{couponCode}</span>
                 </span>
                 <span className="mr-auto font-bold bg-status-success/10 border border-status-success/22 px-2 py-0.5 rounded-full">
                   وفّرت {formatCurrency(discountAmount)}

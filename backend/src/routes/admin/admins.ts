@@ -283,7 +283,28 @@ router.post("/:id/disable", async (req, res) => {
 
 router.post("/:id/enable", async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالحة", ErrorCode.INVALID_DATA));
+
+  // A disabled ["all"] super-admin being re-enabled restores full
+  // access — the same escalation surface as granting "all" (V1-L11,
+  // red-team 2026-09-06). Require the acting admin to hold "all".
+  const [target] = await db
+    .select({ permissions: adminUsersTable.permissions })
+    .from(adminUsersTable)
+    .where(eq(adminUsersTable.id, id))
+    .limit(1);
+  if (target && (target.permissions ?? []).includes("all")) {
+    if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, ["all"])) {
+      return res
+        .status(403)
+        .json(
+          createErrorResponse(
+            "إعادة تمكين مسؤول بصلاحية 'all' يتطلب أن تملكها أنت أيضاً",
+            ErrorCode.INSUFFICIENT_PERMISSIONS,
+          ),
+        );
+    }
+  }
 
   const [updated] = await db
     .update(adminUsersTable)

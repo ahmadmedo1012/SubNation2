@@ -182,14 +182,20 @@ router.get("/probe", async (req, res) => {
     return res.status(200).json({ authenticated: false });
   }
 
-  let decoded: { adminId?: number };
+  let decoded: { adminId?: number; isTemp?: boolean };
   try {
-    decoded = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId?: number };
+    decoded = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId?: number; isTemp?: boolean };
   } catch {
     return res.status(200).json({ authenticated: false });
   }
   if (!decoded.adminId) {
     return res.status(200).json({ authenticated: false });
+  }
+  // A 2FA temp token is not a session (V1-CRITICAL red-team finding) —
+  // the SPA must keep the admin on the 2FA challenge screen, not render
+  // a half-authenticated admin shell.
+  if (decoded.isTemp === true) {
+    return res.status(200).json({ authenticated: false, requires_2fa: true });
   }
 
   const [admin] = await db

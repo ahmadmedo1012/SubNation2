@@ -27,6 +27,7 @@ const router = Router();
 router.post("/logout", requireUser, async (req, res) => {
   const auth = getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
+  const sessionId = (req as AuthenticatedRequest).sessionId;
   const clientInfo = getClientInfo(req);
 
   // Get user info for logging
@@ -35,6 +36,19 @@ router.post("/logout", requireUser, async (req, res) => {
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
+
+  // V1-H3 (red-team 2026-09-06): delete THIS session row so the JWT is
+  // actually revoked server-side. requireUser now checks the row (60s
+  // cache), but logout previously never deleted it — the exact "stolen
+  // token survives logout" scenario the row check exists to close.
+  // Best-effort: a failed delete must not block the cookie clear below.
+  if (sessionId) {
+    try {
+      await db.delete(sessionsTable).where(eq(sessionsTable.id, String(sessionId)));
+    } catch (err) {
+      logger.warn({ err, userId, sessionId }, "Failed to delete session row during logout");
+    }
+  }
 
   // If user is authenticated and Firebase is enabled, revoke their Firebase refresh tokens
   if (auth && userId) {

@@ -36,6 +36,13 @@ router.get("/tickets", requireAdmin, async (req, res) => {
   // DISTINCT ON latest) do the same work in 2 round trips total.
   const ticketIds = tickets.map((row) => row.ticket.id);
 
+  // V1-M5 (red-team 2026-09-06): an empty result set must not reach the
+  // sql.join below — `IN ()` is a Postgres syntax error and turned every
+  // zero-match status filter (and every fresh deploy) into a 500.
+  if (ticketIds.length === 0) {
+    return res.json([]);
+  }
+
   const replyCounts = await db
     .select({ ticketId: ticketRepliesTable.ticketId, replyCount: count() })
     .from(ticketRepliesTable)

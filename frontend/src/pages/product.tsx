@@ -91,7 +91,12 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <span className="text-sm text-muted-foreground shrink-0">{label}</span>
       <button
         onClick={handleCopy}
-        className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group ${
+        // Credentials/emails are LTR strings — without dir="ltr" the
+        // digit-suffixed tails visually scramble inside the RTL page
+        // (V2-H10: the exact data the user PAID for must copy correctly).
+        dir="ltr"
+        aria-label={`نسخ ${label}`}
+        className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group text-left ${
           copied ? "text-status-success" : "text-foreground hover:text-primary"
         }`}
       >
@@ -416,7 +421,11 @@ export default function ProductPage() {
   if (orderResult) {
     return (
       <div className="max-w-xl mx-auto px-4 py-8 sm:py-10">
-        <div className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in">
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in"
+        >
           {/* Success header */}
           <div className="p-6 text-center border-b border-border/40 bg-gradient-to-b from-status-success/8 to-transparent">
             {/* Animated ring */}
@@ -427,11 +436,12 @@ export default function ProductPage() {
                 <CheckCircle className="w-9 h-9 text-status-success" />
               </div>
             </div>
-            <h2 className="text-xl font-black mb-1.5">تم الشراء بنجاح!</h2>
+            <h1 className="text-xl font-black mb-1.5">تم الشراء بنجاح!</h1>
             <p className="text-muted-foreground text-sm">
               رقم الطلب:{" "}
               <button
                 onClick={() => copyField(orderResult.order_code, "رقم الطلب")}
+                dir="ltr"
                 className="font-mono font-bold text-foreground hover:text-primary transition-colors inline-flex items-center gap-1 press-spring"
               >
                 {orderResult.order_code}
@@ -632,7 +642,7 @@ export default function ProductPage() {
 
           {/* Error */}
           {error && (
-            <div className="flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake">
+            <div role="alert" className="flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -881,7 +891,7 @@ function CouponField({
 
       {/* Error */}
       {couponError && (
-        <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2">
+        <div role="alert" className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2">
           <AlertCircle className="w-3 h-3 shrink-0" />
           {couponError}
         </div>
@@ -889,7 +899,7 @@ function CouponField({
 
       {/* Success */}
       {couponResult && (
-        <div className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
+        <div role="status" className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
           <div className="flex items-center gap-1.5 text-emerald-400">
             <CheckCircle className="w-3 h-3 shrink-0" />
             <span className="font-mono font-black">{couponResult.code}</span>
@@ -1080,7 +1090,7 @@ function CtaBlock({
               </div>
               <div className="flex items-center justify-between gap-2 px-4 py-3 bg-primary/8 border border-primary/20 rounded-xl col-span-2">
                 <span className="text-muted-foreground">تحتاج إضافة</span>
-                <span className="font-black text-primary tabular-nums">
+                <span className="font-black text-primary-text tabular-nums">
                   {formatCurrency(shortfall)}
                 </span>
               </div>
@@ -1178,13 +1188,11 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
               </div>
             ))
           : recommendations.map((r) => (
-              <div
+              <a
                 key={r.id}
-                onClick={() => {
-                  navigate(`/product/${r.id}`);
-                  window.scrollTo(0, 0);
-                }}
-                className="bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
+                href={`/product/${r.id}`}
+                onClick={() => window.scrollTo(0, 0)}
+                className="block bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
               >
                 <div className="aspect-[4/3] bg-muted/30 rounded-xl overflow-hidden relative">
                   {r.image_url ? (
@@ -1207,11 +1215,11 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold truncate mb-1">{r.name}</h4>
-                  <div className="text-primary font-black tabular-nums">
+                  <div className="text-primary-text font-black tabular-nums">
                     {formatCurrency(r.price)}
                   </div>
                 </div>
-              </div>
+              </a>
             ))}
       </div>
     </div>

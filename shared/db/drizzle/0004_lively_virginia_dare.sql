@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ALTER COLUMN "delivered_password" SET DATA TYPE varchar(512);

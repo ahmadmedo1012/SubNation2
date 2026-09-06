@@ -119,7 +119,10 @@ export function Navbar() {
           {/* Desktop: user actions */}
           {token ? (
             <div className="hidden md:flex items-center gap-1.5">
-              <Link href="/wallet">
+              <Link
+                href="/wallet"
+                aria-label={user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance ?? 0)}` : "المحفظة"}
+              >
                 <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
                   <Wallet className="w-3.5 h-3.5 text-primary-text transition-transform group-hover:scale-110 duration-200" />
                   {user ? (
@@ -129,10 +132,9 @@ export function Navbar() {
                   )}
                 </div>
               </Link>
-              <Link href="/profile">
+              <Link href="/profile" aria-label="حسابي">
                 <div
                   className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
-                  title="حسابي"
                 >
                   <User className="w-4 h-4" />
                 </div>
@@ -197,10 +199,9 @@ export function Navbar() {
           )}
 
           {/* Cart icon — always visible */}
-          <Link href="/cart">
+          <Link href="/cart" aria-label={`السلة، ${itemCount > 0 ? `${itemCount} منتجات` : "فارغة"}`}>
             <div
               className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
-              title="السلة"
             >
               <ShoppingCart className="w-4 h-4" />
               {itemCount > 0 && (

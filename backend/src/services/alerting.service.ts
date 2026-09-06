@@ -146,6 +146,13 @@ const GLOBAL_WINDOW_TTL_SEC = 70; // outlasts the 60 s window so we never lose s
 const HTTP_TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 5_000;
 
+/** Parse a prom-client histogram `le` label ("0.25", "10", "+Inf") to a number. */
+function numericLe(le: string): number {
+  if (le === "+Inf" || le === "Inf" || le === "inf") return Infinity;
+  const n = Number(le);
+  return Number.isNaN(n) ? Infinity : n;
+}
+
 // ── Service ──────────────────────────────────────────────────────────────────
 
 export class AlertingService {
@@ -286,7 +293,7 @@ export class AlertingService {
    * we keep a small per-rule baseline map.
    */
   private readonly counterBaseline = new Map<string, number>();
-  private readonly histogramBaseline = new Map<string, Record<string, number>>();
+  private readonly histogramBaseline = new Map<string, Map<string, number>>();
   private evalCounterDelta(counterName: string, threshold: number, rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
@@ -411,6 +418,14 @@ export class AlertingService {
    *
    * Fires when window p95 > ALERT_P95_MS (default 1500 ms). Requires at
    * least ALERT_P95_MIN_SAMPLES (default 20) observations in the window.
+   *
+   * V1-M7 (red-team 2026-09-06): prom-client's Histogram.get() returns a
+   * FLAT list — one entry per bucket with `metricName: "<name>_bucket"` and
+   * `labels: { le: "0.005" | ... | "+Inf", ... }` — not the nested
+   * `{ buckets: {...} }` shape the first implementation assumed (which
+   * made the rule silently always-false). This version groups by `le`,
+   * sorts buckets numerically (string keys would sort "1" before "0.25"),
+   * and treats the +Inf bucket as always-above-threshold.
    */
   private evalHttpP95Latency(rule: AlertRuleSpec): boolean {
     try {
@@ -421,39 +436,39 @@ export class AlertingService {
 
       const collected = histogram.get() as {
         values?: Array<{
+          value: number;
+          metricName?: string;
           labels?: Record<string, string>;
-          buckets?: Record<string, number>;
-          count?: number;
-          sum?: number;
         }>;
       };
-      // Aggregate the "all routes" series (no route/method/status labels
-      // on the per-bucket entries — prom-client exposes one series per
-      // label combination; we fold them all together).
-      const series = collected.values ?? [];
-      if (series.length === 0) return false;
 
-      // Baselines are per-bucket cumulative counts. Keyed by rule.
-      const bucketKeys = Object.keys(series[0]?.buckets ?? {});
-      const baselineBuckets = this.histogramBaseline.get(rule.name);
-      const deltas: Array<{ upper: number; count: number }> = [];
-      let deltaCount = 0;
+      // Fold every `<name>_bucket` entry (all label combinations) into a
+      // per-`le` cumulative count map.
+      const bucketTotals = new Map<string, number>();
+      for (const entry of collected.values ?? []) {
+        if (entry.metricName !== "http_request_duration_seconds_bucket") continue;
+        const le = entry.labels?.le;
+        if (le === undefined) continue;
+        bucketTotals.set(le, (bucketTotals.get(le) ?? 0) + Number(entry.value || 0));
+      }
+      if (bucketTotals.size === 0) return false;
 
-      // Note: series entries share identical bucket bounds; sum each
-      // bucket across series to fold label combinations together.
-      const summed: Record<string, number> = {};
-      for (const s of series) {
-        for (const [bound, c] of Object.entries(s.buckets ?? {})) {
-          summed[bound] = (summed[bound] ?? 0) + Number(c || 0);
-        }
-      }
-      const prior = baselineBuckets ?? summed;
-      for (const bound of bucketKeys) {
-        const delta = (summed[bound] ?? 0) - (prior[bound] ?? 0);
-        deltas.push({ upper: Number(bound), count: delta });
-      }
-      this.histogramBaseline.set(rule.name, summed);
-      deltaCount = deltas.length > 0 ? deltas[deltas.length - 1].count : 0;
+      // Sort by numeric upper bound; +Inf sorts last (Infinity).
+      const sortedBounds = [...bucketTotals.keys()].sort(
+        (a, b) => numericLe(a) - numericLe(b),
+      );
+      const prior = this.histogramBaseline.get(rule.name);
+      const deltas: Array<{ upper: number; count: number }> = sortedBounds.map((le) => ({
+        upper: numericLe(le),
+        count: (bucketTotals.get(le) ?? 0) - (prior?.get(le) ?? 0),
+      }));
+      this.histogramBaseline.set(rule.name, bucketTotals);
+
+      // Total observations in the window = the +Inf bucket delta (or the
+      // last bucket if +Inf is absent).
+      const infDelta =
+        deltas.find((d) => !Number.isFinite(d.upper)) ?? deltas[deltas.length - 1];
+      const deltaCount = infDelta ? infDelta.count : 0;
 
       const minSamples = Number(process.env.ALERT_P95_MIN_SAMPLES ?? 20);
       if (deltaCount < minSamples) return false;
@@ -465,6 +480,9 @@ export class AlertingService {
         cumulative += b.count;
         if (cumulative >= target) {
           const thresholdMs = Number(process.env.ALERT_P95_MS ?? 1500);
+          // +Inf bucket: the observation exceeded every finite bound —
+          // always above threshold.
+          if (!Number.isFinite(b.upper)) return true;
           return b.upper * 1000 > thresholdMs;
         }
       }

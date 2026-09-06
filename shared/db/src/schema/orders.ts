@@ -45,7 +45,7 @@ export const ordersTable = pgTable(
       .default("0.00"),
     status: orderStatusEnum("status").notNull().default("pending"),
     deliveredEmail: varchar("delivered_email", { length: 255 }),
-    deliveredPassword: varchar("delivered_password", { length: 255 }),
+    deliveredPassword: varchar("delivered_password", { length: 512 }),
     deliveredExtraDetails: text("delivered_extra_details"),
     deliveredUsageTerms: text("delivered_usage_terms"),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),

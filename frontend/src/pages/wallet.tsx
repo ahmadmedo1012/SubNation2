@@ -880,7 +880,7 @@ export default function WalletPage() {
                         <div className="text-[11px] text-muted-foreground mb-0.5 font-medium">
                           IBAN
                         </div>
-                        <div className="font-mono font-bold text-sm break-all">
+                        <div dir="ltr" className="font-mono font-bold text-sm break-all text-left">
                           {LYPAY_INFO.iban}
                         </div>
                       </div>

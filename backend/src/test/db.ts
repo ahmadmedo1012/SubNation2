@@ -108,7 +108,7 @@ CREATE TABLE orders (
   wallet_balance_after numeric(10,2) NOT NULL DEFAULT '0.00',
   status order_status NOT NULL DEFAULT 'pending',
   delivered_email varchar(255),
-  delivered_password varchar(255),
+  delivered_password varchar(512),
   delivered_extra_details text,
   delivered_usage_terms text,
   delivered_at timestamptz,

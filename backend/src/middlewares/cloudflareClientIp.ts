@@ -94,7 +94,14 @@ function cidr6(cidr: string): readonly [bigint, bigint] {
   const [ip, bitsStr] = cidr.split("/");
   const bits = BigInt(bitsStr);
   const expanded = expandIpv6(ip);
-  const mask = ((1n << 128n) - 1n) >> (128n - bits);
+  // V1-M4 (red-team 2026-09-06): the mask must have its ONE bits in the
+  // HIGH bits (leftmost `bits` positions). The previous right-shift put
+  // them in the low bits, so every range collapsed to "low-bits-zero"
+  // matching and real CF IPv6 edges (e.g. 2606:4700::/68) never matched.
+  const mask =
+    bits === 0n
+      ? 0n
+      : ((1n << bits) - 1n) << (128n - bits);
   return [expanded & mask, mask] as const;
 }
 

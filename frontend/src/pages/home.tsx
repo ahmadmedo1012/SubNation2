@@ -535,6 +535,7 @@ export default function HomePage() {
               <Input
                 type="search"
                 placeholder="ابحث عن اشتراك..."
+                aria-label="البحث في المنتجات"
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onFocus={() =>

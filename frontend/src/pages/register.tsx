@@ -81,7 +81,7 @@ export default function RegisterPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold leading-tight">
-                  تم تطبيق رمز الإحالة: <span className="font-mono tracking-wider">{referral}</span>
+                  تم تطبيق رمز الإحالة: <span dir="ltr" className="font-mono tracking-wider">{referral}</span>
                 </p>
                 <p className="text-[11px] text-emerald-400/80 mt-0.5">
                   ستحصل على <span className="font-bold">5 د.ل</span> مجاناً عند الشحن الأول

@@ -345,10 +345,22 @@ function NotificationPanel({
         };
       })();
 
+  // C3 (V2 a11y audit): the portal'd panel is mounted at the END of
+  // document.body — keyboard focus stays on the bell and Tab walks the
+  // whole page before reaching the dialog. Move focus INTO the panel on
+  // mount so the dialog is immediately operable (role="dialog" already
+  // set below); Escape still closes it via the outer key handler.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panelRef.current?.focus();
+  }, []);
+
   return (
     <div
+      ref={panelRef}
+      tabIndex={-1}
       data-notification-panel="1"
-      className="bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/35 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+      className="bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/35 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none"
       style={panelStyle}
       role="dialog"
       aria-label="الإشعارات"
