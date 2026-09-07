@@ -1,8 +1,6 @@
 import { db, authActivityTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { fileURLToPath } from "node:url";
 import { logger } from "../lib/logger";
-import { captureSchedulerFailure } from "../lib/sentry";
 
 const RETENTION_DAYS = 90;
 const DELETE_BATCH_SIZE = 1000;
@@ -59,28 +57,20 @@ export async function cleanupOldAuthActivity(): Promise<number> {
   return deleted;
 }
 
-// ── Manual one-shot ─────────────────────────────────────────────────────────
+// ── Scheduling note (round-92 hotfix) ───────────────────────────────────────
 //
-// `require.main === module` is the CJS idiom for "is this file being run
-// directly?". This workspace is `"type": "module"` so that pattern silently
-// never fires. The ESM equivalent compares the resolved module URL to the
-// process entry point.
-const isMainModule =
-  typeof process !== "undefined" &&
-  process.argv[1] !== undefined &&
-  fileURLToPath(import.meta.url) === process.argv[1];
+// This file previously carried an ESM "main module" auto-run guard
+// (`fileURLToPath(import.meta.url) === process.argv[1]` + `process.exit(0)`).
+// In the esbuild BUNDLE (dist/index.mjs) every inlined module's
+// `import.meta.url` resolves to the chunk URL, so once this job entered the
+// SERVER's import graph (cron.ts + web-scheduler one-shot, round-92 B7-P1-2)
+// the guard false-positived at import time, ran the cleanup, then
+// `process.exit(0)`-ed the web server mid-boot ("Application exited early"
+// on deploy dep-daf8o5id0e5s73bb036g). Source-level tests never see this
+// because vitest imports src/ directly, where the comparison is false.
+//
+// Rule: job modules must NEVER self-exit — they are library code wired by
+// cron/web-scheduler. Manual runs go through an explicit runner, e.g.:
+//   pnpm --filter @workspace/api-server exec tsx \
+//     -e "import('./src/jobs/cleanup-auth-activity.ts').then(m => m.cleanupOldAuthActivity())"
 
-if (isMainModule) {
-  cleanupOldAuthActivity()
-    .then(() => {
-      logger.info({ category: "monitoring" }, "cleanup-auth-activity: completed");
-      process.exit(0);
-    })
-    .catch((err) => {
-      logger.error({ err, category: "monitoring" }, "cleanup-auth-activity: failed");
-      // Capture before exit so the Sentry SDK's queue flushes (default
-      // 2s drain on SIGTERM via the onUncaughtException integration).
-      captureSchedulerFailure("cleanup_auth_activity", err);
-      process.exit(1);
-    });
-}

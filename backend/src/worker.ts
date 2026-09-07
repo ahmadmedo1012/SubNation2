@@ -145,9 +145,15 @@ async function startWorker() {
   });
 }
 
-// ESM main-module guard (same pattern as jobs/cleanup-auth-activity.ts):
-// `startWorker()` must only auto-run when this file is the process entry
-// point — not when tests import installWorkerSignalHandlers.
+// ESM main-module guard. ⚠️ BUNDLING PITFALL (round-92 hotfix): in an
+// esbuild chunk every inlined module's import.meta.url resolves to the
+// CHUNK URL, so this comparison false-positives for any module that gets
+// inlined into a different entry's bundle. That is exactly how
+// jobs/cleanup-auth-activity.ts's old auto-run + process.exit(0) killed
+// the web server at import time once it entered the server import graph.
+// This guard is SAFE here only because worker.ts is an esbuild ENTRY
+// (dist/worker.mjs) and is imported by nothing in the server graph —
+// keep it that way. Job modules must never self-exit.
 const isMainModule =
   typeof process !== "undefined" &&
   process.argv[1] !== undefined &&
