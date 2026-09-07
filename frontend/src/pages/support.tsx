@@ -17,6 +17,7 @@ import {
   Send,
   Shield,
   User,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -156,6 +157,10 @@ export default function SupportPage() {
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  // 93-C5 / F-05 (A4 P2 #6): a failed list fetch used to fall through to
+  // the "لا توجد تذاكر دعم" empty state — an outage masquerading as "no
+  // tickets" (the exact class round-92 claimed closed for tickets).
+  const [listError, setListError] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null);
   const [ticketLoading, setTicketLoading] = useState(false);
@@ -169,9 +174,20 @@ export default function SupportPage() {
   const fetchTickets = () => {
     if (!token) return;
     fetch("/api/support/tickets", { headers })
-      .then((r) => r.json())
-      .then((d) => setTickets(Array.isArray(d) ? d : []))
-      .catch(() => {})
+      .then(async (r) => {
+        // 93-C5 / F-05: no res.ok check — a 401/5xx envelope used to be
+        // `.json()`-parsed into a non-array and silently rendered as the
+        // empty list. Distinguish failure from emptiness.
+        if (!r.ok) throw new Error("tickets fetch failed");
+        return r.json();
+      })
+      .then((d) => {
+        setTickets(Array.isArray(d) ? d : []);
+        setListError(false);
+      })
+      .catch(() => {
+        setListError(true);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -179,11 +195,29 @@ export default function SupportPage() {
     setTicketLoading(true);
     try {
       const res = await fetch(`/api/support/tickets/${id}`, { headers });
-      const d = await res.json();
+      const d = await res.json().catch(() => null);
+      // 93-C5 / F-05 (A4 P2 #6): openTicket had NO res.ok / shape guard —
+      // a 401/5xx body {error} was set as selectedTicket and the render
+      // path dereferenced `selectedTicket.replies.length` → TypeError →
+      // the route-level ErrorBoundary replaced the whole page. Any
+      // session expiry / API blip while clicking a ticket nuked the page.
+      if (!res.ok || !d || !Array.isArray(d.replies)) {
+        toast({
+          title: "تعذّر تحميل التذكرة",
+          description: "حدث خطأ في الاتصال — أعد المحاولة",
+          variant: "destructive",
+        });
+        return;
+      }
       setSelectedTicket(d);
       setReplyText("");
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     } catch {
+      toast({
+        title: "تعذّر تحميل التذكرة",
+        description: "حدث خطأ في الاتصال — أعد المحاولة",
+        variant: "destructive",
+      });
     } finally {
       setTicketLoading(false);
     }
@@ -485,7 +519,10 @@ export default function SupportPage() {
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Send className="w-4 h-4" />
+                    /* 93-C5 / F-03 (A12 C-UX1): Send is a directional glyph —
+                       mirror it in RTL like admin/tickets.tsx (B5-17), the
+                       last 2 un-mirrored Send icons in the app. */
+                    <Send className="w-4 h-4 -scale-x-100" />
                   )}
                 </button>
               </form>
@@ -575,7 +612,9 @@ export default function SupportPage() {
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
+                    {/* 93-C5 / F-03 (A12 C-UX1): RTL-mirrored Send (twin of
+                        the reply box above). */}
+                    <Send className="w-4 h-4 -scale-x-100" />
                     إرسال التذكرة
                   </>
                 )}
@@ -592,6 +631,25 @@ export default function SupportPage() {
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="h-24 rounded-2xl skeleton-shimmer border border-border/35" />
             ))}
+          </div>
+        ) : listError ? (
+          /* 93-C5 / F-05: distinct from "no tickets" — an outage/expired
+             session previously read as "لا توجد تذاكر دعم". Same error-card
+             idiom as orders/loyalty (B4 P1-4 class). */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+            <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-4">
+              <WifiOff className="w-6 h-6 text-status-error/70" />
+            </div>
+            <p className="font-black text-sm mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
+            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
+              حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <Button
+              onClick={fetchTickets}
+              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+            >
+              إعادة المحاولة
+            </Button>
           </div>
         ) : tickets.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border/45 rounded-2xl reveal-up">

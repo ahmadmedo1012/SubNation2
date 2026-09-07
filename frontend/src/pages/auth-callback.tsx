@@ -84,7 +84,7 @@ export default function AuthCallbackPage() {
         ) : (
           <>
             <Loader2 className="w-8 h-8 animate-spin" />
-            <p className="text-sm">جارٍ تسجيل الدخول...</p>
+            <p className="text-sm">جارٍ تسجيل الدخول…</p>
           </>
         )}
       </div>

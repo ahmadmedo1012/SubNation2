@@ -1,5 +1,11 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useToast } from "@/hooks/use-toast";
+// 93-C7 / C-UX3 (A12 §11.2, H7): migrated from the hand-rolled fixed
+// overlay to the shared AppDialog (size="wide") — gains focus trap,
+// scroll-lock, role="dialog"/aria-modal and the Radix animation family.
+// The submitting-time backdrop guard is preserved via `dismissable`.
+import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
+import { Button } from "@/components/ui/button";
 import {
   buildExistingDedupKeys,
   parseInventoryText,
@@ -14,7 +20,6 @@ import {
   Mail,
   Package,
   Upload,
-  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -51,9 +56,7 @@ export function InventoryUploadDialog({
   // can flag entries that already exist in the DB. The actual count
   // (when caller didn't pass `inventoryCount`) and the per-row
   // identifiers both come from this fetch.
-  const [existingKeys, setExistingKeys] = useState<Set<string>>(
-    () => new Set<string>(),
-  );
+  const [existingKeys, setExistingKeys] = useState<Set<string>>(() => new Set<string>());
   const [fetchedCount, setFetchedCount] = useState<number | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(true);
 
@@ -61,10 +64,9 @@ export function InventoryUploadDialog({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/admin/products/${productId}/inventory`,
-          { headers: jsonHeaders },
-        );
+        const res = await fetch(`/api/admin/products/${productId}/inventory`, {
+          headers: jsonHeaders,
+        });
         if (!res.ok) {
           // Soft-fail: dedup-against-DB just won't be available;
           // the in-batch dedup + server-side dedup at submit still work.
@@ -103,14 +105,8 @@ export function InventoryUploadDialog({
 
   // Live parse on every text change — cheap, runs on the operator's
   // machine, gives instant feedback as they paste.
-  const parsed = useMemo(
-    () => parseInventoryText(text, existingKeys),
-    [text, existingKeys],
-  );
-  const duplicateSet = useMemo(
-    () => new Set(parsed.duplicateIndices),
-    [parsed.duplicateIndices],
-  );
+  const parsed = useMemo(() => parseInventoryText(text, existingKeys), [text, existingKeys]);
+  const duplicateSet = useMemo(() => new Set(parsed.duplicateIndices), [parsed.duplicateIndices]);
   const willInsert = parsed.entries.length - parsed.duplicateIndices.length;
 
   // ── File drag-drop handlers ──────────────────────────────────────
@@ -174,280 +170,53 @@ export function InventoryUploadDialog({
     }
   };
 
-  // ── ESC to close ─────────────────────────────────────────────────
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, submitting]);
+  // ── ESC to close: handled by the AppDialog shell (Radix) with the
+  //    `dismissable={!submitting}` guard — the previous hand-rolled
+  //    window keydown listener is retired (93-C7 / C-UX3).
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-card border border-border/60 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-3xl max-h-[95vh] flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start gap-3 p-5 border-b border-border/40 shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <Upload className="w-5 h-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-black text-base">رفع مخزون جديد</h2>
-            <div className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
-              <span className="truncate">{productName}</span>
-              {typeof displayCount === "number" ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="font-bold shrink-0">
-                    {displayCount} عنصر متوفر حالياً
-                  </span>
-                </>
-              ) : loadingExisting ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-                </>
-              ) : null}
-            </div>
-          </div>
-          <button
+    <AppDialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="رفع مخزون جديد"
+      description={
+        <span className="flex items-center gap-1.5">
+          <span className="truncate">{productName}</span>
+          {typeof displayCount === "number" ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0 font-bold">{displayCount} عنصر متوفر حالياً</span>
+            </>
+          ) : loadingExisting ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+            </>
+          ) : null}
+        </span>
+      }
+      dismissable={!submitting}
+      size="wide"
+      footer={
+        <>
+          <Button
+            variant="outline"
             onClick={onClose}
             disabled={submitting}
-            className="w-8 h-8 rounded-lg hover:bg-muted/40 flex items-center justify-center shrink-0 disabled:opacity-50"
-            aria-label="إغلاق"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Format help */}
-          <details className="group bg-muted/20 border border-border/40 rounded-xl px-3 py-2 [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none">
-            <summary className="cursor-pointer flex items-center gap-2 text-xs font-bold select-none">
-              <FileText className="w-3.5 h-3.5 text-primary" />
-              الصيغ المدعومة (اضغط للعرض)
-            </summary>
-            <ul
-              dir="ltr"
-              className="mt-2 text-[11px] leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
-            >
-              <li>
-                <Mail className="w-3 h-3 inline mr-1" />
-                <code>email|password</code> — حساب بسيط
-              </li>
-              <li>
-                <Mail className="w-3 h-3 inline mr-1" />
-                <code>email|password|extra</code> — حساب مع تفاصيل (مثل recovery email)
-              </li>
-              <li>
-                <Key className="w-3 h-3 inline mr-1" />
-                <code>XBOX-12345-ABCDE</code> — كود/مفتاح فقط (سطر واحد)
-              </li>
-              <li>
-                <FileText className="w-3 h-3 inline mr-1" />
-                <code>email,password,extra</code> — TSV/CSV من Sheets
-              </li>
-              <li>
-                <FileText className="w-3 h-3 inline mr-1" />
-                <code>{`{"email":"a@x.com","password":"p"}`}</code> — JSON
-              </li>
-            </ul>
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              يكتشف النظام نوع كل سطر تلقائياً. الفواصل المدعومة:{" "}
-              <code className="font-mono">|</code> <code className="font-mono">,</code>{" "}
-              <code className="font-mono">;</code> <code className="font-mono">tab</code>.
-              السطور التي تبدأ بـ <code className="font-mono">#</code> أو{" "}
-              <code className="font-mono">//</code> تُعتبر تعليقات وتُتجاهل.
-            </p>
-          </details>
-
-          {/* Drop zone + textarea */}
-          <div
-            onDragEnter={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={onDrop}
-            className={`relative rounded-xl border-2 border-dashed transition-colors ${
-              dragActive
-                ? "border-primary bg-primary/5"
-                : "border-border/60 bg-background/40"
-            }`}
-          >
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={
-                "الصق العناصر هنا (سطر لكل عنصر)…\n" +
-                "مثال:\n" +
-                "user1@mail.com|Password123\n" +
-                "user2@mail.com|Password456|recovery@mail.com\n" +
-                "XBOX-CODE-12345-ABCDE"
-              }
-              dir="ltr"
-              className="w-full min-h-[220px] bg-transparent px-4 py-3 text-xs font-mono focus:outline-none resize-y rounded-xl"
-            />
-            <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-border/40 bg-background/30">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1.5"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                أو ارفع ملف .txt / .csv
-              </button>
-              {text && (
-                <button
-                  type="button"
-                  onClick={() => setText("")}
-                  className="text-[11px] font-bold text-muted-foreground hover:text-destructive"
-                >
-                  مسح
-                </button>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.csv,text/plain,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleFile(f);
-                e.target.value = "";
-              }}
-            />
-          </div>
-
-          {/* Live summary stats */}
-          {parsed.totalLines > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-              <StatPill
-                label="إجمالي الأسطر"
-                value={parsed.totalLines}
-                Icon={FileText}
-                tone="neutral"
-              />
-              <StatPill
-                label="جاهز للإضافة"
-                value={willInsert}
-                Icon={CheckCircle}
-                tone="success"
-              />
-              <StatPill
-                label="مكرر"
-                value={parsed.duplicateIndices.length}
-                Icon={Package}
-                tone="warning"
-                muted={parsed.duplicateIndices.length === 0}
-              />
-              <StatPill
-                label="أخطاء"
-                value={parsed.errors.length}
-                Icon={AlertCircle}
-                tone="error"
-                muted={parsed.errors.length === 0}
-              />
-            </div>
-          )}
-
-          {/* Preview table */}
-          {parsed.entries.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-black flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  معاينة (أول {Math.min(parsed.entries.length, MAX_PREVIEW_ROWS)} من{" "}
-                  {parsed.entries.length})
-                </h3>
-              </div>
-              <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
-                <table className="w-full text-[11px]">
-                  <thead className="bg-muted/30 text-muted-foreground">
-                    <tr>
-                      <th className="text-right font-bold px-2 py-1.5 w-10">#</th>
-                      <th className="text-right font-bold px-2 py-1.5 w-20">النوع</th>
-                      <th className="text-right font-bold px-2 py-1.5">المعرّف</th>
-                      <th className="text-right font-bold px-2 py-1.5">حالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parsed.entries.slice(0, MAX_PREVIEW_ROWS).map((entry, idx) => (
-                      <PreviewRow
-                        key={idx}
-                        index={idx}
-                        entry={entry}
-                        isDuplicate={duplicateSet.has(idx)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {parsed.entries.length > MAX_PREVIEW_ROWS && (
-                <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
-                  + {parsed.entries.length - MAX_PREVIEW_ROWS} عنصر إضافي سيُرفع
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Error list */}
-          {parsed.errors.length > 0 && (
-            <div>
-              <h3 className="text-xs font-black flex items-center gap-1.5 mb-2 text-destructive">
-                <AlertCircle className="w-3.5 h-3.5" />
-                أسطر تعذّر تحليلها ({parsed.errors.length})
-              </h3>
-              <div className="bg-destructive/5 border border-destructive/25 rounded-xl px-3 py-2 space-y-1 max-h-32 overflow-y-auto">
-                {parsed.errors.slice(0, 10).map((err, i) => (
-                  <div key={i} className="text-[11px] flex items-start gap-2">
-                    <span className="font-mono text-destructive/70 shrink-0">
-                      L{err.line}
-                    </span>
-                    <span className="text-muted-foreground flex-1 truncate">
-                      {err.raw}
-                    </span>
-                    <span className="text-destructive font-bold shrink-0">
-                      {err.reason}
-                    </span>
-                  </div>
-                ))}
-                {parsed.errors.length > 10 && (
-                  <div className="text-[10px] text-muted-foreground text-center pt-1">
-                    + {parsed.errors.length - 10} خطأ آخر
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex gap-2 p-4 border-t border-border/40 shrink-0">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="flex-1 px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground border border-border/60 rounded-xl disabled:opacity-50"
+            className="flex-1 sm:flex-none"
           >
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={submit}
             disabled={submitting || willInsert === 0}
-            className="flex-[2] px-4 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-[2] gap-2 sm:flex-1"
           >
             {submitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 جارٍ الرفع…
               </>
             ) : willInsert === 0 ? (
@@ -457,10 +226,201 @@ export function InventoryUploadDialog({
             ) : (
               `رفع ${willInsert} عنصر`
             )}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <AppDialogBody className="space-y-4">
+        {/* Format help */}
+        <details className="group bg-muted/20 border border-border/40 rounded-xl px-3 py-2 [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none">
+          <summary className="cursor-pointer flex items-center gap-2 text-xs font-bold select-none">
+            <FileText className="w-3.5 h-3.5 text-primary" />
+            الصيغ المدعومة (اضغط للعرض)
+          </summary>
+          <ul
+            dir="ltr"
+            className="mt-2 text-[11px] leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
+          >
+            <li>
+              <Mail className="w-3 h-3 inline mr-1" />
+              <code>email|password</code> — حساب بسيط
+            </li>
+            <li>
+              <Mail className="w-3 h-3 inline mr-1" />
+              <code>email|password|extra</code> — حساب مع تفاصيل (مثل recovery email)
+            </li>
+            <li>
+              <Key className="w-3 h-3 inline mr-1" />
+              <code>XBOX-12345-ABCDE</code> — كود/مفتاح فقط (سطر واحد)
+            </li>
+            <li>
+              <FileText className="w-3 h-3 inline mr-1" />
+              <code>email,password,extra</code> — TSV/CSV من Sheets
+            </li>
+            <li>
+              <FileText className="w-3 h-3 inline mr-1" />
+              <code>{`{"email":"a@x.com","password":"p"}`}</code> — JSON
+            </li>
+          </ul>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            يكتشف النظام نوع كل سطر تلقائياً. الفواصل المدعومة: <code className="font-mono">|</code>{" "}
+            <code className="font-mono">,</code> <code className="font-mono">;</code>{" "}
+            <code className="font-mono">tab</code>. السطور التي تبدأ بـ{" "}
+            <code className="font-mono">#</code> أو <code className="font-mono">//</code> تُعتبر
+            تعليقات وتُتجاهل.
+          </p>
+        </details>
+
+        {/* Drop zone + textarea */}
+        <div
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+          className={`relative rounded-xl border-2 border-dashed transition-colors ${
+            dragActive ? "border-primary bg-primary/5" : "border-border/60 bg-background/40"
+          }`}
+        >
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={
+              "الصق العناصر هنا (سطر لكل عنصر)…\n" +
+              "مثال:\n" +
+              "user1@mail.com|Password123\n" +
+              "user2@mail.com|Password456|recovery@mail.com\n" +
+              "XBOX-CODE-12345-ABCDE"
+            }
+            dir="ltr"
+            className="w-full min-h-[220px] bg-transparent px-4 py-3 text-xs font-mono focus:outline-none resize-y rounded-xl"
+          />
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-border/40 bg-background/30">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1.5"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              أو ارفع ملف .txt / .csv
+            </button>
+            {text && (
+              <button
+                type="button"
+                onClick={() => setText("")}
+                className="text-[11px] font-bold text-muted-foreground hover:text-destructive"
+              >
+                مسح
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.csv,text/plain,text/csv"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f);
+              e.target.value = "";
+            }}
+          />
         </div>
-      </div>
-    </div>
+
+        {/* Live summary stats */}
+        {parsed.totalLines > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <StatPill
+              label="إجمالي الأسطر"
+              value={parsed.totalLines}
+              Icon={FileText}
+              tone="neutral"
+            />
+            <StatPill label="جاهز للإضافة" value={willInsert} Icon={CheckCircle} tone="success" />
+            <StatPill
+              label="مكرر"
+              value={parsed.duplicateIndices.length}
+              Icon={Package}
+              tone="warning"
+              muted={parsed.duplicateIndices.length === 0}
+            />
+            <StatPill
+              label="أخطاء"
+              value={parsed.errors.length}
+              Icon={AlertCircle}
+              tone="error"
+              muted={parsed.errors.length === 0}
+            />
+          </div>
+        )}
+
+        {/* Preview table */}
+        {parsed.entries.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-black flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                معاينة (أول {Math.min(parsed.entries.length, MAX_PREVIEW_ROWS)} من{" "}
+                {parsed.entries.length})
+              </h3>
+            </div>
+            <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead className="bg-muted/30 text-muted-foreground">
+                  <tr>
+                    <th className="text-right font-bold px-2 py-1.5 w-10">#</th>
+                    <th className="text-right font-bold px-2 py-1.5 w-20">النوع</th>
+                    <th className="text-right font-bold px-2 py-1.5">المعرّف</th>
+                    <th className="text-right font-bold px-2 py-1.5">حالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsed.entries.slice(0, MAX_PREVIEW_ROWS).map((entry, idx) => (
+                    <PreviewRow
+                      key={idx}
+                      index={idx}
+                      entry={entry}
+                      isDuplicate={duplicateSet.has(idx)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {parsed.entries.length > MAX_PREVIEW_ROWS && (
+              <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
+                + {parsed.entries.length - MAX_PREVIEW_ROWS} عنصر إضافي سيُرفع
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Error list */}
+        {parsed.errors.length > 0 && (
+          <div>
+            <h3 className="text-xs font-black flex items-center gap-1.5 mb-2 text-destructive">
+              <AlertCircle className="w-3.5 h-3.5" />
+              أسطر تعذّر تحليلها ({parsed.errors.length})
+            </h3>
+            <div className="bg-destructive/5 border border-destructive/25 rounded-xl px-3 py-2 space-y-1 max-h-32 overflow-y-auto">
+              {parsed.errors.slice(0, 10).map((err, i) => (
+                <div key={i} className="text-[11px] flex items-start gap-2">
+                  <span className="font-mono text-destructive/70 shrink-0">L{err.line}</span>
+                  <span className="text-muted-foreground flex-1 truncate">{err.raw}</span>
+                  <span className="text-destructive font-bold shrink-0">{err.reason}</span>
+                </div>
+              ))}
+              {parsed.errors.length > 10 && (
+                <div className="text-[10px] text-muted-foreground text-center pt-1">
+                  + {parsed.errors.length - 10} خطأ آخر
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </AppDialogBody>
+    </AppDialog>
   );
 }
 
@@ -506,8 +466,7 @@ function PreviewRow({
   entry: ParsedInventoryEntry;
   isDuplicate: boolean;
 }) {
-  const identifier =
-    entry.kind === "credentials" ? entry.email : (entry.extra ?? "—");
+  const identifier = entry.kind === "credentials" ? entry.email : (entry.extra ?? "—");
   return (
     <tr
       className={`border-t border-border/30 ${

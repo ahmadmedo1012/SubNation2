@@ -12,6 +12,8 @@ import {
   getGetMeQueryKey,
   getGetProductQueryKey,
   getGetProductRecommendationsQueryKey,
+  getListOrdersQueryKey,
+  getMe,
   type Product,
   type User,
   useCreateOrder,
@@ -25,6 +27,8 @@ import {
   Check,
   CheckCircle,
   Copy,
+  Eye,
+  EyeOff,
   Headphones,
   Info,
   Loader2,
@@ -78,8 +82,22 @@ const TRUST_SIGNALS = [
   { icon: Headphones, label: "دعم متاح", desc: "تواصل معنا أي وقت" },
 ];
 
-function CopyField({ label, value }: { label: string; value: string }) {
+function CopyField({
+  label,
+  value,
+  secret = false,
+}: {
+  label: string;
+  value: string;
+  /** 93-C5 / F-15 (A4 #11): mask the value until explicitly revealed —
+   * ported from order-detail's CopyField (V2-H10) so the paid password
+   * isn't shoulder-surfable in the first second after purchase on this
+   * screen too. Previously rendered in cleartext here while order-detail
+   * masked the exact same credential. */
+  secret?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const [revealed, setRevealed] = useState(!secret);
   const handleCopy = async () => {
     const ok = await copyToClipboard(value);
     if (!ok) return;
@@ -89,28 +107,43 @@ function CopyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <span className="text-sm text-muted-foreground shrink-0">{label}</span>
-      <button
-        onClick={handleCopy}
-        // Credentials/emails are LTR strings — without dir="ltr" the
-        // digit-suffixed tails visually scramble inside the RTL page
-        // (V2-H10: the exact data the user PAID for must copy correctly).
-        dir="ltr"
-        aria-label={`نسخ ${label}`}
-        className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group text-left ${
-          copied ? "text-status-success" : "text-foreground hover:text-primary"
-        }`}
-      >
-        <span className="max-w-[160px] truncate">{value}</span>
-        <div
-          className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${
-            copied
-              ? "bg-status-success/15 text-status-success"
-              : "bg-muted/60 text-muted-foreground group-hover:bg-primary/12 group-hover:text-primary"
+      <div className="flex items-center gap-1.5 shrink-0">
+        {secret && (
+          <button
+            type="button"
+            onClick={() => setRevealed((r) => !r)}
+            aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+          >
+            {revealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {revealed ? "إخفاء" : "إظهار"}
+          </button>
+        )}
+        <button
+          onClick={handleCopy}
+          // Credentials/emails are LTR strings — without dir="ltr" the
+          // digit-suffixed tails visually scramble inside the RTL page
+          // (V2-H10: the exact data the user PAID for must copy correctly).
+          dir="ltr"
+          aria-label={`نسخ ${label}`}
+          className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group text-left ${
+            copied ? "text-status-success" : "text-foreground hover:text-primary"
           }`}
         >
-          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-        </div>
-      </button>
+          <span className="max-w-[160px] truncate">
+            {revealed ? value : "•".repeat(Math.min(value.length, 12))}
+          </span>
+          <div
+            className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${
+              copied
+                ? "bg-status-success/15 text-status-success"
+                : "bg-muted/60 text-muted-foreground group-hover:bg-primary/12 group-hover:text-primary"
+            }`}
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          </div>
+        </button>
+      </div>
     </div>
   );
 }
@@ -214,7 +247,25 @@ export default function ProductPage() {
     mutation: {
       onSuccess(data) {
         setOrderResult(data);
-        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
+        // /api/auth/me can be answered from the browser HTTP cache
+        // (Cache-Control: private, max-age=30) with the pre-purchase body,
+        // leaving the Navbar's balance chip stale. Fetch me with
+        // cache:"no-store" and seed the query cache directly (no refetch
+        // race); fall back to a plain invalidation if the refresh fails.
+        // (checkout.tsx runs the identical refresh after its unit loop.)
+        void (async () => {
+          try {
+            const freshUser = await getMe({ cache: "no-store" });
+            queryClient.setQueryData(getGetMeQueryKey(), freshUser);
+          } catch {
+            queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          }
+        })();
+        // 93-C5 (A4 #20): the purchase must appear in the orders list
+        // (home's "آخر الطلبات" strip, /orders) immediately — not ≤60 s
+        // later. No-arg form invalidates every list param variant.
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       },
       onError(err: unknown) {
         setError(getErrorMessage(err));
@@ -465,7 +516,7 @@ export default function ProductPage() {
                     <CopyField label="البريد الإلكتروني" value={orderResult.delivered_email} />
                   )}
                   {orderResult.delivered_password && (
-                    <CopyField label="كلمة المرور" value={orderResult.delivered_password} />
+                    <CopyField label="كلمة المرور" value={orderResult.delivered_password} secret />
                   )}
                 </div>
               </div>

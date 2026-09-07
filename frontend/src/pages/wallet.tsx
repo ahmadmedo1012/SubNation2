@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
@@ -42,6 +43,7 @@ import {
   Star,
   TrendingUp,
   Wallet,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -310,6 +312,46 @@ function TransferCodePanel({
   );
 }
 
+/**
+ * 93-C5 / F-03 (A2 P1 #2): optional transfer-receipt reference field,
+ * rendered under the amount in BOTH topup flows. Programmatic label +
+ * htmlFor (A4 P3 #37 — placeholder-only names), dir="ltr" + font-mono
+ * for the receipt/reference runs (typically Latin digits), maxLength 100
+ * matching the backend's boundary.
+ */
+function PaymentReferenceField({
+  value,
+  onChange,
+  id,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  id: string;
+}) {
+  return (
+    <div className="mt-3">
+      <Label htmlFor={id} className="text-xs font-bold text-muted-foreground mb-2 block">
+        رقم مرجع التحويل <span className="font-medium">(اختياري)</span>
+      </Label>
+      <Input
+        id={id}
+        type="text"
+        inputMode="text"
+        maxLength={100}
+        placeholder="رقم إيصال التحويل كما ورد في رسالة التحويل"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        dir="ltr"
+        autoComplete="off"
+        className="text-left font-mono h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
+      />
+      <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+        يساعد هذا المرجع فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين.
+      </p>
+    </div>
+  );
+}
+
 export default function WalletPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
@@ -320,6 +362,14 @@ export default function WalletPage() {
   const [amount, setAmount] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
   const [senderAccount, setSenderAccount] = useState("");
+  // 93-C5 / F-03 (A2 P1 #2): the transfer receipt/transaction reference.
+  // The backend's whole V1-M9/B2-02 duplicate-credit dedup machinery
+  // (advisory lock + in-tx check + partial unique index) is conditional
+  // on a NON-EMPTY payment_reference — and this form never sent one, so
+  // a user could submit the same transfer 3× (MAX_PENDING) and be
+  // credited 3× for one real receipt. Optional field, ≤100 chars
+  // (backend trims + rejects >100), trimmed before sending.
+  const [paymentReference, setPaymentReference] = useState("");
   const [senderPhoneTouched, setSenderPhoneTouched] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -365,12 +415,28 @@ export default function WalletPage() {
     if (!token) navigate("/login");
   }, [token]);
 
-  const { data: wallet, isLoading } = useGetWallet({
+  // 93-C5 / F-05 (A4 #7): no error state — on a failed /api/wallet probe
+  // the balance card used to silently VANISH (wallet ? card : null) and
+  // the ledger below showed "لا توجد طلبات شحن بعد" — the money page
+  // looked like the user never topped up and has no balance, the worst
+  // place for a silent failure. isError + refetch feed explicit retry
+  // branches below.
+  const {
+    data: wallet,
+    isLoading,
+    isError: walletError,
+    refetch: refetchWallet,
+  } = useGetWallet({
     query: { enabled: !!token, queryKey: getGetWalletQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const { data: topups = [], isLoading: topupsLoading } = useListTopups({
+  const {
+    data: topups = [],
+    isLoading: topupsLoading,
+    isError: topupsError,
+    refetch: refetchTopups,
+  } = useListTopups({
     query: { enabled: !!token, queryKey: getListTopupsQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -422,6 +488,7 @@ export default function WalletPage() {
         setAmount("");
         setSenderPhone("");
         setSenderAccount("");
+        setPaymentReference("");
         setSenderPhoneTouched(false);
         queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
@@ -478,6 +545,9 @@ export default function WalletPage() {
     }
 
     setSubmitting(true);
+    // 93-C5 / F-03: trim once at the boundary (the backend trims again +
+    // rejects >100 chars; maxLength on the input already bounds typing).
+    const trimmedReference = paymentReference.trim().slice(0, 100);
     topupMutation.mutate({
       data: {
         amount: parsedAmount,
@@ -485,6 +555,9 @@ export default function WalletPage() {
         payment_network: method === "mobile_transfer" ? network : undefined,
         sender_phone: method === "mobile_transfer" ? senderPhone || undefined : undefined,
         sender_account: method === "lypay" ? senderAccount || undefined : undefined,
+        // 93-C5 / F-03: the dedup machinery is only armed when this field
+        // is non-empty — send it whenever the user provided one.
+        payment_reference: trimmedReference || undefined,
       },
     });
   };
@@ -515,6 +588,28 @@ export default function WalletPage() {
           {/* Balance card */}
           {isLoading ? (
             <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
+          ) : walletError ? (
+            /* 93-C5 / F-05 (A4 #7): the card used to silently vanish on a
+               failed /api/wallet probe — the money page's primary datum
+               cannot just disappear. Honest error card + retry (same
+               idiom as orders/loyalty error states). */
+            <div className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+                <WifiOff className="w-6 h-6 text-status-error/70" />
+              </div>
+              <p className="font-black text-base mb-1.5 text-foreground/80">
+                تعذّر تحميل رصيد المحفظة
+              </p>
+              <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
+                حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+              </p>
+              <Button
+                onClick={() => void refetchWallet()}
+                className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl"
+              >
+                إعادة المحاولة
+              </Button>
+            </div>
           ) : wallet ? (
             <div className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-4 sm:p-5 shadow-xl shadow-primary/8">
               <div className="absolute inset-0 dot-grid opacity-35 pointer-events-none" />
@@ -757,6 +852,13 @@ export default function WalletPage() {
                     dir="ltr"
                     className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
                   />
+                  {/* 93-C5 / F-03: optional receipt reference — arms the
+                      backend's duplicate-credit dedup. */}
+                  <PaymentReferenceField
+                    id="topup-payment-reference-mobile"
+                    value={paymentReference}
+                    onChange={setPaymentReference}
+                  />
                 </div>
 
                 <div className="border-t border-border/20" />
@@ -954,6 +1056,13 @@ export default function WalletPage() {
                       dir="ltr"
                       className="text-left h-11 rounded-xl bg-card"
                     />
+                    {/* 93-C5 / F-03: optional receipt reference — arms the
+                        backend's duplicate-credit dedup (bank-transfer flow). */}
+                    <PaymentReferenceField
+                      id="topup-payment-reference-lypay"
+                      value={paymentReference}
+                      onChange={setPaymentReference}
+                    />
                   </div>
 
                   <div className="border-t border-border/20" />
@@ -1036,6 +1145,27 @@ export default function WalletPage() {
                     <div className="h-5 bg-muted skeleton-shimmer rounded-full w-16 shrink-0" />
                   </div>
                 ))}
+              </div>
+            ) : topupsError ? (
+              /* 93-C5 / F-05 (A4 #7): a failed ledger fetch used to render
+                 the "لا توجد طلبات شحن بعد" empty state — an outage read as
+                 "you never topped up" on the money page. Distinct error
+                 branch with retry. */
+              <div className="text-center py-10 text-muted-foreground">
+                <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5">
+                  <WifiOff className="w-5 h-5 text-status-error/70" />
+                </div>
+                <p className="font-bold text-sm mb-1 text-foreground/80">تعذّر تحميل سجل الشحن</p>
+                <p className="text-xs text-muted-foreground mb-4 leading-relaxed max-w-[220px] mx-auto">
+                  حدث خطأ في الاتصال — أعد المحاولة لعرض طلبات الشحن السابقة
+                </p>
+                <Button
+                  onClick={() => void refetchTopups()}
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
+                >
+                  إعادة المحاولة
+                </Button>
               </div>
             ) : topups.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">

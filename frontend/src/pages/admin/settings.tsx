@@ -2,6 +2,10 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/errors";
+// 93-C7 / C-UX2 (A12 B17): configured/secret/telegram pills migrate
+// from raw emerald/yellow hues (+ a square `rounded` on the secret
+// chip) to the canonical StatusBadge on the --status-* tokens.
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Bell,
   Bot,
@@ -183,9 +187,9 @@ function ProviderCard({
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm">{provider.label}</span>
             {isConfigured && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+              <StatusBadge variant="success" size="xs">
                 مُعدَّ
-              </span>
+              </StatusBadge>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{provider.description}</p>
@@ -224,9 +228,9 @@ function ProviderCard({
                 <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
                   {field.label}
                   {field.isSecret && (
-                    <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded font-bold">
+                    <StatusBadge variant="warning" size="xs">
                       سري
-                    </span>
+                    </StatusBadge>
                   )}
                 </label>
                 <div className="relative">
@@ -694,7 +698,7 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
         >
           {profileSaving ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارِ الحفظ…
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ الحفظ…
             </>
           ) : (
             <>
@@ -769,7 +773,7 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
         >
           {pwSaving ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارِ التحديث…
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحديث…
             </>
           ) : (
             <>
@@ -904,9 +908,14 @@ export default function AdminSettingsPage() {
               <div className="flex-1">
                 <div className="font-bold text-sm">طرق تسجيل الدخول</div>
                 <div className="text-xs text-muted-foreground">
+                  {/* 93-C7 / C-UX5 (A11 top-20 #6): the platform is
+                      passwordless for USERS (phone OTP + OAuth) — the old
+                      copy promised users a password login that does not
+                      exist; the admin's OWN password (AccountTab) is
+                      untouched. */}
                   {enabledCount === 0
-                    ? "لا توجد طرق مفعّلة — سيظهر للمستخدمين الهاتف وكلمة المرور فقط"
-                    : `${enabledCount} طريقة مفعّلة إضافةً إلى الهاتف/كلمة المرور`}
+                    ? "لا توجد طرق مفعّلة — سيظهر للمستخدمين الدخول برقم الهاتف (رمز تحقق) فقط"
+                    : `${enabledCount} طريقة مفعّلة إضافةً إلى الدخول برقم الهاتف (رمز تحقق)`}
                 </div>
               </div>
               <span
@@ -972,11 +981,12 @@ export default function AdminSettingsPage() {
                 </div>
                 <div className="mr-auto">
                   {settings && (
-                    <span
-                      className={`text-xs font-bold px-2.5 py-1 rounded-full border ${settings.telegram_configured ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}`}
+                    <StatusBadge
+                      variant={settings.telegram_configured ? "success" : "neutral"}
+                      size="xs"
                     >
                       {settings.telegram_configured ? "مفعّل" : "غير مفعّل"}
-                    </span>
+                    </StatusBadge>
                   )}
                 </div>
               </div>
@@ -1066,8 +1076,8 @@ export default function AdminSettingsPage() {
                   <div
                     className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs ${
                       tgTestResult.delivered
-                        ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
-                        : "bg-red-500/10 border-red-500/25 text-red-400"
+                        ? "bg-status-success/10 border-status-success/25 text-status-success"
+                        : "bg-status-error/10 border-status-error/25 text-status-error"
                     }`}
                   >
                     {tgTestResult.delivered ? (

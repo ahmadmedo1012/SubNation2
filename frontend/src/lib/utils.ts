@@ -108,10 +108,32 @@ export function statusLabel(status: string): string {
     refunded: "مسترجع",
     approved: "موافق عليه",
     rejected: "مرفوض",
+    // 93-C7 / C-UX2 (A12 §11.1 rule 1): the label side of the status
+    // unification — every status the STATUS_TONE mapper (ui/status-badge)
+    // covers can now resolve an Arabic label here, so filter tabs and
+    // row badges on admin pages derive from ONE map instead of drifting
+    // («معلق/قيد الانتظار», «مفتوحة», «نشط» were per-page literals).
+    open: "مفتوحة",
+    in_progress: "قيد المعالجة",
+    closed: "مغلقة",
+    credited: "ناجحة",
+    active: "نشط",
+    expired: "منتهي",
+    scheduled: "مجدول",
+    archived: "مؤرشف",
   };
   return labels[status] ?? status;
 }
 
+// 93-C7 / C-UX2 (A12 §11.1 rule 6): statusColor() is DEPRECATED — it is
+// the "string-concat canonical" that competed with the StatusBadge
+// component (dual-canonical problem, A12 F-02). The 8 remaining
+// render-sites (A12 census R1-R8: pages/orders, order-detail, wallet ×2,
+// home, admin/topups, admin/dashboard, admin/orders) live in other
+// agents' files and are a documented round-93 follow-up: migrate each to
+// <StatusBadge variant={STATUS_TONE[s]}>{statusLabel(s)}</StatusBadge>,
+// then delete this function. Colors are kept EXACTLY as-is so the R-sites
+// render identically until their owner migrates.
 export function statusColor(status: string): string {
   // Class tuples ride the shared --status-* tokens (defined in
   // index.css and exposed to Tailwind via @theme as `status-success`,
@@ -131,16 +153,55 @@ export function statusColor(status: string): string {
   return colors[status] ?? "text-muted-foreground";
 }
 
+// 93-C6 / F-06 (A5 PR-1 + A11 §4, round-93): formatRelativeTime now
+// delegates to Intl.RelativeTimeFormat so Arabic plurals are correct
+// (دقيقة واحدة / دقيقتين / 5 دقائق / 11 دقيقة) in BOTH directions.
+// Previously:
+//   - truncated single-letter units («منذ 5 د») inside prose,
+//   - collapsed every plural to the singular («منذ 2 أيام»),
+//   - and — the P1 — returned "الآن" for FUTURE dates (negative diff
+//     fell into the `mins < 1` branch), so every flash sale on
+//     admin/promotions rendered «ينتهي الآن» for its whole runtime.
+// The `ar-LY-u-nu-latn` locale extension pins Latin digits: the bare
+// "ar" CLDR default is Arabic-Indic (٥ دقائق), which would violate the
+// site-wide Latin-numerals convention (see the pin comment atop this
+// file). `numeric: "auto"` yields «قبل …» for the past, «خلال …» for
+// the future, and the special forms أمس / أول أمس / غدًا — formal MSA,
+// no hand-rolled plural tables to drift.
+// Cached formatter (module-level): Intl construction is the expensive
+// part; options never vary.
+const AR_RELATIVE_TIME_FORMATTER =
+  typeof Intl !== "undefined" && Intl.RelativeTimeFormat
+    ? new Intl.RelativeTimeFormat("ar-LY-u-nu-latn", { numeric: "auto" })
+    : null;
+
 export function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  const hours = Math.floor(diff / 3_600_000);
-  const days = Math.floor(diff / 86_400_000);
-  if (mins < 1) return "الآن";
-  if (mins < 60) return `منذ ${mins} ${mins === 1 ? "دقيقة" : "د"}`;
-  if (hours < 24) return `منذ ${hours} ${hours === 1 ? "ساعة" : "س"}`;
-  if (days === 1) return "أمس";
-  if (days < 7) return `منذ ${days} أيام`;
+  const target = new Date(dateStr).getTime();
+  if (!Number.isFinite(target)) return "الآن";
+  // Positive = future (clock at target still to run), negative = past.
+  const diffMs = target - Date.now();
+  const future = diffMs > 0;
+  const pastMs = Math.abs(diffMs);
+  // Under a minute AGO reads as "الآن" (matches the previous behavior);
+  // a future target always has at least "خلال دقيقة واحدة" left.
+  if (!future && pastMs < 60_000) return "الآن";
+  // Past buckets FLOOR (a full hour must pass before «قبل ساعة»);
+  // future buckets CEIL (a sale with 59s left honestly reads
+  // «خلال دقيقة واحدة», never «الآن» while still active).
+  const mins = future ? Math.ceil(pastMs / 60_000) : Math.floor(pastMs / 60_000);
+  const fmtUnit = (value: number, unit: Intl.RelativeTimeFormatUnit): string => {
+    const signed = future ? value : -value;
+    if (AR_RELATIVE_TIME_FORMATTER) return AR_RELATIVE_TIME_FORMATTER.format(signed, unit);
+    return future ? `بعد ${value} ${unit}` : `منذ ${value} ${unit}`;
+  };
+  if (mins < 60) return fmtUnit(mins, "minute");
+  const hours = future ? Math.ceil(pastMs / 3_600_000) : Math.floor(pastMs / 3_600_000);
+  if (hours < 24) return fmtUnit(hours, "hour");
+  const days = future ? Math.ceil(pastMs / 86_400_000) : Math.floor(pastMs / 86_400_000);
+  if (days < 7) return fmtUnit(days, "day");
+  // Older / farther than a week: the calendar date says more than a
+  // unit count. (Future >1 week on this helper is unusual — promotions
+  // cap at days — but the date is still the honest answer.)
   return new Date(dateStr).toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
 }
 
@@ -150,6 +211,36 @@ export function formatDateShort(dateStr: string): string {
   const hours = Math.floor(diff / 3_600_000);
   if (hours < 48) return formatRelativeTime(dateStr);
   return d.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
+}
+
+/**
+ * 93-C6 / F-06-b (A5 C-2, round-93): convert a naive `datetime-local`
+ * input value ("2026-09-07T23:59") into a true UTC ISO string.
+ *
+ * Why: `<input type="datetime-local">` values carry NO timezone. Sending
+ * them raw makes the server (UTC on Render) interpret the operator's
+ * LOCAL wall-clock as UTC — a coupon created in Libya (UTC+2/+3) with
+ * "ينتهي 23:59" then stays redeemable until 01:59/02:59 next day, hours
+ * after the operator believes it ended (the storefront countdown shows
+ * the TRUE end, so customers keep buying under a "finished" discount).
+ * `new Date(value)` parses the naive string in the BROWSER's zone, so
+ * `.toISOString()` re-encodes the intended instant correctly.
+ *
+ * This is the shared helper extracted from the pattern promotions.tsx
+ * already does correctly (`new Date(form.ends_at).toISOString()`).
+ * coupons.tsx (93-C7's file) should swap its raw `expires_at` send for
+ * `localDateTimeToUtcIso(form.expires_at)` — noted in the round-93
+ * worklog for coordination.
+ *
+ * Returns `null` for empty input (caller decides whether "no expiry"
+ * is legal) and `null` for unparseable values (caller validates).
+ */
+export function localDateTimeToUtcIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
 }
 
 /**

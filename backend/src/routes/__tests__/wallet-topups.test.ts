@@ -2,13 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  db,
-  initTestDb,
-  resetTestDb,
-  usersTable,
-  walletTopupsTable,
-} from "../../test/db";
+import { db, initTestDb, resetTestDb, usersTable, walletTopupsTable } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { walletRouter } from "../wallet";
 
@@ -211,6 +205,22 @@ describe("POST /api/wallet/topups — validation (generated zod + handler rules)
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_DATA");
   });
+
+  it("rejects a payment_reference longer than 100 chars with 400 (F-03 handler cap)", async () => {
+    // F-03 (round-93): the handler trims and caps the reference at 100
+    // chars — the semantic bound the dedup layers compare on. The zod
+    // 255-char schema is only the looser outer perimeter, so a 101..255
+    // char value passes zod and is rejected here.
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 50, payment_network: "madar", payment_reference: "R".repeat(101) },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+    expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
+  });
 });
 
 describe("POST /api/wallet/topups — pending cap (MAX_PENDING = 3)", () => {
@@ -398,7 +408,9 @@ describe("POST /api/wallet/topups — happy path", () => {
     expect(max.body.amount).toBe(10000);
   });
 
-  it("accepts a payment_reference at the 255-char boundary", async () => {
+  it("accepts a payment_reference at the 100-char handler boundary", async () => {
+    // F-03 (round-93): the handler cap (trimmed, ≤ 100) replaced the old
+    // 255-char raw boundary.
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
     const res = await call<{ payment_reference: string | null }>(
@@ -407,11 +419,11 @@ describe("POST /api/wallet/topups — happy path", () => {
       "/api/wallet/topups",
       {
         token,
-        body: { amount: 50, payment_network: "madar", payment_reference: "R".repeat(255) },
+        body: { amount: 50, payment_network: "madar", payment_reference: "R".repeat(100) },
       },
     );
     expect(res.status).toBe(201);
-    expect(res.body.payment_reference).toHaveLength(255);
+    expect(res.body.payment_reference).toHaveLength(100);
   });
 });
 

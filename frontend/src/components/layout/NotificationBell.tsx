@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatCount, formatRelativeTime } from "@/lib/utils";
 import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
@@ -414,7 +414,8 @@ function NotificationPanel({
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1.5 rounded-lg hover:bg-primary/8 press-spring"
             >
               <CheckCheck className="w-3 h-3" />
-              قراءة الكل
+              {/* 93-C8 (A11 §2): unified mark-as-read verb. */}
+              تحديد الكل كمقروء
             </button>
           )}
           <button
@@ -522,7 +523,7 @@ function NotificationPanel({
                         className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2 py-1 rounded-lg hover:bg-muted/40 transition-all duration-150"
                       >
                         <CheckCheck className="w-2.5 h-2.5" />
-                        تمييز كمقروء
+                        تحديد كمقروء
                       </button>
                     )}
                   </div>
@@ -536,7 +537,15 @@ function NotificationPanel({
       {/* Footer */}
       {notifs.length > 0 && (
         <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center shrink-0">
-          <p className="text-xs text-muted-foreground">{notifs.length} إشعار</p>
+          <p className="text-xs text-muted-foreground">
+            {/* 93-C8 (A11 §3): Arabic plural paradigm via formatCount. */}
+            {formatCount(notifs.length, {
+              two: "إشعاران",
+              few: "إشعارات",
+              many: "إشعاراً",
+              other: "إشعار",
+            })}
+          </p>
         </div>
       )}
     </div>

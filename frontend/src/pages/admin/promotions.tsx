@@ -412,10 +412,17 @@ export default function AdminPromotionsPage() {
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          ينتهي{" "}
+                          {/* 93-C6 / F-06 (PR-1): formatRelativeTime now
+                              carries its own direction wording —
+                              «ينتهي خلال ساعتين» for a live sale,
+                              «انتهى قبل 5 دقائق» for a finished one.
+                              The old hand-prefixed `قبل ${…}` produced
+                              «ينتهي الآن» for every ACTIVE sale (future
+                              dates hit the now-branch) and the
+                              ungrammatical «قبل منذ …» for past ones. */}
                           {expired
-                            ? `قبل ${formatRelativeTime(s.ends_at)}`
-                            : formatRelativeTime(s.ends_at)}
+                            ? `انتهى ${formatRelativeTime(s.ends_at)}`
+                            : `ينتهي ${formatRelativeTime(s.ends_at)}`}
                         </span>
                         <span className="text-[10px] opacity-60">#{s.id}</span>
                       </div>

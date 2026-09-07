@@ -97,6 +97,27 @@ function decodeTelegramPayload(): DecodedTelegramPayload | null {
   return null;
 }
 
+/**
+ * 93-C5 / F-15 (A4 #3): read + validate the ?redirect= guarded destination
+ * that TelegramLoginButton re-appended to this page's URL. Same-origin
+ * internal paths only (slash-prefixed, no protocol/host, no "//") so the
+ * param can't be abused as an open redirect — mirrors login.tsx's
+ * readRedirectTarget. Without this the Telegram path ALWAYS landed on "/"
+ * and the checkout funnel broke for Telegram-first users.
+ */
+function readRedirectTarget(): string | null {
+  if (typeof window === "undefined") return null;
+  const target = new URLSearchParams(window.location.search).get("redirect");
+  if (!target || !target.startsWith("/") || target.startsWith("//")) return null;
+  try {
+    const url = new URL(target, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return url.pathname + url.search;
+  } catch {
+    return null;
+  }
+}
+
 export default function TelegramCallbackPage() {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
@@ -149,11 +170,21 @@ export default function TelegramCallbackPage() {
         // Success — store JWT then leave the URL behind so the back
         // button doesn't bring the user back to this transient page.
         setToken(json.token);
-        // Strip the fragment from the URL bar before navigating away.
+        // 93-C5 / F-15 (A4 #3): honor the guarded destination
+        // TelegramLoginButton carried through the round-trip
+        // (login?redirect=/checkout →
+        // return_to=/auth/telegram-callback?redirect=/checkout) instead
+        // of the hardcoded "/" — closes the last redirect-dropping
+        // provider. Read it BEFORE the fragment strip below
+        // (replaceState rewrites window.location).
+        const redirectTarget = readRedirectTarget();
+        // Strip ONLY the fragment from the URL bar (keep the query) before
+        // navigating away — the replace-navigation below rewrites the URL
+        // anyway, but the strip must not consume the redirect param first.
         if (window.location.hash) {
-          window.history.replaceState({}, "", window.location.pathname);
+          window.history.replaceState({}, "", window.location.pathname + window.location.search);
         }
-        navigate("/", { replace: true });
+        navigate(redirectTarget ?? "/", { replace: true });
       } catch {
         setError("server_error");
         navigate("/login?error=server_error", { replace: true });

@@ -127,8 +127,10 @@ export default function LoginPage() {
               </div>
               <div className="min-w-0">
                 <p className="font-bold leading-tight">
+                  {/* 93-C8 (A11 §6): «…» guillemets — the checkout page's
+                      established quote style. */}
                   {intent.productName
-                    ? `سجّل دخولك لإكمال شراء "${intent.productName}"`
+                    ? `سجّل دخولك لإكمال شراء «${intent.productName}»`
                     : "سجّل دخولك لإكمال عملية الشراء"}
                 </p>
                 <p className="text-[11px] text-primary-text/75 mt-0.5">
@@ -149,10 +151,14 @@ export default function LoginPage() {
 
           {/* WhatsApp — peer of Google + Telegram. Pristine button →
               expands inline. Backend handles new + returning users
-              identically (findOrCreateWhatsAppUser). No divider. */}
+              identically (findOrCreateWhatsAppUser). No divider.
+              93-C5 / F-15 (A4 #3): thread ?redirect= through the WhatsApp
+              path too — it used to always navigate("/"), so a guarded
+              checkout funnel entry broke for phone-first users (the
+              majority provider in Libya). */}
           {whatsappEnabled && (
             <div className="mt-2.5">
-              <WhatsAppPhoneSignIn />
+              <WhatsAppPhoneSignIn onSuccess={redirectTarget ? handleLoginSuccess : undefined} />
             </div>
           )}
         </div>

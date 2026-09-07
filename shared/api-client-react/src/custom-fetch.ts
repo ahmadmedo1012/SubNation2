@@ -8,6 +8,30 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+/**
+ * Optional 401 observer — 93-C6 / F-07 (round-93): lets a host app
+ * react to authorization failures without wrapping every fetch. The
+ * shared client itself stays navigation/toast-free (it is also bundled
+ * by React-Native hosts with no router); the web app registers
+ * lib/admin-session's handler from useAdminHeaders.
+ *
+ * Invoked for EVERY 401 (including storefront endpoints) BEFORE the
+ * ApiError is thrown — the registered callback decides by URL whether
+ * it is its business. The error still propagates to React Query /
+ * callers unchanged.
+ */
+export type UnauthorizedHandler = (info: { url: string; method: string }) => void;
+
+let _unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/**
+ * Register (or clear) the global 401 observer. Only one handler is
+ * kept — the last registration wins, matching setAuthTokenGetter.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  _unauthorizedHandler = handler;
+}
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
@@ -363,6 +387,16 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers });
 
   if (!response.ok) {
+    // 93-C6 / F-07: notify the host app BEFORE building/throwing the
+    // ApiError — the error itself still propagates unchanged so query
+    // error states (isError → error cards) keep working.
+    if (response.status === 401 && _unauthorizedHandler) {
+      try {
+        _unauthorizedHandler({ url: requestInfo.url, method });
+      } catch {
+        // An observer must never break the request pipeline.
+      }
+    }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }

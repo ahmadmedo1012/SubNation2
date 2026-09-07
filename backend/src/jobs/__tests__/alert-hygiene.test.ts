@@ -16,6 +16,7 @@ import {
   consolidateStockAlertSpam,
   countUnreadAlerts,
   countAllAlerts,
+  resolveAlertsByDedupeKey,
 } from "../alertLogger";
 import { pruneExpiredSessions } from "../session-prune";
 import { checkAdminTotpAdvisory } from "../security-advisories";
@@ -103,6 +104,33 @@ describe("logAdminAlert dedupe (Round-5)", () => {
     await logAdminAlert("system", "تنبيه 1", "m");
     await logAdminAlert("system", "تنبيه 2", "m");
     expect(await alertCount()).toBe(2);
+  });
+});
+
+describe("logAdminAlert suppression outcome (A6-P2-1, round-93)", () => {
+  it("returns {suppressed:false, id} for a fresh insert", async () => {
+    const outcome = await logAdminAlert("no_stock", "نفاد المخزون: A", "m", {
+      dedupeKey: "stock:zero:1",
+    });
+    expect(outcome.suppressed).toBe(false);
+    expect(typeof outcome.id).toBe("number");
+  });
+
+  it("returns {suppressed:true, id} pointing at the existing row on a window hit", async () => {
+    const first = await logAdminAlert("no_stock", "نفاد المخزون: A", "m", {
+      dedupeKey: "stock:zero:1",
+    });
+    const dup = await logAdminAlert("no_stock", "نفاد المخزون: A", "m", {
+      dedupeKey: "stock:zero:1",
+    });
+    expect(dup.suppressed).toBe(true);
+    expect(dup.id).toBe(first.id);
+  });
+
+  it("keyless alerts are never reported as suppressed", async () => {
+    const outcome = await logAdminAlert("system", "تنبيه", "m");
+    expect(outcome.suppressed).toBe(false);
+    expect(typeof outcome.id).toBe("number");
   });
 });
 
@@ -195,6 +223,26 @@ describe("consolidateStockAlertSpam (V1-M8 backfill)", () => {
   });
 });
 
+describe("resolveAlertsByDedupeKey (A6 P3#14, round-93)", () => {
+  it("marks only unread rows carrying the exact key, idempotently", async () => {
+    await db.insert(adminAlertsTable).values([
+      { type: "system", title: "a", message: "m", dedupeKey: "k1" },
+      { type: "system", title: "b", message: "m", dedupeKey: "k1", isRead: true },
+      { type: "system", title: "c", message: "m", dedupeKey: "k2" },
+      { type: "system", title: "d", message: "m" },
+    ]);
+
+    expect(await resolveAlertsByDedupeKey("k1")).toBe(1);
+    expect(await resolveAlertsByDedupeKey("k1")).toBe(0); // idempotent
+
+    const rows = await db.select().from(adminAlertsTable);
+    expect(rows.find((r) => r.title === "a")?.isRead).toBe(true);
+    expect(rows.find((r) => r.title === "b")?.isRead).toBe(true); // already read
+    expect(rows.find((r) => r.title === "c")?.isRead).toBe(false); // other key
+    expect(rows.find((r) => r.title === "d")?.isRead).toBe(false); // keyless
+  });
+});
+
 describe("pruneExpiredSessions (Round-5 daily 05:00 job)", () => {
   it("deletes expired sessions and keeps live ones", async () => {
     await seedUser(1);
@@ -274,5 +322,39 @@ describe("checkAdminTotpAdvisory (Round-5 boot advisory)", () => {
     });
     await checkAdminTotpAdvisory();
     expect(await countAllAlerts()).toBe(0);
+  });
+
+  it("re-creates the advisory after the 7-day window elapses (A6 P3#14)", async () => {
+    await seedAdmin({ username: "ahmad", totp: false });
+    await checkAdminTotpAdvisory();
+    expect(await countAllAlerts()).toBe(1);
+
+    const [first] = await db.select().from(adminAlertsTable);
+    await backdateAlert(first.id, 8); // past the 7-day dedupe window
+
+    await checkAdminTotpAdvisory();
+    expect(await countAllAlerts()).toBe(2);
+  });
+
+  it('auto-resolves lingering unread advisories once every ["all"] admin has TOTP (A6 P3#14)', async () => {
+    // A stale unread advisory from BEFORE TOTP was enabled, plus an
+    // unrelated unread alert that must not be touched.
+    await db.insert(adminAlertsTable).values([
+      {
+        type: "system",
+        title: "توصية أمنية: فعّل التحقق بخطوتين (قديم)",
+        message: "m",
+        dedupeKey: "admin:no-totp",
+      },
+      { type: "system", title: "آخر", message: "m" },
+    ]);
+    await seedAdmin({ username: "safe", totp: true });
+
+    await checkAdminTotpAdvisory();
+
+    const rows = await db.select().from(adminAlertsTable);
+    expect(rows.find((r) => r.dedupeKey === "admin:no-totp")?.isRead).toBe(true);
+    expect(rows.find((r) => r.title === "آخر")?.isRead).toBe(false);
+    expect(await countAllAlerts()).toBe(2); // resolved in place, nothing inserted
   });
 });

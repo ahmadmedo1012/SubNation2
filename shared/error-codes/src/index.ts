@@ -93,6 +93,19 @@ export const ErrorCode = {
   COPILOT_LLM_UNAVAILABLE: "COPILOT_LLM_UNAVAILABLE",
   COPILOT_OUT_OF_SCOPE: "COPILOT_OUT_OF_SCOPE",
   COPILOT_INVALID_FLAGS: "COPILOT_INVALID_FLAGS",
+
+  // Round-93 (93-A8 F-8): emitted by the copilot rate limiter
+  // (backend/src/lib/copilot/rate-limit.ts) on 429 with
+  // retry_after_seconds + window extras — previously outside the
+  // enum/spec/map contract ("the enum must stay exhaustive over what
+  // the backend actually emits").
+  COPILOT_RATE_LIMITED: "COPILOT_RATE_LIMITED",
+
+  // Round-93 (93-A8 F-15): emitted by the CSRF gate's fail-closed
+  // misconfiguration branch (app.ts) when the allow-list is empty at
+  // runtime. Rare/ops-facing, but the enum-exhaustiveness guarantee
+  // applies to it too.
+  CSRF_CONFIG: "CSRF_CONFIG",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

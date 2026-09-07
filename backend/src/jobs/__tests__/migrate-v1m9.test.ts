@@ -42,6 +42,9 @@ const V1_M9_DROP_STATEMENTS = [
   "ALTER TABLE coupons DROP CONSTRAINT IF EXISTS chk_coupons_used_le_max",
   "ALTER TABLE wallet_topups DROP CONSTRAINT IF EXISTS chk_topups_amount_pos",
   "ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS chk_ledger_amount_pos",
+  // V1-M10 (round-93 C1): the harness DDL now ships the replacement
+  // constraint directly, so the pristine-restore list must strip it too.
+  "ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS chk_ledger_amount_nonzero",
   "ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS fk_wallet_ledger_user",
   "DROP INDEX IF EXISTS uniq_wallet_topups_payment_reference",
   "DROP INDEX IF EXISTS idx_orders_status_created",
@@ -201,7 +204,9 @@ describe("V1-M9 applyMoneyConstraintStage — idempotent application", () => {
     expect(await constraintExists("chk_users_wallet_balance_nonneg")).toBe(true);
     expect(await constraintExists("chk_coupons_used_le_max")).toBe(true);
     expect(await constraintExists("chk_topups_amount_pos")).toBe(true);
-    expect(await constraintExists("chk_ledger_amount_pos")).toBe(true);
+    // B8-03 (V1-M10 form since round-93): the ledger constraint is the
+    // sign-free nonzero variant — see applyLedgerAmountNonzeroStage.
+    expect(await constraintExists("chk_ledger_amount_nonzero")).toBe(true);
     // B8-10
     expect(await indexExists("idx_orders_status_created")).toBe(true);
     expect(await indexExists("idx_topups_status_created")).toBe(true);
@@ -277,13 +282,11 @@ describe("V1-M9 applyMoneyConstraintStage — violation pre-check paths", () => 
 
   it("skips the wallet_ledger FK when orphan rows exist, and alerts instead", async () => {
     await seedUser(1);
-    // Drop the harness's inline FK so an orphan can be inserted.
-    const fkRows = (await db.execute(
-      sql`SELECT conname FROM pg_constraint WHERE conrelid = 'wallet_ledger'::regclass AND contype = 'f' AND conname <> 'fk_wallet_ledger_user'`,
-    )) as unknown as { rows?: Array<{ conname: string }> };
-    for (const row of fkRows.rows ?? []) {
-      await db.execute(sql.raw(`ALTER TABLE wallet_ledger DROP CONSTRAINT "${row.conname}"`));
-    }
+    // Drop the harness's FK (named fk_wallet_ledger_user since the round-93
+    // A10 DDL-truth fix) so an orphan can be inserted.
+    await db.execute(
+      sql`ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS fk_wallet_ledger_user`,
+    );
     await db.execute(
       sql`INSERT INTO wallet_ledger (user_id, type, amount, balance_before, balance_after) VALUES (424242, 'topup', 5, 0, 5)`,
     );

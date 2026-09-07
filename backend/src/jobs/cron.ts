@@ -8,11 +8,29 @@ import { runEnrichmentIfPermitted } from "./enrichment-runner";
 import { runEnrichmentRetention } from "./enrichment-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { pruneExpiredSessions } from "./session-prune";
+import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 
-export function initCronJobs() {
+/** Stop handle for everything initCronJobs() started (R6/R8). */
+export interface CronJobsHandle {
+  /** Stop all cron tasks from this init call. Idempotent. */
+  stop: () => void;
+}
+
+export function initCronJobs(): CronJobsHandle {
+  // R8 (round-93 A3): node-cron's schedule() returns a task handle with
+  // .stop() — the return values used to be discarded everywhere, so no
+  // code path could ever stop the crons. The drain sequence (web-scheduler
+  // stop) and the R6 leadership-demotion path both need real handles, so
+  // every schedule() result is captured here and returned to the caller.
+  const tasks: Array<{ stop: () => void }> = [];
+  const schedule = (...args: Parameters<typeof cron.schedule>) => {
+    const task = cron.schedule(...args);
+    tasks.push(task);
+    return task;
+  };
   // 1. Every day at midnight: admin-alert retention.
   //
   //    Round-5 (db-audit 2026-09-07) — this slot previously held a
@@ -27,7 +45,7 @@ export function initCronJobs() {
   //      - read older than 30 days → deleted (admin_alerts is an
   //        operations surface, not the immutable audit trail — that
   //        is audit_logs' job)
-  cron.schedule("0 0 * * *", async () => {
+  schedule("0 0 * * *", async () => {
     logger.info({ category: "alerts.retention" }, "Admin-alert retention job started");
     try {
       const staled = await markStaleUnreadAlertsRead(14);
@@ -45,13 +63,34 @@ export function initCronJobs() {
     }
   });
 
+  // 1a. Daily at 00:05 UTC: TOTP security advisory (A6 P3#14, round-93).
+  //      checkAdminTotpAdvisory used to be a boot one-shot ONLY — its
+  //      "weekly" cadence actually meant "on restart", and the keep-alive
+  //      pings (see job 8 below) keep this process alive for weeks, so a
+  //      no-deploy month meant zero nudges. Daily cadence is safe because
+  //      the advisory carries the admin:no-totp dedupe key with a 7-day
+  //      window — the cron re-creates it at most weekly. 00:05 keeps it
+  //      off the 00:00 retention slot's first minute. When every ["all"]
+  //      admin has TOTP enabled the same pass AUTO-RESOLVES the lingering
+  //      unread advisory rows.
+  schedule("5 0 * * *", async () => {
+    try {
+      await checkAdminTotpAdvisory();
+    } catch (err) {
+      logger.error({ err, category: "security" }, "TOTP advisory cron failed");
+      captureSchedulerFailure("totp_advisory", err, {
+        cron_expression: "5 0 * * *",
+      });
+    }
+  });
+
   // 1b. Daily at 05:00 UTC: expired-session prune (Round-5). Sessions
   //     whose expires_at passed are already rejected by requireUser,
   //     but the rows were never deleted — sessions grow monotonically
   //     with every login forever. Deleting expired rows is safe (the
   //     JWT is dead regardless) and keeps the session-validity lookup
   //     fast. 05:00 UTC = 07:00 Libya, before the daily traffic peak.
-  cron.schedule("0 5 * * *", async () => {
+  schedule("0 5 * * *", async () => {
     try {
       const removed = await pruneExpiredSessions();
       if (removed > 0)
@@ -69,7 +108,7 @@ export function initCronJobs() {
 
   // 2. Every hour: Health Check / Cleanup (Example)
   //    (Round-5 note: still a no-op heartbeat — kept for log cadence.)
-  cron.schedule("0 * * * *", () => {
+  schedule("0 * * * *", () => {
     logger.debug("Hourly cron heartbeat");
   });
 
@@ -86,7 +125,7 @@ export function initCronJobs() {
   // so the two jobs never compete for DB resources at the same
   // instant if the heartbeat ever does real work. Logging is
   // count-only — no OTP codes, no phone numbers, no PII.
-  cron.schedule("15 * * * *", async () => {
+  schedule("15 * * * *", async () => {
     logger.info({ category: "whatsapp.otp.cleanup" }, "OTP cleanup started");
     try {
       const removed = await pruneExpiredOtps();
@@ -111,7 +150,7 @@ export function initCronJobs() {
   //    so a 5-minute reap cadence bought nothing except keeping the Neon
   //    compute from ever idling (each wake resets autosuspend — the direct
   //    cause of the Aug 2026 free-tier quota exhaustion).
-  cron.schedule("45 * * * *", async () => {
+  schedule("45 * * * *", async () => {
     try {
       const removed = await reapExpiredCopilotPreviews();
       if (removed > 0) {
@@ -137,7 +176,7 @@ export function initCronJobs() {
     process.env.APP_URL ? `${process.env.APP_URL.replace(/\/+$/, "")}/api/healthz` : null,
     "https://openwa-gateway-7aaa.onrender.com/healthz",
   ].filter(Boolean) as string[];
-  cron.schedule("*/10 * * * *", async () => {
+  schedule("*/10 * * * *", async () => {
     for (const target of keepAliveTargets) {
       try {
         const res = await fetch(target, { signal: AbortSignal.timeout(15_000) });
@@ -151,7 +190,7 @@ export function initCronJobs() {
   // 5. Daily at 03:30 UTC: risk_events 90-day retention (003-anomaly-detection).
   //    Unlabeled events older than 90 days are deleted. Labeled events get
   //    a 97-day grace so retroactive review still resolves the label join.
-  cron.schedule("30 3 * * *", async () => {
+  schedule("30 3 * * *", async () => {
     try {
       const result = await reapExpiredRiskEvents();
       if (result.unlabeledDeleted + result.labeledExpiredDeleted > 0) {
@@ -178,7 +217,7 @@ export function initCronJobs() {
   //    02:15 lands outside the existing low_stock (00:00), OTP cleanup
   //    (every :15), and copilot-reaper (every 5 min) windows so no two
   //    heavy jobs compete for DB resources.
-  cron.schedule("15 2 * * *", async () => {
+  schedule("15 2 * * *", async () => {
     try {
       await runForecastIfPermitted();
     } catch (err) {
@@ -195,7 +234,7 @@ export function initCronJobs() {
   //    and pauses alerts when SC-008's kill criterion trips. Staggered five
   //    minutes after the risk retention so two heavy DELETE+aggregate jobs
   //    don't compete for the same connection slot at the same instant.
-  cron.schedule("35 3 * * *", async () => {
+  schedule("35 3 * * *", async () => {
     if (process.env.WORKER_TIER !== "true") return;
     try {
       await runForecastRetention();
@@ -214,7 +253,7 @@ export function initCronJobs() {
   //    reaper, so the daily enrichment LLM run no longer shares its first
   //    minute with another DB writer. Still lands cleanly between the
   //    retention sweep at 03:30 and morning admin activity.
-  cron.schedule("50 3 * * *", async () => {
+  schedule("50 3 * * *", async () => {
     try {
       await runEnrichmentIfPermitted();
     } catch (err) {
@@ -227,7 +266,7 @@ export function initCronJobs() {
 
   // 9. Daily at 04:00 UTC: enrichment retention (90-day purge of
   //    terminal-state drafts; reap orphaned in_flight runs).
-  cron.schedule("0 4 * * *", async () => {
+  schedule("0 4 * * *", async () => {
     if (process.env.WORKER_TIER !== "true") return;
     try {
       await runEnrichmentRetention();
@@ -246,7 +285,7 @@ export function initCronJobs() {
   //     the enrichment retention (04:00) and the session prune (05:00) so
   //     the three DELETE-heavy retention jobs never share a minute. Also
   //     runs as a boot one-shot in web-scheduler.ts (idempotent, batched).
-  cron.schedule("30 4 * * *", async () => {
+  schedule("30 4 * * *", async () => {
     try {
       const removed = await cleanupOldAuthActivity();
       if (removed > 0) {
@@ -264,4 +303,15 @@ export function initCronJobs() {
   });
 
   logger.info("Cron jobs initialized");
+  return {
+    stop: () => {
+      for (const task of tasks) {
+        try {
+          task.stop();
+        } catch {
+          // already stopped / destroyed — idempotent
+        }
+      }
+    },
+  };
 }

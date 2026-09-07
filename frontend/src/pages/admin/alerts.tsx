@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   Tag,
   Trash2,
+  WifiOff,
 } from "lucide-react";
 import { useState } from "react";
 import { AdminLayout } from "./layout";
@@ -126,7 +128,10 @@ export default function AdminAlertsPage() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
-  const { data, isLoading, refetch } = useQuery<{ alerts: AdminAlertItem[]; unreadCount: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{
+    alerts: AdminAlertItem[];
+    unreadCount: number;
+  }>({
     queryKey: ["admin-alerts"],
     queryFn: () =>
       customFetch<{ alerts: AdminAlertItem[]; unreadCount: number }>("/api/admin/alerts", {
@@ -396,11 +401,48 @@ export default function AdminAlertsPage() {
         </div>
 
         {/* Alert list */}
+        {/* 93-C6 / F-07 (A5 AL-1): a failed poll is NOT "no alerts" —
+            the 20 s poll failing (outage/expired session) used to
+            render the "لا توجد تنبيهات" empty state with zero signal
+            while role="alert" banners existed elsewhere in the app. */}
+        {isError && (data?.alerts?.length ?? 0) > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{getErrorMessage(error)}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-[72px] rounded-2xl skeleton-shimmer" />
             ))}
+          </div>
+        ) : isError && (data?.alerts?.length ?? 0) === 0 ? (
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل التنبيهات</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <Button
+              onClick={() => refetch()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">

@@ -55,15 +55,15 @@ export default function NotFound() {
           >
             {/* RTL: "back" points right (unified icon-direction decision) */}
             <ArrowRight className="w-4 h-4" />
-            الصفحة السابقة
+            {/* 93-C8 (A11 §2): unified back-navigation verb «رجوع». */}
+            رجوع
           </button>
         </div>
 
         {/* Quick links */}
         <div className="pt-2 border-t border-border/40">
-          <p className="text-[11px] text-muted-foreground mb-3 uppercase tracking-widest">
-            روابط سريعة
-          </p>
+          {/* 93-C8 (A11 §8): no letter-spacing/uppercase on Arabic. */}
+          <p className="text-[11px] font-black text-muted-foreground mb-3">روابط سريعة</p>
           <div className="flex flex-wrap justify-center gap-2">
             {[
               { href: "/", label: "المتجر" },

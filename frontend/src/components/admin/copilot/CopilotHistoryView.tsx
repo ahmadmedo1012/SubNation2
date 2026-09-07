@@ -8,7 +8,18 @@
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  XCircle,
+} from "lucide-react";
+// 93-C7 / C-UX2 (A12 B12): run-status pills ride the canonical
+// StatusBadge (tones on the --status-* tokens).
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+import type { LucideIcon } from "lucide-react";
 
 type Outcome =
   | "success"
@@ -39,35 +50,21 @@ interface HistoryResponse {
   next_cursor: string | null;
 }
 
-const OUTCOME_META: Record<
-  Outcome,
-  { label: string; bg: string; text: string; icon: React.ElementType }
-> = {
-  success: {
-    label: "نجاح",
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
-    icon: CheckCircle2,
-  },
-  partial: { label: "جزئي", bg: "bg-amber-500/10", text: "text-amber-400", icon: AlertTriangle },
-  failure: { label: "فشل", bg: "bg-red-500/10", text: "text-red-400", icon: XCircle },
-  refused: { label: "رفض", bg: "bg-red-500/10", text: "text-red-400", icon: XCircle },
-  validation_rejected: {
-    label: "فحص فشل",
-    bg: "bg-amber-500/10",
-    text: "text-amber-400",
-    icon: AlertTriangle,
-  },
-  rate_limited: {
-    label: "حدّ معدل",
-    bg: "bg-amber-500/10",
-    text: "text-amber-400",
-    icon: AlertTriangle,
-  },
-  stale: { label: "قديم", bg: "bg-muted/30", text: "text-muted-foreground", icon: AlertTriangle },
-  expired: { label: "منتهٍ", bg: "bg-muted/30", text: "text-muted-foreground", icon: AlertTriangle },
-  cancelled: { label: "ملغى", bg: "bg-muted/30", text: "text-muted-foreground", icon: XCircle },
-};
+// 93-C7 / C-UX2 (A12 B12): run-status pills migrate from raw
+// emerald/amber/red hues to the canonical StatusBadge tones on the
+// --status-* tokens. Icons stay (StatusBadge renders them natively).
+const OUTCOME_META: Record<Outcome, { label: string; tone: StatusBadgeVariant; icon: LucideIcon }> =
+  {
+    success: { label: "نجاح", tone: "success", icon: CheckCircle2 },
+    partial: { label: "جزئي", tone: "warning", icon: AlertTriangle },
+    failure: { label: "فشل", tone: "error", icon: XCircle },
+    refused: { label: "رفض", tone: "error", icon: XCircle },
+    validation_rejected: { label: "فحص فشل", tone: "warning", icon: AlertTriangle },
+    rate_limited: { label: "حدّ معدل", tone: "warning", icon: AlertTriangle },
+    stale: { label: "قديم", tone: "neutral", icon: AlertTriangle },
+    expired: { label: "منتهٍ", tone: "neutral", icon: AlertTriangle },
+    cancelled: { label: "ملغى", tone: "neutral", icon: XCircle },
+  };
 
 export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
   const headers = useAdminHeaders();
@@ -103,7 +100,7 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
         {query.isLoading && (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-8">
-            <Loader2 className="w-4 h-4 animate-spin" /> جاري التحميل…
+            <Loader2 className="w-4 h-4 animate-spin" /> جارٍ التحميل…
           </div>
         )}
         {query.isError && (
@@ -118,7 +115,6 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
         )}
         {query.data?.entries.map((e) => {
           const meta = OUTCOME_META[e.outcome] ?? OUTCOME_META.failure;
-          const Icon = meta.icon;
           const ts = new Date(e.executed_at ?? e.created_at);
           const oneLine =
             e.intent_text.length > 100 ? e.intent_text.slice(0, 100) + "…" : e.intent_text;
@@ -128,27 +124,20 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
               className="border border-border/40 rounded-xl bg-card/60 p-3 space-y-1.5"
             >
               <div className="flex items-center gap-2 text-xs">
-                <Icon className={`w-3.5 h-3.5 shrink-0 ${meta.text}`} />
-                <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${meta.bg} ${meta.text}`}
-                >
+                <StatusBadge variant={meta.tone} size="xs" icon={meta.icon}>
                   {meta.label}
-                </span>
+                </StatusBadge>
                 <span className="font-mono text-[11px] text-muted-foreground">
                   {e.action_class}
                 </span>
-                {e.risk_tier === "high" && (
-                  <span className="text-[10px] text-amber-400">عالي</span>
-                )}
+                {e.risk_tier === "high" && <span className="text-[10px] text-amber-400">عالي</span>}
                 <span className="mr-auto text-[10px] text-muted-foreground">
                   {ts.toLocaleString("ar-LY")}
                 </span>
               </div>
               <div className="text-xs leading-5">{oneLine}</div>
               {e.failure_reason && (
-                <div className="text-[11px] text-muted-foreground">
-                  السبب: {e.failure_reason}
-                </div>
+                <div className="text-[11px] text-muted-foreground">السبب: {e.failure_reason}</div>
               )}
               {e.tool_name && (
                 <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">

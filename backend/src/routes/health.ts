@@ -3,8 +3,9 @@ import { db as neonDb } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
-import { getRedisClient } from "../lib/redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { getIO } from "../lib/socket";
+import { logger } from "../lib/logger";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
@@ -26,6 +27,18 @@ const router: IRouter = Router();
 const CACHE_TTL_MS = 15_000;
 let cachedResponse: { value: HealthCheckResponseExtended; expiresAt: number } | null = null;
 let inflight: Promise<HealthCheckResponseExtended> | null = null;
+
+// R3 (round-93 A3): absolute bound on the shared in-flight aggregate. The
+// old computation could wedge FOREVER during a Redis outage (a queued
+// failure-counter INCR never settles → checkRedis never returns → `inflight`
+// never resolves and is never cleared → every subsequent /healthz/summary
+// request shares the dead promise). Env-overridable for tests + ops.
+const DEFAULT_AGGREGATE_TIMEOUT_MS = 8_000;
+
+function aggregateTimeoutMs(): number {
+  const raw = Number(process.env.HEALTH_AGGREGATE_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_AGGREGATE_TIMEOUT_MS;
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Health check types and interfaces
@@ -61,46 +74,82 @@ interface HealthCheckResponseExtended {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Failure counter helpers (Redis-backed)
+// Failure counter helpers (Redis-backed, BEST-EFFORT)
+//
+// R3 (round-93 A3): these helpers used to await raw `redis.incr/get/del`
+// calls. During a runtime outage node-redis QUEUES those commands and they
+// never settle — so checkRedis's catch path never returned and the whole
+// /healthz/summary aggregate wedged permanently. They are now (a) mostly
+// fire-and-forget (the counters are documentation-grade signals, never
+// gatekeepers) and (b) individually bounded by a short command timeout so
+// even the awaited reads resolve fast.
 // ──────────────────────────────────────────────────────────────────────────────
 
 const FAILURE_COUNTER_PREFIX = "health:fail:";
 const FAILURE_WINDOW_MS = 30_000; // 30 seconds
+const FAILURE_COUNTER_TIMEOUT_MS = 250;
 
 async function getFailureCount(redis: any, checkName: string): Promise<number> {
   try {
     const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
-    const value = await redis.get(key);
+    const value = await withRedisCommandTimeout<string | null>(
+      `health_fail_get_${checkName}`,
+      () => redis.get(key),
+      FAILURE_COUNTER_TIMEOUT_MS,
+    );
     return parseInt(value || "0", 10);
   } catch {
+    // Timeout / error — treat as "no recent failures recorded".
     return 0;
   }
 }
 
-async function incrementFailureCounter(redis: any, checkName: string): Promise<void> {
-  try {
-    const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
-    await redis.incr(key);
-    await redis.expire(key, Math.ceil(FAILURE_WINDOW_MS / 1000));
-  } catch {
-    // Silently fail - health check should not crash due to Redis issues
-  }
+function incrementFailureCounter(redis: any, checkName: string): void {
+  const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
+  void withRedisCommandTimeout(
+    `health_fail_incr_${checkName}`,
+    () => redis.incr(key),
+    FAILURE_COUNTER_TIMEOUT_MS,
+  ).catch(() => {
+    /* best-effort counter */
+  });
+  void withRedisCommandTimeout(
+    `health_fail_expire_${checkName}`,
+    () => redis.expire(key, Math.ceil(FAILURE_WINDOW_MS / 1000)),
+    FAILURE_COUNTER_TIMEOUT_MS,
+  ).catch(() => {
+    /* best-effort counter */
+  });
 }
 
-async function clearFailureCounter(redis: any, checkName: string): Promise<void> {
-  try {
-    const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
-    await redis.del(key);
-  } catch {
-    // Silently fail
-  }
+function clearFailureCounter(redis: any, checkName: string): void {
+  const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
+  void withRedisCommandTimeout(
+    `health_fail_clear_${checkName}`,
+    () => redis.del(key),
+    FAILURE_COUNTER_TIMEOUT_MS,
+  ).catch(() => {
+    /* best-effort counter */
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Health check implementations
 // ──────────────────────────────────────────────────────────────────────────────
 
-const CHECK_TIMEOUT_MS = 5000;
+// R3 (round-93 A3): per-check race budget. Function (not const) so tests
+// and ops can retune it at runtime without a re-import.
+function checkTimeoutMs(): number {
+  const raw = Number(process.env.HEALTH_CHECK_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
+}
+
+/** Test seam: reset the aggregate cache + in-flight slot + neon streak. */
+export function resetReadyStateForTests(): void {
+  cachedResponse = null;
+  inflight = null;
+  neonConsecutiveFailures = 0;
+}
 
 async function checkRedis(redis: any): Promise<CheckResult> {
   const start = Date.now();
@@ -108,21 +157,21 @@ async function checkRedis(redis: any): Promise<CheckResult> {
     const result = await Promise.race([
       redis.ping(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Redis ping timeout")), CHECK_TIMEOUT_MS),
+        setTimeout(() => reject(new Error("Redis ping timeout")), checkTimeoutMs()),
       ),
     ]);
     const latencyMs = Date.now() - start;
 
     if (result === "PONG") {
-      // Reset failure counter on success
-      await clearFailureCounter(redis, "redis");
+      // Reset failure counter on success (fire-and-forget, R3).
+      clearFailureCounter(redis, "redis");
       return {
         status: latencyMs > 200 ? "degraded" : "ok",
         latencyMs,
         lastCheckedAt: new Date().toISOString(),
       };
     } else {
-      await incrementFailureCounter(redis, "redis");
+      incrementFailureCounter(redis, "redis");
       const failures = await getFailureCount(redis, "redis");
       return {
         status: failures >= 3 ? "failing" : "degraded",
@@ -132,7 +181,10 @@ async function checkRedis(redis: any): Promise<CheckResult> {
       };
     }
   } catch (err) {
-    await incrementFailureCounter(redis, "redis");
+    // R3 (round-93 A3): fire-and-forget counter — the old `await` landed on
+    // a queued INCR that never settled during a Redis outage, wedging this
+    // check (and the whole /healthz/summary aggregate) forever.
+    incrementFailureCounter(redis, "redis");
     const failures = await getFailureCount(redis, "redis");
     return {
       status: failures >= 3 ? "failing" : "degraded",
@@ -179,7 +231,7 @@ export async function checkNeonWith(probe: () => Promise<unknown>): Promise<Chec
     const result = await Promise.race([
       probe(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Neon query timeout")), CHECK_TIMEOUT_MS),
+        setTimeout(() => reject(new Error("Neon query timeout")), checkTimeoutMs()),
       ),
     ]);
     const latencyMs = Date.now() - start;
@@ -189,7 +241,7 @@ export async function checkNeonWith(probe: () => Promise<unknown>): Promise<Chec
       // by definition.
       neonConsecutiveFailures = 0;
       const redis = getRedisClient();
-      if (redis) await clearFailureCounter(redis, "neon");
+      if (redis) clearFailureCounter(redis, "neon");
       return {
         status: latencyMs > 500 ? "degraded" : "ok",
         latencyMs,
@@ -198,7 +250,7 @@ export async function checkNeonWith(probe: () => Promise<unknown>): Promise<Chec
     } else {
       neonConsecutiveFailures += 1;
       const redis = getRedisClient();
-      if (redis) await incrementFailureCounter(redis, "neon");
+      if (redis) incrementFailureCounter(redis, "neon");
       const failures = redis ? await getFailureCount(redis, "neon") : neonConsecutiveFailures;
       return {
         status: failures >= NEON_FAILURES_TO_FAILING ? "failing" : "degraded",
@@ -210,7 +262,7 @@ export async function checkNeonWith(probe: () => Promise<unknown>): Promise<Chec
   } catch (err) {
     neonConsecutiveFailures += 1;
     const redis = getRedisClient();
-    if (redis) await incrementFailureCounter(redis, "neon");
+    if (redis) incrementFailureCounter(redis, "neon");
     const failures = redis ? await getFailureCount(redis, "neon") : neonConsecutiveFailures;
     return {
       status: failures >= NEON_FAILURES_TO_FAILING ? "failing" : "degraded",
@@ -239,7 +291,7 @@ async function checkWorker(redis: any): Promise<CheckResult> {
     const heartbeat = await Promise.race([
       redis.get("worker:heartbeat"),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Worker heartbeat timeout")), CHECK_TIMEOUT_MS),
+        setTimeout(() => reject(new Error("Worker heartbeat timeout")), checkTimeoutMs()),
       ),
     ]);
 
@@ -309,11 +361,13 @@ async function checkSocket(io: any, redis: any): Promise<CheckResult> {
       };
     }
 
-    // Use Redis pub/sub ping to check Socket.IO adapter reachability
+    // Use Redis pub/sub ping to check Socket.IO adapter reachability.
+    // R3 (round-93 A3): the ping itself is command-timeout bounded so a
+    // queued command on a dead socket cannot wedge the aggregate.
     const result = await Promise.race([
-      redis.ping(),
+      withRedisCommandTimeout("health_socket_ping", () => redis.ping()),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Socket.IO adapter timeout")), CHECK_TIMEOUT_MS),
+        setTimeout(() => reject(new Error("Socket.IO adapter timeout")), checkTimeoutMs()),
       ),
     ]);
 
@@ -374,8 +428,13 @@ async function checkRiskPipeline(redis: any): Promise<CheckResult> {
     }
     // The scoring service writes a `risk:pipeline:degraded`
     // key on internal failure with a 5-min TTL. Presence ⇒
-    // degraded, absence ⇒ ok.
-    const degraded = await redis.get("risk:pipeline:degraded");
+    // degraded, absence ⇒ ok. R3: bounded — the old raw get hung
+    // the aggregate when Redis queued the command during an outage.
+    const degraded = await withRedisCommandTimeout(
+      "health_risk_degraded",
+      () => redis.get("risk:pipeline:degraded"),
+      FAILURE_COUNTER_TIMEOUT_MS,
+    );
     return {
       status: degraded ? "degraded" : "ok",
       optional,
@@ -470,12 +529,14 @@ router.get("/healthz/firebase", requireAdmin, (_req, res) => {
 // safe to surface to public users. The public-safe surface is
 // `/api/healthz/summary` which returns only the status discriminator.
 
-async function computeReadyState(): Promise<HealthCheckResponseExtended> {
+export async function computeReadyState(): Promise<HealthCheckResponseExtended> {
   // De-dup concurrent computations — if N requests miss the cache at
-  // the same time we run the aggregate ONCE, not N times.
+  // the same time we run the aggregate ONCE, not N times. R3: the shared
+  // promise is now BOUNDED (see boundedAggregate below) — concurrent
+  // callers can no longer inherit an eternally-pending aggregate.
   if (inflight) return inflight;
 
-  inflight = (async () => {
+  const raw = (async () => {
     const redis = getRedisClient();
     const io = getIO();
 
@@ -571,13 +632,67 @@ async function computeReadyState(): Promise<HealthCheckResponseExtended> {
     };
   })();
 
+  const bounded = boundedAggregate(raw);
+  inflight = bounded;
+  return bounded;
+}
+
+/**
+ * R3 (round-93 A3): race the aggregate against an absolute deadline.
+ *
+ * The old code awaited the raw computation and cleared `inflight` in a
+ * `finally` — which only runs once the computation settles. During a Redis
+ * outage (pre-R2/R3) the queued failure-counter INCR never settled, so the
+ * aggregate never settled, so `finally` never ran: every subsequent
+ * /healthz/summary request shared the dead promise and hung forever. Even
+ * with the inner ops now bounded, this outer race guarantees the public
+ * status endpoint ALWAYS answers — a slow subsystem degrades the snapshot
+ * instead of wedging it. The timed-out snapshot is NOT cached.
+ */
+async function boundedAggregate(
+  raw: Promise<HealthCheckResponseExtended>,
+): Promise<HealthCheckResponseExtended> {
+  const timeoutMs = aggregateTimeoutMs();
+  let timer: NodeJS.Timeout | undefined;
   try {
-    const value = await inflight;
+    const value = await Promise.race([
+      raw,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("health_aggregate_timeout")), timeoutMs);
+      }),
+    ]);
     cachedResponse = { value, expiresAt: Date.now() + CACHE_TTL_MS };
     return value;
+  } catch (err) {
+    logger.warn(
+      { err, category: "monitoring", timeoutMs },
+      "[health] readiness aggregate timed out — returning a degraded snapshot and resetting the in-flight promise",
+    );
+    return degradedAggregateSnapshot(err);
   } finally {
+    if (timer) clearTimeout(timer);
+    // Reset the shared slot in ALL settle paths — success, timeout, or
+    // rejection. This is the actual R3 fix: `inflight` must never stay
+    // pointing at a promise that will not settle.
     inflight = null;
   }
+}
+
+/** Never-cached degraded snapshot for the aggregate-timeout path. */
+function degradedAggregateSnapshot(err: unknown): HealthCheckResponseExtended {
+  return {
+    status: "degraded",
+    checks: {
+      aggregate: {
+        status: "degraded",
+        optional: true,
+        error: err instanceof Error ? err.message : "aggregate timed out",
+        lastCheckedAt: new Date().toISOString(),
+      },
+    },
+    version: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown",
+    uptimeSec: Math.floor(process.uptime()),
+  };
 }
 
 async function getReadyState(): Promise<HealthCheckResponseExtended> {

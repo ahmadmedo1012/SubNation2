@@ -40,10 +40,7 @@ export function computeAvgDailySales(history: OrderHistoryDay[]): number {
  * Returns 1.0 when the denominator is zero (no signal; treat the day
  * as neutral).
  */
-export function computeDowMultiplier(
-  history28d: OrderHistoryDay[],
-  targetDow: number,
-): number {
+export function computeDowMultiplier(history28d: OrderHistoryDay[], targetDow: number): number {
   if (history28d.length === 0) return 1;
   const dowEntries = history28d.filter((d) => dayOfWeek(d.date) === targetDow);
   if (dowEntries.length === 0) return 1;
@@ -61,10 +58,7 @@ export function computeDowMultiplier(
  * Average of the next 7 day-of-week multipliers, starting from
  * `forecastDate`. Used by `predictDemand7d`.
  */
-export function computeDowBlend7d(
-  history28d: OrderHistoryDay[],
-  forecastDate: IsoDate,
-): number {
+export function computeDowBlend7d(history28d: OrderHistoryDay[], forecastDate: IsoDate): number {
   let sum = 0;
   for (let offset = 0; offset < 7; offset++) {
     const day = addDays(forecastDate, offset);
@@ -97,21 +91,60 @@ export function predictDemand30d(
 }
 
 /**
+ * Options for {@link deriveConfidence} — the A6-P2-2 (round-93)
+ * history-availability gate.
+ *
+ * `densifyHistory()` backfills zero-sales days, so a densified array
+ * always carries exactly `HISTORY_DAYS` rows and the array-length check
+ * alone can NEVER fire from the service path — the insufficient_data
+ * branch was dead code (day one after enabling the runner, a zero-sales
+ * product got a fabricated `stock × 10 days` runout from the
+ * `max(avg, 0.1)` div-guard floor). The honest availability signal is
+ * the product's own sales horizon, `firstOrderAt` — fetched by
+ * aggregate.ts since the beginning but never read until now.
+ */
+export interface DeriveConfidenceOpts {
+  /**
+   * Earliest order timestamp for the product (null = never sold).
+   * When provided together with `asOf`, the gate below applies BEFORE
+   * the array-length check.
+   */
+  firstOrderAt?: Date | null;
+  /** Wall-clock reference for the age computation — keep tests deterministic. */
+  asOf?: Date;
+}
+
+/**
  * Confidence tier (research §R-1):
- *   - insufficient_data: < 14 history days available.
+ *   - insufficient_data: the product's order history is younger than
+ *     14 days (or < 14 history rows were passed — legacy sparse-input
+ *     fallback).
  *   - low: 14 days but ≥ 7 zero-sales days.
  *   - medium: 14 days, < 7 zero-sales days, but coefficient-of-variation ≥ 0.5.
  *   - high: 14 days, < 7 zero-sales days, CV < 0.5.
  */
-export function deriveConfidence(history: OrderHistoryDay[]): Confidence {
+export function deriveConfidence(
+  history: OrderHistoryDay[],
+  opts?: DeriveConfidenceOpts,
+): Confidence {
+  // A6-P2-2 (round-93): real history-availability gate. No first order
+  // at all, or a first order younger than the 14-day window, means the
+  // zero days in the window are "not measured yet" — NOT "measured as
+  // zero". FR-FORECAST-003 / the schema contract: refuse to fabricate,
+  // write nullable metrics instead.
+  if (opts?.firstOrderAt !== undefined && opts?.asOf !== undefined) {
+    if (opts.firstOrderAt == null) return "insufficient_data";
+    if (opts.asOf.getTime() - opts.firstOrderAt.getTime() < HISTORY_DAYS * 86_400_000) {
+      return "insufficient_data";
+    }
+  }
   if (history.length < HISTORY_DAYS) return "insufficient_data";
   const counts = history.map((d) => d.count);
   const zeros = counts.filter((c) => c === 0).length;
   if (zeros >= 7) return "low";
   const mean = counts.reduce((s, c) => s + c, 0) / counts.length;
   if (mean === 0) return "low";
-  const variance =
-    counts.reduce((s, c) => s + (c - mean) * (c - mean), 0) / counts.length;
+  const variance = counts.reduce((s, c) => s + (c - mean) * (c - mean), 0) / counts.length;
   const stddev = Math.sqrt(variance);
   const cv = stddev / mean;
   return cv < 0.5 ? "high" : "medium";

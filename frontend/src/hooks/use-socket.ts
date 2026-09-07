@@ -41,6 +41,24 @@ export function useSocket(userId?: number | string) {
         socketRef.current = socket;
 
         socket.on("order-updated", (data: { id: number | string; status: string }) => {
+          // 93-C5 / F-15 (A4 #14): the toast said "تم تحديث حالة طلبك"
+          // while the visible orders list AND the open order-detail page
+          // kept the old status — the screen contradicted its own toast
+          // until a manual reload/navigation. Invalidate every
+          // /api/orders* cache entry the moment the server flips the
+          // status (mirrors the topup-updated handler's invalidations).
+          //
+          // The event carries the numeric orderId, but the order-detail
+          // query key is built from the orderCode string
+          // ([`/api/orders/${orderCode}`]) — a key-prefix matcher can't
+          // reach it, so a predicate sweep covers both the list (all its
+          // param variants) and every open detail page.
+          void queryClient.invalidateQueries({
+            predicate: (query) => {
+              const first = query.queryKey[0];
+              return typeof first === "string" && first.startsWith("/api/orders");
+            },
+          });
           toast({
             title: `تم تحديث حالة طلبك #${data.id}`,
             // Round-3 (8-e §3): raw English status enum ("processing",

@@ -15,9 +15,16 @@
  *   - cache hits/misses log on debug level; counter wiring is a follow-up.
  *   - cache backend is observable from `/api/healthz/redis` (Redis path)
  *     and from `redis_degraded_mode_total{reason}` on /api/metrics.
+ *
+ * R2 (round-93 A3): every Redis op is raced against REDIS_COMMAND_TIMEOUT_MS
+ * via `withRedisCommandTimeout`. Previously the `.catch` fallbacks below
+ * could never fire during an outage — node-redis QUEUES commands while the
+ * socket is down, so the promise never rejects, it just hangs, and the
+ * awaiting request hung with it. The timeout converts the hang into a fast
+ * rejection which the existing catch blocks turn into the memory fallback.
  */
 
-import { getRedisClient, trackRedisOp } from "./redis-client";
+import { getRedisClient, trackRedisOp, withRedisCommandTimeout } from "./redis-client";
 
 // ── In-memory LRU fallback ───────────────────────────────────────────────────
 
@@ -67,7 +74,9 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   const redis = getRedisClient();
   if (redis) {
     try {
-      const raw = await trackRedisOp("get", () => redis.get(key));
+      const raw = await withRedisCommandTimeout("cache_get", () =>
+        trackRedisOp("get", () => redis.get(key)),
+      );
       if (raw === null) return null;
       try {
         return JSON.parse(raw) as T;
@@ -90,8 +99,10 @@ export async function cacheSet<T>(key: string, value: T, ttlSec = 60): Promise<v
   if (redis) {
     try {
       const payload = JSON.stringify(value);
-      await trackRedisOp("set", () =>
-        ttlSec > 0 ? redis.setEx(key, ttlSec, payload) : redis.set(key, payload),
+      await withRedisCommandTimeout("cache_set", () =>
+        trackRedisOp("set", () =>
+          ttlSec > 0 ? redis.setEx(key, ttlSec, payload) : redis.set(key, payload),
+        ),
       );
       return;
     } catch {
@@ -108,7 +119,7 @@ export async function cacheDelete(key: string): Promise<void> {
   const redis = getRedisClient();
   if (redis) {
     try {
-      await trackRedisOp("del", () => redis.del(key));
+      await withRedisCommandTimeout("cache_del", () => trackRedisOp("del", () => redis.del(key)));
     } catch {
       // fall through
     }
@@ -148,15 +159,18 @@ export async function cacheInvalidatePrefix(prefix: string): Promise<number> {
   if (redis) {
     try {
       // SCAN streamed in batches of 100 to avoid blocking the event loop on
-      // large key spaces.
+      // large key spaces. Each batch is bounded by the command timeout so a
+      // dead socket cannot wedge an invalidation pass (R2).
       let cursor = "0";
       do {
-        const result = (await trackRedisOp("scan", () =>
-          redis.scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 }),
+        const result = (await withRedisCommandTimeout("cache_scan", () =>
+          trackRedisOp("scan", () => redis.scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 })),
         )) as { cursor: string; keys: string[] };
         cursor = result.cursor;
         if (result.keys.length > 0) {
-          await trackRedisOp("del", () => redis.del(result.keys));
+          await withRedisCommandTimeout("cache_scan_del", () =>
+            trackRedisOp("del", () => redis.del(result.keys)),
+          );
           removed += result.keys.length;
         }
       } while (cursor !== "0");

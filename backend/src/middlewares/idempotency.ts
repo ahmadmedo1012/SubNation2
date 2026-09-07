@@ -9,10 +9,13 @@
  *
  * Failure modes (graceful degrade — availability over strict guarantees):
  *
- *   - **Redis unavailable**: log warn + pass through. The deployment
- *     already fail-closes Redis at boot in production (lib/redis-client.ts),
- *     so this branch is reachable in dev / test only. It avoids breaking
- *     the test suite when pglite-only.
+ *   - **Redis unavailable**: log warn + pass through. Availability over
+ *     strict guarantees. (R2, round-93 A3: this branch used to be
+ *     reachable ONLY on fast rejections — during a runtime outage
+ *     node-redis queues commands and the awaited lookups below never
+ *     settled, hanging money-path mutations forever. Every Redis op here
+ *     is now raced against REDIS_COMMAND_TIMEOUT_MS so the existing
+ *     pass-through catches actually fire.)
  *
  *   - **Key absent**: log warn (operator-facing) + pass through. Phase-1
  *     admin UI does not yet send the header; this branch lets the
@@ -41,7 +44,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { createHash } from "node:crypto";
-import { getRedisClient } from "../lib/redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { logger } from "../lib/logger";
 
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60; // 24h
@@ -133,13 +136,11 @@ export function idempotency(opts: IdempotencyOptions) {
 
     const redis = getRedisClient();
     if (!redis) {
-      // Redis unavailable in this environment (dev / test). The
-      // production boot path fail-closes when REDIS_URL is set but the
-      // connection errors, so we only reach this branch in environments
-      // that explicitly chose in-memory mode.
+      // Redis unavailable in this environment (dev / test, or a runtime
+      // outage — getRedisClient() only returns a READY client since R2).
       logger.warn(
         { route: routeKey, path: req.path },
-        "idempotency middleware: Redis unavailable — pass-through (dev/test only)",
+        "idempotency middleware: Redis unavailable — pass-through (dedup unavailable for this request)",
       );
       next();
       return;
@@ -150,7 +151,11 @@ export function idempotency(opts: IdempotencyOptions) {
 
     let cached: CachedResponse | null = null;
     try {
-      const raw = await redis.get(cacheKey);
+      // R2 (round-93 A3): bounded — a queued command during an outage must
+      // not hang the request; a timeout lands in the catch below and the
+      // request proceeds live (safe: the underlying services are
+      // transactional).
+      const raw = await withRedisCommandTimeout("idempotency_get", () => redis.get(cacheKey));
       if (raw) {
         if (raw === IN_FLIGHT_SENTINEL) {
           res.status(409).json({
@@ -194,10 +199,12 @@ export function idempotency(opts: IdempotencyOptions) {
     // signal. NX ensures we don't overwrite a winning request's cached
     // response if it just landed.
     try {
-      await redis.set(cacheKey, IN_FLIGHT_SENTINEL, {
-        EX: IN_FLIGHT_TTL_SECONDS,
-        NX: true,
-      });
+      await withRedisCommandTimeout("idempotency_inflight_set", () =>
+        redis.set(cacheKey, IN_FLIGHT_SENTINEL, {
+          EX: IN_FLIGHT_TTL_SECONDS,
+          NX: true,
+        }),
+      );
     } catch (err) {
       logger.warn({ err, route: routeKey }, "idempotency middleware: in-flight marker failed");
     }
@@ -219,17 +226,22 @@ export function idempotency(opts: IdempotencyOptions) {
           };
           // Fire-and-forget — the response is already going out the wire.
           // A failed cache write means the retry will run live, which is
-          // safe (the underlying service is itself transactional).
-          redis
-            .set(cacheKey, JSON.stringify(payload), { EX: IDEMPOTENCY_TTL_SECONDS })
-            .catch((err) =>
-              logger.warn({ err, route: routeKey }, "idempotency middleware: cache write failed"),
-            );
+          // safe (the underlying service is itself transactional). R2:
+          // bounded so the write can't queue forever on a dead socket.
+          withRedisCommandTimeout("idempotency_cache_write", () =>
+            redis.set(cacheKey, JSON.stringify(payload), {
+              EX: IDEMPOTENCY_TTL_SECONDS,
+            }),
+          ).catch((err) =>
+            logger.warn({ err, route: routeKey }, "idempotency middleware: cache write failed"),
+          );
         } else {
           // Non-2xx — drop the in-flight sentinel so a corrected retry can run.
-          redis.del(cacheKey).catch(() => {
-            /* best-effort */
-          });
+          withRedisCommandTimeout("idempotency_inflight_del", () => redis.del(cacheKey)).catch(
+            () => {
+              /* best-effort */
+            },
+          );
         }
       }
       return originalJson(body);

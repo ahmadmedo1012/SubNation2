@@ -5,20 +5,33 @@
  * eligibility predicate (predicted_runout_at <= forecast_date + 3 days
  * AND confidence ∈ {high,medium}), write a row in `admin_alerts` and
  * dispatch via the existing alerting service. Honors:
- *   - 7-day per-product Redis dedupe (research §R-3)
+ *   - 7-day per-product dedupe (research §R-3) — durable DB-level via
+ *     logAdminAlert's dedupe_key (A6-P2-3, round-93) + the Redis claim
+ *     as a fast-path for Redis-provisioned deployments
  *   - 50-row per-run cap (FR-ALERT-005)
  *   - the `forecast:alerts:paused` Redis flag (SC-008 kill criterion)
  *   - existing `ALERTING_ENABLED=false` semantics (FR-ALERT-004)
+ *
+ * A6-P2-3 (round-93): the insert used to be a raw `db.insert(adminAlerts)`
+ * with NO dedupe_key and NO socket emit — the only suppression was the
+ * Redis NX claim, which silently degrades to "emit anyway" on the
+ * Redis-less production topology, so every daily run would have
+ * re-alerted every at-risk product into the drawer forever (the round-5
+ * spam class, resurrected through a side door) with no kill switch.
+ * Routing through logAdminAlert adds restart- and Redis-independent
+ * 7-day dedupe, the admin-alert-new socket fan-out, and AlertType-union
+ * consistency in one call.
  */
 
-import { adminAlertsTable, db } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { logAdminAlert } from "../../jobs/alertLogger";
 import { isAlertingPaused, tryClaimAlertDedupe } from "../../lib/forecast/redis-flags";
 import { recordAlertsEmitted } from "../../lib/forecast/metrics";
 import { alertingService, type AlertEvent } from "../alerting.service";
 import { selectRunAlertCandidates } from "./forecast-store";
 
 const PER_RUN_ALERT_CAP = 50;
+const ALERT_DEDUPE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const APP_ORIGIN = (process.env.APP_ORIGIN ?? "").replace(/\/+$/, "");
 
@@ -54,28 +67,34 @@ export async function dispatchForecastAlerts(runId: number): Promise<DispatchRes
     const claimed = await tryClaimAlertDedupe(c.productId);
     if (!claimed) continue; // already alerted within the 7-day window
 
-    // 1. Persist the durable admin_alerts row (always; the DB is the
-    //    durable channel, Telegram/Discord are best-effort).
-    try {
-      await db.insert(adminAlertsTable).values({
-        type: "forecast_stockout",
-        title: `${c.productName}: نفاد متوقع خلال ${daysUntilLabel(c.predictedRunoutAt)}`,
-        message: JSON.stringify({
-          kind: "forecast_stockout",
-          product_id: c.productId,
-          product_name: c.productName,
-          predicted_runout_at: c.predictedRunoutAt,
-          current_stock_on_hand: c.currentStockOnHand,
-          confidence: c.confidence,
-          forecast_id: c.forecastId,
-          investigation_url: buildPanelUrl(c.productId),
-        }),
-      });
-    } catch (err) {
-      logger.warn(
-        { err, runId, productId: c.productId, category: "forecast.alerts" },
-        "[forecast-alerts] admin_alerts insert failed",
-      );
+    // 1. Persist the durable admin_alerts row via logAdminAlert (A6-P2-3,
+    //    round-93): 7-day dedupe_key + admin-alert-new socket fan-out in
+    //    one call. The DB is the durable channel — the dedupe below is
+    //    what protects the drawer AND the outbound dispatch on the
+    //    Redis-less live topology (the Redis claim alone degrades to
+    //    no-dedupe there). Insert failures are swallowed inside
+    //    logAdminAlert (returns not-suppressed), so the best-effort
+    //    dispatch below still fires — FR-ALERT-004 semantics preserved.
+    const outcome = await logAdminAlert(
+      "forecast_stockout",
+      `${c.productName}: نفاد متوقع خلال ${daysUntilLabel(c.predictedRunoutAt)}`,
+      JSON.stringify({
+        kind: "forecast_stockout",
+        product_id: c.productId,
+        product_name: c.productName,
+        predicted_runout_at: c.predictedRunoutAt,
+        current_stock_on_hand: c.currentStockOnHand,
+        confidence: c.confidence,
+        forecast_id: c.forecastId,
+        investigation_url: buildPanelUrl(c.productId),
+      }),
+      { dedupeKey: `forecast:stockout:${c.productId}`, dedupeWindowMs: ALERT_DEDUPE_WINDOW_MS },
+    );
+    if (outcome.suppressed) {
+      // A durable row with the same key exists inside the 7-day window —
+      // skip every channel, not just the insert (the old code kept
+      // dispatching the SRE event on DB-suppressed products).
+      continue;
     }
 
     // 2. Best-effort outbound dispatch via the existing alerting service.
@@ -100,9 +119,7 @@ export async function dispatchForecastAlerts(runId: number): Promise<DispatchRes
           `الثقة: ${c.confidence}`,
           `لوحة المراجعة: ${buildPanelUrl(c.productId)}`,
         ].join("\n"),
-        runbookUrl: APP_ORIGIN
-          ? `${APP_ORIGIN}/docs/OPERATIONS_RUNBOOK.md#forecast`
-          : "",
+        runbookUrl: APP_ORIGIN ? `${APP_ORIGIN}/docs/OPERATIONS_RUNBOOK.md#forecast` : "",
       };
       await alertingService.dispatchAlert(event);
     } catch (err) {

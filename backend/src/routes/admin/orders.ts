@@ -77,9 +77,18 @@ router.get("/orders", requireAdmin, async (req, res) => {
       product_name: r.productName ?? "",
       amount: parseFloat(String(r.order.amount)),
       status: r.order.status,
-      delivered_email: r.order.deliveredEmail ?? null,
+      // P0-sim (round-93 live simulation, 93-SIM-live-findings): the admin
+      // order table had the SAME asymmetry as formatOrder — decrypted
+      // password next to raw (still-encrypted) delivered_email /
+      // delivered_extra_details, so the expanded order cell showed hex
+      // ciphertext where the account email/details should be. Admins DO
+      // get to see credentials for completed orders (support/reconciliation
+      // tool); RefundService nulls the columns in the refund tx, so
+      // refunded orders show null here. safeDecrypt passes legacy
+      // plaintext through unchanged (B2-11 for auth failures).
+      delivered_email: safeDecrypt(r.order.deliveredEmail),
       delivered_password: safeDecrypt(r.order.deliveredPassword),
-      delivered_extra_details: r.order.deliveredExtraDetails ?? null,
+      delivered_extra_details: safeDecrypt(r.order.deliveredExtraDetails),
       coupon_code: r.order.couponCode ?? null,
       discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
       created_at: r.order.createdAt?.toISOString(),

@@ -2,12 +2,28 @@ import { adminAlertsTable, db } from "@workspace/db";
 import { and, count, desc, eq, gt, inArray, lt, notInArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
+/**
+ * Closed TS union over `admin_alerts.type` (a free varchar(30) column —
+ * unknown strings still insert; the alerts drawer falls back to the
+ * "system" badge for types it has no metadata for).
+ *
+ * Round-93 additions (jobs audit 93-A6):
+ *  - `forecast_stockout` — A6-P2-3: forecast alerts now route through
+ *    logAdminAlert instead of a raw table insert.
+ *  - `coupon_expired` — A6-P3 (§3): couponWatcher's auto-disable step.
+ *  - `refunded_live_credentials` — emitted by refund.service since B2-03
+ *    via an `as unknown as AlertType` cast; declared here so the union
+ *    matches what actually flows through the column.
+ */
 export type AlertType =
+  | "coupon_expired"
   | "coupon_maxed"
   | "coupon_expiring"
+  | "flash_sale_expired"
+  | "forecast_stockout"
   | "low_stock"
   | "no_stock"
-  | "flash_sale_expired"
+  | "refunded_live_credentials"
   | "system";
 
 export interface AlertDedupeOpts {
@@ -21,12 +37,30 @@ export interface AlertDedupeOpts {
   dedupeWindowMs?: number;
 }
 
+/**
+ * Suppression state of a logAdminAlert call (A6-P2-1, round-93).
+ *
+ * Callers that fan an alert out to side channels (Telegram, the
+ * alerting service) MUST gate those sends on `suppressed` — the DB
+ * dedupe is the only guard that survives process restarts, and before
+ * this contract existed stockWatcher sent its Telegram notification
+ * BEFORE consulting the dedupe, so every Render deploy re-pinged the
+ * operator's phone for each permanently-out-of-stock product even
+ * while the drawer insert was correctly suppressed.
+ */
+export interface AdminAlertOutcome {
+  /** True when a recent same-key alert suppressed the insert. */
+  suppressed: boolean;
+  /** Inserted row id (or the pre-existing row's id on suppression). */
+  id: number | null;
+}
+
 export async function logAdminAlert(
   type: AlertType,
   title: string,
   message: string,
   opts?: AlertDedupeOpts,
-): Promise<void> {
+): Promise<AdminAlertOutcome> {
   try {
     // Round-5 (db-audit 2026-09-07): DB-level dedupe. The in-memory Sets
     // in stockWatcher were the only guard before — they reset on every
@@ -52,7 +86,7 @@ export async function logAdminAlert(
           { category: "alerts.dedupe", dedupeKey: opts.dedupeKey, existingId: existing[0].id },
           "logAdminAlert: duplicate suppressed",
         );
-        return;
+        return { suppressed: true, id: existing[0].id };
       }
     }
 
@@ -75,8 +109,15 @@ export async function logAdminAlert(
       .catch((err) =>
         logger.warn({ err, type, title }, "logAdminAlert: socket emit failed (non-fatal)"),
       );
+
+    // A6-P2-1: on success the alert is fresh — side channels may fire.
+    return { suppressed: false, id: inserted?.id ?? null };
   } catch (err) {
     logger.error({ err, type, title }, "Failed to log admin alert");
+    // Deliberately NOT suppressed: a DB failure must not also silence
+    // the side channels — the underlying condition (zero stock, an
+    // expiring coupon) is real regardless of whether the row landed.
+    return { suppressed: false, id: null };
   }
 }
 
@@ -108,6 +149,23 @@ export async function countUnreadAlerts(): Promise<number> {
     .from(adminAlertsTable)
     .where(eq(adminAlertsTable.isRead, false));
   return Number(row?.count ?? 0);
+}
+
+/**
+ * A6 P3#14 (round-93): resolve-by-key — auto-mark every UNREAD alert
+ * carrying `dedupeKey` as read. The counterpart to logAdminAlert's
+ * dedupe: when the *condition* an advisory asserts goes away (e.g. the
+ * last powerful admin enables TOTP), the drawer must stop asserting a
+ * gap that no longer exists instead of waiting up to 14 days for the
+ * stale-marking retention sweep. Idempotent; returns the resolved count.
+ */
+export async function resolveAlertsByDedupeKey(dedupeKey: string): Promise<number> {
+  const resolved = await db
+    .update(adminAlertsTable)
+    .set({ isRead: true })
+    .where(and(eq(adminAlertsTable.dedupeKey, dedupeKey), eq(adminAlertsTable.isRead, false)))
+    .returning({ id: adminAlertsTable.id });
+  return resolved.length;
 }
 
 export async function deleteReadAlerts(): Promise<number> {

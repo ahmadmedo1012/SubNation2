@@ -24,6 +24,8 @@ import {
   createOrder,
   getGetMeQueryKey,
   getGetWalletQueryKey,
+  getListOrdersQueryKey,
+  getMe,
   type CreateOrderBody,
   type Order,
 } from "@workspace/api-client-react";
@@ -53,6 +55,29 @@ function formatBalance(value: number | null | undefined): string {
  */
 function isHttpApiError(error: unknown): boolean {
   return error instanceof Error && error.name === "ApiError";
+}
+
+/**
+ * The backend error envelope ({error, code}) carried by an ApiError.
+ * 93-C5 / F-15 (A4 #9): the orders route maps several coupon failures to
+ * the generic INVALID_DATA code, which getErrorMessage() flattens to
+ * "بيانات غير صالحة" — a confusing money-looking error. Prefer the
+ * backend's specific Arabic sentence on this path.
+ */
+function apiErrorData(error: unknown): { error?: string; code?: string } | null {
+  if (!isHttpApiError(error)) return null;
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return null;
+  return data as { error?: string; code?: string };
+}
+
+/**
+ * Coupon-family failures (invalid / inactive / expired / maxed / exhausted)
+ * — every one of the backend's coupon messages carries the word "كوبون".
+ * 93-C5 / F-15 (A4 #9): used to special-case the recovery guidance.
+ */
+function isCouponFailureMessage(message: string | undefined): boolean {
+  return typeof message === "string" && message.includes("كوبون");
 }
 
 /**
@@ -103,7 +128,13 @@ export default function CheckoutPage() {
     let aborted = false;
     setBalanceLoading(true);
     setBalanceError(false);
-    fetch("/api/auth/me", { credentials: "include" })
+    // 93-C5 / sim P2 (navbar balance staleness after cart purchase):
+    // cache:"no-store" — /api/auth/me serves Cache-Control: private,
+    // max-age=30, so this probe used to seed the browser HTTP cache with
+    // the PRE-purchase balance seconds before purchase; the
+    // post-purchase invalidate→refetch was then answered from that cache
+    // and the Navbar kept showing the old balance. Don't poison it.
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error("balance fetch failed");
         return res.json();
@@ -145,6 +176,27 @@ export default function CheckoutPage() {
     return true;
   }, [token, isEmpty, submitting, insufficient]);
 
+  /**
+   * 93-C5 / sim P2 (navbar balance staleness after cart purchase):
+   * every charged unit moved the wallet balance, but a plain
+   * invalidate→refetch of /api/auth/me can be served from the browser
+   * HTTP cache (private, max-age=30) with the pre-purchase body — the
+   * Navbar's useGetMe chip then stayed stale until the next navigation
+   * (product.tsx's single-buy only "worked" because its last /me fetch
+   * was >30 s old by purchase time). Refresh me with cache:"no-store"
+   * and seed the query cache DIRECTLY — no refetch race, every useGetMe
+   * observer re-renders with the new wallet_balance immediately. Falls
+   * back to a plain invalidation if the refresh itself fails.
+   */
+  const refreshMeBalance = async () => {
+    try {
+      const freshUser = await getMe({ cache: "no-store" });
+      queryClient.setQueryData(getGetMeQueryKey(), freshUser);
+    } catch {
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+    }
+  };
+
   async function handleConfirm() {
     if (!token || items.length === 0) return;
     setSubmitting(true);
@@ -153,6 +205,7 @@ export default function CheckoutPage() {
     const created: Order[] = [];
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
+    let couponFailure = false;
     // Per-line bookkeeping of units that ACTUALLY got ordered (P0-3). A
     // mid-line failure (e.g. unit 2 of 3) previously left the full qty=3
     // in the cart while 1 unit was already charged — a retry then bought
@@ -160,8 +213,48 @@ export default function CheckoutPage() {
     // exactly what was charged: fully-ordered lines are removed,
     // partially-ordered lines keep only the unordered remainder.
     const orderedUnitsByProduct = new Map<number, number>();
+    const couponCode = coupon.trim().toUpperCase();
 
     try {
+      // 93-C5 / F-15 (A4 #9): pre-flight the coupon ONCE against the
+      // basket BEFORE the per-unit loop charges anything. Deterministic
+      // coupon failures (invalid / inactive / expired / maxed /
+      // min-order) previously surfaced mid-loop — after some units had
+      // already been charged ("guaranteed partial failure" for a qty≥2
+      // line: the first unit consumes a single-use coupon's only slot,
+      // every following unit fails). A network failure is inconclusive
+      // → fail-open: the server re-validates the coupon on every unit
+      // order anyway.
+      if (couponCode) {
+        try {
+          const res = await fetch("/api/coupons/validate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify({ code: couponCode, order_amount: totalLYD }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!(res.ok && body && body.valid === true)) {
+            const message =
+              (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
+            setOrderError(
+              `الكوبون: ${message} — أزل الكوبون أو صحّحه ثم أعد المحاولة. لم يتم خصم أي مبلغ.`,
+            );
+            toast({
+              title: "تعذّر تطبيق الكوبون",
+              description: message,
+              variant: "destructive",
+            });
+            return;
+          }
+        } catch {
+          // Network-level failure — inconclusive, fail-open (see above).
+        }
+      }
+
       for (const it of items) {
         const unitsWanted = Math.min(it.quantity, MAX_UNITS_PER_LINE);
         let unitsOrdered = 0;
@@ -169,7 +262,7 @@ export default function CheckoutPage() {
         // per order — a qty>1 cart line becomes N unit orders.
         for (let unit = 0; unit < unitsWanted; unit++) {
           const body: CreateOrderBody = { product_id: it.productId };
-          if (coupon.trim()) body.coupon_code = coupon.trim();
+          if (couponCode) body.coupon_code = couponCode;
           // V4-P0: one fresh Idempotency-Key PER UNIT ORDER — a network
           // retry or double-click of this exact unit replays the cached
           // server response instead of charging the wallet twice, while
@@ -196,15 +289,32 @@ export default function CheckoutPage() {
             }
             // HTTP-level failure: the backend error envelope arrives as
             // ApiError.data = {error, code} — NEVER `.message` (P0-2).
-            // getErrorMessage maps `code` to the precise Arabic money
-            // message (INSUFFICIENT_BALANCE, OUT_OF_STOCK, ...) and falls
-            // back to the raw `error` text.
-            failureMessage = getErrorMessage(e) || "فشل في إنشاء الطلب";
+            // 93-C5 / F-15: prefer the envelope's specific Arabic sentence
+            // over the code map (coupon failures map to INVALID_DATA →
+            // "بيانات غير صالحة", which reads like a money error).
+            failureMessage = apiErrorData(e)?.error || getErrorMessage(e) || "فشل في إنشاء الطلب";
+            couponFailure = isCouponFailureMessage(failureMessage ?? undefined);
             break;
           }
         }
         if (unitsOrdered > 0) orderedUnitsByProduct.set(it.productId, unitsOrdered);
         if (failureMessage) break;
+      }
+
+      // 93-C5 / F-15 (A4 #9): coupon-family failures get explicit recovery
+      // guidance — a single-use coupon that died mid-loop (its first unit
+      // consumed the last slot) leaves the dead code in the input, and a
+      // plain retry would re-fail on the same units forever. Clear it so
+      // the retry completes the remainder at full price (never silently:
+      // the confirm button shows the undiscounted total, and the banner
+      // explains exactly what happened).
+      if (couponFailure && failureMessage) {
+        if (created.length > 0) {
+          setCoupon("");
+          failureMessage = `${failureMessage} — أُزيل الكوبون من الحقل؛ أعد المحاولة لإكمال الوحدات المتبقية بالسعر الكامل.`;
+        } else {
+          failureMessage = `${failureMessage} — أزل الكوبون من الحقل ثم أعد المحاولة.`;
+        }
       }
 
       // Sync the cart to exactly what was charged — remove full lines,
@@ -216,14 +326,18 @@ export default function CheckoutPage() {
         else updateQuantity(productId, line.quantity - unitsOrdered);
       });
 
-      // Round-4: every unit that was charged moved the wallet balance —
-      // invalidate BOTH cached copies of it (the Navbar's useGetMe balance
-      // and the wallet page's useGetWallet) or they stay stale for up to
+      // Every unit that was charged moved the wallet balance — refresh the
+      // me cache with an HTTP-cache-bypassing fetch (see refreshMeBalance)
+      // and the other money caches so they don't stay stale for up to
       // 60 s (staleTime with refetchOnWindowFocus/reconnect disabled).
       // product.tsx does the same after its single-unit purchase.
       if (created.length > 0) {
-        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        await refreshMeBalance();
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        // 93-C5 (A4 #20): the orders list (home's "آخر الطلبات" strip + the
+        // /orders page) must reflect the purchase immediately, not ≤60 s
+        // later. No-arg form invalidates every list param variant.
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       }
 
       if (failureMessage && created.length === 0) {
@@ -255,8 +369,9 @@ export default function CheckoutPage() {
       // was already charged, the wallet moved too — refresh the same
       // caches even though the cart-sync was (deliberately) skipped.
       if (created.length > 0) {
-        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        await refreshMeBalance();
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       }
       const msg = getErrorMessage(e);
       setOrderError(msg);
@@ -302,7 +417,12 @@ export default function CheckoutPage() {
                 <div className="text-xs text-muted-foreground mt-0.5">
                   رصيدك:{" "}
                   <span className="font-black text-foreground tabular-nums">
-                    {balanceLoading ? "…" : formatBalance(balance)}
+                    {/* 93-C5 / F-15 (A4 #8): a failed probe used to render a
+                        fabricated "0.00 د.ل" here (formatBalance(null) →
+                        formatCurrency(0)) while the banner below honestly
+                        said "تعذّر التحقق من رصيدك" — contradictory money
+                        UI. Render an explicit unknown marker instead. */}
+                    {balanceLoading ? "…" : balance === null ? "—" : formatBalance(balance)}
                   </span>
                 </div>
               </div>

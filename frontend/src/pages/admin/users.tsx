@@ -4,7 +4,9 @@ import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
@@ -28,10 +30,12 @@ import {
   Filter,
   Minus,
   Plus,
+  RefreshCw,
   Search,
   Star,
   Users,
   Wallet,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -142,6 +146,10 @@ export default function AdminUsersPage() {
     loyalty_points: "",
     loyalty_tier: "",
   });
+  // 93-C6 / F-07 (A5 S-1): the wallet save is a money action — it now
+  // requires an explicit confirmation with a resulting-balance
+  // preview (same useConfirm idiom as the orders bulk refund).
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // 300ms debounce (same pattern as admin/referrals) so the users
   // query doesn't fire per keystroke.
@@ -156,6 +164,11 @@ export default function AdminUsersPage() {
   const {
     data: usersRaw = [],
     isLoading,
+    // 93-C6 / F-07 (A5 S-2): a failed load previously fell through to
+    // the "لا يوجد مستخدمون" empty state — an outage made the whole
+    // user directory LOOK empty.
+    isError,
+    error,
     refetch,
   } = useListAdminUsers(params, {
     query: {
@@ -214,15 +227,56 @@ export default function AdminUsersPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!editingUser || !adminToken) return;
+    // 93-C6 / F-07 (A5 U-1): a typo'd wallet amount used to be SILENTLY
+    // DROPPED (parseFloat NaN → the field was omitted from the body
+    // while loyalty still saved, and the toast still said "تم الحفظ").
+    // A non-numeric value now blocks the submit outright.
+    const walletInput = form.wallet_value.trim();
+    const walletValue = walletInput === "" ? null : Number.parseFloat(walletInput);
+    if (walletValue !== null && (!Number.isFinite(walletValue) || walletValue < 0)) {
+      toast({
+        title: "المبلغ غير صالح",
+        description: "أدخل مبلغ محفظة رقميًا صحيحًا (0 أو أكثر) قبل الحفظ",
+        variant: "destructive",
+      });
+      return;
+    }
+    // 93-C6 / F-07 (A5 S-1, round-93): money adjustment requires an
+    // explicit confirmation BEFORE the PATCH fires — with the resulting
+    // balance preview so a typo like 50-vs-5.00 is visible before it
+    // lands ("set" especially overwrites a wallet in one tap).
+    if (walletValue !== null) {
+      const currentBalance = Number(editingUser.wallet_balance ?? 0) || 0;
+      const nextBalance =
+        form.wallet_mode === "set"
+          ? walletValue
+          : form.wallet_mode === "add"
+            ? currentBalance + walletValue
+            : currentBalance - walletValue;
+      const actionText =
+        form.wallet_mode === "set"
+          ? `سيتم تحديد رصيد محفظة ${editingUser.phone} إلى ${formatCurrency(walletValue)} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+          : form.wallet_mode === "add"
+            ? `سيتم إضافة ${formatCurrency(walletValue)} إلى محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+            : `سيتم خصم ${formatCurrency(walletValue)} من محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`;
+      const negativeWarning =
+        form.wallet_mode === "subtract" && nextBalance < 0
+          ? " تنبيه: المبلغ يتجاوز الرصيد الحالي وسيُرفض التحديث."
+          : "";
+      const ok = await confirm({
+        title: "تأكيد تعديل المحفظة",
+        description: `${actionText} الرصيد الجديد: ${formatCurrency(nextBalance)}.${negativeWarning}`,
+        confirmLabel: "تنفيذ التعديل",
+        destructive: form.wallet_mode === "subtract",
+      });
+      if (!ok) return;
+    }
     setSaving(true);
     const body: Record<string, number | string> = {};
-    if (form.wallet_value !== "") {
-      const val = parseFloat(form.wallet_value);
-      if (!isNaN(val)) {
-        if (form.wallet_mode === "set") body.wallet_balance = val;
-        else if (form.wallet_mode === "add") body.wallet_adjustment = val;
-        else body.wallet_adjustment = -val;
-      }
+    if (walletValue !== null) {
+      if (form.wallet_mode === "set") body.wallet_balance = walletValue;
+      else if (form.wallet_mode === "add") body.wallet_adjustment = walletValue;
+      else body.wallet_adjustment = -walletValue;
     }
     if (form.loyalty_points !== "") {
       const pts = parseInt(form.loyalty_points);
@@ -243,10 +297,16 @@ export default function AdminUsersPage() {
         headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      // 93-C6 / F-07 (A5 S-3): 401 mid-form = session expiry, not a
+      // failed save — the global handler toasts + redirects.
+      if (isAdminUnauthorized(res, `/api/admin/users/${editingUser.id}`)) return;
+      // 93-C6 / F-07 (SIM P1): safe body parse — a non-JSON error body
+      // (proxy HTML) used to throw a JSON SyntaxError into the toast.
+      const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
       // Round-4 (org §6a): money-path admin save — getErrorMessage maps
-      // the backend `code` (INSUFFICIENT_PERMISSIONS, INVALID_DATA…) to
-      // Arabic instead of the bare "خطأ" fallback.
+      // the backend `code` (INSUFFICIENT_PERMISSIONS, NEGATIVE_BALANCE,
+      // CONFLICT points-race…) to Arabic instead of the bare "خطأ"
+      // fallback.
       if (!res.ok) throw new Error(getErrorMessage(data) || "خطأ");
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey(params) });
@@ -254,7 +314,10 @@ export default function AdminUsersPage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // 93-C6 / F-07 (SIM P1): route through getErrorMessage so the
+        // response envelope (and network-level TypeErrors) surface as
+        // Arabic, never silently.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -620,9 +683,48 @@ export default function AdminUsersPage() {
           </div>
         )}
 
+        {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered list
+            failed — keep the stale rows, surface the failure inline. */}
+        {isError && users.length > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{getErrorMessage(error)}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         {isLoading ? (
           <TableSkeleton />
+        ) : isError && users.length === 0 ? (
+          /* 93-C6 / F-07 (A5 S-2): a failed load is NOT "no users" — the
+             referrals.tsx error-card idiom (an outage/expired session
+             previously masqueraded as the empty state). */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المستخدمين</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <Button
+              onClick={() => refetch()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : sorted.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -727,7 +829,11 @@ export default function AdminUsersPage() {
                         <td className="px-4 py-2.5">
                           <button
                             onClick={() => openEdit(user)}
-                            className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90"
+                            aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
+                            /* 93-C6 / F-07 (A5 S-6): p-1.5 ≈ 28px target —
+                               p-2 + min sizes lift the tappable area for
+                               the 375px admin layout. */
+                            className="p-2 min-w-9 min-h-9 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -785,6 +891,9 @@ export default function AdminUsersPage() {
           </>
         )}
       </div>
+      {/* 93-C6 / F-07: the wallet-adjust confirmation dialog mount
+          (useConfirm idiom — styled AlertDialog, ESC/rtl-correct). */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

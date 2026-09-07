@@ -21,11 +21,24 @@ function formatOrder(
 ) {
   // B2-03 (round-92 audit): delivered credentials are only readable while
   // the order is "completed". RefundService nulls delivered_password /
-  // delivered_email inside the refund tx, but this gate also covers every
-  // other non-completed state ("failed", legacy rows) at the API boundary —
-  // the buyer must not be able to re-read a password for money that was
-  // returned to them. safeDecrypt itself returns null on GCM auth failure
-  // (B2-11), so delivered_password is null-safe by construction.
+  // delivered_email / delivered_extra_details inside the refund tx, but
+  // this gate also covers every other non-completed state ("failed",
+  // legacy rows) at the API boundary — the buyer must not be able to
+  // re-read a password for money that was returned to them. safeDecrypt
+  // itself returns null on GCM auth failure (B2-11) and passes legacy
+  // plaintext through unchanged, so every field is null-safe by
+  // construction.
+  //
+  // P0-sim (round-93 live simulation, 93-SIM-live-findings): delivered_email
+  // and delivered_extra_details were previously returned RAW (still
+  // encrypted) while delivered_password went through safeDecrypt — the
+  // buyer saw `6ec3acc95e8...:...` hex ciphertext as their "email" on the
+  // purchase-success screen, order detail, and admin panel. Both fields are
+  // V1-M7-class encrypted-at-rest columns (or legacy plaintext), so they
+  // go through the same safeDecrypt. delivered_usage_terms is catalog
+  // text (products.usage_terms — never encrypted) but describes the
+  // purchased account's usage rules: same lifecycle as the credentials,
+  // so it is gated too rather than leaking post-refund.
   const credentialsLive = order.status === "completed";
   return {
     id: order.id,
@@ -37,10 +50,10 @@ function formatOrder(
     coupon_code: order.couponCode ?? null,
     discount_amount: toNumber(order.discountAmount),
     status: order.status,
-    delivered_email: credentialsLive ? (order.deliveredEmail ?? null) : null,
+    delivered_email: credentialsLive ? safeDecrypt(order.deliveredEmail) : null,
     delivered_password: credentialsLive ? safeDecrypt(order.deliveredPassword) : null,
-    delivered_extra_details: order.deliveredExtraDetails ?? null,
-    delivered_usage_terms: order.deliveredUsageTerms ?? null,
+    delivered_extra_details: credentialsLive ? safeDecrypt(order.deliveredExtraDetails) : null,
+    delivered_usage_terms: credentialsLive ? (order.deliveredUsageTerms ?? null) : null,
     delivered_at: order.deliveredAt?.toISOString() ?? null,
     created_at: order.createdAt?.toISOString(),
   };

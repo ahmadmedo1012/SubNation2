@@ -7,10 +7,18 @@
  *   - setInterval cleared on SIGTERM.
  *   - Heartbeat write wrapped in isolate("worker-heartbeat", ...) for error isolation.
  *   - Failures increment monitoringErrorsTotal{component:"worker-heartbeat"} but never crash the worker.
+ *     (R7, round-93 A3: this was previously FALSE — isolate() re-threw sync
+ *     errors and never caught async rejections, so heartbeat write failures
+ *     were completely silent. It now genuinely reports + swallows both.)
+ *   - The write itself is bounded by REDIS_COMMAND_TIMEOUT_MS (R2 family):
+ *     during a Redis outage the old SETEX queued forever (offline queue) and
+ *     each 15 s tick piled up a new pending promise; a timeout converts it
+ *     into a REPORTED rejection.
  */
 
 import type { RedisClientType } from "redis";
 import { logger } from "../lib/logger";
+import { withRedisCommandTimeout } from "../lib/redis-client";
 import { isolate } from "../middlewares/instrumentation-isolation";
 
 // Heartbeat configuration constants
@@ -45,13 +53,19 @@ async function writeHeartbeat(redis: RedisClientType): Promise<void> {
       version: VERSION,
     };
 
-    // Use SETEX for atomic set-with-TTL
-    await redis.setEx(HEARTBEAT_KEY, HEARTBEAT_TTL_SEC, JSON.stringify(payload));
+    // Use SETEX for atomic set-with-TTL. Bounded (R2, round-93 A3):
+    // during an outage node-redis queues this command and the promise
+    // never settles; the race turns it into a rejection that isolate()
+    // reports instead of a silently pending promise per 15 s tick.
+    await withRedisCommandTimeout("worker_heartbeat_set", () =>
+      redis.setEx(HEARTBEAT_KEY, HEARTBEAT_TTL_SEC, JSON.stringify(payload)),
+    );
 
     logger.debug({ key: HEARTBEAT_KEY, ttl: HEARTBEAT_TTL_SEC }, "Heartbeat written");
   };
 
-  // Wrap in isolate to catch errors and prevent propagation
+  // Wrap in isolate to catch errors and prevent propagation (R7: actually
+  // true now — async rejections are reported + swallowed).
   await isolate("worker-heartbeat", writeFn)();
 }
 
@@ -76,13 +90,14 @@ export function startHeartbeat(redis: RedisClientType): { stop: () => void } {
 
   // Write initial heartbeat immediately
   writeHeartbeat(redis).catch(() => {
-    // Error already logged in writeHeartbeat, just prevent unhandled rejection
+    // isolate() already reported + logged the failure (R7) — this catch
+    // only exists to prevent an unhandled rejection.
   });
 
   // Schedule periodic heartbeats
   heartbeatInterval = setInterval(() => {
     writeHeartbeat(redis).catch(() => {
-      // Error already logged in writeHeartbeat, just prevent unhandled rejection
+      // isolate() already reported + logged the failure (R7).
     });
   }, HEARTBEAT_INTERVAL_MS);
 

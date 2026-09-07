@@ -9,6 +9,12 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
+// 93-C7 / C-UX2 (A12 B4): risk-event level + label pills migrate from
+// raw emerald/yellow/amber/red hues to the canonical StatusBadge on the
+// --status-* tokens. Label tones mirror STATUS_TONE (confirmed_fraud →
+// error, false_positive → success, escalated → warning) with the page's
+// own Arabic wording.
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -57,37 +63,17 @@ interface RiskEventDetail {
   labels: RiskLabel[];
 }
 
-const LEVEL_META: Record<RiskLevel, { label: string; bg: string; text: string; border: string }> = {
-  low: {
-    label: "منخفض",
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
-    border: "border-emerald-500/30",
-  },
-  medium: {
-    label: "متوسط",
-    bg: "bg-yellow-500/10",
-    text: "text-yellow-400",
-    border: "border-yellow-500/30",
-  },
-  high: {
-    label: "عالي",
-    bg: "bg-orange-500/10",
-    text: "text-orange-400",
-    border: "border-orange-500/30",
-  },
-  critical: {
-    label: "حرج",
-    bg: "bg-red-500/10",
-    text: "text-red-400",
-    border: "border-red-500/30",
-  },
+const LEVEL_META: Record<RiskLevel, { label: string; tone: StatusBadgeVariant }> = {
+  low: { label: "منخفض", tone: "success" },
+  medium: { label: "متوسط", tone: "warning" },
+  high: { label: "عالي", tone: "low-stock" },
+  critical: { label: "حرج", tone: "error" },
 };
 
-const LABEL_META: Record<LabelKind, { label: string; bg: string; text: string }> = {
-  confirmed_fraud: { label: "احتيال مؤكد", bg: "bg-red-500/10", text: "text-red-400" },
-  false_positive: { label: "إنذار كاذب", bg: "bg-emerald-500/10", text: "text-emerald-400" },
-  escalated: { label: "تصعيد", bg: "bg-amber-500/10", text: "text-amber-400" },
+const LABEL_META: Record<LabelKind, { label: string; tone: StatusBadgeVariant }> = {
+  confirmed_fraud: { label: "احتيال مؤكد", tone: "error" },
+  false_positive: { label: "إنذار كاذب", tone: "success" },
+  escalated: { label: "تصعيد", tone: "warning" },
 };
 
 export default function AdminRiskEventPage() {
@@ -132,7 +118,7 @@ export default function AdminRiskEventPage() {
   if (query.isLoading) {
     return (
       <AdminLayout>
-        <div className="text-sm text-muted-foreground py-12 text-center">جاري التحميل…</div>
+        <div className="text-sm text-muted-foreground py-12 text-center">جارٍ التحميل…</div>
       </AdminLayout>
     );
   }
@@ -175,11 +161,9 @@ export default function AdminRiskEventPage() {
             <ShieldAlert className="w-5 h-5 text-primary" />
             تحقيق #{event.id}
           </h1>
-          <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone.bg} ${tone.text} ${tone.border}`}
-          >
+          <StatusBadge variant={tone.tone} size="xs">
             {tone.label}
-          </span>
+          </StatusBadge>
           <span className="text-xs text-muted-foreground font-mono">{event.event_type}</span>
         </div>
 
@@ -242,11 +226,9 @@ export default function AdminRiskEventPage() {
                     className="border border-border/40 rounded-lg px-3 py-2 text-xs space-y-1"
                   >
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${meta.bg} ${meta.text}`}
-                      >
+                      <StatusBadge variant={LABEL_META[l.label].tone} size="xs">
                         {meta.label}
-                      </span>
+                      </StatusBadge>
                       <span className="text-muted-foreground">
                         {l.labeled_by_username ?? `admin#${l.labeled_by}`}
                       </span>
@@ -273,11 +255,11 @@ export default function AdminRiskEventPage() {
             />
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="default"
+                variant="destructive"
                 size="sm"
                 disabled={labelMut.isPending}
                 onClick={() => labelMut.mutate("confirmed_fraud")}
-                className="gap-2 bg-red-500/90 hover:bg-red-500 text-red-50"
+                className="gap-2"
               >
                 <XCircle className="w-3.5 h-3.5" /> احتيال مؤكد
               </Button>

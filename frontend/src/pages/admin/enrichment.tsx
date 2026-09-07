@@ -14,6 +14,14 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
+// 93-C7 / C-UX3 (A12 §1.3 + §11.2): the enrichment reject reason was
+// collected via native window.prompt — English browser chrome inside an
+// Arabic RTL admin, no validation, ambiguous "" vs null semantics. It
+// is now a small AppDialog with a textarea (RejectModal semantics).
+import { AppDialog } from "@/components/ui/app-dialog";
+// 93-C7 / C-UX6 (A12 §5): the hand-rolled "لا توجد مسودات…" block
+// adopts the shared EmptyState card.
+import { EmptyState } from "@/components/admin/EmptyState";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -113,7 +121,7 @@ export default function AdminEnrichmentPage() {
         </header>
 
         {query.isLoading && (
-          <div className="text-sm text-muted-foreground py-12 text-center">جاري التحميل…</div>
+          <div className="text-sm text-muted-foreground py-12 text-center">جارٍ التحميل…</div>
         )}
         {query.isError && (
           <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
@@ -121,14 +129,16 @@ export default function AdminEnrichmentPage() {
           </div>
         )}
         {!query.isLoading && drafts.length === 0 && (
-          <div className="border border-border/40 rounded-2xl bg-muted/10 p-8 text-center text-sm text-muted-foreground space-y-2">
-            <CheckCircle2 className="w-8 h-8 mx-auto text-emerald-500/70" />
-            <div>لا توجد مسودات تنتظر المراجعة.</div>
-            <div className="text-xs">
-              لتفعيل خط الأنابيب: اضبط <code dir="ltr">ENRICHMENT_RUNNER_ENABLED=true</code> على
-              عامل الخادم.
-            </div>
-          </div>
+          <EmptyState
+            icon={CheckCircle2}
+            title="لا توجد مسودات تنتظر المراجعة"
+            description={
+              <>
+                لتفعيل خط الأنابيب: اضبط <code dir="ltr">ENRICHMENT_RUNNER_ENABLED=true</code> على
+                عامل الخادم.
+              </>
+            }
+          />
         )}
         {drafts.map((d) => (
           <DraftCard
@@ -155,6 +165,9 @@ function DraftCard({
   const [editing, setEditing] = useState(false);
   const [edited, setEdited] = useState(draft.generated_text);
   const [error, setError] = useState<string | null>(null);
+  // 93-C7 / C-UX3: reject-reason dialog state (replaces window.prompt).
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reason, setReason] = useState("");
 
   const publish = useMutation({
     mutationFn: async (override?: string | null) => {
@@ -295,8 +308,10 @@ function DraftCard({
             variant="outline"
             disabled={busy}
             onClick={() => {
-              const reason = window.prompt("سبب الرفض (اختياري):") ?? null;
-              reject.mutate(reason && reason.trim().length > 0 ? reason.trim() : null);
+              // Open the styled reason dialog (93-C7 / C-UX3) instead of
+              // window.prompt — same semantics, theme/RTL/focus-correct.
+              setReason("");
+              setRejectOpen(true);
             }}
             className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/5"
           >
@@ -304,6 +319,60 @@ function DraftCard({
           </Button>
           {busy && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground self-center" />}
         </div>
+
+        {/* Reject-reason dialog (93-C7 / C-UX3, A12 §1.5): textarea +
+          confirm/cancel — the reason stays optional, ESC/backdrop cancel
+          harmlessly (no data to lose), and submit is loading-guarded. */}
+        <AppDialog
+          open={rejectOpen}
+          onOpenChange={setRejectOpen}
+          title="رفض المسودة"
+          description={`${draft.product_name} — ${FIELD_LABEL[draft.field_name]}`}
+          dismissable={!reject.isPending}
+          size="sm"
+          footer={
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setRejectOpen(false)}
+                disabled={reject.isPending}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const trimmed = reason.trim();
+                  reject.mutate(trimmed.length > 0 ? trimmed : null);
+                }}
+                disabled={reject.isPending}
+                className="gap-1.5"
+              >
+                {reject.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                رفض المسودة
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <label htmlFor="enrichment-reject-reason" className="text-xs font-bold">
+              سبب الرفض (اختياري)
+            </label>
+            <textarea
+              id="enrichment-reject-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              dir="rtl"
+              placeholder="مثال: الوصف غير دقيق — اذكر الخطأ ليُحسَّن التوليد لاحقاً"
+              className="w-full bg-background border border-border/60 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-destructive/25"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              يُحفظ السبب مع سجل المسودة لتتبّع جودة التوليد.
+            </p>
+          </div>
+        </AppDialog>
       </div>
     </div>
   );

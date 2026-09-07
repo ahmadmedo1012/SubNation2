@@ -116,7 +116,7 @@ export function OnboardingPage() {
                 <FeatureRow
                   icon={Truck}
                   title="تسليم فوري"
-                  description="تصلك بيانات الاشتراك فور تأكيد الدفع."
+                  description="في أغلب الحالات تصلك بيانات الاشتراك فور تأكيد الدفع، وخلال 24 ساعة كحد أقصى."
                 />
                 <FeatureRow
                   icon={ShieldCheck}

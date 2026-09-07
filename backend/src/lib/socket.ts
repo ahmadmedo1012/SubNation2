@@ -16,6 +16,21 @@
  *        → socket.data.identity.{adminId, role, isAdmin: true}
  *      A handshake that presents NEITHER valid token is rejected.
  *
+ *   2b. DB-backed liveness re-verification (93-A1 S1, round-93).
+ *      JWT verification alone means a revoked session (logout /
+ *      logout-all / user deletion) or a soft-disabled admin kept its
+ *      socket — and with it the auto-joined user:/admin-room membership
+ *      streaming wallet/order PII — for the token's full life (30 d
+ *      user / 8 h admin). The handshake gate, a periodic re-verify
+ *      (every 5 min per socket) and the legacy room-join events now all
+ *      consult the same sources requireUser/requireAdmin use:
+ *        - user token  → `sessions` row exists + unexpired
+ *          (lib/session-liveness.isSessionRowLive, 60 s cache)
+ *        - admin token → `admin_users.is_active`
+ *      A dead component is stripped (room left); a fully dead identity
+ *      disconnects. DB probe failures fail OPEN (JWT is still
+ *      cryptographically sound) — mirrors requireUser's posture.
+ *
  *   3. SERVER-DRIVEN room joining on connect.
  *      Once authenticated, the server immediately joins the socket
  *      to user:<verified-userId> AND/OR admin-room based on the
@@ -41,22 +56,26 @@
  *
  * NON-GOALS (deferred / tracked in SECURITY_FIXES.md):
  *
- *   - Token revocation list. A stolen valid token remains valid
- *     until JWT expiry (30d). Mitigation = periodic re-verify
- *     mid-session, tracked separately.
  *   - Admin namespace separation. Admin events flow over the
  *     default namespace's "admin-room". Migration to io.of("/admin")
  *     is tracked separately.
+ *
+ *   [REVOKED] Token revocation list. A stolen valid token remained
+ *     valid until JWT expiry (30d). CLOSED by 93-A1 S1 — see layer 2b:
+ *     handshake + periodic (5 min) DB-backed re-verification.
  */
 
 import * as Sentry from "@sentry/node";
 import { createAdapter } from "@socket.io/redis-adapter";
+import { adminUsersTable, db } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { Server as HttpServer } from "http";
 import { Counter } from "prom-client";
 import { createClient } from "redis";
 import { Server as SocketServer, type Socket } from "socket.io";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
 import { logger } from "./logger";
+import { isSessionRowLive } from "./session-liveness";
 import { getConfiguredOrigins } from "./origins";
 import {
   getRegistry,
@@ -69,10 +88,19 @@ import {
 
 let io: SocketServer | null = null;
 
+/** How often each connected socket's identity is re-verified against the
+ * DB (sessions row / admin is_active). 93-A1 S1 recommended "e.g. every 5
+ * min" — cheap indexed lookups (session probe is additionally 60 s-cached). */
+export const SOCKET_REVERIFY_INTERVAL_MS = 5 * 60_000;
+
 /** Verified identity attached to every authenticated socket. */
 export interface SocketIdentity {
   /** User JWT subject. Present when auth_token verifies. */
   userId?: number;
+  /** Session row id embedded in the user JWT (93-A1 S1). Present when the
+   * token was minted by lib/session.ts; absent on pre-unification legacy
+   * tokens — those skip the row check exactly like requireUser. */
+  sessionId?: string;
   /** Admin JWT subject. Present when admin_token verifies. */
   adminId?: number;
   /** Admin role string. Present when adminId is present. */
@@ -154,6 +182,10 @@ export function authenticateSocketHandshake(handshake: SocketHandshakeLike): Soc
     const result = verifyUserTokenDetailed(userToken);
     if (result.ok) {
       identity.userId = result.payload.userId;
+      // 93-A1 S1: keep the session id so the liveness gate below (and the
+      // periodic re-verify) can consult the sessions row — the exact same
+      // claim requireUser reads. Legacy tokens without it skip the check.
+      identity.sessionId = result.payload.sessionId;
     }
   }
 
@@ -212,6 +244,125 @@ export function authorizeJoinAdmin(identity: SocketIdentity | undefined): boolea
   return identity?.isAdmin === true;
 }
 
+// ── DB-backed identity liveness (93-A1 S1) ──────────────────────────
+
+export type SocketLivenessFailure =
+  | "session_revoked" // sessions row deleted (logout / logout-all / user deletion) or expired
+  | "admin_missing" // admin_users row deleted
+  | "admin_inactive"; // admin_users.is_active = false (soft-disable)
+
+export interface SocketLivenessResult {
+  /** True when the identity is entirely live (or DB probes failed → fail-open). */
+  ok: boolean;
+  /** The user component (userId) is revoked — strip it / leave user room. */
+  userRevoked?: boolean;
+  /** The admin component (adminId/role/isAdmin) is revoked — strip it / leave admin-room. */
+  adminRevoked?: boolean;
+  /** First failure reason — used for the rejection counter + logs. */
+  reason?: SocketLivenessFailure;
+}
+
+/**
+ * Verify a handshake-verified identity against the DB — the WS mirror
+ * of what requireUser / requireAdmin do per HTTP request (93-A1 S1).
+ *
+ *   - user  : sessions row must exist + be unexpired. Reuses the shared
+ *     60 s-cached isSessionRowLive probe (lib/session-liveness.ts) so
+ *     the WS and HTTP surfaces can never disagree on revocation.
+ *     Legacy tokens without a sessionId skip the check (requireUser
+ *     semantics — they age out within 30 d).
+ *   - admin : admin_users row must exist and is_active must be true
+ *     (requireAdmin semantics).
+ *
+ * DB probe failures fail OPEN (the JWT is still cryptographically
+ * sound) and are logged — a Postgres blip must not kick every live
+ * socket.
+ */
+export async function verifySocketIdentityLive(
+  identity: SocketIdentity,
+): Promise<SocketLivenessResult> {
+  const result: SocketLivenessResult = { ok: true };
+
+  if (identity.userId != null && identity.sessionId) {
+    try {
+      const live = await isSessionRowLive(identity.sessionId);
+      if (!live) {
+        result.ok = false;
+        result.userRevoked = true;
+        result.reason = "session_revoked";
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          category: "security",
+          userId: identity.userId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[socket-auth] session-row probe failed — keeping identity on JWT strength",
+      );
+    }
+  }
+
+  if (identity.isAdmin && identity.adminId != null) {
+    try {
+      const [admin] = await db
+        .select({ isActive: adminUsersTable.isActive })
+        .from(adminUsersTable)
+        .where(eq(adminUsersTable.id, identity.adminId))
+        .limit(1);
+      if (!admin) {
+        result.ok = false;
+        result.adminRevoked = true;
+        result.reason ??= "admin_missing";
+      } else if (!admin.isActive) {
+        result.ok = false;
+        result.adminRevoked = true;
+        result.reason ??= "admin_inactive";
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          category: "security",
+          adminId: identity.adminId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[socket-auth] admin liveness probe failed — keeping identity on JWT strength",
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Pure companion of verifySocketIdentityLive: given a liveness verdict,
+ * produce the identity that should remain attached to the socket.
+ *
+ *   - ok             → identity unchanged (same reference)
+ *   - component dead → that component stripped
+ *   - both dead / nothing left → null (caller disconnects / rejects)
+ *
+ * Exported for unit testing — the io.use gate, the periodic re-verify
+ * and the room-join re-checks all funnel through this one rule.
+ */
+export function stripIdentityForLiveness(
+  identity: SocketIdentity,
+  liveness: SocketLivenessResult,
+): SocketIdentity | null {
+  if (liveness.ok) return identity;
+
+  let next: SocketIdentity = identity;
+  if (liveness.userRevoked === true && identity.userId != null) {
+    next = { ...next, userId: undefined, sessionId: undefined };
+  }
+  if (liveness.adminRevoked === true && identity.isAdmin) {
+    next = { ...next, adminId: undefined, role: undefined, isAdmin: false };
+  }
+
+  if (next.userId == null && !next.isAdmin) return null;
+  return next;
+}
+
 function getAuthRejectedCounter() {
   const reg = getRegistry();
   const name = "socket_auth_rejected_total";
@@ -233,7 +384,11 @@ type RejectionReason =
   | "forged_user"
   | "forged_admin"
   | "anon_join_user"
-  | "anon_join_admin";
+  | "anon_join_admin"
+  // 93-A1 S1: DB-backed liveness verdicts (handshake gate + mid-session re-verify)
+  | "session_revoked"
+  | "admin_missing"
+  | "admin_inactive";
 
 /**
  * Record a rejection with all the defensive observability layers:
@@ -256,7 +411,15 @@ function recordRejection(reason: RejectionReason, context: Record<string, unknow
   try {
     Sentry.addBreadcrumb({
       category: "socket-auth",
-      level: reason.startsWith("forged_") ? "warning" : "info",
+      // Security-relevant verdicts (forgery, revocation, admin state) are
+      // warnings; the routine anon/no_token path is info (probe traffic).
+      level:
+        reason.startsWith("forged_") ||
+        reason === "session_revoked" ||
+        reason === "admin_missing" ||
+        reason === "admin_inactive"
+          ? "warning"
+          : "info",
       message: `socket rejected: ${reason}`,
       data: context,
     });
@@ -288,6 +451,81 @@ function getRemoteAddr(socket: Socket): string {
     if (entries.length > 0) return entries[entries.length - 1];
   }
   return socket.handshake.address || "unknown";
+}
+
+// ── Mid-session re-verification wiring (93-A1 S1) ────────────────────
+
+function stopIdentityReverification(socket: Socket): void {
+  const timer = socket.data.reverifyTimer as NodeJS.Timeout | undefined;
+  if (timer) {
+    clearInterval(timer);
+    socket.data.reverifyTimer = undefined;
+  }
+}
+
+function startIdentityReverification(socket: Socket): void {
+  const timer = setInterval(() => {
+    void reverifyAndEnforce(socket);
+  }, SOCKET_REVERIFY_INTERVAL_MS);
+  // Never keep the process alive just for a socket timer — the server's
+  // own HTTP listener owns the event loop.
+  timer.unref();
+  socket.data.reverifyTimer = timer;
+}
+
+/**
+ * Re-verify a connected socket's identity against the DB and enforce the
+ * verdict: a dead component leaves its room (and is stripped from the
+ * identity), a fully dead identity is hard-disconnected. DB probe
+ * failures fail open inside verifySocketIdentityLive.
+ */
+async function reverifyAndEnforce(socket: Socket): Promise<void> {
+  const identity = socket.data.identity as SocketIdentity | undefined;
+  if (!identity) return;
+
+  const liveness = await verifySocketIdentityLive(identity);
+  if (liveness.ok) return;
+
+  const remaining = stripIdentityForLiveness(identity, liveness);
+
+  // Leave the rooms tied to revoked components FIRST so no further
+  // outbound event can reach this socket through them.
+  if (liveness.userRevoked === true && identity.userId != null) {
+    socket.leave(`user:${identity.userId}`);
+  }
+  if (liveness.adminRevoked === true && identity.isAdmin) {
+    socket.leave("admin-room");
+  }
+
+  recordRejection(liveness.reason ?? "session_revoked", {
+    socketId: socket.id,
+    userId: identity.userId,
+    adminId: identity.adminId,
+    userRevoked: liveness.userRevoked === true,
+    adminRevoked: liveness.adminRevoked === true,
+    remoteAddress: getRemoteAddr(socket),
+  });
+
+  if (!remaining) {
+    stopIdentityReverification(socket);
+    // Hard disconnect — the client must re-handshake (and re-auth).
+    socket.disconnect(true);
+    return;
+  }
+
+  // One component died, the other is still live: degrade gracefully.
+  socket.data.identity = remaining;
+  logger.warn(
+    {
+      socketId: socket.id,
+      userId: identity.userId,
+      adminId: identity.adminId,
+      userRevoked: liveness.userRevoked === true,
+      adminRevoked: liveness.adminRevoked === true,
+      reason: liveness.reason,
+    },
+    "[socket-auth] mid-session re-verify revoked an identity component — room left, socket kept",
+  );
 }
 
 export function initSocket(server: HttpServer) {
@@ -332,7 +570,7 @@ export function initSocket(server: HttpServer) {
   }
 
   // ── Auth gate ────────────────────────────────────────────────────────
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     // Layer 1: origin allowlist (cheapest fail-fast).
     const origin = socket.handshake.headers.origin as string | undefined;
     if (!isOriginAllowed(origin, allowedOrigins)) {
@@ -355,7 +593,40 @@ export function initSocket(server: HttpServer) {
       return next(new Error("unauthorized"));
     }
 
-    socket.data.identity = identity;
+    // Layer 2b (93-A1 S1): DB-backed liveness — handshake parity with
+    // requireUser (sessions row) + requireAdmin (admin_users.is_active).
+    // A stolen-but-revoked JWT must not open a 30-day WS stream.
+    const liveness = await verifySocketIdentityLive(identity);
+    const admitted = stripIdentityForLiveness(identity, liveness);
+    if (!admitted) {
+      recordRejection(liveness.reason ?? "session_revoked", {
+        socketId: socket.id,
+        userId: identity.userId,
+        adminId: identity.adminId,
+        userRevoked: liveness.userRevoked === true,
+        adminRevoked: liveness.adminRevoked === true,
+        remoteAddress: getRemoteAddr(socket),
+      });
+      return next(new Error("unauthorized"));
+    }
+    // Mixed identity (user + admin on one browser) where only one
+    // component died: admit the socket with the live component — the
+    // revoked component simply never joins its room.
+    if (admitted !== identity) {
+      logger.warn(
+        {
+          socketId: socket.id,
+          userId: identity.userId,
+          adminId: identity.adminId,
+          userRevoked: liveness.userRevoked === true,
+          adminRevoked: liveness.adminRevoked === true,
+          reason: liveness.reason,
+        },
+        "[socket-auth] handshake admitted with a stripped identity component (revoked)",
+      );
+    }
+
+    socket.data.identity = admitted;
     next();
   });
 
@@ -380,6 +651,16 @@ export function initSocket(server: HttpServer) {
       socket.join("admin-room");
     }
 
+    // ── Periodic identity re-verification (93-A1 S1) ──────────────────
+    //
+    // The handshake checked liveness once; a session revoked or an
+    // admin soft-disabled AFTER connect would otherwise keep streaming
+    // user:/admin-room events for the token's full life (the exact gap
+    // the round-5 HTTP fix closed, now closed on the WS surface too).
+    // Every SOCKET_REVERIFY_INTERVAL_MS the identity is re-probed; a
+    // dead component leaves its room, a fully dead identity disconnects.
+    startIdentityReverification(socket);
+
     logger.info(
       {
         socketId: socket.id,
@@ -400,6 +681,10 @@ export function initSocket(server: HttpServer) {
     //   (a) be idempotent for backward compat
     //   (b) detect + log any payload that DOESN'T match the verified
     //       identity (= forgery attempt, even from a logged-in user)
+    //   (c) 93-A1 S1: treat the room-join event as a liveness signal —
+    //       re-verify the identity before acknowledging it (cheap: the
+    //       session probe is 60 s-cached; the admin probe is one indexed
+    //       PK read, same as every requireAdmin request).
     socket.on("join-user", (requestedUserId: unknown) => {
       const verifiedId = authorizeJoinUser(identity, requestedUserId);
       if (verifiedId == null) {
@@ -411,6 +696,8 @@ export function initSocket(server: HttpServer) {
         });
         return;
       }
+      // 93-A1 S1: sensitive room join → re-verify mid-session.
+      void reverifyAndEnforce(socket);
       // No-op — the room was already joined on connect. Logging at
       // debug so the legacy path remains observable but quiet.
       safeInc(socketEventsTotal, { event: "join-user", direction: "inbound" });
@@ -431,6 +718,9 @@ export function initSocket(server: HttpServer) {
         });
         return;
       }
+      // 93-A1 S1: admin-room is the sensitive PII surface (live order /
+      // topup payloads) — re-verify admin liveness on every join event.
+      void reverifyAndEnforce(socket);
       safeInc(socketEventsTotal, { event: "join-admin", direction: "inbound" });
       logger.debug(
         { socketId: socket.id, adminId: identity?.adminId },
@@ -439,6 +729,7 @@ export function initSocket(server: HttpServer) {
     });
 
     socket.on("disconnect", (reason: string) => {
+      stopIdentityReverification(socket);
       safeGaugeDec(socketConnectedClients);
       safeInc(socketEventsTotal, { event: "disconnect", direction: "inbound" });
       logger.info(

@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -383,6 +384,27 @@ export default function AdminSystemPage(): ReactElement | null {
   const [, navigate] = useLocation();
   const headers = useAdminHeaders();
 
+  // 93-C6 / SY-1 (A5, round-93): guarded JSON fetcher for the three
+  // observability queryFns that previously did bare
+  // `fetch(url).then(r => r.json())` — a 401/500 error body became
+  // `data` and panels rendered the envelope as fake readings (401 →
+  // zeroed metrics that looked real). Now: !ok → throw (query error
+  // state, panels fall back honestly), 401 → global session handler.
+  function fetchAdminJson<T>(url: string): () => Promise<T> {
+    return async () => {
+      const res = await fetch(url, { headers });
+      if (isAdminUnauthorized(res, url)) {
+        // Handled globally (toast + redirect); the query error state
+        // below just keeps the panel out of "live" rendering.
+        throw new Error("SESSION_EXPIRED");
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} — تعذّر جلب بيانات المراقبة`);
+      }
+      return (await res.json()) as T;
+    };
+  }
+
   // /api/healthz/ready is now admin-gated. Build an admin-aware fetcher
   // wrapping the shared robust pattern from lib/healthz.
   async function fetchAdminHealthReady(): Promise<HealthzReadyResponse> {
@@ -425,7 +447,8 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const summaryQ = useQuery<ObservabilitySummary>({
     queryKey: ["admin-observability-summary"],
-    queryFn: () => customFetch<ObservabilitySummary>("/api/admin/observability/summary", { headers }),
+    queryFn: () =>
+      customFetch<ObservabilitySummary>("/api/admin/observability/summary", { headers }),
     // 30 s → 60 s. Aggregate counters update slowly.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
@@ -435,8 +458,14 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const recentAlertsQ = useQuery<{ alerts: RecentAlert[]; stale: boolean }>({
     queryKey: ["admin-observability-alerts-recent"],
-    queryFn: () =>
-      fetch("/api/admin/observability/alerts/recent", { headers }).then((r) => r.json()),
+    // 93-C6 / SY-1 (A5, round-93): plain `r.json()` turned a 401/500
+    // error body into `data` — panels then rendered the envelope's
+    // fields as if they were real readings. Guarded parse now: !ok →
+    // throw → useQuery error state (data stays undefined, the section's
+    // fallback renders); 401 → the global session-expiry handler.
+    queryFn: fetchAdminJson<{ alerts: RecentAlert[]; stale: boolean }>(
+      "/api/admin/observability/alerts/recent",
+    ),
     // 60 s → 90 s. Alerts already trigger Discord pushes; this panel is
     // a historical view, not real-time.
     refetchInterval: 90_000,
@@ -449,7 +478,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const metricsQ = useQuery<MetricsSnapshot>({
     queryKey: ["admin-observability-metrics"],
-    queryFn: () => fetch("/api/admin/observability/metrics", { headers }).then((r) => r.json()),
+    queryFn: fetchAdminJson<MetricsSnapshot>("/api/admin/observability/metrics"),
     // Kept at 15 s — realtime CWV + event-loop is the highest-value
     // panel for live operator triage.
     refetchInterval: 15_000,
@@ -460,7 +489,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const schedulerQ = useQuery<SchedulerResponse>({
     queryKey: ["admin-observability-scheduler"],
-    queryFn: () => fetch("/api/admin/observability/scheduler", { headers }).then((r) => r.json()),
+    queryFn: fetchAdminJson<SchedulerResponse>("/api/admin/observability/scheduler"),
     // 30 s → 90 s. Scheduler state changes slowly (leader rotation,
     // worker heartbeat). Sub-minute precision is unnecessary.
     refetchInterval: 90_000,
@@ -862,7 +891,10 @@ export default function AdminSystemPage(): ReactElement | null {
                             className="text-[10px] text-muted-foreground"
                             title={scheduler.startedAt}
                           >
-                            منذ {formatRelativeTime(scheduler.startedAt)}
+                            {/* 93-C6 / F-06: the formatter now emits its
+                                own «قبل …» wording — a hand-written
+                                «منذ» prefix would double up. */}
+                            {formatRelativeTime(scheduler.startedAt)}
                           </span>
                         )}
                       </div>
@@ -978,6 +1010,28 @@ export default function AdminSystemPage(): ReactElement | null {
             </DetailsSection>
 
             {/* ── Panel 4: HTTP Request Analytics ── */}
+            {/* 93-C6 / SY-1: the metrics queryFn used to swallow !ok
+                bodies as data; on failure the section simply vanished.
+                Now the failure is explicit (with a retry) instead of
+                silently missing panels or fake zeros. */}
+            {!metrics && metricsQ.isError && (
+              <div
+                role="alert"
+                className="bg-card border border-yellow-400/20 rounded-2xl p-4 flex items-center gap-3 flex-wrap"
+              >
+                <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />
+                <span className="text-xs text-muted-foreground flex-1 min-w-40">
+                  تعذّر جلب مقاييس المراقبة — قد تكون الجلسة منتهية أو الخدمة غير متاحة.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => metricsQ.refetch()}
+                  className="text-xs font-bold text-primary underline underline-offset-2 hover:opacity-80"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            )}
             {metrics && (
               <DetailsSection title="تحليلات الطلبات HTTP (المسارات · حالات الاستجابة · زمن p50/p99)">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

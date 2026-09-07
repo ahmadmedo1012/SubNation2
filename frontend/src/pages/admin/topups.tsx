@@ -1,8 +1,10 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
@@ -29,9 +31,11 @@ import {
   Hash,
   Loader2,
   MessageSquare,
+  RefreshCw,
   Smartphone,
   Square,
   User,
+  WifiOff,
   X,
   XCircle,
 } from "lucide-react";
@@ -289,7 +293,11 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" })
       onClick={copy}
       title={failed ? "فشل النسخ" : "نسخ"}
       aria-label={failed ? "فشل النسخ" : "نسخ"}
-      className={`shrink-0 rounded transition-colors ${
+      /* 93-C6 / F-07 (A5 S-6): the bare w-3 icon was a ~12px touch
+         target — below any usable minimum on the 375px admin layout
+         and directly adjacent to money-action rows. p-2 (the audit's
+         recommendation) lifts it to ~28px. */
+      className={`shrink-0 rounded p-2 transition-colors ${
         failed
           ? "text-red-400"
           : copied
@@ -328,6 +336,12 @@ export default function AdminTopupsPage() {
     done: number;
     total: number;
   } | null>(null);
+  // 93-C6 / F-07 (A5 T-1/S-1): the single "موافقة" button credits a
+  // wallet in ONE TAP — it now opens the shared useConfirm dialog
+  // (amount + user + payment reference) before the POST fires, the
+  // same friction the reject modal already had. Asymmetric money
+  // friction fixed: the money-CREATING action was the unconfirmed one.
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -354,6 +368,11 @@ export default function AdminTopupsPage() {
   const {
     data: allTopupsRaw = [],
     isLoading,
+    // 93-C6 / F-07 (A5 S-2): a failed load previously fell through to
+    // "لا توجد طلبات معلقة" — the money queue LOOKED empty during an
+    // outage (the worst possible page for that).
+    isError,
+    error,
     refetch,
   } = useListAdminTopups(
     {},
@@ -411,11 +430,16 @@ export default function AdminTopupsPage() {
           : "تمت الموافقة على الطلب",
       });
     },
-    onError() {
+    onError(err: unknown) {
       setProcessingId(null);
+      // 93-C6 / F-07 (SIM P1 + A5 S-1): the error envelope is parsed —
+      // C1's backend now returns 409 DUPLICATE_PAYMENT_REFERENCE with
+      // a full Arabic explanation (sibling topup ids) and 409 CONFLICT
+      // for concurrent-state races; the generic "حاول مرة أخرى" hid
+      // all of it.
       toast({
-        title: "خطأ",
-        description: "فشلت الموافقة، حاول مرة أخرى",
+        title: "فشلت الموافقة",
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     },
@@ -445,9 +469,14 @@ export default function AdminTopupsPage() {
         description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
       });
     },
-    onError() {
+    onError(err: unknown) {
       setProcessingId(null);
-      toast({ title: "خطأ", description: "فشل الرفض، حاول مرة أخرى", variant: "destructive" });
+      // 93-C6 / F-07: same envelope-parsing as approve (see above).
+      toast({
+        title: "فشل الرفض",
+        description: getErrorMessage(err),
+        variant: "destructive",
+      });
     },
   });
 
@@ -470,7 +499,20 @@ export default function AdminTopupsPage() {
   const pendingCount = statusCounts["pending"] ?? 0;
   const topups = statusFilter ? allTopups.filter((t) => t.status === statusFilter) : allTopups;
 
-  const handleApprove = (id: number) => {
+  const handleApprove = async (id: number) => {
+    // 93-C6 / F-07 (A5 T-1): confirm BEFORE the money moves. The
+    // amount, user, and payment reference are all already on the card
+    // — surface them in one dialog so an accidental tap (or a
+    // touch-screen double-fire on a list where REJECT sits beside
+    // approve) can never credit a wallet.
+    const t = allTopups.find((x) => x.id === id);
+    if (!t) return;
+    const ok = await confirm({
+      title: "تأكيد الموافقة",
+      description: `سيتم إضافة ${formatCurrency(t.amount)} إلى محفظة ${t.user_phone}${t.sender_phone ? ` · المُرسل: ${t.sender_phone}` : ""}${t.payment_reference ? ` · مرجع التحويل: ${t.payment_reference}` : ""}.`,
+      confirmLabel: "موافقة",
+    });
+    if (!ok) return;
     setProcessingId(id);
     // F-008: one Idempotency-Key per click. React Query reuses these
     // variables on internal retries, so the key survives a transient
@@ -516,6 +558,12 @@ export default function AdminTopupsPage() {
     setIsBulkProcessing(true);
     const ids = Array.from(selectedIds);
     let successCount = 0;
+    const failures: Array<{ id: number; reason: string }> = [];
+    // 93-C6 / F-07 (A5 T-2): the selected-bulk loop now parses each
+    // failure body (approveAll, one function below, already did) —
+    // count-only feedback ("فشل 2 من 5") hid the 409
+    // DUPLICATE_PAYMENT_REFERENCE / CONFLICT reasons behind a generic
+    // toast while the adjacent approveAll summarized them properly.
 
     // F-008 (security audit 004): one Idempotency-Key per topup, NOT
     // one for the whole bulk. The backend dedup is per-(admin, route,
@@ -524,25 +572,42 @@ export default function AdminTopupsPage() {
     // response, leaving the rest of the topups untouched. Each topup
     // is its own logical action — generate a fresh key per iteration.
     for (const id of ids) {
+      const url = `/api/admin/topups/${id}/${action}`;
       try {
         let r: Response;
         if (action === "approve") {
-          r = await fetch(`/api/admin/topups/${id}/approve`, {
+          r = await fetch(url, {
             method: "POST",
             headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
           });
         } else {
-          r = await fetch(`/api/admin/topups/${id}/reject`, {
+          r = await fetch(url, {
             method: "POST",
             headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
             body: JSON.stringify({ admin_note: "مرفوض جماعياً" }),
           });
         }
-        if (!r.ok) throw new Error(String(r.status));
+        // 93-C6 / F-07 (A5 S-3): session expired mid-loop — stop the
+        // money loop; the global handler has toasted + redirected.
+        if (isAdminUnauthorized(r, url)) break;
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+          failures.push({
+            id,
+            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+          });
+          continue;
+        }
         successCount++;
       } catch (e) {
-        console.error(`Failed to ${action} topup ${id}`, e);
+        failures.push({
+          id,
+          reason: e instanceof Error ? e.message : "خطأ غير معروف",
+        });
       }
     }
 
@@ -550,17 +615,22 @@ export default function AdminTopupsPage() {
     setBulkAction(null);
     setIsBulkProcessing(false);
     invalidate();
-    if (successCount < ids.length) {
+    if (failures.length > 0) {
       toast({
-        title: "خطأ",
-        description: `فشل تنفيذ العملية على ${ids.length - successCount} من ${ids.length} طلب`,
+        title:
+          successCount > 0
+            ? `${action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي"} — ${successCount} من ${ids.length}`
+            : "خطأ",
+        description: `فشلت ${failures.length} من ${ids.length} — ${failures
+          .map((f) => `#${f.id}: ${f.reason}`)
+          .join("، ")}`,
         variant: "destructive",
       });
     }
     // Only announce success when at least one item actually succeeded —
     // the unconditional toast used to show "✓ تمت الموافقة 0/N" right
     // after the failure toast on a total failure.
-    if (successCount > 0) {
+    if (successCount > 0 && failures.length === 0) {
       toast({
         title: action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي",
         description: `${successCount}/${ids.length} طلب تمت معالجته`,
@@ -590,12 +660,23 @@ export default function AdminTopupsPage() {
     const failures: Array<{ id: number; reason: string }> = [];
     for (const [index, t] of pending.entries()) {
       try {
-        const r = await fetch(`/api/admin/topups/${t.id}/approve`, {
+        const url = `/api/admin/topups/${t.id}/approve`;
+        const r = await fetch(url, {
           method: "POST",
           // Same per-iteration key generation as handleBulkAction above.
           headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
           body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
         });
+        // 93-C6 / F-07 (A5 S-3): session expired mid-loop — abort the
+        // money loop (the global handler has toasted + redirected);
+        // nothing further is submitted or summarized.
+        if (isAdminUnauthorized(r, url)) {
+          setBulkAction(null);
+          setIsApproveAllBusy(false);
+          setApproveAllProgress(null);
+          setSelectedIds(new Set());
+          return;
+        }
         if (!r.ok) {
           const body = (await r.json().catch(() => null)) as {
             error?: string;
@@ -791,11 +872,50 @@ export default function AdminTopupsPage() {
         </div>
 
         {/* List */}
+        {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered queue
+            failed — keep the stale cards, surface the failure inline. */}
+        {isError && allTopups.length > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{getErrorMessage(error)}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <TopupCardSkeleton key={i} />
             ))}
+          </div>
+        ) : isError && allTopups.length === 0 ? (
+          /* 93-C6 / F-07 (A5 S-2): a failed load is NOT an empty money
+             queue — an outage/expired session previously rendered "لا
+             توجد طلبات معلقة" and the operator believed the queue was
+             clear (the worst false-empty in the panel). */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل طلبات الشحن</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <Button
+              onClick={() => refetch()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : topups.length === 0 ? (
           <EmptyState
@@ -940,6 +1060,9 @@ export default function AdminTopupsPage() {
           </div>
         )}
       </div>
+      {/* 93-C6 / F-07: the single-approve confirmation dialog mount
+          (useConfirm idiom — styled AlertDialog, ESC/rtl-correct). */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

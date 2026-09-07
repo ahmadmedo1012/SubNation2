@@ -5,7 +5,9 @@ import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSk
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
@@ -21,6 +23,8 @@ import {
   Calendar,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Download,
   RefreshCw,
@@ -30,6 +34,7 @@ import {
   Tag,
   Ticket,
   TrendingUp,
+  WifiOff,
   X,
   Zap,
 } from "lucide-react";
@@ -65,6 +70,16 @@ const DATE_RANGES = [
   { label: "7 أيام", days: 7 },
   { label: "30 يوم", days: 30 },
 ];
+
+/** 93-C6 / F-07 (A5 O-1, round-93): server-side page size for the
+ *  orders list. The backend (routes/admin/orders.ts) clamps limit to
+ *  [1, 200] (default 100) and supports `page`; the frontend previously
+ *  never sent either — every load silently capped at the newest 100
+ *  orders while the header labeled it "طلب إجمالاً" (a false total:
+ *  older orders were unreachable, revenue/coupon stats described only
+ *  the loaded slice). 100 keeps payload weight unchanged while the
+ *  التالي/السابق controls below make history reachable. */
+const ORDERS_PAGE_SIZE = 100;
 
 // Arabic labels for the RefundService failure codes the 207 partial
 // body carries (backend/src/services/refund.service.ts RefundErrorCode).
@@ -115,31 +130,46 @@ export default function AdminOrdersPage() {
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  // 93-C6 / F-07 (A5 O-1): 1-based page number sent to the backend
+  // (`page` param) so order history beyond the newest 100 rows is
+  // reachable from the UI.
+  const [page, setPage] = useState(1);
   // B5-05 (round-92 audit): the raw window.confirm for the destructive
   // bulk actions (refund!) is replaced by the shared styled AlertDialog
   // hook used by admins.tsx / promotions.tsx — same message text.
   const { confirm, ConfirmDialog } = useConfirm();
 
+  const listParams = { page, limit: ORDERS_PAGE_SIZE };
   const {
     data: allOrdersRaw = [],
     isLoading,
+    // 93-C6 / F-07 (A5 S-2/O-1, round-93): `isError`/`error` were never
+    // destructured — a failed load (401/500/network) left data=[] and
+    // the page rendered the "لا توجد طلبات" empty state, i.e. a
+    // support queue that LOOKED empty during an outage.
+    isError,
+    error,
     refetch,
-  } = useListAdminOrders(
-    {},
-    {
-      query: {
-        queryKey: getListAdminOrdersQueryKey({}),
-        enabled: !!adminToken,
-        // Round-4 (perf P1-3): the admin-room socket listener invalidates
-        // orders on every `admin-stats-update` push — 5-min fallback only.
-        refetchInterval: 300_000,
-        refetchIntervalInBackground: false,
-      },
-      request: { headers },
+  } = useListAdminOrders(listParams, {
+    query: {
+      queryKey: getListAdminOrdersQueryKey(listParams),
+      enabled: !!adminToken,
+      // Round-4 (perf P1-3): the admin-room socket listener invalidates
+      // orders on every `admin-stats-update` push — 5-min fallback only.
+      refetchInterval: 300_000,
+      refetchIntervalInBackground: false,
     },
-  );
+    request: { headers },
+  });
 
   const allOrders = allOrdersRaw as AdminOrderRow[];
+
+  // 93-C6 / F-07 (A5 O-1): a full page means a next page MIGHT exist
+  // (backend returns a plain array, no total meta); the first
+  // short/empty page is the only place the total is provably known.
+  const hasNextPage = allOrders.length === ORDERS_PAGE_SIZE;
+  const knownTotal = page === 1 && allOrders.length < ORDERS_PAGE_SIZE;
+  const loadErrorMessage = isError ? getErrorMessage(error) : null;
 
   // B5-02 (round-92 audit): the bulk-status endpoint (including bulk
   // refund — a money action) used to complete SILENTLY on success: the
@@ -153,8 +183,13 @@ export default function AdminOrdersPage() {
   const applyBulkStatus = async (status: string) => {
     if (selectedIds.size === 0) return;
     const isRefund = status === "refunded";
+    // 93-C6 / F-07 (A5 O-3): the refund confirm now shows the TOTAL
+    // LYD to be returned (computable from the selected rows), not just
+    // a count — the money amount is the number an operator verifies.
+    const selectedRows = allOrders.filter((o) => selectedIds.has(o.id));
+    const totalRefund = selectedRows.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
     const confirmMessage = isRefund
-      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين.`
+      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين (إجمالي ${formatCurrency(totalRefund)}).`
       : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
     const confirmed = await confirm({
       title: isRefund ? "استرجاع جماعي للطلبات" : "تغيير الحالة الجماعي",
@@ -179,7 +214,22 @@ export default function AdminOrdersPage() {
         headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
-      if (!r.ok) throw new Error(String(r.status));
+      // 93-C6 / F-07 (A5 S-3): a 401 mid-work is a session expiry, not
+      // a retryable failure — the global handler toasts + redirects;
+      // no misleading "حاول مرة أخرى" toast on top.
+      if (isAdminUnauthorized(r, "/api/admin/orders/bulk-status")) return;
+      if (!r.ok) {
+        // 93-C6 / F-07 (A5 O-2): the failure body carries the backend
+        // code (409 CONCURRENCY_ERROR / 403 RBAC…) — parse it instead
+        // of `throw String(r.status)` so the catch can surface the
+        // Arabic reason instead of "حاول مرة أخرى" for a conflict the
+        // operator cannot retry away.
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل تنفيذ العملية (HTTP ${r.status})`);
+      }
       // 207 (Multi-Status) — Response.ok is true for it, so the partial
       // body must be parsed explicitly, never swallowed.
       const body = (await r.json().catch(() => null)) as {
@@ -217,11 +267,15 @@ export default function AdminOrdersPage() {
       }
       setSelectedIds(new Set());
       refetch();
-      qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({}) });
-    } catch {
+      // 93-C6 / F-07: invalidate the BASE key (no params) so every
+      // cached page + the dashboard's recent-orders query refresh,
+      // not just the current page's exact key.
+      qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey() });
+    } catch (err) {
       toast({
         title: "خطأ",
-        description: "فشل تنفيذ العملية، حاول مرة أخرى",
+        description:
+          err instanceof Error && err.message ? err.message : "فشل تنفيذ العملية، حاول مرة أخرى",
         variant: "destructive",
       });
     } finally {
@@ -373,7 +427,15 @@ export default function AdminOrdersPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">الطلبات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{allOrders.length} طلب إجمالاً</span>
+              {/* 93-C6 / F-07 (A5 O-1): honest count. "إجمالاً" is only
+                  true when the full result set fits this one page; a
+                  capped list is labeled with its page instead of
+                  masquerading as the grand total. */}
+              <span>
+                {knownTotal
+                  ? `${allOrders.length} طلب إجمالاً`
+                  : `${allOrders.length} طلب · صفحة ${page} (الأحدث أولاً)`}
+              </span>
               {todayCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
@@ -405,7 +467,11 @@ export default function AdminOrdersPage() {
               {search && (
                 <button
                   onClick={() => setSearch("")}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="مسح البحث"
+                  /* 93-C6 / F-07 (A5 S-6): bare w-3 icon ≈ 12px target —
+                     p-2 lifts the tappable area to ~28px (the audit's
+                     CopyButton recommendation). */
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -559,6 +625,19 @@ export default function AdminOrdersPage() {
                     لم يُستخدم أي كوبون بعد
                   </p>
                 )}
+
+                {/* 93-C6 / F-07 (A5 O-1): these aggregates are computed
+                    from the LOADED page (server paged the list); when the
+                    store exceeds one page, say so instead of letting
+                    "إجمالي الإيرادات" silently describe the newest 100
+                    orders. The dashboard KPI reads /admin/stats — the
+                    server-side truth. */}
+                {!knownTotal && (
+                  <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-1">
+                    الإحصاءات تعكس الطلبات المعروضة (أحدث {ORDERS_PAGE_SIZE} · صفحة {page}) —
+                    الإجماليات الكاملة في لوحة التحكم
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -693,9 +772,51 @@ export default function AdminOrdersPage() {
           <span className="text-xs text-muted-foreground mr-auto">{filtered.length} نتيجة</span>
         </div>
 
+        {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered list
+            failed — keep the stale rows, surface the failure inline
+            (referrals.tsx banner idiom) instead of pretending nothing
+            happened. */}
+        {isError && allOrders.length > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{loadErrorMessage ?? "تعذّر تحديث قائمة الطلبات"}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         {isLoading ? (
           <TableSkeleton />
+        ) : isError && allOrders.length === 0 ? (
+          /* 93-C6 / F-07 (A5 S-2): a failed load is NOT an empty store.
+             The referrals.tsx error-card idiom — an outage/expired
+             session previously masqueraded as "لا توجد طلبات" and the
+             header told the operator the support queue was empty. */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+            </p>
+            <Button
+              onClick={() => refetch()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={ShoppingBag}
@@ -986,6 +1107,44 @@ export default function AdminOrdersPage() {
                 );
               })}
             </div>
+
+            {/* 93-C6 / F-07 (A5 O-1): server-side pagination controls.
+                The backend supports `page` (1-based, offset-paged) but
+                the UI never sent it — anything past the newest 100
+                orders was unreachable. Chevrons follow the RTL rule
+                (رجوع/السابق points RIGHT, التالي points LEFT — same
+                convention as the risk-event back-link). */}
+            {(hasNextPage || page > 1) && (
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  disabled={page <= 1 || isLoading}
+                  onClick={() => {
+                    setPage((p) => Math.max(1, p - 1));
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                  السابق
+                </Button>
+                <span className="text-xs text-muted-foreground tabular-nums">صفحة {page}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  disabled={!hasNextPage || isLoading}
+                  onClick={() => {
+                    setPage((p) => p + 1);
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  التالي
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

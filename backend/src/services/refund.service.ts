@@ -96,6 +96,7 @@ export class RefundService {
           orderCode: ordersTable.orderCode,
           deliveredPassword: ordersTable.deliveredPassword,
           deliveredEmail: ordersTable.deliveredEmail,
+          deliveredExtraDetails: ordersTable.deliveredExtraDetails,
         })
         .from(ordersTable)
         .where(eq(ordersTable.id, orderId))
@@ -204,10 +205,30 @@ export class RefundService {
       // the buyer's copy unusable going forward; the inventory row keeps its
       // is_sold/sold_at history for reconciliation. (The account itself must
       // still be rotated upstream — see the ops alert emitted post-commit.)
-      if (order.deliveredPassword !== null || order.deliveredEmail !== null) {
+      //
+      // P0-sim chain (round-93 live simulation, 93-SIM-live-findings):
+      // delivered_extra_details is credential material too — for code-only
+      // inventory, checkout stores the delivered CODE in that column
+      // (admin/products.ts: `extraDetails: code`), and for credential rows
+      // it carries the account's extra secret material. It was NOT nulled
+      // here, so a refunded order kept a live credential sitting in the
+      // orders row (sim-verified STILL-SET after refund). delivered_usage_
+      // terms is deliberately NOT nulled: it is product-catalog text
+      // (products.usage_terms — visible on the storefront before purchase,
+      // never per-unit material); the API boundary (formatOrder) gates it
+      // behind status === "completed" instead.
+      if (
+        order.deliveredPassword !== null ||
+        order.deliveredEmail !== null ||
+        order.deliveredExtraDetails !== null
+      ) {
         await tx
           .update(ordersTable)
-          .set({ deliveredPassword: null, deliveredEmail: null })
+          .set({
+            deliveredPassword: null,
+            deliveredEmail: null,
+            deliveredExtraDetails: null,
+          })
           .where(eq(ordersTable.id, orderId))
           .returning({ id: ordersTable.id });
         revokedLiveCredentials = true;

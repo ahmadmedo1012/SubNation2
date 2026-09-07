@@ -80,6 +80,27 @@ function readReferralFromUrl(): string | undefined {
   return trimmed || undefined;
 }
 
+/**
+ * 93-C5 / F-15 (A4 #3): read + validate the ?redirect= buy-intent target
+ * from the login page's URL. Same-origin internal paths only
+ * (slash-prefixed, no protocol/host, no "//") so it can't be abused as
+ * an open redirect — mirrors login.tsx's readRedirectTarget. The target
+ * must survive the Telegram round-trip, so it is re-appended to the
+ * return_to URL and honored by telegram-callback after sign-in.
+ */
+function readRedirectTargetFromUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const target = new URLSearchParams(window.location.search).get("redirect");
+  if (!target || !target.startsWith("/") || target.startsWith("//")) return undefined;
+  try {
+    const url = new URL(target, window.location.origin);
+    if (url.origin !== window.location.origin) return undefined;
+    return url.pathname + url.search;
+  } catch {
+    return undefined;
+  }
+}
+
 function TelegramIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="#2AABEE" aria-hidden="true">
@@ -112,6 +133,12 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       // to /api/auth/telegram for verification + JWT issuance.
       const returnUrl = new URL("/auth/telegram-callback", origin);
       if (referral) returnUrl.searchParams.set("ref", referral);
+      // 93-C5 / F-15 (A4 #3): carry the guarded destination through the
+      // Telegram round-trip so the callback page can send the user back
+      // to /checkout instead of dropping them on "/" — without this,
+      // ?redirect= worked ONLY on the Google path.
+      const redirect = readRedirectTargetFromUrl();
+      if (redirect) returnUrl.searchParams.set("redirect", redirect);
 
       // Build the official Telegram OAuth URL.
       const authUrl = new URL("https://oauth.telegram.org/auth");
@@ -127,9 +154,7 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       window.location.href = authUrl.toString();
     } catch (err) {
       setLoading(false);
-      onError(
-        err instanceof Error ? err.message : "تعذّر فتح صفحة Telegram، حاول مجدداً",
-      );
+      onError(err instanceof Error ? err.message : "تعذّر فتح صفحة Telegram، حاول مجدداً");
     }
   };
 

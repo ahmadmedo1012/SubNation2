@@ -5,6 +5,13 @@ import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+// 93-C7 / C-UX2 (A12 B9): product inactive/out-of-stock pills migrate
+// from a square rounded/raw-orange tuple to the canonical StatusBadge
+// (neutral / low-stock tones on the --status-* tokens).
+import { StatusBadge } from "@/components/ui/status-badge";
+// 93-C7 / C-UX3 (A12 §1.3 + §11.2): the bulk-archive window.confirm is
+// replaced by the shared styled confirm.
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
@@ -138,12 +145,14 @@ function InlineStockEdit({
       <button
         onClick={save}
         disabled={saving}
+        aria-label="حفظ المخزون"
         className="p-0.5 rounded text-emerald-400 hover:bg-emerald-400/10 transition-colors"
       >
         <CheckCircle className="w-3.5 h-3.5" />
       </button>
       <button
         onClick={onDone}
+        aria-label="إلغاء تعديل المخزون"
         className="p-0.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
       >
         <X className="w-3.5 h-3.5" />
@@ -171,6 +180,9 @@ export default function AdminProductsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingStockId, setEditingStockId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  // 93-C7 / C-UX3 (A12 F-04): styled confirm for the destructive bulk
+  // archive (window.confirm broke theme/RTL and named no count context).
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const headers = useAdminHeaders();
 
@@ -336,7 +348,15 @@ export default function AdminProductsPage() {
 
   const bulkDelete = async () => {
     if (!selectedIds.size) return;
-    if (!window.confirm(`تأكيد أرشفة ${selectedIds.size} منتج؟`)) return;
+    // 93-C7 / C-UX3: shared styled confirm — native window.confirm left
+    // the operator with English browser chrome and no count context.
+    const confirmed = await confirm({
+      title: "أرشفة المنتجات المحددة؟",
+      description: `سيتم أرشفة ${selectedIds.size} منتج — تُخفى من المتجر وتبقى بياناتها ومبيعاتها.`,
+      confirmLabel: "أرشفة",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setBulkProcessing(true);
     let successCount = 0;
     let failedCount = 0;
@@ -409,9 +429,11 @@ export default function AdminProductsPage() {
               {lowStockCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                  {/* 93-C7 / C-UX5 (A11 §1 «{n} نفد مخزونه»): the count
+                      before the verb broke the Arabic construction. */}
                   <span className="flex items-center gap-1 text-orange-400 font-bold">
                     <AlertTriangle className="w-3 h-3" />
-                    {lowStockCount} نفد مخزونه
+                    نفد مخزون {lowStockCount} منتج
                   </span>
                 </>
               )}
@@ -465,7 +487,7 @@ export default function AdminProductsPage() {
                 onClick={bulkDelete}
                 disabled={bulkProcessing}
               >
-                <Archive className="w-3 h-3" /> {bulkProcessing ? "جارٍ..." : "أرشفة"}
+                <Archive className="w-3 h-3" /> {bulkProcessing ? "جارٍ…" : "أرشفة"}
               </Button>
               <Button
                 size="sm"
@@ -500,6 +522,7 @@ export default function AdminProductsPage() {
               </div>
               <button
                 onClick={cancelForm}
+                aria-label="إغلاق النموذج"
                 className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -582,7 +605,7 @@ export default function AdminProductsPage() {
                 <Input
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="وصف مختصر للمنتج..."
+                  placeholder="وصف مختصر للمنتج…"
                 />
               </div>
               <div>
@@ -652,7 +675,7 @@ export default function AdminProductsPage() {
                 <Input
                   value={form.usage_terms}
                   onChange={(e) => setForm((f) => ({ ...f, usage_terms: e.target.value }))}
-                  placeholder="ملاحظات مهمة تظهر بعد الشراء..."
+                  placeholder="ملاحظات مهمة تظهر بعد الشراء…"
                 />
               </div>
               <div className="md:col-span-2 flex items-center gap-3 py-1">
@@ -712,7 +735,7 @@ export default function AdminProductsPage() {
           <div className="relative">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="بحث في المنتجات..."
+              placeholder="بحث في المنتجات…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pr-9 h-9 w-52 text-sm"
@@ -829,15 +852,17 @@ export default function AdminProductsPage() {
                         </div>
                       </div>
                       <div className="flex flex-col gap-1 items-end shrink-0">
+                        {/* 93-C7 / C-UX2 (A12 B9): canonical pills (were a
+                            square rounded + raw orange tuple). */}
                         {!product.is_active && (
-                          <span className="text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                          <StatusBadge variant="neutral" size="xs">
                             غير نشط
-                          </span>
+                          </StatusBadge>
                         )}
                         {product.stock_count === 0 && product.is_active && (
-                          <span className="text-[9px] font-bold bg-orange-500/15 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded">
+                          <StatusBadge variant="low-stock" size="xs">
                             نفد المخزون
-                          </span>
+                          </StatusBadge>
                         )}
                       </div>
                     </div>
@@ -927,6 +952,7 @@ export default function AdminProductsPage() {
                             variant="outline"
                             className="px-2 h-8 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 active:scale-90"
                             onClick={() => deleteMutation.mutate({ id: product.id })}
+                            aria-label={`تأكيد أرشفة ${product.name}`}
                           >
                             <Archive className="w-3 h-3" />
                           </Button>
@@ -935,6 +961,7 @@ export default function AdminProductsPage() {
                             variant="outline"
                             className="px-2 h-8 text-xs"
                             onClick={() => setDeleteConfirm(null)}
+                            aria-label="إلغاء الأرشفة"
                           >
                             <X className="w-3 h-3" />
                           </Button>
@@ -977,6 +1004,7 @@ export default function AdminProductsPage() {
           }}
         />
       )}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

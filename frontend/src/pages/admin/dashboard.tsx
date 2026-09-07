@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
@@ -19,11 +20,13 @@ import {
   ListOrdered,
   Package,
   Plus,
+  RefreshCw,
   ShoppingBag,
   TrendingDown,
   TrendingUp,
   Users,
   Wallet,
+  WifiOff,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -204,6 +207,10 @@ export default function AdminDashboardPage() {
   const [chartData, setChartData] = useState<ChartDay[]>([]);
   const [chartDays, setChartDays] = useState(7);
   const [chartLoading, setChartLoading] = useState(false);
+  // 93-C6 / F-07 (A5 DA-1): the chart fetch failure was swallowed
+  // (`.catch(() => {})`) — the whole charts section silently vanished
+  // with zero signal while the page around it looked healthy.
+  const [chartError, setChartError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const headers = useAdminHeaders();
@@ -243,10 +250,25 @@ export default function AdminDashboardPage() {
   const fetchChart = (days = chartDays) => {
     if (!adminToken) return;
     setChartLoading(true);
-    fetch(`/api/admin/chart-data?days=${days}`, { headers })
-      .then((r) => r.json())
-      .then((d) => setChartData(Array.isArray(d) ? d : []))
-      .catch(() => {})
+    const url = `/api/admin/chart-data?days=${days}`;
+    fetch(url, { headers })
+      .then(async (r) => {
+        // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
+        // + redirect); not a chart error banner.
+        if (isAdminUnauthorized(r, url)) return null;
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return (await r.json()) as unknown;
+      })
+      .then((d) => {
+        if (d === null) return; // session-expiry path — redirect in flight
+        setChartData(Array.isArray(d) ? d : []);
+        setChartError(null);
+      })
+      .catch(() => {
+        // 93-C6 / F-07 (A5 DA-1): surface the failure with a retry
+        // instead of silently dropping the section.
+        setChartError("تعذّر تحميل بيانات الرسوم البيانية — تحقّق من الشبكة ثم أعد المحاولة");
+      })
       .finally(() => setChartLoading(false));
   };
 
@@ -471,7 +493,26 @@ export default function AdminDashboardPage() {
 
         {/* Charts + Recent Orders row */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-          {/* Charts */}
+          {/* Charts — 93-C6 / F-07 (A5 DA-1): an explicit error banner
+              with retry replaces the silent vanishing of the section
+              when the chart fetch fails. */}
+          {chartError && !chartLoading && (
+            <div
+              role="alert"
+              className="xl:col-span-3 p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+            >
+              <WifiOff className="w-4 h-4 shrink-0" />
+              <span className="min-w-0">{chartError}</span>
+              <button
+                type="button"
+                onClick={() => fetchChart(chartDays)}
+                className="ms-auto flex items-center gap-1 text-xs underline underline-offset-2 hover:opacity-80"
+              >
+                <RefreshCw className="w-3 h-3" />
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
           {(chartData.length > 0 || chartLoading) && (
             <div className="xl:col-span-3 space-y-5 float-in stagger-7">
               {/* Revenue + Orders chart */}

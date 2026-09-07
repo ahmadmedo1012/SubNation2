@@ -6,7 +6,7 @@ import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
-import { categoryLabel, formatCurrency, statusColor, statusLabel } from "@/lib/utils";
+import { categoryLabel, formatCount, formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -76,7 +76,7 @@ const BRANDS: Array<{ latin: string; ar: string }> = [
   { latin: "YouTube", ar: "يوتيوب" },
   { latin: "Canva", ar: "كانفا" },
   { latin: "Adobe", ar: "أدوبي" },
-  { latin: "Office 365", ar: "مايكروسوفت ٣٦٥" },
+  { latin: "Office 365", ar: "مايكروسوفت 365" },
 ];
 
 // Search history localStorage helpers
@@ -242,7 +242,11 @@ export default function HomePage() {
       // Emit ItemList only when products are loaded — an empty list LD
       // is treated by Google as a thin/low-quality structured-data block.
       ...(products.length > 0
-        ? [buildItemListLd(products.slice(0, 50).map((p) => ({ id: p.slug ?? p.id, name: p.name })))]
+        ? [
+            buildItemListLd(
+              products.slice(0, 50).map((p) => ({ id: p.slug ?? p.id, name: p.name })),
+            ),
+          ]
         : []),
     ],
   });
@@ -418,7 +422,7 @@ export default function HomePage() {
                     <strong className="font-bold text-foreground">SubNation</strong> سوق إلكتروني
                     متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة اشتراكات البثّ
                     المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي، واشتراكات
-                    الألعاب مثل بلايستيشن بلاس، وأدوات الإنتاجية مثل أدوبي ومايكروسوفت ٣٦٥ — كلّها
+                    الألعاب مثل بلايستيشن بلاس، وأدوات الإنتاجية مثل أدوبي ومايكروسوفت 365 — كلّها
                     بالدينار الليبي مع تسليم فوري بعد الدفع.
                   </p>
 
@@ -542,7 +546,7 @@ export default function HomePage() {
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input
                 type="search"
-                placeholder="ابحث عن اشتراك..."
+                placeholder="ابحث عن اشتراك…"
                 aria-label="البحث في المنتجات"
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
@@ -647,7 +651,17 @@ export default function HomePage() {
         {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
           <div className="flex items-center justify-between mb-3.5">
             <p className="text-sm text-muted-foreground">
-              <span className="font-bold text-foreground">{products.length}</span> منتج
+              {/* 93-C8 (A11 §3): formatCount carries the Arabic plural
+                  paradigm — «منتجان / منتجات / منتجاً» — instead of a
+                  bare singular after any count. */}
+              <span className="font-bold text-foreground">
+                {formatCount(products.length, {
+                  two: "منتجان",
+                  few: "منتجات",
+                  many: "منتجاً",
+                  other: "منتج",
+                })}
+              </span>
               {category && <span className="text-muted-foreground"> في هذه الفئة</span>}
             </p>
             {activeFilterCount > 0 && (
@@ -764,7 +778,7 @@ export default function HomePage() {
                 icon={Truck}
                 tone="warning"
                 title="تسليم فوري"
-                description="تصلك بيانات الاشتراك فور تأكيد الدفع مباشرة"
+                description="في أغلب الحالات تصلك بيانات الاشتراك فور تأكيد الدفع، وخلال 24 ساعة كحد أقصى"
               />
               <TrustCard
                 icon={ShieldCheck}
@@ -775,8 +789,8 @@ export default function HomePage() {
               <TrustCard
                 icon={Headphones}
                 tone="info"
-                title="دعم 24/7"
-                description="فريقنا متاح دائماً لمساعدتك في أي وقت"
+                title="دعم سريع"
+                description="فريقنا يرد خلال ساعات العمل — عادةً خلال 15 دقيقة إلى ساعة"
               />
             </div>
           </div>

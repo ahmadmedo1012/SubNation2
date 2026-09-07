@@ -1,5 +1,8 @@
+import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -8,11 +11,14 @@ import {
   Loader2,
   Lock,
   Plus,
+  RefreshCw,
   ShieldCheck,
+  WifiOff,
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
 interface AdminAccount {
@@ -33,23 +39,28 @@ interface ScopeOption {
 
 export default function AdminAdminsPage() {
   const { adminToken } = useAuth();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [scopes, setScopes] = useState<ScopeOption[]>([]);
   const [loading, setLoading] = useState(true);
+  // 93-C6 / F-07 (A5 AD-1): the failed load previously toasted and
+  // still fell through to the "لا توجد حسابات مسؤولين بعد." empty
+  // state — an RBAC/500/401 failure masqueraded as "no accounts".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminAccount | null>(null);
   const [creating, setCreating] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<number | null>(null);
 
-  const headers = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${adminToken ?? ""}`,
-    }),
-    [adminToken],
-  );
+  // 93-C6 / F-07 (A5 A-3 drift): the hand-built
+  // `{ "Content-Type", Authorization: Bearer-or-empty }` map is the
+  // exact anti-pattern useAdminHeaders was created to remove (empty
+  // Bearer when logged out; cookie-first reads made it harmless but
+  // inconsistent). The shared hook also mirrors the session state for
+  // the global 401 handler — this page's raw fetches need that.
+  const headers = useAdminHeaders({ json: true });
 
   const reload = async () => {
     try {
@@ -58,16 +69,31 @@ export default function AdminAdminsPage() {
         fetch("/api/admin/admins/scopes", { credentials: "include", headers }),
         fetch("/api/admin/session", { credentials: "include", headers }),
       ]);
-      if (!listRes.ok) throw new Error("فشل في جلب المسؤولين");
+      // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast +
+      // redirect); not a "failed load" card.
+      if (isAdminUnauthorized(listRes, "/api/admin/admins")) return;
+      if (!listRes.ok) {
+        const body = (await listRes.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        // 93-C6 / F-07: parse the envelope — the raw "فشل في جلب
+        // المسؤولين" hid RBAC (صلاحياتك غير كافية) and rate-limit
+        // reasons the backend already sends in Arabic.
+        throw new Error(getErrorMessage(body) || "فشل في جلب المسؤولين");
+      }
       const listJson = (await listRes.json()) as AdminAccount[];
       const scopesJson = scopesRes.ok ? await scopesRes.json() : { scopes: [] };
       const sessionJson = sessionRes.ok ? await sessionRes.json() : null;
       setAdmins(listJson);
       setScopes(scopesJson.scopes ?? []);
       setCurrentAdminId(sessionJson?.id ?? null);
+      setLoadError(null);
     } catch (err) {
+      const message = getErrorMessage(err);
+      setLoadError(message);
       toast({
-        title: err instanceof Error ? err.message : "فشل التحميل",
+        title: message,
         variant: "destructive",
       });
     } finally {
@@ -76,8 +102,16 @@ export default function AdminAdminsPage() {
   };
 
   useEffect(() => {
+    // 93-C6 / F-07 (A5 S-8/AD-1): standard guard — a logged-out visit
+    // bounced to login instead of rendering an error banner.
+    if (!adminToken) {
+      navigate("/admin/login");
+      return;
+    }
     void reload();
-  }, [adminToken]);
+  }, [adminToken, navigate]);
+
+  if (!adminToken) return null;
 
   const handleToggleActive = async (admin: AdminAccount) => {
     const action = admin.is_active ? "disable" : "enable";
@@ -134,7 +168,24 @@ export default function AdminAdminsPage() {
         {loading ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm py-12 justify-center">
             <Loader2 className="w-4 h-4 animate-spin" />
-            جاري التحميل…
+            جارٍ التحميل…
+          </div>
+        ) : loadError ? (
+          /* 93-C6 / F-07 (A5 AD-1): a failed load is NOT "no accounts" —
+             referrals.tsx error-card idiom. */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المسؤولين</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">{loadError}</p>
+            <Button
+              onClick={() => reload()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : admins.length === 0 ? (
           <div className="text-center text-muted-foreground py-12 text-sm">

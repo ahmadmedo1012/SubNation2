@@ -16,11 +16,10 @@ import { cn } from "@/lib/utils";
  *   • checkout — max-w-5xl two-column shell: payment/coupon stack + 360px
  *     sticky summary aside (mirrors pages/checkout.tsx exactly).
  *
- * NOTE (B4 P1-5 / B6-P1-5): the "checkout" shape is implemented and
- * exported but App.tsx's ROUTE_SHAPES still maps /checkout to "detail"
- * (the widest generic shell). Wiring `[/^\/checkout/, "checkout"]` in
- * App.tsx is a one-line follow-up for the App.tsx owner — this shape
- * exists so that flip is a pure route-map change with zero new code.
+ * 93-C7 / C-UX1 (A12 F-09, doc-rot removal): the checkout shape IS
+ * wired — App.tsx ROUTE_SHAPES maps /^\/checkout/ → "checkout"
+ * (App.tsx:114, round-92 C7). The stale NOTE that claimed otherwise
+ * was deleted so future agents stop re-fixing a non-issue.
  *
  * All shells use `skeleton-shimmer` so they share the brand-tinted
  * sweep introduced in the theme polish pass.

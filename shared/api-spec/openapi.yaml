@@ -2,10 +2,54 @@ openapi: 3.1.0
 info:
   title: Api
   version: 0.1.0
-  description: SubNation Digital Subscriptions Platform API
+  description: |
+    SubNation Digital Subscriptions Platform API.
+
+    ## Authentication (round-93 / 93-A8 F-1 — contract truth)
+
+    Two session mechanisms, both documented as security schemes and
+    attached per operation family:
+
+    - **User routes** (auth, orders, wallet, cart, coupons/validate,
+      loyalty, referrals, support, notifications): an `auth_token`
+      httpOnly cookie (primary) OR an `Authorization: Bearer <token>`
+      header (fallback).
+    - **Admin routes** (/admin/*, /coupons/admin*, the copilot family):
+      an `admin_token` httpOnly cookie (8h, issued by POST
+      /admin/login) OR its Bearer equivalent. POST /admin/login itself
+      is the credential endpoint and needs no prior session.
+
+    ## CSRF gate (applies to every state-changing request)
+
+    Every POST/PUT/PATCH/DELETE under /api — regardless of cookie or
+    Bearer authentication — must carry an Origin (or Referer) header
+    matching the deployment's allow-list (CSRF_ALLOWED_ORIGINS /
+    APP_ORIGINS / APP_URL); otherwise the request is rejected with
+    403 FORBIDDEN before the route runs. Requests with neither Origin
+    nor Referer are also rejected. Exemptions:
+    /api/auth/firebase/session, /api/auth/firebase/refresh, /api/cwv,
+    /api/webhook/*, and /health. Non-browser clients must therefore
+    send a browser-like Origin header on mutations.
+
+    ## Deployment-conditional behavior
+
+    Idempotency-Key semantics (the 409 replay/reuse conflicts and
+    Idempotent-* response headers) engage only when the deployment
+    provides REDIS_URL; without Redis, dedup relies on the DB-level
+    status guards (93-A8 F-3). /auth/me and /auth/probe send
+    `Cache-Control: private, max-age=30`; catalog routes send
+    `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
 servers:
   - url: /api
     description: Base API path
+# Default security for every documented operation: user session
+# (auth_token cookie OR Bearer). Operations that differ override this
+# at the operation level — public catalog/health/webhook/login routes
+# declare `security: []`, and the admin + copilot families declare
+# adminCookieAuth/adminBearerAuth (round-93 / 93-A8 F-1).
+security:
+  - cookieAuth: []
+    bearerAuth: []
 tags:
   - name: health
     description: Health operations
@@ -38,6 +82,7 @@ paths:
     get:
       operationId: healthCheck
       tags: [health]
+      security: []
       summary: Health check
       responses:
         "200":
@@ -114,6 +159,7 @@ paths:
     get:
       operationId: listProducts
       tags: [products]
+      security: []
       summary: List all active products
       parameters:
         - name: category
@@ -147,6 +193,7 @@ paths:
     get:
       operationId: getProduct
       tags: [products]
+      security: []
       summary: Get product by ID
       parameters:
         - name: id
@@ -172,6 +219,7 @@ paths:
     get:
       operationId: getProductRecommendations
       tags: [products]
+      security: []
       summary: Get recommended products related to a product
       parameters:
         - name: id
@@ -205,6 +253,7 @@ paths:
     get:
       operationId: getCatalogStats
       tags: [products]
+      security: []
       summary: Get catalog summary stats
       responses:
         "200":
@@ -218,6 +267,7 @@ paths:
     get:
       operationId: getFlashSale
       tags: [products]
+      security: []
       summary: Get active flash sale
       responses:
         "200":
@@ -232,6 +282,7 @@ paths:
     get:
       operationId: getProductBySlug
       tags: [products]
+      security: []
       summary: Product detail by slug (SEO route + crawler hits)
       parameters:
         - name: slug
@@ -714,6 +765,9 @@ paths:
     get:
       operationId: listAdminCoupons
       tags: [coupons]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: List all coupons (requireAdmin + finance scope)
       description: Newest first; includes inactive/soft-deactivated rows.
       responses:
@@ -740,6 +794,9 @@ paths:
     post:
       operationId: createCoupon
       tags: [coupons]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Create a coupon (requireAdmin + finance scope)
       description: |
         zod-validated (CreateCouponBody in routes/coupons.ts). `code` is
@@ -787,6 +844,9 @@ paths:
     patch:
       operationId: updateCoupon
       tags: [coupons]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Update coupon mutable fields (requireAdmin + finance scope)
       description: Strict zod body — unknown keys are a 400.
       parameters:
@@ -835,6 +895,9 @@ paths:
     delete:
       operationId: deleteCoupon
       tags: [coupons]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Soft-deactivate a coupon (requireAdmin + finance scope)
       description: Sets is_active=false — the row is kept for audit history.
       parameters:
@@ -1109,6 +1172,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            Reply rate limit — 30 replies/hour per user on this ticket
+            family (ticketReplyLimiter, body code RATE_LIMITED;
+            93-A8 F-13: implemented since round-92, previously
+            undocumented here).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Notifications ─────────────────────────────────────────────────────────
   /notifications:
@@ -1193,6 +1266,9 @@ paths:
     get:
       operationId: getAdminStats
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Get platform stats
       responses:
         "200":
@@ -1212,6 +1288,9 @@ paths:
     get:
       operationId: listAdminOrders
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: List all orders (requireAdmin + orders scope)
       parameters:
         - name: status
@@ -1262,6 +1341,9 @@ paths:
     patch:
       operationId: bulkUpdateOrderStatus
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Bulk-update order statuses (requireAdmin + orders scope; mass refunds move wallet money)
       description: |
         status="refunded" processes each id through RefundService.refundOrder
@@ -1344,6 +1426,9 @@ paths:
     get:
       operationId: listAdminTopups
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: List all top-up requests (requireAdmin + finance scope)
       parameters:
         - name: status
@@ -1376,6 +1461,9 @@ paths:
     post:
       operationId: approveTopup
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Approve a top-up request (requireAdmin + finance scope — moves wallet money)
       description: |
         Executes TopupService.approve inside a transaction: status guard
@@ -1481,6 +1569,9 @@ paths:
     post:
       operationId: rejectTopup
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Reject a top-up request (requireAdmin + finance scope)
       description: |
         Executes TopupService.reject with the same status-guard pattern
@@ -1574,6 +1665,9 @@ paths:
     get:
       operationId: listAdminFlashSales
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: List flash sales — active + historical (requireAdmin + inventory scope)
       description: |
         ≤100 rows, newest first. `is_currently_active` is derived
@@ -1606,6 +1700,9 @@ paths:
     post:
       operationId: createFlashSale
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Create a flash sale (activates immediately; requireAdmin + inventory scope)
       description: |
         One ACTIVE sale at a time (DB partial unique index). 400 bodies
@@ -1656,6 +1753,9 @@ paths:
     patch:
       operationId: updateFlashSale
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Update a flash sale (requireAdmin + inventory scope)
       description: |
         At least one field required. Activating a sale while another is
@@ -1712,6 +1812,9 @@ paths:
     delete:
       operationId: deleteFlashSale
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Soft-deactivate a flash sale (requireAdmin + inventory scope)
       description: |
         Sets is_active=false and returns the row — the row is kept for
@@ -1759,6 +1862,9 @@ paths:
     post:
       operationId: creditReferral
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Credit the referrer +50 loyalty points for a referral event (requireAdmin + users scope)
       description: |
         Status-guarded in a transaction (WHERE status='pending') — a
@@ -1837,6 +1943,9 @@ paths:
     get:
       operationId: listAdminProducts
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: List all products, including inactive (requireAdmin + inventory scope)
       parameters:
         - name: search
@@ -1871,6 +1980,9 @@ paths:
     post:
       operationId: createProduct
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Create a new product (requireAdmin + inventory scope)
       requestBody:
         required: true
@@ -1908,6 +2020,9 @@ paths:
     patch:
       operationId: updateProduct
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Update a product (requireAdmin + inventory scope)
       parameters:
         - name: id
@@ -1955,6 +2070,9 @@ paths:
     delete:
       operationId: deleteProduct
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Archive/delete a product (requireAdmin + inventory scope)
       parameters:
         - name: id
@@ -1998,16 +2116,35 @@ paths:
     get:
       operationId: listAdminUsers
       tags: [admin]
-      summary: List all users (requireAdmin + users scope)
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: List users (requireAdmin + users scope; paginated)
       parameters:
         - name: search
           in: query
+          description: Phone substring filter (LIKE %search%).
           schema:
             type: ["string", "null"]
         - name: page
           in: query
+          description: |
+            1-based page number (offset = (page-1)*limit).
+            Round-93 (A8 F-2): this parameter was documented but never
+            implemented until this round — every request used to return
+            the identical first 100 rows.
           schema:
             type: ["integer", "null"]
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Page size, clamped to 1..200 (default 100).
+          schema:
+            type: ["integer", "null"]
+            minimum: 1
+            maximum: 200
+            default: 100
       responses:
         "200":
           description: All users
@@ -2033,6 +2170,9 @@ paths:
     patch:
       operationId: updateAdminUser
       tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
       description: |
         THE admin money-edit route. Wallet mutations
@@ -2126,12 +2266,13 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: |
-            Wallet balance changed concurrently (optimistic-lock
-            CONCURRENCY_ERROR — retry the read-then-edit), or an
-            idempotency-key conflict (same key re-used with a different
-            body / same key still in flight — those bodies carry
-            success:false and a legacy `message` alias alongside
-            `error`).
+            Wallet balance (or loyalty fields) changed concurrently —
+            optimistic-lock race; the body code is CONFLICT (round-93
+            A8 F-7: previously mislabeled INVALID_DATA) — retry the
+            read-then-edit. Idempotency-key conflicts (same key re-used
+            with a different body / same key still in flight — those
+            bodies carry success:false and a legacy `message` alias
+            alongside `error`).
           content:
             application/json:
               schema:
@@ -2143,6 +2284,7 @@ paths:
     post:
       operationId: adminLogin
       tags: [admin]
+      security: []
       summary: Admin login
       description: |
         Password login with an exponential-backoff lockout: repeated
@@ -2196,6 +2338,9 @@ paths:
     post:
       operationId: copilotAsk
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Read-only natural-language query (Phase 1 — no writes)
       requestBody:
         required: true
@@ -2237,11 +2382,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
-          description: Rate limited
+          description: |
+            Copilot rate limit (30/min, 200/h sliding windows per admin) —
+            body code COPILOT_RATE_LIMITED with retry_after_seconds +
+            window extras (93-A8 F-8).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/CopilotRateLimitResponse"
         "502":
           description: LLM gateway error / secret-leak abort (COPILOT_LLM_ERROR / COPILOT_SECRET_LEAK)
           content:
@@ -2259,6 +2407,9 @@ paths:
     post:
       operationId: copilotDraft
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Draft an action and return a preview (Phase 2+)
       requestBody:
         required: true
@@ -2312,11 +2463,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/CopilotRefusalResponse"
         "429":
-          description: Rate limited
+          description: |
+            Copilot rate limit (30/min, 200/h sliding windows per admin) —
+            body code COPILOT_RATE_LIMITED with retry_after_seconds +
+            window extras (93-A8 F-8).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/CopilotRateLimitResponse"
         "502":
           description: LLM gateway error / secret-leak abort (COPILOT_LLM_ERROR / COPILOT_SECRET_LEAK)
           content:
@@ -2334,6 +2488,9 @@ paths:
     get:
       operationId: copilotGetPreview
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Fetch a pending preview the requesting admin owns
       parameters:
         - name: id
@@ -2371,6 +2528,9 @@ paths:
     post:
       operationId: copilotCancelPreview
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Cancel a pending preview without executing
       parameters:
         - name: id
@@ -2408,6 +2568,9 @@ paths:
     post:
       operationId: copilotConfirm
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Single confirmation; executes low-risk or starts high-risk cooldown
       parameters:
         - name: id
@@ -2469,6 +2632,9 @@ paths:
     post:
       operationId: copilotDoubleConfirm
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Second confirmation for high-risk; executes after 3-second cooldown
       parameters:
         - name: id
@@ -2536,6 +2702,9 @@ paths:
     get:
       operationId: copilotHistory
       tags: [copilot]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
       summary: Browse the requesting admin's copilot action history
       parameters:
         - name: action_class
@@ -2616,6 +2785,7 @@ paths:
     post:
       operationId: telegramWebhook
       tags: [webhook]
+      security: []
       summary: Telegram bot webhook — executes topup approve/reject callback decisions (money-moving)
       description: |
         Telegram's server-to-server callback endpoint. Mounted at
@@ -2683,6 +2853,43 @@ paths:
                 $ref: "#/components/schemas/TelegramWebhookAck"
 
 components:
+  securitySchemes:
+    # Round-93 (93-A8 F-1): the spec previously documented zero security
+    # definitions while the middleware reality is cookie-first with a
+    # Bearer fallback on user routes, and a separate admin cookie (8h)
+    # plus Bearer on admin routes. Both alternatives are expressed per
+    # operation via `security: [{ schemeA: [], schemeB: [] }]` (same
+    # object = OR).
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: |
+        User session — httpOnly cookie set by the auth routes (Google /
+        Telegram / WhatsApp-OTP sign-in). SameSite=None in production so
+        the Vercel-hosted SPA can call the API cross-site. Primary
+        mechanism for browser clients.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        User-session Bearer fallback — `Authorization: Bearer <token>`
+        accepted wherever cookieAuth is (requireUser checks the cookie
+        first, then the header).
+    adminCookieAuth:
+      type: apiKey
+      in: cookie
+      name: admin_token
+      description: |
+        Admin session — separate httpOnly cookie (8h) issued by POST
+        /admin/login (and verify-2fa when TOTP is enabled).
+    adminBearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Admin-session Bearer alternative — the token returned in the
+        POST /admin/login JSON body, accepted wherever adminCookieAuth
+        is (requireAdmin accepts either).
   schemas:
     HealthStatus:
       type: object
@@ -2781,6 +2988,13 @@ components:
         - COPILOT_LLM_UNAVAILABLE
         - COPILOT_OUT_OF_SCOPE
         - COPILOT_INVALID_FLAGS
+        # Round-93 (93-A8 F-8/F-15): two emitted codes that previously
+        # lived outside the whole code contract — the copilot rate
+        # limiter's 429 body and the CSRF gate's fail-closed
+        # misconfiguration branch. The enum stays exhaustive over what
+        # the backend actually emits.
+        - COPILOT_RATE_LIMITED
+        - CSRF_CONFIG
 
     # 409 body returned by the idempotency middleware
     # (backend/src/middlewares/idempotency.ts): the same Idempotency-Key
@@ -2821,6 +3035,30 @@ components:
           type: integer
           description: Max concurrent pending top-ups per user (3).
       required: [error, code, pending_count, limit]
+
+    # 429 body from the copilot rate limiter
+    # (backend/src/lib/copilot/rate-limit.ts — 30/min + 200/h sliding
+    # windows per admin). Round-93 (93-A8 F-8): the emitted
+    # COPILOT_RATE_LIMITED code and these extras were previously
+    # undocumented; the Retry-After response header carries the same
+    # value as retry_after_seconds.
+    CopilotRateLimitResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Arabic human-readable message.
+        code:
+          type: string
+          enum: [COPILOT_RATE_LIMITED]
+        retry_after_seconds:
+          type: integer
+          description: Seconds until the sliding window admits the admin again.
+        window:
+          type: string
+          enum: ["1m", "1h"]
+          description: Which window tripped — per-minute (30) or per-hour (200).
+      required: [error, code, retry_after_seconds, window]
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     RegisterBody:
@@ -2976,6 +3214,14 @@ components:
 
     Order:
       type: object
+      description: |
+        Delivered-credential fields (delivered_email, delivered_password,
+        delivered_extra_details, delivered_usage_terms) are non-null ONLY
+        while status is "completed" (B2-03 round-92 + P0-sim round-93):
+        refund nulls email/password/extra_details in the refund
+        transaction and the API gate nulls every other non-completed
+        state. Encrypted-at-rest fields are decrypted at the boundary;
+        usage terms are catalog text (present for completed orders).
       properties:
         id:
           type: integer
@@ -3057,7 +3303,10 @@ components:
         INVALID_DATA): payment_network is required when payment_method is
         mobile_transfer; sender_account is required for lypay;
         sender_phone, when present with mobile_transfer, must be a valid
-        Libyan phone number.
+        Libyan phone number. payment_reference, when present, is trimmed
+        by the handler and rejected when longer than 100 chars after trim
+        (F-03 round-93: one approved topup per non-blank reference — the
+        duplicate-transfer guard).
       properties:
         amount:
           type: number
@@ -3075,7 +3324,14 @@ components:
           type: ["string", "null"]
         payment_reference:
           type: ["string", "null"]
-          maxLength: 255
+          maxLength: 100
+          description: |
+            Bank transfer receipt / transaction id (optional). Stored
+            trimmed; an approved topup permanently claims a non-blank
+            reference (409 on reuse — the same transfer cannot be
+            credited twice), and approving a referenced topup whose
+            (amount, network, sender) matches another approved one
+            within 24h returns 409 DUPLICATE_PAYMENT_REFERENCE.
       required: [amount]
 
     Topup:

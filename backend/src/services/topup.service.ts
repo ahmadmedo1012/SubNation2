@@ -1,5 +1,5 @@
 import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspace/db";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { POINTS_PER_REFERRAL } from "../lib/loyalty-tiers";
 import { emitToAdmins, emitToUser } from "../lib/socket";
@@ -181,6 +181,63 @@ export class TopupService {
             throw new ServiceError(
               409,
               "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+            );
+          }
+        }
+
+        // F-03 (round-93 A2 §"Duplicate-transfer double-credit", SIM P3):
+        // composite soft-dedup — the exact-reference guards above are blind
+        // when the SAME bank transfer is resubmitted with different/typo'd
+        // references (MAX_PENDING=3 permits three pending submissions of one
+        // transfer, and the operator group receives one approval card per
+        // submission — each ✅ credits the wallet once for a single real
+        // transfer). While approving a topup that carries BOTH a reference
+        // AND a sender phone, reject when an ALREADY-APPROVED sibling from
+        // the same user matches (amount, payment_network, sender_phone)
+        // within 24h with a DIFFERENT reference of its own (same-reference
+        // siblings are the exact check's domain above).
+        //
+        // Deliberately conservative per the round-93 fix plan, in two ways:
+        //   - A2's empty-ref fallback was NOT taken — a ref-less repeat
+        //     topup (same amount + channel within a day) is a legitimate
+        //     daily pattern for some customers, and a false-positive
+        //     rejection on a money route is an operator-visible dead end.
+        //     The composite only engages when the receipt signal (ref) is
+        //     present.
+        //   - The sender_phone dimension must be present on the topup being
+        //     approved: without it, (user, amount, network) alone cannot
+        //     distinguish a duplicate submission from a legitimate repeat
+        //     transfer (pinned as legal by the B2-02 suite — "different
+        //     references both approve"). The mobile_transfer form always
+        //     collects the sender phone, which is exactly the channel the
+        //     A2 exploit runs through.
+        // Sibling ids ride the message so the operator can compare the two
+        // receipts before retrying or rejecting.
+        if (ref.length > 0 && topup.senderPhone) {
+          const compositeConds = [
+            eq(walletTopupsTable.userId, topup.userId),
+            eq(walletTopupsTable.amount, topup.amount),
+            eq(walletTopupsTable.status, "approved"),
+            ne(walletTopupsTable.id, topupId),
+            isNotNull(walletTopupsTable.paymentReference),
+            ne(walletTopupsTable.paymentReference, ref),
+            eq(walletTopupsTable.senderPhone, topup.senderPhone),
+            gte(walletTopupsTable.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          ];
+          if (topup.paymentNetwork) {
+            compositeConds.push(eq(walletTopupsTable.paymentNetwork, topup.paymentNetwork));
+          }
+          const suspiciousSiblings = await tx
+            .select({ id: walletTopupsTable.id })
+            .from(walletTopupsTable)
+            .where(and(...compositeConds))
+            .limit(3);
+          if (suspiciousSiblings.length > 0) {
+            const siblingIds = suspiciousSiblings.map((s) => `#${s.id}`).join("، ");
+            throw new ServiceError(
+              409,
+              `مرجع دفع مكرر (DUPLICATE_PAYMENT_REFERENCE): يوجد طلب شحن معتمد مطابق لنفس المبلغ والشبكة والمُرسل خلال 24 ساعة — تحقق من التحويل قبل إعادة المحاولة (الطلبات: ${siblingIds})`,
+              "DUPLICATE_PAYMENT_REFERENCE",
             );
           }
         }
@@ -418,11 +475,22 @@ export class TopupService {
 // ── Service Error ─────────────────────────────────────────────────────────────
 
 export class ServiceError extends Error {
+  /**
+   * F-03 (round-93 A2): optional machine-readable code riding alongside the
+   * Arabic message. mapServiceErrorToCode still derives the generic envelope
+   * ErrorCode from statusCode at the HTTP layer (409 → CONFLICT — the
+   * retry-hint semantics the frontend maps), so this is purely additive:
+   * tests and future route wiring can key on the specific cause
+   * (DUPLICATE_PAYMENT_REFERENCE) without re-shaping the class.
+   */
+  code?: string;
   constructor(
     public statusCode: number,
     message: string,
+    code?: string,
   ) {
     super(message);
     this.name = "ServiceError";
+    this.code = code;
   }
 }

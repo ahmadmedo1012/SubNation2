@@ -25,7 +25,7 @@ export function CopyButton({ text, label = "نسخ", size = "sm" }: CopyButtonPr
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/18 text-primary text-sm font-bold transition-all active:scale-95 shrink-0"
       >
         {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-        {copied ? "تم!" : label}
+        {copied ? "تم النسخ" : label}
       </button>
     );
   }

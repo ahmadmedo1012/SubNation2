@@ -34,6 +34,10 @@ vi.mock("@workspace/api-client-react", () => ({
   getListAdminTopupsQueryKey: () => ["admin-topups"],
   approveTopup: vi.fn(),
   rejectTopup: vi.fn(),
+  // 93-C6: useAdminHeaders registers the global 401 observer through
+  // this export — the mock must carry the module surface the page
+  // graph imports.
+  setUnauthorizedHandler: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({

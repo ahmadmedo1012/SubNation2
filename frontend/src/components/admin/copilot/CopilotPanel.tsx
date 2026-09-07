@@ -43,6 +43,10 @@ import {
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { getErrorMessage } from "@/lib/errors";
 import { copyToClipboard } from "@/lib/utils";
+// 93-C7 / C-UX2 (A12 B13): the copilot phase pill migrates from raw
+// emerald/amber/blue hues to the canonical StatusBadge tones on the
+// --status-* tokens.
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { CopilotHistoryView } from "./CopilotHistoryView";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -776,11 +780,14 @@ export function CopilotPanel() {
     el.style.height = Math.min(el.scrollHeight, 240) + "px";
   }
 
-  const phaseBadge = flags.phase3_enabled
-    ? { label: "نشط", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" }
+  // 93-C7 / C-UX2 (A12 B13): phase pill rides StatusBadge tones —
+  // نشط (phase3 execute) → success, مع موافقة (phase2) → warning,
+  // قراءة (phase1) → info.
+  const phaseBadge: { label: string; tone: StatusBadgeVariant } = flags.phase3_enabled
+    ? { label: "نشط", tone: "success" }
     : flags.phase2_enabled
-      ? { label: "مع موافقة", color: "bg-amber-500/20 text-amber-400 border-amber-500/40" }
-      : { label: "قراءة", color: "bg-blue-500/20 text-blue-400 border-blue-500/40" };
+      ? { label: "مع موافقة", tone: "warning" }
+      : { label: "قراءة", tone: "info" };
 
   const panelWidth = fullscreen ? "w-full" : "w-[min(36rem,98vw)]";
   const panelHeight = fullscreen ? "h-full" : "h-full";
@@ -884,11 +891,9 @@ export function CopilotPanel() {
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-sm flex items-center gap-2">
                     المساعد الذكي
-                    <span
-                      className={`text-[9px] px-1.5 py-0.5 rounded-full border ${phaseBadge.color}`}
-                    >
+                    <StatusBadge variant={phaseBadge.tone} size="xs">
                       {phaseBadge.label}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <div className="text-[10px] text-muted-foreground truncate">{current.title}</div>
                 </div>
@@ -1093,7 +1098,7 @@ function TurnView({
           ))}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
-            {(turn.progress ?? []).length === 0 ? "جاري التفكير…" : "جاري المعالجة…"}
+            {(turn.progress ?? []).length === 0 ? "جارٍ التفكير…" : "جارٍ المعالجة…"}
           </div>
         </div>
       )}
@@ -1240,7 +1245,7 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
     <div
       className={`flex items-start gap-2 text-xs rounded-xl px-3 py-2.5 border shadow-sm ${
         ok
-          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+          ? "bg-status-success/10 border-status-success/30 text-status-success"
           : "bg-destructive/10 border-destructive/30 text-destructive"
       }`}
     >
@@ -1363,7 +1368,7 @@ function PreviewCard({
         )}
         {state === "confirming" && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" /> جاري التحقق…
+            <Loader2 className="w-3 h-3 animate-spin" /> جارٍ التحقق…
           </div>
         )}
         {state === "awaiting_double_confirm" && (
@@ -1387,7 +1392,7 @@ function PreviewCard({
         )}
         {state === "double_confirming" && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" /> جاري التنفيذ…
+            <Loader2 className="w-3 h-3 animate-spin" /> جارٍ التنفيذ…
           </div>
         )}
         {state === "executed" && (

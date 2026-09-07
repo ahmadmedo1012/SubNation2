@@ -10,9 +10,10 @@ interface EmptyStateProps {
   title: string;
   /**
    * Optional second line. Rendered in `text-xs text-muted-foreground`
-   * directly below the title.
+   * directly below the title. ReactNode (93-C7 / C-UX6): some pages
+   * embed inline-LTR `<code>` fragments in the hint.
    */
-  description?: string;
+  description?: ReactNode;
   /**
    * Optional CTA below the description. Typically a Link/button to
    * either clear filters or create the first record.
@@ -34,13 +35,7 @@ interface EmptyStateProps {
  * (e.g. admin/alerts has a larger floating icon, admin/promotions
  * uses a flat icon variant).
  */
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-}: EmptyStateProps) {
+export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div
       className={`text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl ${className ?? ""}`}
@@ -49,9 +44,7 @@ export function EmptyState({
         <Icon className="w-5 h-5 opacity-30" />
       </div>
       <p className="font-bold text-sm mb-1">{title}</p>
-      {description && (
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      )}
+      {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );

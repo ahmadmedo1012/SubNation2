@@ -34,14 +34,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function TermsContent() {
   return (
     <div className="space-y-8">
-      <Section title="١. قبول الشروط">
+      {/* 93-C8 (A11 §3/§12): Latin numerals per the site-wide number
+          convention (utils.ts pins en-US digits) — the section numbers
+          were the only Arabic-Indic islands left in the legal copy. */}
+      <Section title="1. قبول الشروط">
         <p>
           باستخدامك لمنصة SubNation، فإنك توافق على الالتزام بهذه الشروط والأحكام. إذا كنت لا توافق
           على أي من هذه الشروط، يُرجى عدم استخدام الخدمة.
         </p>
       </Section>
 
-      <Section title="٢. طبيعة الخدمة">
+      <Section title="2. طبيعة الخدمة">
         <p>
           SubNation هي منصة لبيع الاشتراكات الرقمية في ليبيا. نوفر اشتراكات خدمات مثل Netflix
           وSpotify وPS Plus وغيرها بالدينار الليبي عبر وسائل الدفع المحلية.
@@ -52,13 +55,23 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="٣. حساب المستخدم">
-        <p>أنت مسؤول عن الحفاظ على سرية معلومات حسابك وكلمة المرور الخاصة بك.</p>
+      <Section title="3. حساب المستخدم">
+        {/* 93-C8 (A11 §2 top-20 #6 — legal honesty): SubNation is a
+            passwordless platform (Google / Telegram / WhatsApp OTP —
+            login.tsx states "بدون كلمة مرور"). The old text promised
+            "كلمة المرور الخاصة بك" — a contractual obligation toward
+            something the product does not have. Rewritten to the real
+            duty: safeguard the account data and its linked sign-in
+            methods. */}
+        <p>
+          أنت مسؤول عن الحفاظ على سرية بيانات حسابك وطرق الدخول المرتبطة به، وعن أي استخدام يجري من
+          خلالها.
+        </p>
         <p>يُمنع استخدام المنصة لأغراض غير مشروعة أو مخالفة للقانون الليبي.</p>
         <p>نحتفظ بالحق في تعليق أو إنهاء أي حساب يخالف هذه الشروط.</p>
       </Section>
 
-      <Section title="٤. الأسعار والدفع">
+      <Section title="4. الأسعار والدفع">
         <p>جميع الأسعار بالدينار الليبي (د.ل) وقابلة للتغيير دون إشعار مسبق.</p>
         <p>
           تتم عمليات الشحن عبر تحويل رصيد الهاتف (ليبيانا/مدار) أو تحويل بنكي (LyPay). تُعالَج
@@ -66,7 +79,7 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="٥. التسليم والاسترجاع">
+      <Section title="5. التسليم والاسترجاع">
         <p>
           يتم تسليم بيانات الاشتراك فور التحقق من الدفع. في حال وجود خطأ في البيانات المُسلَّمة،
           يُرجى التواصل مع الدعم خلال 24 ساعة.
@@ -77,14 +90,14 @@ function TermsContent() {
         </p>
       </Section>
 
-      <Section title="٦. المسؤولية">
+      <Section title="6. المسؤولية">
         <p>
           SubNation ليست مسؤولة عن أي انقطاع أو تغيير في خدمات الطرف الثالث (مثل Netflix وSpotify).
           في حال انتهاء خدمة بسبب سياسة المزود، يُبذل أقصى جهد لتعويض المستخدمين المتضررين.
         </p>
       </Section>
 
-      <Section title="٧. التعديلات">
+      <Section title="7. التعديلات">
         <p>
           نحتفظ بحق تعديل هذه الشروط في أي وقت. سيتم إخطار المستخدمين بالتغييرات الجوهرية عبر
           الإشعارات داخل التطبيق.
@@ -92,7 +105,7 @@ function TermsContent() {
       </Section>
 
       <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
-        آخر تحديث: مايو ٢٠٢٦
+        آخر تحديث: مايو 2026
       </p>
     </div>
   );
@@ -101,13 +114,13 @@ function TermsContent() {
 function PrivacyContent() {
   return (
     <div className="space-y-8">
-      <Section title="١. البيانات التي نجمعها">
+      <Section title="1. البيانات التي نجمعها">
         <p>عند التسجيل: رقم الهاتف (مطلوب للتحقق والتواصل).</p>
         <p>عند الشراء: بيانات الطلبات وطرق الدفع المستخدمة.</p>
         <p>تلقائياً: بيانات الاستخدام وسجلات الجلسات لتحسين الخدمة.</p>
       </Section>
 
-      <Section title="٢. كيف نستخدم بياناتك">
+      <Section title="2. كيف نستخدم بياناتك">
         <ul className="space-y-1.5 list-disc list-inside marker:text-primary/50">
           <li>معالجة الطلبات وتسليم المنتجات.</li>
           <li>إرسال إشعارات حول حالة الطلبات والشحن.</li>
@@ -116,28 +129,35 @@ function PrivacyContent() {
         </ul>
       </Section>
 
-      <Section title="٣. مشاركة البيانات">
+      <Section title="3. مشاركة البيانات">
         <p>
           لا نبيع أو نؤجر بياناتك الشخصية لأطراف ثالثة. قد نشارك بيانات محدودة مع مزودي الخدمة
           الضروريين (مثل معالجات الدفع) لأغراض تقنية فقط.
         </p>
       </Section>
 
-      <Section title="٤. أمان البيانات">
+      <Section title="4. أمان البيانات">
+        {/* 93-C8 (A11 §2 top-20 #6 — privacy §4 rewrite): the old text
+            claimed encrypted stored passwords — the platform stores no
+            user passwords at all (passwordless: OTP / Google /
+            Telegram / WhatsApp). State the real guarantees: transport
+            encryption, the provider sign-in model, revocable session
+            tokens. */}
         <p>
-          نستخدم تشفير HTTPS لجميع الاتصالات. كلمات المرور مُشفَّرة ولا يمكن الاطلاع عليها حتى من
-          قِبَل فريق الإدارة.
+          نستخدم تشفير HTTPS لجميع الاتصالات. الدخول إلى المنصة يتم عبر رموز تحقق مؤقتة أو مزودي
+          دخول موثوقين (Google و Telegram و WhatsApp)، ولا نحتفظ بأي كلمات مرور على المنصة. جلسات
+          الدخول محكومة برموز مؤقتة قابلة للإبطال في أي وقت.
         </p>
       </Section>
 
-      <Section title="٥. حقوقك">
+      <Section title="5. حقوقك">
         <p>
           يحق لك في أي وقت: طلب الاطلاع على بياناتك، تصحيحها، أو حذف حسابك كلياً عبر التواصل مع
           الدعم.
         </p>
       </Section>
 
-      <Section title="٦. ملفات تعريف الارتباط">
+      <Section title="6. ملفات تعريف الارتباط">
         <p>
           نستخدم التخزين المحلي (localStorage) فقط لحفظ إعدادات الجلسة والمظهر. لا نستخدم ملفات تتبع
           إعلانية.
@@ -145,7 +165,7 @@ function PrivacyContent() {
       </Section>
 
       <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
-        آخر تحديث: مايو ٢٠٢٦
+        آخر تحديث: مايو 2026
       </p>
     </div>
   );
@@ -181,9 +201,7 @@ export default function TermsPage() {
   // index,follow but priority in the sitemap is low.
   const isPrivacy = tab === "privacy";
   const seoBlock = useSeo({
-    title: isPrivacy
-      ? "سياسة الخصوصية — SubNation"
-      : "الشروط والأحكام — SubNation",
+    title: isPrivacy ? "سياسة الخصوصية — SubNation" : "الشروط والأحكام — SubNation",
     description: isPrivacy
       ? "كيف يجمع SubNation بياناتك ويحميها أثناء استخدامك المتجر وشحن المحفظة وشراء الاشتراكات."
       : "شروط استخدام منصة SubNation: سياسة الشراء، شحن المحفظة، الاشتراكات الرقمية، والاسترداد.",

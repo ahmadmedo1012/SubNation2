@@ -89,7 +89,8 @@ export function FlashSaleBanner() {
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
             <span className="text-primary-text font-black shrink-0">
-              — {flashSale.discount_percent}% خصم
+              {/* 93-C8 (A11 §5): «خصم N%» — the dominant site order. */}— خصم{" "}
+              {flashSale.discount_percent}%
             </span>
             <ArrowLeft className="w-3 h-3 text-primary-text shrink-0 hidden sm:inline" />
           </div>

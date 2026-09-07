@@ -5,6 +5,13 @@ import { getErrorMessage } from "@/lib/errors";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// 93-C7 / C-UX2 (A12 B6): session-status pills migrate from raw
+// emerald/amber/blue/red hues to the canonical StatusBadge on the
+// --status-* tokens.
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+// 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد جلسات بعد"
+// empty state adopts the shared EmptyState card.
+import { EmptyState } from "@/components/admin/EmptyState";
 import { AdminLayout } from "./layout";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
@@ -38,28 +45,18 @@ interface PairCodeResponse {
   code: string;
 }
 
-const STATUS_META: Record<string, { label: string; className: string }> = {
-  ready: { label: "جاهزة", className: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
-  qr_ready: { label: "تنتظر QR", className: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
-  authenticating: {
-    label: "جارِ التحقق",
-    className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  },
-  initializing: {
-    label: "جارِ التشغيل",
-    className: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  },
-  disconnected: { label: "منقطعة", className: "text-red-400 bg-red-400/10 border-red-400/20" },
-  failed: { label: "فشلت", className: "text-red-400 bg-red-400/10 border-red-400/20" },
+const STATUS_META: Record<string, { label: string; tone: StatusBadgeVariant }> = {
+  ready: { label: "جاهزة", tone: "success" },
+  qr_ready: { label: "تنتظر QR", tone: "warning" },
+  authenticating: { label: "جارٍ التحقق", tone: "info" },
+  initializing: { label: "جارٍ التشغيل", tone: "info" },
+  connecting: { label: "جارٍ الاتصال", tone: "warning" },
+  disconnected: { label: "منقطعة", tone: "error" },
+  failed: { label: "فشلت", tone: "error" },
 };
 
 function statusMeta(status: string) {
-  return (
-    STATUS_META[status] ?? {
-      label: status,
-      className: "text-muted-foreground bg-muted/40 border-border/60",
-    }
-  );
+  return STATUS_META[status] ?? { label: status, tone: "neutral" as const };
 }
 
 async function responseError(response: Response): Promise<string> {
@@ -337,7 +334,7 @@ export default function AdminWhatsAppPage() {
               <Loader2 className="animate-spin" />
             </div>
           ) : sessions.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">لا توجد جلسات بعد.</div>
+            <EmptyState icon={Wifi} title="لا توجد جلسات بعد" description="أنشئ جلسة أولى للبدء." />
           ) : (
             <div className="divide-y divide-border">
               {sessions.map((session) => {
@@ -351,11 +348,9 @@ export default function AdminWhatsAppPage() {
                           <span className="font-bold truncate" dir="ltr">
                             {session.name}
                           </span>
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full border ${meta.className}`}
-                          >
+                          <StatusBadge variant={meta.tone} size="sm">
                             {meta.label}
-                          </span>
+                          </StatusBadge>
                         </div>
                         <div
                           className="text-[11px] text-muted-foreground font-mono mt-1 truncate"

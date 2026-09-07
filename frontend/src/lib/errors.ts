@@ -7,30 +7,39 @@ import { ErrorCode } from "@workspace/error-codes";
 export { ErrorCode };
 
 // Arabic error messages for each error code
+// 93-C8 (A11 §10 + A8 F-8/F-15): wording follows A11 — user-facing
+// nouns instead of developer jargon (المورد/العنصر), a next step on
+// UNAUTHORIZED, passwordless-honest INVALID_CREDENTIAL, and the two
+// newly-enumerated codes (COPILOT_RATE_LIMITED, CSRF_CONFIG).
 const errorMessages: Record<ErrorCode, string> = {
   // Validation errors
   [ErrorCode.INVALID_DATA]: "بيانات غير صالحة",
   [ErrorCode.INVALID_PHONE]: "رقم الهاتف غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094",
   [ErrorCode.INVALID_PASSWORD_LENGTH]: "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
   [ErrorCode.INVALID_PASSWORD_WEAK]: "كلمة المرور ضعيفة جداً. يرجى استخدام كلمة مرور أقوى",
-  [ErrorCode.INVALID_OTP]: "كود التحقق غير صحيح أو منتهي الصلاحية",
-  [ErrorCode.INVALID_CREDENTIAL]: "رقم الهاتف أو كلمة المرور غير صحيحة",
+  [ErrorCode.INVALID_OTP]: "رمز التحقق غير صحيح أو منتهي الصلاحية",
+  // A11 §2: the storefront is passwordless (OTP/providers) — this code
+  // reaches users from the admin password path, so the message must
+  // not promise a user password that does not exist.
+  [ErrorCode.INVALID_CREDENTIAL]: "بيانات الدخول غير صحيحة",
 
   // Authentication errors
-  [ErrorCode.UNAUTHORIZED]: "غير مصرح",
+  // A11 §10: bare «غير مصرح» gave the user no next step.
+  [ErrorCode.UNAUTHORIZED]: "غير مصرح — سجّل دخولك مرة أخرى وحاول",
   [ErrorCode.SESSION_EXPIRED]: "جلسة منتهية. يرجى تسجيل الدخول مرة أخرى",
-  [ErrorCode.ACCOUNT_LOCKED]: "الحساب مقفل بسبب محاولات فاشلة. حاول لاحقاً",
+  [ErrorCode.ACCOUNT_LOCKED]: "الحساب مقفل مؤقتاً بسبب محاولات فاشلة. حاول مرة أخرى بعد قليل",
   [ErrorCode.ACCOUNT_NOT_FOUND]: "المستخدم غير موجود",
   [ErrorCode.PHONE_ALREADY_REGISTERED]: "رقم الهاتف مسجل مسبقاً",
 
   // Authorization errors
-  [ErrorCode.FORBIDDEN]: "ليس لديك صلاحية للوصول إلى هذا المورد",
+  // A11 §10: «المورد» is developer jargon — users understand pages.
+  [ErrorCode.FORBIDDEN]: "لا تملك صلاحية الوصول إلى هذه الصفحة",
   [ErrorCode.INSUFFICIENT_PERMISSIONS]: "صلاحياتك غير كافية",
 
   // Resource errors
-  [ErrorCode.NOT_FOUND]: "المورد المطلوب غير موجود",
-  [ErrorCode.ALREADY_EXISTS]: "هذا العنصر موجود بالفعل",
-  [ErrorCode.OUT_OF_STOCK]: "المنتج غير متوفر حالياً. حاول لاحقاً",
+  [ErrorCode.NOT_FOUND]: "الصفحة أو العنصر المطلوب غير موجود",
+  [ErrorCode.ALREADY_EXISTS]: "هذا الحساب أو الطلب موجود بالفعل",
+  [ErrorCode.OUT_OF_STOCK]: "المنتج غير متوفر حالياً. حاول مرة أخرى لاحقاً",
   [ErrorCode.PRODUCT_UNAVAILABLE]: "المنتج غير متاح حالياً",
 
   // Wallet errors
@@ -49,18 +58,19 @@ const errorMessages: Record<ErrorCode, string> = {
 
   // Server errors
   [ErrorCode.INTERNAL_ERROR]: "حدث خطأ في الخادم. حاول مرة أخرى",
-  [ErrorCode.SERVICE_UNAVAILABLE]: "الخدمة غير متاحة حالياً. حاول لاحقاً",
+  [ErrorCode.SERVICE_UNAVAILABLE]: "الخدمة غير متاحة حالياً. حاول مرة أخرى بعد قليل",
 
   // P2 (deep-audit 2026-09-06): catch up with the backend enum
-  [ErrorCode.CONFLICT]: "تعارض في العملية. أعد المحاولة بعد لحظات",
+  [ErrorCode.CONFLICT]: "تعارض في العملية. حاول مرة أخرى بعد لحظات",
   [ErrorCode.INVALID_TOKEN]: "رمز الجلسة غير صالح. سجّل الدخول مرة أخرى",
   [ErrorCode.FEATURE_DISABLED]: "هذه الميزة معطّلة حالياً",
   [ErrorCode.RATE_LIMITED]: "تم تجاوز الحد الأقصى للطلبات. حاول مرة أخرى بعد دقيقة",
   [ErrorCode.COPILOT_INVALID_INPUT]: "طلب غير صالح للمساعد الذكي",
-  [ErrorCode.COPILOT_LLM_ERROR]: "تعذر الوصول إلى المساعد الذكي. حاول مرة أخرى",
+  [ErrorCode.COPILOT_LLM_ERROR]: "تعذّر الوصول إلى المساعد الذكي. حاول مرة أخرى",
   [ErrorCode.COPILOT_NO_ADMIN_SESSION]: "جلسة المسؤول مطلوبة لاستخدام المساعد الذكي",
   [ErrorCode.COPILOT_BAD_METHOD]: "طريقة طلب غير مدعومة",
-  [ErrorCode.IDEMPOTENCY_IN_FLIGHT]: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول بعد قليل",
+  [ErrorCode.IDEMPOTENCY_IN_FLIGHT]:
+    "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل",
   [ErrorCode.IDEMPOTENCY_KEY_REUSE]: "تمت إعادة استخدام معرف العملية مع طلب مختلف",
 
   // Round-92 (B3 F-05): copilot preview/execution family — the enum
@@ -71,15 +81,26 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.COPILOT_PREVIEW_EXPIRED]: "انتهت صلاحية المعاينة",
   [ErrorCode.COPILOT_HANDOFF_REQUIRED]: "هذا الإجراء يتطلب تنفيذاً يدوياً من صفحة الإدارة",
   [ErrorCode.COPILOT_HIGH_RISK_DISABLED]: "تنفيذ الإجراءات عالية الخطورة معطّل حالياً",
-  [ErrorCode.COPILOT_STALE_RECORD]: "تغيّرت حالة المعاينة. أعد المحاولة",
-  [ErrorCode.COPILOT_UNEXPECTED_STATE]: "حالة غير متوقعة للمعاينة. أعد المحاولة",
+  [ErrorCode.COPILOT_STALE_RECORD]: "تغيّرت حالة المعاينة. حاول مرة أخرى",
+  [ErrorCode.COPILOT_UNEXPECTED_STATE]: "حالة غير متوقعة للمعاينة. حاول مرة أخرى",
   [ErrorCode.COPILOT_EXECUTE_FAILED]: "فشل تنفيذ الإجراء. حاول مرة أخرى",
   [ErrorCode.COPILOT_NOT_HIGH_RISK]: "هذا الإجراء لا يتطلب تأكيداً ثانياً",
   [ErrorCode.COPILOT_FIRST_CONFIRM_MISSING]: "التأكيد الأول مطلوب قبل التأكيد الثاني",
-  [ErrorCode.COPILOT_COOLDOWN_NOT_ELAPSED]: "لم تنتهِ مهلة الانتظار بعد. حاول بعد لحظات",
+  [ErrorCode.COPILOT_COOLDOWN_NOT_ELAPSED]: "لم تنتهِ مهلة الانتظار بعد. حاول مرة أخرى بعد لحظات",
   [ErrorCode.COPILOT_LLM_UNAVAILABLE]: "خدمة المساعد الذكي غير متاحة حالياً",
   [ErrorCode.COPILOT_OUT_OF_SCOPE]: "ليست لديك صلاحية لاستخدام هذه الميزة",
   [ErrorCode.COPILOT_INVALID_FLAGS]: "إعدادات مراحل المساعد غير صالحة",
+
+  // Round-93 (93-A8 F-8): copilot rate limiter 429 body — previously
+  // fell through to the raw Arabic string by luck; the map stays
+  // exhaustive over the shared enum.
+  [ErrorCode.COPILOT_RATE_LIMITED]:
+    "تجاوزت الحد الأقصى للأوامر المرسلة للمساعد الذكي. حاول مرة أخرى بعد قليل",
+
+  // Round-93 (93-A8 F-15): CSRF gate fail-closed misconfiguration
+  // branch — ops-facing, surfaces to admins as a hard 403.
+  [ErrorCode.CSRF_CONFIG]:
+    "تعذّر التحقق الأمني من الطلب (خلل في إعدادات الخادم) — يرجى إبلاغ الدعم",
 };
 
 type ErrorLike = {

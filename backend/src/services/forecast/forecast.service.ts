@@ -29,12 +29,7 @@ import { dispatchForecastAlerts } from "./alerts";
 import { loadOrderHistoryForActiveProducts } from "./aggregate";
 import { upsertForecast } from "./forecast-store";
 import { recommendReorderQty } from "./reorder";
-import {
-  createInFlightRun,
-  markFailure,
-  markSuccess,
-  type RunCounts,
-} from "./run-store";
+import { createInFlightRun, markFailure, markSuccess, type RunCounts } from "./run-store";
 import {
   computeAvgDailySales,
   computeDowBlend7d,
@@ -71,12 +66,24 @@ export async function runForecast(): Promise<RunResult> {
     runId = run.id;
 
     const products = await loadOrderHistoryForActiveProducts();
+    const now = new Date();
 
     for (const p of products) {
       try {
         const denseHistory = densifyHistory(p.history, forecastDate, HISTORY_WINDOW_DAYS);
         const longHistory = densifyHistory(p.history, forecastDate, 28);
-        const confidence = deriveConfidence(denseHistory);
+        // A6-P2-2 (round-93): wire the REAL history horizon into the gate.
+        // deriveConfidence used to see only the densified array — always
+        // exactly 14 rows — so `insufficient_data` was unreachable and a
+        // zero-sales product got a fabricated runout of stock×10 days
+        // (avg=0 → floor 0.1). firstOrderAt has been fetched by
+        // aggregate.ts all along; now it decides: never sold, or first
+        // sale younger than 14 days → insufficient_data → nullable
+        // metrics per the schema contract (FR-FORECAST-003).
+        const confidence = deriveConfidence(denseHistory, {
+          firstOrderAt: p.firstOrderAt,
+          asOf: now,
+        });
 
         if (confidence === "insufficient_data") {
           skipped.insufficient_data = (skipped.insufficient_data ?? 0) + 1;

@@ -31,6 +31,10 @@ import { useListAdminOrders } from "@workspace/api-client-react";
 vi.mock("@workspace/api-client-react", () => ({
   useListAdminOrders: vi.fn(),
   getListAdminOrdersQueryKey: () => ["admin-orders"],
+  // 93-C6: useAdminHeaders registers the global 401 observer through
+  // this export — the mock must carry the module surface the page
+  // graph imports.
+  setUnauthorizedHandler: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({

@@ -3,10 +3,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { useCart, type LocalCartItem } from "@/lib/cart";
-import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
-import { Loader2, Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
+import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
 
@@ -52,7 +51,6 @@ export default function CartPage() {
   // r4-1-c org audit (docs/ux-audit-storefront.md:73 documents the
   // remnant as known-dead since rounds ago).
   const { items, isLoaded, updateQuantity, removeItem, clear } = useCart();
-  const [busy, setBusy] = useState(false);
 
   const total = useMemo(() => {
     return +items.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0).toFixed(2);
@@ -73,28 +71,22 @@ export default function CartPage() {
     removeItem(productId);
   }
 
-  async function handleClear() {
-    if (token) {
-      try {
-        setBusy(true);
-        const res = await fetch("/api/cart", { method: "DELETE", credentials: "include" });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          // Backend error envelope is {error, code} — `.message` never
-          // exists, so the old read always fell back to the generic text.
-          throw new Error(getErrorMessage(err) || "فشل في إفراغ السلة");
-        }
-        clear();
-        toast({ title: "تم إفراغ السلة" });
-      } catch (e) {
-        toast({ title: getErrorMessage(e), variant: "destructive" });
-      } finally {
-        setBusy(false);
-      }
-      return;
-    }
+  function handleClear() {
+    // 93-C5 / F-05 (A4 #10): "إفراغ السلة" for logged-in users was gated on
+    // a server DELETE the rendered cart doesn't depend on (the page is
+    // purely local — lib/cart.tsx, the server cart is documented dead
+    // since round-4). Any API hiccup (5xx / transient network / expired
+    // session) left the cart FULL after a destructive toast — on a page
+    // whose data needs no API. Clear locally unconditionally; keep the
+    // server DELETE as a best-effort fire-and-forget.
     clear();
     toast({ title: "تم إفراغ السلة" });
+    if (token) {
+      fetch("/api/cart", { method: "DELETE", credentials: "include" }).catch(() => {
+        // Best-effort only — the UI renders the local cart; the server
+        // copy (when the endpoint is alive) follows along eventually.
+      });
+    }
   }
 
   if (!isLoaded) {
@@ -135,15 +127,10 @@ export default function CartPage() {
             variant="ghost"
             size="sm"
             onClick={handleClear}
-            disabled={busy}
             className="text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
           >
-            {busy ? (
-              <Loader2 className="w-3.5 h-3.5 ml-1.5 animate-spin" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5 ml-1.5" />
-            )}
-            {busy ? "جارٍ الإفراغ..." : "إفراغ السلة"}
+            <Trash2 className="w-3.5 h-3.5 ml-1.5" />
+            إفراغ السلة
           </Button>
         )}
       </div>

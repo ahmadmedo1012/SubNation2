@@ -16,6 +16,10 @@
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+// 93-C7 / C-UX2 (A12 B14): forecast-confidence pills migrate from raw
+// emerald/yellow/orange hues to the canonical StatusBadge on the
+// --status-* tokens (high→success, medium→warning, low→low-stock).
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -60,25 +64,23 @@ interface AtRiskResponse {
 
 interface ProductDetailResponse {
   pipeline_state: PipelineState;
-  forecast: (AtRiskRow & {
-    explanation: {
-      avg_daily_sales: number | null;
-      dow_blend_7d: number | null;
-      days_of_history_available: number;
-      run_completed_at: string | null;
-    };
-  }) | null;
+  forecast:
+    | (AtRiskRow & {
+        explanation: {
+          avg_daily_sales: number | null;
+          dow_blend_7d: number | null;
+          days_of_history_available: number;
+          run_completed_at: string | null;
+        };
+      })
+    | null;
 }
 
-const CONFIDENCE_META: Record<Confidence, { label: string; bg: string; text: string }> = {
-  high: { label: "ثقة عالية", bg: "bg-emerald-500/10", text: "text-emerald-400" },
-  medium: { label: "ثقة متوسطة", bg: "bg-yellow-500/10", text: "text-yellow-400" },
-  low: { label: "ثقة منخفضة", bg: "bg-orange-500/10", text: "text-orange-400" },
-  insufficient_data: {
-    label: "بيانات غير كافية",
-    bg: "bg-muted/30",
-    text: "text-muted-foreground",
-  },
+const CONFIDENCE_META: Record<Confidence, { label: string; tone: StatusBadgeVariant }> = {
+  high: { label: "ثقة عالية", tone: "success" },
+  medium: { label: "ثقة متوسطة", tone: "warning" },
+  low: { label: "ثقة منخفضة", tone: "low-stock" },
+  insufficient_data: { label: "بيانات غير كافية", tone: "neutral" },
 };
 
 function formatDate(iso: string | null): string {
@@ -215,16 +217,17 @@ function RiskRow({ row }: { row: AtRiskRow }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm truncate">{row.product_name}</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded-full ${conf.bg} ${conf.text} shrink-0`}
-            >
+            <StatusBadge variant={conf.tone} size="xs" className="shrink-0">
               {conf.label}
-            </span>
+            </StatusBadge>
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
             <span className="flex items-center gap-1">
               <Package className="w-3 h-3" />
-              المخزون: <span dir="ltr" className="font-mono">{row.current_stock_on_hand}</span>
+              المخزون:{" "}
+              <span dir="ltr" className="font-mono">
+                {row.current_stock_on_hand}
+              </span>
             </span>
             {row.predicted_runout_at && (
               <span>
@@ -234,15 +237,17 @@ function RiskRow({ row }: { row: AtRiskRow }) {
                 </span>{" "}
                 {days != null && (
                   <span className="text-orange-400">
-                    (
-                    <span dir="ltr">{days}</span> يوم)
+                    (<span dir="ltr">{days}</span> يوم)
                   </span>
                 )}
               </span>
             )}
             {row.recommended_reorder_qty != null && row.recommended_reorder_qty > 0 && (
               <span className="text-emerald-400">
-                إعادة الطلب: <span dir="ltr" className="font-mono">+{row.recommended_reorder_qty}</span>
+                إعادة الطلب:{" "}
+                <span dir="ltr" className="font-mono">
+                  +{row.recommended_reorder_qty}
+                </span>
               </span>
             )}
           </div>
@@ -253,9 +258,7 @@ function RiskRow({ row }: { row: AtRiskRow }) {
           <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0" />
         )}
       </button>
-      {open && (
-        <ExplainDrawer detail={detail.data ?? null} loading={detail.isLoading} row={row} />
-      )}
+      {open && <ExplainDrawer detail={detail.data ?? null} loading={detail.isLoading} row={row} />}
     </li>
   );
 }
@@ -278,7 +281,7 @@ function ExplainDrawer({
       </div>
       {loading && (
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin" /> جاري التحميل…
+          <Loader2 className="w-3 h-3 animate-spin" /> جارٍ التحميل…
         </div>
       )}
       {!loading && e && (
@@ -291,10 +294,7 @@ function ExplainDrawer({
             label="معامل اليوم"
             value={e.dow_blend_7d == null ? "—" : e.dow_blend_7d.toFixed(2)}
           />
-          <KV
-            label="أيام تاريخ الطلبات"
-            value={String(e.days_of_history_available)}
-          />
+          <KV label="أيام تاريخ الطلبات" value={String(e.days_of_history_available)} />
           <KV label="مخزون عند آخر تشغيل" value={String(row.current_stock_on_hand)} />
           <KV
             label="متوقع 7 أيام"

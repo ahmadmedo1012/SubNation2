@@ -300,6 +300,9 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="بحث سريع"
       className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -314,7 +317,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="بحث في الطلبات، المستخدمين، المنتجات..."
+            placeholder="بحث في الطلبات، المستخدمين، المنتجات…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
@@ -335,9 +338,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.orders.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                  الطلبات
-                </div>
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">الطلبات</div>
                 {results.orders.map((o) => (
                   <button
                     key={o.id}
@@ -363,7 +364,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.users.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
                   المستخدمون
                 </div>
                 {results.users.map((u) => (
@@ -388,7 +389,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.products.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
                   المنتجات
                 </div>
                 {results.products.map((p) => (
@@ -513,6 +514,17 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // 93-C7 / C-UX3 (A12 H9): ESC closes the mobile nav drawer — it was
+  // the only mobile surface with no keyboard exit (backdrop-click only).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [mobileOpen]);
+
   // Real-time alert toasts. Round-4 (perf P1-5): the SocketInitializer's
   // admin-room listener fires ADMIN_ALERT_NEW_EVENT the moment a row is
   // inserted (jobs/alertLogger emits on insert) — poll() runs immediately
@@ -564,8 +576,8 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     secondsAgo < 10
       ? "الآن"
       : secondsAgo < 60
-        ? `${secondsAgo}ث`
-        : `${Math.round(secondsAgo / 60)}د`;
+        ? `${secondsAgo} ث`
+        : `${Math.round(secondsAgo / 60)} د`;
   const pageTitle = pageTitleFor(location);
   const activeHref = computeActiveHref(location);
   const totalBadges =
@@ -626,7 +638,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             <div key={section.label}>
               {!collapsed && (
                 <div className="px-2 mb-1.5">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                  {/* 93-C7 / C-UX5 (A11 §8): Arabic section labels dropped
+                      `uppercase tracking-widest` — letter-spacing severs
+                      Arabic letter connections; uppercase is a no-op on
+                      Arabic and only added visual noise. */}
+                  <span className="text-[10px] font-bold text-muted-foreground">
                     {section.label}
                   </span>
                 </div>
@@ -692,14 +708,21 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         {sidebarContent}
       </aside>
 
-      {/* Mobile overlay */}
+      {/* Mobile overlay — 93-C7 / C-UX3 (A12 H9): the drawer gains
+          dialog semantics (role/aria-modal/label) + ESC-to-close; full
+          Radix Drawer migration is a documented follow-up (§11.2 rule 6). */}
       {mobileOpen && (
         <>
           <div
             className="md:hidden fixed inset-0 bg-black/65 z-40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="قائمة الإدارة"
+            className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200"
+          >
             {sidebarContent}
           </aside>
         </>
@@ -756,7 +779,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             onClick={toggleTheme}
             className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
             title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
-            aria-label="تبديل الثيم"
+            aria-label={theme === "dark" ? "تبديل المظهر (داكن/فاتح)" : "تبديل المظهر (فاتح/داكن)"}
           >
             {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </button>

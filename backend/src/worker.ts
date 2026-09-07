@@ -15,6 +15,12 @@ import { startHeartbeat } from "./worker/heartbeat";
 // the deploy (Render escalates to SIGKILL regardless).
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
 
+// R1 (round-93 A3): degraded-boot recovery poll. The redis singleton keeps
+// retrying its socket in the background and flips to ready automatically
+// (redis-client.ts "ready" listener) — no restart needed to RE-ATTACH the
+// heartbeat once Redis actually returns.
+const REDIS_RECOVERY_POLL_MS = 30_000;
+
 /**
  * Install the worker's SIGTERM/SIGINT handlers (B7-P1-6).
  *
@@ -94,11 +100,25 @@ async function startWorker() {
     // (redis-client.ts: stay up, degrade loudly, reconnect/restart later).
     // Boot into DEGRADED mode instead: alerting rule evals fail safe
     // (no-Redis → no alerts fired), cron + watchers run normally, and the
-    // heartbeat stays dark until the process restarts post-recovery.
+    // heartbeat stays dark until the poll below notices the singleton
+    // recovered (R1: the client object survives the degraded boot and
+    // auto-reconnects — no restart needed to restore the heartbeat).
     logger.error(
       { category: "monitoring", redis: { mode: "degraded_boot" } },
-      "[worker] Redis unavailable at boot — starting in DEGRADED mode (no heartbeat; alerting/cron/watchers continue). Restart the worker once Redis recovers to restore the heartbeat.",
+      "[worker] Redis unavailable at boot — starting in DEGRADED mode (no heartbeat; alerting/cron/watchers continue). The heartbeat attaches automatically once Redis recovers.",
     );
+    const recoveryPoll = setInterval(() => {
+      const recovered = getRedisClient();
+      if (!recovered) return;
+      clearInterval(recoveryPoll);
+      stopFns.push(startHeartbeat(recovered).stop);
+      logger.warn(
+        { category: "monitoring", redis: { mode: "recovered_after_degraded_boot" } },
+        "[worker] Redis recovered after degraded boot — heartbeat started",
+      );
+    }, REDIS_RECOVERY_POLL_MS);
+    // Don't keep the process alive solely for this poll.
+    recoveryPoll.unref?.();
   }
 
   // Phase 4: alerting evaluator runs in the worker process so a horizontally-
@@ -116,7 +136,10 @@ async function startWorker() {
     // Worker/web parity: whichever process is scheduled runs it.
     startFlashSaleWatcher(),
   ];
-  initCronJobs();
+  // R8 (round-93 A3): capture the cron stop handle so SIGTERM actually
+  // stops the tasks (previously the schedule() results were discarded
+  // everywhere and nothing could stop them).
+  const cronJobs = initCronJobs();
 
   logger.info("Background worker started");
 
@@ -125,6 +148,7 @@ async function startWorker() {
       for (const stop of stopFns) stop();
       alertingService.stop();
       for (const watcher of watchers) watcher.stop();
+      cronJobs.stop();
     },
     drain: async () => {
       try {

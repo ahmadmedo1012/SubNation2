@@ -2,7 +2,7 @@ import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { intParam } from "../../lib/http";
+import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
@@ -13,6 +13,18 @@ const router = Router();
 router.get("/users", requireAdmin, async (req, res) => {
   const { search } = req.query;
 
+  // 93-C8 (A8 F-2): `page` was documented in the OpenAPI contract but
+  // silently ignored — every request returned the identical first 100
+  // rows, so a paginating consumer looped on page 1 forever. Mirrors
+  // admin/orders.ts: clamp limit 1..200 (default 100), page >= 1,
+  // offset-based. A request without params is byte-for-byte the old
+  // behavior (page 1, limit 100), so the admin UI is unaffected.
+  const limit = Math.min(
+    Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
+    200,
+  );
+  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+
   const users =
     search && typeof search === "string"
       ? await db
@@ -20,8 +32,14 @@ router.get("/users", requireAdmin, async (req, res) => {
           .from(usersTable)
           .where(like(usersTable.phone, `%${search}%`))
           .orderBy(desc(usersTable.createdAt))
-          .limit(100)
-      : await db.select().from(usersTable).orderBy(desc(usersTable.createdAt)).limit(100);
+          .limit(limit)
+          .offset((page - 1) * limit)
+      : await db
+          .select()
+          .from(usersTable)
+          .orderBy(desc(usersTable.createdAt))
+          .limit(limit)
+          .offset((page - 1) * limit);
 
   // Completed-order counts scoped to the page's user ids. The previous
   // unfiltered GROUP BY scanned the entire orders table on every dashboard
@@ -94,7 +112,9 @@ router.get("/users", requireAdmin, async (req, res) => {
  *     tightened to required after the admin UI ships the header.
  *   - Loyalty fields (`loyalty_points`, `loyalty_tier`) keep their
  *     legacy direct-update path — they are not financial integrity
- *     concerns and have no ledger.
+ *     concerns and have no ledger — BUT the points write is now a
+ *     guarded (optimistic-lock) UPDATE (93-A1 S6 / 93-A2, round-93):
+ *     see the M5/S6 block inside the handler.
  */
 router.patch(
   "/users/:id",
@@ -115,6 +135,98 @@ router.patch(
 
     const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier, note } =
       req.body ?? {};
+
+    // ── Loyalty path: guarded (optimistic-lock) UPDATE — 93-A1 S6 ──────
+    //
+    // S6/93-A2: this used to be an absolute `SET loyalty_points = X` with
+    // no predicate on prior state, racing the referral award's ATOMIC
+    // `loyaltyPoints = loyaltyPoints + 50` (topup.service) — an admin edit
+    // built from a stale read silently erased a concurrently-credited
+    // award. Points are LYD-convertible money (100:1 via /loyalty/
+    // convert-points), so this is the compare-and-set the wallet side
+    // already has (AdjustmentService). 0 flipped rows → 409, the admin
+    // re-reads and retries.
+    //
+    // Ordering note: the loyalty guard runs BEFORE the wallet adjustment
+    // on purpose. A 409 here leaves ZERO mutations applied; had it run
+    // after, a wallet adjustment could commit and then the loyalty 409
+    // would leave a partially-applied PATCH (a retry would double-credit
+    // the wallet — the idempotency middleware does not cache non-2xx).
+
+    // M5 — loyalty_points was bounded only by `>= 0`: a compromised or
+    // fat-fingered admin could set 1e15 points, which the user then
+    // converts into 1e13 LYD of wallet credit via /loyalty/convert-points.
+    // Cap at 10M points (= 100k LYD at the 100 pts/LYD rate) — still
+    // orders of magnitude above any legitimate balance, but no longer
+    // a nation-state money-printer. Ints only: fractional points would
+    // corrupt the convert-points math.
+    const MAX_ADMIN_SET_LOYALTY_POINTS = 10_000_000;
+    const loyaltySet: Record<string, unknown> = {};
+    if (
+      typeof loyalty_points === "number" &&
+      Number.isInteger(loyalty_points) &&
+      loyalty_points >= 0 &&
+      loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
+    ) {
+      loyaltySet.loyaltyPoints = loyalty_points;
+    } else if (loyalty_points !== undefined) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "نقاط الولاء يجب أن تكون عدداً صحيحاً بين 0 و 10,000,000",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
+    if (
+      typeof loyalty_tier === "string" &&
+      ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)
+    ) {
+      loyaltySet.loyaltyTier = loyalty_tier;
+    }
+
+    if (Object.keys(loyaltySet).length > 0) {
+      const [currentRow] = await db
+        .select({ loyaltyPoints: usersTable.loyaltyPoints, loyaltyTier: usersTable.loyaltyTier })
+        .from(usersTable)
+        .where(eq(usersTable.id, id))
+        .limit(1);
+      if (!currentRow) {
+        return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+      }
+
+      // Guard on the pre-read values for every column this UPDATE touches
+      // (points always; tier only when it is part of the write set).
+      const guardConditions = [
+        eq(usersTable.id, id),
+        eq(usersTable.loyaltyPoints, currentRow.loyaltyPoints),
+      ];
+      if (loyaltySet.loyaltyTier !== undefined) {
+        guardConditions.push(eq(usersTable.loyaltyTier, currentRow.loyaltyTier));
+      }
+
+      const flipped = await db
+        .update(usersTable)
+        .set(loyaltySet)
+        .where(and(...guardConditions))
+        .returning({ id: usersTable.id });
+
+      if (flipped.length === 0) {
+        // Concurrent mutation between our read and our write (referral
+        // award, refund reversal, another admin) — the absolute edit was
+        // built on stale state. Retry-safe: nothing was applied.
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "نقاط الولاء تغيّرت أثناء التعديل (عملية متزامنة) — حدّث الصفحة وأعد المحاولة",
+              ErrorCode.CONFLICT,
+              { reason: "loyalty_concurrent_modification" },
+            ),
+          );
+      }
+    }
 
     // ── Wallet path: AdjustmentService (atomic, ledger-backed) ────────
     let walletResult: { walletBalance: number } | null = null;
@@ -141,44 +253,8 @@ router.patch(
       }
     }
 
-    // ── Non-financial fields: direct UPDATE, no ledger ────────────────
-    const nonFinancialUpdates: Record<string, unknown> = {};
-    // M5 — loyalty_points was bounded only by `>= 0`: a compromised or
-    // fat-fingered admin could set 1e15 points, which the user then
-    // converts into 1e13 LYD of wallet credit via /loyalty/convert-points.
-    // Cap at 10M points (= 100k LYD at the 100 pts/LYD rate) — still
-    // orders of magnitude above any legitimate balance, but no longer
-    // a nation-state money-printer. Ints only: fractional points would
-    // corrupt the convert-points math.
-    const MAX_ADMIN_SET_LOYALTY_POINTS = 10_000_000;
-    if (
-      typeof loyalty_points === "number" &&
-      Number.isInteger(loyalty_points) &&
-      loyalty_points >= 0 &&
-      loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
-    ) {
-      nonFinancialUpdates.loyaltyPoints = loyalty_points;
-    } else if (loyalty_points !== undefined) {
-      return res.status(400).json(
-        createErrorResponse(
-          "نقاط الولاء يجب أن تكون عدداً صحيحاً بين 0 و 10,000,000",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
-    }
-    if (
-      typeof loyalty_tier === "string" &&
-      ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)
-    ) {
-      nonFinancialUpdates.loyaltyTier = loyalty_tier;
-    }
-
-    if (!walletResult && Object.keys(nonFinancialUpdates).length === 0) {
+    if (!walletResult && Object.keys(loyaltySet).length === 0) {
       return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
-    }
-
-    if (Object.keys(nonFinancialUpdates).length > 0) {
-      await db.update(usersTable).set(nonFinancialUpdates).where(eq(usersTable.id, id));
     }
 
     const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
@@ -190,10 +266,7 @@ router.patch(
     }
 
     void writeAuditLog(req, "user.update", "user", id, {
-      fields_changed: [
-        ...(walletResult ? ["walletBalance"] : []),
-        ...Object.keys(nonFinancialUpdates),
-      ],
+      fields_changed: [...(walletResult ? ["walletBalance"] : []), ...Object.keys(loyaltySet)],
       // F-004 — record the actual amount on the audit row so the trail
       // is reconstructable without joining the ledger.
       ...(walletResult ? { wallet_balance_after: walletResult.walletBalance } : {}),
@@ -215,11 +288,16 @@ function mapAdjustmentErrorToCode(code: string): ErrorCode {
       return ErrorCode.NOT_FOUND;
     case "NEGATIVE_BALANCE":
     case "ZERO_DELTA":
-    case "CONCURRENCY_ERROR":
-      // ErrorCode does not have a dedicated CONFLICT slot — the
-      // upstream HTTP status (409) already conveys the semantics;
-      // INVALID_DATA is the closest match for the body code.
+      // 400-class service rejections (the AdjustmentService already
+      // answers these with status 400) — the body code matches.
       return ErrorCode.INVALID_DATA;
+    case "CONCURRENCY_ERROR":
+      // 93-C8 (A8 F-7): ErrorCode.CONFLICT exists and is what every
+      // sibling 409 mapper returns — the frontend keys the retry hint
+      // off the body code (errors.ts: CONFLICT → "أعد المحاولة"), so
+      // the optimistic-lock race must not arrive labeled INVALID_DATA
+      // ("بيانات غير صالحة") telling the admin their input was wrong.
+      return ErrorCode.CONFLICT;
     case "INVALID_AMOUNT":
       // H6 — 1e999/NaN adjustment rejected at the service boundary.
       return ErrorCode.INVALID_AMOUNT;

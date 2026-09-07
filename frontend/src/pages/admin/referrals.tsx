@@ -3,9 +3,12 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatRelativeTime } from "@/lib/utils";
 import {
   AlertCircle,
@@ -119,6 +122,10 @@ export default function AdminReferralsPage() {
   const [search, setSearch] = useState("");
   const [crediting, setCrediting] = useState<number | null>(null);
 
+  // 93-C6 / F-07 (A5 RE-1): the credit action gets a confirmation
+  // dialog (useConfirm idiom) — see handleCredit below.
+  const { confirm, ConfirmDialog } = useConfirm();
+
   const headers = useAdminHeaders();
 
   const fetchData = useCallback(
@@ -165,15 +172,44 @@ export default function AdminReferralsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const handleCredit = async (id: number) => {
-    setCrediting(id);
+  const handleCredit = async (row: ReferralRow) => {
+    // 93-C6 / F-07 (A5 S-1/RE-1): points are LYD-convertible money
+    // (100:1 via /loyalty/convert-points) — the credit POST now
+    // requires an explicit confirmation instead of firing on the
+    // first tap, matching the topups/orders money-action bar.
+    const ok = await confirm({
+      title: "تأكيد منح النقاط",
+      description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}).`,
+      confirmLabel: "منح النقاط",
+    });
+    if (!ok) return;
+    setCrediting(row.id);
     try {
-      const r = await fetch(`/api/admin/referrals/${id}/credit`, {
+      const url = `/api/admin/referrals/${row.id}/credit`;
+      const r = await fetch(url, {
         method: "POST",
-        headers,
+        // 93-C6 / F-07 (A5 RE-1): parity with topups/users/orders — the
+        // backend idempotency middleware
+        // (admin.referrals.credit) currently logs a warning and passes
+        // through when the header is missing; a follow-up makes it
+        // REQUIRED. Sending the key now closes that gap (a network
+        // retry / double-click replays the cached response instead of
+        // surfacing 409 noise).
+        headers: withIdempotencyKey(headers, generateIdempotencyKey()),
       });
-      const result = await r.json();
-      if (!r.ok) throw new Error(result.error);
+      // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
+      // + redirect); not a "فشلت العملية" toast.
+      if (isAdminUnauthorized(r, url)) return;
+      const result = (await r.json().catch(() => null)) as {
+        points_credited?: number;
+        error?: string;
+        code?: string;
+      } | null;
+      if (!r.ok || !result) {
+        // 93-C6 / F-07: envelope-parsed Arabic reasons (already-credited
+        // 400, points-race 409 CONFLICT).
+        throw new Error((result && getErrorMessage(result)) || `فشل منح النقاط (HTTP ${r.status})`);
+      }
       toast({
         title: "تم منح النقاط",
         description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
@@ -182,7 +218,7 @@ export default function AdminReferralsPage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -434,7 +470,7 @@ export default function AdminReferralsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleCredit(row.id)}
+                          onClick={() => handleCredit(row)}
                           disabled={crediting === row.id}
                           className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
                         >
@@ -465,6 +501,8 @@ export default function AdminReferralsPage() {
           </div>
         )}
       </div>
+      {/* 93-C6 / F-07: the credit confirmation dialog mount. */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

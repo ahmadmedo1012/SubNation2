@@ -12,6 +12,7 @@ import {
 } from "react";
 import { setupFirebaseTokenRefresh } from "./firebase-auth";
 import { setUserAuthToken } from "./auth-token-holder";
+import { disconnectSocket } from "./socket";
 
 interface AuthContextType {
   token: string | null;
@@ -123,6 +124,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // 93-C5 / F-05 (A4 P1 #1): logout was client-only — setToken(null) +
+    // queryClient.clear() left the server session row AND the httpOnly
+    // auth_token cookie alive, so any page refresh (or a new tab) silently
+    // logged the user back in — a privacy hole on shared devices (wallet
+    // balance + paid credentials with reveal buttons all came back).
+    // The backend's POST /api/auth/logout deletes the session row, revokes
+    // Firebase tokens and clears the cookie (routes/auth.ts /logout).
+    // Fire-and-forget like adminLogout above: even if the network call
+    // fails, the local state clear below still signs the user out of the
+    // SPA; the next probe then re-detects the (still-valid) cookie — the
+    // honest degraded outcome for an offline logout.
+    fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {
+      // Best-effort — Sentry's network instrumentation captures the error.
+    });
+    // Leave the user's socket room immediately instead of waiting for the
+    // server's mid-session liveness re-verify (round-93 C2/F-02) to notice
+    // the deleted session row (up to its 5-minute interval).
+    disconnectSocket();
     setToken(null);
     queryClient.clear();
   }, [queryClient, setToken]);

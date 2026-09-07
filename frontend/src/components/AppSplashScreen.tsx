@@ -33,7 +33,7 @@ export function AppSplashScreen() {
       className="flex min-h-[100dvh] items-center justify-center bg-background"
       role="status"
       aria-live="polite"
-      aria-label="جاري التحميل"
+      aria-label="جارٍ التحميل"
     >
       <div className="flex flex-col items-center gap-4">
         <Logo size="lg" showText />

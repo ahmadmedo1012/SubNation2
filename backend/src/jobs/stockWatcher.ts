@@ -17,6 +17,17 @@ const LOW_STOCK_THRESHOLD = 3;
 const alertedLow = new Set<number>();
 const alertedZero = new Set<number>();
 
+/**
+ * Test seam: clear the in-memory per-session Sets to simulate a cold
+ * restart — the DB-level dedupeKey is then the only guard left, which is
+ * exactly what the A6-P2-1 notify-gating tests pin (same pattern as
+ * couponWatcher's resetCouponWatcherMemoryForTests).
+ */
+export function resetStockWatcherMemoryForTests(): void {
+  alertedLow.clear();
+  alertedZero.clear();
+}
+
 // B7-P2-11: re-entry guard — a hung query must not stack concurrent runs;
 // the next tick is skipped while one is still in flight.
 let checkInFlight = false;
@@ -54,27 +65,38 @@ async function checkLowStock(): Promise<void> {
       const stock = stockMap.get(product.id) ?? 0;
 
       if (stock === 0 && !alertedZero.has(product.id)) {
-        notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });
+        // A6-P2-1 (round-93): log FIRST, notify SECOND. notifyLowStock
+        // used to fire before the dedupe check, so every cold start
+        // re-pinged the operator's phone for each permanently-out-of-
+        // stock product even while the drawer insert was correctly
+        // suppressed (~6 Telegram messages per deploy). All notification
+        // channels now gate on the dedupe outcome.
         // Round-5: dedupeKey survives process restarts — the in-memory
         // Set below resets on every Render cold start, which is what
         // flooded the admin drawer with 244 duplicate no_stock alerts.
-        await logAdminAlert(
+        const outcome = await logAdminAlert(
           "no_stock",
           `نفاد المخزون: ${product.name}`,
           `المخزون وصل إلى صفر وحدات`,
           { dedupeKey: `stock:zero:${product.id}` },
         );
+        if (!outcome.suppressed) {
+          notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });
+        }
         alertedZero.add(product.id);
         alertedLow.delete(product.id);
         logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
       } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
-        notifyLowStock({ productName: product.name, stockCount: stock, productId: product.id });
-        await logAdminAlert(
+        // A6-P2-1 (round-93): same notify-gating as the zero-stock branch.
+        const outcome = await logAdminAlert(
           "low_stock",
           `مخزون منخفض: ${product.name}`,
           `تبقّى ${stock} وحدة فقط`,
           { dedupeKey: `stock:low:${product.id}` },
         );
+        if (!outcome.suppressed) {
+          notifyLowStock({ productName: product.name, stockCount: stock, productId: product.id });
+        }
         alertedLow.add(product.id);
         alertedZero.delete(product.id);
         logger.info(
@@ -92,6 +114,14 @@ async function checkLowStock(): Promise<void> {
     captureSchedulerFailure("stock_watcher", err);
   }
 }
+
+/**
+ * Test seam: export the single-pass check so the A6-P2-1 notify-gating
+ * contract is pinnable without timers (mirrors couponWatcher's exported
+ * checkExpiringCoupons). Errors are swallowed internally exactly like
+ * the scheduled path — assertions read the DB + notify-mock state.
+ */
+export const checkLowStockForTests = checkLowStock;
 
 let running = false;
 let stopCurrent: (() => void) | null = null;

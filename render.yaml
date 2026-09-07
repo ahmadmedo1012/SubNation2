@@ -271,6 +271,23 @@ services:
       #   - here: WORKER_TIER=true (+ WORKER_TIER_ID=worker for run records)
       #   - web:  DISABLE_WEB_SCHEDULERS=true
       # While the worker is not provisioned, the web tier owns all schedulers.
+      #
+      # F-08 / A6 P2#4 (round-93): WORKER_TIER was previously documented in
+      # the comment above but MISSING from envVars — a provisioned worker
+      # silently ran with forecast/enrichment cron gates closed.
+      # ⚠ DOUBLE-SCHEDULER RISK ON BLUEPRINT APPLY (A6 P2#4 / A3 R15):
+      # provisioning this worker via the blueprint starts it IMMEDIATELY,
+      # while the web service still has DISABLE_WEB_SCHEDULERS=false. The
+      # worker runs heartbeat + alerting + cron WITHOUT the leader lock, so
+      # both tiers double-run them until the operator completes step 2 of
+      # the flip (DISABLE_WEB_SCHEDULERS=true on the web service). Alerts
+      # and retention jobs are dedupe/idempotent-guarded, so the damage is
+      # bounded, but do the flip in the same maintenance window — do not
+      # leave the blueprint half-applied.
+      - key: WORKER_TIER
+        value: "true"
+      - key: WORKER_TIER_ID
+        value: "worker"
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL

@@ -312,9 +312,7 @@ router.post("/change-password", requireAdmin, async (req, res) => {
   // previously sailed past the `.length` check (undefined) and crashed
   // argon2 with a 500-for-user-input.
   if (typeof current_password !== "string" || typeof new_password !== "string") {
-    return res
-      .status(400)
-      .json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   }
   if (!current_password || !new_password) {
     return res
@@ -410,7 +408,9 @@ router.patch("/profile", requireAdmin, async (req, res) => {
     if (typeof username !== "string" || username.trim().length < 3) {
       return res
         .status(400)
-        .json(createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA));
+        .json(
+          createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA),
+        );
     }
     if (username.trim().length > 100) {
       return res
@@ -476,8 +476,104 @@ router.patch("/profile", requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/2fa/setup — mint a fresh TOTP secret + otpauth URL.
+ *
+ * 93-A1 S5 (round-93): password re-entry is now REQUIRED whenever this
+ * call would DISABLE an enabled 2FA (the re-enrollment case). Before
+ * this fix the endpoint overwrote totpSecret AND flipped totpEnabled to
+ * false with nothing but the session cookie — an attacker holding an
+ * 8h admin session could silently remove 2FA, and the compromise stayed
+ * persistent after the session died (next password-only login meets no
+ * TOTP challenge). That is exactly the re-auth bar /change-password and
+ * /profile already enforce for equally high-leverage mutations.
+ *
+ * Behaviour:
+ *   - TOTP currently ENABLED (calling setup disables it):
+ *       `current_password` REQUIRED — argon2-verified against the row,
+ *       wrapped in the same lockout helper as change-password (a
+ *       stolen session cannot brute-force the password here), and
+ *       audited as `admin.totp_disabled` (per the audit's exact rec).
+ *   - TOTP currently disabled (fresh enrollment):
+ *       `current_password` optional — if PRESENT it is verified (a
+ *       wrong password is rejected); if absent the enrollment proceeds.
+ *       The current admin UI (settings.tsx, security tab) sends no
+ *       body, so requiring it would break the operator's only 2FA
+ *       enablement flow — the disable case above is the actual S5
+ *       persistence vector (enrollment cannot lock the real admin out
+ *       of anything an attacker gains). Frontend follow-up: send
+ *       `current_password` here too, then tighten this branch to
+ *       require it (see worklog 93-C2).
+ */
 router.post("/2fa/setup", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
+  const { current_password } = (req.body ?? {}) as { current_password?: string };
+
+  const [admin] = await db
+    .select()
+    .from(adminUsersTable)
+    .where(eq(adminUsersTable.id, adminId))
+    .limit(1);
+  if (!admin) {
+    return res
+      .status(401)
+      .json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.UNAUTHORIZED));
+  }
+
+  const wasEnabled = admin.totpEnabled === true;
+
+  // ── 93-A1 S5: re-authentication gate ─────────────────────────────────
+  if (wasEnabled) {
+    // Rotating the secret of an ENABLED 2FA disables it until the new
+    // secret is verified — treat exactly like a disable action.
+    if (typeof current_password !== "string" || !current_password) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "كلمة المرور الحالية مطلوبة لإعادة إعداد المصادقة الثنائية",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
+
+    const lockoutKey = `admin-2fasetup:${admin.username}`;
+    const { locked, lockedUntil } = await checkLockout(lockoutKey);
+    if (locked) {
+      const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+      return res
+        .status(429)
+        .json(
+          createErrorResponse(`محاولات كثيرة. حاول بعد ${mins} دقيقة.`, ErrorCode.ACCOUNT_LOCKED),
+        );
+    }
+
+    const { valid } = await verifyPassword(current_password, admin.passwordHash);
+    if (!valid) {
+      await recordFailedAttempt(lockoutKey);
+      void writeAuditLog(req, "admin.totp_disable_failed", "admin_user", adminId, {
+        reason: "wrong_current_password",
+      });
+      return res
+        .status(401)
+        .json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
+    }
+    await resetAttempts(lockoutKey);
+  } else if (typeof current_password === "string" && current_password) {
+    // Fresh enrollment: optional today (the admin UI sends no body), but
+    // a caller that DOES present a password gets it verified — never
+    // accept a silently-wrong credential.
+    const { valid } = await verifyPassword(current_password, admin.passwordHash);
+    if (!valid) {
+      void writeAuditLog(req, "admin.totp_setup_failed", "admin_user", adminId, {
+        reason: "wrong_current_password",
+      });
+      return res
+        .status(401)
+        .json(createErrorResponse("كلمة المرور الحالية غير صحيحة", ErrorCode.UNAUTHORIZED));
+    }
+  }
+
   const secret = generateSecret();
   const otpauth = generateURI({ label: `admin_${adminId}`, issuer: "SubNation", secret });
 
@@ -485,6 +581,14 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
     .update(adminUsersTable)
     .set({ totpSecret: secret, totpEnabled: false })
     .where(eq(adminUsersTable.id, adminId));
+
+  // 93-A1 S5: audit-log whenever an ENABLED secret was overwritten —
+  // "2FA was turned off by a /setup call" must be visible in the trail.
+  if (wasEnabled) {
+    void writeAuditLog(req, "admin.totp_disabled", "admin_user", adminId, {
+      reason: "2fa_setup_rotation",
+    });
+  }
 
   return res.json({ secret, otpauth_url: otpauth });
 });

@@ -34,6 +34,14 @@ export * from "@workspace/db/schema";
  * current Drizzle schema (not the stale drizzle/*.sql migrations, which
  * predate later ALTERs like products.slug / users.google_id). Kept to the
  * 8 tables under test so the harness stays readable and fast.
+ *
+ * A10 (round-93 audit §2 P0): the harness ALSO carries the V1-M9 + V1-M10
+ * money constraints/indexes exactly as production's applyMoneyConstraintStage
+ * + applyLedgerAmountNonzeroStage create them (same names, same definitions).
+ * The old hand-written subset silently certified prod-forbidden behavior —
+ * signed debit adjustments passed here while chk_ledger_amount_pos 500'd in
+ * production, and the partial unique payment_reference index was invisible
+ * to every service test. Tests must certify the REAL schema.
  */
 const DDL = `
 CREATE TYPE order_status AS ENUM ('pending','completed','failed','refunded');
@@ -56,6 +64,8 @@ CREATE TABLE users (
   auth_provider varchar(50) NOT NULL DEFAULT 'firebase_phone',
   last_auth_at timestamptz,
   wallet_balance numeric(10,2) NOT NULL DEFAULT '0.00',
+  -- V1-M9 (B8-03): money invariants, mirrored from applyMoneyConstraintStage
+  CONSTRAINT chk_users_wallet_balance_nonneg CHECK (wallet_balance >= 0),
   loyalty_points integer NOT NULL DEFAULT 0,
   loyalty_tier varchar(50) NOT NULL DEFAULT 'bronze',
   lifetime_spend numeric(10,2) NOT NULL DEFAULT '0.00',
@@ -120,9 +130,16 @@ CREATE TABLE orders (
 
 CREATE TABLE wallet_ledger (
   id serial PRIMARY KEY,
-  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- V1-M9 (B8-02): named FK (ON DELETE CASCADE) — prod name/definition,
+  -- not an auto-generated inline one, so parity tests can pin it.
+  user_id integer NOT NULL,
+  CONSTRAINT fk_wallet_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   type ledger_entry_type NOT NULL,
   amount numeric(10,2) NOT NULL,
+  -- V1-M10 (round-93 A2/A7): sign-free nonzero — adjustments store SIGNED
+  -- deltas, so the original V1-M9 form (amount > 0) broke every admin
+  -- debit with a 23514 rollback + 500. amount = 0 stays forbidden.
+  CONSTRAINT chk_ledger_amount_nonzero CHECK (amount <> 0),
   balance_before numeric(10,2) NOT NULL,
   balance_after numeric(10,2) NOT NULL,
   reference_id integer,
@@ -135,6 +152,7 @@ CREATE TABLE wallet_topups (
   id serial PRIMARY KEY,
   user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   amount numeric(10,2) NOT NULL,
+  CONSTRAINT chk_topups_amount_pos CHECK (amount > 0),
   payment_method varchar(50) NOT NULL DEFAULT 'mobile_transfer',
   payment_network varchar(50),
   sender_phone varchar(20),
@@ -146,6 +164,12 @@ CREATE TABLE wallet_topups (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- V1-M9 (B8-01): one APPROVED topup per non-blank payment_reference — the
+-- authoritative duplicate-transfer guard. Partial predicate copied verbatim
+-- from applyMoneyConstraintStage (blank/NULL refs are the exempt legacy class).
+CREATE UNIQUE INDEX uniq_wallet_topups_payment_reference
+  ON wallet_topups(payment_reference)
+  WHERE payment_reference IS NOT NULL AND btrim(payment_reference) <> '' AND status='approved';
 
 CREATE TABLE coupons (
   id serial PRIMARY KEY,
@@ -155,6 +179,8 @@ CREATE TABLE coupons (
   min_order_amount numeric(10,2) NOT NULL DEFAULT '0.00',
   max_uses integer,
   used_count integer NOT NULL DEFAULT 0,
+  -- V1-M9 (B8-03): used_count can never exceed max_uses.
+  CONSTRAINT chk_coupons_used_le_max CHECK (max_uses IS NULL OR used_count <= max_uses),
   expires_at timestamptz,
   is_active boolean NOT NULL DEFAULT true,
   description varchar(255),
@@ -242,6 +268,13 @@ CREATE TABLE ticket_replies (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_replies_ticket ON ticket_replies (ticket_id, created_at);
+
+-- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
+-- declared by the schema TS and created by applyMoneyConstraintStage.
+CREATE INDEX idx_orders_status_created ON orders(status, created_at);
+CREATE INDEX idx_topups_status_created ON wallet_topups(status, created_at);
+CREATE INDEX idx_inventory_product_sold ON inventory(product_id, is_sold);
+CREATE INDEX idx_cart_items_user ON cart_items(user_id);
 `;
 
 const TABLES = [

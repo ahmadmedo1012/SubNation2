@@ -18,6 +18,21 @@
  * re-attempting until the lock frees up; the moment it is acquired the
  * `onAcquired` callback fires so the caller can start its schedulers.
  *
+ * R5 (round-93 A3): every leadership Redis op is bounded (2 s command
+ * timeout). During a Redis outage the raw ops queued forever — the TTL
+ * refresher iterations hung and, worse, `release()` on SIGTERM never
+ * settled: the whole graceful drain stalled until the 10 s force-exit cut
+ * in-flight responses mid-byte. A timed-out release is fine — the 60 s lock
+ * TTL hands leadership over anyway.
+ *
+ * R6 (round-93 A3): losing the leader lock now DEMOTES this process. The
+ * old refresher only logged a warning while the instance kept firing every
+ * cron/watcher/alert in parallel with the new leader until the next deploy
+ * (split-brain). On loss: `isLeader` flips false, the refresher stops, the
+ * `onLost` callback fires (the caller stops heartbeat/alerting/watchers/
+ * cron locally) and the acquisition retry loop restarts — so if the NEW
+ * leader dies, this instance takes over again instead of staying dark.
+ *
  * Migration path to a dedicated worker:
  *   1. Provision the `subnation-worker` Render service (apply the
  *      blueprint).
@@ -32,18 +47,28 @@
 import { randomUUID } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { logger } from "./logger";
+import { noteRedisDegradedMode, withRedisCommandTimeout } from "./redis-client";
 
 const SCHEDULER_LEADER_KEY = "scheduler:leader";
 const LEADER_TTL_SEC = 60;
 const REFRESH_INTERVAL_MS = 20_000;
 const DEFAULT_ACQUIRE_RETRY_MS = 20_000;
+// R5: bound for every leadership command. Generous vs the 500 ms default
+// command timeout (lock ops are not request-path) but far below the 10 s
+// shutdown force-exit so `release()` can never wedge the drain.
+// SCHEDULER_OP_TIMEOUT_MS is a test/ops override.
+const LEADERSHIP_OP_TIMEOUT_MS = (() => {
+  const raw = Number(process.env.SCHEDULER_OP_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 2_000;
+})();
 
 export interface SchedulerLeadership {
   /** Unique id of the process that holds (or attempted) the leadership. */
   readonly instanceId: string;
   /**
-   * True when this process holds the leader lock. LIVE value — when the
-   * initial acquisition fails, this flips to true the moment a retry
+   * True when this process holds the leader lock. LIVE value — flips to
+   * false the moment the refresher notices another holder (R6 demotion)
+   * and back to true when a retry (or re-acquisition after demotion)
    * succeeds (B7-P1-1).
    */
   readonly isLeader: boolean;
@@ -58,8 +83,18 @@ export interface LeadershipAcquireOptions {
    * acquisition succeeds synchronously (caller already knows).
    */
   onAcquired?: () => void;
+  /**
+   * R6 (round-93 A3): fired when this process LOSES the lock after having
+   * held it (another instance took over). The caller must STOP its local
+   * schedulers here (heartbeat / alerting / watchers / cron) — otherwise
+   * both instances run them in parallel (split-brain) until the next
+   * deploy. NOT called for a non-leader that never acquired.
+   */
+  onLost?: () => void;
   /** Interval between acquisition retries. Default 20 s. */
   retryIntervalMs?: number;
+  /** TTL-refresh poll interval. Default 20 s. Test seam (R6 tests). */
+  refreshIntervalMs?: number;
 }
 
 /**
@@ -79,6 +114,7 @@ export async function acquireSchedulerLeadership(
 ): Promise<SchedulerLeadership> {
   const instanceId = `${process.env.RENDER_SERVICE_NAME ?? "web"}-${process.pid}-${randomUUID()}`;
   const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_ACQUIRE_RETRY_MS;
+  const refreshIntervalMs = options.refreshIntervalMs ?? REFRESH_INTERVAL_MS;
 
   // Without Redis, allow leadership in dev (single-instance only).
   if (!redis) {
@@ -105,30 +141,74 @@ export async function acquireSchedulerLeadership(
     }
   };
 
+  const stopRefresher = () => {
+    if (refresher) {
+      clearInterval(refresher);
+      refresher = null;
+    }
+  };
+
+  /**
+   * R6: demote on leadership loss — stop considering ourselves the leader,
+   * stop the refresher (no more 20 s log spam), notify the caller so it
+   * stops its schedulers, and re-enter the acquisition loop so we take the
+   * lock back if the new holder dies.
+   */
+  const demote = (currentLeader: unknown): void => {
+    if (!leader || released) return;
+    leader = false;
+    stopRefresher();
+    noteRedisDegradedMode("lost_leadership");
+    logger.warn(
+      { category: "monitoring", instanceId, currentLeader },
+      "[scheduler] Lost scheduler leadership — demoting this process (stopping local schedulers, R6)",
+    );
+    try {
+      options.onLost?.();
+    } catch (err) {
+      logger.error(
+        { err, category: "monitoring" },
+        "[scheduler] onLost callback threw — schedulers may be partially stopped",
+      );
+    }
+    // Re-acquisition: if the new leader dies without releasing, the TTL
+    // expires and this instance becomes leader again (onAcquired fires,
+    // schedulers restart). Without this the demotion would leave the fleet
+    // scheduler-less until a manual restart.
+    startRetryTimer();
+  };
+
   const startRefresher = () => {
     if (refresher) return;
     // Periodically renew the lock TTL — but ONLY if we still own it. This
     // protects against a clock skew or split-brain situation where another
     // instance has already taken over.
     refresher = setInterval(async () => {
+      if (released || !leader) return;
       try {
-        const current = await redis.get(SCHEDULER_LEADER_KEY);
+        // R5: bounded — during a Redis outage the raw get queued forever
+        // (offline queue) and the 20 s iterations hang-stacked.
+        const current = await withRedisCommandTimeout(
+          "leader_refresh_get",
+          () => redis.get(SCHEDULER_LEADER_KEY),
+          LEADERSHIP_OP_TIMEOUT_MS,
+        );
         if (current === instanceId) {
-          await redis.expire(SCHEDULER_LEADER_KEY, LEADER_TTL_SEC);
-        } else {
-          // We lost it. Stop refreshing — the per-job interval still ticks
-          // but next refresh attempt will keep failing harmlessly. The
-          // operator's signal to investigate is the
-          // `redis_degraded_mode_total{reason="lost_leadership"}` counter.
-          logger.warn(
-            { category: "monitoring", instanceId, currentLeader: current },
-            "[scheduler] Lost scheduler leadership; another process holds the lock now",
+          await withRedisCommandTimeout(
+            "leader_refresh_expire",
+            () => redis.expire(SCHEDULER_LEADER_KEY, LEADER_TTL_SEC),
+            LEADERSHIP_OP_TIMEOUT_MS,
           );
+        } else {
+          // We lost it. R6: actually demote instead of warning-and-continuing.
+          demote(current);
         }
       } catch {
-        // ignore — Redis hiccups are surfaced via redis_errors_total elsewhere
+        // Redis hiccup — leadership state stays as-is this round; surfaced
+        // via redis_errors_total elsewhere. R5: bounded, so this iteration
+        // settles and cannot pile up.
       }
-    }, REFRESH_INTERVAL_MS);
+    }, refreshIntervalMs);
     refresher.unref?.();
   };
 
@@ -144,10 +224,15 @@ export async function acquireSchedulerLeadership(
   const attemptAcquisition = async (): Promise<"acquired" | "busy" | "error"> => {
     if (released || leader) return "busy";
     try {
-      const result = await redis.set(SCHEDULER_LEADER_KEY, instanceId, {
-        NX: true,
-        EX: LEADER_TTL_SEC,
-      });
+      const result = await withRedisCommandTimeout(
+        "leader_acquire_set",
+        () =>
+          redis.set(SCHEDULER_LEADER_KEY, instanceId, {
+            NX: true,
+            EX: LEADER_TTL_SEC,
+          }),
+        LEADERSHIP_OP_TIMEOUT_MS,
+      );
       return result === "OK" ? "acquired" : "busy";
     } catch (err) {
       // Redis hiccup — fall closed for THIS attempt (don't run schedulers
@@ -162,20 +247,8 @@ export async function acquireSchedulerLeadership(
     }
   };
 
-  const first = await attemptAcquisition();
-
-  if (first === "acquired") {
-    becomeLeader();
-  } else {
-    if (first === "busy") {
-      logger.info(
-        { category: "monitoring", instanceId, retryIntervalMs },
-        "[scheduler] Another instance currently holds leadership — retrying every 20s until it frees up (blue-green deploy window)",
-      );
-    }
-    // B7-P1-1: keep re-attempting in the background. The old instance's
-    // SIGTERM release (or a 60 s TTL expiry after SIGKILL) hands the lock
-    // over; when that happens we become leader and notify the caller.
+  const startRetryTimer = () => {
+    if (retryTimer) return;
     retryTimer = setInterval(() => {
       if (released || leader) return;
       void attemptAcquisition()
@@ -197,6 +270,23 @@ export async function acquireSchedulerLeadership(
         });
     }, retryIntervalMs);
     retryTimer.unref?.();
+  };
+
+  const first = await attemptAcquisition();
+
+  if (first === "acquired") {
+    becomeLeader();
+  } else {
+    if (first === "busy") {
+      logger.info(
+        { category: "monitoring", instanceId, retryIntervalMs },
+        "[scheduler] Another instance currently holds leadership — retrying every 20s until it frees up (blue-green deploy window)",
+      );
+    }
+    // B7-P1-1: keep re-attempting in the background. The old instance's
+    // SIGTERM release (or a 60 s TTL expiry after SIGKILL) hands the lock
+    // over; when that happens we become leader and notify the caller.
+    startRetryTimer();
   }
 
   return {
@@ -207,21 +297,33 @@ export async function acquireSchedulerLeadership(
     release: async () => {
       released = true;
       stopRetryTimer();
-      if (refresher) {
-        clearInterval(refresher);
-        refresher = null;
-      }
+      stopRefresher();
       if (!leader) return;
       leader = false;
       try {
         // Release only if we still own it (a different instance may have
         // taken over after a TTL expiry).
-        const current = await redis.get(SCHEDULER_LEADER_KEY);
+        //
+        // R5 (round-93 A3): SIGTERM during a Redis outage must not stall
+        // the graceful drain. The old raw get/del queued forever on a dead
+        // socket (offline queue) — shutdown stalled in schedulers.stop()
+        // until the 10 s force-exit cut in-flight responses mid-byte and
+        // skipped pool drain. Bounded to 2 s: if we cannot release, the
+        // 60 s lock TTL hands leadership over anyway.
+        const current = await withRedisCommandTimeout(
+          "leader_release_get",
+          () => redis.get(SCHEDULER_LEADER_KEY),
+          LEADERSHIP_OP_TIMEOUT_MS,
+        );
         if (current === instanceId) {
-          await redis.del(SCHEDULER_LEADER_KEY);
+          await withRedisCommandTimeout(
+            "leader_release_del",
+            () => redis.del(SCHEDULER_LEADER_KEY),
+            LEADERSHIP_OP_TIMEOUT_MS,
+          );
         }
       } catch {
-        // ignore
+        // ignore — the lock TTL (60 s) is the backstop.
       }
     },
   };

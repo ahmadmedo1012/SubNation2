@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { setUnauthorizedHandler } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { handleAdminUnauthorized, setAdminSessionMirror } from "@/lib/admin-session";
 
 /**
  * Build the standard admin Authorization headers map.
@@ -21,6 +23,14 @@ import { useAuth } from "@/lib/auth";
  *   - Future header additions (e.g. an X-Admin-Trace correlation id)
  *     land in one place.
  *
+ * 93-C6 / F-07 (round-93, A5 S-3): this hook is additionally the
+ * integration point for the global session-expiry handler — every
+ * admin page already calls it, so mounting any admin page (a) mirrors
+ * "an admin session exists" into lib/admin-session and (b) installs
+ * that handler as customFetch's 401 observer exactly once. A cookie
+ * that expires mid-work now produces ONE «انتهت الجلسة» toast + a
+ * soft redirect to /admin/login instead of per-page "retry" errors.
+ *
  * @example
  *   const headers = useAdminHeaders();             // GET requests
  *   const headers = useAdminHeaders({ json: true }); // POST/PATCH/DELETE with body
@@ -28,9 +38,9 @@ import { useAuth } from "@/lib/auth";
  *   await fetch("/api/admin/topups", { headers });
  */
 export function useAdminHeaders(opts: { json?: boolean } = {}): Record<string, string> {
-  const { adminToken } = useAuth();
+  const { adminToken, setAdminToken } = useAuth();
   const wantJson = !!opts.json;
-  return useMemo(() => {
+  const headers = useMemo(() => {
     const h: Record<string, string> = {};
     if (adminToken) {
       h.Authorization = `Bearer ${adminToken}`;
@@ -40,4 +50,20 @@ export function useAdminHeaders(opts: { json?: boolean } = {}): Record<string, s
     }
     return h;
   }, [adminToken, wantJson]);
+
+  // Mirror the session state + install the clear callback (stable —
+  // setAdminToken is a useCallback with no deps inside AuthProvider).
+  useEffect(() => {
+    setAdminSessionMirror(!!adminToken, adminToken ? () => setAdminToken(null) : null);
+  }, [adminToken, setAdminToken]);
+
+  // Install the customFetch 401 observer once per page load (module
+  // flag — the handler is module-level, not per-component).
+  useEffect(() => {
+    setUnauthorizedHandler(({ url }) => {
+      handleAdminUnauthorized(url);
+    });
+  }, []);
+
+  return headers;
 }

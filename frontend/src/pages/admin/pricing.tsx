@@ -311,7 +311,10 @@ export default function AdminPricingPage() {
             {/* Coupon code */}
             <div>
               <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-                كود الكوبون (اختياري)
+                {/* 93-C7 / C-UX5 (A11 top-20 #5): كود/رمز unification —
+                    "رمز" is the canonical word for the coupon field
+                    (matches admin/coupons.tsx + the backend message). */}
+                رمز الكوبون (اختياري)
               </Label>
               <Input
                 value={couponCode}

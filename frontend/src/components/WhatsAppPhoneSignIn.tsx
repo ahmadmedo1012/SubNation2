@@ -25,11 +25,22 @@ interface WhatsAppPhoneSignInProps {
   enabled?: boolean;
   /** Optional divider label rendered above the form. */
   dividerLabel?: string;
+  /**
+   * 93-C5 / F-15 (A4 #3): called on successful sign-in INSTEAD of the
+   * default navigate("/") — lets the login page honor ?redirect=
+   * (e.g. back to /checkout). Register keeps the default (no redirect
+   * handling there yet).
+   */
+  onSuccess?: () => void;
 }
 
 const COOLDOWN_DEFAULT = 60;
 
-export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPhoneSignInProps) {
+export function WhatsAppPhoneSignIn({
+  enabled = true,
+  dividerLabel,
+  onSuccess,
+}: WhatsAppPhoneSignInProps) {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
   const [phone, setPhone] = useState("");
@@ -119,7 +130,10 @@ export function WhatsAppPhoneSignIn({ enabled = true, dividerLabel }: WhatsAppPh
         return;
       }
       setToken(data.token);
-      navigate("/");
+      // 93-C5 / F-15: redirect target (guarded checkout, cart, …) instead
+      // of the hardcoded home — same contract as AuthProviders' onSuccess.
+      if (onSuccess) onSuccess();
+      else navigate("/");
     } catch {
       setError("تعذّر الاتصال بالخادم، حاول مجدداً");
     } finally {

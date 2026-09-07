@@ -3,19 +3,18 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit, type Store } from "express-rate-limit";
 import helmet from "helmet";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
-import RedisStore from "rate-limit-redis";
 import * as Sentry from "@sentry/node";
 import { ZodError } from "zod";
 import { getCorrelationId } from "./lib/correlation";
 import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
 import { verifyUserToken } from "./lib/jwt";
-import { getRedisClient } from "./lib/redis-client";
+import { createResilientRateLimitStore } from "./lib/rate-limit-store";
 import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
 import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
@@ -350,9 +349,6 @@ app.use(
   }),
 );
 
-// ── Redis singleton (initialised in server.ts before app.listen) ─────────────
-const redisClient = getRedisClient();
-
 // ── Rate Limiting ─────────────────────────────────────────────────────────────
 // Use Redis store if available, otherwise fall back to in-memory store.
 //
@@ -366,12 +362,21 @@ const redisClient = getRedisClient();
 // Specifying a custom keyGenerator that handled IPv6 manually triggered
 // ERR_ERL_KEY_GEN_IPV6 in production (the library validates that custom
 // keyGenerators handle IPv6 correctly). The default is the right tool.
-const rateLimiterStore = redisClient
-  ? new RedisStore({
-      sendCommand: (...args: string[]) => redisClient.sendCommand(args),
-      prefix: "rl:",
-    })
-  : undefined;
+// R2 (round-93 A3): the store used to be built ONCE from the client captured
+// at module-eval time — BEFORE server.ts ever called initRedisClient() — so
+// the Redis store could never actually engage; and had it engaged, a runtime
+// Redis outage would queue every limiter command forever (offline queue)
+// hanging EVERY /api request while /healthz stayed green.
+//
+// Each limiter now gets its own resilient store instance (express-rate-limit
+// v8 rejects SHARED instances — ERR_ERL_STORE_REUSE). The store resolves the
+// CURRENT ready client per op (lazy engagement + auto-disengage), bounds each
+// command with REDIS_COMMAND_TIMEOUT_MS and falls back to in-memory rate
+// limiting on timeout/error. With REDIS_URL unset it returns undefined and
+// express-rate-limit's default MemoryStore applies — the exact previous
+// no-Redis behaviour.
+const makeRateLimitStore = (): Store | undefined =>
+  process.env.REDIS_URL ? createResilientRateLimitStore() : undefined;
 
 /**
  * Best-effort userId extractor for the rate-limiter.
@@ -424,7 +429,7 @@ const apiLimiter = rateLimit({
   limit: 600,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  store: rateLimiterStore,
+  store: makeRateLimitStore(),
   // Round-3 (audit §4 #13): without a `message`, express-rate-limit
   // responds with a PLAIN-TEXT "Too many requests." body — the only
   // non-JSON response in the entire /api surface, breaking every
@@ -469,7 +474,7 @@ const userLimiter = rateLimit({
   limit: 1200,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  store: rateLimiterStore,
+  store: makeRateLimitStore(),
   // Inverse skip of apiLimiter — only authenticated traffic.
   skip: (req) => getRequestUserId(req) === null,
   keyGenerator: (req) => {
@@ -487,7 +492,7 @@ const authLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  store: rateLimiterStore,
+  store: makeRateLimitStore(),
   skipFailedRequests: false,
   // Counting successes too: /api/auth/whatsapp/start sits behind this
   // limiter, and skipping successes let one IP SMS-bomb unlimited phone
@@ -521,7 +526,7 @@ const couponValidateLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
-  store: rateLimiterStore,
+  store: makeRateLimitStore(),
   keyGenerator: (req) => {
     const userId = getRequestUserId(req);
     // SEC-92-04: express-rate-limit 8.4.1's ipKeyGenerator takes the IP

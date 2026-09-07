@@ -105,7 +105,9 @@ function FlashCard({
 
           {isDeal && (
             <div className="absolute top-3 right-3 bg-status-error text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
-              <Tag className="w-3 h-3" />-{discount}%
+              {/* 93-C8 (A11 §5): U+2212 minus to match product.tsx's
+                  discount rendering (was an ASCII hyphen). */}
+              <Tag className="w-3 h-3" />−{discount}%
             </div>
           )}
 

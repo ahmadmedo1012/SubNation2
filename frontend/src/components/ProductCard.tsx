@@ -183,7 +183,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     categoryLabel(product.category),
     `السعر ${formatCurrency(displayPrice)}`,
     unavailable ? "نفد المخزون" : null,
-    isLowStock ? `آخر ${product.stock_count} متوفرة` : null,
+    // 93-C8 (A11 §1): «آخر 2 متوفرة» is a broken dual; «متبقٍ N
+    // فقط» is agreement-safe for every count 1..3.
+    isLowStock ? `متبقٍ ${product.stock_count} فقط` : null,
   ].filter(Boolean);
   const ariaLabel = ariaLabelParts.join("، ");
 
@@ -330,7 +332,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                   variant="low-stock"
                   size="xs"
                   icon={AlertTriangle}
-                  aria-label={`مخزون منخفض، آخر ${product.stock_count} متوفرة`}
+                  aria-label={`مخزون منخفض، متبقٍ ${product.stock_count} فقط`}
                 >
                   آخر {product.stock_count}
                 </StatusBadge>

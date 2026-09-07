@@ -303,9 +303,11 @@ export default function CategoryPage() {
           so the user can see at a glance how the navigation maps to the
           themed surfaces. Mirrors the homepage chip styling. */}
       <section className="pt-6 border-t border-border/40">
-        <h2 className="text-[11px] font-black text-muted-foreground uppercase tracking-widest mb-3">
-          تصفّح فئات أخرى
-        </h2>
+        {/* 93-C8 (A11 §8 top-20 #8): letter-spacing disconnects
+            Arabic letter joins (بـ/تـ/ثـ…) and `uppercase` is a no-op on
+            Arabic — removed; font-black at a small size keeps the label
+            rhythm. */}
+        <h2 className="text-[11px] font-black text-muted-foreground mb-3">تصفّح فئات أخرى</h2>
         <div className="flex flex-wrap gap-2">
           {Object.values(CATEGORY_META)
             .filter((c) => c.slug !== meta.slug)

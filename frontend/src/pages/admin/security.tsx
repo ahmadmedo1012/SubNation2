@@ -1,5 +1,8 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+// 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد أنشطة" empty
+// state adopts the shared EmptyState card.
+import { EmptyState } from "@/components/admin/EmptyState";
 import { useAuth } from "@/lib/auth";
 import { Activity, CheckCircle, Download, Shield, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -112,7 +115,7 @@ export function AdminSecurityDashboard() {
   };
 
   if (loading) {
-    return <div className="text-center py-8">جاري التحميل...</div>;
+    return <div className="text-center py-8">جارٍ التحميل…</div>;
   }
 
   const refreshAll = () => {
@@ -213,7 +216,7 @@ export function AdminSecurityDashboard() {
         <div className="bg-card border border-border/55 rounded-xl p-4">
           <h2 className="text-lg font-bold mb-4">سجل النشاط</h2>
           {activities.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">لا توجد أنشطة</p>
+            <EmptyState icon={Activity} title="لا توجد أنشطة" />
           ) : (
             <div className="space-y-3">
               {activities.map((activity) => (

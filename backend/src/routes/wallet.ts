@@ -62,6 +62,14 @@ router.get("/", requireUser, async (req, res) => {
     // while the order is "completed" — RefundService nulls them in the
     // refund tx, but the gate also covers every other non-completed state
     // (mirrors formatOrder in routes/orders.ts).
+    //
+    // P0-sim (round-93 live simulation, 93-SIM-live-findings): this block
+    // had the same asymmetry as formatOrder — delivered_password went
+    // through safeDecrypt while delivered_email /
+    // delivered_extra_details were returned raw (ciphertext for
+    // encrypted-at-rest rows), and extra_details/usage_terms were not
+    // gated on status at all (leaked after refund). Now identical to
+    // formatOrder: decrypt-if-encrypted, null unless completed.
     recent_orders: recentOrders.map((r) => ({
       id: r.order.id,
       order_code: r.order.orderCode,
@@ -70,11 +78,13 @@ router.get("/", requireUser, async (req, res) => {
       product_image_url: r.productImageUrl ?? null,
       amount: toNumber(r.order.amount),
       status: r.order.status,
-      delivered_email: r.order.status === "completed" ? (r.order.deliveredEmail ?? null) : null,
+      delivered_email: r.order.status === "completed" ? safeDecrypt(r.order.deliveredEmail) : null,
       delivered_password:
         r.order.status === "completed" ? safeDecrypt(r.order.deliveredPassword) : null,
-      delivered_extra_details: r.order.deliveredExtraDetails ?? null,
-      delivered_usage_terms: r.order.deliveredUsageTerms ?? null,
+      delivered_extra_details:
+        r.order.status === "completed" ? safeDecrypt(r.order.deliveredExtraDetails) : null,
+      delivered_usage_terms:
+        r.order.status === "completed" ? (r.order.deliveredUsageTerms ?? null) : null,
       delivered_at: r.order.deliveredAt?.toISOString() ?? null,
       created_at: r.order.createdAt?.toISOString(),
     })),
@@ -108,6 +118,28 @@ router.post("/topups", requireUser, async (req, res) => {
     sender_account,
     payment_reference,
   } = parse.data;
+
+  // F-03 (round-93 A2 §"Duplicate-transfer double-credit"): normalize the
+  // transfer receipt/reference HERE so every downstream dedup layer
+  // (V1-M9 partial unique index, the B2-02 in-tx exact check, the advisory
+  // lock, the composite soft-dedup) compares canonical values — a raw
+  // "  REF-1  " would dodge every exact-match guard while still being the
+  // same transfer. Handler-enforced semantic bound (the same pattern the
+  // CreateTopupBody openapi description documents for the other conditional
+  // rules): trimmed + ≤ 100 chars; the generated zod schema remains the
+  // looser 255-char outer perimeter. Blank-after-trim → null (the partial
+  // index exempts blank refs as the legacy class).
+  const paymentReference =
+    typeof payment_reference === "string" && payment_reference.trim().length > 0
+      ? payment_reference.trim()
+      : null;
+  if (paymentReference !== null && paymentReference.length > 100) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("مرجع الدفع طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
+      );
+  }
 
   if (amount <= 0 || amount > 10000) {
     return res
@@ -180,7 +212,7 @@ router.post("/topups", requireUser, async (req, res) => {
         paymentNetwork: payment_network ?? null,
         senderPhone: sender_phone ?? null,
         senderAccount: sender_account ?? null,
-        paymentReference: payment_reference ?? null,
+        paymentReference,
         status: initialStatus,
         adminNote: initialAdminNote,
       })
@@ -226,7 +258,14 @@ router.post("/topups", requireUser, async (req, res) => {
           `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
           `• المبلغ: <b>${amount} د.ل</b>\n` +
           `• الطريقة: ${escapeTelegramHtml(method)}` +
-          `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}`;
+          `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}\n` +
+          // F-03 (round-93 A2): the receipt reference rides the approval card
+          // so the operator can compare it against the bank statement — the
+          // duplicate guards (exact + composite) are only actionable when
+          // the human in the loop can SEE the value they dedupe on.
+          (paymentReference
+            ? `• المرجع: <code>${escapeTelegramHtml(paymentReference)}</code>\n`
+            : "");
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

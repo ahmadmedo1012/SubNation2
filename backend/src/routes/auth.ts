@@ -5,6 +5,9 @@ import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { verifyUserTokenDetailed } from "../lib/jwt";
+// 93-A1 S2 (round-93): shared session-row liveness probe — the same one
+// requireUser uses — so /probe enforces revocation like every authed route.
+import { isSessionRowLive } from "../lib/session-liveness";
 import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
@@ -288,10 +291,7 @@ router.get("/me", requireUser, async (req, res) => {
   // on the critical path of every page load (Navbar boot probe).
   const [[user], identities] = await Promise.all([
     db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
-    db
-      .select()
-      .from(userAuthIdentitiesTable)
-      .where(eq(userAuthIdentitiesTable.userId, userId)),
+    db.select().from(userAuthIdentitiesTable).where(eq(userAuthIdentitiesTable.userId, userId)),
   ]);
   if (!user)
     return res
@@ -335,7 +335,9 @@ router.get("/me", requireUser, async (req, res) => {
  *
  * Behaviour:
  *   - Cookie/header missing or invalid → 200 with { authenticated: false }
- *   - Cookie/header valid + user found → 200 with { authenticated: true, user, linked_identities }
+ *   - Session row deleted/expired for a signature-valid token → 200 with
+ *     { authenticated: false }  (93-A1 S2, round-93 — see below)
+ *   - Cookie/header valid + session live + user found → 200 with { authenticated: true, user, linked_identities }
  *   - User row missing for a valid token → 200 with { authenticated: false }
  *
  * The response shape on the authenticated path matches /api/auth/me
@@ -358,14 +360,44 @@ router.get("/probe", async (req, res) => {
     return res.status(200).json({ authenticated: false });
   }
 
+  // 93-A1 S2 (round-93): session-revocation parity with requireUser.
+  // /me rejects a signature-valid JWT whose sessions row was deleted by
+  // logout / logout-all / user deletion — /probe used to skip that check
+  // (it deliberately bypasses requireUser to avoid console-visible 401s)
+  // and handed the full profile + linked identities to a stolen-but-revoked
+  // token for up to 30 days. Same probe, same 60 s cache, same fail-open
+  // posture on DB errors — only the verdict shape differs: a dead session
+  // here is a 200 with { authenticated: false }, preserving the
+  // 200-always contract that keeps the SPA's cold boot out of DevTools'
+  // console-error tally.
+  if (result.payload.sessionId) {
+    try {
+      const live = await isSessionRowLive(result.payload.sessionId);
+      if (!live) {
+        logger.info(
+          { userId: result.payload.userId, sessionId: result.payload.sessionId },
+          "[auth] probe rejected token whose session row is gone",
+        );
+        return res.status(200).json({ authenticated: false });
+      }
+    } catch (err) {
+      // Fail OPEN for the signature-valid token — identical posture to
+      // requireUser's DB-probe-failure branch. Hard-failing the probe on a
+      // Postgres blip would log every visitor out of the SPA shell.
+      logger.warn(
+        { err, userId: result.payload.userId, category: "auth.session" },
+        "[auth] probe session-row check failed — reporting on JWT strength",
+      );
+    }
+  }
+  // Legacy token without sessionId (pre-unification) — requireUser's
+  // semantics: still valid for its signed lifetime, no row check.
+
   const userId = result.payload.userId;
   // Round-3 (8-c §2.6): concurrent user + identities read.
   const [[user], identities] = await Promise.all([
     db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
-    db
-      .select()
-      .from(userAuthIdentitiesTable)
-      .where(eq(userAuthIdentitiesTable.userId, userId)),
+    db.select().from(userAuthIdentitiesTable).where(eq(userAuthIdentitiesTable.userId, userId)),
   ]);
   if (!user) {
     return res.status(200).json({ authenticated: false });
@@ -729,9 +761,7 @@ router.delete("/sessions/:id", requireUser, async (req, res) => {
     .where(and(eq(sessionsTable.id, String(sessionId)), eq(sessionsTable.userId, userId)))
     .returning({ id: sessionsTable.id });
   if (deleted.length === 0)
-    return res
-      .status(404)
-      .json(createErrorResponse("الجلسة غير موجودة", ErrorCode.NOT_FOUND));
+    return res.status(404).json(createErrorResponse("الجلسة غير موجودة", ErrorCode.NOT_FOUND));
   return res.json({ success: true });
 });
 

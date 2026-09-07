@@ -10,6 +10,11 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton } from "@/components/admin/TableSkeleton";
+// 93-C7 / C-UX2 (A12 B3): risk-level pills migrate from raw
+// emerald/yellow/orange/red hues to the canonical StatusBadge on the
+// --status-* tokens (low→success, medium→warning, high→low-stock —
+// the orange token, critical→error).
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -48,31 +53,11 @@ interface DashboardResponse {
   pipeline: { enabled: boolean };
 }
 
-const LEVEL_META: Record<RiskLevel, { label: string; bg: string; text: string; border: string }> = {
-  low: {
-    label: "منخفض",
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
-    border: "border-emerald-500/30",
-  },
-  medium: {
-    label: "متوسط",
-    bg: "bg-yellow-500/10",
-    text: "text-yellow-400",
-    border: "border-yellow-500/30",
-  },
-  high: {
-    label: "عالي",
-    bg: "bg-orange-500/10",
-    text: "text-orange-400",
-    border: "border-orange-500/30",
-  },
-  critical: {
-    label: "حرج",
-    bg: "bg-red-500/10",
-    text: "text-red-400",
-    border: "border-red-500/30",
-  },
+const LEVEL_META: Record<RiskLevel, { label: string; tone: StatusBadgeVariant }> = {
+  low: { label: "منخفض", tone: "success" },
+  medium: { label: "متوسط", tone: "warning" },
+  high: { label: "عالي", tone: "low-stock" },
+  critical: { label: "حرج", tone: "error" },
 };
 
 const FILTERS: { value: "all" | RiskLevel; label: string }[] = [
@@ -82,6 +67,19 @@ const FILTERS: { value: "all" | RiskLevel; label: string }[] = [
   { value: "medium", label: "متوسط" },
   { value: "low", label: "منخفض" },
 ];
+
+// Active filter-chip styling derived from the same status tokens as the
+// row pills (93-C7 / C-UX2) — chip + badge can no longer disagree.
+const TONE_CHIP: Record<StatusBadgeVariant, string> = {
+  success: "bg-status-success/15 text-status-success border-status-success/40",
+  warning: "bg-status-warning/15 text-status-warning border-status-warning/40",
+  error: "bg-status-error/15 text-status-error border-status-error/40",
+  "low-stock": "bg-status-low-stock/15 text-status-low-stock border-status-low-stock/40",
+  info: "bg-status-info/15 text-status-info border-status-info/40",
+  purple: "bg-status-purple/15 text-status-purple border-status-purple/40",
+  primary: "bg-primary/15 text-primary border-primary/40",
+  neutral: "bg-muted/45 text-muted-foreground border-border/50",
+};
 
 export default function AdminRiskPage() {
   const headers = useAdminHeaders();
@@ -214,7 +212,7 @@ export default function AdminRiskPage() {
                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
                   active
                     ? tone
-                      ? `${tone.bg} ${tone.text} ${tone.border}`
+                      ? TONE_CHIP[tone.tone]
                       : "bg-primary/15 text-primary border-primary/40"
                     : "bg-muted/30 border-border/30 hover:bg-muted/60"
                 }`}
@@ -271,16 +269,14 @@ export default function AdminRiskPage() {
                       return (
                         <tr
                           key={e.id}
-                          className={`border-t border-border/30 hover:bg-muted/30 transition-colors ${
-                            i % 2 !== 0 ? "bg-muted/[0.035]" : ""
+                          className={`border-t border-border/30 hover:bg-muted/20 transition-colors ${
+                            i % 2 !== 0 ? "bg-muted/5" : ""
                           }`}
                         >
                           <td className="px-4 py-2.5">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone.bg} ${tone.text} ${tone.border}`}
-                            >
+                            <StatusBadge variant={tone.tone} size="xs">
                               {tone.label}
-                            </span>
+                            </StatusBadge>
                           </td>
                           <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
                           <td className="px-4 py-2.5 text-xs">{userLabel}</td>
@@ -317,11 +313,9 @@ export default function AdminRiskPage() {
                   <Link key={e.id} href={`/admin/risk/events/${e.id}`}>
                     <div className="bg-card border border-border/60 rounded-2xl p-4 hover:border-primary/30 transition-colors">
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${tone.bg} ${tone.text} ${tone.border}`}
-                        >
+                        <StatusBadge variant={tone.tone} size="xs">
                           {tone.label}
-                        </span>
+                        </StatusBadge>
                         <span className="font-mono text-xs text-muted-foreground tabular-nums">
                           {e.score} نقطة
                         </span>

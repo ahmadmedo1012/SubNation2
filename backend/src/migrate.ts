@@ -195,10 +195,22 @@ export async function applyMoneyConstraintStage(
       violation: "amount <= 0",
     },
     {
-      name: "chk_ledger_amount_pos",
+      // V1-M10 (round-93 A2 finding #1 + A7 §2 P1, live-DB confirmed):
+      // the stage originally shipped `amount > 0` as
+      // chk_ledger_amount_pos, but adjustments store SIGNED deltas
+      // (adjustment.service.ts: amount = balanceAfter - balanceBefore),
+      // so the first admin debit (-30) would abort the whole tx with
+      // 23514 → generic 500 on PATCH /admin/users/:id (fail-closed, but
+      // the only fraud/mistake correction tool was dead). Replaced by a
+      // sign-free nonzero invariant — magnitude conventions stay enforced
+      // at the service layer where the type-specific semantics live, and
+      // the balance reconstruction (balanceAfter - balanceBefore) keeps
+      // working exactly. V1-M10 below drops the legacy-named constraint
+      // on databases that already carry it.
+      name: "chk_ledger_amount_nonzero",
       table: "wallet_ledger",
-      check: "amount > 0",
-      violation: "amount <= 0",
+      check: "amount <> 0",
+      violation: "amount = 0",
     },
   ];
   for (const { name, table, check, violation } of checkConstraints) {
@@ -235,6 +247,70 @@ export async function applyMoneyConstraintStage(
     sql`CREATE INDEX IF NOT EXISTS idx_inventory_product_sold ON inventory(product_id, is_sold)`,
   );
   await execute(sql`CREATE INDEX IF NOT EXISTS idx_cart_items_user ON cart_items(user_id)`);
+}
+
+/**
+ * V1-M10 (round-93 A2 finding #1 + A7 §2 P1 — live-DB confirmed): replace
+ * the V1-M9 `chk_ledger_amount_pos` (amount > 0) with `amount <> 0`.
+ *
+ * wallet_ledger's two writer conventions collide under the old CHECK:
+ * purchases/refunds/topups store POSITIVE magnitudes with the sign carried
+ * by `type`, while adjustment rows store SIGNED deltas
+ * (adjustment.service.ts: `amount = balanceAfter - balanceBefore`). The
+ * first admin debit (or setBalance lowering the balance) wrote a negative
+ * amount → SQLSTATE 23514 → the whole atomic tx rolled back (money stayed
+ * consistent — Principle I held) → generic 500 on the admin users endpoint.
+ * A7 verified the live DB at 1998c22: `chk_ledger_amount_pos` live, zero
+ * adjustment rows written yet — an armed time bomb, not an incident.
+ *
+ * Stage shape mirrors V1-M9 exactly (probe → alert instead of a failed
+ * ALTER; idempotent re-runs; single statements so the pglite harness can
+ * run it):
+ *   1. If any row already carries amount = 0 (nothing in the codebase
+ *      writes those — ZERO_DELTA is rejected before the DB), alert and
+ *      skip: the operator fixes the data, the next boot applies the
+ *      constraint.
+ *   2. DROP the legacy-named constraint (no-op where it never existed —
+ *      fresh installs, pglite harness).
+ *   3. ADD chk_ledger_amount_nonzero via the duplicate_object-swallowing
+ *      DO block (applyMoneyConstraintStage's array owns the fresh-install
+ *      creation; this re-add is the belt for environments that somehow ran
+ *      a partial boot between the two).
+ *
+ * chk_users_wallet_balance_nonneg (negative-balance protection) is
+ * untouched: V1-M9 still applies it every boot before this stage runs,
+ * and no statement here touches users.
+ *
+ * Exported with an injectable executor for unit tests (migrate-v1m10).
+ */
+export async function applyLedgerAmountNonzeroStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const zeroAmountRows = extractCount(
+    await execute(sql`SELECT count(*) AS c FROM wallet_ledger WHERE amount = 0`),
+  );
+  if (zeroAmountRows > 0) {
+    await alertMoneyConstraintIssue(
+      "قيود دفتر مالية V1-M10",
+      `Found ${zeroAmountRows} wallet_ledger row(s) with amount = 0 — chk_ledger_amount_nonzero NOT added and the legacy chk_ledger_amount_pos NOT dropped. Fix the data, then reboot to apply the migration.`,
+      "db:constraint:chk_ledger_amount_nonzero",
+    );
+    return;
+  }
+
+  // The rename itself. DROP IF EXISTS keeps it idempotent: databases that
+  // already carry the legacy name (the live Neon DB) transition on the
+  // first boot; every later boot is a no-op.
+  await execute(sql`ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS chk_ledger_amount_pos`);
+
+  // Belt for the ADD (the V1-M9 stage's array adds it on the same boot,
+  // just before this runs) — duplicate_object swallow = idempotent.
+  await execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE wallet_ledger ADD CONSTRAINT chk_ledger_amount_nonzero
+        CHECK (amount <> 0);
+    EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+  `);
 }
 
 export async function runMigrations() {
@@ -1810,6 +1886,16 @@ export async function runMigrations() {
     // every boot; every statement inside is guarded (IF NOT EXISTS /
     // count-probe + alert) so steady-state boots are no-ops.
     await applyMoneyConstraintStage();
+
+    // ── V1-M10 (round-93 A2/A7): wallet_ledger amount <> 0 ──
+    // Replaces the V1-M9 chk_ledger_amount_pos (amount > 0) that breaks
+    // signed debit adjustments. Must run AFTER applyMoneyConstraintStage:
+    // the stage first guarantees chk_ledger_amount_nonzero exists (fresh
+    // installs), then this drops the legacy-named twin on already-migrated
+    // databases — both constraints coexist for the microseconds in between,
+    // and no live row violates either (probe above). Same guards, same
+    // write-gate, same no-op steady state as V1-M9.
+    await applyLedgerAmountNonzeroStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

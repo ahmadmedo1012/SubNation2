@@ -42,10 +42,17 @@ function StatusIcon({ status }: { status: string }) {
   return <Clock className="w-3.5 h-3.5 text-status-warning" />;
 }
 
-function statusLeftBorder(status: string): string {
-  if (status === "completed") return "border-l-status-success/55";
-  if (status === "failed" || status === "refunded") return "border-l-status-error/55";
-  return "border-l-status-warning/45";
+function statusAccentBorder(status: string): string {
+  // 93-C5 / F-15 (A4 #4): the card mixes a LOGICAL width (border-s-[3px] =
+  // right edge in RTL) with a PHYSICAL color (border-l-* = left edge) —
+  // the status tint landed on the opposite 1px edge, leaving a neutral
+  // 3px bar and an effectively invisible status accent for every RTL
+  // user (i.e. everyone). One system now: physical border-r-* on BOTH,
+  // matching support.tsx's ticket-card idiom (border-r-[3px] +
+  // border-r-blue-500/55).
+  if (status === "completed") return "border-r-status-success/55";
+  if (status === "failed" || status === "refunded") return "border-r-status-error/55";
+  return "border-r-status-warning/45";
 }
 
 const FILTER_TONES: Record<
@@ -107,7 +114,7 @@ function FilterChip({
 
 function OrderCardSkeleton() {
   return (
-    <div className="bg-card border border-border border-s-2 border-l-border/30 rounded-xl p-4">
+    <div className="bg-card border border-border border-r-2 border-r-border/30 rounded-xl p-4">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-xl bg-muted skeleton-shimmer shrink-0" />
         <div className="flex-1 space-y-2">
@@ -307,9 +314,9 @@ export default function OrdersPage() {
                 <div
                   className={`
                   float-in ${staggerClass}
-                  bg-card border border-border/60 border-s-[3px] ${statusLeftBorder(order.status)}
+                  bg-card border border-border/60 border-r-[3px] ${statusAccentBorder(order.status)}
                   rounded-xl p-4
-                  hover:border-border hover:border-s-[3px] hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
+                  hover:border-border hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
                   transition-all duration-200 cursor-pointer group active:scale-[0.995] active:translate-y-0
                 `}
                 >

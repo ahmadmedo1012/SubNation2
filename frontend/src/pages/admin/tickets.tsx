@@ -1,10 +1,20 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// 93-C7 / C-UX2 (A12 B1): the hand-rolled STATUS_CONFIG map (raw
+// blue/yellow hues + a parallel duplicate in storefront support.tsx)
+// is replaced by the canonical STATUS_TONE mapper + statusLabel.
+import {
+  STATUS_TONE,
+  StatusBadge,
+  TICKET_STATUSES,
+  UNKNOWN_STATUS_TONE,
+  type SemanticStatus,
+} from "@/components/ui/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import {
   AlertCircle,
@@ -23,24 +33,10 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  open: {
-    label: "مفتوحة",
-    color: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    dot: "bg-blue-400",
-  },
-  in_progress: {
-    label: "قيد المعالجة",
-    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-    dot: "bg-yellow-400",
-  },
-  closed: {
-    label: "مغلقة",
-    color: "text-muted-foreground bg-muted/30 border-border",
-    dot: "bg-muted-foreground",
-  },
-};
-
+// Ticket status rendering now derives from the shared canonical maps:
+// tone = STATUS_TONE[status] (info/warning/neutral on the --status-*
+// tokens), label = statusLabel(status) — one source shared with the
+// storefront wallet/orders surfaces (93-C7 / C-UX2).
 const CATEGORIES: Record<string, string> = {
   billing: "الدفع",
   order: "الطلبات",
@@ -49,11 +45,12 @@ const CATEGORIES: Record<string, string> = {
   other: "أخرى",
 };
 
+// Filter labels derive from statusLabel (93-C7 / C-UX5, A12 §2.4): the
+// tabs previously hand-repeated the same words as the badges — now one
+// map feeds both, so the «معلق/قيد الانتظار»-class drift can't recur.
 const STATUS_FILTERS = [
   { value: "", label: "الكل" },
-  { value: "open", label: "مفتوحة" },
-  { value: "in_progress", label: "قيد المعالجة" },
-  { value: "closed", label: "مغلقة" },
+  ...TICKET_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
 ];
 
 const CATEGORY_FILTERS = [
@@ -252,7 +249,7 @@ export default function AdminTicketsPage() {
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-black">تذاكر الدعم</h1>
               {pendingCount > 0 && (
-                <span className="bg-blue-400/20 text-blue-400 border border-blue-400/30 text-xs font-black px-2.5 py-1 rounded-full">
+                <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-black px-2.5 py-1 rounded-full">
                   {pendingCount} نشطة
                 </span>
               )}
@@ -353,7 +350,6 @@ export default function AdminTicketsPage() {
               </div>
             ) : (
               visibleTickets.map((t, i) => {
-                const sc = STATUS_CONFIG[t.status] ?? STATUS_CONFIG.open;
                 const isActive = selected?.id === t.id;
                 return (
                   <button
@@ -365,7 +361,7 @@ export default function AdminTicketsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           {t.status === "open" && (
-                            <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 animate-pulse" />
+                            <span className="w-2 h-2 rounded-full bg-status-info shrink-0 animate-pulse" />
                           )}
                           <span className="font-bold text-sm truncate leading-snug flex-1">
                             {t.title}
@@ -387,11 +383,15 @@ export default function AdminTicketsPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full border font-bold ${sc.color}`}
+                          {/* 93-C7 / C-UX2 (A12 B1): canonical tone + label
+                              from the shared maps — same pill the detail
+                              pane and the storefront use. */}
+                          <StatusBadge
+                            variant={STATUS_TONE[t.status as SemanticStatus] ?? UNKNOWN_STATUS_TONE}
+                            size="sm"
                           >
-                            {sc.label}
-                          </span>
+                            {statusLabel(t.status)}
+                          </StatusBadge>
                           <span className="text-xs text-muted-foreground">
                             {t.reply_count} ردود
                           </span>
@@ -423,11 +423,14 @@ export default function AdminTicketsPage() {
                       <User className="w-3 h-3" />
                       <span className="font-mono">{displayUserName(userFromRow(selected))}</span>
                     </div>
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full border font-bold ${STATUS_CONFIG[selected.status]?.color}`}
+                    <StatusBadge
+                      variant={
+                        STATUS_TONE[selected.status as SemanticStatus] ?? UNKNOWN_STATUS_TONE
+                      }
+                      size="sm"
                     >
-                      {STATUS_CONFIG[selected.status]?.label}
-                    </span>
+                      {statusLabel(selected.status)}
+                    </StatusBadge>
                     {selected.category && (
                       <span className="text-xs text-muted-foreground">
                         {CATEGORIES[selected.category] ?? selected.category}
@@ -465,6 +468,7 @@ export default function AdminTicketsPage() {
                   )}
                   <button
                     onClick={() => setSelected(null)}
+                    aria-label="إغلاق تفاصيل التذكرة"
                     className="hidden lg:flex p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
                   >
                     <X className="w-4 h-4" />
@@ -533,9 +537,7 @@ export default function AdminTicketsPage() {
                   <Input
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
-                    placeholder={
-                      selected.status === "closed" ? "التذكرة مغلقة..." : "اكتب ردك هنا..."
-                    }
+                    placeholder={selected.status === "closed" ? "التذكرة مغلقة…" : "اكتب ردك هنا…"}
                     className="flex-1 h-10"
                     disabled={selected.status === "closed"}
                     dir="rtl"

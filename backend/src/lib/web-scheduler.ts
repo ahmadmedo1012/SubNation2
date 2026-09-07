@@ -25,6 +25,13 @@
  * boot one-shots here (session prune, alert retention, risk-events
  * retention, auth-activity retention) to close the restart gap.
  *
+ * R6 (round-93 A3): losing the leader lock now DEMOTES this process —
+ * heartbeat / alerting / watchers / cron are stopped locally via the
+ * coordinator's onLost callback (the demoted instance must not keep
+ * firing jobs in parallel with the new leader), and the acquisition
+ * retry loop is restarted so the schedulers come back if the new leader
+ * dies.
+ *
  * Migration to a dedicated worker (when ready):
  *   1. Provision the `subnation-worker` Render service.
  *   2. Render MCP `update_environment_variables` to set
@@ -49,6 +56,7 @@ import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
 import { acquireSchedulerLeadership, type SchedulerLeadership } from "./scheduler-coordinator";
 import { setSchedulerState } from "./scheduler-state";
+import type { CronJobsHandle } from "../jobs/cron";
 
 export interface WebSchedulerHandle {
   /** Whether the schedulers are actually running in this process (live value). */
@@ -97,7 +105,45 @@ export async function startWebSchedulers(
 
   let started = false;
   let heartbeatCleanup: { stop: () => void } | null = null;
+  let cronJobs: CronJobsHandle | null = null;
   const watchers: Array<{ stop: () => void }> = [];
+
+  /**
+   * Stop the leader-only jobs (R6). Used BOTH for shutdown (drain) and
+   * for demotion after leadership loss — the demoted instance must not
+   * keep firing cron/watchers/alerting in parallel with the new leader.
+   * Resets the `started` flag so a later re-acquisition (onAcquired) can
+   * start everything again.
+   */
+  const stopLeaderJobs = (context: "demoted" | "shutdown") => {
+    if (!started) return;
+    started = false;
+    heartbeatCleanup?.stop();
+    heartbeatCleanup = null;
+    alertingService.stop();
+    // B7-P2-11: watchers expose stop handles — actually stop the
+    // intervals instead of relying on process exit.
+    for (const watcher of watchers) watcher.stop();
+    watchers.length = 0;
+    // R8 (round-93 A3): node-cron tasks have real stop handles now — the
+    // old "auto cleanup on process exit" claim left a window where the
+    // drain released the lock while this instance's crons still ticked,
+    // double-running jobs against the new leader for up to 10 s.
+    cronJobs?.stop();
+    cronJobs = null;
+    setSchedulerState({
+      active: false,
+      isLeader: false,
+      reason: "not_leader",
+      startedAt: null,
+    });
+    logger.info(
+      { category: "monitoring", instanceId: leadership.instanceId, context },
+      context === "demoted"
+        ? "[scheduler] demoted — local schedulers stopped (lost leader lock)"
+        : "[scheduler] local schedulers stopped",
+    );
+  };
 
   // Everything the leader runs, extracted so it can start EITHER
   // immediately (initial lock win) or later (lock freed on retry).
@@ -126,7 +172,7 @@ export async function startWebSchedulers(
 
     // Cron + watchers — same code path used by worker.ts when a worker exists.
     watchers.push(startCouponWatcher(), startStockWatcher(), startFlashSaleWatcher());
-    initCronJobs();
+    cronJobs = initCronJobs();
 
     // Boot one-shots (fire-and-forget: scheduler startup must not block):
     //   - session prune: sessions that expired while the process was down;
@@ -171,6 +217,14 @@ export async function startWebSchedulers(
       );
       startLeaderJobs();
     },
+    onLost: () => {
+      // R6 (round-93 A3): another instance took the lock — stop OUR
+      // schedulers so we don't double-run cron/alerting/heartbeat against
+      // the new leader (split-brain). The coordinator already restarted
+      // the acquisition loop; if the new leader dies, onAcquired fires
+      // and startLeaderJobs() runs again.
+      stopLeaderJobs("demoted");
+    },
   });
 
   if (leadership.isLeader) {
@@ -194,20 +248,12 @@ export async function startWebSchedulers(
       { category: "monitoring", instanceId: leadership.instanceId },
       "[scheduler] stopping web schedulers",
     );
-    heartbeatCleanup?.stop();
-    alertingService.stop();
-    // B7-P2-11: watchers now expose stop handles — actually stop the
-    // intervals instead of relying on process exit.
-    for (const watcher of watchers) watcher.stop();
-    // node-cron jobs auto-cleanup on process exit; no stop hooks needed
-    // for them (they hold no resources beyond the interval).
+    // R5 (round-93 A3): leadership.release() is internally bounded (2 s per
+    // Redis op) — a Redis outage during SIGTERM can no longer stall the
+    // drain until the 10 s force-exit. R8: crons/watchers/heartbeat stop
+    // BEFORE the lock is released so the new leader never double-runs.
+    stopLeaderJobs("shutdown");
     await leadership.release();
-    setSchedulerState({
-      active: false,
-      isLeader: false,
-      reason: "not_leader",
-      startedAt: null,
-    });
   };
 
   return {

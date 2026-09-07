@@ -104,10 +104,12 @@ export function Navbar() {
 
         <div className="flex items-center gap-1">
           {/* Theme toggle */}
+          {/* 93-C8 (A11 §7): «الثيم» is borrowed jargon; the plain-Arabic
+              label matches admin/layout's «وضع نهاري/ليلي» vocabulary. */}
           <button
             onClick={toggleTheme}
             className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground hover:text-foreground touch-target flex items-center justify-center"
-            aria-label="تبديل الثيم"
+            aria-label="تبديل المظهر (داكن/فاتح)"
           >
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
