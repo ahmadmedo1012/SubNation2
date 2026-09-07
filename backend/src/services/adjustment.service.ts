@@ -78,7 +78,12 @@ export interface AdjustOptions {
  * clients. Reject non-finite values and absurd magnitudes at the
  * service boundary, where every caller funnels through.
  */
-const MAX_ABS_ADJUSTMENT = 1_000_000_000; // 1e9 LYD — far above any legitimate balance
+// B2-08 (round-92 audit): bound = the numeric(10,2) column capacity
+// (99,999,999.99 LYD), not 1e9. The old bound advertised a range the
+// storage cannot represent: a +600,000,000 adjustment passed every check
+// and then died as an opaque Postgres `numeric field overflow` 500 on a
+// money route.
+const MAX_ABS_ADJUSTMENT = 99_999_999.99; // numeric(10,2) max — B2-08
 
 function assertFiniteAmount(value: number): void {
   if (!Number.isFinite(value) || Math.abs(value) > MAX_ABS_ADJUSTMENT) {
@@ -171,6 +176,13 @@ async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<Adj
 
     if (balanceAfter < 0) {
       throw new AdjustmentError(400, "NEGATIVE_BALANCE", "الرصيد لا يمكن أن يكون سالباً");
+    }
+
+    // B2-08: the RESULTING balance must also fit numeric(10,2) — a small
+    // delta on top of a near-max balance would otherwise pass the input
+    // checks and overflow at the UPDATE (unhandled 500 on a money route).
+    if (!Number.isFinite(balanceAfter) || balanceAfter > MAX_ABS_ADJUSTMENT) {
+      throw new AdjustmentError(400, "INVALID_AMOUNT", "قيمة المبلغ غير صالحة");
     }
 
     const updated = await tx

@@ -192,6 +192,16 @@ jobs:
       - name: Typecheck (project references + per-package)
         run: pnpm run typecheck
 
+      - name: OpenAPI ↔ Express route contract gate
+        # Round-92 B3 (F-01/F-10): 62% of the live /api surface was
+        # undocumented, including the money-moving PATCH /admin/users/{id}
+        # that landed without a spec entry. This gate diffs the Express
+        # route tree against shared/api-spec/openapi.yaml so the gap can
+        # never silently grow: new routes must be documented (or added to
+        # the maintained KNOWN_UNDOCUMENTED allowlist for internal/
+        # diagnostics surface) and documented routes must stay implemented.
+        run: pnpm --filter @workspace/scripts exec tsx ../scripts/check-openapi-routes.ts
+
       - name: Migration drift check
         # Regenerates Drizzle migrations from the schema, then verifies the
         # working tree is unchanged. If a dev edited the schema without

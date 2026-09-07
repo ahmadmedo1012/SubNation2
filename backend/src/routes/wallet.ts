@@ -1,6 +1,6 @@
 import { CreateTopupBody } from "@workspace/api-zod";
 import { db, ordersTable, productsTable, usersTable, walletTopupsTable } from "@workspace/db";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { logger } from "../lib/logger";
 import { normalizeLibyanPhone } from "../lib/crypto";
@@ -13,6 +13,20 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
 
 const router = Router();
+
+/**
+ * SEC-92-09 (round-92 audit): minimal HTML escape for Telegram's
+ * parse_mode=HTML — same character set as telegram.ts's escapeHtml.
+ * Escaping &, <, > prevents user-supplied topup fields (sender_phone,
+ * payment_network) from breaking the message render or being interpreted
+ * as markup.
+ */
+function escapeTelegramHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
@@ -47,6 +61,10 @@ router.get("/", requireUser, async (req, res) => {
     loyalty_points: user.loyaltyPoints,
     loyalty_tier: user.loyaltyTier,
     pending_topups_count: Number(pendingCount),
+    // B2-03 (round-92 audit, belt): delivered credentials are only readable
+    // while the order is "completed" — RefundService nulls them in the
+    // refund tx, but the gate also covers every other non-completed state
+    // (mirrors formatOrder in routes/orders.ts).
     recent_orders: recentOrders.map((r) => ({
       id: r.order.id,
       order_code: r.order.orderCode,
@@ -55,8 +73,9 @@ router.get("/", requireUser, async (req, res) => {
       product_image_url: r.productImageUrl ?? null,
       amount: toNumber(r.order.amount),
       status: r.order.status,
-      delivered_email: r.order.deliveredEmail ?? null,
-      delivered_password: safeDecrypt(r.order.deliveredPassword),
+      delivered_email: r.order.status === "completed" ? (r.order.deliveredEmail ?? null) : null,
+      delivered_password:
+        r.order.status === "completed" ? safeDecrypt(r.order.deliveredPassword) : null,
       delivered_extra_details: r.order.deliveredExtraDetails ?? null,
       delivered_usage_terms: r.order.deliveredUsageTerms ?? null,
       delivered_at: r.order.deliveredAt?.toISOString() ?? null,
@@ -118,52 +137,73 @@ router.post("/topups", requireUser, async (req, res) => {
     }
   }
 
-  // Anti-abuse: max 3 pending requests per user
+  // Anti-abuse: max 3 pending requests per user.
+  //
+  // B2-09 (round-92 audit): the count-then-insert pair runs inside ONE
+  // transaction guarded by a per-user advisory lock. The old
+  // check-then-insert allowed N parallel POSTs to all count 0 pending and
+  // all insert (cap bypassed — no direct money impact since each request
+  // still needs manual approval, but the anti-abuse invariant was soft).
+  // The advisory lock serializes same-user submissions; count + auto-reject
+  // heuristic + insert now see a consistent snapshot and commit atomically.
   const MAX_PENDING = 3;
-  const [{ pendingCount }] = await db
-    .select({ pendingCount: count() })
-    .from(walletTopupsTable)
-    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
+  const submission = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`);
 
-  if (Number(pendingCount) >= MAX_PENDING) {
+    const [{ pendingCount }] = await tx
+      .select({ pendingCount: count() })
+      .from(walletTopupsTable)
+      .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
+
+    if (Number(pendingCount) >= MAX_PENDING) {
+      return { kind: "limited" as const, pendingCount: Number(pendingCount) };
+    }
+
+    const [{ rejectedCount }] = await tx
+      .select({ rejectedCount: count() })
+      .from(walletTopupsTable)
+      .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
+
+    // (Typed to the topup_status enum — replaces the legacy `as any`.)
+    let initialStatus: "pending" | "rejected" = "pending";
+    let initialAdminNote: string | null = null;
+
+    // Recharge Verification Heuristic: Auto-reject serial abusers
+    if (Number(rejectedCount) >= 3) {
+      initialStatus = "rejected";
+      initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
+    }
+
+    const [topup] = await tx
+      .insert(walletTopupsTable)
+      .values({
+        userId,
+        amount: String(amount),
+        paymentMethod: method,
+        paymentNetwork: payment_network ?? null,
+        senderPhone: sender_phone ?? null,
+        senderAccount: sender_account ?? null,
+        paymentReference: payment_reference ?? null,
+        status: initialStatus,
+        adminNote: initialAdminNote,
+      })
+      .returning();
+
+    return { kind: "ok" as const, topup, initialStatus };
+  });
+
+  if (submission.kind === "limited") {
     return res.status(429).json({
       error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
       // V4-P1: the code field is what the frontend getErrorMessage maps
       // to the Arabic message — without it this fell to the raw string.
       code: ErrorCode.TOPUP_LIMIT_EXCEEDED,
-      pending_count: Number(pendingCount),
+      pending_count: submission.pendingCount,
       limit: MAX_PENDING,
     });
   }
 
-  const [{ rejectedCount }] = await db
-    .select({ rejectedCount: count() })
-    .from(walletTopupsTable)
-    .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
-
-  let initialStatus = "pending";
-  let initialAdminNote = null;
-
-  // Recharge Verification Heuristic: Auto-reject serial abusers
-  if (Number(rejectedCount) >= 3) {
-    initialStatus = "rejected";
-    initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
-  }
-
-  const [topup] = await db
-    .insert(walletTopupsTable)
-    .values({
-      userId,
-      amount: String(amount),
-      paymentMethod: method,
-      paymentNetwork: payment_network ?? null,
-      senderPhone: sender_phone ?? null,
-      senderAccount: sender_account ?? null,
-      paymentReference: payment_reference ?? null,
-      status: initialStatus as any,
-      adminNote: initialAdminNote,
-    })
-    .returning();
+  const { topup, initialStatus } = submission;
 
   // ── Telegram approval request (fire-and-forget) ────────────────────────
   // Operators approve/reject directly from the admin group via inline
@@ -175,18 +215,28 @@ router.post("/topups", requireUser, async (req, res) => {
         const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
         const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
         if (!botToken || !chatId) return;
+        // SEC-92-09 (round-92 audit): this message previously used the
+        // legacy "Markdown" parse_mode with UNESCAPED user-controlled
+        // fields. sender_phone is only validated for mobile_transfer (a
+        // lypay submission can carry any string), and payment_network is a
+        // free-form string — one metacharacter (*, _, `, [) made Telegram's
+        // parser reject the whole sendMessage, silently dropping the
+        // approve/reject keyboard from the operator group. HTML mode +
+        // escaping (same pattern as telegram.ts's dispatch pipeline) makes
+        // the approval card render for ANY input the user submits.
         const text =
-          `💰 *طلب شحن جديد #${topup.id}\n` +
-          `• الهاتف: ${sender_phone ?? "—"}\n` +
-          `• المبلغ: ${amount} د.ل\n` +
-          `• الطريقة: ${method}${payment_network ? ` (${payment_network})` : ""}*`;
+          `💰 <b>طلب شحن جديد #${topup.id}</b>\n` +
+          `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
+          `• المبلغ: <b>${amount} د.ل</b>\n` +
+          `• الطريقة: ${escapeTelegramHtml(method)}` +
+          `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}`;
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
             text,
-            parse_mode: "Markdown",
+            parse_mode: "HTML",
             reply_markup: {
               inline_keyboard: [
                 [

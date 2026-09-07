@@ -6,7 +6,6 @@ import { ErrorCode } from "@workspace/error-codes";
 
 export { ErrorCode };
 
-
 // Arabic error messages for each error code
 const errorMessages: Record<ErrorCode, string> = {
   // Validation errors
@@ -63,6 +62,24 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.COPILOT_BAD_METHOD]: "طريقة طلب غير مدعومة",
   [ErrorCode.IDEMPOTENCY_IN_FLIGHT]: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول بعد قليل",
   [ErrorCode.IDEMPOTENCY_KEY_REUSE]: "تمت إعادة استخدام معرف العملية مع طلب مختلف",
+
+  // Round-92 (B3 F-05): copilot preview/execution family — the enum
+  // contract previously omitted these codes; the map must stay
+  // exhaustive over Record<ErrorCode, string>.
+  [ErrorCode.COPILOT_PREVIEW_NOT_FOUND]: "المعاينة غير موجودة",
+  [ErrorCode.COPILOT_PREVIEW_CONSUMED]: "المعاينة استُهلكت بالفعل",
+  [ErrorCode.COPILOT_PREVIEW_EXPIRED]: "انتهت صلاحية المعاينة",
+  [ErrorCode.COPILOT_HANDOFF_REQUIRED]: "هذا الإجراء يتطلب تنفيذاً يدوياً من صفحة الإدارة",
+  [ErrorCode.COPILOT_HIGH_RISK_DISABLED]: "تنفيذ الإجراءات عالية الخطورة معطّل حالياً",
+  [ErrorCode.COPILOT_STALE_RECORD]: "تغيّرت حالة المعاينة. أعد المحاولة",
+  [ErrorCode.COPILOT_UNEXPECTED_STATE]: "حالة غير متوقعة للمعاينة. أعد المحاولة",
+  [ErrorCode.COPILOT_EXECUTE_FAILED]: "فشل تنفيذ الإجراء. حاول مرة أخرى",
+  [ErrorCode.COPILOT_NOT_HIGH_RISK]: "هذا الإجراء لا يتطلب تأكيداً ثانياً",
+  [ErrorCode.COPILOT_FIRST_CONFIRM_MISSING]: "التأكيد الأول مطلوب قبل التأكيد الثاني",
+  [ErrorCode.COPILOT_COOLDOWN_NOT_ELAPSED]: "لم تنتهِ مهلة الانتظار بعد. حاول بعد لحظات",
+  [ErrorCode.COPILOT_LLM_UNAVAILABLE]: "خدمة المساعد الذكي غير متاحة حالياً",
+  [ErrorCode.COPILOT_OUT_OF_SCOPE]: "ليست لديك صلاحية لاستخدام هذه الميزة",
+  [ErrorCode.COPILOT_INVALID_FLAGS]: "إعدادات مراحل المساعد غير صالحة",
 };
 
 type ErrorLike = {

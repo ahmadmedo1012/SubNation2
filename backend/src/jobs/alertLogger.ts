@@ -149,11 +149,30 @@ export async function markStaleUnreadAlertsRead(olderThanDays = 14): Promise<num
 
 export async function pruneReadAlerts(olderThanDays = 30): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
-  const deleted = await db
-    .delete(adminAlertsTable)
-    .where(and(eq(adminAlertsTable.isRead, true), lt(adminAlertsTable.createdAt, cutoff)))
-    .returning({ id: adminAlertsTable.id });
-  return deleted.length;
+  // B7-P2-5 (round-92): bounded ctid batches instead of one unbounded
+  // DELETE — keeps lock footprint per statement tiny on Neon's pooler.
+  // .returning() rows (not result.rowCount) — pglite's driver result
+  // doesn't carry rowCount, and the test harness runs on pglite.
+  const BATCH = 1000;
+  let deleted = 0;
+  for (;;) {
+    const result = await db.execute(sql`
+      DELETE FROM admin_alerts
+      WHERE ctid IN (
+        SELECT ctid FROM admin_alerts
+        WHERE is_read = true AND created_at < ${cutoff}
+        LIMIT ${BATCH}
+      )
+      RETURNING id
+    `);
+    const rows =
+      (result as unknown as { rows?: Array<{ id: number }> }).rows ??
+      (result as unknown as Array<{ id: number }>) ??
+      [];
+    deleted += rows.length;
+    if (rows.length < BATCH) break;
+  }
+  return deleted;
 }
 
 /**

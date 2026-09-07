@@ -10,6 +10,16 @@ const router = Router();
 
 const CATEGORIES = ["billing", "technical", "order", "account", "other"];
 
+// SEC-92-07 (round-92): cap on user-authored ticket/reply message bodies.
+// Ticket creation caps title (≤ 255) and rate (5/h) but the MESSAGE body
+// was unbounded — the only ceiling was the global 1 MB JSON limit, so a
+// scripted user could park ~1 MB text rows into ticket_replies at
+// userLimiter cadence (multi-GB/day storage growth on a starter-tier
+// Neon + degraded admin ticket views). 4000 chars matches the copilot
+// intent-text bound (routes/admin/copilot/ask.ts) — far above any human
+// support message, small enough to make storage-DoS expensive.
+const MAX_TICKET_MESSAGE_CHARS = 4000;
+
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
@@ -92,6 +102,11 @@ router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   }
   if (title.length > 255)
     return res.status(400).json(createErrorResponse("العنوان طويل جداً", ErrorCode.INVALID_DATA));
+  if (message.length > MAX_TICKET_MESSAGE_CHARS) {
+    return res
+      .status(400)
+      .json(createErrorResponse("الرسالة طويلة جداً (الحد 4000 حرف)", ErrorCode.INVALID_DATA));
+  }
 
   const [ticket] = await db
     .insert(supportTicketsTable)
@@ -154,7 +169,23 @@ router.get("/:id", requireUser, async (req, res) => {
   });
 });
 
-router.post("/:id/reply", requireUser, async (req, res) => {
+// SEC-92-07: per-user reply limiter, mirroring ticketCreateLimiter above.
+// 30 replies/hour/user is two orders of magnitude above any honest
+// conversation cadence while capping the storage-DoS amplifier (each
+// reply is a ticket_replies row + a status update). Keyed by userId
+// (requireUser has already run), so the express-rate-limit IPv6
+// keyGenerator validation does not apply.
+const ticketReplyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => `ticket-reply:${(req as AuthenticatedRequest).userId}`,
+  message: {
+    error: "لقد أرسلت عدداً كافياً من الردود في هذه الساعة. انتظر قليلاً قبل المحاولة مجدداً.",
+    code: "RATE_LIMITED",
+  },
+});
+
+router.post("/:id/reply", requireUser, ticketReplyLimiter, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const id = intParam(req, "id");
@@ -175,6 +206,13 @@ router.post("/:id/reply", requireUser, async (req, res) => {
   const { message } = req.body ?? {};
   if (!message?.trim())
     return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
+  // SEC-92-07: same cap as ticket creation — the reply body was previously
+  // stored unbounded (up to the global 1 MB JSON limit).
+  if (message.length > MAX_TICKET_MESSAGE_CHARS) {
+    return res
+      .status(400)
+      .json(createErrorResponse("الرسالة طويلة جداً (الحد 4000 حرف)", ErrorCode.INVALID_DATA));
+  }
 
   const [reply] = await db
     .insert(ticketRepliesTable)

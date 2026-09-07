@@ -10,6 +10,7 @@
     "import-seo": "tsx ./src/import-seo.ts",
     "backup": "tsx ./src/backup-db.ts",
     "validate": "tsx ../scripts/validate.ts",
+    "check:openapi": "tsx ../scripts/check-openapi-routes.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

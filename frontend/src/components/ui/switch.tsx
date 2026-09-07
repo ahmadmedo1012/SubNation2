@@ -17,7 +17,13 @@ const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
+        // translate-x is a PHYSICAL transform: in RTL the thumb rests at
+        // the (right) start edge, so a positive +16px on checked pushes
+        // it off the end of the w-9 track. The rtl: override flips the
+        // direction so checked = inline-end in both directions (B6-P1-1).
+        // Verified: Tailwind v4 emits the rtl: rule after the base rule
+        // (equal specificity, later wins) — LTR output is unchanged.
+        "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=unchecked]:translate-x-0 data-[state=checked]:translate-x-4 data-[state=checked]:rtl:-translate-x-4",
       )}
     />
   </SwitchPrimitives.Root>

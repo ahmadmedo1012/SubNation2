@@ -222,6 +222,26 @@ CREATE TABLE admin_users (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TYPE ticket_status AS ENUM ('open','in_progress','closed');
+CREATE TABLE support_tickets (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title varchar(255) NOT NULL,
+  category varchar(50),
+  status ticket_status NOT NULL DEFAULT 'open',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_tickets_user ON support_tickets (user_id);
+CREATE TABLE ticket_replies (
+  id serial PRIMARY KEY,
+  ticket_id integer NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  author_type varchar(10) NOT NULL DEFAULT 'user',
+  message text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_replies_ticket ON ticket_replies (ticket_id, created_at);
 `;
 
 const TABLES = [
@@ -238,6 +258,8 @@ const TABLES = [
   "cart_items",
   "products",
   "users",
+  "ticket_replies",
+  "support_tickets",
 ];
 
 /** Build the fresh schema once. Call in a global beforeAll. */

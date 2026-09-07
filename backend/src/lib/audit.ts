@@ -22,10 +22,36 @@ import type { AdminAuthenticatedRequest } from "../middlewares/requireAdmin";
 
 const MAX_METADATA_BYTES = 2048;
 
-function clientIp(req: Request): string {
+/**
+ * Resolve the client IP for audit rows (SEC-92-06, round-92).
+ *
+ * Resolution order:
+ *   1. `req.ip` — the `cloudflareClientIp` middleware has already validated
+ *      the CF-Connecting-IP chain (it only trusts that header when the
+ *      Render-facing XFF peer is itself a Cloudflare IP) and overridden
+ *      req.ip, so this is the trusted value. Express computes it from
+ *      `trust proxy = 1` otherwise (the direct proxy peer).
+ *   2. RIGHTMOST X-Forwarded-For entry — documented fallback only (used
+ *      when req.ip is unavailable, e.g. synthetic requests). The rightmost
+ *      entry is the one appended by OUR trusted proxy; the LEFTMOST entry
+ *      is client-supplied and spoofable, and was previously recorded here
+ *      — poisoning audit forensics for exactly the incident class these
+ *      rows exist for.
+ *   3. req.socket.remoteAddress, then "unknown".
+ *
+ * Exported for unit tests (see lib/__tests__/audit-client-ip.test.ts).
+ */
+export function resolveAuditClientIp(req: Request): string {
+  if (req.ip) return req.ip;
   const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) return xff.split(",")[0].trim();
-  return req.ip ?? req.socket.remoteAddress ?? "unknown";
+  if (typeof xff === "string" && xff.length > 0) {
+    const entries = xff
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (entries.length > 0) return entries[entries.length - 1];
+  }
+  return req.socket?.remoteAddress ?? "unknown";
 }
 
 function safeMetadata(value: unknown): string | null {
@@ -60,7 +86,7 @@ export async function writeAuditLog(
       targetType: targetType ?? null,
       targetId: targetId ?? null,
       metadata: safeMetadata(metadata),
-      ip: clientIp(req).slice(0, 45),
+      ip: resolveAuditClientIp(req).slice(0, 45),
       userAgent: (req.headers["user-agent"] ?? "").slice(0, 500),
     });
   } catch (err) {

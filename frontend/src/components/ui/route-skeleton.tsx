@@ -13,6 +13,14 @@ import { cn } from "@/lib/utils";
  *   • form    — narrow card with stacked fields (login / register / onboarding)
  *   • admin   — sidebar-aware shell with table-style rows
  *   • blank   — flat background only (chromeless callback pages)
+ *   • checkout — max-w-5xl two-column shell: payment/coupon stack + 360px
+ *     sticky summary aside (mirrors pages/checkout.tsx exactly).
+ *
+ * NOTE (B4 P1-5 / B6-P1-5): the "checkout" shape is implemented and
+ * exported but App.tsx's ROUTE_SHAPES still maps /checkout to "detail"
+ * (the widest generic shell). Wiring `[/^\/checkout/, "checkout"]` in
+ * App.tsx is a one-line follow-up for the App.tsx owner — this shape
+ * exists so that flip is a pure route-map change with zero new code.
  *
  * All shells use `skeleton-shimmer` so they share the brand-tinted
  * sweep introduced in the theme polish pass.
@@ -25,7 +33,8 @@ export type RouteSkeletonShape =
   | "admin"
   | "blank"
   | "product"
-  | "order";
+  | "order"
+  | "checkout";
 
 interface RouteSkeletonProps {
   shape?: RouteSkeletonShape;
@@ -48,6 +57,7 @@ export function RouteSkeleton({ shape = "blank", className }: RouteSkeletonProps
       {shape === "blank" && <BlankShell />}
       {shape === "product" && <ProductShell />}
       {shape === "order" && <OrderShell />}
+      {shape === "checkout" && <CheckoutShell />}
     </div>
   );
 }
@@ -205,6 +215,74 @@ function FormShell() {
         <div className="h-10 skeleton-shimmer rounded-xl" />
         <div className="h-10 skeleton-shimmer rounded-xl mt-2" />
         <div className="h-11 skeleton-shimmer rounded-xl mt-2" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Checkout shell. Mirrors pages/checkout.tsx — max-w-5xl container,
+ * icon+title header, then a `md:grid-cols-[1fr_360px]` grid: left
+ * column = payment-method card + coupon card, right = the 360px
+ * summary aside. Same geometry as the real page so the chunk-load
+ * swap causes zero horizontal reflow on the money-critical route
+ * (B4 P1-5 / B6-P1-5).
+ */
+function CheckoutShell() {
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      <div className="flex items-center gap-3 mb-7">
+        <div className="w-11 h-11 rounded-xl skeleton-shimmer" />
+        <div className="space-y-1.5">
+          <div className="h-6 w-32 skeleton-shimmer rounded-lg" />
+          <div className="h-3.5 w-56 skeleton-shimmer rounded" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-5">
+        {/* Payment + coupon stack (main column) */}
+        <div className="space-y-4">
+          <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
+            <div className="h-5 w-28 skeleton-shimmer rounded-lg" />
+            <div className="flex items-start gap-3 p-4 rounded-xl border border-border/40">
+              <div className="w-10 h-10 rounded-lg skeleton-shimmer shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-36 skeleton-shimmer rounded" />
+                <div className="h-3 w-24 skeleton-shimmer rounded" />
+              </div>
+            </div>
+            <div className="h-3 w-full skeleton-shimmer rounded" />
+          </div>
+          <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-3">
+            <div className="h-5 w-32 skeleton-shimmer rounded-lg" />
+            <div className="h-10 skeleton-shimmer rounded-xl" />
+            <div className="h-3 w-4/5 skeleton-shimmer rounded" />
+          </div>
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-4 h-4 rounded-full skeleton-shimmer" />
+            <div className="h-3 w-40 skeleton-shimmer rounded" />
+          </div>
+        </div>
+        {/* Summary aside (360px) */}
+        <div className="md:sticky md:top-20 md:self-start">
+          <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-3">
+            <div className="h-5 w-24 skeleton-shimmer rounded-lg mb-1" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-lg skeleton-shimmer shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3.5 skeleton-shimmer rounded w-3/4" />
+                  <div className="h-3 skeleton-shimmer rounded w-1/3" />
+                </div>
+                <div className="h-3.5 w-14 skeleton-shimmer rounded" />
+              </div>
+            ))}
+            <div className="pt-3 mt-2 border-t border-border/25 flex justify-between items-center">
+              <div className="h-4 w-16 skeleton-shimmer rounded" />
+              <div className="h-5 w-20 skeleton-shimmer rounded-lg" />
+            </div>
+            <div className="h-11 skeleton-shimmer rounded-xl mt-2" />
+          </div>
+        </div>
       </div>
     </div>
   );

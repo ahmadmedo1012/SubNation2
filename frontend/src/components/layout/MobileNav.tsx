@@ -10,6 +10,26 @@ const TABS = [
   { href: "/profile", icon: User, label: "حسابي" },
 ];
 
+/**
+ * Fixed MobileNav height in px — the SINGLE source of truth for the nav's
+ * own height AND every clearance that must reserve room for it.
+ *
+ * The CSS side of the same contract is `--mobile-nav-h` in index.css
+ * (mirrors this value; a guard test asserts they stay equal). Consumers:
+ *   • MobileNav grid height (below)
+ *   • `mobile-nav-safe-pad` — main's content clearance (nav height +
+ *     one 12px breathing unit), App.tsx main wrapper
+ *   • `mobile-nav-footer-pad` — the Footer's clearance below its legal
+ *     row (exactly nav height — the fixed nav sits on top of it)
+ *   • `mobile-sticky-above-nav` — product sticky bar bottom offset
+ *
+ * Before B6-P1-7 three unrelated constants lived here: 60 (nav grid),
+ * 60 (footer margin) and 72 (main pad) — with BOTH the footer margin and
+ * the main pad reserving nav space (~132px of dead space, or a covered
+ * footer when the margin collapsed through #root).
+ */
+export const MOBILE_NAV_HEIGHT = 60;
+
 export function MobileNav() {
   const { token } = useAuth();
   const [location] = useLocation();
@@ -27,7 +47,10 @@ export function MobileNav() {
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-      <div className="relative grid h-[60px] grid-cols-5">
+      <div
+        className="relative grid grid-cols-5"
+        style={{ height: MOBILE_NAV_HEIGHT }}
+      >
         {TABS.map((tab) => {
           // Match "/" exactly (otherwise every route would highlight it).
           // For other tabs, match either the exact path or a deeper path

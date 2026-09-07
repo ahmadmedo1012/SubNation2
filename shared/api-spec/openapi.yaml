@@ -31,6 +31,8 @@ tags:
     description: Admin operations
   - name: copilot
     description: AI Admin Copilot — natural-language commands, structured previews, gated execution
+  - name: webhook
+    description: Inbound machine-to-machine webhooks (secret-token auth, non-{error,code} ack envelopes)
 paths:
   /healthz:
     get:
@@ -63,6 +65,12 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/UserSession"
+        "401":
+          description: Not authenticated (requireUser guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/logout:
     post:
       operationId: logout
@@ -75,6 +83,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Not authenticated (requireUser guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/me:
     get:
@@ -174,6 +188,12 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ProductRecommendation"
+        "400":
+          description: Invalid (non-integer) id — intParam guard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
           content:
@@ -228,6 +248,12 @@ paths:
                 $ref: "#/components/schemas/Product"
         "400":
           description: Invalid slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown slug (NOT_FOUND)
           content:
             application/json:
               schema:
@@ -1225,6 +1251,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing orders permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/orders/bulk-status:
     patch:
@@ -1294,12 +1326,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            Idempotency-key conflict — the same Idempotency-Key re-sent
+            with a different body (IDEMPOTENCY_KEY_REUSE) or the same key
+            while the original bulk request is still executing
+            (IDEMPOTENCY_IN_FLIGHT). Bodies carry success:false and the
+            legacy `message` alias alongside `error`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
 
   /admin/topups:
     get:
       operationId: listAdminTopups
       tags: [admin]
-      summary: List all top-up requests
+      summary: List all top-up requests (requireAdmin + finance scope)
       parameters:
         - name: status
           in: query
@@ -1320,18 +1365,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/topups/{id}/approve:
     post:
       operationId: approveTopup
       tags: [admin]
-      summary: Approve a top-up request
+      summary: Approve a top-up request (requireAdmin + finance scope — moves wallet money)
+      description: |
+        Executes TopupService.approve inside a transaction: status guard
+        (WHERE status='pending'), optimistic wallet credit, atomic
+        wallet_ledger type=topup entry, referral credit, and user/admin
+        notifications. Mounted behind the idempotency middleware
+        (routeKey admin.topups.approve) — send an Idempotency-Key per
+        click so a network retry / double-click cannot double-credit.
+        A payment_reference already used by an approved topup is
+        rejected with 409 (the same transfer cannot be credited twice).
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: integer
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Idempotency key (≥ 8 chars to engage; 24h dedup per admin +
+            route). Same key with a different body → 409
+            IDEMPOTENCY_KEY_REUSE; same key in flight → 409
+            IDEMPOTENCY_IN_FLIGHT; replays carry Idempotent-Replayed /
+            Idempotent-Original-At response headers.
+          schema:
+            type: string
+            maxLength: 100
       requestBody:
         content:
           application/json:
@@ -1339,13 +1411,67 @@ paths:
               $ref: "#/components/schemas/AdminTopupActionBody"
       responses:
         "200":
-          description: Approved
+          description: Approved — wallet credited + ledger row written
+          headers:
+            Idempotent-Replayed:
+              description: |
+                "true" when this body is a cached replay of the original
+                request (same Idempotency-Key + body).
+              schema:
+                type: string
+                enum: ["true"]
+            Idempotent-Original-At:
+              description: |
+                ISO-8601 completion timestamp of the original request —
+                present on idempotent replays.
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: |
+            Invalid (non-integer) id, malformed admin_note body, or the
+            topup was already processed (ServiceError 400).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Topup (or its user) not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            State conflict — topup flipped by a concurrent decision,
+            wallet-deduction concurrency loss, payment-reference reuse,
+            or an idempotency-key conflict (same key re-used with a
+            different body / same key still in flight — those bodies
+            carry success:false and a legacy `message` alias alongside
+            `error`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
+        "500":
+          description: Unexpected transaction failure (INTERNAL_ERROR)
           content:
             application/json:
               schema:
@@ -1355,13 +1481,29 @@ paths:
     post:
       operationId: rejectTopup
       tags: [admin]
-      summary: Reject a top-up request
+      summary: Reject a top-up request (requireAdmin + finance scope)
+      description: |
+        Executes TopupService.reject with the same status-guard pattern
+        (WHERE status='pending' + rows-affected check — a double-click
+        gets 409, never a double notification). Mounted behind the
+        idempotency middleware (routeKey admin.topups.reject) for
+        audit-trail/notification dedup. No wallet money moves on this
+        path.
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: integer
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Idempotency key (≥ 8 chars to engage; 24h dedup per admin +
+            route) — dedupes admin double-clicks.
+          schema:
+            type: string
+            maxLength: 100
       requestBody:
         content:
           application/json:
@@ -1369,17 +1511,64 @@ paths:
               $ref: "#/components/schemas/AdminTopupActionBody"
       responses:
         "200":
-          description: Rejected
+          description: Rejected — no wallet change
+          headers:
+            Idempotent-Replayed:
+              description: |
+                "true" when this body is a cached replay of the original
+                request (same Idempotency-Key + body).
+              schema:
+                type: string
+                enum: ["true"]
+            Idempotent-Original-At:
+              description: |
+                ISO-8601 completion timestamp of the original request —
+                present on idempotent replays.
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: |
+            Invalid (non-integer) id, malformed admin_note body, or the
+            topup was already processed (ServiceError 400).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Topup not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            State conflict — topup flipped by a concurrent decision, or
+            an idempotency-key conflict (same key re-used with a
+            different body / same key still in flight — those bodies
+            carry success:false and a legacy `message` alias alongside
+            `error`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
 
   /admin/flash-sales:
     get:
@@ -1648,7 +1837,7 @@ paths:
     get:
       operationId: listAdminProducts
       tags: [admin]
-      summary: List all products (including inactive)
+      summary: List all products, including inactive (requireAdmin + inventory scope)
       parameters:
         - name: search
           in: query
@@ -1673,10 +1862,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       operationId: createProduct
       tags: [admin]
-      summary: Create a new product
+      summary: Create a new product (requireAdmin + inventory scope)
       requestBody:
         required: true
         content:
@@ -1690,8 +1885,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminProduct"
+        "400":
+          description: Validation error (CreateProductBody zod parse, INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
           content:
             application/json:
               schema:
@@ -1701,7 +1908,7 @@ paths:
     patch:
       operationId: updateProduct
       tags: [admin]
-      summary: Update a product
+      summary: Update a product (requireAdmin + inventory scope)
       parameters:
         - name: id
           in: path
@@ -1721,8 +1928,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminProduct"
+        "400":
+          description: Invalid (non-integer) id or body (UpdateProductBody zod parse, INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
           content:
             application/json:
               schema:
@@ -1730,7 +1955,7 @@ paths:
     delete:
       operationId: deleteProduct
       tags: [admin]
-      summary: Archive/delete a product
+      summary: Archive/delete a product (requireAdmin + inventory scope)
       parameters:
         - name: id
           in: path
@@ -1744,8 +1969,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid (non-integer) id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
           content:
             application/json:
               schema:
@@ -1755,7 +1998,7 @@ paths:
     get:
       operationId: listAdminUsers
       tags: [admin]
-      summary: List all users
+      summary: List all users (requireAdmin + users scope)
       parameters:
         - name: search
           in: query
@@ -1780,12 +2023,135 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users/{id}:
+    patch:
+      operationId: updateAdminUser
+      tags: [admin]
+      summary: Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+      description: |
+        THE admin money-edit route. Wallet mutations
+        (`wallet_adjustment` relative delta, or `wallet_balance` absolute
+        set — send at most one of the two; `wallet_adjustment` wins if
+        both are present) route through AdjustmentService: transactional
+        optimistic-lock update + a wallet_ledger row of type=adjustment,
+        so every monetary change stays reconstructable from the ledger
+        (Constitution Principle I). Loyalty fields
+        (`loyalty_points`, `loyalty_tier`) use a legacy direct-update
+        path with no ledger.
+
+        Mounted behind the idempotency middleware (routeKey
+        admin.users.patch) so a network retry / admin double-click
+        cannot double-credit — send a fresh Idempotency-Key per edit.
+        The audit row records the fields changed and the resulting
+        wallet balance.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Idempotency key (≥ 8 chars to engage; 24h dedup per admin +
+            route). Currently advisory — absence logs a warning and the
+            call proceeds; same key + different body → 409
+            IDEMPOTENCY_KEY_REUSE, same key in flight → 409
+            IDEMPOTENCY_IN_FLIGHT, replays carry Idempotent-Replayed /
+            Idempotent-Original-At response headers.
+          schema:
+            type: string
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminUserBody"
+      responses:
+        "200":
+          description: Updated user (wallet/loyalty current state)
+          headers:
+            Idempotent-Replayed:
+              description: |
+                "true" when this body is a cached replay of the original
+                request (same Idempotency-Key + body).
+              schema:
+                type: string
+                enum: ["true"]
+            Idempotent-Original-At:
+              description: |
+                ISO-8601 completion timestamp of the original request —
+                present on idempotent replays.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserUpdateResult"
+        "400":
+          description: |
+            Invalid (non-integer) id, no editable field supplied, an
+            out-of-bounds loyalty_points value (integer 0..10,000,000),
+            or a rejected wallet amount (INVALID_AMOUNT / ZERO_DELTA /
+            NEGATIVE_BALANCE from AdjustmentService).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            Wallet balance changed concurrently (optimistic-lock
+            CONCURRENCY_ERROR — retry the read-then-edit), or an
+            idempotency-key conflict (same key re-used with a different
+            body / same key still in flight — those bodies carry
+            success:false and a legacy `message` alias alongside
+            `error`).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
 
   /admin/login:
     post:
       operationId: adminLogin
       tags: [admin]
       summary: Admin login
+      description: |
+        Password login with an exponential-backoff lockout: repeated
+        failures lock the account and return 429 ACCOUNT_LOCKED until
+        the lock expires. Soft-disabled accounts answer 401 with the
+        same body as a wrong password (no account-state leak). When
+        TOTP is enabled the response is the requires_2fa variant
+        (temp_token + requires_2fa) and the session is issued by the
+        (undocumented) POST /admin/login/verify-2fa instead.
       requestBody:
         required: true
         content:
@@ -1794,13 +2160,25 @@ paths:
               $ref: "#/components/schemas/AdminLoginBody"
       responses:
         "200":
-          description: Logged in
+          description: Logged in (or 2FA challenge issued)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminAuthResponse"
+        "400":
+          description: Validation error (AdminLoginBody zod parse, INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Account locked after repeated failed attempts (ACCOUNT_LOCKED)
           content:
             application/json:
               schema:
@@ -1840,8 +2218,20 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        "400":
+          description: Missing/oversized intent_text (COPILOT_INVALID_INPUT)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin has no tool scopes at all (COPILOT_OUT_OF_SCOPE)
           content:
             application/json:
               schema:
@@ -1852,8 +2242,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: LLM gateway error / secret-leak abort (COPILOT_LLM_ERROR / COPILOT_SECRET_LEAK)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Copilot phase disabled or LLM unavailable
+          description: Copilot phase disabled or LLM unavailable (COPILOT_PHASE_DISABLED / COPILOT_LLM_UNAVAILABLE)
           content:
             application/json:
               schema:
@@ -1885,6 +2281,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CopilotDraftResponse"
+        "400":
+          description: Missing/oversized intent_text (COPILOT_INVALID_INPUT)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Not authorized
           content:
@@ -1911,6 +2313,18 @@ paths:
                 $ref: "#/components/schemas/CopilotRefusalResponse"
         "429":
           description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: LLM gateway error / secret-leak abort (COPILOT_LLM_ERROR / COPILOT_SECRET_LEAK)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: LLM unavailable (COPILOT_LLM_UNAVAILABLE)
           content:
             application/json:
               schema:
@@ -1983,6 +2397,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Preview already consumed (COPILOT_PREVIEW_CONSUMED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/copilot/previews/{id}/confirm:
     post:
@@ -2014,6 +2434,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Preview not found or owned by another admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Stale record or already consumed
           content:
@@ -2028,6 +2454,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Execution failed (COPILOT_EXECUTE_FAILED; body additionally carries a `reason` field)
           content:
             application/json:
               schema:
@@ -2063,6 +2495,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Preview not found or owned by another admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Stale, already consumed, or first-confirm missing
           content:
@@ -2083,6 +2521,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Execution failed (COPILOT_EXECUTE_FAILED; body additionally carries a `reason` field)
           content:
             application/json:
               schema:
@@ -2163,6 +2607,81 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # Inbound webhooks — machine-to-machine callers (Telegram), secret-token
+  # auth, {ok: boolean} ack envelopes (outside the {error, code} envelope
+  # contract that governs human-facing /api JSON responses).
+  # ──────────────────────────────────────────────────────────────────────────
+  /webhook/telegram:
+    post:
+      operationId: telegramWebhook
+      tags: [webhook]
+      summary: Telegram bot webhook — executes topup approve/reject callback decisions (money-moving)
+      description: |
+        Telegram's server-to-server callback endpoint. Mounted at
+        /api/webhook/telegram (the /api/webhook prefix is CSRF-skipped —
+        Telegram cannot send Origin headers).
+
+        Auth: the `x-telegram-bot-api-secret-token` header must match
+        the configured TELEGRAM_WEBHOOK_SECRET (constant-time compare).
+
+        Semantics: when a user submits a wallet topup, the backend posts
+        an approval message with inline buttons into the admin Telegram
+        group (callback_data `topup_app:{id}` / `topup_rej:{id}`). This
+        webhook receives the button taps and executes
+        TopupService.approve/reject — gated by the TELEGRAM_ADMIN_IDS
+        allowlist (non-allowlisted tappers get an "no permission"
+        callback answer and no state change). The tapped message is
+        edited with the outcome and its keyboard stripped so a stale
+        button cannot be re-tapped.
+
+        Always acks 200 {ok: true} on any auth-accepted update —
+        including processing failures — because Telegram aggressively
+        retries non-200 responses. Non-JSON content types (setWebhook
+        probes) are acked 200 without processing. A plain `/start`
+        message gets a reply with the sender's chat/user ids (bootstrap
+        for building the TELEGRAM_ADMIN_IDS allowlist).
+      parameters:
+        - name: x-telegram-bot-api-secret-token
+          in: header
+          required: true
+          description: |
+            Shared secret configured on the Telegram setWebhook call;
+            compared against TELEGRAM_WEBHOOK_SECRET in constant time.
+            (The secret value itself never appears in this spec.)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramWebhookUpdate"
+      responses:
+        "200":
+          description: |
+            Update accepted (or non-JSON probe acked). Processing errors
+            inside an accepted update also return 200 — Telegram retries
+            non-200s, which would re-execute button actions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramWebhookAck"
+        "403":
+          description: "Missing or wrong secret-token header — body is the non-envelope {ok: false}"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramWebhookAck"
+        "503":
+          description: |
+            TELEGRAM_WEBHOOK_SECRET not configured on the server — body is
+            the non-envelope {ok: false}.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramWebhookAck"
+
 components:
   schemas:
     HealthStatus:
@@ -2205,7 +2724,9 @@ components:
 
     # Machine-readable error codes — mirrors the shared ErrorCode enum
     # in @workspace/error-codes (shared/error-codes/src/index.ts), the
-    # single source both backend and frontend re-export.
+    # single source both backend and frontend re-export. The copilot
+    # preview/execution family (round-92 B3/F-05) closes the gap where
+    # backend/src/routes/admin/copilot/* returned codes outside the enum.
     ErrorCode:
       type: string
       enum:
@@ -2246,6 +2767,20 @@ components:
         - COPILOT_LLM_ERROR
         - COPILOT_NO_ADMIN_SESSION
         - COPILOT_BAD_METHOD
+        - COPILOT_PREVIEW_NOT_FOUND
+        - COPILOT_PREVIEW_CONSUMED
+        - COPILOT_PREVIEW_EXPIRED
+        - COPILOT_HANDOFF_REQUIRED
+        - COPILOT_HIGH_RISK_DISABLED
+        - COPILOT_STALE_RECORD
+        - COPILOT_UNEXPECTED_STATE
+        - COPILOT_EXECUTE_FAILED
+        - COPILOT_NOT_HIGH_RISK
+        - COPILOT_FIRST_CONFIRM_MISSING
+        - COPILOT_COOLDOWN_NOT_ELAPSED
+        - COPILOT_LLM_UNAVAILABLE
+        - COPILOT_OUT_OF_SCOPE
+        - COPILOT_INVALID_FLAGS
 
     # 409 body returned by the idempotency middleware
     # (backend/src/middlewares/idempotency.ts): the same Idempotency-Key
@@ -3020,6 +3555,11 @@ components:
           type: string
       required: [username, password]
 
+    # Two 200 variants: the plain login emits
+    # {token, display_name, role, permissions}; when the admin has TOTP
+    # enabled the response is {requires_2fa: true, temp_token} and the
+    # real session comes from POST /admin/login/verify-2fa. role /
+    # permissions drive the SPA layout RBAC ("all" | scoped arrays).
     AdminAuthResponse:
       type: object
       properties:
@@ -3027,6 +3567,17 @@ components:
           type: string
         display_name:
           type: string
+        role:
+          type: string
+          description: Admin role (e.g. "super_admin", "operator").
+        permissions:
+          type: array
+          items:
+            type: string
+          description: |
+            RBAC scopes granted to this admin (e.g. ["all"] or
+            ["orders", "finance"]). Emitted on the non-2FA variant;
+            absent on the requires_2fa variant.
         requires_2fa:
           type: boolean
         temp_token:
@@ -3315,6 +3866,62 @@ components:
           order_count,
           created_at,
         ]
+
+    # PATCH /admin/users/{id} body. At least one editable field must
+    # be supplied ("no updates" → 400). Wallet fields route through
+    # AdjustmentService (ledger-backed); wallet_adjustment (relative
+    # delta) takes precedence when both wallet fields are present.
+    UpdateAdminUserBody:
+      type: object
+      properties:
+        wallet_adjustment:
+          type: number
+          description: |
+            Relative delta applied to wallet_balance via AdjustmentService
+            (transaction + wallet_ledger type=adjustment). Rejected with
+            400 on non-finite/oversized values (INVALID_AMOUNT), zero
+            delta, or a resulting negative balance.
+        wallet_balance:
+          type: number
+          description: |
+            Absolute balance set via AdjustmentService (same ledger path).
+            Ignored when wallet_adjustment is also present.
+        loyalty_points:
+          type: integer
+          minimum: 0
+          maximum: 10000000
+          description: |
+            Direct-update path (no ledger). Integer in [0, 10,000,000] —
+            the cap exists because points convert to wallet credit via
+            /loyalty/convert-points (100 pts/LYD).
+        loyalty_tier:
+          type: string
+          enum: [bronze, silver, gold, platinum]
+        note:
+          type: string
+          description: |
+            Free-form note recorded on the wallet_ledger row when a
+            wallet field is supplied (defaults to "Admin adjustment" /
+            "Admin balance set").
+      minProperties: 1
+
+    # 200 body of PATCH /admin/users/{id} — the current post-edit state
+    # of the mutated fields.
+    AdminUserUpdateResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        phone:
+          type: string
+        wallet_balance:
+          type: number
+        loyalty_points:
+          type: integer
+        loyalty_tier:
+          type: string
+          enum: [bronze, silver, gold, platinum]
+      required: [id, phone, wallet_balance, loyalty_points, loyalty_tier]
 
     # ── Admin flash sales ─────────────────────────────────────────────────
     AdminFlashSale:
@@ -3729,3 +4336,84 @@ components:
         failure_reason:
           type: ["string", "null"]
       required: [id, admin_id, intent_text, action_class, risk_tier, outcome, created_at]
+
+    # ── Telegram webhook ────────────────────────────────────────────────
+    # Minimal subset of the Telegram Bot API "Update" object — only the
+    # members this webhook reads. Full envelope reference:
+    # https://core.telegram.org/bots/api#update (do not inline the whole
+    # schema here; unknown members are ignored by the handler).
+    TelegramWebhookUpdate:
+      type: object
+      properties:
+        update_id:
+          type: integer
+        message:
+          type: object
+          description: |
+            Plain message — only `/start` is meaningful (replies with the
+            sender's chat/user ids so operators can build the
+            TELEGRAM_ADMIN_IDS allowlist).
+          properties:
+            text:
+              type: string
+            chat:
+              type: object
+              properties:
+                id:
+                  type: number
+                username:
+                  type: string
+                type:
+                  type: string
+            from:
+              type: object
+              properties:
+                id:
+                  type: number
+                username:
+                  type: string
+        callback_query:
+          type: object
+          description: |
+            Inline-button tap. `data` is the topup decision payload:
+            "topup_app:{id}" (approve) or "topup_rej:{id}" (reject).
+            Executed only when `from.id` is allowlisted in
+            TELEGRAM_ADMIN_IDS.
+          properties:
+            id:
+              type: string
+            from:
+              type: object
+              properties:
+                id:
+                  type: number
+                username:
+                  type: string
+              required: [id]
+            message:
+              type: object
+              properties:
+                chat:
+                  type: object
+                  properties:
+                    id:
+                      type: number
+                  required: [id]
+                message_id:
+                  type: integer
+                text:
+                  type: string
+            data:
+              type: string
+              description: 'Callback payload: "topup_app:<id>" | "topup_rej:<id>".'
+          required: [id, from]
+
+    # {ok: boolean} ack for POST /webhook/telegram — deliberately NOT the
+    # standard {error, code} envelope: the caller is Telegram's delivery
+    # machinery, which only looks at the HTTP status code.
+    TelegramWebhookAck:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]

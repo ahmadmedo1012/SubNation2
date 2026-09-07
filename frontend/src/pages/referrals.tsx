@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
-import { formatRelativeTime } from "@/lib/utils";
+import { copyToClipboard, formatRelativeTime } from "@/lib/utils";
 import {
   Users,
   Copy,
@@ -18,6 +18,7 @@ import {
   Zap,
   Trophy,
   UserPlus,
+  XCircle,
   ChevronLeft,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -50,8 +51,18 @@ function CopyBtn({
   size?: "sm" | "md";
 }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const copy = async () => {
-    await navigator.clipboard.writeText(text);
+    // Shared helper (secure-context check + execCommand fallback +
+    // boolean result) — the previous raw `navigator.clipboard.writeText`
+    // rejected silently on non-secure contexts / strict Firefox,
+    // leaving the button dead with an unhandled rejection (B4 P1-2).
+    const ok = await copyToClipboard(text);
+    if (!ok) {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 2000);
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -61,15 +72,23 @@ function CopyBtn({
       className={`
         flex items-center gap-1.5 rounded-xl font-bold transition-all active:scale-95 press-spring shrink-0
         ${
-          copied
-            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-            : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
+          failed
+            ? "bg-status-error/12 text-status-error border border-status-error/30"
+            : copied
+              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+              : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
         }
         ${size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm"}
       `}
     >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-      {copied ? "تم النسخ!" : label}
+      {failed ? (
+        <XCircle className="w-3.5 h-3.5" />
+      ) : copied ? (
+        <Check className="w-3.5 h-3.5" />
+      ) : (
+        <Copy className="w-3.5 h-3.5" />
+      )}
+      {failed ? "فشل النسخ" : copied ? "تم النسخ!" : label}
     </button>
   );
 }
@@ -152,8 +171,14 @@ export default function ReferralsPage() {
         await navigator.share({ title: "SubNation", text: msg, url: referralLink });
       } catch {}
     } else {
-      await navigator.clipboard.writeText(msg);
-      toast({ title: "تم نسخ الرسالة", description: "شاركها مع أصدقائك!" });
+      // Same shared helper as CopyBtn — the raw clipboard fallback used
+      // to reject silently with no user feedback (B4 P2-27, twin of P1-2).
+      const ok = await copyToClipboard(msg);
+      toast({
+        title: ok ? "تم نسخ الرسالة" : "تعذّر النسخ",
+        description: ok ? "شاركها مع أصدقائك!" : "انسخ الرمز أو الرابط يدوياً من الحقل أعلاه",
+        variant: ok ? "default" : "destructive",
+      });
     }
   };
 
@@ -198,7 +223,10 @@ export default function ReferralsPage() {
       <div className="flex items-center gap-3 mb-6">
         <Link href="/loyalty">
           <button className="w-8 h-8 rounded-lg hover:bg-secondary/70 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors press-spring">
-            <ChevronLeft className="w-4 h-4" />
+            {/* Back = points RIGHT under the unified RTL icon decision
+                (same idiom as terms.tsx / category.tsx back buttons —
+                B4 P2-8). Previously a bare ChevronLeft pointing left. */}
+            <ChevronLeft className="w-4 h-4 rotate-180" />
           </button>
         </Link>
         <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">

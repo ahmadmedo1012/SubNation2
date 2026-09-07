@@ -94,11 +94,15 @@ export function AuthErrorBanner() {
     tone: "error" as const,
   };
 
+  // B6-P1-4: tones ride the shared --status-* tokens (like StatusBadge /
+  // statusColor) instead of raw blue/amber — raw Tailwind hues were
+  // dark-mode-tuned only and mis-tinted in the light theme. The error
+  // tone already used the destructive token.
   const palette =
     entry.tone === "info"
-      ? "bg-blue-500/8 border-blue-500/22 text-blue-400"
+      ? "bg-status-info/10 border-status-info/22 text-status-info"
       : entry.tone === "warning"
-        ? "bg-amber-500/8 border-amber-500/22 text-amber-400"
+        ? "bg-status-warning/10 border-status-warning/22 text-status-warning"
         : "bg-destructive/10 border-destructive/22 text-destructive";
 
   const Icon = entry.tone === "info" ? Info : AlertCircle;

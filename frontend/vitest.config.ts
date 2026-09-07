@@ -25,6 +25,17 @@ import { defineConfig } from "vitest/config";
  * in MSW or similar to intercept calls.
  */
 export default defineConfig({
+  // Page-level component tests render real page modules (orders.tsx,
+  // loyalty.tsx, …) which — like the whole app — rely on the AUTOMATIC
+  // JSX runtime and never import React. Without an explicit esbuild jsx
+  // setting here, tsconfig's `"jsx": "preserve"` makes esbuild fall
+  // back to the classic runtime (React.createElement) and every page
+  // render dies with "React is not defined". The app build gets its
+  // automatic runtime from @vitejs/plugin-react in vite.config.ts; the
+  // plugin-free test config states it explicitly instead. Existing
+  // classic-style test files keep working — an explicit React import is
+  // simply unused under the automatic runtime.
+  esbuild: { jsx: "automatic" },
   test: {
     globals: true,
     environment: "jsdom",

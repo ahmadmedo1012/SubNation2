@@ -9,8 +9,11 @@
  *     The model can describe and explain but cannot mutate. Change requests
  *     should go through /draft (preview/confirm flow).
  *   - Super-admin (`all` scope): the model ALSO gets resolve_product /
- *     update_product / update_stock direct-execute tools. Mutations apply
- *     immediately, with audit trail intact, and no preview step.
+ *     update_product / update_stock direct-execute tools. Product mutations
+ *     apply immediately, with audit trail intact, and no preview step.
+ *     admin_request MUTATIONS (POST/PATCH/PUT/DELETE) however run through
+ *     the SEC-92-03 confirmation gate in admin-request-tool.ts: the first
+ *     call returns a preview and only a repeat with confirm=true executes.
  *
  * Wallet/balance/refund operations are NEVER directly executable. The
  * model is instructed to hand off to /admin/topups instead.
@@ -225,9 +228,14 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
           const success = r.ok;
           const path = String(input.path ?? "?");
           const method = String(input.method ?? "?");
+          // SEC-92-03: 428 = mutation preview awaiting the admin's explicit
+          // confirm — label it in the trace so it is distinguishable from a
+          // genuine downstream failure.
           const summary = success
             ? `${method} ${path} → ${r.status}`
-            : `${method} ${path} → ${r.status} (failed)`;
+            : r.status === 428
+              ? `${method} ${path} → preview (awaiting admin confirmation)`
+              : `${method} ${path} → ${r.status} (failed)`;
           directExecutions.push({
             tool: name,
             success,

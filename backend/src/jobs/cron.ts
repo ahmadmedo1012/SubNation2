@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { markStaleUnreadAlertsRead, pruneReadAlerts } from "./alertLogger";
+import { cleanupOldAuthActivity } from "./cleanup-auth-activity";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { runForecastIfPermitted } from "./forecast-runner";
 import { runForecastRetention } from "./forecast-retention";
@@ -110,6 +111,23 @@ export function initCronJobs() {
   //    so a 5-minute reap cadence bought nothing except keeping the Neon
   //    compute from ever idling (each wake resets autosuspend — the direct
   //    cause of the Aug 2026 free-tier quota exhaustion).
+  cron.schedule("45 * * * *", async () => {
+    try {
+      const removed = await reapExpiredCopilotPreviews();
+      if (removed > 0) {
+        logger.info(
+          { category: "copilot.reaper", removed },
+          `copilot reaper removed ${removed} expired preview row(s)`,
+        );
+      }
+    } catch (err) {
+      logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
+      captureSchedulerFailure("copilot_reaper", err, {
+        cron_expression: "45 * * * *",
+      });
+    }
+  });
+
   // 8. Every 10 minutes: deterministic keep-alive self-ping + gateway ping.
   //    GitHub-cron external pings jitter 30-55 min under load, breaching
   //    Render's ~15-min idle window. In-process schedule has no jitter: this
@@ -127,23 +145,6 @@ export function initCronJobs() {
       } catch (err) {
         logger.warn({ err, target }, "[keep-alive] ping failed");
       }
-    }
-  });
-
-  cron.schedule("45 * * * *", async () => {
-    try {
-      const removed = await reapExpiredCopilotPreviews();
-      if (removed > 0) {
-        logger.info(
-          { category: "copilot.reaper", removed },
-          `copilot reaper removed ${removed} expired preview row(s)`,
-        );
-      }
-    } catch (err) {
-      logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
-      captureSchedulerFailure("copilot_reaper", err, {
-        cron_expression: "*/5 * * * *",
-      });
     }
   });
 
@@ -206,18 +207,20 @@ export function initCronJobs() {
     }
   });
 
-  // 8. Daily at 03:45 UTC: catalog enrichment runner
+  // 8. Daily at 03:50 UTC: catalog enrichment runner
   //    (012-arabic-catalog-enrichment). Refuses to run unless
-  //    WORKER_TIER=true AND ENRICHMENT_RUNNER_ENABLED=true. 03:45 lands
-  //    cleanly between the retention sweep at 03:30 and any morning
-  //    admin activity.
-  cron.schedule("45 3 * * *", async () => {
+  //    WORKER_TIER=true AND ENRICHMENT_RUNNER_ENABLED=true. 03:50 — B7-P2-3
+  //    (round-92): moved off the :45 collision with the HOURLY copilot
+  //    reaper, so the daily enrichment LLM run no longer shares its first
+  //    minute with another DB writer. Still lands cleanly between the
+  //    retention sweep at 03:30 and morning admin activity.
+  cron.schedule("50 3 * * *", async () => {
     try {
       await runEnrichmentIfPermitted();
     } catch (err) {
       logger.error({ err, category: "enrichment.cron" }, "enrichment cron failed");
       captureSchedulerFailure("enrichment_runner", err, {
-        cron_expression: "45 3 * * *",
+        cron_expression: "50 3 * * *",
       });
     }
   });
@@ -232,6 +235,30 @@ export function initCronJobs() {
       logger.error({ err, category: "enrichment.retention" }, "enrichment retention failed");
       captureSchedulerFailure("enrichment_retention", err, {
         cron_expression: "0 4 * * *",
+      });
+    }
+  });
+
+  // 10. Daily at 04:30 UTC: auth-activity retention (B7-P1-2, round-92).
+  //     auth_activity grows with EVERY login/OTP event (success and failure)
+  //     and this job was previously wired to NOTHING — the 90-day retention
+  //     policy existed only in the file's docstring. Slot 04:30 sits between
+  //     the enrichment retention (04:00) and the session prune (05:00) so
+  //     the three DELETE-heavy retention jobs never share a minute. Also
+  //     runs as a boot one-shot in web-scheduler.ts (idempotent, batched).
+  cron.schedule("30 4 * * *", async () => {
+    try {
+      const removed = await cleanupOldAuthActivity();
+      if (removed > 0) {
+        logger.info(
+          { category: "auth.retention", removed },
+          `auth-activity retention removed ${removed} row(s) older than 90 days`,
+        );
+      }
+    } catch (err) {
+      logger.error({ err, category: "auth.retention" }, "auth-activity retention failed");
+      captureSchedulerFailure("auth_activity_retention", err, {
+        cron_expression: "30 4 * * *",
       });
     }
   });

@@ -4,8 +4,11 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
 import {
-  ArrowUpRight,
+  AlertCircle,
+  ArrowUpLeft,
   ChevronLeft,
   Crown,
   Gift,
@@ -15,9 +18,10 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  WifiOff,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 interface LoyaltyData {
@@ -42,22 +46,50 @@ export default function LoyaltyPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [data, setData] = useState<LoyaltyData | null>(null);
   const [loading, setLoading] = useState(true);
+  // Distinct from "no data": an API outage / 5xx envelope previously
+  // rendered a blank page under the header (data=null, no error branch)
+  // or crashed the render via `data.points.toLocaleString()` when the
+  // body was an error envelope instead of the loyalty payload (B4 P1-3).
+  const [loadError, setLoadError] = useState(false);
   const [convertPoints, setConvertPoints] = useState("");
   const [converting, setConverting] = useState(false);
+  // Conversion failures used to be toast-only (4 s) — a money-critical
+  // error must stay visible until the next attempt clears it (B4 P1-7).
+  const [convertError, setConvertError] = useState<string | null>(null);
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     if (!token) return;
+    const headers = { Authorization: token ? `Bearer ${token}` : "" };
     setLoading(true);
+    setLoadError(false);
     fetch("/api/loyalty", { headers })
-      .then((r) => r.json())
-      .then((d) => setData(d))
-      .catch(() => {})
+      .then(async (r) => {
+        // res.ok check: a 5xx arrives as an {error} envelope, and the
+        // render path dereferences d.points/d.tier directly — without
+        // this gate the old code fed the envelope into the UI.
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: LoyaltyData) => {
+        // Payload shape guard: don't let a malformed 200 reach
+        // `data.points.toLocaleString()` — render the error state
+        // instead of crashing into the ErrorBoundary.
+        if (!d || typeof d.points !== "number" || !d.points_rate) {
+          throw new Error("bad payload");
+        }
+        setData(d);
+      })
+      .catch(() => {
+        setData(null);
+        setLoadError(true);
+      })
       .finally(() => setLoading(false));
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!token) {
@@ -65,7 +97,7 @@ export default function LoyaltyPage() {
       return;
     }
     fetchData();
-  }, [token]);
+  }, [token, navigate, fetchData]);
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,23 +107,31 @@ export default function LoyaltyPage() {
       return;
     }
     setConverting(true);
+    // A new attempt clears the previous failure — the inline banner is
+    // persistent BY DESIGN, not permanent.
+    setConvertError(null);
     try {
       const res = await fetch("/api/loyalty/convert-points", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ points: pts }),
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
+      const result = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (!res.ok) throw new Error(result?.error || "فشلت العملية");
       toast({ title: "تم التحويل", description: result.message });
       setConvertPoints("");
+      // Money moved: the Navbar balance (useGetMe) and the wallet page
+      // (useGetWallet) caches go stale for up to 60 s otherwise — same
+      // invalidation pair as checkout/product after a purchase (B4 P1-7).
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
       fetchData();
     } catch (err: unknown) {
-      toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
-        variant: "destructive",
-      });
+      const message = err instanceof Error && err.message ? err.message : "فشلت العملية";
+      // Inline + persistent (cleared on the next attempt) — the toast
+      // alone expired after 4 s, losing the failure on a money action.
+      setConvertError(message);
+      toast({ title: "خطأ", description: message, variant: "destructive" });
     } finally {
       setConverting(false);
     }
@@ -159,6 +199,25 @@ export default function LoyaltyPage() {
           {Array.from({ length: 3 }).map((_, i) => (
             <StatSkeleton key={i} />
           ))}
+        </div>
+      ) : loadError ? (
+        /* Distinct from "no data": an outage/expired session previously
+           fell through to a blank page under the header — same error
+           idiom as home/category/flash-sales (B4 P1-3). */
+        <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-status-error/70" />
+          </div>
+          <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل بيانات الولاء</p>
+          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+          </p>
+          <Button
+            onClick={() => fetchData()}
+            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+          >
+            إعادة المحاولة
+          </Button>
         </div>
       ) : data ? (
         <div className="space-y-4">
@@ -327,9 +386,22 @@ export default function LoyaltyPage() {
               = <span className="font-bold text-primary">1 د.ل</span>
             </p>
 
+            {/* Persistent conversion failure (B4 P1-7): cleared only when a
+                new attempt starts — a 4-second toast lost money-action
+                errors on this exact card. */}
+            {convertError && (
+              <div
+                role="alert"
+                className="mb-4 flex items-center gap-2.5 p-3.5 bg-status-error/10 border border-status-error/25 rounded-xl text-sm text-status-error font-bold"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="leading-relaxed">تعذّر التحويل: {convertError}</span>
+              </div>
+            )}
+
             {data.points < 100 ? (
               <div className="flex items-center gap-3 p-3.5 bg-muted/35 rounded-xl text-sm text-muted-foreground">
-                <ArrowUpRight className="w-4 h-4 shrink-0 text-primary" />
+                <ArrowUpLeft className="w-4 h-4 shrink-0 text-primary" />
                 <span>
                   تحتاج إلى{" "}
                   <span className="font-bold text-foreground">{100 - data.points} نقطة</span> إضافية

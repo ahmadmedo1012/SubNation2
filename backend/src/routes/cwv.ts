@@ -26,6 +26,87 @@ const CWV_VIEWPORTS = new Set(["mobile", "desktop"]);
 const CWV_RATINGS = new Set(["good", "needs-improvement", "poor"]);
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// ── Route-label normalization (SEC-92-05, round-92) ─────────────────────────
+//
+// The `route` label feeds TWO prom-client series (cwv_samples_total counter
+// + cwv_sample_value histogram with 19 buckets). It is fully
+// client-controlled; an anonymous attacker POSTing route:"/x"+i used to
+// mint an unbounded number of label sets (registry memory growth +
+// /api/metrics response bloat = cardinality DoS). Every value that can
+// reach the registry is now drawn from THIS bounded table:
+//   - exact matches against STATIC_ROUTE_LABELS (the SPA route table from
+//     frontend/src/App.tsx),
+//   - dynamic routes collapsed to their pattern via DYNAMIC_ROUTE_RULES
+//     ("/product/netflix-premium" → "/product/:slug"),
+//   - everything else → "other".
+// All labels are hardcoded strings well under 64 chars, so the 64-char cap
+// holds by construction. The RAW route string still reaches the structured
+// cwvLogger line only (bounded at 512 by the validator above).
+const STATIC_ROUTE_LABELS = new Set([
+  // storefront
+  "/",
+  "/login",
+  "/register",
+  "/onboarding",
+  "/wallet",
+  "/orders",
+  "/loyalty",
+  "/referrals",
+  "/support",
+  "/status",
+  "/terms",
+  "/profile",
+  "/cart",
+  "/checkout",
+  "/flash-sales",
+  "/auth/callback",
+  "/auth/telegram-callback",
+  // admin (frontend/src/App.tsx admin routes)
+  "/admin",
+  "/admin/login",
+  "/admin/topups",
+  "/admin/orders",
+  "/admin/products",
+  "/admin/products/enrichment",
+  "/admin/pricing",
+  "/admin/users",
+  "/admin/settings",
+  "/admin/security",
+  "/admin/tickets",
+  "/admin/referrals",
+  "/admin/coupons",
+  "/admin/promotions",
+  "/admin/alerts",
+  "/admin/system",
+  "/admin/admins",
+  "/admin/risk",
+  "/admin/whatsapp",
+]);
+
+// Longest-prefix-first so "/admin/risk/events/…" resolves before any
+// shorter overlapping rule.
+const DYNAMIC_ROUTE_RULES: ReadonlyArray<{ prefix: string; label: string }> = [
+  { prefix: "/admin/risk/events/", label: "/admin/risk/events/:id" },
+  { prefix: "/product/", label: "/product/:slug" },
+  { prefix: "/category/", label: "/category/:slug" },
+  { prefix: "/orders/", label: "/orders/:orderCode" },
+];
+
+/** Bounded output: always a table entry or "other" (≤ 64 chars). */
+export function normalizeCwvRouteLabel(rawRoute: string): string {
+  let route = rawRoute.split("?")[0].split("#")[0].trim();
+  // Collapse trailing slashes ("/wallet/" → "/wallet"); keep "/" itself.
+  while (route.length > 1 && route.endsWith("/")) {
+    route = route.slice(0, -1);
+  }
+  if (route.length === 0) return "other";
+  if (STATIC_ROUTE_LABELS.has(route)) return route;
+  for (const rule of DYNAMIC_ROUTE_RULES) {
+    if (route.startsWith(rule.prefix)) return rule.label;
+  }
+  return "other";
+}
+
 function isCWVSample(v: unknown): v is CWVSample {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
@@ -128,9 +209,14 @@ router.post("/cwv", cwvBodyParser, (req, res) => {
     return;
   }
 
+  // SEC-92-05: the Prometheus label is the NORMALIZED route (bounded table
+  // above) — never the raw client string. The raw route (already bounded
+  // at 512 by the validator) only reaches the structured log line below.
+  const routeLabel = normalizeCwvRouteLabel(sample.route);
+
   const labels = {
     name: sample.name,
-    route: sample.route,
+    route: routeLabel,
     viewport: sample.viewportClass,
   };
 

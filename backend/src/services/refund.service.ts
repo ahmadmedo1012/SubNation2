@@ -41,6 +41,7 @@
 
 import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { logAdminAlert, type AlertType } from "../jobs/alertLogger";
 import { insertLedgerEntry } from "../lib/ledger";
 import { computeTier } from "../lib/loyalty-tiers";
 
@@ -82,7 +83,10 @@ export class RefundService {
   static async refundOrder(orderId: number, options: RefundOptions): Promise<RefundResult> {
     const { adminId, note } = options;
 
-    return db.transaction(async (tx) => {
+    let revokedLiveCredentials = false;
+    let orderCodeForAlert: string | null = null;
+
+    const result = await db.transaction(async (tx) => {
       const [order] = await tx
         .select({
           id: ordersTable.id,
@@ -90,6 +94,8 @@ export class RefundService {
           amount: ordersTable.amount,
           status: ordersTable.status,
           orderCode: ordersTable.orderCode,
+          deliveredPassword: ordersTable.deliveredPassword,
+          deliveredEmail: ordersTable.deliveredEmail,
         })
         .from(ordersTable)
         .where(eq(ordersTable.id, orderId))
@@ -142,9 +148,17 @@ export class RefundService {
         parseFloat(String(user.lifetimeSpend)) - amount,
       ).toFixed(2);
 
-      // Optimistic-lock wallet credit (same pattern as topup approval +
-      // checkout debit) extended to the loyalty columns so a concurrent
-      // purchase/refund can't lose either side.
+      // B2-01 (round-92 audit): extend the optimistic-lock predicate to the
+      // FULL write set — walletBalance AND loyaltyPoints AND lifetimeSpend.
+      // The old predicate matched only walletBalance, so a concurrent
+      // points-only writer (referral +50 on a referee's topup approval,
+      // admin points-set) committed between this tx's read and its UPDATE
+      // left the balance predicate intact and the stale points value
+      // silently erased the award — the exact M3 lost-update class round-4
+      // fixed for checkout (points are LYD-convertible at 100:1 → money).
+      // Numeric equality is value-based in Postgres ("100.50" = '100.5'),
+      // so the String(parseFloat(...)) round-trip below matches regardless
+      // of the stored scale.
       const walletUpdated = await tx
         .update(usersTable)
         .set({
@@ -154,7 +168,12 @@ export class RefundService {
           loyaltyTier: computeTier(newLifetimeSpend),
         })
         .where(
-          and(eq(usersTable.id, order.userId), eq(usersTable.walletBalance, String(balanceBefore))),
+          and(
+            eq(usersTable.id, order.userId),
+            eq(usersTable.walletBalance, String(balanceBefore)),
+            eq(usersTable.loyaltyPoints, user.loyaltyPoints),
+            eq(usersTable.lifetimeSpend, String(parseFloat(String(user.lifetimeSpend)))),
+          ),
         )
         .returning({ id: usersTable.id });
       if (walletUpdated.length !== 1) {
@@ -175,6 +194,24 @@ export class RefundService {
         .returning({ id: ordersTable.id });
       if (statusFlipped.length !== 1) {
         throw new RefundError(409, "ALREADY_REFUNDED", "تم استرداد هذا الطلب بواسطة عملية أخرى");
+      }
+
+      // B2-03 (round-92 audit): revoke the delivered credentials inside the
+      // refund transaction. Previously a refund restored the wallet AND left
+      // delivered_password/delivered_email readable forever — every refund of
+      // a delivered digital good was a buy → view → refund → keep-the-account
+      // giveaway. Nulling the columns (same tx → atomic with the credit) makes
+      // the buyer's copy unusable going forward; the inventory row keeps its
+      // is_sold/sold_at history for reconciliation. (The account itself must
+      // still be rotated upstream — see the ops alert emitted post-commit.)
+      if (order.deliveredPassword !== null || order.deliveredEmail !== null) {
+        await tx
+          .update(ordersTable)
+          .set({ deliveredPassword: null, deliveredEmail: null })
+          .where(eq(ordersTable.id, orderId))
+          .returning({ id: ordersTable.id });
+        revokedLiveCredentials = true;
+        orderCodeForAlert = order.orderCode;
       }
 
       const description =
@@ -209,5 +246,26 @@ export class RefundService {
         walletBalance: balanceAfter,
       };
     });
+
+    // B2-03: operations signal — the refund just revoked credentials that the
+    // buyer has ALREADY seen. The password may still work upstream until the
+    // account is rotated; tell ops to rotate it. Emitted AFTER the tx commits
+    // (a pre-commit emission would survive a rollback as a false positive —
+    // logAdminAlert writes through its own connection, not this tx). Dedupe
+    // key makes repeated refunds of the same order alert once per window.
+    if (revokedLiveCredentials) {
+      void logAdminAlert(
+        // AlertType is a closed TS union over a free varchar(30) column; the
+        // alerts drawer falls back to the "system" badge for unknown types,
+        // so a new type string is safe without touching jobs/alertLogger.ts
+        // (owned by another agent this round).
+        "refunded_live_credentials" as unknown as AlertType,
+        `استرداد طلب ببيانات تسليم حية: ${orderCodeForAlert ?? orderId}`,
+        `استُرد الطلب #${orderId} بينما كانت بيانات التسليم قد سُلّمت للعميل ومُحيت الآن من قاعدة البيانات — يلزم تدوير كلمة مرور الحساب المصدر فوراً لمنع إساءة الاستخدام.`,
+        { dedupeKey: `refund:creds:${orderId}` },
+      );
+    }
+
+    return result;
   }
 }

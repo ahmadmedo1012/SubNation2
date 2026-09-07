@@ -161,7 +161,15 @@ export function authenticateSocketHandshake(handshake: SocketHandshakeLike): Soc
   const adminToken = cookies.admin_token ?? handshake.auth?.adminToken;
   if (typeof adminToken === "string" && adminToken.length > 0) {
     const result = verifyAdminTokenDetailed(adminToken);
-    if (result.ok) {
+    // SEC-92-02 (round-92 B1 audit): reject the 2FA TEMP token exactly
+    // like requireAdmin does (middlewares/requireAdmin.ts V1-CRITICAL
+    // block — mirrored here rather than imported to avoid a middleware
+    // dependency cycle). The temp token proves password-only possession;
+    // granting it admin-room membership (live order/topup/alert events,
+    // PII-bearing payloads) would bypass 2FA for this surface. Treat it
+    // as unauthenticated: no adminId/role/isAdmin → the decision below
+    // rejects the socket unless a valid USER token is also present.
+    if (result.ok && result.payload.isTemp !== true) {
       identity.adminId = result.payload.adminId;
       identity.role = result.payload.role;
       identity.isAdmin = true;
@@ -267,8 +275,18 @@ function recordRejection(reason: RejectionReason, context: Record<string, unknow
 }
 
 function getRemoteAddr(socket: Socket): string {
+  // SEC-92-06 (round-92): use the RIGHTMOST X-Forwarded-For entry — the
+  // one appended by our trusted proxy — never the leftmost (client-
+  // spoofable; it only pollutes the warn-logs below, but forensic logs
+  // should not record attacker-chosen values either).
   const xff = socket.handshake.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) return xff.split(",")[0].trim();
+  if (typeof xff === "string" && xff.length > 0) {
+    const entries = xff
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (entries.length > 0) return entries[entries.length - 1];
+  }
   return socket.handshake.address || "unknown";
 }
 

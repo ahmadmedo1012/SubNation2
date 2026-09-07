@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
@@ -65,6 +66,16 @@ const DATE_RANGES = [
   { label: "30 يوم", days: 30 },
 ];
 
+// Arabic labels for the RefundService failure codes the 207 partial
+// body carries (backend/src/services/refund.service.ts RefundErrorCode).
+const REFUND_FAILURE_LABELS: Record<string, string> = {
+  ORDER_NOT_FOUND: "الطلب غير موجود",
+  NOT_REFUNDABLE: "الطلب غير قابل للاسترجاع",
+  ALREADY_REFUNDED: "مسترجع مسبقاً",
+  USER_NOT_FOUND: "المستخدم غير موجود",
+  CONCURRENCY_ERROR: "تعارض تزامني",
+};
+
 function isWithinDays(dateStr: string, days: number) {
   if (!days) return true;
   const d = new Date(dateStr);
@@ -104,6 +115,10 @@ export default function AdminOrdersPage() {
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  // B5-05 (round-92 audit): the raw window.confirm for the destructive
+  // bulk actions (refund!) is replaced by the shared styled AlertDialog
+  // hook used by admins.tsx / promotions.tsx — same message text.
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const {
     data: allOrdersRaw = [],
@@ -126,15 +141,31 @@ export default function AdminOrdersPage() {
 
   const allOrders = allOrdersRaw as AdminOrderRow[];
 
+  // B5-02 (round-92 audit): the bulk-status endpoint (including bulk
+  // refund — a money action) used to complete SILENTLY on success: the
+  // error path toasted, the success path only refetched the table. The
+  // backend also returns an explicit 207 partial shape when some
+  // refunds can't be applied
+  // (`{ updated, failed: [{ orderId, code, message }] }` —
+  // backend/src/routes/admin/orders.ts); that body was never parsed,
+  // so a half-failed batch looked like full success. Both are handled
+  // below: a success toast with counts, and per-failure reasons on 207.
   const applyBulkStatus = async (status: string) => {
     if (selectedIds.size === 0) return;
-    const confirmMessage =
-      status === "refunded"
-        ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين.`
-        : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
-    if (!window.confirm(confirmMessage)) return;
+    const isRefund = status === "refunded";
+    const confirmMessage = isRefund
+      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين.`
+      : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
+    const confirmed = await confirm({
+      title: isRefund ? "استرجاع جماعي للطلبات" : "تغيير الحالة الجماعي",
+      description: confirmMessage,
+      confirmLabel: isRefund ? "استرجاع" : "تغيير الحالة",
+      destructive: isRefund,
+    });
+    if (!confirmed) return;
     setBulkUpdating(true);
     setBulkStatusOpen(false);
+    const requestedCount = selectedIds.size;
     try {
       // F-008 (security audit 004): the bulk-status endpoint is a
       // SINGLE HTTP request that processes N orders server-side, so
@@ -149,6 +180,41 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
       });
       if (!r.ok) throw new Error(String(r.status));
+      // 207 (Multi-Status) — Response.ok is true for it, so the partial
+      // body must be parsed explicitly, never swallowed.
+      const body = (await r.json().catch(() => null)) as {
+        updated?: number;
+        failed?: Array<{ orderId: number; code?: string; message?: string }>;
+      } | null;
+      const updated = body?.updated ?? requestedCount;
+      const failed = body?.failed ?? [];
+      if (failed.length > 0) {
+        // RefundService failure codes → Arabic reasons.
+        const reasons = failed
+          .map(
+            (f) =>
+              `#${f.orderId}: ${REFUND_FAILURE_LABELS[f.code ?? ""] ?? f.message ?? "سبب غير معروف"}`,
+          )
+          .join("، ");
+        toast({
+          title: `تم تحديث ${updated} من ${requestedCount} طلب`,
+          description: `فشلت ${failed.length}: ${reasons}`,
+          variant: "destructive",
+        });
+      } else {
+        // Success feedback parity with the single-approve toast on
+        // topups: money actions announce what happened, with counts.
+        // `updated < requested` on non-refund statuses means the
+        // backend skipped refunded/missing ids — surface the gap.
+        const skipped = Math.max(0, requestedCount - updated);
+        toast({
+          title: isRefund ? `✓ تم استرجاع ${updated} طلب` : `✓ تم تحديث حالة ${updated} طلب`,
+          description: isRefund
+            ? "أُعيدت مبالغ الطلبات إلى محافظ المستخدمين"
+            : `${statusLabel(status)}${skipped > 0 ? ` · تخطي ${skipped} طلب` : ""}`,
+          variant: "success",
+        });
+      }
       setSelectedIds(new Set());
       refetch();
       qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({}) });
@@ -163,7 +229,6 @@ export default function AdminOrdersPage() {
     }
   };
 
-  // Keyboard shortcut: / to focus search, Esc to clear
   // Keyboard shortcut: / to focus search, Esc to clear
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -924,6 +989,7 @@ export default function AdminOrdersPage() {
           </>
         )}
       </div>
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { getErrorMessage } from "@/lib/errors";
+import { copyToClipboard } from "@/lib/utils";
 import { CopilotHistoryView } from "./CopilotHistoryView";
 
 // ──────────────────────────────────────────────────────────────────────
@@ -980,7 +981,7 @@ export function CopilotPanel() {
                         className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-md shadow-primary/20 transition-all active:scale-95"
                         aria-label="إرسال"
                       >
-                        <Send className="w-4 h-4" />
+                        <Send className="w-4 h-4 rtl:-scale-x-100" />
                       </button>
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground px-1">
@@ -1134,7 +1135,13 @@ function TurnView({
   );
 }
 
-function AskAnswer({
+/**
+ * Assistant answer card with the copy affordance. Exported for the
+ * clipboard-bypass regression test (copilot-copy.test.tsx) — the copy
+ * path must route through the shared `copyToClipboard` helper and
+ * surface failures instead of swallowing them (B6-P2-2).
+ */
+export function AskAnswer({
   answer,
   toolUses,
   directExecutions,
@@ -1144,16 +1151,22 @@ function AskAnswer({
   directExecutions: DirectExecution[];
 }) {
   const [copied, setCopied] = useState(false);
-  function handleCopy() {
-    navigator.clipboard.writeText(answer).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      },
-      () => {
-        // ignore
-      },
-    );
+  const [copyFailed, setCopyFailed] = useState(false);
+  async function handleCopy() {
+    // Shared helper (secure-context check + execCommand fallback +
+    // boolean result), mirroring wallet.tsx's CopyBtn (B4 P1-2).
+    // The previous raw navigator.clipboard.writeText had `// ignore` as
+    // its failure handler: on insecure contexts / strict Firefox the
+    // copy died silently AND left an unhandled promise rejection
+    // (B6-P2-2 — the only component-scope clipboard bypass).
+    const ok = await copyToClipboard(answer);
+    if (!ok) {
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2000);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
   return (
     <div className="space-y-2">
@@ -1167,12 +1180,17 @@ function AskAnswer({
       <div className="group relative bg-muted/40 border border-border/50 rounded-2xl rounded-tr-md px-3.5 py-2.5 text-sm shadow-sm">
         <MarkdownLite text={answer} />
         <button
-          onClick={handleCopy}
-          className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-md hover:bg-secondary text-muted-foreground transition-all"
-          title="نسخ"
-          aria-label="نسخ"
+          onClick={() => void handleCopy()}
+          className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-md hover:bg-secondary transition-all"
+          aria-label={copyFailed ? "تعذّر النسخ" : copied ? "تم النسخ" : "نسخ"}
         >
-          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          {copyFailed ? (
+            <X className="w-3 h-3 text-status-error" />
+          ) : copied ? (
+            <Check className="w-3 h-3 text-status-success" />
+          ) : (
+            <Copy className="w-3 h-3" />
+          )}
         </button>
       </div>
       {toolUses.length > 0 && (

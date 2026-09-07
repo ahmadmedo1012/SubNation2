@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import {
@@ -15,6 +16,7 @@ import {
   Send,
   Shield,
   User,
+  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -99,6 +101,13 @@ export default function AdminTicketsPage() {
 
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  // B5-04 (round-92 audit): fetchTickets had `.catch(() => {})` — a
+  // failed queue load rendered the false "لا توجد تذاكر" empty state,
+  // so an admin on a flaky network believed the support queue was
+  // empty. The failure now surfaces as the distinct error card (C5
+  // storefront idiom) on the initial load, and as an inline banner
+  // when a refresh of an already-rendered list fails.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<TicketDetail | null>(null);
@@ -107,22 +116,53 @@ export default function AdminTicketsPage() {
 
   const headers = useAdminHeaders();
 
-  const fetchTickets = () => {
+  const fetchTickets = async () => {
     if (!adminToken) return;
     const qs = statusFilter ? `?status=${statusFilter}` : "";
-    fetch(`/api/admin/tickets${qs}`, { headers })
-      .then((r) => r.json())
-      .then((d) => setTickets(Array.isArray(d) ? d : []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    try {
+      const r = await fetch(`/api/admin/tickets${qs}`, { headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        // getErrorMessage maps the backend `code` to Arabic when present.
+        throw new Error(getErrorMessage(body) || `فشل تحميل التذاكر (HTTP ${r.status})`);
+      }
+      const d = await r.json();
+      setTickets(Array.isArray(d) ? d : []);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "تعذّر تحميل التذاكر");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // B5-14 (round-92 audit, P2): openTicket had no `res.ok` check and
+  // was invoked unawaited from onClick — a 401/500 detail fetch became
+  // an unhandled promise rejection with zero UI feedback.
   const openTicket = async (id: number) => {
-    const res = await fetch(`/api/admin/tickets/${id}`, { headers });
-    const d = await res.json();
-    setSelected(d);
-    setReplyText("");
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    try {
+      const res = await fetch(`/api/admin/tickets/${id}`, { headers });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل فتح التذكرة (HTTP ${res.status})`);
+      }
+      const d = await res.json();
+      setSelected(d);
+      setReplyText("");
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    } catch (err) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "تعذّر فتح التذكرة",
+        variant: "destructive",
+      });
+    }
   };
 
   useEffect(() => {
@@ -204,7 +244,7 @@ export default function AdminTicketsPage() {
   });
 
   return (
-    <AdminLayout onRefresh={fetchTickets} badges={{ openTickets: openCount }}>
+    <AdminLayout onRefresh={() => void fetchTickets()} badges={{ openTickets: openCount }}>
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -258,6 +298,25 @@ export default function AdminTicketsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-[520px]">
           {/* Ticket list */}
           <div className={`lg:col-span-2 ${selected ? "hidden lg:flex" : "flex"} flex-col gap-2`}>
+            {/* Refresh of an already-rendered queue failed — keep the
+                stale cards visible, surface the failure inline
+                (coupons.tsx banner idiom) instead of blanking the list. */}
+            {!loading && loadError && tickets.length > 0 && (
+              <div
+                role="alert"
+                className="p-3 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{loadError}</span>
+                <button
+                  type="button"
+                  onClick={() => void fetchTickets()}
+                  className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            )}
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div
@@ -265,6 +324,29 @@ export default function AdminTicketsPage() {
                   className="bg-card border border-border/60 rounded-2xl h-20 skeleton-shimmer"
                 />
               ))
+            ) : loadError && tickets.length === 0 ? (
+              /* Distinct from "no data": an outage/expired session previously
+                 masqueraded as the empty state below (B5-04). Same
+                 error-card idiom the storefront pages use (loyalty.tsx /
+                 orders.tsx) — an admin on a flaky network must never
+                 believe the support queue is empty. */
+              <div className="flex-1 text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+                  <WifiOff className="w-8 h-8 text-status-error/70" />
+                </div>
+                <p className="font-black text-lg mb-1.5 text-foreground/80">
+                  تعذّر تحميل التذاكر
+                </p>
+                <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+                  حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+                </p>
+                <Button
+                  onClick={() => void fetchTickets()}
+                  className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+                >
+                  إعادة المحاولة
+                </Button>
+              </div>
             ) : visibleTickets.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
                 <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
@@ -469,7 +551,9 @@ export default function AdminTicketsPage() {
                     {sending ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Send className="w-4 h-4" />
+                      /* B5-17: Send points right-to-left — un-mirrored in
+                         RTL it looks like "go back". */
+                      <Send className="w-4 h-4 -scale-x-100" />
                     )}
                   </Button>
                 </div>

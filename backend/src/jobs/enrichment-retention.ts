@@ -9,11 +9,7 @@
  *      reason='abandoned').
  */
 
-import {
-  db,
-  enrichmentDraftsTable,
-  enrichmentRunsTable,
-} from "@workspace/db";
+import { db, enrichmentDraftsTable, enrichmentRunsTable } from "@workspace/db";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 

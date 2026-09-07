@@ -19,6 +19,14 @@ function formatOrder(
   productName: string,
   productImageUrl: string | null | undefined,
 ) {
+  // B2-03 (round-92 audit): delivered credentials are only readable while
+  // the order is "completed". RefundService nulls delivered_password /
+  // delivered_email inside the refund tx, but this gate also covers every
+  // other non-completed state ("failed", legacy rows) at the API boundary —
+  // the buyer must not be able to re-read a password for money that was
+  // returned to them. safeDecrypt itself returns null on GCM auth failure
+  // (B2-11), so delivered_password is null-safe by construction.
+  const credentialsLive = order.status === "completed";
   return {
     id: order.id,
     order_code: order.orderCode,
@@ -29,8 +37,8 @@ function formatOrder(
     coupon_code: order.couponCode ?? null,
     discount_amount: toNumber(order.discountAmount),
     status: order.status,
-    delivered_email: order.deliveredEmail ?? null,
-    delivered_password: safeDecrypt(order.deliveredPassword),
+    delivered_email: credentialsLive ? (order.deliveredEmail ?? null) : null,
+    delivered_password: credentialsLive ? safeDecrypt(order.deliveredPassword) : null,
     delivered_extra_details: order.deliveredExtraDetails ?? null,
     delivered_usage_terms: order.deliveredUsageTerms ?? null,
     delivered_at: order.deliveredAt?.toISOString() ?? null,
@@ -159,6 +167,16 @@ router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async 
               ErrorCode.INVALID_DATA,
             ),
           );
+      case "STALE_FLASH_SALE":
+        // B2-06 (round-92 audit) — the flash sale that priced this purchase
+        // ended (or changed) between pricing and the transaction. Retryable:
+        // the client re-prices at the current price.
+        return res.status(409).json(
+          createErrorResponse(
+            "انتهى عرض التخفيض أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+            ErrorCode.CONFLICT,
+          ),
+        );
     }
   }
 

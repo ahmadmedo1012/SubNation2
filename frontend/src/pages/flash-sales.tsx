@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
-import { useListProducts, type Product } from "@workspace/api-client-react";
+import { useGetFlashSale, useListProducts, type Product } from "@workspace/api-client-react";
 import { Flame, Clock, Sparkles, Tag, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -170,18 +170,31 @@ export default function FlashSalesPage() {
       .sort((a, b) => (b.discount_percent ?? 0) - (a.discount_percent ?? 0));
   }, [products]);
 
-  // Use a dummy endsAt — in production the backend flashSales table
-  // would be queried and its `endsAt` used. This client-side version
-  // uses a fixed window so we always show a countdown.
-  const endsAt = useMemo(() => {
-    if (onSale.length === 0) return null;
-    const end = new Date();
-    end.setHours(end.getHours() + 6);
-    return end;
-  }, [onSale.length]);
+  // Real flash-sale window — the SAME /api/flash-sale endpoint
+  // FlashSaleBanner consumes. `flash_sale` is null when no sale is
+  // active; its `ends_at` is the ONLY legitimate countdown source.
+  // (B4 P1-1: the previous "now + 6h" dummy manufactured fake urgency —
+  // every visitor saw 6:00:00 remaining, a dark-pattern trust killer
+  // that also contradicted the banner's real timer one screen over.)
+  const { data: flashSaleResponse } = useGetFlashSale();
+  const activeSale = flashSaleResponse?.flash_sale ?? null;
 
-  // ONE countdown for the whole page (all cards share the same endsAt).
+  const endsAt = useMemo(() => {
+    const raw = activeSale?.ends_at;
+    if (!raw) return null;
+    const end = new Date(raw);
+    return Number.isNaN(end.getTime()) ? null : end;
+  }, [activeSale]);
+
+  // ONE countdown for the whole page — driven by the real end time.
+  // No active sale ⇒ no timer at all (the hook starts none for a null
+  // target, and every card chip is suppressed while `expired`).
   const countdown = useCountdown(endsAt);
+
+  // A sale whose window closed while the response was cached or in
+  // flight: the cards drop their countdown chips and one honest
+  // notice replaces the stale urgency.
+  const saleEnded = endsAt !== null && countdown.expired;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -194,7 +207,9 @@ export default function FlashSalesPage() {
           </div>
         </div>
         <h1 className="text-3xl font-black mb-2">عروض فلاش 🔥</h1>
-        <p className="text-muted-foreground font-bold text-sm">لفترة محدودة!</p>
+        <p className="text-muted-foreground font-bold text-sm">
+          {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}
+        </p>
       </div>
 
       {isLoading ? (
@@ -233,7 +248,7 @@ export default function FlashSalesPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">
             <Sparkles className="w-8 h-8 opacity-25" />
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">لا توجد عروض حالياً</p>
+          <p className="font-black text-lg mb-1.5 text-foreground/80">لا عرض نشط حالياً</p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             تابعنا أو راجع الكتالوج — العروض تعود قريباً!
           </p>
@@ -246,6 +261,14 @@ export default function FlashSalesPage() {
         </div>
       ) : (
         <>
+          {/* Honest expired notice — replaces every countdown chip once
+              the (real) sale window has closed. */}
+          {saleEnded && (
+            <div className="flex items-center justify-center gap-2 mb-5 p-3.5 bg-muted/30 border border-border/50 rounded-xl text-sm font-bold text-muted-foreground reveal-up">
+              <Clock className="w-4 h-4 text-status-warning" />
+              انتهى هذا العرض
+            </div>
+          )}
           <div className="flex items-center justify-between mb-5">
             <p className="text-sm font-bold text-muted-foreground">
               {formatCount(onSale.length, {

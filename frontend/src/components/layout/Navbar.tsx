@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
 import { formatCount, formatCurrency } from "@/lib/utils";
-import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart } from "lucide-react";
+import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart, ChevronLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Suspense } from "react";
@@ -246,7 +246,11 @@ export function Navbar() {
             href="/register"
             className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary-text bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]"
           >
-            إنشاء حساب مجاني ←
+            {/* B6-P2-1: the last remaining text-glyph arrow — replaced with
+                the same inline ChevronLeft idiom the icon-audit rows
+                (#14/#19, category.tsx) standardized on. Forward = LEFT in
+                RTL, and a glyph can bidi-reposition inside mixed runs. */}
+            إنشاء حساب مجاني <ChevronLeft className="w-3 h-3 inline" />
           </Link>
         </div>
       )}

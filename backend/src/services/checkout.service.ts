@@ -1,12 +1,13 @@
 import {
   couponsTable,
   db,
+  flashSalesTable,
   inventoryTable,
   ordersTable,
   productsTable,
   usersTable,
 } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
 import { insertLedgerEntry } from "../lib/ledger";
@@ -45,7 +46,12 @@ export type CheckoutFailureReason =
   | "CONCURRENCY_ERROR"
   // M1 (round-3 audit): final-price integrity gate tripped — the computed
   // price is non-finite or non-positive. Fail closed, never transact.
-  | "INVALID_PRICE";
+  | "INVALID_PRICE"
+  // B2-06 (round-92 audit): the flash sale that priced this purchase
+  // expired / was deactivated / had its discount changed between
+  // computePricing (pre-tx) and the purchase transaction. Retryable —
+  // the client re-prices and retries at the current price.
+  | "STALE_FLASH_SALE";
 
 export type CheckoutResult =
   | {
@@ -124,9 +130,51 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
-  const now = new Date();
   const order = await db
     .transaction(async (tx) => {
+      // B2-05/B2-06 (round-92 audit): expiry clock, captured INSIDE the
+      // transaction. Capturing it pre-tx (before BEGIN) would leave the
+      // audit's named window — pricing at T0, commit at T0+Δ — partially
+      // open: a sale/coupon ending at T0+ε (ε < Δ) would still pass an
+      // `endsAt > T0` predicate evaluated at T0+Δ. Captured here, the
+      // predicate is evaluated against a timestamp taken after the
+      // transaction opened, so the only residual window is the few
+      // in-transaction statements between this line and the guarded
+      // UPDATE — the tightest bound available on the app clock (the same
+      // clock lib/pricing.ts validates with, so app/DB skew cannot
+      // produce false STALE/EXHAUSTED rejections).
+      const now = new Date();
+
+      // B2-06 (round-92 audit): flash-sale freshness re-check INSIDE the
+      // purchase transaction. `pricing.flashSale` was resolved by
+      // computePricing BEFORE this tx opened — a sale crossing ends_at (or
+      // an admin deactivating it / changing the discount) in the window
+      // between validation and commit previously let the discounted price
+      // survive a few hundred ms past expiry (flashSaleWatcher runs every
+      // 5 min but is not the authority). Re-read the priced sale row here;
+      // reject as STALE_FLASH_SALE if it is no longer active, has expired,
+      // or its discount no longer matches the one the price was built from.
+      // (The opposite race — a sale activating mid-flight after pricing at
+      // list price — only means the buyer skipped a discount, not a loss.)
+      if (pricing.flashSale) {
+        const [saleRow] = await tx
+          .select({
+            id: flashSalesTable.id,
+            isActive: flashSalesTable.isActive,
+            endsAt: flashSalesTable.endsAt,
+            discountPercent: flashSalesTable.discountPercent,
+          })
+          .from(flashSalesTable)
+          .where(eq(flashSalesTable.id, pricing.flashSale.id))
+          .limit(1);
+        const saleStale =
+          !saleRow ||
+          !saleRow.isActive ||
+          saleRow.endsAt.getTime() <= now.getTime() ||
+          parseFloat(String(saleRow.discountPercent)) !== pricing.flashSale.discountPercent;
+        if (saleStale) throw new Error("STALE_FLASH_SALE");
+      }
+
       // H4 (deep-audit 2026-09-06): race-free inventory claim. The old
       // flow selected one row OUTSIDE the transaction with no ORDER BY —
       // two concurrent buyers grabbed the SAME row, one won the claim,
@@ -199,15 +247,26 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // last redemption slot — throw COUPON_EXHAUSTED and the surrounding
         // transaction rolls back the inventory claim, balance debit, etc.
         //
-        // For unbounded coupons (maxUses === null), the predicate is just
-        // the id match — no race exists because there is no cap.
-        const couponWhere =
-          appliedCoupon.maxUses === null
-            ? eq(couponsTable.id, appliedCoupon.id)
-            : and(
-                eq(couponsTable.id, appliedCoupon.id),
-                sql`${couponsTable.usedCount} < ${appliedCoupon.maxUses}`,
-              );
+        // B2-05 (round-92 audit): the same predicate now also re-asserts
+        // `is_active = true` and `expires_at > now()` at redemption time.
+        // resolveCoupon validates both pre-transaction, but an admin
+        // deactivation (or the clock crossing expires_at) landing between
+        // validation and commit previously still redeemed a just-dead coupon
+        // — the guarded UPDATE is the commit-time authority. 0 rows for ANY
+        // of these reasons surfaces as COUPON_EXHAUSTED (409-retryable at
+        // the route). This also hardens the maxUses=null branch, which was
+        // previously guarded by the id match alone.
+        const couponStillValid = and(
+          eq(couponsTable.isActive, true),
+          or(isNull(couponsTable.expiresAt), gt(couponsTable.expiresAt, now)),
+        );
+        const couponWhere = and(
+          eq(couponsTable.id, appliedCoupon.id),
+          couponStillValid,
+          ...(appliedCoupon.maxUses === null
+            ? []
+            : [sql`${couponsTable.usedCount} < ${appliedCoupon.maxUses}`]),
+        );
         const [updatedCoupon] = await tx
           .update(couponsTable)
           .set({ usedCount: sql`${couponsTable.usedCount} + 1` })
@@ -288,6 +347,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // H5 — optimistic wallet deduction lost a race (concurrent
         // topup-approval / purchase / adjustment). Retryable by design.
         return { failure: "CONCURRENCY_ERROR" as const };
+      }
+      if (err.message === "STALE_FLASH_SALE") {
+        // B2-06 — the flash sale that priced this purchase ended (or
+        // changed) between pricing and the tx. Retryable: the client
+        // re-prices at the current (list) price.
+        return { failure: "STALE_FLASH_SALE" as const };
       }
       throw err;
     });

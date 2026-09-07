@@ -11,6 +11,7 @@ import {
   ShoppingBag,
   Sparkles,
   Tag,
+  WifiOff,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -130,7 +131,7 @@ export default function OrdersPage() {
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<OrderFilter>("all");
 
-  const { data: orders = [], isLoading } = useListOrders(undefined, {
+  const { data: orders = [], isLoading, isError, refetch } = useListOrders(undefined, {
     query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -232,6 +233,26 @@ export default function OrdersPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <OrderCardSkeleton key={i} />
           ))}
+        </div>
+      ) : isError ? (
+        /* Distinct from "no orders": an API outage / expired session
+           previously fell into the empty state below — an incident read
+           as "you never bought anything" (B4 P1-4, the last page in the
+           purchase journey without an error branch). */
+        <div className="text-center py-20 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-status-error/70" />
+          </div>
+          <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
+          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+          </p>
+          <Button
+            onClick={() => refetch()}
+            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+          >
+            إعادة المحاولة
+          </Button>
         </div>
       ) : /* Empty state */
       orders.length === 0 ? (

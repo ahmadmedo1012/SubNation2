@@ -11,7 +11,15 @@ export function Footer() {
   return (
     <footer
       className={`relative border-t border-border/30 bg-gradient-to-b from-background via-background to-card/40 mt-12 ${
-        token ? "mb-[calc(60px+env(safe-area-inset-bottom))] md:mb-0" : ""
+        /* Authed mobile only: reserve the fixed MobileNav's height BELOW
+           the legal row (mobile-nav-footer-pad = padding, defined at
+           max-width 767.98px so desktop is untouched — no md: reset
+           needed). Replaces the old mb-[calc(60px+env)] double
+           reservation: main's mobile-nav-safe-pad already reserves the
+           nav + breathing unit for page content, so this is the only
+           clearance the footer itself needs — and as padding it can
+           never collapse through #root (B6-P1-7). */
+        token ? "mobile-nav-footer-pad" : ""
       }`}
     >
       {/* Hairline brand tint at the top — barely visible but unifies

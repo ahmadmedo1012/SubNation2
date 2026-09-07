@@ -928,7 +928,7 @@ export const BulkUpdateOrderStatusResponse = zod.object({
 });
 
 /**
- * @summary List all top-up requests
+ * @summary List all top-up requests (requireAdmin + finance scope)
  */
 export const ListAdminTopupsQueryParams = zod.object({
   status: zod.coerce.string().nullish(),
@@ -958,10 +958,31 @@ export const ListAdminTopupsResponseItem = zod.object({
 export const ListAdminTopupsResponse = zod.array(ListAdminTopupsResponseItem);
 
 /**
- * @summary Approve a top-up request
+ * Executes TopupService.approve inside a transaction: status guard
+(WHERE status='pending'), optimistic wallet credit, atomic
+wallet_ledger type=topup entry, referral credit, and user/admin
+notifications. Mounted behind the idempotency middleware
+(routeKey admin.topups.approve) — send an Idempotency-Key per
+click so a network retry / double-click cannot double-credit.
+A payment_reference already used by an approved topup is
+rejected with 409 (the same transfer cannot be credited twice).
+
+ * @summary Approve a top-up request (requireAdmin + finance scope — moves wallet money)
  */
 export const ApproveTopupParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const approveTopupHeaderIdempotencyKeyMax = 100;
+
+export const ApproveTopupHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(approveTopupHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Idempotency key (≥ 8 chars to engage; 24h dedup per admin +\nroute). Same key with a different body → 409\nIDEMPOTENCY_KEY_REUSE; same key in flight → 409\nIDEMPOTENCY_IN_FLIGHT; replays carry Idempotent-Replayed \/\nIdempotent-Original-At response headers.\n",
+    ),
 });
 
 export const ApproveTopupBody = zod.object({
@@ -974,10 +995,29 @@ export const ApproveTopupResponse = zod.object({
 });
 
 /**
- * @summary Reject a top-up request
+ * Executes TopupService.reject with the same status-guard pattern
+(WHERE status='pending' + rows-affected check — a double-click
+gets 409, never a double notification). Mounted behind the
+idempotency middleware (routeKey admin.topups.reject) for
+audit-trail/notification dedup. No wallet money moves on this
+path.
+
+ * @summary Reject a top-up request (requireAdmin + finance scope)
  */
 export const RejectTopupParams = zod.object({
   id: zod.coerce.number(),
+});
+
+export const rejectTopupHeaderIdempotencyKeyMax = 100;
+
+export const RejectTopupHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(rejectTopupHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Idempotency key (≥ 8 chars to engage; 24h dedup per admin +\nroute) — dedupes admin double-clicks.\n",
+    ),
 });
 
 export const RejectTopupBody = zod.object({
@@ -1159,7 +1199,7 @@ export const CreditReferralResponse = zod.object({
 });
 
 /**
- * @summary List all products (including inactive)
+ * @summary List all products, including inactive (requireAdmin + inventory scope)
  */
 export const ListAdminProductsQueryParams = zod.object({
   search: zod.coerce
@@ -1194,7 +1234,7 @@ export const ListAdminProductsResponseItem = zod.object({
 export const ListAdminProductsResponse = zod.array(ListAdminProductsResponseItem);
 
 /**
- * @summary Create a new product
+ * @summary Create a new product (requireAdmin + inventory scope)
  */
 export const createProductBodyPriceMin = 0.01;
 export const createProductBodyPriceMax = 1000000;
@@ -1218,7 +1258,7 @@ export const CreateProductBody = zod.object({
 });
 
 /**
- * @summary Update a product
+ * @summary Update a product (requireAdmin + inventory scope)
  */
 export const UpdateProductParams = zod.object({
   id: zod.coerce.number(),
@@ -1268,7 +1308,7 @@ export const UpdateProductResponse = zod.object({
 });
 
 /**
- * @summary Archive/delete a product
+ * @summary Archive/delete a product (requireAdmin + inventory scope)
  */
 export const DeleteProductParams = zod.object({
   id: zod.coerce.number(),
@@ -1280,7 +1320,7 @@ export const DeleteProductResponse = zod.object({
 });
 
 /**
- * @summary List all users
+ * @summary List all users (requireAdmin + users scope)
  */
 export const ListAdminUsersQueryParams = zod.object({
   search: zod.coerce.string().nullish(),
@@ -1315,6 +1355,90 @@ export const ListAdminUsersResponseItem = zod.object({
 export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem);
 
 /**
+ * THE admin money-edit route. Wallet mutations
+(`wallet_adjustment` relative delta, or `wallet_balance` absolute
+set — send at most one of the two; `wallet_adjustment` wins if
+both are present) route through AdjustmentService: transactional
+optimistic-lock update + a wallet_ledger row of type=adjustment,
+so every monetary change stays reconstructable from the ledger
+(Constitution Principle I). Loyalty fields
+(`loyalty_points`, `loyalty_tier`) use a legacy direct-update
+path with no ledger.
+
+Mounted behind the idempotency middleware (routeKey
+admin.users.patch) so a network retry / admin double-click
+cannot double-credit — send a fresh Idempotency-Key per edit.
+The audit row records the fields changed and the resulting
+wallet balance.
+
+ * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ */
+export const UpdateAdminUserParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const updateAdminUserHeaderIdempotencyKeyMax = 100;
+
+export const UpdateAdminUserHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(updateAdminUserHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Idempotency key (≥ 8 chars to engage; 24h dedup per admin +\nroute). Currently advisory — absence logs a warning and the\ncall proceeds; same key + different body → 409\nIDEMPOTENCY_KEY_REUSE, same key in flight → 409\nIDEMPOTENCY_IN_FLIGHT, replays carry Idempotent-Replayed \/\nIdempotent-Original-At response headers.\n",
+    ),
+});
+
+export const updateAdminUserBodyLoyaltyPointsMin = 0;
+export const updateAdminUserBodyLoyaltyPointsMax = 10000000;
+
+export const UpdateAdminUserBody = zod.object({
+  wallet_adjustment: zod
+    .number()
+    .optional()
+    .describe(
+      "Relative delta applied to wallet_balance via AdjustmentService\n(transaction + wallet_ledger type=adjustment). Rejected with\n400 on non-finite\/oversized values (INVALID_AMOUNT), zero\ndelta, or a resulting negative balance.\n",
+    ),
+  wallet_balance: zod
+    .number()
+    .optional()
+    .describe(
+      "Absolute balance set via AdjustmentService (same ledger path).\nIgnored when wallet_adjustment is also present.\n",
+    ),
+  loyalty_points: zod
+    .number()
+    .min(updateAdminUserBodyLoyaltyPointsMin)
+    .max(updateAdminUserBodyLoyaltyPointsMax)
+    .optional()
+    .describe(
+      "Direct-update path (no ledger). Integer in [0, 10,000,000] —\nthe cap exists because points convert to wallet credit via\n\/loyalty\/convert-points (100 pts\/LYD).\n",
+    ),
+  loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]).optional(),
+  note: zod
+    .string()
+    .optional()
+    .describe(
+      'Free-form note recorded on the wallet_ledger row when a\nwallet field is supplied (defaults to \"Admin adjustment\" \/\n\"Admin balance set\").\n',
+    ),
+});
+
+export const UpdateAdminUserResponse = zod.object({
+  id: zod.number(),
+  phone: zod.string(),
+  wallet_balance: zod.number(),
+  loyalty_points: zod.number(),
+  loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
+});
+
+/**
+ * Password login with an exponential-backoff lockout: repeated
+failures lock the account and return 429 ACCOUNT_LOCKED until
+the lock expires. Soft-disabled accounts answer 401 with the
+same body as a wrong password (no account-state leak). When
+TOTP is enabled the response is the requires_2fa variant
+(temp_token + requires_2fa) and the session is issued by the
+(undocumented) POST /admin/login/verify-2fa instead.
+
  * @summary Admin login
  */
 export const AdminLoginBody = zod.object({
@@ -1325,6 +1449,13 @@ export const AdminLoginBody = zod.object({
 export const AdminLoginResponse = zod.object({
   token: zod.string().optional(),
   display_name: zod.string().optional(),
+  role: zod.string().optional().describe('Admin role (e.g. \"super_admin\", \"operator\").'),
+  permissions: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      'RBAC scopes granted to this admin (e.g. [\"all\"] or\n[\"orders\", \"finance\"]). Emitted on the non-2FA variant;\nabsent on the requires_2fa variant.\n',
+    ),
   requires_2fa: zod.boolean().optional(),
   temp_token: zod.string().optional(),
 });
@@ -1673,4 +1804,95 @@ export const CopilotHistoryResponse = zod.object({
     }),
   ),
   next_cursor: zod.string().nullish(),
+});
+
+/**
+ * Telegram's server-to-server callback endpoint. Mounted at
+/api/webhook/telegram (the /api/webhook prefix is CSRF-skipped —
+Telegram cannot send Origin headers).
+
+Auth: the `x-telegram-bot-api-secret-token` header must match
+the configured TELEGRAM_WEBHOOK_SECRET (constant-time compare).
+
+Semantics: when a user submits a wallet topup, the backend posts
+an approval message with inline buttons into the admin Telegram
+group (callback_data `topup_app:{id}` / `topup_rej:{id}`). This
+webhook receives the button taps and executes
+TopupService.approve/reject — gated by the TELEGRAM_ADMIN_IDS
+allowlist (non-allowlisted tappers get an "no permission"
+callback answer and no state change). The tapped message is
+edited with the outcome and its keyboard stripped so a stale
+button cannot be re-tapped.
+
+Always acks 200 {ok: true} on any auth-accepted update —
+including processing failures — because Telegram aggressively
+retries non-200 responses. Non-JSON content types (setWebhook
+probes) are acked 200 without processing. A plain `/start`
+message gets a reply with the sender's chat/user ids (bootstrap
+for building the TELEGRAM_ADMIN_IDS allowlist).
+
+ * @summary Telegram bot webhook — executes topup approve/reject callback decisions (money-moving)
+ */
+export const TelegramWebhookHeader = zod.object({
+  "x-telegram-bot-api-secret-token": zod
+    .string()
+    .describe(
+      "Shared secret configured on the Telegram setWebhook call;\ncompared against TELEGRAM_WEBHOOK_SECRET in constant time.\n(The secret value itself never appears in this spec.)\n",
+    ),
+});
+
+export const TelegramWebhookBody = zod.object({
+  update_id: zod.number().optional(),
+  message: zod
+    .object({
+      text: zod.string().optional(),
+      chat: zod
+        .object({
+          id: zod.number().optional(),
+          username: zod.string().optional(),
+          type: zod.string().optional(),
+        })
+        .optional(),
+      from: zod
+        .object({
+          id: zod.number().optional(),
+          username: zod.string().optional(),
+        })
+        .optional(),
+    })
+    .optional()
+    .describe(
+      "Plain message — only `\/start` is meaningful (replies with the\nsender's chat\/user ids so operators can build the\nTELEGRAM_ADMIN_IDS allowlist).\n",
+    ),
+  callback_query: zod
+    .object({
+      id: zod.string(),
+      from: zod.object({
+        id: zod.number(),
+        username: zod.string().optional(),
+      }),
+      message: zod
+        .object({
+          chat: zod
+            .object({
+              id: zod.number(),
+            })
+            .optional(),
+          message_id: zod.number().optional(),
+          text: zod.string().optional(),
+        })
+        .optional(),
+      data: zod
+        .string()
+        .optional()
+        .describe('Callback payload: \"topup_app:<id>\" | \"topup_rej:<id>\".'),
+    })
+    .optional()
+    .describe(
+      'Inline-button tap. `data` is the topup decision payload:\n\"topup_app:{id}\" (approve) or \"topup_rej:{id}\" (reject).\nExecuted only when `from.id` is allowlisted in\nTELEGRAM_ADMIN_IDS.\n',
+    ),
+});
+
+export const TelegramWebhookResponse = zod.object({
+  ok: zod.boolean(),
 });

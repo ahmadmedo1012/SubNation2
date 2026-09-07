@@ -45,7 +45,14 @@ function requireMetricsAuth(req: Request, res: Response, next: NextFunction): vo
   const jwt = req.cookies?.admin_token || presentedToken;
   if (jwt) {
     const result = verifyAdminTokenDetailed(jwt);
-    if (result.ok) {
+    // SEC-92-02 (round-92 B1 audit): reject the 2FA TEMP token exactly
+    // like requireAdmin does (middlewares/requireAdmin.ts V1-CRITICAL
+    // block). The temp token is minted by POST /api/admin/login when TOTP
+    // is enabled — a password-only attacker holds it mid-challenge, and
+    // previously this route was one of two verifiers that accepted it as
+    // a FULL session (full Prometheus operational telemetry). isTemp →
+    // fall through to the 401 below.
+    if (result.ok && result.payload.isTemp !== true) {
       next();
       return;
     }

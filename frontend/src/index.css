@@ -82,6 +82,7 @@
   --color-status-error: hsl(var(--status-error));
   --color-status-info: hsl(var(--status-info));
   --color-status-low-stock: hsl(var(--status-low-stock));
+  --color-status-purple: hsl(var(--status-purple));
 
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
@@ -136,6 +137,16 @@
   --status-error: 0 80% 62%;
   --status-info: 211 90% 58%;
   --status-low-stock: 22 92% 58%;
+  /* Support/ticket notifications (NotificationBell TYPE_CONFIG). HSL
+     channels like the rest of the status palette so consumers compose
+     bg/border/text from one token (B6-P1-4). */
+  --status-purple: 262 83% 66%;
+
+  /* Fixed MobileNav height (px). Mirrors MOBILE_NAV_HEIGHT exported from
+     components/layout/MobileNav.tsx — the two are asserted equal by
+     mobile-nav-clearance.test.tsx. Every clearance that must reserve room
+     for the nav reads this variable (B6-P1-7 single source). */
+  --mobile-nav-h: 60px;
 
   --background: var(--surface-base);
   --foreground: 210 40% 98%;
@@ -271,6 +282,7 @@
   --status-error: 0 75% 50%;
   --status-info: 211 80% 48%;
   --status-low-stock: 22 88% 48%;
+  --status-purple: 262 70% 45%;
 
   --background: var(--surface-base);
   --foreground: 220 20% 10%;
@@ -1143,14 +1155,29 @@
      on every authed page. Scoping here makes the utilities and the
      Tailwind responsive overrides agree at every viewport. */
   @media (max-width: 767.98px) {
+    /* Main's content clearance: nav height + ONE 12px breathing unit
+       (B6-P1-7: previously a bare 72px that duplicated the footer's
+       own 60px reservation). Reads --mobile-nav-h so the nav height
+       and its clearances can never drift apart. */
     .mobile-nav-safe-pad {
-      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+      padding-bottom: calc(var(--mobile-nav-h) + 0.75rem + env(safe-area-inset-bottom));
+    }
+
+    /* Footer's own clearance (B6-P1-7): exactly the nav height, applied
+       as PADDING not margin — the old mb-[calc(60px+env)] could collapse
+       through #root (min-height only) and let the fixed nav cover the
+       footer's legal row on exactly-viewport-height pages. Padding never
+       collapses, so the legal row is guaranteed to sit above the nav —
+       and because the nav physically occupies this space, it adds ZERO
+       dead space: total bottom reservation = main's single 12px unit. */
+    .mobile-nav-footer-pad {
+      padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
     }
   }
 
   @media (max-width: 639.98px) {
     .mobile-sticky-above-nav {
-      bottom: calc(60px + env(safe-area-inset-bottom));
+      bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
     }
 
     .mobile-sticky-bottom-safe {

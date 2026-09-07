@@ -4,8 +4,9 @@ import { EmptyState } from "@/components/admin/EmptyState";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { copyToClipboard, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,6 +27,7 @@ import {
   Clock,
   Copy,
   Hash,
+  Loader2,
   MessageSquare,
   Smartphone,
   Square,
@@ -194,17 +196,23 @@ function BulkConfirmModal({
   onConfirm,
   onCancel,
   loading,
+  progress,
 }: {
   action: "approve" | "reject";
   count: number;
   onConfirm: () => void;
   onCancel: () => void;
   loading: boolean;
+  /** Live per-item progress while a long approveAll loop runs (B5-01). */
+  progress?: { done: number; total: number } | null;
 }) {
   return (
     <div
       className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      // Backdrop click while loading would strand the in-flight money
+      // loop with no visible progress — the cancel button is disabled
+      // for the same reason.
+      onClick={(e) => e.target === e.currentTarget && !loading && onCancel()}
     >
       <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-4">
@@ -212,7 +220,11 @@ function BulkConfirmModal({
             <h3 className="font-black text-sm">
               {action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
             </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{count} طلب سيتم معالجته</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {loading && progress
+                ? `جاري ${progress.done}/${progress.total}...`
+                : `${count} طلب سيتم معالجته`}
+            </p>
           </div>
           <button
             onClick={onCancel}
@@ -240,7 +252,13 @@ function BulkConfirmModal({
             onClick={onConfirm}
             disabled={loading}
           >
-            {loading ? "جارٍ المعالجة..." : action === "approve" ? "موافقة" : "رفض"}
+            {loading && progress
+              ? `جاري ${progress.done}/${progress.total}...`
+              : loading
+                ? "جارٍ المعالجة..."
+                : action === "approve"
+                  ? "موافقة"
+                  : "رفض"}
           </Button>
         </div>
       </div>
@@ -250,18 +268,34 @@ function BulkConfirmModal({
 
 function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(text).catch(() => {});
+  const [failed, setFailed] = useState(false);
+  const copy = async () => {
+    // B6 (round-92 audit): the shared helper (secure-context check +
+    // execCommand fallback + boolean result) replaces the raw
+    // `navigator.clipboard.writeText(text).catch(() => {})` — the raw
+    // call silently rejected on non-secure contexts / strict Firefox
+    // and still flipped the button to the "copied" check icon.
+    const ok = await copyToClipboard(text);
+    if (!ok) {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 2000);
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
   return (
     <button
       onClick={copy}
-      title="نسخ"
-      className={`shrink-0 rounded transition-colors ${copied ? "text-emerald-400" : "text-muted-foreground hover:text-muted-foreground"}`}
+      title={failed ? "فشل النسخ" : "نسخ"}
+      aria-label={failed ? "فشل النسخ" : "نسخ"}
+      className={`shrink-0 rounded transition-colors ${
+        failed ? "text-red-400" : copied ? "text-emerald-400" : "text-muted-foreground hover:text-muted-foreground"
+      }`}
     >
-      {copied ? (
+      {failed ? (
+        <XCircle className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
+      ) : copied ? (
         <Check className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
       ) : (
         <Copy className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
@@ -281,8 +315,15 @@ export default function AdminTopupsPage() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [rejectTarget, setRejectTarget] = useState<any | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkAction, setBulkAction] = useState<"approve" | "reject" | null>(null);
+  const [bulkAction, setBulkAction] = useState<"approve" | "reject" | "approveAll" | null>(null);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  // B5-01 (round-92 audit): approveAll busy state + live progress — see
+  // the approveAll comment below.
+  const [isApproveAllBusy, setIsApproveAllBusy] = useState(false);
+  const [approveAllProgress, setApproveAllProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -293,7 +334,12 @@ export default function AdminTopupsPage() {
           setRejectTarget(null);
           setProcessingId(null);
         }
-        if (bulkAction) {
+        // Don't dismiss the bulk confirm mid-loop: the money requests
+        // are already in flight and the modal carries the live progress
+        // counter — closing it would strand the busy state with no
+        // visible indicator (the cancel button is disabled while
+        // loading for the same reason).
+        if (bulkAction && !isBulkProcessing && !isApproveAllBusy) {
           setBulkAction(null);
         }
       },
@@ -519,12 +565,26 @@ export default function AdminTopupsPage() {
     }
   };
 
+  // B5-01 (round-92 audit): approveAll previously ran its sequential
+  // money loop with NO busy state — the "موافقة الكل" button stayed
+  // enabled, so a double-click started TWO parallel loops, each
+  // generating fresh Idempotency-Keys per iteration, which the backend
+  // per-(admin, route, key) dedupe cannot correlate. The confirmation
+  // is the file's own BulkConfirmModal (replacing the raw
+  // window.confirm), the loop is single-entry (re-click guard +
+  // disabled button), the modal/button carry a live "جاري done/total"
+  // counter for long queues, and per-item failures are collected and
+  // summarized in ONE toast with per-item reasons instead of two
+  // count-only toasts.
   const approveAll = async () => {
+    if (isApproveAllBusy) return; // re-click guard (double-loop prevention)
     const pending = allTopups.filter((t) => t.status === "pending");
-    if (!window.confirm(`تأكيد الموافقة على جميع الطلبات المعلقة (${pending.length})؟`)) return;
+    if (pending.length === 0) return;
+    setIsApproveAllBusy(true);
+    setApproveAllProgress({ done: 0, total: pending.length });
     let approvedCount = 0;
-    let failedCount = 0;
-    for (const t of pending) {
+    const failures: Array<{ id: number; reason: string }> = [];
+    for (const [index, t] of pending.entries()) {
       try {
         const r = await fetch(`/api/admin/topups/${t.id}/approve`, {
           method: "POST",
@@ -532,23 +592,48 @@ export default function AdminTopupsPage() {
           headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
           body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
         });
-        if (!r.ok) throw new Error(String(r.status));
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as
+            | { error?: string; code?: string }
+            | null;
+          throw new Error(
+            body && (body.error || body.code)
+              ? getErrorMessage(body)
+              : `HTTP ${r.status}`,
+          );
+        }
         approvedCount++;
-      } catch {
-        failedCount++;
+      } catch (e) {
+        failures.push({
+          id: t.id,
+          reason: e instanceof Error ? e.message : "خطأ غير معروف",
+        });
       }
+      setApproveAllProgress({ done: index + 1, total: pending.length });
     }
-    if (failedCount > 0) {
+    setBulkAction(null);
+    setIsApproveAllBusy(false);
+    setApproveAllProgress(null);
+    setSelectedIds(new Set());
+    invalidate();
+    // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
+    if (failures.length === 0) {
       toast({
-        title: "خطأ",
-        description: `فشل تنفيذ العملية على ${failedCount} طلب، حاول مرة أخرى`,
+        title: `✓ تمت الموافقة على ${approvedCount} طلب`,
+        variant: "success",
+      });
+    } else {
+      toast({
+        title:
+          approvedCount > 0
+            ? `✓ تمت الموافقة على ${approvedCount} من ${pending.length} طلب`
+            : "خطأ",
+        description: `نجحت ${approvedCount} · فشلت ${failures.length} — ${failures
+          .map((f) => `#${f.id}: ${f.reason}`)
+          .join("، ")}`,
         variant: "destructive",
       });
     }
-    if (approvedCount > 0) {
-      toast({ title: `✓ تمت الموافقة على ${approvedCount} طلب` });
-    }
-    invalidate();
   };
 
   return (
@@ -566,14 +651,18 @@ export default function AdminTopupsPage() {
         />
       )}
 
-      {/* Bulk action confirmation modal */}
+      {/* Bulk action confirmation modal — also backs the approveAll
+          flow (B5-01: replaced its raw window.confirm). */}
       {bulkAction && (
         <BulkConfirmModal
-          action={bulkAction}
-          count={selectedPendingCount}
-          onConfirm={() => handleBulkAction(bulkAction)}
+          action={bulkAction === "approveAll" ? "approve" : bulkAction}
+          count={bulkAction === "approveAll" ? pendingCount : selectedPendingCount}
+          onConfirm={() =>
+            bulkAction === "approveAll" ? void approveAll() : void handleBulkAction(bulkAction)
+          }
           onCancel={() => setBulkAction(null)}
-          loading={isBulkProcessing}
+          loading={bulkAction === "approveAll" ? isApproveAllBusy : isBulkProcessing}
+          progress={bulkAction === "approveAll" ? approveAllProgress : null}
         />
       )}
 
@@ -654,10 +743,17 @@ export default function AdminTopupsPage() {
                 size="sm"
                 variant="outline"
                 className="h-9 gap-1.5 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/10 text-xs"
-                onClick={approveAll}
+                onClick={() => setBulkAction("approveAll")}
+                disabled={isApproveAllBusy}
               >
-                <CheckCheck className="w-3.5 h-3.5" />
-                موافقة الكل ({pendingCount})
+                {isApproveAllBusy && approveAllProgress ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCheck className="w-3.5 h-3.5" />
+                )}
+                {isApproveAllBusy && approveAllProgress
+                  ? `جاري ${approveAllProgress.done}/${approveAllProgress.total}...`
+                  : `موافقة الكل (${pendingCount})`}
               </Button>
             )}
 

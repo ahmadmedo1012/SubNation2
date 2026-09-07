@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useAuth } from "@/lib/auth";
 import { LogOut, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -19,15 +20,21 @@ interface Session {
  * card background, header with icon + title) so the section
  * doesn't feel like an unstyled island.
  *
+ * The destructive confirm routes through the shared useConfirm()
+ * hook (Radix AlertDialog — role/aria, Escape, outside-click, focus
+ * trap). The previous hand-rolled overlay had none of those
+ * (B6-P1-3): it was the only confirm in the app a keyboard user
+ * couldn't Escape out of.
+ *
  * Failures are silent in the UI — Sentry's network instrumentation
  * captures the actual error, and a stale list won't lock the user
  * out of anything (the logout-all endpoint is independent).
  */
 export function SessionManager() {
   const { token } = useAuth();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showLogoutAllConfirm, setShowLogoutAllConfirm] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -51,6 +58,18 @@ export function SessionManager() {
   }, [token]);
 
   const handleLogoutAll = async () => {
+    // Destructive confirm via the shared a11y-complete AlertDialog
+    // (B6-P1-3). Same message text as the old hand-rolled overlay —
+    // only the dialog mechanics changed.
+    const ok = await confirm({
+      title: "تأكيد تسجيل الخروج",
+      description:
+        "هل أنت متأكد من رغبتك في تسجيل الخروج من جميع الأجهزة؟ ستحتاج لتسجيل الدخول مجدداً على كل جهاز.",
+      confirmLabel: "تأكيد",
+      cancelLabel: "إلغاء",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const response = await fetch("/api/auth/logout-all-devices", {
         method: "POST",
@@ -65,7 +84,6 @@ export function SessionManager() {
     } catch {
       // Sentry captures it; the user can re-attempt via the page reload.
     }
-    setShowLogoutAllConfirm(false);
   };
 
   return (
@@ -110,7 +128,7 @@ export function SessionManager() {
 
       <Button
         variant="outline"
-        onClick={() => setShowLogoutAllConfirm(true)}
+        onClick={() => void handleLogoutAll()}
         disabled={loading}
         className="w-full mt-4 h-10 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold rounded-xl gap-2 transition-all"
       >
@@ -118,33 +136,9 @@ export function SessionManager() {
         تسجيل الخروج من جميع الأجهزة
       </Button>
 
-      {showLogoutAllConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-            <h3 className="text-lg font-bold">تأكيد تسجيل الخروج</h3>
-            <p className="text-sm text-muted-foreground">
-              هل أنت متأكد من رغبتك في تسجيل الخروج من جميع الأجهزة؟ ستحتاج لتسجيل الدخول مجدداً
-              على كل جهاز.
-            </p>
-            <div className="flex gap-3 justify-end pt-1">
-              <Button
-                variant="outline"
-                onClick={() => setShowLogoutAllConfirm(false)}
-                className="h-10 px-5"
-              >
-                إلغاء
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleLogoutAll}
-                className="h-10 px-5"
-              >
-                تأكيد
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Shared Radix AlertDialog (useConfirm) — renders only while a
+          confirm is pending. */}
+      <ConfirmDialog />
     </div>
   );
 }

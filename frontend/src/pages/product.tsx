@@ -548,8 +548,26 @@ export default function ProductPage() {
               fetchPriority="high"
               decoding="async"
               className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
+              // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
+              // URL swaps to the initial-letter tile instead of painting the
+              // browser's broken-image glyph inside the page's largest
+              // visual element. width/height (above) already pin the box.
+              onError={(e) => {
+                const el = e.target as HTMLImageElement;
+                el.style.display = "none";
+                const fallback = el.nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = "flex";
+              }}
             />
-          ) : (
+          ) : null}
+
+          {/* No-image fallback — always mounted (hidden when an image URL
+              exists) so an onError above can reveal it without a re-render,
+              exactly like ProductCard's category-icon fallback. */}
+          <div
+            style={{ display: product.image_url ? "none" : "flex" }}
+            className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
+          >
             <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
               <span
                 className={`text-5xl sm:text-6xl font-black select-none drop-shadow-lg ${initialColorClass}`}
@@ -557,21 +575,22 @@ export default function ProductPage() {
                 {product.name[0]}
               </span>
             </div>
-          )}
+          </div>
 
-          {/* Top badges */}
-          <div className="absolute top-3 right-3 bg-black/55 backdrop-blur-sm text-white/85 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/8">
+          {/* Top badges — z-[3] keeps them above the z-[2] fallback layer
+              (same stacking discipline as ProductCard's media area). */}
+          <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/8">
             {categoryLabel(product.category)}
           </div>
           {product.discount_percent && (
-            <div className="absolute top-3 left-3 flex items-center gap-1 bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
+            <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
               <Tag className="w-3 h-3" />
               خصم {product.discount_percent}%
             </div>
           )}
 
           {/* Fade into card body */}
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-card to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 z-[3] h-20 bg-gradient-to-t from-card to-transparent" />
         </div>
 
         <div className="p-5 space-y-4">

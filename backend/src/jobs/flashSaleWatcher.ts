@@ -4,6 +4,12 @@ import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
+/** Handle returned by startFlashSaleWatcher (B7-P2-11: stoppable + re-entry safe). */
+export interface FlashSaleWatcherHandle {
+  /** Idempotent: stops the interval + initial timeout. */
+  stop: () => void;
+}
+
 /**
  * Flash-sale auto-deactivator.
  *
@@ -23,12 +29,32 @@ import { captureSchedulerFailure } from "../lib/sentry";
  * Runs every 5 minutes. Idempotent — only flips rows where both
  * conditions hold, so concurrent instances cannot race destructively.
  */
+// B7-P2-11: re-entry guard — a hung query must not stack concurrent runs.
+let checkInFlight = false;
+
+async function runDeactivateExpiredFlashSales(): Promise<void> {
+  if (checkInFlight) {
+    logger.warn("[flashSaleWatcher] previous check still in flight — skipping tick");
+    return;
+  }
+  checkInFlight = true;
+  try {
+    await deactivateExpiredFlashSales();
+  } finally {
+    checkInFlight = false;
+  }
+}
+
 async function deactivateExpiredFlashSales(): Promise<void> {
   const now = new Date();
 
   try {
     const expired = await db
-      .select({ id: flashSalesTable.id, title: flashSalesTable.title, endsAt: flashSalesTable.endsAt })
+      .select({
+        id: flashSalesTable.id,
+        title: flashSalesTable.title,
+        endsAt: flashSalesTable.endsAt,
+      })
       .from(flashSalesTable)
       .where(and(eq(flashSalesTable.isActive, true), lt(flashSalesTable.endsAt, now)));
 
@@ -57,12 +83,33 @@ async function deactivateExpiredFlashSales(): Promise<void> {
   }
 }
 
-export function startFlashSaleWatcher(): void {
+let running = false;
+let stopCurrent: (() => void) | null = null;
+
+export function startFlashSaleWatcher(): FlashSaleWatcherHandle {
+  if (running) {
+    logger.warn("[flashSaleWatcher] already running — ignoring re-start");
+    return { stop: () => stopCurrent?.() };
+  }
+  running = true;
   // Initial pass after the same 30s grace as couponWatcher.
-  setTimeout(() => deactivateExpiredFlashSales(), 30_000);
+  const initial = setTimeout(() => void runDeactivateExpiredFlashSales(), 30_000);
   // Then every 5 minutes — short enough that operators rarely see a
   // freshly-expired row in the admin list, long enough that the load
   // is negligible (single UPDATE per 5-min window, usually 0 rows).
-  setInterval(() => deactivateExpiredFlashSales(), 5 * 60 * 1000);
+  const interval = setInterval(() => void runDeactivateExpiredFlashSales(), 5 * 60 * 1000);
+  // B7-P2-11: timers must not keep the process alive on their own.
+  initial.unref?.();
+  interval.unref?.();
+
+  stopCurrent = () => {
+    clearTimeout(initial);
+    clearInterval(interval);
+    running = false;
+    stopCurrent = null;
+    logger.info("[flashSaleWatcher] stopped");
+  };
+  const stop = stopCurrent;
   logger.info("Flash-sale auto-deactivation watcher started");
+  return { stop: () => stop() };
 }

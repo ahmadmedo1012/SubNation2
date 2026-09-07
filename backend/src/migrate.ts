@@ -1,8 +1,241 @@
 import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { hashPassword } from "./lib/crypto";
 import { encrypt, isEncrypted } from "./lib/encryption";
 import { logger } from "./lib/logger";
+
+/** Minimal executor signature so boot-critical SQL helpers stay unit-testable. */
+type SqlExecutor = (query: SQL) => Promise<unknown>;
+
+const defaultExecutor: SqlExecutor = (query) => db.execute(query);
+
+/** Node-postgres and pglite drizzle drivers both return `.rows`; accept either. */
+function extractRows(result: unknown): Array<Record<string, unknown>> {
+  const withRows = result as { rows?: Array<Record<string, unknown>> } | null | undefined;
+  if (withRows && Array.isArray(withRows.rows)) return withRows.rows;
+  if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
+  return [];
+}
+
+function extractCount(result: unknown): number {
+  const row = extractRows(result)[0] as { c?: number | string } | undefined;
+  return Number(row?.c ?? 0);
+}
+
+/**
+ * Ensure the pg_trgm extension exists WITHOUT issuing DDL when it already
+ * does (B7-P0-1, round-92 audit).
+ *
+ * `CREATE EXTENSION` is rejected by Postgres in a read-only window even
+ * when the extension is already installed — the command-class check fires
+ * before the no-op effect is evaluated, and that exact statement killed
+ * deploy dep-daf0rt8n74is73fraih0. A pg_extension catalog read is permitted
+ * on a read-only standby, so we probe first and only CREATE when genuinely
+ * absent. Steady-state boots execute zero extension DDL.
+ *
+ * Returns true when the extension is usable; callers skip the trigram GIN
+ * indexes otherwise (fuzzy search falls back to a seq scan — slower, never
+ * broken). If the CREATE itself is rejected as read-only (SQLSTATE 25006),
+ * the error is re-thrown so boot-migrations.ts classifies it transient and
+ * retries the whole run once the failover window clears. Other failures
+ * (extension unavailable in this environment — e.g. the pglite test
+ * harness) are logged and downgraded to "not available".
+ */
+export async function ensurePgTrgmExtension(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<boolean> {
+  const probeRows = extractRows(
+    await execute(sql`SELECT 1 AS present FROM pg_extension WHERE extname = 'pg_trgm'`),
+  );
+  if (probeRows.length > 0) return true;
+  try {
+    await execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    return true;
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    if (
+      code === "25006" ||
+      msg.includes("read-only transaction") ||
+      msg.includes("read-only mode")
+    ) {
+      // Read-only window — surface it so the transient retry machinery engages.
+      throw err;
+    }
+    logger.warn(
+      { err, code },
+      "pg_trgm not available in this environment — trigram indexes will be skipped (fuzzy search falls back to seq scan)",
+    );
+    return false;
+  }
+}
+
+async function alertMoneyConstraintIssue(title: string, message: string, dedupeKey: string) {
+  logger.error({ category: "monitoring", dedupeKey }, message);
+  try {
+    // Lazy import — same circular-load avoidance as the V1-M8 block below
+    // (alertLogger imports socket dynamically, which reads env at connect
+    // time; migration boot must not pay that cost).
+    const { logAdminAlert } = await import("./jobs/alertLogger");
+    await logAdminAlert("system", title, message, {
+      dedupeKey,
+      dedupeWindowMs: 24 * 60 * 60 * 1000,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[migrations] V1-M9 admin alert dispatch failed");
+  }
+}
+
+/**
+ * V1-M9 (round-92 B8 audit — B8-01/02/03/10): bring the money tables'
+ * constraints up to what the Drizzle schema always declared.
+ *
+ * The live DB is built by THIS boot SQL (the drizzle-kit chain was never
+ * applied), and it drifted: no unique index on wallet_topups.payment_reference,
+ * no wallet_ledger→users FK, zero CHECK constraints on any money table, and
+ * four indexes missing vs the schema TS. All are additive and each is
+ * self-validating:
+ *
+ *   - every CHECK/FK/unique is preceded by a violation/orphan/duplicate
+ *     COUNT probe (plain SELECT); violations short-circuit to a CRITICAL
+ *     log + deduped admin alert instead of a failed ALTER (the operator
+ *     fixes data, the next boot applies the constraint);
+ *   - re-runs are no-ops (IF NOT EXISTS / DROP CONSTRAINT IF EXISTS +
+ *     duplicate_object swallow);
+ *   - every statement is single (no multi-statement batches) so the stage
+ *     also runs on the pglite test harness.
+ *
+ * Exported with an injectable executor for unit tests.
+ */
+export async function applyMoneyConstraintStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // B8-01: duplicate-receipt guard on approved topups. Partial (NULL refs
+  // and non-approved rows are exempt — history rows were never captured).
+  const duplicateReferences = extractCount(
+    await execute(sql`
+      SELECT count(*) AS c FROM (
+        SELECT payment_reference
+        FROM wallet_topups
+        WHERE payment_reference IS NOT NULL
+          AND btrim(payment_reference) <> ''
+          AND status = 'approved'
+        GROUP BY payment_reference
+        HAVING count(*) > 1
+      ) dupes
+    `),
+  );
+  if (duplicateReferences > 0) {
+    await alertMoneyConstraintIssue(
+      "تعارض مراجع الدفع (V1-M9)",
+      `Found ${duplicateReferences} duplicated approved payment_reference value(s) in wallet_topups — uniq_wallet_topups_payment_reference NOT created. Deduplicate the rows, then reboot to apply the index.`,
+      "db:constraint:uniq_wallet_topups_payment_reference",
+    );
+  } else {
+    await execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_wallet_topups_payment_reference
+        ON wallet_topups(payment_reference)
+        WHERE payment_reference IS NOT NULL AND btrim(payment_reference) <> '' AND status='approved'
+    `);
+  }
+
+  // B8-02: the schema-declared wallet_ledger→users FK (ON DELETE CASCADE)
+  // never made it into the boot SQL. Orphan check first — adding an FK over
+  // orphaned rows fails the whole boot; alerting beats crashing.
+  const ledgerOrphans = extractCount(
+    await execute(sql`
+      SELECT count(*) AS c
+      FROM wallet_ledger wl
+      LEFT JOIN users u ON wl.user_id = u.id
+      WHERE u.id IS NULL
+    `),
+  );
+  if (ledgerOrphans > 0) {
+    await alertMoneyConstraintIssue(
+      "صفوف دفتر مالية يتيمة (V1-M9)",
+      `Found ${ledgerOrphans} wallet_ledger row(s) with a user_id that no longer exists — fk_wallet_ledger_user NOT added. Re-link or delete the orphaned rows, then reboot to apply the FK.`,
+      "db:constraint:fk_wallet_ledger_user",
+    );
+  } else {
+    // Drop-if-exists keeps this idempotent for environments that already
+    // carry the constraint under this name; the DO block swallows the
+    // duplicate_object raised when a DIFFERENT-named FK already covers it.
+    await execute(sql`ALTER TABLE wallet_ledger DROP CONSTRAINT IF EXISTS fk_wallet_ledger_user`);
+    await execute(sql`
+      DO $$ BEGIN
+        ALTER TABLE wallet_ledger ADD CONSTRAINT fk_wallet_ledger_user
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+  }
+
+  // B8-03: money invariants as CHECK constraints (count-then-add each).
+  const checkConstraints: Array<{
+    name: string;
+    table: string;
+    check: string;
+    violation: string;
+  }> = [
+    {
+      name: "chk_users_wallet_balance_nonneg",
+      table: "users",
+      check: "wallet_balance >= 0",
+      violation: "wallet_balance < 0",
+    },
+    {
+      name: "chk_coupons_used_le_max",
+      table: "coupons",
+      check: "max_uses IS NULL OR used_count <= max_uses",
+      violation: "max_uses IS NOT NULL AND used_count > max_uses",
+    },
+    {
+      name: "chk_topups_amount_pos",
+      table: "wallet_topups",
+      check: "amount > 0",
+      violation: "amount <= 0",
+    },
+    {
+      name: "chk_ledger_amount_pos",
+      table: "wallet_ledger",
+      check: "amount > 0",
+      violation: "amount <= 0",
+    },
+  ];
+  for (const { name, table, check, violation } of checkConstraints) {
+    const violations = extractCount(
+      await execute(sql.raw(`SELECT count(*) AS c FROM ${table} WHERE ${violation}`)),
+    );
+    if (violations > 0) {
+      await alertMoneyConstraintIssue(
+        `بيانات تخالف قيد ${name} (V1-M9)`,
+        `Found ${violations} existing row(s) violating ${name} on ${table} — constraint NOT added. Fix the data, then reboot to apply it.`,
+        `db:constraint:${name}`,
+      );
+      continue;
+    }
+    await execute(
+      sql.raw(`
+        DO $$ BEGIN
+          ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${check});
+        EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+      `),
+    );
+  }
+
+  // B8-10: four indexes declared by the schema TS (and drizzle 0000) that
+  // the boot SQL never created. Trivial on current row counts; covering
+  // composites for the admin "status + newest-first" lists as they grow.
+  await execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at)`,
+  );
+  await execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_topups_status_created ON wallet_topups(status, created_at)`,
+  );
+  await execute(
+    sql`CREATE INDEX IF NOT EXISTS idx_inventory_product_sold ON inventory(product_id, is_sold)`,
+  );
+  await execute(sql`CREATE INDEX IF NOT EXISTS idx_cart_items_user ON cart_items(user_id)`);
+}
 
 export async function runMigrations() {
   try {
@@ -10,7 +243,11 @@ export async function runMigrations() {
     // pg_trgm gives us trigram similarity for fuzzy product name lookup
     // (010-ai-admin-copilot resolve_product tool — Arabic/English/typo
     // tolerant). Idempotent + cheap; safe to leave enabled.
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    //
+    // B7-P0-1: the extension is PROBED first (catalog read — safe on a
+    // read-only standby); the CREATE statement only runs when genuinely
+    // absent. pg_trgm already installed (production state) ⇒ zero DDL here.
+    const pgTrgmAvailable = await ensurePgTrgmExtension();
 
     // ── Enums ──────────────────────────────────────────────────────────────
     await db.execute(sql`
@@ -411,33 +648,25 @@ export async function runMigrations() {
       );
     `);
 
-    // ── Legacy OTP table reconcile (skipped after Stage C drops it) ────
+    // ── Legacy OTP table reconcile (B7-P0-2: gated on table existence) ──
     //
-    // OTP-based password recovery was removed in the passwordless
-    // launch. Stage C below drops the entire `otps` table. This block
-    // remains for two reasons:
-    //   1. Fresh-DB bootstrap — a brand-new DB needs the table to
-    //      exist before Stage C's `DROP TABLE IF EXISTS` runs cleanly.
-    //   2. Mid-deploy DBs where Stage C hasn't reached yet still need
-    //      the historical drift reconcile (code_hash, attempts).
+    // OTP-based password recovery was removed in the passwordless launch;
+    // Stage C below drops the `otps` table. This block used to re-CREATE
+    // the table on EVERY cold boot (then Stage C dropped it again in the
+    // same run) — guaranteed DDL churn that additionally fails 100% of the
+    // time in a Neon read-only/failover window, because Postgres rejects
+    // CREATE/ALTER/DROP in read-only transactions by command class, even
+    // when the statement would be a no-op.
     //
-    // Once Stage C has dropped the table, the entire block early-exits
-    // via the information_schema gate so the next boot is a no-op.
+    // Now the entire block is gated on the table actually existing: it
+    // runs ONLY on mid-deploy databases that still carry the legacy table
+    // (drift-reconcile of code_hash + attempts). Fresh databases skip it
+    // (Stage C drops the never-created table via IF EXISTS), and after one
+    // boot post-fix the table stays dropped — steady-state boots execute
+    // ZERO DDL here.
     await db.execute(sql`
       DO $$
       BEGIN
-        -- Cold-bootstrap path: create the table if Stage C never ran.
-        CREATE TABLE IF NOT EXISTS otps (
-          id          SERIAL PRIMARY KEY,
-          phone       VARCHAR(20) NOT NULL,
-          code        VARCHAR(10) NOT NULL,
-          expires_at  TIMESTAMPTZ NOT NULL,
-          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-
-        -- Stage A drift-reconcile: hashed-code + attempt counter.
-        -- Guarded so a post-Stage-C reboot (table dropped between
-        -- the CREATE above and this ALTER) doesn't crash.
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='otps') THEN
           ALTER TABLE otps
             ADD COLUMN IF NOT EXISTS code_hash VARCHAR(255),
@@ -729,11 +958,10 @@ export async function runMigrations() {
       `);
     }
 
-    // OTP brute-force counter (B6)
-    await db.execute(sql`
-      ALTER TABLE otps
-        ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
-    `);
+    // (B7-P0-2: the otps attempts ALTER that used to live here was removed —
+    // it re-ran on every boot against a table the DO block above had just
+    // created (and Stage C drops again), and the DO block already adds the
+    // column via ADD COLUMN IF NOT EXISTS.)
 
     // ── Foreign Key constraints (idempotent — uses IF NOT EXISTS via DO block) ──
     const fkStatements = [
@@ -1248,11 +1476,15 @@ export async function runMigrations() {
 
     // 010-ai-admin-copilot: trigram index on products.name for fuzzy
     // resolve_product (Arabic/English/typo tolerant). pg_trgm extension
-    // is enabled at the top of this function.
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_products_name_trgm
-        ON products USING gin (name gin_trgm_ops);
-    `);
+    // is probed/created at the top of this function; when the extension
+    // is unavailable in this environment the index is skipped (search
+    // falls back to seq scan — correct, just slower).
+    if (pgTrgmAvailable) {
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS idx_products_name_trgm
+          ON products USING gin (name gin_trgm_ops);
+      `);
+    }
 
     // ── 011-inventory-demand-forecast: forecast pipeline tables ──────────────
     //
@@ -1496,11 +1728,14 @@ export async function runMigrations() {
     `);
     // Admin user search uses LIKE '%x%' on phone — btree can't serve
     // leading-wildcard patterns; pg_trgm + GIN (same pattern as
-    // idx_products_name_trgm above).
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_users_phone_trgm
-        ON users USING gin (phone gin_trgm_ops);
-    `);
+    // idx_products_name_trgm above). Skipped when the extension is
+    // unavailable (see the extensions block at the top).
+    if (pgTrgmAvailable) {
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS idx_users_phone_trgm
+          ON users USING gin (phone gin_trgm_ops);
+      `);
+    }
 
     // ── V1-M7 (Round-5 db-audit 2026-09-07): encrypt legacy plaintext ──
     // delivered_password rows. The H2 fix (checkout.service) stores
@@ -1569,6 +1804,12 @@ export async function runMigrations() {
           "V1-M8: consolidated duplicate stock alerts (kept newest per product)",
         );
     }
+
+    // ── V1-M9 (round-92 B8 audit): money-table constraint backfill ──
+    // See applyMoneyConstraintStage() above for the full design. Runs on
+    // every boot; every statement inside is guarded (IF NOT EXISTS /
+    // count-probe + alert) so steady-state boots are no-ops.
+    await applyMoneyConstraintStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

@@ -47,16 +47,26 @@ export function safeDecrypt(value: string | null): string | null {
     try {
       return decrypt(value);
     } catch (err) {
-      // Encrypted-format value that failed authentication/decryption — almost
-      // always an ENCRYPTION_KEY mismatch or a corrupted row. Return the raw
-      // value for backward compatibility, but never silently: operators must
-      // be able to spot key-rotation drift in the logs. The raw value is NOT
-      // logged (it is credential material).
+      // B2-11 (round-92 audit): GCM auth failure — almost always an
+      // ENCRYPTION_KEY mismatch after a rotation that forgot old rows, or
+      // a corrupted row. Previously the raw `iv:tag:ct` blob was returned
+      // as the buyer's "password": useless credential material shipped to
+      // a paying customer with no operational signal beyond this log.
+      // Return null instead — the API boundary (formatOrder and friends)
+      // already treats null as "credential unavailable", and the buyer
+      // sees a proper absence rather than ciphertext garbage. The failing
+      // value itself is NOT logged (it is credential material); only a
+      // redacted fingerprint (length + format validity) is.
       logger.warn(
-        { category: "security", err },
-        "safeDecrypt: decryption failed — returning raw value (check ENCRYPTION_KEY consistency)",
+        {
+          category: "security",
+          err,
+          valueLength: value.length,
+          looksWellFormed: isEncrypted(value),
+        },
+        "safeDecrypt: decryption failed — returning null (check ENCRYPTION_KEY consistency)",
       );
-      return value;
+      return null;
     }
   }
   return value;

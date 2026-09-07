@@ -53,6 +53,11 @@ Admin: /api/admin/* — requireAdmin + RBAC scopes
 Money-critical admin routes: PATCH /api/admin/orders/bulk-status (refunds via
 RefundService; 207 multi-status on partial failure),
 GET/POST/PATCH/DELETE /api/admin/flash-sales(/:id) (discount 0–95%),
-POST /api/admin/referrals/:id/credit (+50 points, idempotent).
+POST /api/admin/referrals/:id/credit (+50 points, idempotent),
+PATCH /api/admin/users/:id (wallet adjust/set via ledger-backed
+AdjustmentService, idempotent; 400/401/403/404/409),
+POST /api/admin/topups/:id/approve|reject (finance scope, idempotent).
+POST /api/webhook/telegram — Telegram topup approve/reject callbacks
+(secret-token header + TELEGRAM_ADMIN_IDS allowlist; 200/403/503).
 Observability: /api/metrics (token-gated), /api/healthz/{ready,redis,neon,worker,socket,firebase} (admin).
 ```

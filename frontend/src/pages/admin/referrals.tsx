@@ -5,6 +5,7 @@ import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSk
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatRelativeTime } from "@/lib/utils";
 import {
   AlertCircle,
@@ -17,6 +18,7 @@ import {
   Star,
   Trophy,
   Users,
+  WifiOff,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -106,6 +108,13 @@ export default function AdminReferralsPage() {
 
   const [data, setData] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
+  // B5-03 (round-92 audit): fetchData had a bare `catch {}` — a failed
+  // /api/admin/referrals load rendered the misleading "لا توجد إحالات"
+  // empty state and "—" stat cards with zero error signal. The failure
+  // now surfaces as the distinct error card (C5 storefront idiom) on
+  // the initial load, and as an inline banner when a refresh of an
+  // already-rendered list fails.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [crediting, setCrediting] = useState<number | null>(null);
@@ -121,13 +130,26 @@ export default function AdminReferralsPage() {
         if (statusFilter) params.set("status", statusFilter);
         if (search.trim()) params.set("search", search.trim());
         const r = await fetch(`/api/admin/referrals?${params}`, { headers });
-        if (r.ok) setData(await r.json());
-      } catch {
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+          // getErrorMessage maps the backend `code` to Arabic when present.
+          const msg = getErrorMessage(body) || `فشل تحميل الإحالات (HTTP ${r.status})`;
+          setLoadError(msg);
+          return;
+        }
+        setLoadError(null);
+        setData(await r.json());
+      } catch (err) {
+        // Network-level failure (offline/DNS) — same surfacing.
+        setLoadError(getErrorMessage(err));
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [adminToken, statusFilter, search],
+    [adminToken, statusFilter, search, headers],
   );
 
   useEffect(() => {
@@ -197,37 +219,41 @@ export default function AdminReferralsPage() {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard
-            label="إجمالي الإحالات"
-            value={stats?.total ?? "—"}
-            icon={Users}
-            color="text-blue-400"
-            bg="bg-blue-400/10 border-blue-400/15"
-          />
-          <StatCard
-            label="ناجحة (مكتسبة)"
-            value={stats?.credited ?? "—"}
-            icon={CheckCircle}
-            color="text-emerald-400"
-            bg="bg-emerald-400/10 border-emerald-400/15"
-          />
-          <StatCard
-            label="قيد الانتظار"
-            value={stats?.pending ?? "—"}
-            icon={Clock}
-            color="text-yellow-400"
-            bg="bg-yellow-400/10 border-yellow-400/15"
-          />
-          <StatCard
-            label="نقاط ممنوحة إجمالاً"
-            value={stats?.total_points ?? "—"}
-            icon={Star}
-            color="text-primary"
-            bg="bg-primary/10 border-primary/15"
-          />
-        </div>
+        {/* Stats — hidden until the first successful load: a failed
+            fetch must not render "—" cards that read as zero data
+            (B5-03). */}
+        {data && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="إجمالي الإحالات"
+              value={stats?.total ?? "—"}
+              icon={Users}
+              color="text-blue-400"
+              bg="bg-blue-400/10 border-blue-400/15"
+            />
+            <StatCard
+              label="ناجحة (مكتسبة)"
+              value={stats?.credited ?? "—"}
+              icon={CheckCircle}
+              color="text-emerald-400"
+              bg="bg-emerald-400/10 border-emerald-400/15"
+            />
+            <StatCard
+              label="قيد الانتظار"
+              value={stats?.pending ?? "—"}
+              icon={Clock}
+              color="text-yellow-400"
+              bg="bg-yellow-400/10 border-yellow-400/15"
+            />
+            <StatCard
+              label="نقاط ممنوحة إجمالاً"
+              value={stats?.total_points ?? "—"}
+              icon={Star}
+              color="text-primary"
+              bg="bg-primary/10 border-primary/15"
+            />
+          </div>
+        )}
 
         {/* Top Referrers Leaderboard */}
         {topReferrers.length > 0 && (
@@ -287,9 +313,51 @@ export default function AdminReferralsPage() {
           </div>
         </div>
 
+        {/* Refresh of an already-rendered list failed — keep the stale
+            rows visible below, surface the failure inline (coupons.tsx
+            banner idiom) instead of blanking the page. */}
+        {!loading && loadError && data && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => fetchData()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 press-spring"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         {loading ? (
           <TableSkeleton />
+        ) : loadError && !data ? (
+          /* Distinct from "no data": an outage/expired session previously
+             masqueraded as the empty state below (B5-03). Same error-card
+             idiom the storefront pages use (loyalty.tsx / orders.tsx). */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">
+              تعذّر تحميل الإحالات
+            </p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
+            </p>
+            <Button
+              onClick={() => fetchData()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : list.length === 0 ? (
           <EmptyState
             icon={Gift}

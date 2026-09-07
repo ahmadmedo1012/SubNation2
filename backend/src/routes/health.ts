@@ -143,11 +143,41 @@ async function checkRedis(redis: any): Promise<CheckResult> {
   }
 }
 
-async function checkNeon(): Promise<CheckResult> {
+// ──────────────────────────────────────────────────────────────────────────────
+// Neon failure tracking (B7-P1-4, round-92)
+//
+// The failure counters previously lived ONLY in Redis — with REDIS_URL
+// unset (current production shape) `incrementFailureCounter` no-ops, so a
+// TOTAL database outage kept reporting status "degraded" (failures=0)
+// and /healthz/summary stayed HTTP 200 forever. Health was not truthful
+// about the one dependency that matters.
+//
+// The in-process consecutive-failure streak below is the fallback: a
+// process-local window is sufficient for a single-instance deployment
+// (the current shape), and it works with or without Redis. When Redis IS
+// available the Redis window counter keeps its original semantics (2
+// failures inside a 30 s window); without it, 2 consecutive failed
+// aggregates escalate the check to "failing" → /healthz/summary 503.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NEON_FAILURES_TO_FAILING = 2;
+let neonConsecutiveFailures = 0;
+
+/** Test seam: reset the in-process Neon failure streak. */
+export function resetNeonFailureStreakForTests(): void {
+  neonConsecutiveFailures = 0;
+}
+
+/**
+ * checkNeon with an injectable probe (exported for unit tests — the real
+ * probe is `neonDb.execute(sql`SELECT 1`)` on the Neon pool, which cannot
+ * be made to fail deterministically in the pglite test harness).
+ */
+export async function checkNeonWith(probe: () => Promise<unknown>): Promise<CheckResult> {
   const start = Date.now();
   try {
     const result = await Promise.race([
-      neonDb.execute(sql`SELECT 1`),
+      probe(),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Neon query timeout")), CHECK_TIMEOUT_MS),
       ),
@@ -155,7 +185,9 @@ async function checkNeon(): Promise<CheckResult> {
     const latencyMs = Date.now() - start;
 
     if (result) {
-      // Reset failure counter on success — keyed by check name on Redis if available.
+      // Success resets BOTH counters — the streak is "consecutive"
+      // by definition.
+      neonConsecutiveFailures = 0;
       const redis = getRedisClient();
       if (redis) await clearFailureCounter(redis, "neon");
       return {
@@ -164,27 +196,33 @@ async function checkNeon(): Promise<CheckResult> {
         lastCheckedAt: new Date().toISOString(),
       };
     } else {
+      neonConsecutiveFailures += 1;
       const redis = getRedisClient();
       if (redis) await incrementFailureCounter(redis, "neon");
-      const failures = redis ? await getFailureCount(redis, "neon") : 0;
+      const failures = redis ? await getFailureCount(redis, "neon") : neonConsecutiveFailures;
       return {
-        status: failures >= 2 ? "failing" : "degraded",
+        status: failures >= NEON_FAILURES_TO_FAILING ? "failing" : "degraded",
         latencyMs,
         error: "Query returned no result",
         lastCheckedAt: new Date().toISOString(),
       };
     }
   } catch (err) {
+    neonConsecutiveFailures += 1;
     const redis = getRedisClient();
     if (redis) await incrementFailureCounter(redis, "neon");
-    const failures = redis ? await getFailureCount(redis, "neon") : 0;
+    const failures = redis ? await getFailureCount(redis, "neon") : neonConsecutiveFailures;
     return {
-      status: failures >= 2 ? "failing" : "degraded",
+      status: failures >= NEON_FAILURES_TO_FAILING ? "failing" : "degraded",
       latencyMs: Date.now() - start,
       error: err instanceof Error ? err.message : "Unknown error",
       lastCheckedAt: new Date().toISOString(),
     };
   }
+}
+
+async function checkNeon(): Promise<CheckResult> {
+  return checkNeonWith(() => neonDb.execute(sql`SELECT 1`));
 }
 
 async function checkWorker(redis: any): Promise<CheckResult> {

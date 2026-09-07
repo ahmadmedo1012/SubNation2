@@ -100,13 +100,33 @@ const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   [/^\/profile/, "form"],
   [/^\/login/, "form"],
   [/^\/register/, "form"],
+  // B6 P2-17a: previously unmapped → blank flash before the lazy
+  // chunk swapped in. A full-height centered welcome card — the same
+  // archetype as login/register.
+  [/^\/onboarding/, "form"],
   [/^\/cart/, "list"],
-  [/^\/checkout/, "form"],
+  // B4 P1-5: checkout is a max-w-5xl two-column page (form column +
+  // 360px summary aside). The old "form" mapping put a 448px narrow
+  // skeleton in front of a 1024px layout — a ~576px width jump on the
+  // money-critical page. Round 92 (C7): a dedicated "checkout" shell
+  // now exists in route-skeleton (same max-w-5xl + grid geometry) —
+  // wired here for a zero-jump skeleton→content transition.
+  [/^\/checkout/, "checkout"],
   [/^\/flash-sales/, "catalog"],
+  // B6 P2-17a: long content page — its max-w-2xl root is matched
+  // exactly by the "order" shell (header + strip + stacked rows).
+  [/^\/terms/, "order"],
+  // B6 P2-17c: must precede /^\/admin/ — the admin login is a small
+  // centered form, not the admin table shell.
+  [/^\/admin\/login/, "form"],
   [/^\/admin/, "admin"],
 ];
 
-function shapeForRoute(path: string): RouteSkeletonShape {
+/**
+ * Route → shape lookup (first match wins, list order above matters).
+ * Exported for the ROUTE_SHAPES regression tests.
+ */
+export function shapeForRoute(path: string): RouteSkeletonShape {
   for (const [pattern, shape] of ROUTE_SHAPES) {
     if (pattern.test(path)) return shape;
   }

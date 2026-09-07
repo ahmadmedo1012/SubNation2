@@ -62,6 +62,20 @@ export const ErrorCode = {
   COPILOT_LLM_ERROR: "COPILOT_LLM_ERROR",
   COPILOT_NO_ADMIN_SESSION: "COPILOT_NO_ADMIN_SESSION",
   COPILOT_BAD_METHOD: "COPILOT_BAD_METHOD",
+  COPILOT_PREVIEW_NOT_FOUND: "COPILOT_PREVIEW_NOT_FOUND",
+  COPILOT_PREVIEW_CONSUMED: "COPILOT_PREVIEW_CONSUMED",
+  COPILOT_PREVIEW_EXPIRED: "COPILOT_PREVIEW_EXPIRED",
+  COPILOT_HANDOFF_REQUIRED: "COPILOT_HANDOFF_REQUIRED",
+  COPILOT_HIGH_RISK_DISABLED: "COPILOT_HIGH_RISK_DISABLED",
+  COPILOT_STALE_RECORD: "COPILOT_STALE_RECORD",
+  COPILOT_UNEXPECTED_STATE: "COPILOT_UNEXPECTED_STATE",
+  COPILOT_EXECUTE_FAILED: "COPILOT_EXECUTE_FAILED",
+  COPILOT_NOT_HIGH_RISK: "COPILOT_NOT_HIGH_RISK",
+  COPILOT_FIRST_CONFIRM_MISSING: "COPILOT_FIRST_CONFIRM_MISSING",
+  COPILOT_COOLDOWN_NOT_ELAPSED: "COPILOT_COOLDOWN_NOT_ELAPSED",
+  COPILOT_LLM_UNAVAILABLE: "COPILOT_LLM_UNAVAILABLE",
+  COPILOT_OUT_OF_SCOPE: "COPILOT_OUT_OF_SCOPE",
+  COPILOT_INVALID_FLAGS: "COPILOT_INVALID_FLAGS",
 } as const;
 
 export interface ErrorResponse {
@@ -776,6 +790,13 @@ export interface AdminLoginBody {
 export interface AdminAuthResponse {
   token?: string;
   display_name?: string;
+  /** Admin role (e.g. "super_admin", "operator"). */
+  role?: string;
+  /** RBAC scopes granted to this admin (e.g. ["all"] or
+["orders", "finance"]). Emitted on the non-2FA variant;
+absent on the requires_2fa variant.
+ */
+  permissions?: string[];
   requires_2fa?: boolean;
   temp_token?: string;
 }
@@ -997,6 +1018,62 @@ export interface AdminUser {
   /** @nullable */
   referral_code?: string | null;
   created_at: string;
+}
+
+export type UpdateAdminUserBodyLoyaltyTier =
+  (typeof UpdateAdminUserBodyLoyaltyTier)[keyof typeof UpdateAdminUserBodyLoyaltyTier];
+
+export const UpdateAdminUserBodyLoyaltyTier = {
+  bronze: "bronze",
+  silver: "silver",
+  gold: "gold",
+  platinum: "platinum",
+} as const;
+
+export interface UpdateAdminUserBody {
+  /** Relative delta applied to wallet_balance via AdjustmentService
+(transaction + wallet_ledger type=adjustment). Rejected with
+400 on non-finite/oversized values (INVALID_AMOUNT), zero
+delta, or a resulting negative balance.
+ */
+  wallet_adjustment?: number;
+  /** Absolute balance set via AdjustmentService (same ledger path).
+Ignored when wallet_adjustment is also present.
+ */
+  wallet_balance?: number;
+  /**
+   * Direct-update path (no ledger). Integer in [0, 10,000,000] —
+the cap exists because points convert to wallet credit via
+/loyalty/convert-points (100 pts/LYD).
+
+   * @minimum 0
+   * @maximum 10000000
+   */
+  loyalty_points?: number;
+  loyalty_tier?: UpdateAdminUserBodyLoyaltyTier;
+  /** Free-form note recorded on the wallet_ledger row when a
+wallet field is supplied (defaults to "Admin adjustment" /
+"Admin balance set").
+ */
+  note?: string;
+}
+
+export type AdminUserUpdateResultLoyaltyTier =
+  (typeof AdminUserUpdateResultLoyaltyTier)[keyof typeof AdminUserUpdateResultLoyaltyTier];
+
+export const AdminUserUpdateResultLoyaltyTier = {
+  bronze: "bronze",
+  silver: "silver",
+  gold: "gold",
+  platinum: "platinum",
+} as const;
+
+export interface AdminUserUpdateResult {
+  id: number;
+  phone: string;
+  wallet_balance: number;
+  loyalty_points: number;
+  loyalty_tier: AdminUserUpdateResultLoyaltyTier;
 }
 
 /**
@@ -1301,6 +1378,78 @@ export interface CopilotHistoryEntry {
   executed_at?: string | null;
   /** @nullable */
   failure_reason?: string | null;
+}
+
+export type TelegramWebhookUpdateMessageChat = {
+  id?: number;
+  username?: string;
+  type?: string;
+};
+
+export type TelegramWebhookUpdateMessageFrom = {
+  id?: number;
+  username?: string;
+};
+
+/**
+ * Plain message — only `/start` is meaningful (replies with the
+sender's chat/user ids so operators can build the
+TELEGRAM_ADMIN_IDS allowlist).
+
+ */
+export type TelegramWebhookUpdateMessage = {
+  text?: string;
+  chat?: TelegramWebhookUpdateMessageChat;
+  from?: TelegramWebhookUpdateMessageFrom;
+};
+
+export type TelegramWebhookUpdateCallbackQueryFrom = {
+  id: number;
+  username?: string;
+};
+
+export type TelegramWebhookUpdateCallbackQueryMessageChat = {
+  id: number;
+};
+
+export type TelegramWebhookUpdateCallbackQueryMessage = {
+  chat?: TelegramWebhookUpdateCallbackQueryMessageChat;
+  message_id?: number;
+  text?: string;
+};
+
+/**
+ * Inline-button tap. `data` is the topup decision payload:
+"topup_app:{id}" (approve) or "topup_rej:{id}" (reject).
+Executed only when `from.id` is allowlisted in
+TELEGRAM_ADMIN_IDS.
+
+ */
+export type TelegramWebhookUpdateCallbackQuery = {
+  id: string;
+  from: TelegramWebhookUpdateCallbackQueryFrom;
+  message?: TelegramWebhookUpdateCallbackQueryMessage;
+  /** Callback payload: "topup_app:<id>" | "topup_rej:<id>". */
+  data?: string;
+};
+
+export interface TelegramWebhookUpdate {
+  update_id?: number;
+  /** Plain message — only `/start` is meaningful (replies with the
+sender's chat/user ids so operators can build the
+TELEGRAM_ADMIN_IDS allowlist).
+ */
+  message?: TelegramWebhookUpdateMessage;
+  /** Inline-button tap. `data` is the topup decision payload:
+"topup_app:{id}" (approve) or "topup_rej:{id}" (reject).
+Executed only when `from.id` is allowlisted in
+TELEGRAM_ADMIN_IDS.
+ */
+  callback_query?: TelegramWebhookUpdateCallbackQuery;
+}
+
+export interface TelegramWebhookAck {
+  ok: boolean;
 }
 
 export type ListSessions200 = {

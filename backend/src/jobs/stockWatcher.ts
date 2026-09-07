@@ -5,11 +5,34 @@ import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
+/** Handle returned by startStockWatcher (B7-P2-11: stoppable + re-entry safe). */
+export interface StockWatcherHandle {
+  /** Idempotent: stops the interval + initial timeout. */
+  stop: () => void;
+}
+
 const LOW_STOCK_THRESHOLD = 3;
 
 // Track which products we already alerted about this session
 const alertedLow = new Set<number>();
 const alertedZero = new Set<number>();
+
+// B7-P2-11: re-entry guard — a hung query must not stack concurrent runs;
+// the next tick is skipped while one is still in flight.
+let checkInFlight = false;
+
+async function runCheckLowStock(): Promise<void> {
+  if (checkInFlight) {
+    logger.warn("[stockWatcher] previous check still in flight — skipping tick");
+    return;
+  }
+  checkInFlight = true;
+  try {
+    await checkLowStock();
+  } finally {
+    checkInFlight = false;
+  }
+}
 
 async function checkLowStock(): Promise<void> {
   try {
@@ -70,9 +93,30 @@ async function checkLowStock(): Promise<void> {
   }
 }
 
-export function startStockWatcher(): void {
+let running = false;
+let stopCurrent: (() => void) | null = null;
+
+export function startStockWatcher(): StockWatcherHandle {
+  if (running) {
+    logger.warn("[stockWatcher] already running — ignoring re-start");
+    return { stop: () => stopCurrent?.() };
+  }
+  running = true;
   // Run after a short delay to let DB settle, then every 30 minutes
-  setTimeout(() => checkLowStock(), 60_000);
-  setInterval(() => checkLowStock(), 30 * 60 * 1000);
+  const initial = setTimeout(() => void runCheckLowStock(), 60_000);
+  const interval = setInterval(() => void runCheckLowStock(), 30 * 60 * 1000);
+  // B7-P2-11: timers must not keep the process alive on their own.
+  initial.unref?.();
+  interval.unref?.();
+
+  stopCurrent = () => {
+    clearTimeout(initial);
+    clearInterval(interval);
+    running = false;
+    stopCurrent = null;
+    logger.info("[stockWatcher] stopped");
+  };
+  const stop = stopCurrent;
   logger.info("Stock watcher started");
+  return { stop: () => stop() };
 }

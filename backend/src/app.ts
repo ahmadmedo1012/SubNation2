@@ -3,7 +3,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -68,8 +68,8 @@ const csrfAllowedOrigins = (() => {
     .map((o) => o.trim())
     .filter(Boolean);
   if (parsed.length > 0) return parsed;
-  // Dev fallback only. The middleware below logs a misconfiguration
-  // error if production reaches this branch.
+  // Dev fallback only. The boot assertion below refuses to start in
+  // production when this branch would have been reached.
   if (!isProduction) {
     return [
       "http://localhost:5173",
@@ -80,6 +80,37 @@ const csrfAllowedOrigins = (() => {
   }
   return [];
 })();
+
+// ── SEC-92-01 boot assertion (round-92 B1 security audit) ────────────────────
+//
+// Production cookies ship SameSite=None (render.yaml sets
+// AUTH_COOKIE_SAMESITE=none so the Vercel-hosted SPA can call the API
+// cross-site), which means the browser attaches auth_token/admin_token
+// to ANY cross-site request. The Origin/Referer gate built by
+// createCsrfGate() below is therefore the ONLY CSRF barrier — and it is
+// keyed off this allow-list. An empty list in production is not a
+// degraded mode, it is a silent full CSRF exposure on wallet/orders/
+// admin surfaces.
+//
+// Env-var loss at this operator is a DEMONSTRATED failure mode (round-5:
+// a Render API PUT wiped DATABASE_URL and took the deploy down), so we
+// take the same fail-fast posture as SESSION_SECRET (lib/jwt.ts): boot
+// aborts loudly instead of serving traffic without the gate.
+// Production currently sets APP_ORIGINS + APP_URL + VERCEL_FRONTEND_ORIGIN
+// (see scripts/restore_env_vars.json) — this assertion only fires when
+// they are lost. No secret values are logged.
+if (isProduction && csrfAllowedOrigins.length === 0) {
+  logger.fatal(
+    { category: "security", audit_finding: "SEC-92-01" },
+    "CSRF allow-list is EMPTY in production — set CSRF_ALLOWED_ORIGINS (or APP_ORIGINS / APP_URL). " +
+      "SameSite=None cookies require the Origin gate; refusing to boot.",
+  );
+  throw new Error(
+    "SEC-92-01: CSRF allow-list is empty in production. Set CSRF_ALLOWED_ORIGINS, APP_ORIGINS or " +
+      "APP_URL so the Origin/Referer gate can validate state-changing requests. Refusing to boot " +
+      "(fail-fast, same posture as SESSION_SECRET).",
+  );
+}
 
 // ── Security Headers ──────────────────────────────────────────────────────────
 //
@@ -476,6 +507,15 @@ const authLimiter = rateLimit({
 // callers fall back to the shared IP key (they also must pass
 // requireUser inside the route, so the per-user key is the one that
 // matters in practice).
+//
+// SEC-92-04 (round-92): the anonymous fallback previously used raw
+// `req.ip`, which (a) triggered express-rate-limit's
+// ERR_ERL_KEY_GEN_IPV6 boot warning (custom keyGenerators that read
+// req.ip without the ipKeyGenerator helper are rejected by the lib's
+// static validation) and (b) keyed anonymous IPv6 callers by their
+// FULL address — a /64-owning attacker got a fresh 10/min budget per
+// address. ipKeyGenerator() returns the IPv4 as-is and collapses IPv6
+// to a /56 subnet, matching the library default the other limiters use.
 const couponValidateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   limit: 10,
@@ -484,7 +524,15 @@ const couponValidateLimiter = rateLimit({
   store: rateLimiterStore,
   keyGenerator: (req) => {
     const userId = getRequestUserId(req);
-    return userId !== null ? `cu:${userId}` : `cu:ip:${req.ip ?? "unknown"}`;
+    // SEC-92-04: express-rate-limit 8.4.1's ipKeyGenerator takes the IP
+    // STRING (IPv4 passthrough, IPv6 collapsed to a /56 subnet — see
+    // dist/index.mjs `function ipKeyGenerator(ip, ipv6Subnet = 56)`).
+    // Passing it the raw req.ip string (a) satisfies the library's
+    // ERR_ERL_KEY_GEN_IPV6 source validation (custom keyGenerators that
+    // read req.ip must delegate to ipKeyGenerator) and (b) makes the
+    // anonymous fallback rotation-proof: a /64-owning attacker no longer
+    // gets a fresh 10/min budget per individual IPv6 address.
+    return userId !== null ? `cu:${userId}` : `cu:ip:${ipKeyGenerator(req.ip ?? "unknown")}`;
   },
   message: {
     error: "عدد كبير من محاولات التحقق من الكوبونات. حاول مرة أخرى بعد دقيقة.",
@@ -562,81 +610,133 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(bodyParserRecovery);
 
 // ── CSRF Protection for state-changing requests ───────────────────────────────
-// Validate Origin/Referer headers for POST/PUT/DELETE/PATCH requests
-app.use((req, res, next) => {
-  const method = req.method.toUpperCase();
-  if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
-    const origin = req.headers.origin;
-    const referer = req.headers.referer;
+// Validate Origin/Referer headers for POST/PUT/DELETE/PATCH requests.
+//
+// Exported as a factory (SEC-92-01) so the exact gate production mounts is
+// unit-testable without booting the whole app tree — see
+// src/__tests__/csrf-gate.test.ts.
+export function createCsrfGate(allowedOrigins: string[], production: boolean) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const method = req.method.toUpperCase();
+    if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+      const origin = req.headers.origin;
+      const referer = req.headers.referer;
 
-    // Skip CSRF check ONLY for endpoints where the browser legitimately omits
-    // Origin/Referer:
-    //   - /api/auth/firebase/session, /api/auth/firebase/refresh: Firebase
-    //     popup auth round-trips can land here without a valid Referer in
-    //     some COOP-isolated configurations. The ID-token signature is the
-    //     real auth; Origin is belt+suspenders.
-    //   - /api/cwv: navigator.sendBeacon does not set Origin on most browsers.
-    //   - /api/webhook/*: third-party callbacks (Telegram, Stripe-style) sign
-    //     their bodies; Origin from a different host is expected.
-    //   - /health: ops probes from outside the app.
-    //
-    // Login / register / forgot-password / reset-password / change-password /
-    // toggle-password-login / sessions / logout / providers — ALL inside the
-    // CSRF gate. SameSite=strict cookies remain the second layer.
-    const skipPaths = [
-      "/api/auth/firebase/session",
-      "/api/auth/firebase/refresh",
-      "/api/cwv",
-      "/api/webhook",
-      "/health",
-    ];
-    if (skipPaths.some((path) => req.path.startsWith(path))) {
-      return next();
-    }
-
-    // F-009 (security audit 004) — Origin/Referer check runs in ALL
-    // environments. The csrfAllowedOrigins list is computed once at
-    // module load with sensible dev defaults; if it ends up empty in
-    // production, that is operator misconfiguration: the platform is
-    // less safe than intended, but failing closed (rejecting every
-    // state-changing request) would be worse than failing open with
-    // a loud warning. Operations should treat the warning below as
-    // an immediate page.
-    if (csrfAllowedOrigins.length > 0) {
-      // Exact-origin comparison only. The previous `startsWith(allowed)`
-      // form was a bypass: an attacker origin like `https://subnation.ly
-      // .evil.com` (or any subdomain-path prefix) matched the allow-list
-      // entry. We normalize by parsing the URL and comparing scheme+
-      // host(+port) so trailing slashes/paths on either side don't matter.
-      const originAllowed = (candidate: string, allowed: string): boolean => {
-        try {
-          const c = new URL(candidate);
-          const a = new URL(allowed);
-          return c.protocol === a.protocol && c.host === a.host;
-        } catch {
-          return false;
-        }
-      };
-      const isValid =
-        (origin && csrfAllowedOrigins.some((allowed) => originAllowed(origin, allowed))) ||
-        (referer && csrfAllowedOrigins.some((allowed) => originAllowed(referer, allowed)));
-
-      if (!isValid) {
-        logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
-        return res.status(403).json(createErrorResponse("طلب غير مصرح", ErrorCode.FORBIDDEN));
+      // Skip CSRF check ONLY for endpoints where the browser legitimately omits
+      // Origin/Referer:
+      //   - /api/auth/firebase/session, /api/auth/firebase/refresh: Firebase
+      //     popup auth round-trips can land here without a valid Referer in
+      //     some COOP-isolated configurations. The ID-token signature is the
+      //     real auth; Origin is belt+suspenders.
+      //   - /api/cwv: navigator.sendBeacon does not set Origin on most browsers.
+      //   - /api/webhook/*: third-party callbacks (Telegram, Stripe-style) sign
+      //     their bodies; Origin from a different host is expected.
+      //   - /health: ops probes from outside the app.
+      //
+      // Login / register / forgot-password / reset-password / change-password /
+      // toggle-password-login / sessions / logout / providers — ALL inside the
+      // CSRF gate. SameSite cookies remain the second layer.
+      const skipPaths = [
+        "/api/auth/firebase/session",
+        "/api/auth/firebase/refresh",
+        "/api/cwv",
+        "/api/webhook",
+        "/health",
+      ];
+      if (skipPaths.some((path) => req.path.startsWith(path))) {
+        next();
+        return;
       }
-    } else if (isProduction) {
-      // Production with no allow-list: misconfiguration. Log a fatal-class
-      // event so the operator catches it on first request, but do not
-      // 403 the request itself (graceful degrade).
-      logger.error(
-        { path: req.path },
-        "CSRF middleware has no allow-list in production — set CSRF_ALLOWED_ORIGINS or APP_ORIGINS",
-      );
+
+      // SEC-92-01 (round-92 B1 audit): does the request carry an
+      // ambient-authority cookie? Production cookies are SameSite=None
+      // (render.yaml AUTH_COOKIE_SAMESITE=none), so browsers attach
+      // auth_token/admin_token to ANY cross-site request — including a
+      // plain HTML <form method="POST">, which is a CORS simple request
+      // (no preflight) parsed by express.urlencoded above. Origin/Referer
+      // are the only client-side signals we can gate such attacks on.
+      const hasAuthCookie = Boolean(req.cookies?.auth_token || req.cookies?.admin_token);
+
+      // F-009 (security audit 004) — Origin/Referer check runs in ALL
+      // environments. The allowedOrigins list is computed once at module
+      // load with sensible dev defaults.
+      if (allowedOrigins.length > 0) {
+        // Exact-origin comparison only. The previous `startsWith(allowed)`
+        // form was a bypass: an attacker origin like `https://subnation.ly
+        // .evil.com` (or any subdomain-path prefix) matched the allow-list
+        // entry. We normalize by parsing the URL and comparing scheme+
+        // host(+port) so trailing slashes/paths on either side don't matter.
+        const originAllowed = (candidate: string, allowed: string): boolean => {
+          try {
+            const c = new URL(candidate);
+            const a = new URL(allowed);
+            return c.protocol === a.protocol && c.host === a.host;
+          } catch {
+            return false;
+          }
+        };
+
+        // SEC-92-01 (2): a cookie-authenticated state-changing request with
+        // NEITHER Origin NOR Referer is the classic no-Origin form-POST
+        // shape (legacy/embedded browsers omit Origin on cross-site form
+        // submissions). Real browser clients always send at least one of
+        // the two for same-origin SPA calls, so treat "both absent + auth
+        // cookie" as hostile. Headerless non-cookie API clients are still
+        // rejected by the isValid check below — unchanged F-009 behavior.
+        if (hasAuthCookie && !origin && !referer) {
+          logger.warn(
+            { path: req.path, hasAdminCookie: Boolean(req.cookies?.admin_token) },
+            "CSRF validation failed: auth cookie present but Origin and Referer both absent",
+          );
+          res.status(403).json(createErrorResponse("طلب غير مصرح", ErrorCode.FORBIDDEN));
+          return;
+        }
+
+        const isValid =
+          (origin && allowedOrigins.some((allowed) => originAllowed(origin, allowed))) ||
+          (referer && allowedOrigins.some((allowed) => originAllowed(referer, allowed)));
+
+        if (!isValid) {
+          logger.warn({ origin, referer, path: req.path }, "CSRF validation failed");
+          res.status(403).json(createErrorResponse("طلب غير مصرح", ErrorCode.FORBIDDEN));
+          return;
+        }
+      } else if (production) {
+        // SEC-92-01 (1) — production with no allow-list. This branch
+        // previously logged and continued (fail OPEN), which — combined
+        // with SameSite=None cookies — silently exposed every
+        // cookie-authenticated state-changing route the moment the
+        // origins env vars were lost. The boot-time assertion above now
+        // aborts the process first; the runtime gate below stays fail-
+        // closed as defense-in-depth for any path where the assertion
+        // somehow did not run:
+        //   - requests WITH an auth cookie → 403 (they carry ambient
+        //     authority a cross-site form could abuse);
+        //   - requests WITHOUT an auth cookie → pass with a loud operator
+        //     log (no ambient authority = no CSRF surface; they must
+        //     still present their own credentials at the route).
+        if (hasAuthCookie) {
+          logger.error(
+            { path: req.path, category: "security", audit_finding: "SEC-92-01" },
+            "CSRF gate CLOSED: empty allow-list in production and the request carries an auth cookie",
+          );
+          res.status(403).json({
+            error: "طلب غير مصرح — إعداد الحماية غير مكتمل",
+            code: "CSRF_CONFIG",
+          });
+          return;
+        }
+        logger.error(
+          { path: req.path },
+          "CSRF middleware has no allow-list in production — set CSRF_ALLOWED_ORIGINS or APP_ORIGINS",
+        );
+      }
     }
-  }
-  next();
-});
+    next();
+  };
+}
+
+app.use(createCsrfGate(csrfAllowedOrigins, isProduction));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 // Auth limiter applies to login/register only (NOT /me — it's polled frequently)

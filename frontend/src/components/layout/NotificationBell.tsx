@@ -30,7 +30,17 @@ interface Notif {
   created_at: string;
 }
 
-const TYPE_CONFIG: Record<
+/**
+ * Per-type presentation config for notification rows. Exported for the
+ * status-token regression test (status-tokens.test.tsx).
+ *
+ * Colors ride the shared `--status-*` tokens (B6-P1-4): the previous
+ * raw emerald/blue/purple/yellow Tailwind tuples were dark-mode-tuned
+ * only — in the light theme they mis-tinted (too pale for AA contrast)
+ * and bypassed the palette that status-badge/statusColor already
+ * establish. `--status-purple` (support) was added to index.css for this.
+ */
+export const TYPE_CONFIG: Record<
   string,
   {
     icon: React.ElementType;
@@ -44,18 +54,18 @@ const TYPE_CONFIG: Record<
 > = {
   wallet: {
     icon: Wallet,
-    color: "text-emerald-400",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/20",
+    color: "text-status-success",
+    bg: "bg-status-success/10",
+    border: "border-status-success/20",
     actionLabel: "المحفظة",
     actionIcon: ArrowLeft,
     actionHref: "/wallet",
   },
   order: {
     icon: ShoppingBag,
-    color: "text-blue-400",
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/20",
+    color: "text-status-info",
+    bg: "bg-status-info/10",
+    border: "border-status-info/20",
     actionLabel: "تفاصيل الطلب",
     actionIcon: ExternalLink,
     // Fallback destination when a notification carries no deep link —
@@ -65,18 +75,18 @@ const TYPE_CONFIG: Record<
   },
   support: {
     icon: MessageSquare,
-    color: "text-purple-400",
-    bg: "bg-purple-500/10",
-    border: "border-purple-500/20",
+    color: "text-status-purple",
+    bg: "bg-status-purple/10",
+    border: "border-status-purple/20",
     actionLabel: "التذكرة",
     actionIcon: ArrowLeft,
     actionHref: "/support",
   },
   loyalty: {
     icon: Star,
-    color: "text-yellow-400",
-    bg: "bg-yellow-500/10",
-    border: "border-yellow-500/20",
+    color: "text-status-warning",
+    bg: "bg-status-warning/10",
+    border: "border-status-warning/20",
     actionLabel: "نقاطي",
     actionIcon: ArrowLeft,
     actionHref: "/loyalty",

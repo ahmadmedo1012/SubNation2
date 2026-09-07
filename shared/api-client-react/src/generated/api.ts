@@ -27,6 +27,7 @@ import type {
   AdminTopup,
   AdminTopupActionBody,
   AdminUser,
+  AdminUserUpdateResult,
   BulkUpdateOrderStatusBody,
   BulkUpdateOrderStatusPartial,
   BulkUpdateOrderStatusResult,
@@ -75,9 +76,12 @@ import type {
   SupportTicketCreated,
   SupportTicketDetail,
   SupportTicketSummary,
+  TelegramWebhookAck,
+  TelegramWebhookUpdate,
   TicketReply,
   Topup,
   TopupLimitErrorResponse,
+  UpdateAdminUserBody,
   UpdateCartItemBody,
   UpdateFlashSaleBody,
   UpdateProductBody,
@@ -176,7 +180,7 @@ export const getListSessionsQueryKey = () => {
 
 export const getListSessionsQueryOptions = <
   TData = Awaited<ReturnType<typeof listSessions>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
@@ -196,7 +200,7 @@ export const getListSessionsQueryOptions = <
 };
 
 export type ListSessionsQueryResult = NonNullable<Awaited<ReturnType<typeof listSessions>>>;
-export type ListSessionsQueryError = ErrorType<unknown>;
+export type ListSessionsQueryError = ErrorType<ErrorResponse>;
 
 /**
  * @summary List the current user's active session rows
@@ -204,7 +208,7 @@ export type ListSessionsQueryError = ErrorType<unknown>;
 
 export function useListSessions<
   TData = Awaited<ReturnType<typeof listSessions>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>;
   request?: SecondParameter<typeof customFetch>;
@@ -231,7 +235,7 @@ export const logout = async (options?: RequestInit): Promise<SuccessResponse> =>
 };
 
 export const getLogoutMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError, void, TContext>;
@@ -253,12 +257,12 @@ export const getLogoutMutationOptions = <
 
 export type LogoutMutationResult = NonNullable<Awaited<ReturnType<typeof logout>>>;
 
-export type LogoutMutationError = ErrorType<unknown>;
+export type LogoutMutationError = ErrorType<ErrorResponse>;
 
 /**
  * @summary Logout current user
  */
-export const useLogout = <TError = ErrorType<unknown>, TContext = unknown>(options?: {
+export const useLogout = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError, void, TContext>;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<Awaited<ReturnType<typeof logout>>, TError, void, TContext> => {
@@ -2804,7 +2808,7 @@ export const bulkUpdateOrderStatus = async (
 };
 
 export const getBulkUpdateOrderStatusMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2843,13 +2847,15 @@ export type BulkUpdateOrderStatusMutationResult = NonNullable<
   Awaited<ReturnType<typeof bulkUpdateOrderStatus>>
 >;
 export type BulkUpdateOrderStatusMutationBody = BodyType<BulkUpdateOrderStatusBody>;
-export type BulkUpdateOrderStatusMutationError = ErrorType<ErrorResponse>;
+export type BulkUpdateOrderStatusMutationError = ErrorType<
+  ErrorResponse | IdempotencyConflictResponse
+>;
 
 /**
  * @summary Bulk-update order statuses (requireAdmin + orders scope; mass refunds move wallet money)
  */
 export const useBulkUpdateOrderStatus = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -2869,7 +2875,7 @@ export const useBulkUpdateOrderStatus = <
 };
 
 /**
- * @summary List all top-up requests
+ * @summary List all top-up requests (requireAdmin + finance scope)
  */
 export const getListAdminTopupsUrl = (params?: ListAdminTopupsParams) => {
   const normalizedParams = new URLSearchParams();
@@ -2929,7 +2935,7 @@ export type ListAdminTopupsQueryResult = NonNullable<Awaited<ReturnType<typeof l
 export type ListAdminTopupsQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List all top-up requests
+ * @summary List all top-up requests (requireAdmin + finance scope)
  */
 
 export function useListAdminTopups<
@@ -2950,7 +2956,16 @@ export function useListAdminTopups<
 }
 
 /**
- * @summary Approve a top-up request
+ * Executes TopupService.approve inside a transaction: status guard
+(WHERE status='pending'), optimistic wallet credit, atomic
+wallet_ledger type=topup entry, referral credit, and user/admin
+notifications. Mounted behind the idempotency middleware
+(routeKey admin.topups.approve) — send an Idempotency-Key per
+click so a network retry / double-click cannot double-credit.
+A payment_reference already used by an approved topup is
+rejected with 409 (the same transfer cannot be credited twice).
+
+ * @summary Approve a top-up request (requireAdmin + finance scope — moves wallet money)
  */
 export const getApproveTopupUrl = (id: number) => {
   return `/api/admin/topups/${id}/approve`;
@@ -2970,7 +2985,7 @@ export const approveTopup = async (
 };
 
 export const getApproveTopupMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3007,12 +3022,15 @@ export const getApproveTopupMutationOptions = <
 
 export type ApproveTopupMutationResult = NonNullable<Awaited<ReturnType<typeof approveTopup>>>;
 export type ApproveTopupMutationBody = BodyType<AdminTopupActionBody>;
-export type ApproveTopupMutationError = ErrorType<ErrorResponse>;
+export type ApproveTopupMutationError = ErrorType<ErrorResponse | IdempotencyConflictResponse>;
 
 /**
- * @summary Approve a top-up request
+ * @summary Approve a top-up request (requireAdmin + finance scope — moves wallet money)
  */
-export const useApproveTopup = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+export const useApproveTopup = <
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
+  TContext = unknown,
+>(options?: {
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof approveTopup>>,
     TError,
@@ -3030,7 +3048,14 @@ export const useApproveTopup = <TError = ErrorType<ErrorResponse>, TContext = un
 };
 
 /**
- * @summary Reject a top-up request
+ * Executes TopupService.reject with the same status-guard pattern
+(WHERE status='pending' + rows-affected check — a double-click
+gets 409, never a double notification). Mounted behind the
+idempotency middleware (routeKey admin.topups.reject) for
+audit-trail/notification dedup. No wallet money moves on this
+path.
+
+ * @summary Reject a top-up request (requireAdmin + finance scope)
  */
 export const getRejectTopupUrl = (id: number) => {
   return `/api/admin/topups/${id}/reject`;
@@ -3050,7 +3075,7 @@ export const rejectTopup = async (
 };
 
 export const getRejectTopupMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3087,12 +3112,15 @@ export const getRejectTopupMutationOptions = <
 
 export type RejectTopupMutationResult = NonNullable<Awaited<ReturnType<typeof rejectTopup>>>;
 export type RejectTopupMutationBody = BodyType<AdminTopupActionBody>;
-export type RejectTopupMutationError = ErrorType<ErrorResponse>;
+export type RejectTopupMutationError = ErrorType<ErrorResponse | IdempotencyConflictResponse>;
 
 /**
- * @summary Reject a top-up request
+ * @summary Reject a top-up request (requireAdmin + finance scope)
  */
-export const useRejectTopup = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
+export const useRejectTopup = <
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
+  TContext = unknown,
+>(options?: {
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof rejectTopup>>,
     TError,
@@ -3522,7 +3550,7 @@ export const useCreditReferral = <TError = ErrorType<ErrorResponse>, TContext = 
 };
 
 /**
- * @summary List all products (including inactive)
+ * @summary List all products, including inactive (requireAdmin + inventory scope)
  */
 export const getListAdminProductsUrl = (params?: ListAdminProductsParams) => {
   const normalizedParams = new URLSearchParams();
@@ -3584,7 +3612,7 @@ export type ListAdminProductsQueryResult = NonNullable<
 export type ListAdminProductsQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List all products (including inactive)
+ * @summary List all products, including inactive (requireAdmin + inventory scope)
  */
 
 export function useListAdminProducts<
@@ -3605,7 +3633,7 @@ export function useListAdminProducts<
 }
 
 /**
- * @summary Create a new product
+ * @summary Create a new product (requireAdmin + inventory scope)
  */
 export const getCreateProductUrl = () => {
   return `/api/admin/products`;
@@ -3664,7 +3692,7 @@ export type CreateProductMutationBody = BodyType<CreateProductBody>;
 export type CreateProductMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Create a new product
+ * @summary Create a new product (requireAdmin + inventory scope)
  */
 export const useCreateProduct = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<
@@ -3684,7 +3712,7 @@ export const useCreateProduct = <TError = ErrorType<ErrorResponse>, TContext = u
 };
 
 /**
- * @summary Update a product
+ * @summary Update a product (requireAdmin + inventory scope)
  */
 export const getUpdateProductUrl = (id: number) => {
   return `/api/admin/products/${id}`;
@@ -3744,7 +3772,7 @@ export type UpdateProductMutationBody = BodyType<UpdateProductBody>;
 export type UpdateProductMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Update a product
+ * @summary Update a product (requireAdmin + inventory scope)
  */
 export const useUpdateProduct = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<
@@ -3764,7 +3792,7 @@ export const useUpdateProduct = <TError = ErrorType<ErrorResponse>, TContext = u
 };
 
 /**
- * @summary Archive/delete a product
+ * @summary Archive/delete a product (requireAdmin + inventory scope)
  */
 export const getDeleteProductUrl = (id: number) => {
   return `/api/admin/products/${id}`;
@@ -3820,7 +3848,7 @@ export type DeleteProductMutationResult = NonNullable<Awaited<ReturnType<typeof 
 export type DeleteProductMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Archive/delete a product
+ * @summary Archive/delete a product (requireAdmin + inventory scope)
  */
 export const useDeleteProduct = <TError = ErrorType<ErrorResponse>, TContext = unknown>(options?: {
   mutation?: UseMutationOptions<
@@ -3840,7 +3868,7 @@ export const useDeleteProduct = <TError = ErrorType<ErrorResponse>, TContext = u
 };
 
 /**
- * @summary List all users
+ * @summary List all users (requireAdmin + users scope)
  */
 export const getListAdminUsersUrl = (params?: ListAdminUsersParams) => {
   const normalizedParams = new URLSearchParams();
@@ -3900,7 +3928,7 @@ export type ListAdminUsersQueryResult = NonNullable<Awaited<ReturnType<typeof li
 export type ListAdminUsersQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List all users
+ * @summary List all users (requireAdmin + users scope)
  */
 
 export function useListAdminUsers<
@@ -3921,6 +3949,115 @@ export function useListAdminUsers<
 }
 
 /**
+ * THE admin money-edit route. Wallet mutations
+(`wallet_adjustment` relative delta, or `wallet_balance` absolute
+set — send at most one of the two; `wallet_adjustment` wins if
+both are present) route through AdjustmentService: transactional
+optimistic-lock update + a wallet_ledger row of type=adjustment,
+so every monetary change stays reconstructable from the ledger
+(Constitution Principle I). Loyalty fields
+(`loyalty_points`, `loyalty_tier`) use a legacy direct-update
+path with no ledger.
+
+Mounted behind the idempotency middleware (routeKey
+admin.users.patch) so a network retry / admin double-click
+cannot double-credit — send a fresh Idempotency-Key per edit.
+The audit row records the fields changed and the resulting
+wallet balance.
+
+ * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ */
+export const getUpdateAdminUserUrl = (id: number) => {
+  return `/api/admin/users/${id}`;
+};
+
+export const updateAdminUser = async (
+  id: number,
+  updateAdminUserBody: UpdateAdminUserBody,
+  options?: RequestInit,
+): Promise<AdminUserUpdateResult> => {
+  return customFetch<AdminUserUpdateResult>(getUpdateAdminUserUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateAdminUserBody),
+  });
+};
+
+export const getUpdateAdminUserMutationOptions = <
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    TError,
+    { id: number; data: BodyType<UpdateAdminUserBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminUser>>,
+  TError,
+  { id: number; data: BodyType<UpdateAdminUserBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAdminUser"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    { id: number; data: BodyType<UpdateAdminUserBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAdminUser(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminUser>>
+>;
+export type UpdateAdminUserMutationBody = BodyType<UpdateAdminUserBody>;
+export type UpdateAdminUserMutationError = ErrorType<ErrorResponse | IdempotencyConflictResponse>;
+
+/**
+ * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ */
+export const useUpdateAdminUser = <
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    TError,
+    { id: number; data: BodyType<UpdateAdminUserBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminUser>>,
+  TError,
+  { id: number; data: BodyType<UpdateAdminUserBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAdminUserMutationOptions(options));
+};
+
+/**
+ * Password login with an exponential-backoff lockout: repeated
+failures lock the account and return 429 ACCOUNT_LOCKED until
+the lock expires. Soft-disabled accounts answer 401 with the
+same body as a wrong password (no account-state leak). When
+TOTP is enabled the response is the requires_2fa variant
+(temp_token + requires_2fa) and the session is issued by the
+(undocumented) POST /admin/login/verify-2fa instead.
+
  * @summary Admin login
  */
 export const getAdminLoginUrl = () => {
@@ -4551,3 +4688,111 @@ export function useCopilotHistory<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Telegram's server-to-server callback endpoint. Mounted at
+/api/webhook/telegram (the /api/webhook prefix is CSRF-skipped —
+Telegram cannot send Origin headers).
+
+Auth: the `x-telegram-bot-api-secret-token` header must match
+the configured TELEGRAM_WEBHOOK_SECRET (constant-time compare).
+
+Semantics: when a user submits a wallet topup, the backend posts
+an approval message with inline buttons into the admin Telegram
+group (callback_data `topup_app:{id}` / `topup_rej:{id}`). This
+webhook receives the button taps and executes
+TopupService.approve/reject — gated by the TELEGRAM_ADMIN_IDS
+allowlist (non-allowlisted tappers get an "no permission"
+callback answer and no state change). The tapped message is
+edited with the outcome and its keyboard stripped so a stale
+button cannot be re-tapped.
+
+Always acks 200 {ok: true} on any auth-accepted update —
+including processing failures — because Telegram aggressively
+retries non-200 responses. Non-JSON content types (setWebhook
+probes) are acked 200 without processing. A plain `/start`
+message gets a reply with the sender's chat/user ids (bootstrap
+for building the TELEGRAM_ADMIN_IDS allowlist).
+
+ * @summary Telegram bot webhook — executes topup approve/reject callback decisions (money-moving)
+ */
+export const getTelegramWebhookUrl = () => {
+  return `/api/webhook/telegram`;
+};
+
+export const telegramWebhook = async (
+  telegramWebhookUpdate: TelegramWebhookUpdate,
+  options?: RequestInit,
+): Promise<TelegramWebhookAck> => {
+  return customFetch<TelegramWebhookAck>(getTelegramWebhookUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(telegramWebhookUpdate),
+  });
+};
+
+export const getTelegramWebhookMutationOptions = <
+  TError = ErrorType<TelegramWebhookAck>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof telegramWebhook>>,
+    TError,
+    { data: BodyType<TelegramWebhookUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof telegramWebhook>>,
+  TError,
+  { data: BodyType<TelegramWebhookUpdate> },
+  TContext
+> => {
+  const mutationKey = ["telegramWebhook"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof telegramWebhook>>,
+    { data: BodyType<TelegramWebhookUpdate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return telegramWebhook(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TelegramWebhookMutationResult = NonNullable<
+  Awaited<ReturnType<typeof telegramWebhook>>
+>;
+export type TelegramWebhookMutationBody = BodyType<TelegramWebhookUpdate>;
+export type TelegramWebhookMutationError = ErrorType<TelegramWebhookAck>;
+
+/**
+ * @summary Telegram bot webhook — executes topup approve/reject callback decisions (money-moving)
+ */
+export const useTelegramWebhook = <
+  TError = ErrorType<TelegramWebhookAck>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof telegramWebhook>>,
+    TError,
+    { data: BodyType<TelegramWebhookUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof telegramWebhook>>,
+  TError,
+  { data: BodyType<TelegramWebhookUpdate> },
+  TContext
+> => {
+  return useMutation(getTelegramWebhookMutationOptions(options));
+};

@@ -1,12 +1,15 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/errors";
+import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AdminLayout } from "./layout";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
+  Check,
   Copy,
   ExternalLink,
   KeyRound,
@@ -70,11 +73,18 @@ export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
   const { toast } = useToast();
+  // B5-05 (round-92 audit): the raw window.confirm on session delete is
+  // replaced by the shared styled AlertDialog hook used by admins.tsx /
+  // promotions.tsx — same message text.
+  const { confirm, ConfirmDialog } = useConfirm();
   const [sessions, setSessions] = useState<WhatsAppSession[]>([]);
   const [name, setName] = useState("subnation-otp");
   const [phone, setPhone] = useState("");
   const [pairTarget, setPairTarget] = useState<string | null>(null);
   const [pairCode, setPairCode] = useState<string | null>(null);
+  // B5-30 (round-92 audit): copied feedback for the pair-code copy
+  // button (check-icon swap, same as the topups CopyButton idiom).
+  const [pairCopied, setPairCopied] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -143,6 +153,7 @@ export default function AdminWhatsAppPage() {
     setBusy(`${pairTarget}:pair`);
     setError(null);
     setPairCode(null);
+    setPairCopied(false);
     try {
       const response = await fetch(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(pairTarget)}/pair-code`,
@@ -173,6 +184,7 @@ export default function AdminWhatsAppPage() {
     setQrImage(null);
     setPairTarget(session.id);
     setPairCode(null);
+    setPairCopied(false);
     try {
       const response = await fetch(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/qr`,
@@ -192,7 +204,13 @@ export default function AdminWhatsAppPage() {
   };
 
   const deleteSession = async (session: WhatsAppSession) => {
-    if (!window.confirm(`سيتم حذف جلسة ${session.name} ومسح بيانات اقترانها. متابعة؟`)) return;
+    const confirmed = await confirm({
+      title: "حذف الجلسة؟",
+      description: `سيتم حذف جلسة ${session.name} ومسح بيانات اقترانها. متابعة؟`,
+      confirmLabel: "حذف",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setBusy(`${session.id}:delete`);
     setError(null);
     try {
@@ -204,6 +222,7 @@ export default function AdminWhatsAppPage() {
       if (pairTarget === session.id) {
         setPairTarget(null);
         setPairCode(null);
+        setPairCopied(false);
       }
       setQrImage(null);
       toast({ title: "تم حذف الجلسة", variant: "success" });
@@ -213,6 +232,21 @@ export default function AdminWhatsAppPage() {
     } finally {
       setBusy(null);
     }
+  };
+
+  // B6 + B5-30 (round-92 audit): the pair-code copy was a raw
+  // `navigator.clipboard?.writeText` fire-and-forget — bypassed the
+  // shared helper (no secure-context fallback), gave no copied
+  // feedback, and swallowed failures. Now: shared helper, check-icon
+  // swap, and a destructive toast when the copy genuinely fails.
+  const copyPairCode = async (code: string) => {
+    const ok = await copyToClipboard(code);
+    if (!ok) {
+      toast({ title: "تعذّر نسخ الرمز", variant: "destructive" });
+      return;
+    }
+    setPairCopied(true);
+    setTimeout(() => setPairCopied(false), 1800);
   };
 
   return (
@@ -411,10 +445,10 @@ export default function AdminWhatsAppPage() {
                               type="button"
                               size="sm"
                               variant="ghost"
-                              onClick={() => void navigator.clipboard?.writeText(pairCode)}
+                              onClick={() => void copyPairCode(pairCode)}
                             >
-                              <Copy />
-                              نسخ
+                              {pairCopied ? <Check /> : <Copy />}
+                              {pairCopied ? "تم النسخ" : "نسخ"}
                             </Button>
                           </div>
                         )}
@@ -427,6 +461,7 @@ export default function AdminWhatsAppPage() {
                         onClick={() => {
                           setPairTarget(session.id);
                           setPairCode(null);
+                          setPairCopied(false);
                           setQrImage(null);
                         }}
                       >
@@ -454,6 +489,7 @@ export default function AdminWhatsAppPage() {
           )}
         </section>
       </div>
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

@@ -10,6 +10,7 @@ import {
   type TransferNetwork,
 } from "@/lib/transfer-code";
 import {
+  copyToClipboard,
   formatCurrency,
   formatDate,
   formatRelativeTime,
@@ -142,8 +143,19 @@ function topupStatusIcon(status: string) {
 
 function CopyBtn({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const handle = async () => {
-    await navigator.clipboard.writeText(text);
+    // Shared helper (secure-context check + execCommand fallback +
+    // boolean result). Copying the IBAN/account number is part of the
+    // money path — the previous raw `navigator.clipboard.writeText`
+    // rejected silently on non-secure contexts / strict Firefox,
+    // leaving the button dead with an unhandled rejection (B4 P1-2).
+    const ok = await copyToClipboard(text);
+    if (!ok) {
+      setFailed(true);
+      setTimeout(() => setFailed(false), 2000);
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -151,13 +163,21 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
     <button
       onClick={handle}
       className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-180 press-spring border ${
-        copied
-          ? "bg-status-success/12 text-status-success border-status-success/25"
-          : "bg-primary/8 text-primary border-primary/20 hover:bg-primary/15"
+        failed
+          ? "bg-status-error/12 text-status-error border-status-error/25"
+          : copied
+            ? "bg-status-success/12 text-status-success border-status-success/25"
+            : "bg-primary/8 text-primary border-primary/20 hover:bg-primary/15"
       }`}
     >
-      {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-      {copied ? "تم" : (label ?? "نسخ")}
+      {failed ? (
+        <XCircle className="w-3 h-3" />
+      ) : copied ? (
+        <Check className="w-3 h-3" />
+      ) : (
+        <Copy className="w-3 h-3" />
+      )}
+      {failed ? "فشل النسخ" : copied ? "تم" : (label ?? "نسخ")}
     </button>
   );
 }
