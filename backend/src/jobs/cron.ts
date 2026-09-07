@@ -1,8 +1,5 @@
 import cron from "node-cron";
-import {
-  markStaleUnreadAlertsRead,
-  pruneReadAlerts,
-} from "./alertLogger";
+import { markStaleUnreadAlertsRead, pruneReadAlerts } from "./alertLogger";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { runForecastIfPermitted } from "./forecast-runner";
 import { runForecastRetention } from "./forecast-retention";

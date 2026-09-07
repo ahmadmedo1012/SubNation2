@@ -1523,7 +1523,9 @@ export async function runMigrations() {
         SELECT id, delivered_password FROM orders
         WHERE delivered_password IS NOT NULL
       `)) as { rows?: Array<{ id: number; delivered_password: string }> };
-      const rows = legacyRows.rows ?? (legacyRows as unknown as Array<{ id: number; delivered_password: string }>);
+      const rows =
+        legacyRows.rows ??
+        (legacyRows as unknown as Array<{ id: number; delivered_password: string }>);
       let encrypted = 0;
       for (const row of rows) {
         if (isEncrypted(row.delivered_password)) continue;

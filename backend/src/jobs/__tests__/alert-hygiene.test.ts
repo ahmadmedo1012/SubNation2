@@ -126,10 +126,7 @@ describe("alert retention (Round-5 daily 00:00 job)", () => {
     await logAdminAlert("system", "مقروء قديم", "m");
     const [row] = await db.select().from(adminAlertsTable).limit(1);
     await backdateAlert(row.id, 40);
-    await db
-      .update(adminAlertsTable)
-      .set({ isRead: true })
-      .where(eq(adminAlertsTable.id, row.id));
+    await db.update(adminAlertsTable).set({ isRead: true }).where(eq(adminAlertsTable.id, row.id));
     const pruned = await pruneReadAlerts(30);
     expect(pruned).toBe(1);
     expect(await alertCount()).toBe(0);
@@ -138,10 +135,7 @@ describe("alert retention (Round-5 daily 00:00 job)", () => {
   it("keeps read alerts inside the horizon", async () => {
     await logAdminAlert("system", "مقروء حديث", "m");
     const [row] = await db.select().from(adminAlertsTable).limit(1);
-    await db
-      .update(adminAlertsTable)
-      .set({ isRead: true })
-      .where(eq(adminAlertsTable.id, row.id));
+    await db.update(adminAlertsTable).set({ isRead: true }).where(eq(adminAlertsTable.id, row.id));
     expect(await pruneReadAlerts(30)).toBe(0);
     expect(await alertCount()).toBe(1);
   });
@@ -246,7 +240,7 @@ describe("checkAdminTotpAdvisory (Round-5 boot advisory)", () => {
     });
   }
 
-  it("alerts once for an active [\"all\"] admin without TOTP, then dedupes for 7 days", async () => {
+  it('alerts once for an active ["all"] admin without TOTP, then dedupes for 7 days', async () => {
     await seedAdmin({ username: "ahmad", totp: false });
     await checkAdminTotpAdvisory();
     expect(await countAllAlerts()).toBe(1);
@@ -259,7 +253,7 @@ describe("checkAdminTotpAdvisory (Round-5 boot advisory)", () => {
     expect(alert.title).toContain("ahmad");
   });
 
-  it("stays silent when every [\"all\"] admin has TOTP enabled", async () => {
+  it('stays silent when every ["all"] admin has TOTP enabled', async () => {
     await seedAdmin({ username: "safe", totp: true });
     await checkAdminTotpAdvisory();
     expect(await countAllAlerts()).toBe(0);

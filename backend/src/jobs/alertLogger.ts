@@ -40,7 +40,12 @@ export async function logAdminAlert(
       const existing = await db
         .select({ id: adminAlertsTable.id })
         .from(adminAlertsTable)
-        .where(and(eq(adminAlertsTable.dedupeKey, opts.dedupeKey), gt(adminAlertsTable.createdAt, cutoff)))
+        .where(
+          and(
+            eq(adminAlertsTable.dedupeKey, opts.dedupeKey),
+            gt(adminAlertsTable.createdAt, cutoff),
+          ),
+        )
         .limit(1);
       if (existing.length > 0) {
         logger.debug(
