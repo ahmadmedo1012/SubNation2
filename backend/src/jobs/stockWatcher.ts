@@ -32,17 +32,26 @@ async function checkLowStock(): Promise<void> {
 
       if (stock === 0 && !alertedZero.has(product.id)) {
         notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });
+        // Round-5: dedupeKey survives process restarts — the in-memory
+        // Set below resets on every Render cold start, which is what
+        // flooded the admin drawer with 244 duplicate no_stock alerts.
         await logAdminAlert(
           "no_stock",
           `نفاد المخزون: ${product.name}`,
           `المخزون وصل إلى صفر وحدات`,
+          { dedupeKey: `stock:zero:${product.id}` },
         );
         alertedZero.add(product.id);
         alertedLow.delete(product.id);
         logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
       } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
         notifyLowStock({ productName: product.name, stockCount: stock, productId: product.id });
-        await logAdminAlert("low_stock", `مخزون منخفض: ${product.name}`, `تبقّى ${stock} وحدة فقط`);
+        await logAdminAlert(
+          "low_stock",
+          `مخزون منخفض: ${product.name}`,
+          `تبقّى ${stock} وحدة فقط`,
+          { dedupeKey: `stock:low:${product.id}` },
+        );
         alertedLow.add(product.id);
         alertedZero.delete(product.id);
         logger.info(

@@ -1,56 +1,76 @@
 import cron from "node-cron";
-import { db, inventoryTable, productsTable } from "@workspace/db";
-import { count, eq, sql } from "drizzle-orm";
-import { logAdminAlert } from "./alertLogger";
+import {
+  markStaleUnreadAlertsRead,
+  pruneReadAlerts,
+} from "./alertLogger";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { runForecastIfPermitted } from "./forecast-runner";
 import { runForecastRetention } from "./forecast-retention";
 import { runEnrichmentIfPermitted } from "./enrichment-runner";
 import { runEnrichmentRetention } from "./enrichment-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
+import { pruneExpiredSessions } from "./session-prune";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 
 export function initCronJobs() {
-  // 1. Every day at midnight: Low Stock Alert
+  // 1. Every day at midnight: admin-alert retention.
+  //
+  //    Round-5 (db-audit 2026-09-07) — this slot previously held a
+  //    second, duplicate low-stock alerter (SELECT products with < 5
+  //    stock, insert one alert each, NO dedupe of any kind). It ran in
+  //    parallel with stockWatcher.ts and is the main reason 321 unread
+  //    alerts piled up. stockWatcher (30-min cadence, DB-level dedupe
+  //    as of this round) is the single stock-alerting path now; this
+  //    slot instead keeps the alert table small and readable:
+  //      - unread older than 14 days → auto-marked read (stale, but
+  //        the row stays inspectable)
+  //      - read older than 30 days → deleted (admin_alerts is an
+  //        operations surface, not the immutable audit trail — that
+  //        is audit_logs' job)
   cron.schedule("0 0 * * *", async () => {
-    logger.info("Running Low Stock Alert job");
+    logger.info({ category: "alerts.retention" }, "Admin-alert retention job started");
     try {
-      const lowStockProducts = await db
-        .select({
-          id: productsTable.id,
-          name: productsTable.name,
-          stockCount: count(inventoryTable.id),
-        })
-        .from(productsTable)
-        .leftJoin(
-          inventoryTable,
-          sql`${productsTable.id} = ${inventoryTable.productId} AND ${inventoryTable.isSold} = false`,
-        )
-        .where(eq(productsTable.isArchived, false))
-        .groupBy(productsTable.id, productsTable.name)
-        .having(sql`count(${inventoryTable.id}) < 5`);
-
-      for (const p of lowStockProducts) {
-        await logAdminAlert(
-          "low_stock",
-          `مخزون منخفض: ${p.name}`,
-          `المنتج "${p.name}" يحتوي على ${p.stockCount} عناصر فقط في المخزون. يرجى إعادة التعبئة.`,
+      const staled = await markStaleUnreadAlertsRead(14);
+      const pruned = await pruneReadAlerts(30);
+      if (staled + pruned > 0)
+        logger.info(
+          { category: "alerts.retention", staled, pruned },
+          "Admin-alert retention complete",
         );
-      }
-      logger.info({ count: lowStockProducts.length }, "Low Stock Alert job finished");
     } catch (err) {
-      logger.error({ err }, "Error in Low Stock Alert job");
-      // Surface to Sentry with subsystem=scheduler + job_name tag so
-      // the issue groups cleanly in the UI.
-      captureSchedulerFailure("low_stock_alert", err, {
+      logger.error({ err, category: "alerts.retention" }, "Admin-alert retention failed");
+      captureSchedulerFailure("admin_alert_retention", err, {
         cron_expression: "0 0 * * *",
       });
     }
   });
 
+  // 1b. Daily at 05:00 UTC: expired-session prune (Round-5). Sessions
+  //     whose expires_at passed are already rejected by requireUser,
+  //     but the rows were never deleted — sessions grow monotonically
+  //     with every login forever. Deleting expired rows is safe (the
+  //     JWT is dead regardless) and keeps the session-validity lookup
+  //     fast. 05:00 UTC = 07:00 Libya, before the daily traffic peak.
+  cron.schedule("0 5 * * *", async () => {
+    try {
+      const removed = await pruneExpiredSessions();
+      if (removed > 0)
+        logger.info(
+          { category: "sessions.retention", removed },
+          `Pruned ${removed} expired session row(s)`,
+        );
+    } catch (err) {
+      logger.error({ err, category: "sessions.retention" }, "Session prune failed");
+      captureSchedulerFailure("session_prune", err, {
+        cron_expression: "0 5 * * *",
+      });
+    }
+  });
+
   // 2. Every hour: Health Check / Cleanup (Example)
+  //    (Round-5 note: still a no-op heartbeat — kept for log cadence.)
   cron.schedule("0 * * * *", () => {
     logger.debug("Hourly cron heartbeat");
   });

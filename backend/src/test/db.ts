@@ -187,9 +187,47 @@ CREATE TABLE cart_items (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE sessions (
+  id varchar(255) PRIMARY KEY,
+  user_id integer NOT NULL,
+  user_agent varchar(255),
+  ip_address varchar(45),
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_sessions_user_id ON sessions (user_id);
+
+CREATE TABLE admin_alerts (
+  id serial PRIMARY KEY,
+  type varchar(30) NOT NULL DEFAULT 'system',
+  title varchar(255) NOT NULL,
+  message text,
+  is_read boolean NOT NULL DEFAULT false,
+  dedupe_key varchar(100),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_admin_alerts_dedupe_key ON admin_alerts (dedupe_key, created_at);
+
+CREATE TABLE admin_users (
+  id serial PRIMARY KEY,
+  username varchar(100) NOT NULL UNIQUE,
+  password_hash varchar(255) NOT NULL,
+  display_name varchar(100) NOT NULL DEFAULT 'Admin',
+  role varchar(50) NOT NULL DEFAULT 'admin',
+  permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
+  is_active boolean NOT NULL DEFAULT true,
+  totp_secret varchar(255),
+  totp_enabled boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 const TABLES = [
+  "admin_alerts",
+  "sessions",
+  "admin_users",
   "wallet_ledger",
   "orders",
   "inventory",

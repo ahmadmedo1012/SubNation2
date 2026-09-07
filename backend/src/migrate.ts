@@ -363,13 +363,22 @@ export async function runMigrations() {
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS admin_alerts (
-        id         SERIAL PRIMARY KEY,
-        type       VARCHAR(30) NOT NULL DEFAULT 'system',
-        title      VARCHAR(255) NOT NULL,
-        message    TEXT,
-        is_read    BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        id          SERIAL PRIMARY KEY,
+        type        VARCHAR(30) NOT NULL DEFAULT 'system',
+        title       VARCHAR(255) NOT NULL,
+        message     TEXT,
+        is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+        dedupe_key  VARCHAR(100),
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+    `);
+
+    // Round-5 (db-audit 2026-09-07): dedupe_key column + serving index.
+    // Idempotent on legacy databases that already have the table.
+    await db.execute(sql`
+      ALTER TABLE admin_alerts ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(100);
+      CREATE INDEX IF NOT EXISTS idx_admin_alerts_dedupe_key
+        ON admin_alerts (dedupe_key, created_at);
     `);
 
     await db.execute(sql`
@@ -1492,6 +1501,72 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_users_phone_trgm
         ON users USING gin (phone gin_trgm_ops);
     `);
+
+    // ── V1-M7 (Round-5 db-audit 2026-09-07): encrypt legacy plaintext ──
+    // delivered_password rows. The H2 fix (checkout.service) stores
+    // AES-256-GCM ciphertext for NEW orders, and its comment claimed
+    // "no backfill needed, reads keep working" — reads do keep working
+    // (safeDecrypt passes plaintext through), but the security goal
+    // ("a DB dump / backup leak = every delivered account exposed") is
+    // still violated for every pre-fix row. Live production state at
+    // audit time: all 3 existing orders stored raw credentials. This
+    // migration encrypts any non-encrypted value once, at boot, with
+    // the app's real ENCRYPTION_KEY — after it runs the column is
+    // uniformly ciphertext and safeDecrypt keeps decrypting it.
+    //
+    // Format guard, not content sniffing: the app format is
+    // `iv:authTag:ciphertext` (three hex segments). Values without two
+    // ':' separators with exact segment lengths (24/32 hex) are legacy
+    // plaintext. The same predicate is isEncrypted() in lib/encryption.
+    {
+      const legacyRows = (await db.execute(sql`
+        SELECT id, delivered_password FROM orders
+        WHERE delivered_password IS NOT NULL
+      `)) as { rows?: Array<{ id: number; delivered_password: string }> };
+      const rows = legacyRows.rows ?? (legacyRows as unknown as Array<{ id: number; delivered_password: string }>);
+      let encrypted = 0;
+      for (const row of rows) {
+        if (isEncrypted(row.delivered_password)) continue;
+        const ciphertext = encrypt(row.delivered_password);
+        if (ciphertext.length > 512) {
+          // V1-M6 widened the column to 512; a value that still cannot
+          // fit would abort boot — refuse loudly instead. Passwords
+          // this long are test artifacts; the operator should fix the
+          // inventory row, not the migration.
+          throw new Error(
+            `order ${row.id}: delivered_password too long to encrypt (${row.delivered_password.length} chars plaintext)`,
+          );
+        }
+        await db.execute(sql`
+          UPDATE orders SET delivered_password = ${ciphertext}, updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+        encrypted += 1;
+      }
+      if (encrypted > 0)
+        logger.info(
+          { category: "security", encrypted },
+          "V1-M7: encrypted legacy plaintext delivered_password rows",
+        );
+    }
+
+    // ── V1-M8 (Round-5 db-audit 2026-09-07): one-time consolidation ──
+    // of the stock-alert spam already in production (244 no_stock +
+    // 77 low_stock rows for ~6 products — dedupe only stops FUTURE
+    // duplicates). Keeps the newest row per (type, title); safe to
+    // re-run (no-ops once collapsed). Imported lazily to avoid a
+    // circular module-load (alertLogger imports socket dynamically,
+    // which reads env at connect time — migration boot must not pay
+    // that cost).
+    {
+      const { consolidateStockAlertSpam } = await import("./jobs/alertLogger");
+      const removed = await consolidateStockAlertSpam();
+      if (removed > 0)
+        logger.info(
+          { category: "alerts.retention", removed },
+          "V1-M8: consolidated duplicate stock alerts (kept newest per product)",
+        );
+    }
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

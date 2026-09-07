@@ -43,6 +43,13 @@
       "when": 1788713038398,
       "tag": "0005_yellow_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788740893510,
+      "tag": "0006_high_the_enforcers",
+      "breakpoints": true
     }
   ]
 }

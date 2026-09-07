@@ -27,6 +27,8 @@ import type { RedisClientType } from "redis";
 import { logger } from "./logger";
 import { startCouponWatcher } from "../jobs/couponWatcher";
 import { initCronJobs } from "../jobs/cron";
+import { checkAdminTotpAdvisory } from "../jobs/security-advisories";
+import { pruneExpiredSessions } from "../jobs/session-prune";
 import { startFlashSaleWatcher } from "../jobs/flashSaleWatcher";
 import { startStockWatcher } from "../jobs/stockWatcher";
 import { alertingService } from "../services/alerting.service";
@@ -104,9 +106,14 @@ export async function startWebSchedulers(
   startStockWatcher();
   startFlashSaleWatcher();
   initCronJobs();
+  // Round-5 one-shots: prune sessions that expired while the process
+  // was down, then surface the weekly TOTP advisory. Fire-and-forget:
+  // scheduler startup must not block on either.
+  void pruneExpiredSessions().catch(() => {});
+  void checkAdminTotpAdvisory();
   logger.info(
     { category: "monitoring", instanceId: leadership.instanceId },
-    "[scheduler] cron + watchers started (couponWatcher, stockWatcher, flashSaleWatcher, cron)",
+    "[scheduler] cron + watchers + round-5 one-shots started (couponWatcher, stockWatcher, flashSaleWatcher, cron, sessionPrune, securityAdvisories)",
   );
 
   setSchedulerState({
