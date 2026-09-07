@@ -192,6 +192,20 @@ router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async 
               ErrorCode.CONFLICT,
             ),
           );
+      case "INVENTORY_CORRUPT":
+        // R93-DATA (round-93) — the claimed unit's credentials are
+        // undecryptable with the current key (or empty). Nothing was
+        // charged: the transaction failed closed BEFORE any mutation. The
+        // buyer is pointed to support; the operator already received a
+        // deduped inventory_corrupt alert with the product + unit id.
+        return res
+          .status(503)
+          .json(
+            createErrorResponse(
+              "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
+              ErrorCode.SERVICE_UNAVAILABLE,
+            ),
+          );
     }
   }
 

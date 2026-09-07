@@ -16,6 +16,10 @@ import {
   startWhatsAppSession,
   WhatsAppGatewayError,
 } from "../../services/openwa.service";
+import { db } from "@workspace/db";
+import { inventoryTable, productsTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
+import { isEncrypted, safeDecrypt } from "../../lib/encryption";
 
 const router: IRouter = Router();
 
@@ -34,6 +38,99 @@ try {
   // diagnostics route still works.
   eventLoopHistogram = null;
 }
+
+// ── R93-DATA (round-93): inventory deliverability health ──────────────────────
+//
+// GET /api/admin/diagnostics/inventory-health
+//
+// Scans UNSOLD inventory units and reports, per product, how many have
+// credentials that cannot be delivered: ciphertext that fails GCM
+// authentication with the current ENCRYPTION_KEY (wrong/rotated key at
+// load time — live evidence: products 1-12 were seeded 2026-08-25 with a
+// different key), or units with no deliverable fields at all. The checkout
+// guard refuses to sell such units (INVENTORY_CORRUPT); this endpoint gives
+// the operator the full blast radius + re-upload worklist in one call.
+//
+// Capped at the first 500 unsold rows per product family scan (sequential
+// scan over the unsold set — the table is small today; the LIMIT keeps this
+// bounded as the catalog grows). The decrypt check is CPU-cheap (GCM verify)
+// and never exposes plaintext.
+router.get("/inventory-health", requireAdmin, async (_req, res, next) => {
+  try {
+    const units = (await db
+      .select({
+        id: inventoryTable.id,
+        productId: inventoryTable.productId,
+        accountEmail: inventoryTable.accountEmail,
+        accountPassword: inventoryTable.accountPassword,
+        extraDetails: inventoryTable.extraDetails,
+      })
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.isSold, false)))
+      .limit(500)) as Array<{
+      id: number;
+      productId: number;
+      accountEmail: string | null;
+      accountPassword: string | null;
+      extraDetails: string | null;
+    }>;
+
+    const products = await db
+      .select({ id: productsTable.id, name: productsTable.name })
+      .from(productsTable);
+    const nameById = new Map(products.map((p) => [p.id, p.name]));
+
+    const byProduct = new Map<
+      number,
+      {
+        product_id: number;
+        product_name: string;
+        unsold: number;
+        undeliverable: number;
+        broken_unit_ids: number[];
+      }
+    >();
+    for (const u of units) {
+      let entry = byProduct.get(u.productId);
+      if (!entry) {
+        entry = {
+          product_id: u.productId,
+          product_name: nameById.get(u.productId) ?? `#${u.productId}`,
+          unsold: 0,
+          undeliverable: 0,
+          broken_unit_ids: [],
+        };
+        byProduct.set(u.productId, entry);
+      }
+      entry.unsold += 1;
+      const pwBroken =
+        u.accountPassword !== null &&
+        isEncrypted(u.accountPassword) &&
+        safeDecrypt(u.accountPassword) === null;
+      const emBroken =
+        u.accountEmail !== null &&
+        isEncrypted(u.accountEmail) &&
+        safeDecrypt(u.accountEmail) === null;
+      const empty =
+        u.accountPassword === null && u.accountEmail === null && u.extraDetails === null;
+      if (pwBroken || emBroken || empty) {
+        entry.undeliverable += 1;
+        if (entry.broken_unit_ids.length < 20) entry.broken_unit_ids.push(u.id);
+      }
+    }
+
+    const items = [...byProduct.values()].sort((a, b) => b.undeliverable - a.undeliverable);
+    res.json({
+      scanned_unsold: units.length,
+      scanned_cap: 500,
+      products_with_undeliverable_units: items.filter((i) => i.undeliverable > 0).length,
+      items,
+      checked_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/", requireAdmin, (_req, res) => {
   const mem = process.memoryUsage();

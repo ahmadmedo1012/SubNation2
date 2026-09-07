@@ -10,6 +10,7 @@ import {
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
+import { isEncrypted, safeDecrypt } from "../lib/encryption";
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
@@ -51,7 +52,18 @@ export type CheckoutFailureReason =
   // expired / was deactivated / had its discount changed between
   // computePricing (pre-tx) and the purchase transaction. Retryable —
   // the client re-prices and retries at the current price.
-  | "STALE_FLASH_SALE";
+  | "STALE_FLASH_SALE"
+  // R93-DATA (round-93 post-deploy live audit): the claimed inventory
+  // unit's credentials are UNDELIVERABLE — the stored ciphertext cannot
+  // be decrypted with the current ENCRYPTION_KEY (wrong/rotated key at
+  // load time) or the unit has no deliverable fields at all. Charging a
+  // buyer for credentials that will render as null is a money-for-nothing
+  // sale, so the transaction fails closed BEFORE any mutation commits:
+  // the claim rolls back, the wallet is never debited, and a deduped
+  // admin alert names the product + unit so the operator can re-upload
+  // stock. (Live evidence: 59/59 units of products 1-12 are
+  // undecryptable — seeded 2026-08-25 with a different key.)
+  | "INVENTORY_CORRUPT";
 
 export type CheckoutResult =
   | {
@@ -197,6 +209,35 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       if (!lockedInventory) throw new Error("OUT_OF_STOCK");
 
       const inventoryItem = lockedInventory;
+
+      // R93-DATA (round-93): deliverability gate — run BEFORE any mutation.
+      // A unit whose ciphertext fails GCM authentication with the current
+      // ENCRYPTION_KEY would render as null credentials at the API boundary
+      // (money for nothing). Refuse the sale instead; the whole transaction
+      // (this claim included) rolls back. The catch maps this to
+      // INVENTORY_CORRUPT and fires a deduped admin alert.
+      //
+      // Product shapes are heterogeneous (C1's refund tests pin this):
+      //   - account products: email + password;
+      //   - code products: the deliverable IS extraDetails (email/password
+      //     legitimately null).
+      // So a unit is deliverable when at least ONE field is present AND every
+      // PRESENT encrypted field decrypts. Legacy PLAINTEXT rows pass through
+      // safeDecrypt unchanged — they stay sellable by design.
+      const fieldDeliverable = (v: string | null) =>
+        v === null || !isEncrypted(v) || safeDecrypt(v) !== null;
+      const hasAnyDeliverable =
+        inventoryItem.accountPassword !== null ||
+        inventoryItem.accountEmail !== null ||
+        inventoryItem.extraDetails !== null;
+      if (
+        !hasAnyDeliverable ||
+        !fieldDeliverable(inventoryItem.accountPassword) ||
+        !fieldDeliverable(inventoryItem.accountEmail) ||
+        !fieldDeliverable(inventoryItem.extraDetails ?? null)
+      ) {
+        throw new Error(`INVENTORY_CORRUPT:${inventoryItem.id}`);
+      }
 
       // Atomic inventory claim inside transaction to prevent race conditions
       const [inv] = await tx
@@ -358,6 +399,22 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // changed) between pricing and the tx. Retryable: the client
         // re-prices at the current (list) price.
         return { failure: "STALE_FLASH_SALE" as const };
+      }
+      if (err.message.startsWith("INVENTORY_CORRUPT:")) {
+        // R93-DATA — the tx already rolled back (claim + debit + coupon
+        // all reverted). Fire the operator alert OUTSIDE the transaction
+        // so an alerting failure can never block the rollback path. The
+        // 24h dedupe key per product keeps the drawer readable while a
+        // broken catalog keeps receiving purchase attempts.
+        const unitId = err.message.split(":")[1] ?? "?";
+        logAdminAlert(
+          "inventory_corrupt",
+          `مخزون غير قابل للتسليم: ${product.name}`,
+          `وحدة المخزون #${unitId} للمنتج «${product.name}» تحتوي بيانات اعتماد لا يمكن فك تشفيرها بالمفتاح الحالي — رُفض البيع ولم يُخصم أي مبلغ. ` +
+            `أعد رفع مخزون هذا المنتج من لوحة الأدمن، وإلا سيصل المشتري بريد/كلمة مرور فارغة رغم الدفع.`,
+          { dedupeKey: `inventory:corrupt:${productId}` },
+        );
+        return { failure: "INVENTORY_CORRUPT" as const };
       }
       throw err;
     });

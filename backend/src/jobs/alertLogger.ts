@@ -17,6 +17,7 @@ import { logger } from "../lib/logger";
  */
 export type AlertType =
   | "coupon_expired"
+  | "inventory_corrupt"
   | "coupon_maxed"
   | "coupon_expiring"
   | "flash_sale_expired"
