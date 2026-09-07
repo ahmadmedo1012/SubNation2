@@ -121,7 +121,9 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-1.5">
               <Link
                 href="/wallet"
-                aria-label={user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance ?? 0)}` : "المحفظة"}
+                aria-label={
+                  user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance ?? 0)}` : "المحفظة"
+                }
               >
                 <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
                   <Wallet className="w-3.5 h-3.5 text-primary-text transition-transform group-hover:scale-110 duration-200" />
@@ -133,9 +135,7 @@ export function Navbar() {
                 </div>
               </Link>
               <Link href="/profile" aria-label="حسابي">
-                <div
-                  className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
-                >
+                <div className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
                   <User className="w-4 h-4" />
                 </div>
               </Link>
@@ -213,9 +213,7 @@ export function Navbar() {
                 : "فارغة"
             }`}
           >
-            <div
-              className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
-            >
+            <div className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
               <ShoppingCart className="w-4 h-4" />
               {itemCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">

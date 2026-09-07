@@ -131,7 +131,12 @@ export default function OrdersPage() {
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<OrderFilter>("all");
 
-  const { data: orders = [], isLoading, isError, refetch } = useListOrders(undefined, {
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useListOrders(undefined, {
     query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -332,7 +337,10 @@ export default function OrdersPage() {
                         {order.product_name}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span dir="ltr" className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30">
+                        <span
+                          dir="ltr"
+                          className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30"
+                        >
                           {order.order_code}
                         </span>
                         {order.created_at && (

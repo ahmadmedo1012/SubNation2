@@ -171,12 +171,14 @@ router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async 
         // B2-06 (round-92 audit) — the flash sale that priced this purchase
         // ended (or changed) between pricing and the transaction. Retryable:
         // the client re-prices at the current price.
-        return res.status(409).json(
-          createErrorResponse(
-            "انتهى عرض التخفيض أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
-            ErrorCode.CONFLICT,
-          ),
-        );
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "انتهى عرض التخفيض أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+              ErrorCode.CONFLICT,
+            ),
+          );
     }
   }
 

@@ -197,7 +197,11 @@ describe("B2-03: formatOrder credential gate (HTTP level — GET /api/orders)", 
     // After refund: null on the list AND the detail endpoint.
     const after = (await call("/api/orders", token)) as {
       status: number;
-      body: Array<{ delivered_password: string | null; delivered_email: string | null; status: string }>;
+      body: Array<{
+        delivered_password: string | null;
+        delivered_email: string | null;
+        status: string;
+      }>;
     };
     expect(after.body[0].status).toBe("refunded");
     expect(after.body[0].delivered_password).toBeNull();

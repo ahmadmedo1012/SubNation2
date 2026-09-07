@@ -846,7 +846,11 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
         details: { issues: err.issues },
       }),
     );
-  } else if (err instanceof Error && "errors" in err && Array.isArray((err as { errors?: unknown }).errors)) {
+  } else if (
+    err instanceof Error &&
+    "errors" in err &&
+    Array.isArray((err as { errors?: unknown }).errors)
+  ) {
     const errorWithErrors = err as { errors?: unknown[] };
     res.status(400).json(
       createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {

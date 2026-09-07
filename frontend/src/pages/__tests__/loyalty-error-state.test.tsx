@@ -88,7 +88,9 @@ describe("LoyaltyPage — load failures are distinct from empty data (B4 P1-3)",
   it("renders the error card (no crash) when a 5xx error envelope arrives", async () => {
     // The historical bug: the {error} envelope was fed into the render
     // path and `data.points.toLocaleString()` threw into the boundary.
-    fetchMock.mockResolvedValueOnce(resLike({ ok: false, status: 500, body: { error: "internal" } }));
+    fetchMock.mockResolvedValueOnce(
+      resLike({ ok: false, status: 500, body: { error: "internal" } }),
+    );
 
     renderPage();
 

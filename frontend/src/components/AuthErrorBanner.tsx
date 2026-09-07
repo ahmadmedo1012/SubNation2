@@ -14,10 +14,7 @@ import { useEffect, useState } from "react";
  * here, never sent anywhere. Just rendered.
  */
 
-const ERROR_MESSAGES: Record<
-  string,
-  { title: string; tone: "warning" | "error" | "info" }
-> = {
+const ERROR_MESSAGES: Record<string, { title: string; tone: "warning" | "error" | "info" }> = {
   // User cancelled the Telegram auth screen — friendly tone, not red.
   cancelled: {
     title: "تم إلغاء تسجيل الدخول. يمكنك المحاولة مرة أخرى أو اختيار طريقة أخرى.",

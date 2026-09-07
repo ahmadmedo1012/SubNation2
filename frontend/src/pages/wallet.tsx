@@ -370,10 +370,7 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const {
-    data: topups = [],
-    isLoading: topupsLoading,
-  } = useListTopups({
+  const { data: topups = [], isLoading: topupsLoading } = useListTopups({
     query: { enabled: !!token, queryKey: getListTopupsQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });

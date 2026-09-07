@@ -48,7 +48,10 @@ async function seedCompletedOrder(userBalance = "100.00", price = "30.00") {
     .insert(usersTable)
     .values({ phone: `9${Math.floor(Math.random() * 1e8)}`, walletBalance: userBalance })
     .returning();
-  const [product] = await db.insert(productsTable).values({ name: "Race Product", price }).returning();
+  const [product] = await db
+    .insert(productsTable)
+    .values({ name: "Race Product", price })
+    .returning();
   await db.insert(inventoryTable).values({
     productId: product.id,
     accountEmail: "acct0@test.local",
@@ -84,7 +87,9 @@ describe("B2-01: refund optimistic lock covers loyaltyPoints + lifetimeSpend", (
       // walletBalance untouched, which is exactly what the old predicate
       // missed).
       writer: (realTx) =>
-        realTx.execute(sql`UPDATE users SET loyalty_points = loyalty_points + 50 WHERE id = ${user.id}`),
+        realTx.execute(
+          sql`UPDATE users SET loyalty_points = loyalty_points + 50 WHERE id = ${user.id}`,
+        ),
     });
     try {
       await expect(
@@ -104,7 +109,9 @@ describe("B2-01: refund optimistic lock covers loyaltyPoints + lifetimeSpend", (
     const [userAfter] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(userAfter.walletBalance))).toBe(70);
     expect(userAfter.loyaltyPoints).toBe(30);
-    const refundRows = (await db.select().from(walletLedgerTable)).filter((l) => l.type === "refund");
+    const refundRows = (await db.select().from(walletLedgerTable)).filter(
+      (l) => l.type === "refund",
+    );
     expect(refundRows).toHaveLength(0);
 
     // Retry (the real-world next step after a 409) succeeds on fresh state.
@@ -119,12 +126,14 @@ describe("B2-01: refund optimistic lock covers loyaltyPoints + lifetimeSpend", (
     const restore = interleaveWriterAfterSelect(db, {
       matchSelectFields: isRefundUserSelect,
       writer: (realTx) =>
-        realTx.execute(sql`UPDATE users SET lifetime_spend = lifetime_spend + 5 WHERE id = ${user.id}`),
+        realTx.execute(
+          sql`UPDATE users SET lifetime_spend = lifetime_spend + 5 WHERE id = ${user.id}`,
+        ),
     });
     try {
-      await expect(RefundService.refundOrder(order.id, { adminId: ADMIN_ID })).rejects.toMatchObject(
-        { code: "CONCURRENCY_ERROR" },
-      );
+      await expect(
+        RefundService.refundOrder(order.id, { adminId: ADMIN_ID }),
+      ).rejects.toMatchObject({ code: "CONCURRENCY_ERROR" });
     } finally {
       restore();
     }
@@ -138,12 +147,14 @@ describe("B2-01: refund optimistic lock covers loyaltyPoints + lifetimeSpend", (
     const restore = interleaveWriterAfterSelect(db, {
       matchSelectFields: isRefundUserSelect,
       writer: (realTx) =>
-        realTx.execute(sql`UPDATE users SET wallet_balance = wallet_balance + 10 WHERE id = ${order.userId}`),
+        realTx.execute(
+          sql`UPDATE users SET wallet_balance = wallet_balance + 10 WHERE id = ${order.userId}`,
+        ),
     });
     try {
-      await expect(RefundService.refundOrder(order.id, { adminId: ADMIN_ID })).rejects.toMatchObject(
-        { code: "CONCURRENCY_ERROR" },
-      );
+      await expect(
+        RefundService.refundOrder(order.id, { adminId: ADMIN_ID }),
+      ).rejects.toMatchObject({ code: "CONCURRENCY_ERROR" });
     } finally {
       restore();
     }

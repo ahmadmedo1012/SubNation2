@@ -177,7 +177,11 @@ function ProductShell() {
       <div className="mt-6 space-y-2.5">
         <div className="h-4 w-40 skeleton-shimmer rounded-lg" />
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-16 rounded-2xl skeleton-shimmer" style={{ animationDelay: `${i * 40}ms` }} />
+          <div
+            key={i}
+            className="h-16 rounded-2xl skeleton-shimmer"
+            style={{ animationDelay: `${i * 40}ms` }}
+          />
         ))}
       </div>
     </div>

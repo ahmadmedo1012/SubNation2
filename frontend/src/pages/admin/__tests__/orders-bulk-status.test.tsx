@@ -147,9 +147,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     renderPage();
 
     const dialog = await openBulkConfirm("مسترجع");
-    expect(
-      dialog.getByText(/سيتم إرجاع المبالغ للمستخدمين/),
-    ).toBeInTheDocument();
+    expect(dialog.getByText(/سيتم إرجاع المبالغ للمستخدمين/)).toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
 

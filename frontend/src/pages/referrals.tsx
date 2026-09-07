@@ -297,7 +297,10 @@ export default function ReferralsPage() {
               {loading ? (
                 <div className="h-8 w-32 bg-muted/40 rounded-lg skeleton-shimmer" />
               ) : (
-                <div dir="ltr" className="font-mono text-2xl font-black tracking-[0.2em] text-foreground">
+                <div
+                  dir="ltr"
+                  className="font-mono text-2xl font-black tracking-[0.2em] text-foreground"
+                >
                   {overview?.referral_code ?? "—"}
                 </div>
               )}
@@ -308,7 +311,10 @@ export default function ReferralsPage() {
           {/* Link row */}
           {!loading && overview && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <div dir="ltr" className="flex-1 bg-background/50 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono leading-relaxed text-left">
+              <div
+                dir="ltr"
+                className="flex-1 bg-background/50 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono leading-relaxed text-left"
+              >
                 {referralLink}
               </div>
               <CopyBtn text={referralLink} label="نسخ" size="sm" />

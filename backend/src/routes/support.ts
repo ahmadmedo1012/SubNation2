@@ -86,7 +86,8 @@ const ticketCreateLimiter = rateLimit({
   limit: 5,
   keyGenerator: (req) => `ticket:${(req as AuthenticatedRequest).userId}`,
   message: {
-    error: "لقد أنشأت عدداً كافياً من التذاكر في هذه الساعة. انتظر قليلاً أو أضف رداً على تذكرة قائمة.",
+    error:
+      "لقد أنشأت عدداً كافياً من التذاكر في هذه الساعة. انتظر قليلاً أو أضف رداً على تذكرة قائمة.",
     code: "RATE_LIMITED",
   },
 });

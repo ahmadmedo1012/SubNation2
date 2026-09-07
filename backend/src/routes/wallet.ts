@@ -22,10 +22,7 @@ const router = Router();
  * as markup.
  */
 function escapeTelegramHtml(value: string): string {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 router.get("/", requireUser, async (req, res) => {

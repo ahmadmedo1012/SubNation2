@@ -334,9 +334,7 @@ export default function AdminTicketsPage() {
                 <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
                   <WifiOff className="w-8 h-8 text-status-error/70" />
                 </div>
-                <p className="font-black text-lg mb-1.5 text-foreground/80">
-                  تعذّر تحميل التذاكر
-                </p>
+                <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
                 <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
                   حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
                 </p>

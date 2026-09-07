@@ -661,7 +661,10 @@ export default function ProductPage() {
 
           {/* Error */}
           {error && (
-            <div role="alert" className="flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake">
+            <div
+              role="alert"
+              className="flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
+            >
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -910,7 +913,10 @@ function CouponField({
 
       {/* Error */}
       {couponError && (
-        <div role="alert" className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2">
+        <div
+          role="alert"
+          className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2"
+        >
           <AlertCircle className="w-3 h-3 shrink-0" />
           {couponError}
         </div>
@@ -918,10 +924,15 @@ function CouponField({
 
       {/* Success */}
       {couponResult && (
-        <div role="status" className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2">
+        <div
+          role="status"
+          className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2"
+        >
           <div className="flex items-center gap-1.5 text-emerald-400">
             <CheckCircle className="w-3 h-3 shrink-0" />
-            <span dir="ltr" className="font-mono font-black">{couponResult.code}</span>
+            <span dir="ltr" className="font-mono font-black">
+              {couponResult.code}
+            </span>
             <span>
               —{" "}
               {couponResult.type === "percentage"

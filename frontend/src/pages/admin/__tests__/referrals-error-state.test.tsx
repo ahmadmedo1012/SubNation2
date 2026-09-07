@@ -116,9 +116,7 @@ describe("AdminReferralsPage — a failed load is an error, not a false empty st
   });
 
   it("renders the error card on a 5xx error envelope (non-OK is not success)", async () => {
-    fetchMock.mockResolvedValue(
-      resLike({ ok: false, status: 500, body: { error: "internal" } }),
-    );
+    fetchMock.mockResolvedValue(resLike({ ok: false, status: 500, body: { error: "internal" } }));
 
     renderPage();
 

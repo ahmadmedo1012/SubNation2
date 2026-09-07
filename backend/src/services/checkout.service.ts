@@ -108,7 +108,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   // wallet on a purchase (finalPrice < 0 makes `currentBalance <
   // finalPrice` false and `newBalance = balance - (negative)` adds
   // funds). Fail closed with an explicit reason instead.
-  if (!Number.isFinite(finalPrice) || finalPrice <= 0 || !Number.isFinite(discountAmount) || discountAmount < 0) {
+  if (
+    !Number.isFinite(finalPrice) ||
+    finalPrice <= 0 ||
+    !Number.isFinite(discountAmount) ||
+    discountAmount < 0
+  ) {
     return { ok: false, reason: "INVALID_PRICE" };
   }
 

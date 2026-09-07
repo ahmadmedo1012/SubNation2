@@ -125,9 +125,7 @@ describe("SessionManager — destructive confirm via useConfirm (B6-P1-3)", () =
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe("/api/auth/logout-all-devices");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer test-token",
-    );
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
   });
 
   it("cancel button closes the dialog without firing the request", async () => {

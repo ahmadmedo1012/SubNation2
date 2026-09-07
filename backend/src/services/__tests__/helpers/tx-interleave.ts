@@ -52,9 +52,11 @@ export interface InterleaveOptions {
 /** Install the interleave on `db.transaction`; returns a restore function. */
 export function interleaveWriterAfterSelect(db: any, opts: InterleaveOptions): () => void {
   const original = db.transaction.bind(db);
-  const spy = vi.spyOn(db, "transaction").mockImplementation((cb: any, config?: any) =>
-    original((tx: any) => cb(wrapTx(tx, opts)), config),
-  );
+  const spy = vi
+    .spyOn(db, "transaction")
+    .mockImplementation((cb: any, config?: any) =>
+      original((tx: any) => cb(wrapTx(tx, opts)), config),
+    );
   return () => spy.mockRestore();
 }
 
@@ -89,13 +91,10 @@ function wrapThenable(builder: any, runWriter: () => Promise<void>): any {
     get(target, prop) {
       if (prop === "then") {
         return (onFulfilled?: (rows: unknown) => unknown, onRejected?: (err: unknown) => unknown) =>
-          target.then(
-            async (rows: unknown) => {
-              await runWriter();
-              return onFulfilled ? onFulfilled(rows) : rows;
-            },
-            onRejected,
-          );
+          target.then(async (rows: unknown) => {
+            await runWriter();
+            return onFulfilled ? onFulfilled(rows) : rows;
+          }, onRejected);
       }
       const value = Reflect.get(target, prop, target);
       if (typeof value !== "function") return value;

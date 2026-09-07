@@ -117,9 +117,13 @@ const OK_MESSAGE = "رسالة عادية قصيرة";
 
 describe("POST /api/support/tickets/:id/reply — message cap (SEC-92-07)", () => {
   it("401 without auth (route still guarded)", async () => {
-    const res = await post("/api/support/tickets/1/reply", { message: "hi" }, {
-      "Content-Type": "application/json",
-    });
+    const res = await post(
+      "/api/support/tickets/1/reply",
+      { message: "hi" },
+      {
+        "Content-Type": "application/json",
+      },
+    );
     expect(res.status).toBe(401);
   });
 

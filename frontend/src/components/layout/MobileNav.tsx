@@ -47,10 +47,7 @@ export function MobileNav() {
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-      <div
-        className="relative grid grid-cols-5"
-        style={{ height: MOBILE_NAV_HEIGHT }}
-      >
+      <div className="relative grid grid-cols-5" style={{ height: MOBILE_NAV_HEIGHT }}>
         {TABS.map((tab) => {
           // Match "/" exactly (otherwise every route would highlight it).
           // For other tabs, match either the exact path or a deeper path

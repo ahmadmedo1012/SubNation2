@@ -183,10 +183,7 @@ describe("SEC-92-03: admin_request mutation confirmation", () => {
   });
 
   it("GET executes directly (read-only calls need no confirmation)", async () => {
-    const result = await executeAdminRequest(
-      { method: "GET", path: "/api/admin/topups" },
-      ctx,
-    );
+    const result = await executeAdminRequest({ method: "GET", path: "/api/admin/topups" }, ctx);
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);
     expect(hits).toHaveLength(1);
@@ -213,7 +210,12 @@ describe("SEC-92-03: admin_request mutation confirmation", () => {
 
   it("denylisted settings path is refused even on PATCH with confirm", async () => {
     const result = await executeAdminRequest(
-      { method: "PATCH", path: "/api/admin/settings/auth/3", body: { enabled: true }, confirm: true },
+      {
+        method: "PATCH",
+        path: "/api/admin/settings/auth/3",
+        body: { enabled: true },
+        confirm: true,
+      },
       ctx,
     );
     expect(result.ok).toBe(false);

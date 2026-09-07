@@ -290,7 +290,11 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" })
       title={failed ? "فشل النسخ" : "نسخ"}
       aria-label={failed ? "فشل النسخ" : "نسخ"}
       className={`shrink-0 rounded transition-colors ${
-        failed ? "text-red-400" : copied ? "text-emerald-400" : "text-muted-foreground hover:text-muted-foreground"
+        failed
+          ? "text-red-400"
+          : copied
+            ? "text-emerald-400"
+            : "text-muted-foreground hover:text-muted-foreground"
       }`}
     >
       {failed ? (
@@ -593,13 +597,12 @@ export default function AdminTopupsPage() {
           body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
         });
         if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as
-            | { error?: string; code?: string }
-            | null;
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
           throw new Error(
-            body && (body.error || body.code)
-              ? getErrorMessage(body)
-              : `HTTP ${r.status}`,
+            body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
           );
         }
         approvedCount++;

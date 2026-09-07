@@ -186,9 +186,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     expect(screen.getAllByText("جاري 0/3...").length).toBeGreaterThan(0);
 
     gate11.resolve(resLike({ ok: true }));
-    await waitFor(() =>
-      expect(screen.getAllByText("جاري 1/3...").length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(screen.getAllByText("جاري 1/3...").length).toBeGreaterThan(0));
     gate12.resolve(resLike({ ok: true }));
 
     // Loop completes → single summary toast.
@@ -255,6 +253,8 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("0911111111"));
     // …and its boolean result drives a failure state instead of a
     // false "copied" success.
-    await waitFor(() => expect(screen.getByRole("button", { name: "فشل النسخ" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "فشل النسخ" })).toBeInTheDocument(),
+    );
   });
 });

@@ -63,9 +63,7 @@ describe("normalizeCwvRouteLabel — bounded table mapping", () => {
     expect(normalizeCwvRouteLabel("/")).toBe("/");
     expect(normalizeCwvRouteLabel("/checkout")).toBe("/checkout");
     expect(normalizeCwvRouteLabel("/admin/topups")).toBe("/admin/topups");
-    expect(normalizeCwvRouteLabel("/admin/products/enrichment")).toBe(
-      "/admin/products/enrichment",
-    );
+    expect(normalizeCwvRouteLabel("/admin/products/enrichment")).toBe("/admin/products/enrichment");
   });
 
   it("dynamic routes collapse to their pattern (slug length cannot inflate cardinality)", () => {
@@ -113,7 +111,7 @@ describe("POST /api/cwv — label reaching the registry (integration)", () => {
     ).filter((v) => v.labels.viewport === "mobile");
     const other = values.find((v) => v.labels.name === "LCP" && v.labels.route === "other");
     expect(other).toBeDefined();
-    expect((other?.value ?? 0)).toBeGreaterThan(0);
+    expect(other?.value ?? 0).toBeGreaterThan(0);
 
     // The raw attacker string must NOT exist as a label.
     const raw = values.find((v) => v.labels.route === "/cardinality-attack-route-xyz");
@@ -134,6 +132,6 @@ describe("POST /api/cwv — label reaching the registry (integration)", () => {
       (v) => v.labels.name === "LCP" && v.labels.route === "/product/:slug",
     );
     expect(pattern).toBeDefined();
-    expect((pattern?.value ?? 0)).toBeGreaterThan(0);
+    expect(pattern?.value ?? 0).toBeGreaterThan(0);
   });
 });

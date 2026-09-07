@@ -112,7 +112,10 @@ describe("B2-02: duplicate payment_reference — sequential case (in-tx check)",
     expect(parseFloat(String(afterSecond.walletBalance))).toBe(50);
     const ledger = await db.select().from(walletLedgerTable);
     expect(ledger.filter((l) => l.type === "topup")).toHaveLength(1);
-    const [t2row] = await db.select().from(walletTopupsTable).where(eq(walletTopupsTable.id, t2.id));
+    const [t2row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, t2.id));
     expect(t2row.status).toBe("pending");
   });
 
@@ -178,7 +181,10 @@ describe("B2-02: duplicate payment_reference — concurrent case (unique index 2
     expect(parseFloat(String(userAfter.walletBalance))).toBe(0);
     const ledger = await db.select().from(walletLedgerTable);
     expect(ledger.filter((l) => l.type === "topup")).toHaveLength(0);
-    const [t2row] = await db.select().from(walletTopupsTable).where(eq(walletTopupsTable.id, t2.id));
+    const [t2row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, t2.id));
     expect(t2row.status).toBe("pending");
   });
 
