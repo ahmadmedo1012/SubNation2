@@ -73,4 +73,3 @@ export async function cleanupOldAuthActivity(): Promise<number> {
 // cron/web-scheduler. Manual runs go through an explicit runner, e.g.:
 //   pnpm --filter @workspace/api-server exec tsx \
 //     -e "import('./src/jobs/cleanup-auth-activity.ts').then(m => m.cleanupOldAuthActivity())"
-
