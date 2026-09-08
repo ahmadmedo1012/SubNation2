@@ -67,7 +67,7 @@ function readRedirectTarget(): string | null {
 }
 
 export default function LoginPage() {
-  const { whatsappEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
   const intent = useMemo(() => readLoginIntent(), []);
   const redirectTarget = useMemo(() => readRedirectTarget(), []);
   const [, navigate] = useLocation();
@@ -161,7 +161,10 @@ export default function LoginPage() {
               majority provider in Libya). */}
           {whatsappEnabled && (
             <div className="mt-2.5">
-              <WhatsAppPhoneSignIn onSuccess={redirectTarget ? handleLoginSuccess : undefined} />
+              <WhatsAppPhoneSignIn
+                channelStatus={whatsappStatus}
+                onSuccess={redirectTarget ? handleLoginSuccess : undefined}
+              />
             </div>
           )}
         </div>

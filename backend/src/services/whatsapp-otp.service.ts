@@ -74,6 +74,7 @@ export type StartOtpResult =
         | "hourly_limit"
         | "delivery_failed"
         | "recipient_not_on_whatsapp"
+        | "whatsapp_not_paired"
         | "gateway_disabled";
       retryAfterSec?: number;
     };
@@ -176,25 +177,27 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     `SubNation — رمز التحقق\n\n${code}\n\nصالح لمدة 5 دقائق.\nلا تشارك هذا الرمز مع أحد.`,
   );
   if (!send.ok) {
-    // `not_configured` (env missing) and `session_not_*` (operator
-    // hasn't scanned the QR yet / session disconnected) are both
-    // "service is not currently available" — surface as 503 to the
-    // client instead of 502 so retry semantics + UX copy match the
-    // existing gateway-disabled story. Genuine wire failures
-    // (timeouts, non-2xx from a ready session) remain `delivery_failed`.
+    // `not_configured` (env missing) / `session_not_found` are
+    // "service is not available" → 503. `session_not_ready` is its own
+    // HONEST state (r95): the gateway is configured but the WhatsApp
+    // session has not been paired (or dropped mid-flight) — the user
+    // sees "قناة واتساب غير مربوطة حاليًا" instead of a misleading
+    // generic "gateway disabled". Genuine wire failures (timeouts,
+    // non-2xx from a ready session) remain `delivery_failed`.
     // `recipient_not_on_whatsapp` is a client-fixable condition (wrong
     // number) — surface it as its own reason so the UI can show a
     // targeted Arabic message rather than a generic "delivery failed".
     const isGatewayDisabled =
-      send.reason === "not_configured" ||
-      send.reason === "session_not_found" ||
-      send.reason === "session_not_ready";
+      send.reason === "not_configured" || send.reason === "session_not_found";
+    const isNotPaired = send.reason === "session_not_ready";
     const isRecipientMissing = send.reason === "recipient_not_on_whatsapp";
     const failureReason = isGatewayDisabled
       ? "gateway_disabled"
-      : isRecipientMissing
-        ? "recipient_not_on_whatsapp"
-        : "delivery_failed";
+      : isNotPaired
+        ? "whatsapp_not_paired"
+        : isRecipientMissing
+          ? "recipient_not_on_whatsapp"
+          : "delivery_failed";
     await safeLog({
       identifier: `wa:${phone}`,
       action: "register",

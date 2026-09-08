@@ -39,7 +39,7 @@ import {
 } from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
-import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
+import { getWhatsAppGatewayReadiness, isWhatsAppGatewayConfigured } from "../services/openwa.service";
 import { insertReferralSignupLedger } from "../lib/ledger";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 
@@ -268,11 +268,20 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     }
   }
 
+  // r95 (honest UX): `whatsapp_enabled` stays config-only (backward
+  // compat — button visibility). `whatsapp_status` adds the LIVE
+  // pairing state from a 30s-cached gateway probe so clients can hint
+  // "قيد الربط مؤقتاً" instead of letting the user fail at code-send.
+  // Status strings are the OpenWA lifecycle values (ready/qr_ready/…)
+  // or null when the probe fails — never a fabricated "ready".
+  const readiness = await getWhatsAppGatewayReadiness();
+
   return res.json({
     providers,
     // Boolean only — never exposes the API key. Clients gate the
     // <WhatsAppPhoneSignIn /> render on this flag.
     whatsapp_enabled: isWhatsAppGatewayConfigured(),
+    whatsapp_status: readiness.ready ? "ready" : readiness.status,
   });
 });
 

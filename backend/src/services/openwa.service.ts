@@ -487,6 +487,71 @@ export function isWhatsAppGatewayConfigured(): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Readiness probe (honest UX)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WhatsAppGatewayReadiness {
+  /** Env config present (BASE_URL + API_KEY + SESSION). */
+  configured: boolean;
+  /** The configured session is in `ready` state — OTPs can flow. */
+  ready: boolean;
+  /** Current session lifecycle status, null when unknown/unresolvable. */
+  status: string | null;
+  /** Epoch ms of the probe backing this value. */
+  probedAt: number;
+}
+
+const READINESS_CACHE_TTL_MS = 30_000;
+let readinessCache: WhatsAppGatewayReadiness | null = null;
+
+/**
+ * Probe whether the configured OpenWA session is actually paired and
+ * ready — the difference between "gateway configured" and "OTP can be
+ * delivered right now". Result cached 30s so the public providers
+ * endpoint cannot be turned into a free high-frequency gateway probe.
+ *
+ * Failure semantics: a gateway that cannot be reached reports
+ * `status: null` (unknown) — never a false `ready`.
+ */
+export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayReadiness> {
+  const config = readGatewayConfig();
+  if (!config) {
+    return { configured: false, ready: false, status: null, probedAt: Date.now() };
+  }
+  const now = Date.now();
+  if (readinessCache && now - readinessCache.probedAt < READINESS_CACHE_TTL_MS) {
+    return readinessCache;
+  }
+  try {
+    const session = await findSession(config);
+    const result: WhatsAppGatewayReadiness = {
+      configured: true,
+      ready: session?.status === "ready",
+      status: session?.status ?? null,
+      probedAt: now,
+    };
+    readinessCache = result;
+    return result;
+  } catch {
+    // Network error / 5xx — report unknown, cache briefly to avoid a
+    // probing storm during an outage.
+    const result: WhatsAppGatewayReadiness = {
+      configured: true,
+      ready: false,
+      status: null,
+      probedAt: now,
+    };
+    readinessCache = result;
+    return result;
+  }
+}
+
+/** Test seam — clears the readiness cache. */
+export function __resetWhatsAppReadinessCacheForTests(): void {
+  readinessCache = null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Operator session management
 // ─────────────────────────────────────────────────────────────────────────────
 //

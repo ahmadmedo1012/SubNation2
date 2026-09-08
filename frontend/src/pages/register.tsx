@@ -29,7 +29,7 @@ function readReferralFromUrl(): string {
 
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
-  const { whatsappEnabled } = usePublicAuthProviders();
+  const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
@@ -125,7 +125,7 @@ export default function RegisterPage() {
               identically (findOrCreateWhatsAppUser). No divider. */}
           {whatsappEnabled && (
             <div className="mt-2.5">
-              <WhatsAppPhoneSignIn />
+              <WhatsAppPhoneSignIn channelStatus={whatsappStatus} />
             </div>
           )}
 

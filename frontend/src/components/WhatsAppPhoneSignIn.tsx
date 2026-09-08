@@ -23,6 +23,13 @@ import { useLocation } from "wouter";
 interface WhatsAppPhoneSignInProps {
   /** When false, the component renders nothing. */
   enabled?: boolean;
+  /**
+   * Live gateway pairing status (r95): "ready" | OpenWA lifecycle
+   * value | null (unknown). When set and not "ready", a subtle hint
+   * appears under the pristine button — honest UX so the user knows
+   * the channel is mid-repair BEFORE typing their number.
+   */
+  channelStatus?: string | null;
   /** Optional divider label rendered above the form. */
   dividerLabel?: string;
   /**
@@ -38,6 +45,7 @@ const COOLDOWN_DEFAULT = 60;
 
 export function WhatsAppPhoneSignIn({
   enabled = true,
+  channelStatus,
   dividerLabel,
   onSuccess,
 }: WhatsAppPhoneSignInProps) {
@@ -231,7 +239,19 @@ export function WhatsAppPhoneSignIn({
           <MessageCircle className="w-4 h-4 text-brand-whatsapp" />
           المتابعة عبر WhatsApp
         </button>
-      ) : step === "phone" ? (
+      ) : null}
+      {/* r95 honest hint — only when the live probe says the channel is
+          configured but not currently paired. Never blocks the attempt:
+          pairing can complete at any moment. */}
+      {step === "pristine" && channelStatus && channelStatus !== "ready" && (
+        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+          قناة WhatsApp قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم Google / Telegram
+          الآن
+        </p>
+      )}
+      {step !== "pristine" && (
+        <>
+        {step === "phone" ? (
         <>
           <div className="flex gap-2">
             <input
@@ -352,6 +372,7 @@ export function WhatsAppPhoneSignIn({
           </button>
         </div>
       )}
+      </>)}
       {error && (
         <div
           role="alert"

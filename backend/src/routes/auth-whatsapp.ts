@@ -78,6 +78,10 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         hourly_limit: "تم تجاوز حد المحاولات، حاول لاحقاً",
         delivery_failed: "تعذّر إرسال الرمز عبر WhatsApp، حاول مجدداً",
         recipient_not_on_whatsapp: "هذا الرقم غير مسجَّل في WhatsApp",
+        // r95: the gateway is configured but the WhatsApp session is
+        // unpaired (or dropped). Honest copy — an operator action is
+        // pending on the session, not a client-fixable condition.
+        whatsapp_not_paired: "قناة WhatsApp غير مربوطة مؤقتاً، جاري استعادة الخدمة",
         gateway_disabled: "خدمة WhatsApp غير مفعّلة حالياً",
       };
       const status =
@@ -85,7 +89,7 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
           ? 400
           : result.reason === "cooldown" || result.reason === "hourly_limit"
             ? 429
-            : result.reason === "gateway_disabled"
+            : result.reason === "gateway_disabled" || result.reason === "whatsapp_not_paired"
               ? 503
               : 502;
       const headers: Record<string, string | number> = {};
