@@ -50,6 +50,13 @@
       "when": 1788740893510,
       "tag": "0006_high_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788873102775,
+      "tag": "0007_tranquil_dagger",
+      "breakpoints": true
     }
   ]
 }
