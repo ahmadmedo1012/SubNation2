@@ -29,16 +29,44 @@ export interface RetentionResult {
 }
 
 const PAUSE_THRESHOLD = 0.5;
+const DELETE_BATCH_SIZE = 1000;
+
+/**
+ * Bounded ctid-batch DELETE loop — F11 (round-94 A6), same shape as
+ * risk-retention.ts (B7-P2-5): the first large purge (pipeline enabled
+ * after a dormant period) must not hold one unbounded statement lock on
+ * Neon's pooler. The predicate is embedded verbatim per batch so each
+ * batch re-evaluates against CURRENT table state (idempotent).
+ */
+async function batchedDelete(whereSql: string): Promise<number> {
+  let deleted = 0;
+  for (;;) {
+    const result = await db.execute(
+      sql.raw(`
+      DELETE FROM inventory_forecasts
+      WHERE ctid IN (
+        SELECT ctid FROM inventory_forecasts f
+        WHERE ${whereSql}
+        LIMIT ${DELETE_BATCH_SIZE}
+      )
+      RETURNING id
+    `),
+    );
+    const rows =
+      (result as unknown as { rows?: Array<{ id: number }> }).rows ??
+      (result as unknown as Array<{ id: number }>) ??
+      [];
+    deleted += rows.length;
+    if (rows.length < DELETE_BATCH_SIZE) break;
+  }
+  return deleted;
+}
 
 export async function runForecastRetention(): Promise<RetentionResult> {
   // 1. Purge forecasts older than 90 days.
-  const purgeResult = await db
-    .delete(inventoryForecastsTable)
-    .where(sql`${inventoryForecastsTable.forecastDate} < CURRENT_DATE - INTERVAL '90 days'`);
-  const forecastsDeleted =
-    (purgeResult as unknown as { rowCount?: number }).rowCount ??
-    (purgeResult as unknown as Array<unknown>).length ??
-    0;
+  const forecastsDeleted = await batchedDelete(
+    `f.forecast_date < CURRENT_DATE - INTERVAL '90 days'`,
+  );
 
   // 2. Reap orphaned in_flight runs older than 24 hours.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -125,3 +153,8 @@ async function computeCaptureRate14d(): Promise<number | null> {
   if (!row || Number(row.total) === 0) return null;
   return Number(row.captured) / Number(row.total);
 }
+
+// F11: the purge moved to the raw batched DELETE above — reference the
+// table so the import stays valid if the typed builder returns (same
+// convention as risk-retention.ts).
+void inventoryForecastsTable;

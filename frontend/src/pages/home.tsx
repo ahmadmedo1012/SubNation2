@@ -110,10 +110,13 @@ function ProductSkeleton() {
 }
 
 function OrderStatusIcon({ status }: { status: string }) {
-  if (status === "completed") return <CheckCircle className="w-3 h-3 text-emerald-400" />;
+  // R94-A1 #5 (P2, WCAG AA): raw -400 shades measured 1.53–2.54:1 on
+  // white cards in the light theme — the shared --status-* tokens are
+  // theme-aware and tonally correct on card surfaces.
+  if (status === "completed") return <CheckCircle className="w-3 h-3 text-status-success" />;
   if (status === "failed" || status === "refunded")
-    return <XCircle className="w-3 h-3 text-red-400" />;
-  return <Clock className="w-3 h-3 text-yellow-400" />;
+    return <XCircle className="w-3 h-3 text-status-error" />;
+  return <Clock className="w-3 h-3 text-status-warning" />;
 }
 
 export default function HomePage() {
@@ -126,6 +129,11 @@ export default function HomePage() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // R94-A1 #16 (P3): the history dropdown wrapper — blur closes the list
+  // ONLY when focus actually leaves the whole search control. The old
+  // unconditional 200ms timeout unmounted the list while keyboard users
+  // were still tabbing INTO it, dropping focus to <body>.
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Load search history on mount
   useEffect(() => {
@@ -137,12 +145,24 @@ export default function HomePage() {
     setShowSearchHistory(val.length > 0 && searchHistory.length > 0);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setSearch(val);
-      if (val.trim()) {
-        saveSearchHistory(val);
-        setSearchHistory(getSearchHistory());
-      }
+      // R94-A1 #16 (P3): the committed filter value is trimmed — a lone
+      // space used to become params.search=" " (the backend ignores it
+      // but the UI labeled it an active search over a full result set).
+      setSearch(val.trim());
     }, 320);
+  };
+
+  // R94-A1 #16 (P3): history is written ONLY on an explicitly committed
+  // search (Enter). The old debounce-saved every intermediate pause —
+  // typing «نتف» then «نتفلكس» polluted the history with fragments.
+  const commitSearch = (val: string) => {
+    const query = val.trim();
+    setSearch(query);
+    setShowSearchHistory(false);
+    if (query) {
+      saveSearchHistory(query);
+      setSearchHistory(getSearchHistory());
+    }
   };
 
   // Clear the pending debounce on unmount — navigating away mid-debounce
@@ -156,8 +176,7 @@ export default function HomePage() {
 
   const handleSearchHistoryClick = (query: string) => {
     setSearchInput(query);
-    setSearch(query);
-    setShowSearchHistory(false);
+    commitSearch(query);
   };
 
   const handleClearHistory = () => {
@@ -209,7 +228,7 @@ export default function HomePage() {
   );
   const latestOrders = recentOrders.slice(0, 4);
 
-  const activeFilterCount = [searchInput, category, sort, availableOnly ? "1" : ""].filter(
+  const activeFilterCount = [searchInput.trim(), category, sort, availableOnly ? "1" : ""].filter(
     Boolean,
   ).length;
 
@@ -299,9 +318,9 @@ export default function HomePage() {
                     </div>
                   </Link>
                   <Link href="/loyalty">
-                    <div className="bg-background/50 border border-border/50 hover:border-yellow-400/40 hover:shadow-lg hover:shadow-yellow-900/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
-                      <div className="w-8 h-8 rounded-xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center shrink-0">
-                        <Star className="w-3.5 h-3.5 text-yellow-400" />
+                    <div className="bg-background/50 border border-border/50 hover:border-status-warning/40 hover:shadow-lg hover:shadow-status-warning/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
+                      <div className="w-8 h-8 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center shrink-0">
+                        <Star className="w-3.5 h-3.5 text-status-warning" />
                       </div>
                       <div>
                         <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
@@ -473,11 +492,20 @@ export default function HomePage() {
                   <div className="hidden sm:flex flex-col gap-2 shrink-0">
                     {[
                       {
-                        label: "منتج متاح",
+                        // R94-A1 #11 (P3): count-aware Arabic labels
+                        // («منتجان متاحان / منتجات متاحة / منتجاً متاحاً»)
+                        // instead of a frozen singular after every count.
+                        label: formatCount(stats.available_products, {
+                          one: "منتج متاح",
+                          two: "منتجان متاحان",
+                          few: "منتجات متاحة",
+                          many: "منتجاً متاحاً",
+                          other: "منتج متاح",
+                        }),
                         value: stats.available_products,
-                        color: "text-emerald-400",
-                        border: "border-emerald-500/18",
-                        bg: "bg-emerald-500/7",
+                        color: "text-status-success",
+                        border: "border-status-success/18",
+                        bg: "bg-status-success/7",
                       },
                       {
                         label: "أقل سعر",
@@ -487,11 +515,17 @@ export default function HomePage() {
                         bg: "bg-primary/7",
                       },
                       {
-                        label: "وحدة بالمخزون",
+                        label: formatCount(stats.total_units, {
+                          one: "وحدة بالمخزون",
+                          two: "وحدتان بالمخزون",
+                          few: "وحدات بالمخزون",
+                          many: "وحدة بالمخزون",
+                          other: "وحدة بالمخزون",
+                        }),
                         value: stats.total_units,
-                        color: "text-blue-400",
-                        border: "border-blue-500/18",
-                        bg: "bg-blue-500/7",
+                        color: "text-status-info",
+                        border: "border-status-info/18",
+                        bg: "bg-status-info/7",
                       },
                     ].map((s, i) => (
                       <div
@@ -517,13 +551,23 @@ export default function HomePage() {
         {!token && stats && (
           <div className="sm:hidden grid grid-cols-3 gap-2 mb-5">
             {[
-              { label: "منتج", value: stats.available_products, color: "text-emerald-400" },
+              {
+                label: formatCount(stats.available_products, {
+                  one: "منتج",
+                  two: "منتجان",
+                  few: "منتجات",
+                  many: "منتجاً",
+                  other: "منتج",
+                }),
+                value: stats.available_products,
+                color: "text-status-success",
+              },
               {
                 label: "أقل سعر",
                 value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
                 color: "text-primary-text",
               },
-              { label: "بالمخزون", value: stats.total_units, color: "text-blue-400" },
+              { label: "بالمخزون", value: stats.total_units, color: "text-status-info" },
             ].map((s) => (
               <div
                 key={s.label}
@@ -542,7 +586,7 @@ export default function HomePage() {
         <div className="sticky top-14 z-30 -mx-4 px-4 py-3 bg-background/96 backdrop-blur-2xl border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mb-6">
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
-            <div className="relative flex-1">
+            <div className="relative flex-1" ref={searchWrapRef}>
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input
                 type="search"
@@ -550,10 +594,29 @@ export default function HomePage() {
                 aria-label="البحث في المنتجات"
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                  // R94-A1 #16 (P3): Enter commits the search — the one
+                  // moment the query is unambiguously final, and the only
+                  // place the history is written from typing.
+                  if (e.key === "Enter") {
+                    if (debounceRef.current) clearTimeout(debounceRef.current);
+                    commitSearch(searchInput);
+                  }
+                }}
                 onFocus={() =>
                   setShowSearchHistory(searchInput.length === 0 && searchHistory.length > 0)
                 }
-                onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
+                onBlur={(e) => {
+                  // R94-A1 #16 (P3): keyboard focus moving INTO the history
+                  // list must not close it — only a blur that lands outside
+                  // the search control dismisses the dropdown (the list
+                  // buttons then close it via their click handlers).
+                  const next = e.relatedTarget as Node | null;
+                  if (searchWrapRef.current && next && searchWrapRef.current.contains(next)) {
+                    return;
+                  }
+                  setTimeout(() => setShowSearchHistory(false), 200);
+                }}
                 className="pr-9 h-10 text-sm bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
               />
               {/* Search history dropdown */}
@@ -636,7 +699,7 @@ export default function HomePage() {
                 aria-pressed={availableOnly}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold"
+                    ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
                     : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
                 }`}
               >

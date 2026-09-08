@@ -3,7 +3,18 @@
  * copilot actions (010-ai-admin-copilot, US6).
  *
  * Owner-scoped: admin only sees their own rows. Cursor-paginated by
- * (createdAt, id) descending. Filters: action_class, outcome, since.
+ * (createdAt, id) descending. Filters: action_class, outcome, since_iso.
+ *
+ * A5-02 / A5-06 (round-94): the contract required `admin_id` in every
+ * CopilotHistoryEntry but the response never emitted it — any orval-
+ * generated client failed parsing on EVERY history response. The select
+ * + mapper now carry it (the column was always loaded by the table).
+ * `since_iso` is the contract name; the legacy `since` alias is still
+ * accepted for pre-94 callers, and an unparseable value for EITHER name
+ * now 400s (documented) instead of being silently ignored.
+ * `entity_type` / `entity_id` are documented deprecated no-ops — the
+ * history table has no entity columns (entity data lives on preview
+ * rows), so they are deliberately not read.
  */
 
 import { copilotActionsTable, db } from "@workspace/db";
@@ -11,6 +22,7 @@ import { and, desc, eq, lt, or, sql, type SQL } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 
 const historyRouter = Router();
 
@@ -33,12 +45,26 @@ historyRouter.get("/copilot/history", requireAdmin, async (req: Request, res: Re
   const outcome = typeof req.query.outcome === "string" ? req.query.outcome : null;
   if (outcome) filters.push(eq(copilotActionsTable.outcome, outcome));
 
-  const sinceRaw = typeof req.query.since === "string" ? req.query.since : null;
-  if (sinceRaw) {
-    const since = new Date(sinceRaw);
-    if (!Number.isNaN(since.getTime())) {
-      filters.push(sql`${copilotActionsTable.createdAt} >= ${since.toISOString()}::timestamptz`);
+  // A5-06: contract name is `since_iso`; the legacy `since` alias is
+  // kept for pre-94 callers. An unparseable value for either name is a
+  // documented 400 — the old silent-ignore made "?since_iso=…" (what
+  // the contract documents) a complete no-op while looking filtered.
+  const sinceQuery =
+    typeof req.query.since_iso === "string"
+      ? req.query.since_iso
+      : typeof req.query.since === "string"
+        ? req.query.since
+        : null;
+  if (sinceQuery !== null) {
+    const since = new Date(sinceQuery);
+    if (Number.isNaN(since.getTime())) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("قيمة التاريخ غير صالحة لمعامل since_iso", ErrorCode.INVALID_DATA),
+        );
     }
+    filters.push(sql`${copilotActionsTable.createdAt} >= ${since.toISOString()}::timestamptz`);
   }
 
   // Cursor: opaque "<isoCreatedAt>:<id>" — both fields needed because
@@ -63,6 +89,7 @@ historyRouter.get("/copilot/history", requireAdmin, async (req: Request, res: Re
   const rows = await db
     .select({
       id: copilotActionsTable.id,
+      adminId: copilotActionsTable.adminId,
       previewId: copilotActionsTable.previewId,
       intentText: copilotActionsTable.intentText,
       toolName: copilotActionsTable.toolName,
@@ -86,9 +113,10 @@ historyRouter.get("/copilot/history", requireAdmin, async (req: Request, res: Re
   const nextCursor =
     hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
 
-  res.json({
+  return res.json({
     entries: page.map((r) => ({
       id: r.id,
+      admin_id: r.adminId,
       preview_id: r.previewId,
       intent_text: r.intentText,
       tool_name: r.toolName,

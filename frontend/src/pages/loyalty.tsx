@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
-import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
 import {
@@ -151,14 +151,14 @@ export default function LoyaltyPage() {
 
   const HOW_TO_EARN = [
     {
-      icon: <Users className="w-4 h-4 text-blue-400" />,
-      bg: "bg-blue-400/10",
+      icon: <Users className="w-4 h-4 text-status-info" />,
+      bg: "bg-status-info/10",
       label: "إحالة صديق يُتم أول شحن",
       points: `+${data?.points_rate.points_per_referral ?? 50} نقطة`,
     },
     {
-      icon: <ShoppingCart className="w-4 h-4 text-emerald-400" />,
-      bg: "bg-emerald-400/10",
+      icon: <ShoppingCart className="w-4 h-4 text-status-success" />,
+      bg: "bg-status-success/10",
       label: "عند كل عملية شراء",
       points: "نقاط تلقائية",
     },
@@ -169,8 +169,8 @@ export default function LoyaltyPage() {
       points: "مزايا إضافية",
     },
     {
-      icon: <Star className="w-4 h-4 text-yellow-400" />,
-      bg: "bg-yellow-400/10",
+      icon: <Star className="w-4 h-4 text-status-warning" />,
+      bg: "bg-status-warning/10",
       label: "المستوى الذهبي (2000 د.ل إنفاق)",
       points: "أولوية الدعم",
     },
@@ -185,8 +185,8 @@ export default function LoyaltyPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-7 page-in">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-9 h-9 rounded-xl bg-yellow-400/10 border border-yellow-400/20 flex items-center justify-center">
-          <Star className="w-4.5 h-4.5 text-yellow-400" />
+        <div className="w-9 h-9 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center">
+          <Star className="w-4.5 h-4.5 text-status-warning" />
         </div>
         <div>
           <h1 className="text-xl font-black">الولاء والإحالة</h1>
@@ -226,10 +226,10 @@ export default function LoyaltyPage() {
             {/* Points */}
             <div className="bg-card border border-border/60 rounded-2xl p-5 float-in">
               <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-bold">
-                <Star className="w-3.5 h-3.5 text-yellow-400" />
+                <Star className="w-3.5 h-3.5 text-status-warning" />
                 نقاطي
               </div>
-              <div className="text-3xl font-black text-yellow-400 mb-1 tabular-nums">
+              <div className="text-3xl font-black text-status-warning mb-1 tabular-nums">
                 {/* Round-3 (8-e §2): bare toLocaleString() follows the
                     DEVICE locale — Arabic-locale devices rendered Arabic-Indic
                     numerals (١٢٣٤) on this tile while the wallet balance one
@@ -275,7 +275,7 @@ export default function LoyaltyPage() {
                   </p>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-xs text-cyan-400 font-bold">
+                <div className="flex items-center gap-1.5 text-xs text-cyan-600 font-bold">
                   <Crown className="w-3.5 h-3.5" />
                   أعلى مستوى
                 </div>
@@ -285,16 +285,23 @@ export default function LoyaltyPage() {
             {/* Referrals */}
             <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-2">
               <div className="flex items-center gap-2 text-muted-foreground text-xs mb-3 font-bold">
-                <Users className="w-3.5 h-3.5 text-blue-400" />
+                <Users className="w-3.5 h-3.5 text-status-info" />
                 إحالاتي
               </div>
-              <div className="text-3xl font-black text-blue-400 mb-1 tabular-nums">
+              <div className="text-3xl font-black text-status-info mb-1 tabular-nums">
                 {data.referrals_credited}
               </div>
               <div className="text-sm text-muted-foreground">
                 {data.referrals_pending > 0 && (
-                  <span className="text-yellow-400 font-bold ml-1">
-                    {data.referrals_pending} معلق ·
+                  <span className="text-status-warning font-bold ml-1">
+                    {formatCount(data.referrals_pending, {
+                      one: "معلق",
+                      two: "معلقان",
+                      few: "معلقة",
+                      many: "معلقة",
+                      other: "معلق",
+                    })}{" "}
+                    ·
                   </span>
                 )}
                 إحالة ناجحة
@@ -309,7 +316,7 @@ export default function LoyaltyPage() {
                 <h2 className="font-black text-base mb-1">ادعُ أصدقاءك</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   عند اشتراك صديقك وإتمام أول شحن،
-                  <span className="text-yellow-400 font-bold">
+                  <span className="text-status-warning font-bold">
                     {" "}
                     تحصل على {data.points_rate.points_per_referral} نقطة
                   </span>
@@ -422,11 +429,21 @@ export default function LoyaltyPage() {
                     dir="ltr"
                     className="text-left h-11"
                   />
-                  {convertPoints && parseInt(convertPoints) >= 100 && (
-                    <p className="text-xs text-emerald-400 mt-1.5 px-1 font-bold">
-                      ستحصل على {((parseInt(convertPoints) || 0) / 100).toFixed(2)} د.ل
-                    </p>
-                  )}
+                  {convertPoints && (() => {
+                    /* R94-A1 #14 (P3): the preview hardcoded /100 AND showed
+                     * for non-multiple values the server rejects (150 →
+                     * «1.50 د.ل» then 400 «يجب أن تكون النقاط من مضاعفات
+                     * 100»). Use the live rate (same field as line 384) and
+                     * only preview server-acceptable multiples. */
+                    const rate = data.points_rate.points_per_lyd;
+                    const points = parseInt(convertPoints) || 0;
+                    if (!rate || points < rate || points % rate !== 0) return null;
+                    return (
+                      <p className="text-xs text-status-success mt-1.5 px-1 font-bold">
+                        ستحصل على {formatCurrency(points / rate)}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <Button
                   type="submit"

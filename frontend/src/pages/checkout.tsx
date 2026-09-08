@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { useCart } from "@/lib/cart";
+import { roundToCents, useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
@@ -103,6 +103,20 @@ export default function CheckoutPage() {
   const queryClient = useQueryClient();
   const { items, totalLYD, clear, removeItem, updateQuantity } = useCart();
   const [coupon, setCoupon] = useState("");
+  // R94-A1 #9 (P3): the pre-validated coupon result. checkout used to
+  // fetch /coupons/validate (final_amount / discount_amount for THIS
+  // basket), throw the body away, and label the confirm button with the
+  // UN-discounted total — the user confirmed "105.00 د.ل" and was charged
+  // 100.00. The stored result is invalidated whenever the coupon input or
+  // the cart lines change (see the effect + onChange below); the server
+  // re-validates on every unit order regardless.
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    final_amount: number;
+    discount_amount: number;
+  } | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponNotice, setCouponNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -164,11 +178,74 @@ export default function CheckoutPage() {
     };
   }, [token]);
 
+  // Cart lines are part of the validation input (order_amount = basket
+  // total) — any line/quantity change voids the stored coupon result so
+  // the "الإجمالي بعد الكوبون" label can never go stale.
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponNotice(null);
+  }, [items]);
+
   // A wallet-method purchase only blocks on a CONFIRMED insufficient
   // balance — an unknown balance (probe failed) must not hard-block,
   // the server remains the source of truth on submission.
-  const insufficient = !balanceLoading && !balanceError && balance !== null && balance < totalLYD;
+  // R94-A1 #1 (P2, FP gate): the comparison uses the CENT-ROUNDED total
+  // (and the coupon-adjusted one when a pre-check succeeded). The raw
+  // sum 8.33 × 6 = 49.980000000000004 made `49.98 < total` true for a
+  // user whose balance was EXACTLY the total — a blocked purchase with
+  // the nonsensical "الناقص 0.00 د.ل".
+  const comparisonTotal = roundToCents(appliedCoupon ? appliedCoupon.final_amount : totalLYD);
+  const insufficient =
+    !balanceLoading && !balanceError && balance !== null && balance < comparisonTotal;
   const isEmpty = items.length === 0;
+
+  /** R94-A1 #9: pre-check the coupon against this basket and KEEP the
+   * result (final_amount / discount_amount) so the summary and the CTA
+   * can state the post-coupon total before submission. Mirrors
+   * product.tsx's validateCoupon contract. */
+  const applyCoupon = async () => {
+    const code = coupon.trim().toUpperCase();
+    if (!code || totalLYD <= 0) return;
+    setCouponChecking(true);
+    setCouponNotice(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({ code, order_amount: totalLYD }),
+      });
+      const body = await res.json().catch(() => null);
+      const finalAmount = Number(body?.final_amount);
+      const discountAmount = Number(body?.discount_amount);
+      if (!(res.ok && body && body.valid === true)) {
+        const message =
+          (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
+        setAppliedCoupon(null);
+        setCouponNotice(message);
+        return;
+      }
+      if (!Number.isFinite(finalAmount) || !Number.isFinite(discountAmount)) {
+        setAppliedCoupon(null);
+        setCouponNotice("استجابة تحقق غير صالحة — أعد المحاولة");
+        return;
+      }
+      setAppliedCoupon({ code, final_amount: finalAmount, discount_amount: discountAmount });
+    } catch {
+      // Network-level failure — inconclusive; nothing is applied.
+      setCouponNotice("تعذّر التحقق من الكوبون — تحقّق من شبكتك ثم أعد المحاولة");
+    } finally {
+      setCouponChecking(false);
+    }
+  };
+
+  const clearAppliedCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponNotice(null);
+  };
 
   const canSubmit = useMemo(() => {
     if (!token || isEmpty || submitting) return false;
@@ -226,32 +303,37 @@ export default function CheckoutPage() {
       // → fail-open: the server re-validates the coupon on every unit
       // order anyway.
       if (couponCode) {
-        try {
-          const res = await fetch("/api/coupons/validate", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            credentials: "include",
-            body: JSON.stringify({ code: couponCode, order_amount: totalLYD }),
-          });
-          const body = await res.json().catch(() => null);
-          if (!(res.ok && body && body.valid === true)) {
-            const message =
-              (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
-            setOrderError(
-              `الكوبون: ${message} — أزل الكوبون أو صحّحه ثم أعد المحاولة. لم يتم خصم أي مبلغ.`,
-            );
-            toast({
-              title: "تعذّر تطبيق الكوبون",
-              description: message,
-              variant: "destructive",
+        // Skip the pre-flight when THIS exact code was already validated
+        // against the current basket (applyCoupon above) — the server
+        // re-validates on every unit order anyway.
+        if (appliedCoupon?.code !== couponCode) {
+          try {
+            const res = await fetch("/api/coupons/validate", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              credentials: "include",
+              body: JSON.stringify({ code: couponCode, order_amount: totalLYD }),
             });
-            return;
+            const body = await res.json().catch(() => null);
+            if (!(res.ok && body && body.valid === true)) {
+              const message =
+                (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
+              setOrderError(
+                `الكوبون: ${message} — أزل الكوبون أو صحّحه ثم أعد المحاولة. لم يتم خصم أي مبلغ.`,
+              );
+              toast({
+                title: "تعذّر تطبيق الكوبون",
+                description: message,
+                variant: "destructive",
+              });
+              return;
+            }
+          } catch {
+            // Network-level failure — inconclusive, fail-open (see above).
           }
-        } catch {
-          // Network-level failure — inconclusive, fail-open (see above).
         }
       }
 
@@ -311,6 +393,7 @@ export default function CheckoutPage() {
       if (couponFailure && failureMessage) {
         if (created.length > 0) {
           setCoupon("");
+          setAppliedCoupon(null);
           failureMessage = `${failureMessage} — أُزيل الكوبون من الحقل؛ أعد المحاولة لإكمال الوحدات المتبقية بالسعر الكامل.`;
         } else {
           failureMessage = `${failureMessage} — أزل الكوبون من الحقل ثم أعد المحاولة.`;
@@ -450,7 +533,7 @@ export default function CheckoutPage() {
               >
                 <X className="w-4 h-4 shrink-0 mt-px" />
                 <div className="flex-1">
-                  <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(totalLYD - (balance ?? 0))}).</p>
+                  <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(comparisonTotal - (balance ?? 0))}).</p>
                   <Link
                     href="/wallet?return=/checkout"
                     className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
@@ -469,14 +552,66 @@ export default function CheckoutPage() {
               <h2 className="font-black text-base">كوبون خصم</h2>
               <span className="text-[10px] text-muted-foreground font-bold">(اختياري)</span>
             </div>
-            <Input
-              value={coupon}
-              onChange={(e) => setCoupon(e.target.value.toUpperCase())}
-              placeholder="أدخل كود الكوبون"
-              aria-label="كود الكوبون"
-              className="font-mono uppercase"
-              dir="ltr"
-            />
+            <div className="flex gap-2">
+              <Input
+                value={coupon}
+                onChange={(e) => {
+                  setCoupon(e.target.value.toUpperCase());
+                  // Any edit voids the stored pre-check result — the label
+                  // must never show a total validated for a different code.
+                  setAppliedCoupon(null);
+                  setCouponNotice(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !appliedCoupon) {
+                    e.preventDefault();
+                    void applyCoupon();
+                  }
+                }}
+                placeholder="أدخل رمز الكوبون"
+                aria-label="رمز الكوبون"
+                className="flex-1 font-mono uppercase"
+                dir="ltr"
+              />
+              {appliedCoupon ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={clearAppliedCoupon}
+                  aria-label="إزالة الكوبون"
+                  className="shrink-0 font-bold"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void applyCoupon()}
+                  disabled={!coupon.trim() || couponChecking || isEmpty}
+                  className="shrink-0 font-bold"
+                >
+                  {couponChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : "تحقق"}
+                </Button>
+              )}
+            </div>
+            {couponNotice && !appliedCoupon && (
+              <p role="alert" className="text-xs font-bold text-status-error mt-2 leading-relaxed">
+                {couponNotice}
+              </p>
+            )}
+            {appliedCoupon && (
+              <p
+                role="status"
+                className="text-xs font-bold text-status-success mt-2 flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span dir="ltr" className="font-mono">
+                  {appliedCoupon.code}
+                </span>
+                — خصم {formatCurrency(appliedCoupon.discount_amount)}
+              </p>
+            )}
             <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
               يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند تأكيد الطلب.
             </p>
@@ -543,10 +678,18 @@ export default function CheckoutPage() {
                     <span className="text-muted-foreground">المجموع الفرعي</span>
                     <span className="font-bold tabular-nums">{formatCurrency(totalLYD)}</span>
                   </div>
+                  {appliedCoupon && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">خصم الكوبون</span>
+                      <span className="font-bold tabular-nums text-status-success">
+                        −{formatCurrency(appliedCoupon.discount_amount)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-base font-black pt-1">
-                    <span>الإجمالي</span>
+                    <span>{appliedCoupon ? "الإجمالي بعد الكوبون" : "الإجمالي"}</span>
                     <span className="tabular-nums text-primary-text">
-                      {formatCurrency(totalLYD)}
+                      {formatCurrency(comparisonTotal)}
                     </span>
                   </div>
                 </div>
@@ -609,8 +752,10 @@ export default function CheckoutPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      جارٍ المعالجة… ({formatCurrency(totalLYD)})
+                      جارٍ المعالجة… ({formatCurrency(comparisonTotal)})
                     </>
+                  ) : appliedCoupon ? (
+                    <>تأكيد الطلب — الإجمالي بعد الكوبون ({formatCurrency(comparisonTotal)})</>
                   ) : (
                     <>تأكيد الطلب ({formatCurrency(totalLYD)})</>
                   )}

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { intParam } from "../../lib/http";
+import { intParam, queryString } from "../../lib/http";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { mapServiceErrorToCode } from "../../lib/service-error";
 import { idempotency } from "../../middlewares/idempotency";
@@ -11,6 +11,16 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
 
 const router = Router();
+
+// A5-03 (round-94): `?status=` feeds a pg-enum column. Drizzle passes the
+// value as a bind parameter, so any string outside the enum reached
+// Postgres as `invalid input value for enum "topup_status"` (22P02) →
+// 500 INTERNAL_ERROR for a perfectly-formed-per-contract request. The
+// filter is schema-validated up front now: bad value → 400 INVALID_DATA.
+// Values mirror topupStatusEnum (shared/db/src/schema/wallet_topups.ts).
+const TopupStatusFilter = z
+  .enum(["pending", "approved", "rejected"])
+  .optional();
 
 // M3 — admin_note was read raw from the body: an object/array value
 // reached Postgres as "[object Object]" → 500 on a money-approval
@@ -28,9 +38,36 @@ function parseTopupActionBody(req: { body?: unknown }): string | null {
 }
 
 router.get("/topups", requireAdmin, async (req, res) => {
-  const { status } = req.query;
+  // A5-03: schema-validate the status filter BEFORE it reaches the
+  // pg-enum column (see TopupStatusFilter above).
+  const statusParse = TopupStatusFilter.safeParse(
+    typeof req.query.status === "string" ? req.query.status : undefined,
+  );
+  if (!statusParse.success) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "حالة شحن غير صالحة (المسموح: pending, approved, rejected)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
   const conditions =
-    status && typeof status === "string" ? [eq(walletTopupsTable.status, status as any)] : [];
+    statusParse.data !== undefined
+      ? [eq(walletTopupsTable.status, statusParse.data)]
+      : [];
+
+  // A2 (round-94): ?page=&limit= — the same clamp pattern as the admin
+  // orders list. Previously the route always returned the newest 100
+  // rows: the money queue's oldest pending requests (beyond #100) were
+  // unreachable and the badge counted ALL pending while the table showed
+  // a truncated slice. Response body stays a bare array (frontend shape).
+  const limit = Math.min(
+    Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
+    200,
+  );
+  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
 
   const topups = await db
     .select({
@@ -47,7 +84,8 @@ router.get("/topups", requireAdmin, async (req, res) => {
     .leftJoin(usersTable, eq(walletTopupsTable.userId, usersTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(walletTopupsTable.createdAt))
-    .limit(100);
+    .limit(limit)
+    .offset((page - 1) * limit);
 
   return res.json(
     topups.map((r) => ({

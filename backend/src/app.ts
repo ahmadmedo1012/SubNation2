@@ -10,6 +10,8 @@ import path from "node:path";
 import pinoHttp from "pino-http";
 import * as Sentry from "@sentry/node";
 import { ZodError } from "zod";
+import { eq } from "drizzle-orm";
+import { db, productsTable } from "@workspace/db";
 import { getCorrelationId } from "./lib/correlation";
 import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
@@ -802,6 +804,86 @@ if (frontendDist) {
       },
     }),
   );
+
+  // ── A7 (round-94): dynamic share-card OG for link unfurlers ──────────
+  //
+  // The SPA fallback below serves the STATIC index.html for every GET —
+  // so WhatsApp/Facebook/Telegram/Slack unfurlers (which do NOT run JS)
+  // saw the generic site title/description/image for EVERY product link.
+  // Product shares are the #1 organic channel in Libya; the card is now
+  // real per-product data. Only bot UAs on /product/* get this — humans
+  // always get the SPA. Any failure falls through to the SPA fallback
+  // (share cards degrade gracefully, the page itself never breaks).
+  const SHARE_BOT_UA =
+    /facebookexternalhit|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|embedly|quora link preview|outbrain|vkshare|vkrobot|showyoubot|googlebot|bingbot|yandexbot|duckduckbot|baiduspider|citizensinspector/i;
+  app.use(async (req, res, next) => {
+    if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
+      next();
+      return;
+    }
+    const match = /^\/product\/([^/]+)\/?$/.exec(req.path);
+    if (!match || !SHARE_BOT_UA.test(String(req.headers["user-agent"] ?? ""))) {
+      next();
+      return;
+    }
+    try {
+      const slugOrId = decodeURIComponent(match[1]);
+      const numeric = /^\d+$/.test(slugOrId) ? Number.parseInt(slugOrId, 10) : null;
+      const [product] = await db
+        .select({
+          name: productsTable.name,
+          description: productsTable.description,
+          imageUrl: productsTable.imageUrl,
+          price: productsTable.price,
+          isActive: productsTable.isActive,
+        })
+        .from(productsTable)
+        .where(
+          numeric !== null
+            ? eq(productsTable.id, numeric)
+            : eq(productsTable.slug, slugOrId),
+        )
+        .limit(1);
+      if (!product || !product.isActive) {
+        next();
+        return;
+      }
+      const esc = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const origin = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
+      const canonical = `${origin}/product/${slugOrId}`;
+      const desc =
+        (product.description ?? "اشتراك رقمي أصلي بالدينار الليبي من SubNation")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 180) + ` — السعر ${product.price} د.ل`;
+      const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>${esc(product.name)} — SubNation</title>
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="SubNation">
+<meta property="og:title" content="${esc(product.name)} — SubNation">
+<meta property="og:description" content="${esc(desc)}">
+${product.imageUrl ? `<meta property="og:image" content="${esc(product.imageUrl)}">` : ""}
+<meta property="og:url" content="${esc(canonical)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(product.name)} — SubNation">
+<meta name="twitter:description" content="${esc(desc)}">
+</head>
+<body>متجرك الرقمي الأول في ليبيا — <a href="${esc(canonical)}">${esc(product.name)}</a></body>
+</html>`;
+      // Bots re-fetch sparingly; a short edge cache (Cloudflare in front)
+      // collapses card-request bursts without ever serving a stale price
+      // to humans (humans get the SPA through a different path).
+      res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300");
+      res.setHeader("Content-Language", "ar");
+      res.type("html").send(html);
+    } catch {
+      next();
+    }
+  });
 
   app.use((req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {

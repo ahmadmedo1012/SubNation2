@@ -56,6 +56,49 @@ export interface AdminAlertOutcome {
   id: number | null;
 }
 
+// ── F9 (round-94 A6): DB-failure side-channel throttle ─────────────────────
+//
+// logAdminAlert's catch deliberately does NOT suppress side channels —
+// the underlying condition (zero stock, an expiring coupon) is real
+// regardless of whether the row landed. But with stockWatcher's 30-min
+// cadence, an EXTENDED DB outage turned that into ~48 Telegram messages
+// per out-of-stock product per day — the operator's phone is the last
+// thing that needs spamming while the alert drawer itself is down.
+//
+// The insert keeps retrying every cycle; only the side-channel green
+// light is throttled: one per identity per hour (env-tunable for tests).
+// In-memory by design — restart resets it, which is fine (a restart is
+// a fresh operator-visible event anyway) and the DB dedupe resumes the
+// moment the database recovers.
+const DB_FAILURE_NOTIFY_THROTTLE_KEYS_MAX = 500;
+const dbFailureNotifiedAt = new Map<string, number>();
+
+/** Throttle window (ms) for side-channel green lights during DB failures. */
+function dbFailureThrottleWindowMs(): number {
+  const raw = Number(process.env.ALERT_DB_FAILURE_THROTTLE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 60 * 60 * 1000;
+}
+
+/** Test-only: clear the DB-failure throttle map between scenarios. */
+export function __resetAlertDbFailureThrottleForTests(): void {
+  dbFailureNotifiedAt.clear();
+}
+
+/** True when this identity may light the side channels despite the DB failure. */
+function shouldNotifyOnDbFailure(identity: string): boolean {
+  const now = Date.now();
+  const last = dbFailureNotifiedAt.get(identity);
+  if (last !== undefined && now - last < dbFailureThrottleWindowMs()) return false;
+  // Memory hygiene (same cap pattern as couponWatcher's alertedExpiring):
+  // identities are bounded by the catalog size in practice; the clear is
+  // a coarse backstop, not precise eviction.
+  if (dbFailureNotifiedAt.size >= DB_FAILURE_NOTIFY_THROTTLE_KEYS_MAX) {
+    dbFailureNotifiedAt.clear();
+  }
+  dbFailureNotifiedAt.set(identity, now);
+  return true;
+}
+
 export async function logAdminAlert(
   type: AlertType,
   title: string,
@@ -115,9 +158,16 @@ export async function logAdminAlert(
     return { suppressed: false, id: inserted?.id ?? null };
   } catch (err) {
     logger.error({ err, type, title }, "Failed to log admin alert");
-    // Deliberately NOT suppressed: a DB failure must not also silence
-    // the side channels — the underlying condition (zero stock, an
-    // expiring coupon) is real regardless of whether the row landed.
+    // Deliberately NOT suppressed on the FIRST failure: a DB failure must
+    // not also silence the side channels — the underlying condition (zero
+    // stock, an expiring coupon) is real regardless of whether the row
+    // landed. F9 (round-94 A6): but an EXTENDED outage must not become a
+    // phone-spam channel either — the green light repeats at most once per
+    // hour per identity while the insert keeps retrying every cycle.
+    const throttleIdentity = opts?.dedupeKey ?? `${type}:${title}`;
+    if (!shouldNotifyOnDbFailure(throttleIdentity)) {
+      return { suppressed: true, id: null };
+    }
     return { suppressed: false, id: null };
   }
 }

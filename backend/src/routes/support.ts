@@ -2,13 +2,12 @@ import { db, supportTicketsTable, ticketRepliesTable } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { z } from "zod";
 import { intParam } from "../lib/http";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
-
-const CATEGORIES = ["billing", "technical", "order", "account", "other"];
 
 // SEC-92-07 (round-92): cap on user-authored ticket/reply message bodies.
 // Ticket creation caps title (≤ 255) and rate (5/h) but the MESSAGE body
@@ -19,6 +18,21 @@ const CATEGORIES = ["billing", "technical", "order", "account", "other"];
 // intent-text bound (routes/admin/copilot/ask.ts) — far above any human
 // support message, small enough to make storage-DoS expensive.
 const MAX_TICKET_MESSAGE_CHARS = 4000;
+
+// A5-04 (round-94): ticket/reply bodies were read raw (`title?.trim()`,
+// `message?.trim()`) — a non-string value crashed `.trim()` → TypeError →
+// 500 (the M2 class fixed for coupon bodies long ago; these user-facing
+// routes were missed). One shared schema caps the same limits the inline
+// checks used to enforce AFTER the type crash point.
+const TicketMessageBody = z.object({
+  message: z.string().trim().min(1).max(MAX_TICKET_MESSAGE_CHARS),
+});
+
+const CreateTicketBody = z.object({
+  title: z.string().trim().min(1).max(255),
+  message: z.string().trim().min(1).max(MAX_TICKET_MESSAGE_CHARS),
+  category: z.enum(["billing", "technical", "order", "account", "other"]).optional(),
+});
 
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
@@ -95,26 +109,31 @@ const ticketCreateLimiter = rateLimit({
 router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
-  const { title, message, category } = req.body ?? {};
-  if (!title?.trim() || !message?.trim()) {
-    return res
-      .status(400)
-      .json(createErrorResponse("العنوان والرسالة مطلوبان", ErrorCode.INVALID_DATA));
+  // A5-04: schema gate — non-string title/message previously crashed
+  // `.trim()` → 500. Field-specific Arabic messages preserved.
+  const parse = CreateTicketBody.safeParse(req.body ?? {});
+  if (!parse.success) {
+    const issue = parse.error.issues[0];
+    const message =
+      issue?.path?.[0] === "title"
+        ? issue.code === "too_big"
+          ? "العنوان طويل جداً"
+          : "العنوان مطلوب"
+        : issue?.path?.[0] === "message"
+          ? issue.code === "too_big"
+            ? "الرسالة طويلة جداً (الحد 4000 حرف)"
+            : "العنوان والرسالة مطلوبان"
+          : "بيانات غير صالحة";
+    return res.status(400).json(createErrorResponse(message, ErrorCode.INVALID_DATA));
   }
-  if (title.length > 255)
-    return res.status(400).json(createErrorResponse("العنوان طويل جداً", ErrorCode.INVALID_DATA));
-  if (message.length > MAX_TICKET_MESSAGE_CHARS) {
-    return res
-      .status(400)
-      .json(createErrorResponse("الرسالة طويلة جداً (الحد 4000 حرف)", ErrorCode.INVALID_DATA));
-  }
+  const { title, message, category } = parse.data;
 
   const [ticket] = await db
     .insert(supportTicketsTable)
     .values({
       userId,
-      title: title.trim(),
-      category: CATEGORIES.includes(category) ? category : "other",
+      title,
+      category: category ?? "other",
       status: "open",
     })
     .returning();
@@ -122,7 +141,7 @@ router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   await db.insert(ticketRepliesTable).values({
     ticketId: ticket.id,
     authorType: "user",
-    message: message.trim(),
+    message,
   });
 
   return res.status(201).json({
@@ -205,22 +224,29 @@ router.post("/:id/reply", requireUser, ticketReplyLimiter, async (req, res) => {
     return res.status(400).json(createErrorResponse("التذكرة مغلقة", ErrorCode.INVALID_DATA));
 
   const { message } = req.body ?? {};
-  if (!message?.trim())
-    return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
-  // SEC-92-07: same cap as ticket creation — the reply body was previously
-  // stored unbounded (up to the global 1 MB JSON limit).
-  if (message.length > MAX_TICKET_MESSAGE_CHARS) {
+  // A5-04: schema gate — non-string message previously crashed `.trim()`
+  // → 500 on a rate-limited route (the failure also consumed a limiter
+  // tick). Field-specific messages preserved.
+  const messageParse = TicketMessageBody.safeParse({ message });
+  if (!messageParse.success) {
+    const tooBig = messageParse.error.issues[0]?.code === "too_big";
     return res
       .status(400)
-      .json(createErrorResponse("الرسالة طويلة جداً (الحد 4000 حرف)", ErrorCode.INVALID_DATA));
+      .json(
+        createErrorResponse(
+          tooBig ? "الرسالة طويلة جداً (الحد 4000 حرف)" : "الرسالة مطلوبة",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
+  const trimmed = messageParse.data.message;
 
   const [reply] = await db
     .insert(ticketRepliesTable)
     .values({
       ticketId: id,
       authorType: "user",
-      message: message.trim(),
+      message: trimmed,
     })
     .returning();
 

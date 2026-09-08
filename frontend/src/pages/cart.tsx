@@ -277,8 +277,13 @@ export default function CartPage() {
                 متابعة التسوق
               </Button>
             </Link>
+            {/* R94-A1 #19 (P3): boilerplate-tax disclaimer removed — the
+                pricing model is base − discount, no tax logic exists in
+                the backend. The line now states the actual payment
+                behavior (instant wallet debit) instead of seeding tax
+                doubt at the payment-decision moment. */}
             <p className="text-[11px] text-muted-foreground text-center mt-3">
-              المجموع لا يشمل الضرائب إن وُجدت
+              الدفع يُخصم من رصيد محفظتك فوراً — تسليم فوري بعد التأكيد
             </p>
           </div>
         </>

@@ -92,7 +92,13 @@ FROM node:${NODE_VERSION} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080 \
-    FRONTEND_DIST=/app/frontend/dist/public
+    FRONTEND_DIST=/app/frontend/dist/public \
+    TZ=UTC
+# F6 (round-94 A6): TZ pinned explicitly — the cron slots in
+# backend/src/jobs/cron.ts are documented as UTC and previously relied on
+# Alpine's default-absent /etc/localtime (UTC by accident). A base-image
+# change or an injected TZ env would silently shift every daily slot.
+# node-cron schedules also pass timezone:"UTC" explicitly (belt+braces).
 RUN corepack enable
 
 COPY --from=build --chown=node:node /app/package.json         ./package.json

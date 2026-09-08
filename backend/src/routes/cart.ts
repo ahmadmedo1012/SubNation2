@@ -7,6 +7,13 @@ import { applyFlashSale, type FlashSaleStage } from "../lib/pricing";
 
 const router = Router();
 
+// A7 (round-94): explicit no-store on the user-scoped cart surface —
+// contents + live pricing must never be served stale by an intermediary.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // H7 (deep-audit 2026-09-06): server-side cap mirrored by the frontend
 // cart store — an uncapped quantity turns the per-unit checkout loop
 // into a self-DoS.

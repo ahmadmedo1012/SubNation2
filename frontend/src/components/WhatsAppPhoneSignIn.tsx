@@ -228,7 +228,7 @@ export function WhatsAppPhoneSignIn({
           className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm press-spring"
           aria-label="المتابعة عبر WhatsApp"
         >
-          <MessageCircle className="w-4 h-4 text-[#25D366]" />
+          <MessageCircle className="w-4 h-4 text-brand-whatsapp" />
           المتابعة عبر WhatsApp
         </button>
       ) : step === "phone" ? (
@@ -244,11 +244,15 @@ export function WhatsAppPhoneSignIn({
               dir="ltr"
               className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-sm outline-none focus:border-primary/50 disabled:opacity-50"
             />
+            {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
+                bg keeps the WhatsApp brand green; the label rides the
+                --brand-whatsapp-ink token (#054339, ~5.7:1 on the same
+                green) so the OTP send action stays readable. */}
             <button
               type="button"
               onClick={sendCode}
               disabled={loading || phone.length < 9 || cooldown > 0}
-              className="h-11 px-4 rounded-xl bg-[#25D366] text-white font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
+              className="h-11 px-4 rounded-xl bg-brand-whatsapp text-brand-whatsapp-ink font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -334,7 +338,11 @@ export function WhatsAppPhoneSignIn({
               تحقق
             </button>
           </div>
+          {/* 94-C3 (A3 P3-9): type="button" — this reset control can live
+              inside a <form>; without it, tapping "تغيير الرقم" would
+              submit the host form instead of resetting the flow. */}
           <button
+            type="button"
             onClick={resetFlow}
             disabled={loading}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors"

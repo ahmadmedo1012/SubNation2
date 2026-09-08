@@ -7,6 +7,13 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
+// A7 (round-94): explicit no-store on the user-scoped notifications
+// surface — read state must never be served stale by an intermediary.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 

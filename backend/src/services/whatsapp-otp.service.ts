@@ -11,8 +11,9 @@
  * those purposes so future phases will be additive.
  */
 
-import { db, usersTable, whatsappOtpsTable } from "@workspace/db";
+import { db, referralEventsTable, usersTable, whatsappOtpsTable } from "@workspace/db";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { createHmac } from "crypto";
 
 import { logAuthActivity } from "../lib/auth-activity";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
@@ -35,7 +36,20 @@ import { insertReferralSignupLedger } from "../lib/ledger";
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getServerSecret(): string {
+/** Exported for the pglite test seams (hashOtp calls must use the SAME derived key). */
+export function getServerSecret(): string {
+  // A8-07 (round-94): the OTP HMAC key used to BE SESSION_SECRET — key
+  // reuse across purpose classes. A DB dump (codeHash rows) + a
+  // SESSION_SECRET leak would let an attacker brute the 10^6 OTP space
+  // offline for LIVE codes. A purpose-scoped derivation
+  // HMAC(SESSION_SECRET, "whatsapp-otp-v1") gives a distinct key that
+  // costs the attacker an extra HMAC oracle even with the session secret
+  // in hand, and makes the OTP domain independent from the JWT domain.
+  // (OTP_HMAC_KEY env override for future rotation; zero rows exist in
+  // the live DB today — 2026-09-08 inspection — so no in-flight codes
+  // are invalidated by the derivation change.)
+  const explicit = (process.env.OTP_HMAC_KEY ?? "").trim();
+  if (explicit.length >= 32) return explicit;
   const s = (process.env.SESSION_SECRET ?? "").trim();
   if (!s) {
     // Fail loud at runtime — production must have SESSION_SECRET.
@@ -43,7 +57,7 @@ function getServerSecret(): string {
     // already throw too).
     throw new Error("SESSION_SECRET is required for WhatsApp OTP");
   }
-  return s;
+  return createHmac("sha256", s).update("whatsapp-otp-v1").digest("hex");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -323,10 +337,34 @@ export async function verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult>
 
   // Successful verify — consume the row (replay protection) then
   // finds-or-creates the user.
-  await db
+  //
+  // F6 (round-94 A4): the consume is now a guarded compare-and-set. The
+  // old unconditional UPDATE matched the row even when a concurrent
+  // double-submit had already consumed it: both requests passed the
+  // SELECT (row still unconsumed), both passed HMAC, both "succeeded",
+  // and for a NEW phone both entered find-or-create → the second INSERT
+  // tripped users.phone UNIQUE as an unclassified 23505 → raw 500 for a
+  // registration that actually succeeded. With the isNull(consumedAt)
+  // predicate, the race loser's UPDATE matches 0 rows and returns the
+  // same stable, already-mapped "consumed" verdict the sequential
+  // replay gets (route: 401 «تم استخدام هذا الرمز بالفعل» — the
+  // OTP-already-used stable code path) instead of a 500.
+  const consumed = await db
     .update(whatsappOtpsTable)
     .set({ consumedAt: new Date() })
-    .where(eq(whatsappOtpsTable.id, row.id));
+    .where(and(eq(whatsappOtpsTable.id, row.id), isNull(whatsappOtpsTable.consumedAt)))
+    .returning({ id: whatsappOtpsTable.id });
+  if (consumed.length !== 1) {
+    await safeLog({
+      identifier: `wa:${phone}`,
+      action: "register",
+      success: false,
+      failureReason: "consumed",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    });
+    return { ok: false, reason: "consumed" };
+  }
 
   const { user, isNewUser } = await findOrCreateWhatsAppUser(
     phone,
@@ -406,6 +444,25 @@ async function findOrCreateWhatsAppUser(
 
     // Ledger parity for the signup bonus (Constitution §I).
     if (referredById) await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
+
+    // F2 (round-94 A4): the referral EVENT row, in the same tx as the
+    // user it refers. Telegram (auth-settings.ts) and Firebase
+    // (firebase-auth.service.ts) both insert { referrer, referee,
+    // status: 'pending' } at signup; this WhatsApp path was the only
+    // channel that skipped it — user.referredBy was set and the 5 LYD
+    // welcome bonus + ledger landed, but TopupService.approve (the
+    // sole consumer) requires the event row to award the referrer's
+    // +50 points on the first topup, so the promise silently never
+    // paid on this channel (/admin/referrals showed pending: 0).
+    // Same value shape + onConflictDoNothing as the sibling channels;
+    // in-tx (stronger than they are) so the event can never exist
+    // without the user row it belongs to.
+    if (referredById && referredById !== u.id) {
+      await tx
+        .insert(referralEventsTable)
+        .values({ referrerId: referredById, refereeId: u.id, status: "pending" })
+        .onConflictDoNothing();
+    }
 
     return [u];
   });

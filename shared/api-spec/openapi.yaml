@@ -350,7 +350,14 @@ paths:
         THE customer charge path (atomic wallet deduction + inventory
         claim). Mounted behind the idempotency middleware — send a fresh
         Idempotency-Key per purchase (checkout generates one per unit) so a
-        network retry or double-click cannot double-charge.
+        network retry or double-click cannot double-charge. Round-94 (F10):
+        the key ALSO engages the durable in-transaction guard
+        (idempotency_keys) — a retry after a Redis flush / TTL expiry / TTL
+        boundary replays the original ORDER (200 + Idempotent-Replayed:
+        true) instead of re-charging, and a purchase that raced a same-key
+        winner surfaces the winner's order, never a second charge.
+        Round-94 (F1): a risk soft_block-tagged buyer is refused 423 until
+        they re-authenticate (friction, not lockout).
       parameters:
         - name: Idempotency-Key
           in: header
@@ -394,6 +401,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
+        "200":
+          description: |
+            Round-94 (F10): durable idempotent REPLAY — this call returned
+            the order a previous request with the same Idempotency-Key
+            already created (nothing charged/claimed now). Distinguished
+            from 201 by the status code and the Idempotent-Replayed
+            header; new-order notifications are not re-fired.
+          headers:
+            Idempotent-Replayed:
+              description: Always "true" on this response.
+              schema:
+                type: string
+                enum: ["true"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
         "400":
           description: Insufficient balance, invalid coupon, or validation error
           content:
@@ -416,16 +440,27 @@ paths:
           description: |
             Conflict — inventory claimed by another buyer, coupon
             exhausted by a concurrent purchase, wallet-deduction
-            concurrency loss, or an idempotency-key mismatch (same key
-            re-used with a different body / same key still in flight —
-            those bodies carry success:false and a legacy `message`
-            alias alongside `error`).
+            concurrency loss, product data (price/active/archive) changed
+            mid-purchase (round-94 F4: re-price and retry at the current
+            price), or an idempotency-key mismatch (same key re-used with
+            a different body / same key still in flight — those bodies
+            carry success:false and a legacy `message` alias alongside
+            `error`).
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - $ref: "#/components/schemas/IdempotencyConflictResponse"
+        "423":
+          description: |
+            Round-94 (F1): risk soft-block refusal — the buyer is tagged
+            with a live soft_block risk event; re-authenticate and retry
+            (the refusal wipes the current sessions).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: |
             Price data-integrity failure (INVALID_PRICE guard — non-finite
@@ -541,6 +576,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TopupLimitErrorResponse"
+        "423":
+          description: |
+            Round-94 (F1): risk soft-block refusal — the user is tagged
+            with a live soft_block risk event; re-authenticate and retry
+            (the refusal wipes the current sessions).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Cart ─────────────────────────────────────────────────────────────────
   # Server-side cart (cart_items rows). NOTE: the body/response field for
@@ -1297,7 +1341,16 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
-          description: Optional order status filter.
+            enum:
+              - pending
+              - completed
+              - failed
+              - refunded
+              - null
+          description: |
+            Optional order status filter (order_status pg-enum values —
+            round-94 A5-03: out-of-enum values are 400 INVALID_DATA
+            instead of the previous 500 from Postgres 22P02).
         - name: page
           in: query
           schema:
@@ -1349,7 +1402,13 @@ paths:
         status="refunded" processes each id through RefundService.refundOrder
         (status-guard + optimistic wallet credit + wallet_ledger type=refund)
         — partial failures return 207 with a per-order breakdown.
-        Non-refund statuses use a direct UPDATE. Mounted behind the
+        Non-refund statuses use a direct UPDATE with two state-machine
+        guards: `refunded` is terminal (an un-refund re-arms the
+        double-refund protection), and (round-94 F3) `completed` is
+        purchase-tx-only — failed/pending → completed is refused with
+        `skipped_blocked_completion` / reason COMPLETED_IS_PURCHASE_ONLY,
+        because a hand-completed order followed by a refund credits the
+        wallet with no matching purchase debit. Mounted behind the
         idempotency middleware (routeKey admin.orders.bulk-status) — send
         an Idempotency-Key so a double-clicked bulk refund cannot
         double-credit.
@@ -1435,6 +1494,27 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+            enum:
+              - pending
+              - approved
+              - rejected
+              - null
+          description: |
+            Optional topup status filter (topup_status pg-enum values —
+            round-94 A5-03: out-of-enum values are 400 INVALID_DATA).
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1) — round-94 A2: the list was
+            previously hard-capped at the newest 100 rows, hiding the
+            oldest pending money queue entries.
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 100).
       responses:
         "200":
           description: All topups
@@ -2478,7 +2558,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: LLM unavailable (COPILOT_LLM_UNAVAILABLE)
+          description: |
+            LLM unavailable (COPILOT_LLM_UNAVAILABLE), or the model
+            declined to draft and answered as plain text
+            (COPILOT_UNEXPECTED_STATE — round-94 A5-07: this state
+            previously returned 200 with `preview_id: null`, which
+            violated CopilotDraftResponse's non-nullable preview_id for
+            every orval-generated client).
           content:
             application/json:
               schema:
@@ -2727,14 +2813,20 @@ paths:
               - cancelled
         - name: entity_type
           in: query
+          deprecated: true
+          description: |
+            Deprecated (round-94 A5-06): never implemented — the history
+            table has no entity columns to filter on (entity data lives on
+            the preview rows, not the action rows). Kept as deprecated
+            for client compatibility; the filter is a no-op server-side.
           schema:
             type: string
-        - name: entity_id
-          in: query
-          schema:
-            type: integer
         - name: since_iso
           in: query
+          description: |
+            Inclusive lower bound on created_at (ISO-8601). The legacy
+            `since` alias is still accepted for pre-94 callers; an
+            unparseable value now 400s instead of being silently ignored.
           schema:
             type: string
             format: date-time
@@ -2764,11 +2856,43 @@ paths:
                     type: ["string", "null"]
                 required: [entries]
         "400":
-          description: Invalid query (e.g. entity_id without entity_type)
+          description: Unparseable since_iso date value
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/diagnostics/inventory-health:
+    get:
+      operationId: adminDiagnosticsInventoryHealth
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Inventory deliverability health — per-product blast radius of undecryptable/empty units
+      description: |
+        R93-DATA endpoint (round-94 A5-01: it shipped in 508652d without
+        a spec entry and broke the OpenAPI contract gate). Scans up to
+        500 unsold inventory units and reports, per product, how many
+        have credentials that cannot be delivered: ciphertext that fails
+        GCM authentication with the current ENCRYPTION_KEY (wrong or
+        rotated key), or units with no deliverable fields at all. The
+        checkout guard refuses to sell such units (INVENTORY_CORRUPT);
+        this endpoint gives the operator the re-upload worklist in one
+        call. Never exposes plaintext.
+      responses:
+        "200":
+          description: Per-product undeliverability report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminInventoryHealthReport"
         "401":
           description: Not authorized
           content:
@@ -2995,6 +3119,11 @@ components:
         # the backend actually emits.
         - COPILOT_RATE_LIMITED
         - CSRF_CONFIG
+        # Round-94 (A5-05): the last two emitted-but-unenumerated codes —
+        # the copilot phase-gate 503 (requireCopilotPhase) and the
+        # outbound secret-scan 502 abort (ask/draft routes).
+        - COPILOT_PHASE_DISABLED
+        - COPILOT_SECRET_LEAK
 
     # 409 body returned by the idempotency middleware
     # (backend/src/middlewares/idempotency.ts): the same Idempotency-Key
@@ -4673,3 +4802,42 @@ components:
         ok:
           type: boolean
       required: [ok]
+
+    # GET /admin/diagnostics/inventory-health (R93-DATA; documented
+    # round-94 A5-01). Mirrors the route's response body exactly.
+    AdminInventoryHealthReport:
+      type: object
+      properties:
+        scanned_unsold:
+          type: integer
+          description: Number of unsold units actually scanned (≤ scanned_cap).
+        scanned_cap:
+          type: integer
+          description: Scan bound (500) — the sequential scan is capped as the catalog grows.
+        products_with_undeliverable_units:
+          type: integer
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id:
+                type: integer
+              product_name:
+                type: string
+              unsold:
+                type: integer
+              undeliverable:
+                type: integer
+              broken_unit_ids:
+                type: array
+                description: First ≤20 broken unit ids (re-upload worklist).
+                items:
+                  type: integer
+            required:
+              [product_id, product_name, unsold, undeliverable, broken_unit_ids]
+        checked_at:
+          type: string
+          format: date-time
+      required:
+        [scanned_unsold, scanned_cap, products_with_undeliverable_units, items, checked_at]

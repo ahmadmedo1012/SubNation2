@@ -130,7 +130,11 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                 <span className="font-mono text-[11px] text-muted-foreground">
                   {e.action_class}
                 </span>
-                {e.risk_tier === "high" && <span className="text-[10px] text-amber-400">عالي</span>}
+                {/* 94-C2 (A2 colors): raw amber-400 → the --status-warning
+                    token (same meaning, AA-safe on both themes). */}
+                {e.risk_tier === "high" && (
+                  <span className="text-[10px] text-status-warning">عالي</span>
+                )}
                 <span className="mr-auto text-[10px] text-muted-foreground">
                   {ts.toLocaleString("ar-LY")}
                 </span>

@@ -38,9 +38,9 @@
 
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 
@@ -82,14 +82,9 @@ async function main() {
     { stdio: ["ignore", "pipe", "pipe"] },
   );
 
-  pgDump.on("error", (err) => {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      console.error("✗ pg_dump not found on PATH. Install postgresql-client.");
-      process.exit(3);
-    }
-    console.error("✗ pg_dump spawn failed:", err);
-    process.exit(1);
-  });
+  // (F3) spawn errors are handled via the unified exit-signal promise
+  // below — an early process.exit(3) here would race the pipeline and
+  // skip the partial-file cleanup.
 
   // Stream stderr so dump errors surface in the cron job log
   pgDump.stderr.on("data", (chunk) => {
@@ -99,18 +94,52 @@ async function main() {
   const gzip = createGzip({ level: 6 });
   const out = createWriteStream(filepath);
 
+  // F3 (round-94 A6): a failed dump must never leave a partial file on
+  // disk under a valid-looking `subnation-<ISO>.sql.gz` name — the only
+  // discovery moment for a corrupt backup is the actual restore day.
+  // Every failure path below removes the partial artifact BEFORE exiting.
+  async function fail(message: string, code = 1): Promise<never> {
+    console.error(message);
+    try {
+      await unlink(filepath);
+      console.error(`✗ removed partial backup file: ${filename}`);
+    } catch {
+      // file was never created / already removed
+    }
+    process.exit(code);
+  }
+
+  // F3: unify the exit signals — the spawn 'error' event (pg_dump missing
+  // from PATH) used to process.exit(3) from inside an event handler before
+  // the pipeline settled, which also skipped any cleanup. Registered here,
+  // awaited AFTER the pipeline (draining stdout) so a full pipe can never
+  // deadlock the child; first signal wins, resolve is idempotent.
+  const exitInfoPromise = new Promise<{ code: number | null; spawnError: Error | null }>(
+    (resolveExit) => {
+      pgDump.on("error", (err: Error) => resolveExit({ code: null, spawnError: err }));
+      pgDump.on("close", (code: number | null) => resolveExit({ code, spawnError: null }));
+    },
+  );
+
   try {
     await pipeline(pgDump.stdout, gzip, out);
   } catch (err) {
-    console.error("✗ pipeline failed:", err);
-    process.exit(1);
+    await fail(`✗ pipeline failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Wait for pg_dump to actually exit
-  const code: number = await new Promise((resolveExit) => pgDump.on("close", resolveExit));
-  if (code !== 0) {
-    console.error(`✗ pg_dump exited with code ${code}`);
-    process.exit(1);
+  const exitInfo = await exitInfoPromise;
+
+  // F3: pg_dump success is the EXIT CODE, not the pipeline settling — a
+  // dump that dies mid-stream still pipes a valid gzip of PARTIAL SQL.
+  if (exitInfo.spawnError) {
+    const err = exitInfo.spawnError as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      await fail("✗ pg_dump not found on PATH. Install postgresql-client.", 3);
+    }
+    await fail(`✗ pg_dump spawn failed: ${err.message}`);
+  }
+  if (exitInfo.code !== 0) {
+    await fail(`✗ pg_dump exited with code ${exitInfo.code} — backup discarded`);
   }
 
   const stats = await stat(filepath);
@@ -147,8 +176,6 @@ async function main() {
   }
 
   console.log(`✓ backup complete: ${filename}`);
-  // Suppress the unused dirname import warning by referencing it once.
-  void dirname;
 }
 
 main().catch((err) => {

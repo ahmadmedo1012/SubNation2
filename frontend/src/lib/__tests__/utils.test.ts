@@ -111,10 +111,14 @@ describe("tierLabel + tierColor", () => {
   });
 
   it("returns tone-correct color classes per tier", () => {
+    // R94-A1 #5 (P2, WCAG AA): gold's text-yellow-400 measured 1.53:1 on
+    // white cards (light theme); silver/platinum -400 shades failed the
+    // same way. The tier colors now ride --status-warning / mid shades
+    // that hold AA on BOTH card colors.
     expect(tierColor("bronze")).toBe("text-amber-600");
-    expect(tierColor("silver")).toBe("text-slate-400");
-    expect(tierColor("gold")).toBe("text-yellow-400");
-    expect(tierColor("platinum")).toBe("text-cyan-400");
+    expect(tierColor("silver")).toBe("text-slate-500");
+    expect(tierColor("gold")).toBe("text-status-warning");
+    expect(tierColor("platinum")).toBe("text-cyan-600");
   });
 
   it("falls through to raw / muted-foreground for unknown tiers", () => {

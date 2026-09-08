@@ -58,6 +58,18 @@ const PatchCouponBody = z
   })
   .strict();
 
+// A5-04 (round-94): the USER-facing /validate body was read raw
+// (`code?.trim()`) — the same M2 class the admin coupon routes fixed
+// long ago: `{"code": 5}` crashed `.trim()` → TypeError → 500 while the
+// contract documents 400 «Invalid body». Schema-validated up front now.
+const ValidateCouponBody = z
+  .object({
+    // 40 matches the admin create bound; lookup is uppercased after trim.
+    code: z.string().trim().min(1).max(40),
+    order_amount: z.number().finite().positive(),
+  })
+  .strict();
+
 function formatCoupon(c: typeof couponsTable.$inferSelect) {
   return {
     id: c.id,
@@ -77,17 +89,25 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 // ── User: validate a coupon ───────────────────────────────────────────────────
 
 router.post("/validate", requireUser, async (req, res) => {
-  const { code, order_amount } = req.body ?? {};
-  if (!code?.trim())
-    return res.status(400).json(createErrorResponse("رمز الكوبون مطلوب", ErrorCode.INVALID_DATA));
-  if (typeof order_amount !== "number" || order_amount <= 0) {
-    return res.status(400).json(createErrorResponse("مبلغ الطلب غير صالح", ErrorCode.INVALID_DATA));
+  // A5-04: schema gate — non-string code / non-number order_amount are
+  // 400s now (previously the raw reads crashed .trim() → 500).
+  const parse = ValidateCouponBody.safeParse(req.body ?? {});
+  if (!parse.success) {
+    const issue = parse.error.issues[0];
+    const message =
+      issue?.path?.[0] === "code"
+        ? "رمز الكوبون مطلوب (نص)"
+        : issue?.path?.[0] === "order_amount"
+          ? "مبلغ الطلب غير صالح"
+          : "بيانات غير صالحة";
+    return res.status(400).json(createErrorResponse(message, ErrorCode.INVALID_DATA));
   }
+  const { code, order_amount } = parse.data;
 
   const [coupon] = await db
     .select()
     .from(couponsTable)
-    .where(eq(couponsTable.code, code.trim().toUpperCase()))
+    .where(eq(couponsTable.code, code.toUpperCase()))
     .limit(1);
 
   if (!coupon)

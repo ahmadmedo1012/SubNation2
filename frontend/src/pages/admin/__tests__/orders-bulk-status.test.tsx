@@ -26,11 +26,14 @@ import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminOrdersPage from "@/pages/admin/orders";
-import { useListAdminOrders } from "@workspace/api-client-react";
+import { listAdminOrders } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
-  useListAdminOrders: vi.fn(),
-  getListAdminOrdersQueryKey: () => ["admin-orders"],
+  // 94-C2 (A2 P1-1): the list moved from the generated useListAdminOrders
+  // hook to useInfiniteQuery + listAdminOrders over the frozen
+  // `?page=&limit=` contract — the mock follows the new module surface.
+  listAdminOrders: vi.fn(),
+  getListAdminOrdersQueryKey: (params?: unknown) => ["/api/admin/orders", params ?? null],
   // 93-C6: useAdminHeaders registers the global 401 observer through
   // this export — the mock must carry the module surface the page
   // graph imports.
@@ -50,7 +53,11 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
-type OrdersResult = ReturnType<typeof useListAdminOrders>;
+function mockOrdersResult(data: unknown[]) {
+  // 94-C2 (A2 P1-1): the page's useInfiniteQuery resolves this promise
+  // as page 1 — the rows land asynchronously, so tests await them.
+  (listAdminOrders as unknown as Mock).mockResolvedValue(data);
+}
 
 const ORDERS = [
   {
@@ -72,15 +79,6 @@ const ORDERS = [
     created_at: "2026-09-02T10:00:00.000Z",
   },
 ];
-
-function mockOrdersResult(data: unknown[]) {
-  (useListAdminOrders as unknown as Mock).mockReturnValue({
-    data,
-    isLoading: false,
-    isError: false,
-    refetch: vi.fn(),
-  } as unknown as OrdersResult);
-}
 
 /** Minimal Response-like object — avoids depending on a global Response. */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
@@ -117,6 +115,8 @@ function selectRow(orderCode: string) {
 /** Selects both orders, opens the bulk-status dropdown and clicks the
  *  given status — returns the scoped useConfirm dialog once it opens. */
 async function openBulkConfirm(statusLabel: string) {
+  // 94-C2: the list is async (useInfiniteQuery) — wait for the rows.
+  await screen.findAllByText("SN-1001");
   selectRow("SN-1001");
   selectRow("SN-1002");
   expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
@@ -155,7 +155,8 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
 
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
 
-    // Only the initial list request happened — no PATCH, no native confirm.
+    // No PATCH ever happened (the list query is a mock — only the
+    // bulk-status endpoint would use fetch), and no native confirm.
     expect(fetchMock).not.toHaveBeenCalled();
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
@@ -211,6 +212,8 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     fetchMock.mockResolvedValue(resLike({ body: { success: true, updated: 2 } }));
     renderPage();
 
+    // 94-C2: the list is async — wait for the rows before selecting.
+    await screen.findAllByText("SN-1001");
     selectRow("SN-1001");
     selectRow("SN-1002");
     fireEvent.click(screen.getByRole("button", { name: "تغيير الحالة" }));

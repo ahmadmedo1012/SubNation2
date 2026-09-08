@@ -1,6 +1,8 @@
 import { adminAlertsTable, db } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { Router } from "express";
+import { writeAuditLog } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 import {
   countAllAlerts,
   countUnreadAlerts,
@@ -12,7 +14,10 @@ import {
 } from "../../jobs/alertLogger";
 import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
-import { dispatchTestAlert } from "../../services/alerting.service";
+import {
+  dispatchTestAlert,
+  type ChannelDeliveryResult,
+} from "../../services/alerting.service";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
@@ -34,17 +39,43 @@ function parsePagination(req: Parameters<typeof queryString>[0]) {
 router.post("/test", requireAdmin, async (req, res) => {
   try {
     const { rule } = req.body ?? {};
-    const alertEvent = await dispatchTestAlert(typeof rule === "string" ? rule : undefined);
-    return res.json({
-      alert: alertEvent,
-      delivery: {
-        telegram: { ok: true },
-        discord: { ok: true },
-        webhook: { ok: true },
-      },
+    // A5-08 (round-94): the route used to throw away dispatchTestAlert's
+    // real per-channel delivery results and hardcode
+    // `{telegram:{ok:true}, discord:{ok:true}, webhook:{ok:true}}` — an
+    // operator testing the alert channels during an actual outage (bad
+    // Telegram token, dead webhook) saw three green checkmarks. The
+    // response now mirrors the ACTUAL delivery outcomes: `ok` is true
+    // only for outcome="delivered"; deduped/rate-limited/skipped/failed
+    // are reported honestly with the reason + attempts.
+    const { alert, delivery } = await dispatchTestAlert(
+      typeof rule === "string" ? rule : undefined,
+    );
+    const channelDelivery: Record<string, { ok: boolean; outcome: string; attempts: number; error_message?: string }> =
+      {};
+    for (const r of delivery as ChannelDeliveryResult[]) {
+      channelDelivery[r.channel] = {
+        ok: r.outcome === "delivered",
+        outcome: r.outcome,
+        attempts: r.attempts,
+        ...(r.errorMessage ? { error_message: r.errorMessage } : {}),
+      };
+    }
+    // A5-08: sensitive surface (fires real notifications, can be used to
+    // probe/spam channels) — same audit coverage as every other admin write.
+    void writeAuditLog(req, "alert.test_dispatch", "alert", null, {
+      rule: alert.rule,
+      channels: Object.fromEntries(
+        (delivery as ChannelDeliveryResult[]).map((r) => [r.channel, r.outcome]),
+      ),
     });
+    return res.json({ alert, delivery: channelDelivery });
   } catch (err) {
-    req.log.error({ err }, "Failed to dispatch test alert");
+    // `req.log` only exists when pino-http is mounted (production app).
+    // Standalone test mounts — and any future bare-router consumer —
+    // would turn a handled 500 into an unhandled HTML crash here.
+    // Fall back to the module logger instead.
+    const log = (req.log ?? logger) as typeof req.log;
+    log.error({ err }, "Failed to dispatch test alert");
     return res.status(500).json(createErrorResponse("خطأ في إرسال التنبيه", ErrorCode.INTERNAL_ERROR));
   }
 });

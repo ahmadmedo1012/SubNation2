@@ -133,8 +133,11 @@ export function StockoutRiskPanel() {
 
   return (
     <div className="border border-border/40 rounded-2xl bg-card/60 overflow-hidden">
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/40 bg-gradient-to-l from-orange-500/5 to-transparent">
-        <ShieldAlert className="w-4 h-4 text-orange-400" />
+      {/* 94-C2 (A2 colors): header/banner accents unified on the
+          --status-warning token — the panel previously mixed amber,
+          yellow AND orange raw shades for the same "warning" meaning. */}
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/40 bg-gradient-to-l from-status-warning/5 to-transparent">
+        <ShieldAlert className="w-4 h-4 text-status-warning" />
         <h2 className="text-sm font-bold flex-1">خطر النفاد</h2>
         <span className="text-[11px] text-muted-foreground">
           {data.last_successful_run_at
@@ -153,7 +156,7 @@ export function StockoutRiskPanel() {
 
       {(isStale || isCalibrating) && (
         <div
-          className={`flex items-start gap-2 px-4 py-2 text-[11px] ${isCalibrating ? "bg-amber-500/10 text-amber-400" : "bg-yellow-500/10 text-yellow-400"} border-b border-border/40`}
+          className={`flex items-start gap-2 px-4 py-2 text-[11px] bg-status-warning/10 text-status-warning border-b border-border/40`}
         >
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
@@ -236,14 +239,14 @@ function RiskRow({ row }: { row: AtRiskRow }) {
                   {formatDate(row.predicted_runout_at)}
                 </span>{" "}
                 {days != null && (
-                  <span className="text-orange-400">
+                  <span className="text-status-warning">
                     (<span dir="ltr">{days}</span> يوم)
                   </span>
                 )}
               </span>
             )}
             {row.recommended_reorder_qty != null && row.recommended_reorder_qty > 0 && (
-              <span className="text-emerald-400">
+              <span className="text-status-success">
                 إعادة الطلب:{" "}
                 <span dir="ltr" className="font-mono">
                   +{row.recommended_reorder_qty}

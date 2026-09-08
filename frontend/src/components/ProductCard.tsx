@@ -206,7 +206,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         className="flex flex-col flex-1"
       >
         {product.discount_percent && !unavailable && (
-          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
             <Tag className="w-2 h-2" />
             {product.discount_percent}%
           </div>
@@ -214,7 +214,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         {unavailable && (
           <div
-            className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/55 text-[10px] font-bold px-2 py-0.5 rounded-full"
+            className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/70 text-[10px] font-bold px-2 py-0.5 rounded-full"
             aria-hidden="true"
           >
             <Lock className="w-2.5 h-2.5" /> نفد
@@ -359,7 +359,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         <button
           type="button"
           onClick={handleAddToCart}
-          className="mx-3.5 mb-3.5 mt-0 md:hidden h-9 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/25 transition-all cursor-pointer"
+          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/25 transition-all cursor-pointer"
         >
           <ShoppingCart className="w-3.5 h-3.5" />
           أضف للسلة
@@ -367,11 +367,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       ) : (
         // Mobile: keep card height stable when unavailable by
         // rendering a static muted bar in place of the buy CTA.
-        // Same h-9 as the active button so the card visual rhythm
+        // Same min-h-11 as the active button so the card visual rhythm
         // is identical across states. Desktop uses a hover-reveal
         // CTA that's already absent for unavailable products.
         <div
-          className="mx-3.5 mb-3.5 mt-0 md:hidden h-9 rounded-xl bg-muted/40 border border-border/40 flex items-center justify-center gap-1.5 text-muted-foreground text-xs font-bold"
+          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 rounded-xl bg-muted/40 border border-border/40 flex items-center justify-center gap-1.5 text-muted-foreground text-xs font-bold"
           aria-hidden="true"
         >
           <Lock className="w-3.5 h-3.5" />
@@ -384,7 +384,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           <button
             type="button"
             onClick={handleAddToCart}
-            className="mx-3 mb-3 h-9 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/35 transition-all cursor-pointer"
+            className="mx-3 mb-3 min-h-11 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/35 transition-all cursor-pointer"
           >
             <ShoppingCart className="w-3.5 h-3.5" />
             أضف للسلة

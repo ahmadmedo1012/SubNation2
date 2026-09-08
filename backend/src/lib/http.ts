@@ -9,9 +9,17 @@ export function stringParam(req: Request, name: string): string {
 
 export function intParam(req: Request, name: string): number | null {
   const value = stringParam(req, name);
-  const parsed = Number.parseInt(value, 10);
+  const trimmed = value.trim();
+  const parsed = Number.parseInt(trimmed, 10);
 
-  return Number.isNaN(parsed) ? null : parsed;
+  // A5-14 (round-94): the OpenAPI contract documents 400 «Invalid
+  // (non-integer) id» for the :id params, but parseInt() happily accepted
+  // "-5" (negative PK → wasted DB round trip → 404 with the wrong shape)
+  // and "12abc" (silent truncation). Digit-exact strict parse: only a
+  // positive integer whose canonical string form equals the input passes.
+  return Number.isInteger(parsed) && parsed > 0 && String(parsed) === trimmed
+    ? parsed
+    : null;
 }
 
 export function queryString(req: Request, name: string, fallback = ""): string {

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import { formatCurrency, formatDateShort, statusColor, statusLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDateShort, statusColor, statusLabel } from "@/lib/utils";
 import { getListOrdersQueryKey, useListOrders } from "@workspace/api-client-react";
 import {
   CheckCircle,
@@ -185,7 +185,16 @@ export default function OrdersPage() {
         </div>
         {!isLoading && orders.length > 0 && (
           <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm shrink-0">
-            {orders.length} طلب
+            {/* R94-A1 #11 (P3): Arabic pluralization via the shared
+                formatCount (طلبان / طلبات / طلباً) instead of a frozen
+                singular «طلب» after every count. */}
+            {formatCount(orders.length, {
+              one: "طلب",
+              two: "طلبان",
+              few: "طلبات",
+              many: "طلباً",
+              other: "طلب",
+            })}
           </div>
         )}
       </div>

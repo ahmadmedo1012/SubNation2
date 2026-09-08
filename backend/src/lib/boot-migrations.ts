@@ -66,7 +66,11 @@ import { runMigrations } from "../migrate";
 
 const LOCK_KEY = "subnation:migrations:lock";
 const LOCK_TTL_SEC = 300; // 5 min — generous; longest migration in migrate.ts is ~10s
-const WAIT_FOR_LEADER_MAX_MS = 60_000; // 1 min — if leader takes longer, assume done
+// F7 (round-94 A6): the follower's wait budget now MATCHES the lock TTL —
+// the old 60 s budget opened the boot gate while the leader could still
+// legitimately hold the lock (TTL up to 300 s, extended by refreshLockTtl
+// through the transient-retry schedule 5/15/45 s). Env-tunable for tests.
+const DEFAULT_LEADER_WAIT_MAX_MS = LOCK_TTL_SEC * 1000;
 const WAIT_POLL_INTERVAL_MS = 1_000;
 
 // B7-P0-1 Layer 1 defaults (env-tunable; read lazily so tests can set them
@@ -349,15 +353,36 @@ async function releaseLock(): Promise<void> {
 }
 
 async function waitForLeader(): Promise<void> {
-  const redis = getRedisClient();
-  if (!redis) return;
+  const maxWaitMs = numEnv("MIGRATION_LEADER_WAIT_MAX_MS", DEFAULT_LEADER_WAIT_MAX_MS);
   const start = Date.now();
-  while (Date.now() - start < WAIT_FOR_LEADER_MAX_MS) {
-    try {
-      const exists = await redis.exists(LOCK_KEY);
-      if (exists === 0) return;
-    } catch {
-      return;
+  let redisErrorWarned = false;
+  while (Date.now() - start < maxWaitMs) {
+    // Re-resolve the client each iteration: the client can drop mid-wait
+    // (a stale captured reference would then error every poll) and come
+    // back — getRedisClient() reflects readiness.
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        const exists = await redis.exists(LOCK_KEY);
+        if (exists === 0) return;
+      } catch (err) {
+        // F7 (round-94 A6): a Redis error is NOT "the leader finished".
+        // The old fail-open `return` opened the boot gate while the leader
+        // was still mid-migration (serving traffic on a schema we are still
+        // reconciling — the exact contract server.ts forbids). Keep waiting
+        // within the TTL-matched budget; one warn, then silent retries.
+        if (!redisErrorWarned) {
+          redisErrorWarned = true;
+          logger.warn(
+            {
+              category: "monitoring",
+              err: err instanceof Error ? err.message : String(err),
+              maxWaitMs,
+            },
+            "[migrations] redis error while waiting for the migration leader — leader state unknown, still waiting (F7)",
+          );
+        }
+      }
     }
     await new Promise((r) => setTimeout(r, WAIT_POLL_INTERVAL_MS));
   }

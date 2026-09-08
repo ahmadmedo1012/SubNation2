@@ -3,7 +3,7 @@ import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { encrypt } from "../../lib/encryption";
+import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -280,6 +280,13 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   // Only fields needed for the dedup-preview in the inventory dialog.
   // accountPassword is intentionally NOT returned — it's not needed
   // for dedup and would needlessly expose encrypted material.
+  //
+  // F7 (round-94 A4): extraDetails is now encrypted at rest (same GCM as
+  // the password) — decrypt for the preview so the operator still sees
+  // the real code/text and the frontend dedup compares apples to apples.
+  // safeDecrypt passes legacy plaintext through unchanged and returns
+  // null for undecryptable rows (the inventory-health diagnostic reports
+  // those separately).
   const rows = await db
     .select({
       accountEmail: inventoryTable.accountEmail,
@@ -296,7 +303,7 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
     available: rows.length - sold,
     items: rows.map((r) => ({
       account_email: r.accountEmail,
-      extra_details: r.extraDetails,
+      extra_details: safeDecrypt(r.extraDetails),
       is_sold: r.isSold,
     })),
   });
@@ -411,7 +418,11 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const items: Array<{
     accountEmail: string | null;
     accountPassword: string | null;
-    extraDetails: string | null;
+    // Plaintext at PARSE time — the server-side dedup below compares
+    // against existing rows via safeDecrypt (apples-to-apples). GCM has
+    // a random IV, so encrypting before the dedup comparison made every
+    // re-upload unique and the guard dead. Encryption happens at INSERT.
+    plainExtra: string | null;
   }> = [];
 
   if (Array.isArray(entries)) {
@@ -439,7 +450,12 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
         items.push({
           accountEmail: email,
           accountPassword: encrypt(password),
-          extraDetails: extra,
+          // F7 (round-94 A4): extraDetails is deliverable material
+          // (recovery notes / codes) — encrypt at rest exactly like the
+          // password. Reads go through safeDecrypt, which passes legacy
+          // plaintext rows through unchanged. Kept plaintext here for
+          // the dedup pass; encrypted at INSERT.
+          plainExtra: extra,
         });
       } else if (e?.kind === "code") {
         const code = typeof e.extra === "string" ? e.extra.trim() : "";
@@ -456,7 +472,11 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
         items.push({
           accountEmail: null,
           accountPassword: null,
-          extraDetails: code,
+          // F7: for code products this IS the deliverable — plaintext
+          // storage meant a DB dump/backup leak exposed every gift code
+          // while the password column sat safely in GCM. Encrypted at
+          // INSERT; plaintext here for the dedup comparison.
+          plainExtra: code,
         });
       } else {
         return res
@@ -483,14 +503,17 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
         items.push({
           accountEmail: parts[0].trim(),
           accountPassword: encrypt(parts[1].trim()),
-          extraDetails: parts[2]?.trim() || null,
+          // F7: plaintext for the dedup pass; encrypted at INSERT.
+          plainExtra: parts[2]?.trim() || null,
         });
       } else if (parts.length === 1 && parts[0].trim()) {
         // Single-column line → code-only entry (matches the new parser).
         items.push({
           accountEmail: null,
           accountPassword: null,
-          extraDetails: parts[0].trim(),
+          // F7: the code IS the deliverable — plaintext for dedup,
+          // GCM-encrypted at INSERT.
+          plainExtra: parts[0].trim(),
         });
       }
     }
@@ -504,6 +527,10 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   // still submit them on purpose ("force") — but we never want to insert
   // the SAME email twice for the same product. Keys mirror the parser
   // ('c:<email>' for credentials, 'k:<code>' for code-only).
+  //
+  // F7: extraDetails rows are encrypted at rest now — key existing rows
+  // by their DECRYPTED value (safeDecrypt passes legacy plaintext through)
+  // so the comparison stays apples-to-apples with the incoming plaintext.
   const existing = await db
     .select({
       accountEmail: inventoryTable.accountEmail,
@@ -514,7 +541,7 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const existingKeys = new Set<string>();
   for (const r of existing) {
     if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
-    else if (r.extraDetails) existingKeys.add(`k:${r.extraDetails.toLowerCase()}`);
+    else if (r.extraDetails) existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
   }
 
   const seenInBatch = new Set<string>();
@@ -523,8 +550,8 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   for (const item of items) {
     const key = item.accountEmail
       ? `c:${item.accountEmail.toLowerCase()}`
-      : item.extraDetails
-        ? `k:${item.extraDetails.toLowerCase()}`
+      : item.plainExtra
+        ? `k:${item.plainExtra.toLowerCase()}`
         : null;
     if (key === null) {
       filtered.push(item);
@@ -555,10 +582,21 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
         productId,
         accountEmail: item.accountEmail,
         accountPassword: item.accountPassword,
-        extraDetails: item.extraDetails,
+        // F7: GCM-encrypt the deliverable exactly once, at the insert
+        // boundary (password is already ciphertext from the parser).
+        extraDetails: item.plainExtra !== null ? encrypt(item.plainExtra) : null,
       })),
     )
     .returning();
+
+  // A5-10 (round-94): inventory upload is a credential-bearing admin
+  // write (up to 500 units of accounts/codes) with NO audit row, while
+  // the neighbouring set-count/create/update/archive all log. "who
+  // uploaded what, when" is exactly what an incident review needs.
+  void writeAuditLog(req, "product.inventory.upload", "product", productId, {
+    added: inserted.length,
+    skipped_duplicates: skippedDuplicates,
+  });
 
   return res.status(201).json({
     success: true,

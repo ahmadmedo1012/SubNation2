@@ -249,6 +249,21 @@ CREATE TABLE admin_users (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- V1-M13 (round-94 A8): revocable admin sessions — login inserts a row,
+-- requireAdmin re-validates it, logout/change-password revoke.
+CREATE TABLE admin_sessions (
+  id varchar(64) PRIMARY KEY,
+  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  revoked_reason varchar(100),
+  last_seen_at timestamptz,
+  user_agent varchar(255),
+  ip_address varchar(45)
+);
+CREATE INDEX idx_admin_sessions_admin ON admin_sessions (admin_id);
+
 CREATE TYPE ticket_status AS ENUM ('open','in_progress','closed');
 CREATE TABLE support_tickets (
   id serial PRIMARY KEY,
@@ -281,6 +296,7 @@ const TABLES = [
   "admin_alerts",
   "sessions",
   "admin_users",
+  "admin_sessions",
   "wallet_ledger",
   "orders",
   "inventory",
@@ -298,6 +314,17 @@ const TABLES = [
 /** Build the fresh schema once. Call in a global beforeAll. */
 export async function initTestDb(): Promise<void> {
   await client.exec(DDL);
+}
+
+/**
+ * Run one-or-many raw SQL statements through pglite's exec path.
+ * Multi-statement strings (e.g. a table's CREATE TYPE + CREATE TABLE)
+ * MUST go through here — drizzle's db.execute() uses the prepared-query
+ * path (exec_parse_message) which rejects multiple statements with a
+ * 42601 syntax error. Round-94 C5 follow-up.
+ */
+export async function execTestSql(statements: string): Promise<void> {
+  await client.exec(statements);
 }
 
 /** Wipe all rows + reset identity sequences between tests for pure isolation. */

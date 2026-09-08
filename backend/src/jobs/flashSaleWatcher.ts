@@ -70,6 +70,16 @@ async function deactivateExpiredFlashSales(): Promise<void> {
         "flash_sale_expired",
         `انتهت تخفيضات: ${row.title}`,
         `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toISOString()}).`,
+        // F5 (round-94 A6): the only logAdminAlert call without a dedupe
+        // key — two concurrently-running instances (blue-green window,
+        // unguarded leadership) read the same expired rows before either
+        // UPDATE lands → duplicate alerts that resolveAlertsByDedupeKey
+        // can never collapse afterwards. 7-day window: an expired sale
+        // can never expire again, so one alert per sale is the truth.
+        {
+          dedupeKey: `flash_sale_expired:${row.id}`,
+          dedupeWindowMs: 7 * 24 * 60 * 60 * 1000,
+        },
       );
     }
 

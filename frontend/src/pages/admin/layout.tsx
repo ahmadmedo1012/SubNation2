@@ -247,6 +247,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [, navigate] = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
   const headers = useAdminHeaders();
+  // 94-C2 (A2 P2-3): the footer promises «↵ اختيار» — this index backs
+  // that promise with real ↑/↓/↵ navigation over the flattened result
+  // list (the promise was previously a dead hint).
+  const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -266,36 +270,100 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
       setResults({ orders: [], users: [], products: [] });
       return;
     }
+    // 94-C2 (A2 P2-3): every new keystroke aborts the previous request
+    // — "abc"→"abcd" previously raced two overlapping fetches, and a
+    // late-resolving OLDER response overwrote the newer results while
+    // its finally() cleared the loading flag early.
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       setLoading(true);
+      // 94-C2 (A2 P2-3): r.ok checked BEFORE parsing — an error body
+      // (401/500 JSON envelope) previously parsed to a non-array and
+      // silently became "لا نتائج" during an outage.
+      const jsonList = async (url: string): Promise<unknown[]> => {
+        const r = await fetch(url, { headers, signal: controller.signal });
+        if (!r.ok) return [];
+        const d = await r.json().catch(() => null);
+        return Array.isArray(d) ? d : [];
+      };
       Promise.all([
-        fetch(`/api/admin/orders?search=${encodeURIComponent(q)}`, { headers })
-          .then((r) => r.json())
-          .catch(() => []),
-        fetch(`/api/admin/users?search=${encodeURIComponent(q)}`, { headers })
-          .then((r) => r.json())
-          .catch(() => []),
-        fetch(`/api/admin/products?search=${encodeURIComponent(q)}`, { headers })
-          .then((r) => r.json())
-          .catch(() => []),
+        jsonList(`/api/admin/orders?search=${encodeURIComponent(q)}`),
+        jsonList(`/api/admin/users?search=${encodeURIComponent(q)}`),
+        jsonList(`/api/admin/products?search=${encodeURIComponent(q)}`),
       ])
         .then(([orders, users, products]) => {
+          if (controller.signal.aborted) return;
           setResults({
-            orders: Array.isArray(orders) ? orders.slice(0, 4) : [],
-            users: Array.isArray(users) ? users.slice(0, 4) : [],
-            products: Array.isArray(products) ? products.slice(0, 4) : [],
+            orders: (orders as AdminOrder[]).slice(0, 4),
+            users: (users as AdminUser[]).slice(0, 4),
+            products: (products as AdminProduct[]).slice(0, 4),
           });
         })
-        .finally(() => setLoading(false));
+        .catch(() => {
+          /* aborted or network — the next keystroke owns the state */
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
     }, 220);
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, headers]);
 
   const total = results.orders.length + results.users.length + results.products.length;
+
+  // 94-C2 (A2 P2-3): flat result list with its navigation action —
+  // drives both the highlight and the Enter key. Clamped safely when
+  // results shrink (typing narrows the list mid-navigation).
+  const safeActive = Math.min(activeIndex, Math.max(0, total - 1));
 
   const goTo = (href: string) => {
     navigate(href);
     onClose();
+  };
+
+  // 94-C2 (A2 P2-3): result clicks KEEP the query — the orders page
+  // consumes ?search= on arrival (server-side search, users'/orders'
+  // pages read it on mount) instead of dropping what the operator
+  // just searched for.
+  const goToOrders = () => goTo(`/admin/orders?search=${encodeURIComponent(query.trim())}`);
+  const goToUsers = () => goTo(`/admin/users?search=${encodeURIComponent(query.trim())}`);
+  const goToProducts = () => goTo(`/admin/products?search=${encodeURIComponent(query.trim())}`);
+
+  const flatResults = [
+    ...results.orders.map(() => "order" as const),
+    ...results.users.map(() => "user" as const),
+    ...results.products.map(() => "product" as const),
+  ];
+  const runActive = () => {
+    const kind = flatResults[safeActive];
+    if (kind === "order") goToOrders();
+    else if (kind === "user") goToUsers();
+    else if (kind === "product") goToProducts();
+  };
+
+  // Reset the highlight whenever the result set changes (new query).
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [total]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      if (total === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(total - 1, Math.min(i, total - 1) + 1));
+    } else if (e.key === "ArrowUp") {
+      if (total === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(0, Math.min(i, total - 1) - 1));
+    } else if (e.key === "Enter") {
+      if (total > 0) {
+        e.preventDefault();
+        runActive();
+      }
+    }
   };
 
   return (
@@ -320,6 +388,13 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             placeholder="بحث في الطلبات، المستخدمين، المنتجات…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            role="combobox"
+            aria-expanded={total > 0}
+            aria-controls="global-search-results"
+            aria-activedescendant={
+              total > 0 ? `global-search-option-${safeActive}` : undefined
+            }
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
           />
           <kbd className="text-[10px] font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
@@ -329,7 +404,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
         {/* Results */}
         {query.length >= 2 && (
-          <div className="max-h-72 overflow-y-auto">
+          <div id="global-search-results" role="listbox" className="max-h-72 overflow-y-auto">
             {!loading && total === 0 && (
               <div className="py-10 text-center text-muted-foreground text-sm">
                 لا نتائج لـ "{query}"
@@ -339,11 +414,18 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             {results.orders.length > 0 && (
               <div className="p-2">
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">الطلبات</div>
-                {results.orders.map((o) => (
+                {results.orders.map((o, i) => (
                   <button
                     key={o.id}
-                    onClick={() => goTo("/admin/orders")}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right"
+                    id={`global-search-option-${i}`}
+                    role="option"
+                    aria-selected={safeActive === i}
+                    onClick={goToOrders}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                      safeActive === i
+                        ? "bg-primary/10 ring-1 ring-primary/25"
+                        : "hover:bg-muted/40"
+                    }`}
                   >
                     <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                       <ShoppingBag className="w-3.5 h-3.5 text-primary" />
@@ -367,14 +449,23 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
                   المستخدمون
                 </div>
-                {results.users.map((u) => (
+                {results.users.map((u, i) => {
+                  const flatIdx = results.orders.length + i;
+                  return (
                   <button
                     key={u.id}
-                    onClick={() => goTo("/admin/users")}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right"
+                    id={`global-search-option-${flatIdx}`}
+                    role="option"
+                    aria-selected={safeActive === flatIdx}
+                    onClick={goToUsers}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                      safeActive === flatIdx
+                        ? "bg-primary/10 ring-1 ring-primary/25"
+                        : "hover:bg-muted/40"
+                    }`}
                   >
-                    <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
-                      <Users className="w-3.5 h-3.5 text-blue-400" />
+                    <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
+                      <Users className="w-3.5 h-3.5 text-status-info" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-mono text-sm font-bold">{u.phone}</div>
@@ -383,7 +474,8 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -392,11 +484,20 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                 <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
                   المنتجات
                 </div>
-                {results.products.map((p) => (
+                {results.products.map((p, i) => {
+                  const flatIdx = results.orders.length + results.users.length + i;
+                  return (
                   <button
                     key={p.id}
-                    onClick={() => goTo("/admin/products")}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/40 transition-colors text-right"
+                    id={`global-search-option-${flatIdx}`}
+                    role="option"
+                    aria-selected={safeActive === flatIdx}
+                    onClick={goToProducts}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                      safeActive === flatIdx
+                        ? "bg-primary/10 ring-1 ring-primary/25"
+                        : "hover:bg-muted/40"
+                    }`}
                   >
                     <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
                       {p.image_url ? (
@@ -418,7 +519,8 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -432,7 +534,13 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         )}
 
         {/* Footer */}
+        {/* 94-C2 (A2 P2-3): the hints now tell the truth — ↑/↓ move the
+            highlight, ↵ opens the highlighted result (keeping the query). */}
         <div className="px-4 py-2 border-t border-border bg-muted/10 flex items-center gap-4 text-[10px] text-muted-foreground">
+          <span>
+            <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↑↓</kbd>{" "}
+            تنقّل
+          </span>
           <span>
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↵</kbd>{" "}
             اختيار

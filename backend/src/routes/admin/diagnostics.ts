@@ -111,9 +111,17 @@ router.get("/inventory-health", requireAdmin, async (_req, res, next) => {
         u.accountEmail !== null &&
         isEncrypted(u.accountEmail) &&
         safeDecrypt(u.accountEmail) === null;
+      // F7 (round-94): extraDetails is encrypted at rest now too — a code
+      // product whose code fails GCM is exactly as undeliverable as a
+      // broken password (checkout's fieldDeliverable gate refuses the
+      // sale on the same condition).
+      const exBroken =
+        u.extraDetails !== null &&
+        isEncrypted(u.extraDetails) &&
+        safeDecrypt(u.extraDetails) === null;
       const empty =
         u.accountPassword === null && u.accountEmail === null && u.extraDetails === null;
-      if (pwBroken || emBroken || empty) {
+      if (pwBroken || emBroken || exBroken || empty) {
         entry.undeliverable += 1;
         if (entry.broken_unit_ids.length < 20) entry.broken_unit_ids.push(u.id);
       }

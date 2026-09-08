@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد أنشطة" empty
 // state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
-import { Activity, CheckCircle, Download, Shield, XCircle } from "lucide-react";
+import { getErrorMessage } from "@/lib/errors";
+import { Activity, CheckCircle, Download, RefreshCw, Shield, WifiOff, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AdminLayout } from "./layout";
 
@@ -28,51 +30,109 @@ interface AuthStats {
   last24h: number;
 }
 
+/** 94-C2 (A2 P3-18): the timeline used to render the raw backend
+ *  `action` enum in English ("login") while the filter select next to
+ *  it showed the same value in Arabic — one shared map keeps the two
+ *  in lockstep. */
+const ACTION_LABELS: Record<string, string> = {
+  login: "تسجيل دخول",
+  register: "تسجيل",
+  logout: "تسجيل خروج",
+  change_password: "تغيير كلمة المرور",
+  unlink_provider: "فصل مزوّد",
+};
+
+const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;
+
 export function AdminSecurityDashboard() {
   const { adminToken } = useAuth();
   const headers = useAdminHeaders();
   const [stats, setStats] = useState<AuthStats | null>(null);
   const [activities, setActivities] = useState<AuthActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  // 94-C2 (A2 P2-1): both fetches previously swallowed failures with
+  // console.error — `stats` stayed null (the cards silently vanished)
+  // and `activities` stayed [] ⇒ the "لا توجد أنشطة" empty state during
+  // an outage or an expired session. The failure is now a first-class
+  // surface: an error card with retry (referrals.tsx idiom).
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     action: "all",
     success: "all",
   });
 
+  // 94-C2 (A2 P3-18): stats are UNFILTERED — the effect used to re-run
+  // `fetchStats` on every filter change, re-requesting the same
+  // unfiltered numbers each time the operator flipped a select.
   useEffect(() => {
     if (adminToken) {
       fetchStats();
+    }
+  }, [adminToken]);
+
+  useEffect(() => {
+    if (adminToken) {
       fetchActivities();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchActivities closes over `filters`/`headers` deliberately
   }, [adminToken, filters]);
 
   const fetchStats = async () => {
+    setStatsError(null);
     try {
       const response = await fetch("/api/admin/auth-stats/summary", {
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch stats");
-      const data = await response.json();
+      // 94-C2 (A2 P2-14): a mid-session 401 is the global handler's
+      // job (toast + redirect) — don't render a local error card on top.
+      if (isAdminUnauthorized(response, "/api/admin/auth-stats/summary")) return;
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(
+          getErrorMessage(body) || `فشل تحميل الإحصاءات (HTTP ${response.status})`,
+        );
+      }
+      const data = (await response.json()) as AuthStats;
       setStats(data);
     } catch (error) {
-      console.error("Failed to fetch stats:", error);
+      // 94-C2 (A2 P2-1): surfaced to the operator, not just the console.
+      setStatsError(
+        error instanceof Error && error.message ? error.message : "تعذّر تحميل الإحصاءات",
+      );
     }
   };
 
   const fetchActivities = async () => {
+    setActivitiesError(null);
     try {
       const params = new URLSearchParams();
       if (filters.action !== "all") params.append("action", filters.action);
       if (filters.success !== "all") params.append("success", filters.success);
 
-      const response = await fetch(`/api/admin/auth-activity?${params}`, {
+      const url = `/api/admin/auth-activity?${params}`;
+      const response = await fetch(url, {
         headers,
       });
-      if (!response.ok) throw new Error("Failed to fetch activities");
-      const data = await response.json();
-      setActivities(data.activities || []);
+      if (isAdminUnauthorized(response, url)) return;
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(
+          getErrorMessage(body) || `فشل تحميل سجل النشاط (HTTP ${response.status})`,
+        );
+      }
+      const data = (await response.json()) as { activities?: AuthActivity[] };
+      setActivities(Array.isArray(data.activities) ? data.activities : []);
     } catch (error) {
-      console.error("Failed to fetch activities:", error);
+      setActivitiesError(
+        error instanceof Error && error.message ? error.message : "تعذّر تحميل سجل النشاط",
+      );
     } finally {
       setLoading(false);
     }
@@ -114,10 +174,9 @@ export function AdminSecurityDashboard() {
     URL.revokeObjectURL(link.href);
   };
 
-  if (loading) {
-    return <div className="text-center py-8">جارٍ التحميل…</div>;
-  }
-
+  // 94-C2 (A2 P3-18): the loading state renders INSIDE the admin shell
+  // (the previous bare centered div appeared before the layout — a
+  // flash of structure-less text on every visit).
   const refreshAll = () => {
     void fetchStats();
     void fetchActivities();
@@ -125,6 +184,11 @@ export function AdminSecurityDashboard() {
 
   return (
     <AdminLayout onRefresh={refreshAll}>
+      {loading ? (
+        <div className="text-center py-8 text-muted-foreground" role="status">
+          جارٍ التحميل…
+        </div>
+      ) : (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -140,6 +204,24 @@ export function AdminSecurityDashboard() {
         </div>
 
         {/* Stats Cards */}
+        {/* 94-C2 (A2 P2-1): a failed stats load surfaces an error card
+            with retry instead of the cards silently disappearing. */}
+        {statsError && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{statsError}</span>
+            <button
+              type="button"
+              onClick={() => void fetchStats()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-card border border-border/55 rounded-xl p-4">
@@ -153,10 +235,10 @@ export function AdminSecurityDashboard() {
             </div>
             <div className="bg-card border border-border/55 rounded-xl p-4">
               <div className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-emerald-500" />
+                <CheckCircle className="w-5 h-5 text-status-success" />
                 <div>
                   <p className="text-sm text-muted-foreground">ناجحة</p>
-                  <p className="text-2xl font-bold text-emerald-500">{stats.success}</p>
+                  <p className="text-2xl font-bold text-status-success">{stats.success}</p>
                 </div>
               </div>
             </div>
@@ -215,7 +297,27 @@ export function AdminSecurityDashboard() {
         {/* Activity Timeline */}
         <div className="bg-card border border-border/55 rounded-xl p-4">
           <h2 className="text-lg font-bold mb-4">سجل النشاط</h2>
-          {activities.length === 0 ? (
+          {/* 94-C2 (A2 P2-1): a failed activity load is an error card
+              with retry — NOT the "لا توجد أنشطة" false-empty state an
+              expired session used to render. */}
+          {activitiesError ? (
+            <div className="text-center py-10 text-muted-foreground">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+                <WifiOff className="w-7 h-7 text-status-error/70" />
+              </div>
+              <p className="font-black text-base mb-1.5 text-foreground/80">تعذّر تحميل سجل النشاط</p>
+              <p className="text-sm mb-5 max-w-xs mx-auto leading-relaxed">{activitiesError}</p>
+              <Button
+                onClick={() => void fetchActivities()}
+                className="gap-2 font-bold"
+                variant="outline"
+                size="sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                إعادة المحاولة
+              </Button>
+            </div>
+          ) : activities.length === 0 ? (
             <EmptyState icon={Activity} title="لا توجد أنشطة" />
           ) : (
             <div className="space-y-3">
@@ -226,14 +328,14 @@ export function AdminSecurityDashboard() {
                 >
                   <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
                     {activity.success ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      <CheckCircle className="w-4 h-4 text-status-success" />
                     ) : (
                       <XCircle className="w-4 h-4 text-destructive" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{activity.action}</span>
+                      <span className="font-medium">{actionLabel(activity.action)}</span>
                       <span className="text-xs text-muted-foreground">
                         {new Date(activity.createdAt).toLocaleString("ar-LY")}
                       </span>
@@ -253,6 +355,7 @@ export function AdminSecurityDashboard() {
           )}
         </div>
       </div>
+      )}
     </AdminLayout>
   );
 }

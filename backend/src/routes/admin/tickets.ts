@@ -1,17 +1,56 @@
 import { db, supportTicketsTable, ticketRepliesTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
-import { intParam } from "../../lib/http";
+import { z } from "zod";
+import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+// A5-03 (round-94): `?status=` feeds the ticket_status pg-enum column —
+// an out-of-enum value reached Postgres as 22P02 → 500. Values mirror
+// ticketStatusEnum (shared/db/src/schema/support_tickets.ts).
+const TicketStatusFilter = z.enum(["open", "in_progress", "closed"]).optional();
+
+// A5-04 (round-94): the admin reply body was read raw (`message?.trim()`)
+// — a non-string message crashed .trim() → 500 (the same M2 class fixed
+// for coupon bodies long ago; this route was missed). Same 4000-char cap
+// as the user-facing reply route (support.ts).
+const AdminReplyBody = z
+  .object({
+    message: z.string().trim().min(1).max(4000),
+  })
+  .strict();
+
 router.get("/tickets", requireAdmin, async (req, res) => {
-  const { status } = req.query;
+  const statusParse = TicketStatusFilter.safeParse(
+    typeof req.query.status === "string" ? req.query.status : undefined,
+  );
+  if (!statusParse.success) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "حالة تذكرة غير صالحة (المسموح: open, in_progress, closed)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
   const conditions =
-    status && typeof status === "string" ? [eq(supportTicketsTable.status, status as any)] : [];
+    statusParse.data !== undefined
+      ? [eq(supportTicketsTable.status, statusParse.data)]
+      : [];
+
+  // A2 (round-94): ?page=&limit= — same clamp pattern as the admin orders
+  // list. Previously fixed at the newest 100 rows; older tickets were
+  // unreachable while the counter counted them. Body stays an array.
+  const limit = Math.min(
+    Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
+    200,
+  );
+  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
 
   const tickets = await db
     .select({
@@ -28,7 +67,8 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     .leftJoin(usersTable, eq(supportTicketsTable.userId, usersTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(supportTicketsTable.updatedAt))
-    .limit(100);
+    .limit(limit)
+    .offset((page - 1) * limit);
 
   // H18 (deep-audit 2026-09-06): this was 2N+1 queries — 100 tickets
   // meant 201 round trips to a 15-connection shared pool (reply-count +
@@ -156,8 +196,12 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  const { message } = req.body ?? {};
-  if (!message?.trim()) return res.status(400).json(createErrorResponse("الرسالة مطلوبة", ErrorCode.INVALID_DATA));
+  // A5-04: schema-validated body — non-string message previously hit
+  // `message?.trim()` TypeError → 500.
+  const parse = AdminReplyBody.safeParse(req.body ?? {});
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("الرسالة مطلوبة (نص حتى 4000 حرف)", ErrorCode.INVALID_DATA));
+  const { message } = parse.data;
 
   const [ticket] = await db
     .select()
@@ -184,7 +228,7 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     ticket.userId,
     "support",
     "رد جديد على تذكرتك",
-    message.trim().slice(0, 100),
+    message.slice(0, 100),
     `/support`,
   );
 

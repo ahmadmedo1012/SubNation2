@@ -11,6 +11,12 @@ import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
 import { isEncrypted, safeDecrypt } from "../lib/encryption";
+import {
+  claimIdempotencyKey,
+  findIdempotentOrderId,
+  isIdempotencyKeyViolation,
+  scopeIdempotencyKey,
+} from "../lib/idempotency";
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
@@ -65,6 +71,15 @@ export type CheckoutFailureReason =
   // undecryptable — seeded 2026-08-25 with a different key.)
   | "INVENTORY_CORRUPT";
 
+// F4 (round-94 A4): product-stale (price / isActive / isArchived changed
+// between computePricing and the purchase tx) is deliberately NOT a new
+// CheckoutFailureReason member: the route's reason switch is exhaustive
+// and route mapping is another agent's ownership this round. It reuses
+// the retryable CONCURRENCY_ERROR channel — semantically honest (a
+// concurrent mutation invalidated the read set; the client re-reads and
+// retries) — with a stable machine-readable `code: "PRODUCT_STALE"`
+// riding the failure envelope for tests and future route wiring.
+
 export type CheckoutResult =
   | {
       ok: true;
@@ -72,18 +87,63 @@ export type CheckoutResult =
       product: typeof productsTable.$inferSelect;
       user: typeof usersTable.$inferSelect;
       finalPrice: number;
+      // F10 (round-94 A4): true when this call REPLAYED the order a
+      // previous call with the same Idempotency-Key already created —
+      // nothing was charged, debited, or claimed in THIS call. Routes
+      // use it to set `Idempotent-Replayed: true`, return 200 (not
+      // 201), and skip the new-order notifications.
+      idempotentReplay?: boolean;
     }
-  | { ok: false; reason: CheckoutFailureReason; message?: string };
+  | {
+      ok: false;
+      reason: CheckoutFailureReason;
+      message?: string;
+      // F4 (round-94 A4): stable machine-readable cause riding alongside
+      // the retryable CONCURRENCY_ERROR reason (e.g. "PRODUCT_STALE").
+      code?: string;
+    };
 
 export interface CheckoutInput {
   userId: number;
   productId: number;
   couponCode?: string;
+  /**
+   * F10 (round-94 A4): optional durable idempotency key — the raw
+   * `Idempotency-Key` header value, passed through by the route. The
+   * service scopes it per-user, replays the original order on a retry,
+   * and claims it atomically inside the purchase transaction. Absent /
+   * undersized / oversized keys run the legacy unguarded path (parity
+   * with the HTTP middleware's minimum-length rule).
+   */
+  idempotencyKey?: string;
 }
 
 export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   const { userId, productId } = input;
   const couponCode = input.couponCode;
+
+  // ── F10: durable idempotency — pre-tx replay lookup ──────────────────
+  // Runs FIRST, before pricing / balance checks: a retry of a purchase
+  // that already committed must return the original order even though
+  // the wallet was already debited (otherwise the retry would surface
+  // INSUFFICIENT_BALANCE for a purchase the buyer actually owns — the
+  // most damaging flavor of a broken idempotency contract).
+  //
+  // Legacy-safe: while the idempotency_keys table is missing (SQLSTATE
+  // 42P01 → latched no-op, see lib/idempotency.ts) the lookup misses and
+  // behavior is byte-identical to pre-F10.
+  const scopedIdempotencyKey = scopeIdempotencyKey(userId, input.idempotencyKey);
+  if (scopedIdempotencyKey) {
+    const replayedOrderId = await findIdempotentOrderId(scopedIdempotencyKey);
+    if (replayedOrderId !== null) {
+      const replay = await replayOriginalOrder(userId, replayedOrderId);
+      if (replay) return replay;
+      // The key points at an order this user no longer owns (or a
+      // cascade-deleted one). Fall through to a fresh purchase; the
+      // in-tx claim below surfaces a still-live stale key as a
+      // classified conflict instead of a second charge.
+    }
+  }
 
   const [product] = await db
     .select()
@@ -147,6 +207,24 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
   const newBalance = +(currentBalance - finalPrice).toFixed(2);
+
+  // F8 (round-94 A4): coupon-maxed side effects are DEFERRED until after
+  // the transaction commits (refund.service.ts:271 establishes the
+  // principle: "Emitted AFTER the tx commits (a pre-commit emission would
+  // survive a rollback as a false positive …)"). The old in-tx emission
+  // meant a later statement failing in the tx (ledger insert, orderCode
+  // collision) rolled usedCount back — yet the operator had already
+  // received the Telegram card + admin-alert row, AND the 24h dedupe key
+  // in logAdminAlert then SUPPRESSED the true emission when a real buyer
+  // exhausted the coupon later. A signal object written inside the tx and
+  // read AFTER the commit (below) cannot produce a false alert on
+  // rollback. (Object holder rather than a `let` — TS control-flow keeps
+  // a let initialized-to-null narrowed across closure writes.)
+  const couponMaxedSignal: { code: string | null; maxUses: number } = {
+    code: null,
+    maxUses: 0,
+  };
+
   const order = await db
     .transaction(async (tx) => {
       // B2-05/B2-06 (round-92 audit): expiry clock, captured INSIDE the
@@ -161,6 +239,39 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // clock lib/pricing.ts validates with, so app/DB skew cannot
       // produce false STALE/EXHAUSTED rejections).
       const now = new Date();
+
+      // F4 (round-94 A4): product freshness re-check INSIDE the purchase
+      // transaction — the first link of the pricing chain finally gets the
+      // same guard its siblings already had (flash sale B2-06, coupon
+      // B2-05/B2-06). `product` (price/isActive/isArchived) was read BEFORE
+      // computePricing opened this tx; an admin raising the price (or
+      // deactivating/archiving the product) in that window previously let
+      // the buyer be debited the STALE price, or buy a just-archived
+      // product (out-of-catalog sale). Re-read the row here — a plain
+      // SELECT inside the tx evaluates against the latest committed
+      // snapshot under READ COMMITTED, exactly like the flash-sale guard
+      // above; a FOR UPDATE row lock was deliberately NOT taken (it would
+      // serialize ALL concurrent buyers of one product on a row the
+      // inventory claim's SKIP LOCKED specifically avoids contending).
+      // Comparison is value-based (numeric string → float), matching the
+      // wallet CAS predicate convention ("10.50" = '10.5').
+      {
+        const [productRow] = await tx
+          .select({
+            price: productsTable.price,
+            isActive: productsTable.isActive,
+            isArchived: productsTable.isArchived,
+          })
+          .from(productsTable)
+          .where(eq(productsTable.id, productId))
+          .limit(1);
+        const productStale =
+          !productRow ||
+          !productRow.isActive ||
+          productRow.isArchived ||
+          parseFloat(String(productRow.price)) !== toNumber(product.price);
+        if (productStale) throw new Error("PRODUCT_STALE");
+      }
 
       // B2-06 (round-92 audit): flash-sale freshness re-check INSIDE the
       // purchase transaction. `pricing.flashSale` was resolved by
@@ -320,12 +431,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           .returning();
         if (!updatedCoupon) throw new Error("COUPON_EXHAUSTED");
         if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
-          notifyCouponMaxedOut(appliedCoupon.code, appliedCoupon.maxUses);
-          logAdminAlert(
-            "coupon_maxed",
-            `كوبون استُنفد: ${appliedCoupon.code}`,
-            `وصل الكوبون إلى الحد الأقصى من الاستخدام (${appliedCoupon.maxUses} مرة) وأُوقف تلقائياً`,
-          );
+          // F8: signal only — see the declaration above. notifyCouponMaxedOut
+          // + logAdminAlert fire AFTER the commit (below), so a rollback
+          // can never leave a false "coupon exhausted" alert + a 24h
+          // dedupe entry that mutes the real one.
+          couponMaxedSignal.code = appliedCoupon.code;
+          couponMaxedSignal.maxUses = appliedCoupon.maxUses;
         }
       }
 
@@ -374,6 +485,18 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         tx as unknown as typeof db,
       );
 
+      // F10 (round-94 A4): claim the idempotency key in the SAME
+      // transaction — after the order + ledger so the claim, the charge,
+      // and the audit trail are one atomic unit. A claim that collides
+      // (SQLSTATE 23505 — a same-key request committed concurrently)
+      // aborts the WHOLE tx: no second debit, no second order, no ledger
+      // drift; the catch below replays the winner's order. Skipped when
+      // the request carried no usable key or the table is missing
+      // (legacy deploy, pre-V1-M12).
+      if (scopedIdempotencyKey) {
+        await claimIdempotencyKey(tx as unknown as typeof db, scopedIdempotencyKey, o.id);
+      }
+
       return o;
     })
     .catch((err) => {
@@ -400,6 +523,22 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // re-prices at the current (list) price.
         return { failure: "STALE_FLASH_SALE" as const };
       }
+      if (err.message === "PRODUCT_STALE") {
+        // F4 (round-94 A4) — the product's price / isActive / isArchived
+        // changed between computePricing and this tx (admin raise,
+        // deactivation, archive). Nothing was mutated. Retryable: the
+        // client re-prices at the current price; surfaces as the stable
+        // CONCURRENCY_ERROR channel with code=PRODUCT_STALE (see the
+        // CheckoutFailureReason comment above for why not a new member).
+        return { failure: "PRODUCT_STALE" as const };
+      }
+      if (isIdempotencyKeyViolation(err)) {
+        // F10 — the key claim collided with a concurrent same-key purchase
+        // that committed first. This tx (charge + order + ledger) fully
+        // rolled back — money intact. The post-catch handling replays the
+        // winner's order.
+        return { failure: "IDEMPOTENT_CLAIM_CONFLICT" as const };
+      }
       if (err.message.startsWith("INVENTORY_CORRUPT:")) {
         // R93-DATA — the tx already rolled back (claim + debit + coupon
         // all reverted). Fire the operator alert OUTSIDE the transaction
@@ -421,10 +560,91 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
   if (!order) return { ok: false, reason: "INVENTORY_CLAIMED" };
   if (typeof order === "object" && "failure" in order) {
+    if (order.failure === "PRODUCT_STALE") {
+      // F4 — internal marker → stable retryable envelope (see comments at
+      // the type definition and the catch branch).
+      return {
+        ok: false,
+        reason: "CONCURRENCY_ERROR",
+        code: "PRODUCT_STALE",
+        message: "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+      };
+    }
+    if (order.failure === "IDEMPOTENT_CLAIM_CONFLICT") {
+      // F10 — a same-key purchase committed between our lookup and our
+      // claim. Our tx rolled back untouched; re-read the winner's order
+      // and return it as an idempotent replay (the standard retry
+      // contract). If it can't be reconstructed (deleted mid-flight,
+      // lookup raced), degrade to the retryable 409 — never a second
+      // charge, never a raw 500.
+      if (scopedIdempotencyKey) {
+        const winnerOrderId = await findIdempotentOrderId(scopedIdempotencyKey);
+        if (winnerOrderId !== null) {
+          const replay = await replayOriginalOrder(userId, winnerOrderId);
+          if (replay) return replay;
+        }
+      }
+      return { ok: false, reason: "CONCURRENCY_ERROR" };
+    }
     return { ok: false, reason: order.failure };
   }
 
+  // F8 — coupon-maxed side effects, strictly AFTER the commit (see the
+  // couponMaxedSignal declaration). Fire-and-forget, same as before, just
+  // on the honest side of the commit boundary.
+  if (couponMaxedSignal.code !== null) {
+    notifyCouponMaxedOut(couponMaxedSignal.code, couponMaxedSignal.maxUses);
+    logAdminAlert(
+      "coupon_maxed",
+      `كوبون استُنفد: ${couponMaxedSignal.code}`,
+      `وصل الكوبون إلى الحد الأقصى من الاستخدام (${couponMaxedSignal.maxUses} مرة) وأُوقف تلقائياً`,
+    );
+  }
+
   return { ok: true, order, product, user, finalPrice };
+}
+
+/**
+ * F10 — reconstruct the success result for an order a previous same-key
+ * purchase created. Read-only: no pricing, no balance check, no claim.
+ * The replayed envelope carries idempotentReplay=true so the route can
+ * shape the HTTP response (200 + Idempotent-Replayed header, skip the
+ * new-order notifications). Returns null when the order no longer
+ * belongs to this user (FK cascade deleted it with its account, or the
+ * key row is stale) — callers then fall through to a fresh purchase or
+ * a retryable conflict, never a fabricated success.
+ */
+async function replayOriginalOrder(
+  userId: number,
+  orderId: number,
+): Promise<CheckoutResult | null> {
+  const [order] = await db
+    .select()
+    .from(ordersTable)
+    .where(and(eq(ordersTable.id, orderId), eq(ordersTable.userId, userId)))
+    .limit(1);
+  if (!order) return null;
+
+  const [productRow] = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.id, order.productId))
+    .limit(1);
+  // products.id is referenced by orders with ON DELETE RESTRICT — a live
+  // order always has its product row; the guard is for type-safety only.
+  if (!productRow) return null;
+
+  const [userRow] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!userRow) return null;
+
+  return {
+    ok: true,
+    order,
+    product: productRow,
+    user: userRow,
+    finalPrice: toNumber(order.amount),
+    idempotentReplay: true,
+  };
 }
 
 export const CheckoutService = { purchase };

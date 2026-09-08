@@ -14,11 +14,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
+import { formatCount, formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import {
   AlertCircle,
   CheckCircle,
+  ChevronDown,
   ChevronLeft,
   Clock,
   Loader2,
@@ -61,6 +62,21 @@ const CATEGORY_FILTERS = [
   { value: "account", label: "الحساب" },
   { value: "other", label: "أخرى" },
 ];
+
+/** 94-C2 (A2 P1-1): page size for the support queue — the backend
+ *  truncates at 100 rows with no page param; the UI now drives the
+ *  frozen `?page=&limit=` contract and accumulates in place. */
+const TICKETS_PAGE_SIZE = 100;
+
+/** Arabic plural forms for the queue counter (formatCount, A2 P3-4). */
+const TICKET_COUNT_FORMS = {
+  zero: "تذاكر",
+  one: "تذكرة",
+  two: "تذكرتان",
+  few: "تذاكر",
+  many: "تذكرةً",
+  other: "تذكرة",
+};
 
 interface TicketSummary {
   id: number;
@@ -105,6 +121,14 @@ export default function AdminTicketsPage() {
   // storefront idiom) on the initial load, and as an inline banner
   // when a refresh of an already-rendered list fails.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 94-C2 (A2 P1-1): load-more accumulation state (frozen
+  // `?page=&limit=` contract) + in-flight abort controller so a fast
+  // status-tab switch can't let a stale response overwrite the newest
+  // (A2 P3-11).
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketsHasMore, setTicketsHasMore] = useState(false);
+  const [loadingMoreTickets, setLoadingMoreTickets] = useState(false);
+  const ticketsAbortRef = useRef<AbortController | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<TicketDetail | null>(null);
@@ -113,11 +137,29 @@ export default function AdminTicketsPage() {
 
   const headers = useAdminHeaders();
 
+  /** Builds the queue URL for the frozen pagination contract. */
+  const ticketsUrl = (page: number, status: string) => {
+    const qs = new URLSearchParams({
+      page: String(page),
+      limit: String(TICKETS_PAGE_SIZE),
+    });
+    if (status) qs.set("status", status);
+    return `/api/admin/tickets?${qs.toString()}`;
+  };
+
   const fetchTickets = async () => {
     if (!adminToken) return;
-    const qs = statusFilter ? `?status=${statusFilter}` : "";
+    // 94-C2 (A2 P3-11): abort the in-flight list request — rapid
+    // status-tab switches previously let an older response land last
+    // and overwrite the newest.
+    ticketsAbortRef.current?.abort();
+    const controller = new AbortController();
+    ticketsAbortRef.current = controller;
     try {
-      const r = await fetch(`/api/admin/tickets${qs}`, { headers });
+      const r = await fetch(ticketsUrl(1, statusFilter), {
+        headers,
+        signal: controller.signal,
+      });
       if (!r.ok) {
         const body = (await r.json().catch(() => null)) as {
           error?: string;
@@ -127,12 +169,52 @@ export default function AdminTicketsPage() {
         throw new Error(getErrorMessage(body) || `فشل تحميل التذاكر (HTTP ${r.status})`);
       }
       const d = await r.json();
-      setTickets(Array.isArray(d) ? d : []);
+      const rows = Array.isArray(d) ? d : [];
+      setTickets(rows);
+      // 94-C2 (A2 P1-1): a full page means the next page MIGHT exist.
+      setTicketsHasMore(rows.length === TICKETS_PAGE_SIZE);
+      setTicketPage(1);
       setLoadError(null);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setLoadError(err instanceof Error ? err.message : "تعذّر تحميل التذاكر");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  };
+
+  // 94-C2 (A2 P1-1): "load more" appends the next page in place (dedup
+  // by id — new arrivals at the top can shift offset boundaries between
+  // requests). The button hides once a short page arrives.
+  const loadMoreTickets = async () => {
+    if (!adminToken || loadingMoreTickets) return;
+    const nextPage = ticketPage + 1;
+    setLoadingMoreTickets(true);
+    try {
+      const r = await fetch(ticketsUrl(nextPage, statusFilter), { headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل تحميل المزيد (HTTP ${r.status})`);
+      }
+      const d = await r.json();
+      const rows = Array.isArray(d) ? d : [];
+      setTickets((prev) => {
+        const seen = new Set(prev.map((t) => t.id));
+        return [...prev, ...rows.filter((t) => !seen.has(t.id))];
+      });
+      setTicketsHasMore(rows.length === TICKETS_PAGE_SIZE);
+      setTicketPage(nextPage);
+    } catch (err) {
+      toast({
+        title: "تعذّر تحميل المزيد",
+        description: err instanceof Error ? err.message : "خطأ غير معروف",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMoreTickets(false);
     }
   };
 
@@ -255,8 +337,10 @@ export default function AdminTicketsPage() {
               )}
             </div>
             <p className="text-muted-foreground text-xs mt-0.5">
-              {visibleTickets.length}
-              {visibleTickets.length !== tickets.length ? ` / ${tickets.length}` : ""} تذكرة
+              {/* 94-C2 (A2 P1-1): honest count — «عرض N» over the
+                  accumulated queue, never a false total. */}
+              عرض {formatCount(tickets.length, TICKET_COUNT_FORMS)}
+              {ticketsHasMore ? " · الأسفل قد يحوي المزيد" : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -349,7 +433,8 @@ export default function AdminTicketsPage() {
                 <p className="text-sm mt-1">ستظهر تذاكر الدعم هنا</p>
               </div>
             ) : (
-              visibleTickets.map((t, i) => {
+              <>
+              {visibleTickets.map((t, i) => {
                 const isActive = selected?.id === t.id;
                 return (
                   <button
@@ -401,7 +486,35 @@ export default function AdminTicketsPage() {
                     </div>
                   </button>
                 );
-              })
+              })}
+
+              {/* 94-C2 (A2 P1-1): "load more" appends the next page of
+                  the frozen `?page=N+1&limit=` contract in place — the
+                  support queue's history past the silent 100-row cap
+                  becomes reachable. The button hides once a short page
+                  arrives. */}
+              {ticketsHasMore && (
+                <div className="flex justify-center pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    disabled={loadingMoreTickets}
+                    onClick={() => void loadMoreTickets()}
+                  >
+                    {loadingMoreTickets ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+              </>
             )}
           </div>
 

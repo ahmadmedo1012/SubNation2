@@ -101,6 +101,13 @@ const errorMessages: Record<ErrorCode, string> = {
   // branch — ops-facing, surfaces to admins as a hard 403.
   [ErrorCode.CSRF_CONFIG]:
     "تعذّر التحقق الأمني من الطلب (خلل في إعدادات الخادم) — يرجى إبلاغ الدعم",
+
+  // Round-94 (A5-05): the two codes the copilot routes actually emit —
+  // added to the shared enum so this Record stays exhaustive
+  // (Record<ErrorCode, string> breaks typecheck otherwise).
+  [ErrorCode.COPILOT_PHASE_DISABLED]: "هذه المرحلة من المساعد معطّلة حالياً",
+  [ErrorCode.COPILOT_SECRET_LEAK]:
+    "تم إيقاف الرد لأنه تضمّن معلومات حساسة. سُجِّل الحدث للمراجعة",
 };
 
 type ErrorLike = {

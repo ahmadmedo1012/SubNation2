@@ -25,10 +25,13 @@ import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminTopupsPage from "@/pages/admin/topups";
-import { approveTopup, useListAdminTopups } from "@workspace/api-client-react";
+import { approveTopup, customFetch } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
-  useListAdminTopups: vi.fn(),
+  // 94-C2 (A2 P1-1): the queue moved from useListAdminTopups to a
+  // useInfiniteQuery over the frozen `?page=&limit=` contract via
+  // customFetch — the mock follows the new module surface.
+  customFetch: vi.fn(),
   getListAdminTopupsQueryKey: () => ["admin-topups"],
   approveTopup: vi.fn(),
   rejectTopup: vi.fn(),
@@ -51,8 +54,6 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
-type TopupsResult = ReturnType<typeof useListAdminTopups>;
-
 const PENDING_TOPUP = {
   id: 11,
   amount: 50,
@@ -64,15 +65,9 @@ const PENDING_TOPUP = {
   created_at: "2026-09-01T10:00:00.000Z",
 };
 
-function mockTopupsResult(data: unknown[], over: Partial<TopupsResult> = {}) {
-  (useListAdminTopups as unknown as Mock).mockReturnValue({
-    data,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-    ...over,
-  } as unknown as TopupsResult);
+/** Seeds the queue: customFetch answers the page-1 request with rows. */
+function mockTopupsResult(data: unknown[]) {
+  (customFetch as unknown as Mock).mockResolvedValue(data);
 }
 
 function renderPage() {
@@ -87,13 +82,15 @@ function renderPage() {
 }
 
 /** The per-row approve button (exact name match avoids the bulk
- *  "موافقة الكل" / "موافقة (N)" buttons). */
-function rowApproveButton() {
-  return screen.getAllByRole("button", { name: "موافقة" })[0];
+ *  "موافقة الكل" / "موافقة (N)" buttons). 94-C2: the queue loads via
+ *  an async useInfiniteQuery — wait for the rows to land. */
+async function rowApproveButton() {
+  const buttons = await screen.findAllByRole("button", { name: "موافقة" });
+  return buttons[0]!;
 }
 
 async function openApproveConfirm() {
-  fireEvent.click(rowApproveButton());
+  fireEvent.click(await rowApproveButton());
   const title = await screen.findByText("تأكيد الموافقة");
   const dialog = title.closest('[role="alertdialog"]') as HTMLElement;
   expect(dialog).toBeTruthy();

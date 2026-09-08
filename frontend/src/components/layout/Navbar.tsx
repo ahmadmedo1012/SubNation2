@@ -66,7 +66,7 @@ export function Navbar() {
         >
           {label}
           {active && (
-            <div className="absolute inset-x-2.5 -bottom-px h-[2px] rounded-full bg-primary/65 tab-slide-in" />
+            <div className="absolute inset-x-2.5 -bottom-px h-[2px] rounded-full bg-primary/80 tab-slide-in" />
           )}
         </div>
       </Link>
@@ -114,7 +114,9 @@ export function Navbar() {
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          <Suspense fallback={<div className="w-8 h-8 rounded-lg bg-secondary/30" />}>
+          {/* 94-C3 (A3 P3-4): bell fallback joins the app-wide skeleton
+              pattern (skeleton-shimmer) instead of a silent gray block. */}
+          <Suspense fallback={<div className="w-8 h-8 rounded-lg skeleton-shimmer" />}>
             <NotificationBell />
           </Suspense>
 
@@ -188,7 +190,9 @@ export function Navbar() {
           {token && (
             <div className="md:hidden">
               <Link href="/wallet">
-                <div className="flex items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px] h-8">
+                {/* 94-C3 (A3 P1-3): h-8 (32px) → min-h-11 (44px) hit box —
+                    wallet is a money path; the chip stays visually compact. */}
+                <div className="flex min-h-11 items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px]">
                   <Wallet className="w-3 h-3 text-primary-text" />
                   {user ? (
                     <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>

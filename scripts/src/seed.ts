@@ -25,7 +25,18 @@ async function seed() {
 
   // ── Admin user ──────────────────────────────────────────────────────────────
   const adminUsername = process.env.ADMIN_USERNAME ?? "admin";
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "SubNation@2026";
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  // F10 (round-94 A6): same guard as migrate.ts:1132-1137 — never bootstrap
+  // (or RESET, via ADMIN_RESET_PASSWORD) a production superadmin with the
+  // repository-known default password. Exiting loudly: a seed run against
+  // a production DATABASE_URL must not half-execute.
+  if (!adminPassword && process.env.NODE_ENV === "production") {
+    console.error(
+      "❌ Refusing to seed a default-password admin in production: set ADMIN_PASSWORD env (migrate.ts applies the same guard).",
+    );
+    process.exit(1);
+  }
+  const effectiveAdminPassword = adminPassword ?? "SubNation@2026";
   const resetAdminPassword = process.env.ADMIN_RESET_PASSWORD === "true";
 
   const [existingAdmin] = await db
@@ -38,7 +49,7 @@ async function seed() {
     if (resetAdminPassword) {
       await db
         .update(adminUsersTable)
-        .set({ passwordHash: await hashPassword(adminPassword) })
+        .set({ passwordHash: await hashPassword(effectiveAdminPassword) })
         .where(eq(adminUsersTable.id, existingAdmin.id));
       await db
         .delete(loginAttemptsTable)
@@ -54,7 +65,7 @@ async function seed() {
     // of every scoped route.
     await db.insert(adminUsersTable).values({
       username: adminUsername,
-      passwordHash: await hashPassword(adminPassword),
+      passwordHash: await hashPassword(effectiveAdminPassword),
       displayName: "SubNation Admin",
       permissions: ["all"],
     });

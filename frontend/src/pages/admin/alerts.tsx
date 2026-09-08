@@ -1,15 +1,17 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import {
   AlertTriangle,
   Bell,
   BellOff,
   CheckCheck,
+  ChevronDown,
   Inbox,
   Info,
   Package,
@@ -88,6 +90,49 @@ const TYPE_META: Record<
 
 type FilterType = "all" | "unread" | "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock";
 
+/** 94-C2 (A2 P1-1): page size for the alerts inbox — the backend's
+ *  DEFAULT_LIMIT is 50 with `page`/`limit` (and total/hasMore) already
+ *  supported; the UI previously loaded one silent 50-row window while
+ *  the footer claimed «N تنبيه إجمالاً». The frozen `?page=&limit=`
+ *  contract now accumulates in place. */
+const ALERTS_PAGE_SIZE = 50;
+
+/** Query key — keeps the "admin-alerts" prefix so the existing
+ *  invalidations (`["admin-alerts"]`) refresh the accumulated pages. */
+const ALERTS_LIST_KEY = ["admin-alerts", "inbox"] as const;
+
+/** 94-C2 (A2 P2-11): the inbox mutations get the same error surface as
+ *  every other admin action (r.ok + parsed envelope + onError toast) —
+ *  a failed delete/read used to invalidate the cache and silently
+ *  resurrect the rows. */
+function alertActionToast(title: string, description: string) {
+  return { title, description, variant: "destructive" as const };
+}
+
+interface AlertsPageData {
+  alerts: AdminAlertItem[];
+  unreadCount: number;
+  /** Present in the current backend response (was ignored by the
+   *  declared type — surfaced defensively, A2 P1-1). */
+  total?: number;
+  page?: number;
+  limit?: number;
+  hasMore?: boolean;
+}
+
+type AlertsInfiniteData = { pages: AlertsPageData[]; pageParams: number[] };
+
+/** Maps the cached infinite shape with one shared helper so the three
+ *  optimistic mutations below stay in lockstep. */
+function patchCachedAlerts(
+  qc: ReturnType<typeof useQueryClient>,
+  fn: (page: AlertsPageData) => AlertsPageData,
+) {
+  qc.setQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY, (old) =>
+    old ? { ...old, pages: old.pages.map(fn) } : old,
+  );
+}
+
 const FILTERS: { value: FilterType; label: string }[] = [
   { value: "all", label: "الكل" },
   { value: "unread", label: "غير مقروء" },
@@ -125,18 +170,41 @@ export default function AdminAlertsPage() {
   const { adminToken } = useAuth();
   const qc = useQueryClient();
   const headers = useAdminHeaders();
+  const { toast } = useToast();
   const [filter, setFilter] = useState<FilterType>("all");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
-  const { data, isLoading, isError, error, refetch } = useQuery<{
-    alerts: AdminAlertItem[];
-    unreadCount: number;
-  }>({
-    queryKey: ["admin-alerts"],
-    queryFn: () =>
-      customFetch<{ alerts: AdminAlertItem[]; unreadCount: number }>("/api/admin/alerts", {
+  // 94-C2 (A2 P1-1): the inbox is an accumulating infinite query over
+  // the frozen `?page=&limit=` contract. The backend already returns
+  // `hasMore`/`total` — hasMore is the precise "more exists" flag, with
+  // the full-page heuristic as a defensive fallback. The key keeps the
+  // "admin-alerts" prefix so every existing invalidation refreshes the
+  // accumulated pages.
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AlertsPageData, Error>({
+    queryKey: ALERTS_LIST_KEY,
+    queryFn: ({ pageParam, signal }) =>
+      customFetch<AlertsPageData>(`/api/admin/alerts?page=${pageParam}&limit=${ALERTS_PAGE_SIZE}`, {
+        signal,
         headers,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore === true
+        ? allPages.length + 1
+        : lastPage.hasMore === false
+          ? undefined
+          : lastPage.alerts.length === ALERTS_PAGE_SIZE
+            ? allPages.length + 1
+            : undefined,
     refetchInterval: 20_000,
     refetchIntervalInBackground: false,
     enabled: !!adminToken,
@@ -148,97 +216,146 @@ export default function AdminAlertsPage() {
   };
 
   const markRead = useMutation({
-    mutationFn: (id: number) =>
-      fetch(`/api/admin/alerts/${id}/read`, { method: "PATCH", headers }).then((r) => r.json()),
+    // 94-C2 (A2 P2-11): r.ok + parsed envelope — a failed PATCH used to
+    // "succeed" (fetch resolves on HTTP errors), invalidate, and
+    // silently resurrect the unread dot.
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/admin/alerts/${id}/read`, { method: "PATCH", headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل تعيين التنبيه كمقروء (HTTP ${r.status})`);
+      }
+      return r.json().catch(() => null);
+    },
     onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
-        "admin-alerts",
-      ]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], (old) =>
-        old
-          ? {
-              alerts: old.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a)),
-              unreadCount: Math.max(0, old.unreadCount - 1),
-            }
-          : old,
-      );
-      qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], (old) =>
-        old ? { count: Math.max(0, old.count - 1) } : old,
-      );
+      await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
+      const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
+      const target = prev?.pages.flatMap((p) => p.alerts).find((a) => a.id === id);
+      const wasUnread = target ? !target.isRead : true;
+      patchCachedAlerts(qc, (p) => ({
+        ...p,
+        alerts: p.alerts.map((a) => (a.id === id ? { ...a, isRead: true } : a)),
+        unreadCount: wasUnread ? Math.max(0, p.unreadCount - 1) : p.unreadCount,
+      }));
+      if (wasUnread) {
+        qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], (old) =>
+          old ? { count: Math.max(0, old.count - 1) } : old,
+        );
+      }
       return { prev };
     },
-    onError: (_err, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    onError: (err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      toast(alertActionToast("فشل تعيين التنبيه كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const markAllRead = useMutation({
-    mutationFn: () =>
-      fetch("/api/admin/alerts/read-all", { method: "PATCH", headers }).then((r) => r.json()),
+    mutationFn: async () => {
+      const r = await fetch("/api/admin/alerts/read-all", { method: "PATCH", headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل تعيين الكل كمقروء (HTTP ${r.status})`);
+      }
+      return r.json().catch(() => null);
+    },
     onMutate: async () => {
-      await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
-        "admin-alerts",
-      ]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(["admin-alerts"], (old) =>
-        old ? { alerts: old.alerts.map((a) => ({ ...a, isRead: true })), unreadCount: 0 } : old,
-      );
+      await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
+      const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
+      patchCachedAlerts(qc, (p) => ({
+        ...p,
+        alerts: p.alerts.map((a) => ({ ...a, isRead: true })),
+        unreadCount: 0,
+      }));
       qc.setQueryData<{ count: number }>(["admin-alerts-unread-count"], { count: 0 });
       return { prev };
     },
-    onError: (_err, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    onError: (err, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      toast(alertActionToast("فشل تعيين الكل كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const deleteAlert = useMutation({
-    mutationFn: (id: number) =>
-      fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers }).then((r) => r.json()),
+    mutationFn: async (id: number) => {
+      const r = await fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل حذف التنبيه (HTTP ${r.status})`);
+      }
+      return r.json().catch(() => null);
+    },
     onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ["admin-alerts"] });
-      const prev = qc.getQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>([
-        "admin-alerts",
-      ]);
-      qc.setQueryData<{ alerts: AdminAlertItem[]; unreadCount: number }>(
-        ["admin-alerts"],
-        (old) => {
-          if (!old) return old;
-          const removed = old.alerts.find((a) => a.id === id);
-          return {
-            alerts: old.alerts.filter((a) => a.id !== id),
-            unreadCount:
-              removed && !removed.isRead ? Math.max(0, old.unreadCount - 1) : old.unreadCount,
-          };
-        },
-      );
+      await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
+      const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
+      const removed = prev?.pages.flatMap((p) => p.alerts).find((a) => a.id === id);
+      const wasUnread = removed ? !removed.isRead : false;
+      patchCachedAlerts(qc, (p) => ({
+        ...p,
+        alerts: p.alerts.filter((a) => a.id !== id),
+        unreadCount: wasUnread ? Math.max(0, p.unreadCount - 1) : p.unreadCount,
+      }));
       return { prev };
     },
-    onError: (_err, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["admin-alerts"], ctx.prev);
+    onError: (err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      toast(alertActionToast("فشل حذف التنبيه", getErrorMessage(err)));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["admin-alerts"] }),
+    onSettled: () => invalidateAll(),
   });
 
   const deleteRead = useMutation({
-    mutationFn: () =>
-      fetch("/api/admin/alerts/read", { method: "DELETE", headers }).then((r) => r.json()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-alerts"] }),
+    mutationFn: async () => {
+      const r = await fetch("/api/admin/alerts/read", { method: "DELETE", headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل حذف المقروءة (HTTP ${r.status})`);
+      }
+      return r.json().catch(() => null);
+    },
+    onSuccess: () => invalidateAll(),
+    onError: (err) =>
+      toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err))),
   });
 
   const deleteAll = useMutation({
-    mutationFn: () =>
-      fetch("/api/admin/alerts", { method: "DELETE", headers }).then((r) => r.json()),
+    mutationFn: async () => {
+      const r = await fetch("/api/admin/alerts", { method: "DELETE", headers });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `فشل حذف كل التنبيهات (HTTP ${r.status})`);
+      }
+      return r.json().catch(() => null);
+    },
     onSuccess: () => {
       setConfirmDeleteAll(false);
-      qc.invalidateQueries({ queryKey: ["admin-alerts"] });
+      invalidateAll();
     },
+    onError: (err) =>
+      toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err))),
   });
 
-  const alerts = data?.alerts ?? [];
-  const unreadCount = data?.unreadCount ?? 0;
+  const alerts = data?.pages.flatMap((p) => p.alerts) ?? [];
+  // The global unread count rides the first page (server-side truth).
+  const unreadCount = data?.pages[0]?.unreadCount ?? 0;
+  const totalAlerts = data?.pages[0]?.total;
   const readCount = alerts.filter((a) => a.isRead).length;
 
   const displayed = alerts.filter((a) => {
@@ -405,7 +522,7 @@ export default function AdminAlertsPage() {
             the 20 s poll failing (outage/expired session) used to
             render the "لا توجد تنبيهات" empty state with zero signal
             while role="alert" banners existed elsewhere in the app. */}
-        {isError && (data?.alerts?.length ?? 0) > 0 && (
+        {isError && alerts.length > 0 && (
           <div
             role="alert"
             className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
@@ -427,7 +544,7 @@ export default function AdminAlertsPage() {
               <div key={i} className="h-[72px] rounded-2xl skeleton-shimmer" />
             ))}
           </div>
-        ) : isError && (data?.alerts?.length ?? 0) === 0 ? (
+        ) : isError && alerts.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
@@ -470,7 +587,10 @@ export default function AdminAlertsPage() {
               <div key={group.label}>
                 {/* Date group header */}
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
+                  {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
+                      letter-spacing severs Arabic letter connections
+                      (A11 §8, rule documented in layout.tsx). */}
+                  <span className="text-[11px] font-bold text-muted-foreground">
                     {group.label}
                   </span>
                   <div className="flex-1 h-px bg-border/40" />
@@ -566,13 +686,52 @@ export default function AdminAlertsPage() {
               </div>
             ))}
 
-            {/* Footer summary */}
+            {/* Footer summary — 94-C2 (A2 P1-1): «عرض N» (+ the
+                server-side `total` when the response carries it);
+                never a false «إجمالاً N» over a truncated window. */}
             <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
               <Inbox className="w-3.5 h-3.5" />
               <span>
-                {alerts.length} تنبيه إجمالاً · {unreadCount} غير مقروء
+                عرض {formatCount(alerts.length, {
+                  zero: "تنبيهات",
+                  one: "تنبيه",
+                  two: "تنبيهان",
+                  few: "تنبيهات",
+                  many: "تنبيهًا",
+                  other: "تنبيه",
+                })}
+                {typeof totalAlerts === "number" && totalAlerts > alerts.length
+                  ? ` من ${totalAlerts}`
+                  : ""}{" "}
+                · {unreadCount} غير مقروء
               </span>
             </div>
+
+            {/* 94-C2 (A2 P1-1): "load more" appends the next page of
+                the frozen `?page=N+1&limit=` contract in place; the
+                button hides when the server says hasMore=false (or a
+                short page arrives). */}
+            {hasNextPage && (
+              <div className="flex justify-center pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  disabled={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

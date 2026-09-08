@@ -201,15 +201,15 @@ function WaitingBody({
             strokeLinecap="round"
             strokeDasharray={2 * Math.PI * 44}
             strokeDashoffset={2 * Math.PI * 44 * (1 - pct / 100)}
-            className="text-primary transition-[stroke-dashoffset] duration-1000 ease-linear"
+            className="text-primary-text transition-[stroke-dashoffset] duration-1000 ease-linear"
           />
         </svg>
         <div className="relative flex items-center justify-center w-full h-full">
           {timedOut ? (
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <Loader2 className="w-8 h-8 text-primary-text animate-spin" />
           ) : (
             <span
-              className="text-2xl font-black tabular-nums text-primary"
+              className="text-2xl font-black tabular-nums text-primary-text"
               aria-live="polite"
               aria-atomic="true"
             >
@@ -300,7 +300,7 @@ function ApprovedBody({
           <button
             type="button"
             onClick={onContinue}
-            className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+            className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
           >
             متابعة الشراء
           </button>
@@ -316,7 +316,7 @@ function ApprovedBody({
         <button
           type="button"
           onClick={onClose}
-          className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+          className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
         >
           تم
         </button>

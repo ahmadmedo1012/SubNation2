@@ -231,16 +231,33 @@ router.patch(
     // ── Wallet path: AdjustmentService (atomic, ledger-backed) ────────
     let walletResult: { walletBalance: number } | null = null;
     if (typeof wallet_adjustment === "number" || typeof wallet_balance === "number") {
+      // A8-09 (round-94): a wallet mutation with no operator note means
+      // the audit trail (F-004) records "Admin adjustment" — useless in
+      // an incident review, and the ONLY control on self-dealing via a
+      // personal storefront account was that after-the-fact trail. A
+      // mandatory human note gives the trail content and adds friction
+      // against casual self-dealing. (AdjustmentService still enforces
+      // the signed-ledger + caps + compare-and-set invariants.)
+      if (typeof note !== "string" || note.trim().length < 3) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "سبب التعديل (note) مطلوب لكل تعديل على المحفظة — 3 أحرف على الأقل",
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
       try {
         if (typeof wallet_adjustment === "number") {
           walletResult = await AdjustmentService.adjust(id, wallet_adjustment, {
             adminId,
-            note: typeof note === "string" ? note : "Admin adjustment",
+            note: note.trim().slice(0, 500),
           });
         } else if (typeof wallet_balance === "number") {
           walletResult = await AdjustmentService.setBalance(id, wallet_balance, {
             adminId,
-            note: typeof note === "string" ? note : "Admin balance set",
+            note: note.trim().slice(0, 500),
           });
         }
       } catch (err) {

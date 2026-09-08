@@ -53,9 +53,11 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen bg-background flex items-center justify-center px-4" dir="rtl">
           <div className="text-center max-w-sm w-full space-y-7">
-            {/* Icon */}
-            <div className="mx-auto w-20 h-20 rounded-2xl bg-red-500/8 border border-red-500/15 flex items-center justify-center">
-              <AlertTriangle className="w-9 h-9 text-red-400" />
+            {/* Icon — 94-C3 (A3 P2-1): raw red-500/400 hues → the shared
+                --status-error family (same tone AuthErrorBanner/StatusBadge
+                ride), so the light theme keeps AA contrast. */}
+            <div className="mx-auto w-20 h-20 rounded-2xl bg-status-error/10 border border-status-error/22 flex items-center justify-center">
+              <AlertTriangle className="w-9 h-9 text-status-error" />
             </div>
 
             {/* Message */}
@@ -71,7 +73,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground transition-colors">
                     تفاصيل الخطأ (للمطورين)
                   </summary>
-                  <pre className="mt-2 text-[10px] text-red-400/70 bg-red-500/5 border border-red-500/10 rounded-lg p-3 overflow-auto text-left leading-relaxed">
+                  <pre className="mt-2 text-[10px] text-status-error/75 bg-status-error/8 border border-status-error/15 rounded-lg p-3 overflow-auto text-left leading-relaxed">
                     {this.state.error.message}
                   </pre>
                 </details>
@@ -82,7 +84,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 onClick={() => window.location.reload()}
-                className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-primary/20 w-full sm:w-auto"
+                className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-primary/20 w-full sm:w-auto"
               >
                 <RefreshCw className="w-4 h-4" />
                 إعادة التحميل

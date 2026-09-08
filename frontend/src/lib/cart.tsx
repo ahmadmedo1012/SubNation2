@@ -41,6 +41,16 @@ function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;
 }
 
+/**
+ * Round a money amount to 2 decimal places (Math.round(x*100)/100 — the
+ * banker-safe idiom this codebase already uses elsewhere, e.g. wallet's
+ * 0.5-step rounding). R94-A1 #1: un-rounded sums let floating-point dust
+ * (49.980000000000004) leak into balance comparisons and "الناقص" labels.
+ */
+export function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<LocalCartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -119,7 +129,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const totalLYD = items.reduce((sum, i) => sum + effectivePrice(i) * i.quantity, 0);
+  // A1 (r94 #1, FP gate): money totals are rounded to 2 decimals at the
+  // source. Fractional prices (relative discounts like 8.33 × 6) produce
+  // 49.980000000000004 — checkout's `balance < totalLYD` gate then blocked
+  // a user whose balance was EXACTLY 49.98 with a nonsensical "الناقص 0.00
+  // د.ل" banner. cart.tsx:56 already rounded its own copy (toFixed(2));
+  // every consumer of the context now gets the same cent-accurate value.
+  const totalLYD = roundToCents(
+    items.reduce((sum, i) => sum + effectivePrice(i) * i.quantity, 0),
+  );
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (

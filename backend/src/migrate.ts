@@ -313,6 +313,195 @@ export async function applyLedgerAmountNonzeroStage(
   `);
 }
 
+// ── users column reconcile (F1, round-94 A6) ──────────────────────────────
+//
+// The old block here was one bare `ALTER TABLE users ADD COLUMN IF NOT
+// EXISTS github_id, …, ADD COLUMN IF NOT EXISTS last_auth_at` issued
+// unconditionally on EVERY boot, followed (same boot!) by Stage C dropping
+// the legacy subset again — 8 ALTER TABLEs on `users` per cold start
+// forever, each taking a momentary AccessExclusiveLock on the table behind
+// every login, and each widening the read-only-window 25006 retry surface
+// for zero schema change (the B7-P0-1 class of failure).
+//
+// Fix shape mirrors ensurePgTrgmExtension: ONE information_schema probe
+// decides what is genuinely missing; the ALTER is issued ONLY then. On a
+// steady-state boot (all final columns present, Stage C already applied)
+// this stage executes ZERO DDL statements against `users` — the probe is a
+// catalog read, permitted even on a read-only standby.
+//
+// Column split:
+//   - FINAL columns (survive Stage C): reconciled whenever missing.
+//   - TRANSIENT columns (dropped by Stage C: github_id / facebook_id /
+//     password_login_enabled / legacy_password_disabled_at): only ever
+//     (re-)created while `password_hash` still exists — the "Stage C has
+//     not run yet" marker. After Stage C drops them they must never be
+//     resurrected; that resurrection+redrop churn is exactly the bug.
+export async function applyUsersColumnReconcileStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const probeRows = extractRows(
+    await execute(sql`
+      SELECT column_name AS column_name
+      FROM information_schema.columns
+      WHERE table_name = 'users'
+    `),
+  );
+  const present = new Set(probeRows.map((row) => String(row.column_name)));
+
+  const toAdd: string[] = [];
+  for (const [name, definition] of USERS_FINAL_COLUMN_DDL) {
+    if (!present.has(name)) toAdd.push(`ADD COLUMN IF NOT EXISTS ${name} ${definition}`);
+  }
+  if (present.has("password_hash")) {
+    // Pre-Stage-C database: the transient provider/password columns are
+    // still legitimate (the legacy-data migration below reads them).
+    for (const [name, definition] of USERS_TRANSIENT_COLUMN_DDL) {
+      if (!present.has(name)) toAdd.push(`ADD COLUMN IF NOT EXISTS ${name} ${definition}`);
+    }
+  }
+  if (toAdd.length > 0) {
+    // IF NOT EXISTS kept even after the probe — belt against a catalog
+    // drift between probe and ALTER (every statement idempotent).
+    await execute(sql.raw(`ALTER TABLE users ${toAdd.join(", ")}`));
+  }
+}
+
+/** Columns the FINAL (post-Stage-C) users schema carries. */
+const USERS_FINAL_COLUMN_DDL: Array<[name: string, definition: string]> = [
+  ["telegram_id", "VARCHAR(255) UNIQUE"],
+  ["firebase_uid", "VARCHAR(255)"],
+  ["email", "VARCHAR(255)"],
+  ["email_verified", "BOOLEAN NOT NULL DEFAULT FALSE"],
+  ["phone_verified", "BOOLEAN NOT NULL DEFAULT FALSE"],
+  ["display_name", "VARCHAR(255)"],
+  ["photo_url", "TEXT"],
+  ["auth_provider", "VARCHAR(50) NOT NULL DEFAULT 'legacy_password'"],
+  ["last_auth_at", "TIMESTAMPTZ"],
+];
+
+/** Transient legacy columns — exist only between CREATE TABLE and Stage C. */
+const USERS_TRANSIENT_COLUMN_DDL: Array<[name: string, definition: string]> = [
+  ["github_id", "VARCHAR(255) UNIQUE"],
+  ["facebook_id", "VARCHAR(255) UNIQUE"],
+  ["password_login_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"],
+  ["legacy_password_disabled_at", "TIMESTAMPTZ"],
+];
+
+/**
+ * Stage C (F1, round-94 A6): drop the legacy password infrastructure —
+ * same statements as before, but ONLY when at least one of the columns
+ * actually exists. Steady-state boots issue zero DDL on `users` (the old
+ * five `DROP COLUMN IF EXISTS` were five no-op ALTER TABLE statements —
+ * each still an AccessExclusiveLock — on every cold start forever).
+ * The legacy `otps` table gets the same catalog-probe treatment.
+ */
+export async function applyUsersPasswordlessCleanupStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const probeRows = extractRows(
+    await execute(sql`
+      SELECT column_name AS column_name
+      FROM information_schema.columns
+      WHERE table_name = 'users'
+    `),
+  );
+  const present = new Set(probeRows.map((row) => String(row.column_name)));
+
+  const toDrop = USERS_TRANSIENT_COLUMN_DDL.map(([name]) => name)
+    .concat("password_hash")
+    .filter((name) => present.has(name));
+  if (toDrop.length > 0) {
+    // Single statement: one lock acquisition instead of five, and atomic
+    // (mid-statement crash cannot leave a half-cleaned table).
+    await execute(sql.raw(`ALTER TABLE users ${toDrop.map((c) => `DROP COLUMN ${c}`).join(", ")}`));
+  }
+
+  const otpsRows = extractRows(
+    await execute(sql`
+      SELECT 1 AS present FROM information_schema.tables
+      WHERE table_name = 'otps'
+    `),
+  );
+  if (otpsRows.length > 0) {
+    await execute(sql`DROP TABLE otps`);
+  }
+}
+
+// ── V1-M12 (round-94 A4/C4/C6): durable idempotency for the money path ────
+//
+// `idempotency_keys` is the transactional backstop for POST /api/orders
+// (F10, round-94 A4): the purchase transaction claims the user-scoped key
+// atomically with the order + ledger inserts, so a client retry with the
+// same key can never create a second order or a second wallet debit —
+// regardless of Redis state (the HTTP middleware's 24h-TTL cache is soft).
+//
+// Column names/types are pinned to shared/db/src/schema/idempotency-keys.ts
+// and backend/src/lib/idempotency.ts VERBATIM (key text PK, order_id
+// integer NOT NULL → orders(id) ON DELETE CASCADE, created_at timestamptz
+// NOT NULL DEFAULT now()); the service tolerates the table's absence
+// (SQLSTATE 42P01 → legacy pass-through) so deploy ordering never blocks,
+// and a mismatch would break that contract silently — hence the DO-block
+// existence probe (idempotent re-runs, pglite-harness compatible) instead
+// of a bare CREATE TABLE.
+export async function applyIdempotencyKeysStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'idempotency_keys'
+      ) THEN
+        CREATE TABLE idempotency_keys (
+          key        TEXT PRIMARY KEY,
+          order_id   INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+      END IF;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_order ON idempotency_keys(order_id);
+  `);
+}
+
+// ── V1-M13 (round-94 A8): revocable admin sessions ─────────────────────
+//
+// A8-01: admin JWTs are now paired with an admin_sessions row; the
+// token carries a `sid` and requireAdmin re-validates the row (revoked
+// / expired row ⇒ dead token). Logout revokes one row; change-password
+// and is_active flips kill them all. Column names/types are pinned to
+// shared/db/src/schema/admin-sessions.ts + backend/src/lib/admin-session.ts
+// VERBATIM. Same DO-block existence probe as V1-M12 for idempotent
+// re-runs + pglite compatibility.
+export async function applyAdminSessionsStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'admin_sessions'
+      ) THEN
+        CREATE TABLE admin_sessions (
+          id             VARCHAR(64) PRIMARY KEY,
+          admin_id       INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+          created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+          expires_at     TIMESTAMPTZ NOT NULL,
+          revoked_at     TIMESTAMPTZ,
+          revoked_reason VARCHAR(100),
+          last_seen_at   TIMESTAMPTZ,
+          user_agent     VARCHAR(255),
+          ip_address     VARCHAR(45)
+        );
+      END IF;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin ON admin_sessions(admin_id);
+  `);
+}
+
 export async function runMigrations() {
   try {
     // ── Extensions ─────────────────────────────────────────────────────────
@@ -921,22 +1110,11 @@ export async function runMigrations() {
         ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0.00;
     `);
 
-    await db.execute(sql`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS github_id   VARCHAR(255) UNIQUE,
-        ADD COLUMN IF NOT EXISTS facebook_id VARCHAR(255) UNIQUE,
-        ADD COLUMN IF NOT EXISTS telegram_id VARCHAR(255) UNIQUE,
-        ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS email VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS display_name VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS photo_url TEXT,
-        ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(50) NOT NULL DEFAULT 'legacy_password',
-        ADD COLUMN IF NOT EXISTS password_login_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        ADD COLUMN IF NOT EXISTS legacy_password_disabled_at TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS last_auth_at TIMESTAMPTZ;
-    `);
+    // F1 (round-94 A6): reconciled via catalog probe — see
+    // applyUsersColumnReconcileStage. Steady-state boots issue ZERO DDL
+    // against `users` here (the old unconditional ADD COLUMN block plus
+    // Stage C's drops churned 8 ALTER TABLEs on every cold start).
+    await applyUsersColumnReconcileStage();
 
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid_unique
@@ -961,8 +1139,16 @@ export async function runMigrations() {
     //   - Fresh DB: all four columns exist; every ALTER fires.
     //   - Mid-migration: password_hash dropped but password_login_enabled
     //     still present; only the still-existing-column ALTERs fire.
-    //   - Post-Stage-C: password_hash + password_login_enabled both
-    //     gone; only the auth_provider default reconcile fires.
+    //   - Post-Stage-C (steady state): password_hash +
+    //     password_login_enabled both gone and auth_provider already
+    //     carries the firebase_phone default → ZERO branches fire.
+    //
+    // F1 (round-94 A6): the default-reconcile branches additionally
+    // compare the CURRENT default — `SET DEFAULT` with an unchanged
+    // value is still an ALTER TABLE (AccessExclusiveLock) on `users`,
+    // which used to fire on every boot forever. The value comparison
+    // is representation-tolerant (LIKE on the pg-rendered default
+    // text) so catalog formatting differences can't wedge it.
     //
     // Without these guards a bare `ALTER COLUMN password_hash DROP
     // NOT NULL` raises SQLSTATE 42703 (undefined_column) which
@@ -976,13 +1162,26 @@ export async function runMigrations() {
           SELECT 1 FROM information_schema.columns
           WHERE table_name='users' AND column_name='password_hash'
         ) THEN
-          ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
-          ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='users' AND column_name='password_hash'
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+          END IF;
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='users' AND column_name='password_hash'
+              AND column_default IS NOT NULL
+          ) THEN
+            ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT;
+          END IF;
         END IF;
 
         IF EXISTS (
           SELECT 1 FROM information_schema.columns
           WHERE table_name='users' AND column_name='auth_provider'
+            AND (column_default IS NULL OR column_default NOT LIKE '%firebase_phone%')
         ) THEN
           ALTER TABLE users ALTER COLUMN auth_provider SET DEFAULT 'firebase_phone';
         END IF;
@@ -990,6 +1189,7 @@ export async function runMigrations() {
         IF EXISTS (
           SELECT 1 FROM information_schema.columns
           WHERE table_name='users' AND column_name='password_login_enabled'
+            AND (column_default IS NULL OR column_default NOT LIKE '%false%')
         ) THEN
           ALTER TABLE users ALTER COLUMN password_login_enabled SET DEFAULT FALSE;
         END IF;
@@ -1081,9 +1281,29 @@ export async function runMigrations() {
 
     // ── Encrypt existing plaintext account_passwords ─────────────────────────
     if (process.env.ENCRYPTION_KEY) {
-      await db.execute(sql`ALTER TABLE inventory ALTER COLUMN account_password TYPE VARCHAR(512)`);
+      // F4 (round-94 A6): V1-M6-style length guard — a bare ALTER (even a
+      // no-op re-widen to the same 512) is still an AccessExclusiveLock +
+      // DDL-class command every boot on the most money-sensitive table.
+      // Fires exactly once per legacy-255 database, never again.
+      await db.execute(sql`
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='inventory' AND column_name='account_password'
+              AND character_maximum_length = 255
+          ) THEN
+            ALTER TABLE inventory ALTER COLUMN account_password TYPE VARCHAR(512);
+          END IF;
+        END $$;
+      `);
+      // F4: SQL-side pre-filter — only rows that are NOT already in the
+      // `iv:tag:ct` GCM shape are pulled into memory. The JS isEncrypted()
+      // check below remains the authoritative gate (format-exact); this
+      // predicate merely stops the full-ciphertext scan every boot.
       const result = await db.execute(
-        sql`SELECT id, account_password FROM inventory WHERE account_password IS NOT NULL`,
+        sql`SELECT id, account_password FROM inventory
+            WHERE account_password IS NOT NULL
+              AND account_password NOT LIKE '%:%:%'`,
       );
       const rows: Array<{ id: number; account_password: string }> = Array.isArray(result)
         ? (result as Array<{ id: number; account_password: string }>)
@@ -1396,17 +1616,15 @@ export async function runMigrations() {
     //                                    /forgot-password + /reset-password
     //                                    used it; both routes removed)
     //
+    // F1 (round-94 A6): the drops are now catalog-probed (see
+    // applyUsersPasswordlessCleanupStage) — the previous five bare
+    // `DROP COLUMN IF EXISTS` statements were five no-op ALTER TABLEs
+    // (each an AccessExclusiveLock) on `users` on EVERY boot, forever.
+    //
     // The Drizzle schema in shared/db/src/schema/users.ts has been updated
     // to match. Application code that referenced these columns has been
     // removed; the typecheck in CI catches any regression.
-    await db.execute(sql`
-      ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
-      ALTER TABLE users DROP COLUMN IF EXISTS password_login_enabled;
-      ALTER TABLE users DROP COLUMN IF EXISTS legacy_password_disabled_at;
-      ALTER TABLE users DROP COLUMN IF EXISTS github_id;
-      ALTER TABLE users DROP COLUMN IF EXISTS facebook_id;
-    `);
-    await db.execute(sql`DROP TABLE IF EXISTS otps;`);
+    await applyUsersPasswordlessCleanupStage();
 
     // ── Monetization Increment 1: profit visibility ───────────────────────
     //
@@ -1833,6 +2051,7 @@ export async function runMigrations() {
       const legacyRows = (await db.execute(sql`
         SELECT id, delivered_password FROM orders
         WHERE delivered_password IS NOT NULL
+          AND delivered_password NOT LIKE '%:%:%'
       `)) as { rows?: Array<{ id: number; delivered_password: string }> };
       const rows =
         legacyRows.rows ??
@@ -1896,6 +2115,19 @@ export async function runMigrations() {
     // and no live row violates either (probe above). Same guards, same
     // write-gate, same no-op steady state as V1-M9.
     await applyLedgerAmountNonzeroStage();
+
+    // ── V1-M12 (round-94 A4/C4/C6): idempotency_keys ──
+    // Durable, transactional dedup backstop for the customer money path
+    // (claim-inside-the-purchase-tx). Catalog-probed DO block → re-runs
+    // are no-ops; see applyIdempotencyKeysStage for the column pinning
+    // against shared/db/src/schema/idempotency-keys.ts + lib/idempotency.ts.
+    await applyIdempotencyKeysStage();
+
+    // ── V1-M13 (round-94 A8): admin_sessions ──
+    // Revocable admin sessions (sid-bound tokens). See
+    // applyAdminSessionsStage for the column pinning against
+    // shared/db/src/schema/admin-sessions.ts + lib/admin-session.ts.
+    await applyAdminSessionsStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

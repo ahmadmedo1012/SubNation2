@@ -77,7 +77,7 @@ function CopyBtn({
           failed
             ? "bg-status-error/12 text-status-error border border-status-error/30"
             : copied
-              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+              ? "bg-status-success/15 text-status-success border border-status-success/25"
               : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
         }
         ${size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm"}
@@ -218,22 +218,22 @@ export default function ReferralsPage() {
       icon: UserPlus,
       step: "2",
       text: "صديقك يُنشئ حسابه",
-      color: "text-blue-400",
-      bg: "bg-blue-400/10 border-blue-400/15",
+      color: "text-status-info",
+      bg: "bg-status-info/10 border-status-info/15",
     },
     {
       icon: Wallet,
       step: "3",
       text: "يُتم أول شحن للمحفظة",
-      color: "text-emerald-400",
-      bg: "bg-emerald-400/10 border-emerald-400/15",
+      color: "text-status-success",
+      bg: "bg-status-success/10 border-status-success/15",
     },
     {
       icon: Gift,
       step: "4",
       text: "تحصل على نقاط فورية",
-      color: "text-yellow-400",
-      bg: "bg-yellow-400/10 border-yellow-400/15",
+      color: "text-status-warning",
+      bg: "bg-status-warning/10 border-status-warning/15",
     },
   ];
 
@@ -242,7 +242,10 @@ export default function ReferralsPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link href="/loyalty">
-          <button className="w-8 h-8 rounded-lg hover:bg-secondary/70 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors press-spring">
+          <button
+            aria-label="رجوع لبرنامج الولاء"
+            className="w-8 h-8 rounded-lg hover:bg-secondary/70 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors press-spring"
+          >
             {/* Back = points RIGHT under the unified RTL icon decision
                 (same idiom as terms.tsx / category.tsx back buttons —
                 B4 P2-8). Previously a bare ChevronLeft pointing left. */}
@@ -290,29 +293,29 @@ export default function ReferralsPage() {
                 label: "إجمالي الإحالات",
                 value: loading ? "—" : String(overview?.referrals_total ?? 0),
                 icon: Users,
-                color: "text-blue-400",
-                bg: "bg-blue-400/10 border-blue-400/15",
+                color: "text-status-info",
+                bg: "bg-status-info/10 border-status-info/15",
               },
               {
                 label: "إحالات ناجحة",
                 value: loading ? "—" : String(overview?.referrals_credited ?? 0),
                 icon: CheckCircle,
-                color: "text-emerald-400",
-                bg: "bg-emerald-400/10 border-emerald-400/15",
+                color: "text-status-success",
+                bg: "bg-status-success/10 border-status-success/15",
               },
               {
                 label: "قيد الانتظار",
                 value: loading ? "—" : String(overview?.referrals_pending ?? 0),
                 icon: Clock,
-                color: "text-yellow-400",
-                bg: "bg-yellow-400/10 border-yellow-400/15",
+                color: "text-status-warning",
+                bg: "bg-status-warning/10 border-status-warning/15",
               },
               {
                 label: "نقاط مكتسبة",
                 value: loading ? "—" : String(totalPointsEarned),
                 icon: Star,
-                color: "text-yellow-400",
-                bg: "bg-yellow-400/10 border-yellow-400/15",
+                color: "text-status-warning",
+                bg: "bg-status-warning/10 border-status-warning/15",
               },
             ].map((s, i) => (
               <div
@@ -385,13 +388,13 @@ export default function ReferralsPage() {
 
           {/* Reward info banner */}
           {!loading && overview && (
-            <div className="flex items-center gap-3 p-3.5 bg-yellow-400/8 border border-yellow-400/20 rounded-xl mb-4 float-in stagger-5">
-              <div className="w-8 h-8 rounded-lg bg-yellow-400/10 border border-yellow-400/15 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4 text-yellow-400" />
+            <div className="flex items-center gap-3 p-3.5 bg-status-warning/8 border border-status-warning/20 rounded-xl mb-4 float-in stagger-5">
+              <div className="w-8 h-8 rounded-lg bg-status-warning/10 border border-status-warning/15 flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4 text-status-warning" />
               </div>
               <p className="text-sm text-foreground/80 leading-snug">
                 تحصل على{" "}
-                <span className="font-black text-yellow-400">
+                <span className="font-black text-status-warning">
                   {overview.points_rate.points_per_referral} نقطة
                 </span>{" "}
                 عند كل إحالة ناجحة — قابلة للتحويل إلى رصيد في المحفظة
@@ -471,14 +474,14 @@ export default function ReferralsPage() {
                       <div
                         className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
                           credited
-                            ? "bg-emerald-500/10 border-emerald-500/20"
+                            ? "bg-status-success/10 border-status-success/20"
                             : "bg-yellow-500/10 border-yellow-500/20"
                         }`}
                       >
                         {credited ? (
-                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          <CheckCircle className="w-4 h-4 text-status-success" />
                         ) : (
-                          <Clock className="w-4 h-4 text-yellow-400" />
+                          <Clock className="w-4 h-4 text-status-warning" />
                         )}
                       </div>
 
@@ -497,11 +500,11 @@ export default function ReferralsPage() {
                       {/* Status / Points */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {credited ? (
-                          <span className="text-xs font-black text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-black text-status-warning bg-status-warning/10 border border-status-warning/20 px-2 py-0.5 rounded-full">
                             +{ev.points_earned} نقطة
                           </span>
                         ) : (
-                          <span className="text-xs font-bold text-yellow-400/80 bg-yellow-400/8 border border-yellow-400/15 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-bold text-status-warning/80 bg-status-warning/8 border border-status-warning/15 px-2 py-0.5 rounded-full">
                             قيد الانتظار
                           </span>
                         )}

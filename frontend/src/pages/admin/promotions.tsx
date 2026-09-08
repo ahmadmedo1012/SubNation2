@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatRelativeTime } from "@/lib/utils";
@@ -15,8 +16,10 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Sparkles,
   Trash2,
+  WifiOff,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -66,6 +69,11 @@ export default function AdminPromotionsPage() {
 
   const [sales, setSales] = useState<FlashSale[]>([]);
   const [loading, setLoading] = useState(true);
+  // 94-C2 (A2 P2-9): the failure is a first-class surface — an error
+  // card replaces the empty state so an outage can't masquerade as a
+  // clean «لا توجد عروض بعد» history (the toast alone still left the
+  // misleading empty card under it).
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -79,14 +87,29 @@ export default function AdminPromotionsPage() {
   async function load() {
     if (!adminToken) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const r = await fetch("/api/admin/flash-sales", { headers });
+      // 94-C2 (A2 P2-9): an error envelope (401/500) used to parse as
+      // JSON with no `flash_sales` key ⇒ [] ⇒ the «لا توجد عروض بعد»
+      // empty state masquerading as a clean history during an outage.
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(
+          getErrorMessage(body) || `فشل تحميل العروض (HTTP ${r.status})`,
+        );
+      }
       const d = await r.json();
-      setSales(d.flash_sales ?? []);
+      setSales(Array.isArray(d?.flash_sales) ? d.flash_sales : []);
     } catch (err) {
+      const message = err instanceof Error ? err.message : "خطأ غير معروف";
+      setLoadError(message);
       toast({
         title: "تعذّر تحميل العروض",
-        description: err instanceof Error ? err.message : "خطأ غير معروف",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -151,12 +174,28 @@ export default function AdminPromotionsPage() {
 
   async function toggleActive(sale: FlashSale, next: boolean) {
     if (!adminToken) return;
+    // 94-C2 (A2 P2-9): ACTIVATING a flash sale repriced the WHOLE
+    // store with one unconfirmed tap while «الإيقاف» (stopping it) had
+    // a confirm — the price-changing action was the unconfirmed one.
+    // Now activation confirms first, with the discount % in the message.
+    if (next) {
+      const ok = await confirm({
+        title: "تفعيل العرض على كامل المتجر؟",
+        description: `سيُطبّق خصم ${sale.discount_percent}% على جميع المنتجات فورًا حتى ${formatRelativeTime(sale.ends_at)}.`,
+        confirmLabel: "تفعيل",
+        destructive: false,
+      });
+      if (!ok) return;
+    }
     try {
       const r = await fetch(`/api/admin/flash-sales/${sale.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ is_active: next }),
       });
+      // 94-C2 (A2 P2-14): 401 mid-work = session expiry — the global
+      // handler toasts + redirects; no misleading local toast on top.
+      if (isAdminUnauthorized(r, `/api/admin/flash-sales/${sale.id}`)) return;
       const body = await r.json();
       if (!r.ok) {
         toast({
@@ -312,7 +351,10 @@ export default function AdminPromotionsPage() {
               if (!Number.isFinite(d) || d <= 0) return null;
               return (
                 <div className="p-3 rounded-xl border border-primary/25 bg-primary/8">
-                  <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                  {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
+                      letter-spacing severs Arabic letter connections
+                      (A11 §8, rule documented in layout.tsx). */}
+                  <div className="text-[10px] text-muted-foreground font-bold mb-1">
                     معاينة سريعة
                   </div>
                   <div className="text-xs text-foreground/90 leading-relaxed">
@@ -364,6 +406,27 @@ export default function AdminPromotionsPage() {
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-20 rounded-2xl skeleton-shimmer" />
               ))}
+            </div>
+          ) : loadError && sales.length === 0 ? (
+            /* 94-C2 (A2 P2-9): a failed load is an error card with
+               retry — NOT the "no promotions yet" empty state. */
+            <div className="bg-card border border-status-error/22 rounded-2xl p-8 text-center">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+                <WifiOff className="w-7 h-7 text-status-error/70" />
+              </div>
+              <p className="font-black text-sm mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
+              <p className="text-xs text-muted-foreground mb-5 max-w-xs mx-auto leading-relaxed">
+                {loadError}
+              </p>
+              <Button
+                onClick={() => void load()}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 font-bold"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                إعادة المحاولة
+              </Button>
             </div>
           ) : sales.length === 0 ? (
             <div className="bg-card border border-border/55 rounded-2xl p-8 text-center">

@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 // replaced by the shared styled confirm.
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
@@ -35,10 +36,12 @@ import {
   EyeOff,
   Package,
   Plus,
+  RefreshCw,
   Search,
   Square,
   Trash2,
   Upload,
+  WifiOff,
   X,
   Zap,
 } from "lucide-react";
@@ -174,7 +177,13 @@ export default function AdminProductsPage() {
     name: string;
     inventoryCount: number;
   } | null>(null);
-  const [search, setSearch] = useState("");
+  // 94-C2 (A2 P2-3): the GlobalSearch palette deep-links here with
+  // ?search= — prefill the box so the operator's query survives the
+  // navigation (the catalog search is client-side over the loaded
+  // list, so the URL param only needs to seed the initial state).
+  const [search, setSearch] = useState(
+    () => new URLSearchParams(window.location.search).get("search") ?? "",
+  );
   const [categoryFilter, setCategoryFilter] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -189,6 +198,12 @@ export default function AdminProductsPage() {
   const {
     data: products = [],
     isLoading,
+    // 94-C2 (A2 P1-2): `isError`/`error` were never destructured — a
+    // failed load (401/500/network) fell back to data=[] and rendered
+    // the «لا توجد منتجات» empty state: a false-empty catalog that
+    // survived the round-93 error-card wave (same class as A5 S-2).
+    isError,
+    error,
     refetch,
   } = useListAdminProducts(undefined, {
     query: {
@@ -199,6 +214,8 @@ export default function AdminProductsPage() {
     },
     request: { headers },
   });
+
+  const loadErrorMessage = isError ? getErrorMessage(error) : null;
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
@@ -346,6 +363,33 @@ export default function AdminProductsPage() {
     else setSelectedIds(new Set(filtered.map((p) => p.id)));
   };
 
+  // 94-C2 (A2 P2-8): the bulk loops now count REAL outcomes (per-item
+  // r.ok + parsed failure reasons, isAdminUnauthorized mid-loop) and the
+  // success toast only fires when something actually succeeded — the
+  // old unconditional «تمت أرشفة 0 منتج» right after the failure toast
+  // was a success-toned lie (same class as the topups B5-01 fix).
+  const summarizeBulk = (verb: string, total: number, failures: Array<{ id: number; reason: string }>) => {
+    const successCount = total - failures.length;
+    if (failures.length > 0) {
+      toast({
+        title:
+          successCount > 0
+            ? `${verb} — ${successCount} من ${total}`
+            : "خطأ",
+        description: `فشلت ${failures.length} من ${total} — ${failures
+          .map((f) => `#${f.id}: ${f.reason}`)
+          .join("، ")}`,
+        variant: "destructive",
+      });
+    }
+    if (successCount > 0 && failures.length === 0) {
+      toast({
+        title: `✓ ${verb} ${successCount} ${successCount === 1 ? "منتج" : "منتجات"}`,
+        variant: "success",
+      });
+    }
+  };
+
   const bulkDelete = async () => {
     if (!selectedIds.size) return;
     // 93-C7 / C-UX3: shared styled confirm — native window.confirm left
@@ -358,25 +402,30 @@ export default function AdminProductsPage() {
     });
     if (!confirmed) return;
     setBulkProcessing(true);
-    let successCount = 0;
-    let failedCount = 0;
+    const failures: Array<{ id: number; reason: string }> = [];
     for (const id of selectedIds) {
+      const url = `/api/admin/products/${id}`;
       try {
-        const r = await fetch(`/api/admin/products/${id}`, { method: "DELETE", headers });
-        if (!r.ok) throw new Error(String(r.status));
-        successCount++;
-      } catch {
-        failedCount++;
+        const r = await fetch(url, { method: "DELETE", headers });
+        // 94-C2 (A2 P2-14): 401 mid-loop = session expiry — stop the
+        // loop; the global handler has toasted + redirected.
+        if (isAdminUnauthorized(r, url)) return;
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+          failures.push({
+            id,
+            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+          });
+          continue;
+        }
+      } catch (e) {
+        failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
       }
     }
-    if (failedCount > 0) {
-      toast({
-        title: "خطأ",
-        description: `فشل تنفيذ العملية على ${failedCount} منتج`,
-        variant: "destructive",
-      });
-    }
-    toast({ title: `تمت أرشفة ${successCount} منتج` });
+    summarizeBulk("تمت الأرشفة", selectedIds.size, failures);
     setSelectedIds(new Set());
     invalidate();
     setBulkProcessing(false);
@@ -385,31 +434,34 @@ export default function AdminProductsPage() {
   const bulkToggleActive = async (active: boolean) => {
     if (!selectedIds.size) return;
     setBulkProcessing(true);
-    let failedCount = 0;
+    const failures: Array<{ id: number; reason: string }> = [];
     for (const id of selectedIds) {
       const p = products.find((pr) => pr.id === id);
       if (!p) continue;
+      const url = `/api/admin/products/${id}`;
       try {
-        const r = await fetch(`/api/admin/products/${id}`, {
+        const r = await fetch(url, {
           method: "PATCH",
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify({ is_active: active }),
         });
-        if (!r.ok) throw new Error(String(r.status));
-      } catch {
-        failedCount++;
+        // 94-C2 (A2 P2-14): same mid-loop session-expiry guard.
+        if (isAdminUnauthorized(r, url)) return;
+        if (!r.ok) {
+          const body = (await r.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+          } | null;
+          failures.push({
+            id,
+            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+          });
+        }
+      } catch (e) {
+        failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
       }
     }
-    if (failedCount > 0) {
-      toast({
-        title: "خطأ",
-        description: `فشل تنفيذ العملية على ${failedCount} منتج`,
-        variant: "destructive",
-      });
-    }
-    toast({
-      title: `تم ${active ? "تفعيل" : "إخفاء"} ${selectedIds.size - failedCount} منتج`,
-    });
+    summarizeBulk(active ? "تم التفعيل" : "تم الإخفاء", selectedIds.size, failures);
     setSelectedIds(new Set());
     invalidate();
     setBulkProcessing(false);
@@ -779,6 +831,25 @@ export default function AdminProductsPage() {
         </div>
 
         {/* Grid */}
+        {/* 94-C2 (A2 P1-2): refresh of an already-rendered catalog
+            failed — keep the stale cards, surface the failure inline
+            (referrals.tsx banner idiom). */}
+        {isError && products.length > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <WifiOff className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">{loadErrorMessage ?? "تعذّر تحديث قائمة المنتجات"}</span>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -787,6 +858,26 @@ export default function AdminProductsPage() {
                 className="bg-card border border-border/60 rounded-2xl h-40 skeleton-shimmer"
               />
             ))}
+          </div>
+        ) : isError && products.length === 0 ? (
+          /* 94-C2 (A2 P1-2): a failed load is NOT an empty catalog — the
+             referrals.tsx error-card idiom (an outage/expired session
+             previously masqueraded as "لا توجد منتجات"). */
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-8 h-8 text-status-error/70" />
+            </div>
+            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المنتجات</p>
+            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
+              {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+            </p>
+            <Button
+              onClick={() => refetch()}
+              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              إعادة المحاولة
+            </Button>
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState icon={Package} title="لا توجد منتجات" />
@@ -810,9 +901,11 @@ export default function AdminProductsPage() {
                   <div className="p-4">
                     {/* Product info */}
                     <div className="flex items-start gap-3 mb-3">
-                      {/* Checkbox */}
+                      {/* Checkbox — 94-C2: aria-label so the icon-only
+                          toggle is announced (and reachable by tests). */}
                       <button
                         onClick={() => toggleSelect(product.id)}
+                        aria-label={`تحديد ${product.name}`}
                         className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
                       >
                         {isSelected ? (

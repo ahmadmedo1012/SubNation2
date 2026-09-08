@@ -3,10 +3,17 @@ import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { verifyAdminTokenDetailed } from "../lib/jwt";
+import { isValidAdminSession } from "../lib/admin-session";
 
 export interface AdminAuthenticatedRequest extends Request {
   adminId: number;
   role: string;
+  /**
+   * A8-01 (round-94): the admin_sessions row id bound to this token.
+   * null for sid-less tokens (only possible outside production — see
+   * the strictness note in requireAdmin).
+   */
+  adminSessionId: string | null;
   /**
    * Permission scopes granted to this admin, materialized once per
    * request from the admin_users row. The `requirePermission(scope)`
@@ -57,6 +64,42 @@ export async function requireAdmin(
     return;
   }
 
+  // A8-01 (round-94): server-side session enforcement. A token minted
+  // after this deploy carries a `sid`; the row is the revocation truth
+  // — logout / change-password / disable kill the token regardless of
+  // the JWT's own 8h TTL. Production additionally REJECTS sid-less
+  // tokens (fail-closed: pre-migration tokens die once, the single
+  // operator re-logs in). Non-production accepts them so the pglite
+  // fixtures that call signAdminToken({adminId, role}) directly keep
+  // passing without minting rows.
+  const sid = result.payload.sid;
+  if (typeof sid !== "string" || sid.length === 0) {
+    if (process.env.NODE_ENV === "production") {
+      res
+        .status(401)
+        .json(
+          createErrorResponse(
+            "جلسة قديمة — أعد تسجيل الدخول",
+            ErrorCode.SESSION_EXPIRED,
+          ),
+        );
+      return;
+    }
+  } else {
+    const sessionValid = await isValidAdminSession(sid, result.payload.adminId);
+    if (!sessionValid) {
+      res
+        .status(401)
+        .json(
+          createErrorResponse(
+            "تم إبطال الجلسة — أعد تسجيل الدخول",
+            ErrorCode.SESSION_EXPIRED,
+          ),
+        );
+      return;
+    }
+  }
+
   // Look up the row to (a) confirm the admin still exists, (b) check
   // is_active so soft-disabled admins lose access in real time, and
   // (c) read the latest permissions array. One indexed PK lookup —
@@ -87,6 +130,7 @@ export async function requireAdmin(
   const adminReq = req as AdminAuthenticatedRequest;
   adminReq.adminId = admin.id;
   adminReq.role = admin.role;
+  adminReq.adminSessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
   adminReq.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
   next();
 }

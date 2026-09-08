@@ -2,6 +2,12 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
+// 94-C2 (A2 P2-5): the wallet-edit shell migrates from the hand-rolled
+// fixed overlay to the shared AppDialog — focus trap, ESC handling,
+// role="dialog"/aria-modal and a guarded dismiss while the money PATCH
+// is in flight (the old backdrop closed mid-save and stranded the
+// request with no visible surface).
+import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -16,15 +22,16 @@ import {
   userProviderBadges,
   type AdminUserShape,
 } from "@/lib/admin/user-display";
-import { formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { formatCount, formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  customFetch,
   getListAdminUsersQueryKey,
   type AdminUser,
-  useListAdminUsers,
 } from "@workspace/api-client-react";
 import {
   CheckCircle,
+  ChevronDown,
   Download,
   Edit2,
   Filter,
@@ -36,7 +43,6 @@ import {
   Users,
   Wallet,
   WifiOff,
-  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -78,6 +84,23 @@ const SORT_OPTIONS = [
   { value: "points_desc", label: "النقاط ↓" },
   { value: "created_asc", label: "الأقدم" },
 ];
+
+/** 94-C2 (A2 P1-1): the backend supports `page`/`limit` (clamped
+ *  1..200, default 100) but the UI never sent either — the directory
+ *  silently capped at the newest 100 users while the summary cards
+ *  presented the slice as «إجمالي المستخدمين / الأرصدة / الإنفاق».
+ *  The frozen `?page=&limit=` contract now accumulates in place. */
+const USERS_PAGE_SIZE = 100;
+
+/** Arabic plural forms for the directory counter (formatCount, A2 P3-4). */
+const USER_COUNT_FORMS = {
+  zero: "مستخدمين",
+  one: "مستخدم",
+  two: "مستخدمان",
+  few: "مستخدمين",
+  many: "مستخدمًا",
+  other: "مستخدم",
+};
 
 /**
  * Compact pill row showing which auth providers are linked to a given
@@ -133,8 +156,13 @@ export default function AdminUsersPage() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState(
+    // 94-C2 (A2 P2-3): the GlobalSearch palette deep-links here with
+    // ?search= — prefill the box (and the debounced mirror so the
+    // first query already carries it, no double fetch).
+    () => new URLSearchParams(window.location.search).get("search") ?? "",
+  );
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [tierFilter, setTierFilter] = useState("");
   const [sortBy, setSortBy] = useState("wallet_desc");
   const [showFilters, setShowFilters] = useState(false);
@@ -158,11 +186,8 @@ export default function AdminUsersPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const params: Record<string, string> = {};
-  if (debouncedSearch) params.search = debouncedSearch;
-
   const {
-    data: usersRaw = [],
+    data: usersPages,
     isLoading,
     // 93-C6 / F-07 (A5 S-2): a failed load previously fell through to
     // the "لا يوجد مستخدمون" empty state — an outage made the whole
@@ -170,20 +195,44 @@ export default function AdminUsersPage() {
     isError,
     error,
     refetch,
-  } = useListAdminUsers(params, {
-    query: {
-      queryKey: getListAdminUsersQueryKey(params),
-      enabled: !!adminToken,
-      // Round-4 (perf P1-3): the admin-room socket listener invalidates
-      // users on every `admin-stats-update` push (wallet/loyalty writes
-      // change user rows) — 5-min fallback only.
-      refetchInterval: 300_000,
-      refetchIntervalInBackground: false,
+    // 94-C2 (A2 P1-1): append controls + the implicit "more may
+    // exist" flag (a full page).
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AdminUser[], Error>({
+    // Key keeps the "/api/admin/users" prefix so the existing
+    // invalidations still refresh the accumulated pages; `search` in
+    // the key restarts at page 1 and aborts the in-flight request via
+    // the queryFn's AbortSignal (94-C2).
+    queryKey: ["/api/admin/users", "load-more", { search: debouncedSearch.trim() || undefined }],
+    queryFn: ({ pageParam, signal }) => {
+      const qs = new URLSearchParams({
+        page: String(pageParam),
+        limit: String(USERS_PAGE_SIZE),
+      });
+      const s = debouncedSearch.trim();
+      if (s) qs.set("search", s);
+      return customFetch<AdminUser[]>(`/api/admin/users?${qs.toString()}`, { signal, headers });
     },
-    request: { headers },
+    initialPageParam: 1,
+    // Frozen contract (A2 P1-1): plain-array body — a full page means
+    // the next page MIGHT exist; a short page is the definite end.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === USERS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    enabled: !!adminToken,
+    // Round-4 (perf P1-3): the admin-room socket listener invalidates
+    // users on every `admin-stats-update` push (wallet/loyalty writes
+    // change user rows) — 5-min fallback only.
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: false,
   });
 
-  const users: AdminUser[] = usersRaw;
+  const users: AdminUser[] = (usersPages?.pages ?? []).flat();
+  // 94-C2 (A2 P1-1): the directory size is only provably known when a
+  // single short page arrived — «عرض N» otherwise.
+  const knownTotal =
+    (usersPages?.pages.length ?? 0) <= 1 && users.length < USERS_PAGE_SIZE;
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
@@ -309,7 +358,9 @@ export default function AdminUsersPage() {
       // fallback.
       if (!res.ok) throw new Error(getErrorMessage(data) || "خطأ");
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
-      queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey(params) });
+      // 94-C2: base key — refreshes the accumulating infinite query
+      // (prefix match), not just one param-specific cache entry.
+      queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
       setEditingUser(null);
     } catch (err: unknown) {
       toast({
@@ -363,9 +414,11 @@ export default function AdminUsersPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-black mb-0.5">المستخدمون</h1>
+            {/* 94-C2 (A2 P1-1): honest count — the directory no longer
+                claims a grand total it can't know once pages are capped. */}
             <p className="text-xs text-muted-foreground">
               {users.length > 0
-                ? `${sorted.length} / ${users.length} مستخدم`
+                ? `${knownTotal ? "" : "عرض "}${formatCount(users.length, USER_COUNT_FORMS)}${knownTotal ? "" : " (الأحدث أولاً)"}`
                 : "إدارة حسابات المستخدمين"}
               {tierFilter && ` · فلتر: ${tierLabel(tierFilter)}`}
             </p>
@@ -413,7 +466,7 @@ export default function AdminUsersPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-wrap gap-6">
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
+                <div className="text-[10px] font-bold text-muted-foreground mb-2">
                   مستوى الولاء
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -433,7 +486,7 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
+                <div className="text-[10px] font-bold text-muted-foreground mb-2">
                   الترتيب
                 </div>
                 <div className="flex gap-1 flex-wrap">
@@ -469,20 +522,23 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {/* Summary stats strip */}
+        {/* Summary stats strip — 94-C2 (A2 P1-1): the labels describe
+            the LOADED sample, never a grand total (the old «إجمالي
+            المستخدمين/الأرصدة/الإنفاق» cards presented the first page
+            as the whole directory). */}
         {!isLoading && users.length > 0 && !search && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               {
-                label: "إجمالي المستخدمين",
-                value: users.length,
+                label: "المستخدمون المعروضون",
+                value: formatCount(users.length, USER_COUNT_FORMS),
                 icon: Users,
                 color: "text-blue-400",
                 bg: "bg-blue-400/10",
                 border: "border-blue-400/15",
               },
               {
-                label: "إجمالي الأرصدة",
+                label: "أرصدة المعروضين",
                 value: formatCurrency(totalWallet),
                 icon: Wallet,
                 color: "text-cyan-400",
@@ -490,7 +546,7 @@ export default function AdminUsersPage() {
                 border: "border-cyan-400/15",
               },
               {
-                label: "إجمالي الإنفاق",
+                label: "إنفاق المعروضين",
                 value: formatCurrency(totalSpend),
                 icon: Star,
                 color: "text-emerald-400",
@@ -528,30 +584,47 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {/* Edit modal */}
-        {editingUser && (
-          <div
-            className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-            onClick={(e) => e.target === e.currentTarget && setEditingUser(null)}
-          >
-            <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-md shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="font-black">تعديل المستخدم</h2>
-                  <p className="text-sm text-muted-foreground font-mono mt-0.5">
-                    {editingUser.phone}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setEditingUser(null)}
-                  className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
+        {/* Edit dialog — 94-C2 (A2 P2-5): the money-action shell is
+            the shared AppDialog (focus trap, ESC, aria) with
+            dismissable={!saving} so a stray tap mid-PATCH can't destroy
+            the form; the submit button lives in the dialog footer and
+            associates with the form via form="user-edit-form". */}
+        <AppDialog
+          open={!!editingUser}
+          onOpenChange={(o) => {
+            if (!o) setEditingUser(null);
+          }}
+          title="تعديل المستخدم"
+          description={editingUser?.phone}
+          dismissable={!saving}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingUser(null)}
+                disabled={saving}
+                className="flex-1 h-10 active:scale-[0.97] sm:flex-none"
+              >
+                إلغاء
+              </Button>
+              <Button
+                type="submit"
+                form="user-edit-form"
+                className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
+                disabled={saving}
+              >
+                <CheckCircle className="w-4 h-4 ml-1.5" />
+                {saving ? "جارٍ الحفظ..." : "حفظ"}
+              </Button>
+            </>
+          }
+        >
+          <AppDialogBody className="space-y-4">
+            {editingUser && (
+              <>
               {/* Current snapshot */}
-              <div className="grid grid-cols-3 gap-2 mb-4 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
+              <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
                 {[
                   {
                     label: "الرصيد",
@@ -575,7 +648,7 @@ export default function AdminUsersPage() {
               </div>
 
               {/* Extra quick info */}
-              <div className="flex items-center gap-4 mb-4 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
                 <span>
                   الطلبات: <strong className="text-foreground">{editingUser.order_count}</strong>
                 </span>
@@ -595,7 +668,7 @@ export default function AdminUsersPage() {
                 )}
               </div>
 
-              <form onSubmit={handleSave} className="space-y-4">
+              <form id="user-edit-form" onSubmit={handleSave} className="space-y-4">
                 <div>
                   <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
                   <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
@@ -660,28 +733,11 @@ export default function AdminUsersPage() {
                     </select>
                   </div>
                 </div>
-                <div className="flex gap-3 pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setEditingUser(null)}
-                    className="flex-1 h-10 active:scale-[0.97]"
-                  >
-                    إلغاء
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
-                    disabled={saving}
-                  >
-                    <CheckCircle className="w-4 h-4 ml-1.5" />
-                    {saving ? "جارٍ الحفظ..." : "حفظ"}
-                  </Button>
-                </div>
               </form>
-            </div>
-          </div>
-        )}
+              </>
+            )}
+          </AppDialogBody>
+        </AppDialog>
 
         {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered list
             failed — keep the stale rows, surface the failure inline. */}
@@ -757,28 +813,28 @@ export default function AdminUsersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستخدم
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المصدر
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الرصيد
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستوى
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         النقاط
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الإجمالي المنفق
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الطلبات
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         التسجيل
                       </th>
                       <th className="px-4 py-3 w-10" />
@@ -844,7 +900,7 @@ export default function AdminUsersPage() {
                 </table>
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground flex items-center justify-between">
-                <span>{sorted.length} مستخدم</span>
+                <span>{formatCount(sorted.length, USER_COUNT_FORMS)}</span>
                 <span className="text-muted-foreground">انقر على قلم التحرير للتعديل</span>
               </div>
             </div>
@@ -888,6 +944,32 @@ export default function AdminUsersPage() {
                 </div>
               ))}
             </div>
+
+            {/* 94-C2 (A2 P1-1): "load more" appends the next page of the
+                frozen `?page=N+1&limit=` contract in place — users past
+                the silent 100-row cap become reachable. The button hides
+                once a short page arrives. */}
+            {hasNextPage && (
+              <div className="flex justify-center pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  disabled={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -174,13 +174,46 @@ const STORAGE_CURRENT_KEY = "subnation:copilot:current:v1";
 const MAX_CONVERSATIONS = 8;
 const MEMORY_TURNS_SENT = 6; // last N turns sent with each request
 
+/** 94-C2 (A2 P2-4): restores a persisted conversation list, converting
+ * any turn saved mid-request (`loading: true` — written before the fix,
+ * or by an older build) into an explicit error with a retry hint.
+ * Restoring it as-is rendered an eternal «جارٍ التفكير…» spinner with
+ * no completion path (the retry button only renders for errors).
+ * Exported for the restore regression test. */
+export function sanitizeRestoredConversations(list: Conversation[]): Conversation[] {
+  return list.map((c) => ({
+    ...c,
+    turns: c.turns.map((t) =>
+      t.loading
+        ? {
+            ...t,
+            loading: false,
+            error: t.error ?? "انقطع الطلب بإغلاق اللوحة — أعد المحاولة",
+          }
+        : t,
+    ),
+  }));
+}
+
+/** 94-C2 (A2 P2-4): strips the transient `loading` flag before
+ * persistence — the in-memory state keeps spinning while the request
+ * runs, but the stored copy never claims it (a tab closed mid-request
+ * previously hydrated into the eternal-spinner state above).
+ * Exported for the persistence regression test (save path). */
+export function stripTransientLoading(list: Conversation[]): Conversation[] {
+  return list.map((c) => ({
+    ...c,
+    turns: c.turns.map((t) => (t.loading ? { ...t, loading: false } : t)),
+  }));
+}
+
 function loadConversations(): Conversation[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const arr = JSON.parse(raw) as Conversation[];
     if (!Array.isArray(arr)) return [];
-    return arr;
+    return sanitizeRestoredConversations(arr);
   } catch {
     return [];
   }
@@ -188,7 +221,12 @@ function loadConversations(): Conversation[] {
 
 function saveConversations(list: Conversation[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_CONVERSATIONS)));
+    // 94-C2 (A2 P2-4): `loading:true` never reaches localStorage — see
+    // stripTransientLoading above.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(stripTransientLoading(list.slice(0, MAX_CONVERSATIONS))),
+    );
   } catch {
     // Storage quota or disabled — silently ignore.
   }
@@ -324,6 +362,38 @@ export function CopilotPanel() {
 
   const turns = current.turns;
 
+  // 94-C2 (A2 P3-17): the «expired» preview state existed with no
+  // trigger — a stale preview only errored when the operator CLICKED
+  // it (the server rejects expired previews). A 15s sweep flips any
+  // actionable preview whose server-side `expires_at` has passed, so
+  // the card tells the truth before the click.
+  useEffect(() => {
+    const ACTIONABLE = new Set(["pending", "awaiting_double_confirm"]);
+    const sweep = () => {
+      setConversations((prev) => {
+        let changed = false;
+        const list = prev.map((c) => {
+          const turns2 = c.turns.map((t) => {
+            if (
+              ACTIONABLE.has(t.previewState ?? "") &&
+              t.preview?.expires_at &&
+              Date.parse(t.preview.expires_at) <= Date.now()
+            ) {
+              changed = true;
+              return { ...t, previewState: "expired" as const };
+            }
+            return t;
+          });
+          return changed && turns2 !== c.turns ? { ...c, turns: turns2 } : c;
+        });
+        if (changed) saveConversations(list);
+        return changed ? list : prev;
+      });
+    };
+    const timer = setInterval(sweep, 15_000);
+    return () => clearInterval(timer);
+  }, []);
+
   function patchTurn(id: string, patch: Partial<ConversationTurn>) {
     setConversations((prev) => {
       const list = prev.map((c) => {
@@ -420,14 +490,19 @@ export function CopilotPanel() {
         e.preventDefault();
         setOpen((v) => !v);
       } else if (e.key === "Escape" && open) {
-        if (showHistory) setShowHistory(false);
+        // 94-C2 (A2 P3-17): ESC peels layers off in order — the action
+        // history overlay first, then the conversations sidebar, then
+        // fullscreen, then the panel itself (previously it closed the
+        // whole panel while the history overlay stayed logically open).
+        if (showActionHistory) setShowActionHistory(false);
+        else if (showHistory) setShowHistory(false);
         else if (fullscreen) setFullscreen(false);
         else setOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, fullscreen, showHistory]);
+  }, [open, fullscreen, showHistory, showActionHistory]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -472,6 +547,12 @@ export function CopilotPanel() {
     };
     appendTurn(turn);
     setInput("");
+    // 94-C2 (A2 P3-17): the auto-grow textarea used to KEEP its grown
+    // height after sending — the composer stayed a tall block until the
+    // next manual edit shrank it.
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
 
     const history = buildHistory();
     try {
@@ -1311,7 +1392,7 @@ function PreviewCard({
   return (
     <div className="border border-border rounded-2xl rounded-tr-md bg-muted/20 shadow-sm overflow-hidden">
       <div className="px-3 py-2 border-b border-border/60 flex items-center gap-2 text-[11px] bg-muted/30">
-        <span className={`font-bold ${isHighRisk ? "text-amber-400" : "text-primary"}`}>
+        <span className={`font-bold ${isHighRisk ? "text-status-warning" : "text-primary"}`}>
           معاينة — {preview.action_class}
         </span>
         <span className="text-muted-foreground">
@@ -1331,7 +1412,7 @@ function PreviewCard({
         )}
 
         {preview.payload.side_effects.length > 0 && (
-          <ul className="text-[11px] text-amber-400/90 list-disc pr-4 space-y-0.5">
+          <ul className="text-[11px] text-status-warning list-disc pr-4 space-y-0.5">
             {preview.payload.side_effects.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
@@ -1376,7 +1457,11 @@ function PreviewCard({
             <button
               onClick={onDoubleConfirm}
               disabled={!cooldownDone}
-              className="flex-1 px-3 py-2 rounded-xl bg-amber-500/90 text-amber-50 text-xs font-bold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+              /* 94-C2 (A2 colors): was bg-amber-500/90 + text-amber-50 ≈
+                 1.9:1 (AA fail) on the money-critical second confirm —
+                 now the primary-token treatment the StatusBadge primary
+                 variant uses (AA-safe on both themes). */
+              className="flex-1 px-3 py-2 rounded-xl bg-primary/10 border border-primary/40 text-primary-text text-xs font-bold hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {cooldownDone
                 ? "تأكيد ثانٍ — تنفيذ الآن"
@@ -1396,7 +1481,7 @@ function PreviewCard({
           </div>
         )}
         {state === "executed" && (
-          <div className="flex items-center gap-2 text-xs text-emerald-400 w-full">
+          <div className="flex items-center gap-2 text-xs text-status-success w-full">
             <CheckCircle2 className="w-3.5 h-3.5" /> تم التنفيذ بنجاح
             {resultUrl && (
               <a
@@ -1413,7 +1498,7 @@ function PreviewCard({
           <div className="text-xs text-muted-foreground">المرحلة 3 غير مفعّلة — مراجعة فقط</div>
         )}
         {state === "expired" && (
-          <div className="text-xs text-muted-foreground">انتهت صلاحية لمعاينة (5 دقائق)</div>
+          <div className="text-xs text-muted-foreground">انتهت صلاحية المعاينة (5 دقائق)</div>
         )}
       </div>
     </div>
@@ -1436,7 +1521,7 @@ function ChangeDiff({ change }: { change: PreviewChange }) {
           <div className="text-[10px] text-muted-foreground mb-0.5">قبل</div>
           {fmt(change.before)}
         </div>
-        <div className="bg-emerald-500/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
+        <div className="bg-status-success/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
           <div className="text-[10px] text-muted-foreground mb-0.5">بعد</div>
           {fmt(change.after)}
         </div>

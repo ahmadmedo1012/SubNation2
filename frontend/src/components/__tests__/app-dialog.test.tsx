@@ -57,11 +57,12 @@ describe("AppDialog — Radix semantics + focus trap basics", () => {
     });
   });
 
-  it("the close button carries aria-label=إغلاق and a 36px target", () => {
+  it("the close button carries aria-label=إغلاق and a 44px target (94-C3 A3 P1-3)", () => {
     render(<DialogHarness />);
     const close = screen.getByRole("button", { name: "إغلاق" });
     expect(close).toBeInTheDocument();
-    expect(close.className).toContain("h-9 w-9");
+    expect(close.className).toContain("h-11 w-11");
+    expect(close.className).toContain("touch-target");
   });
 });
 

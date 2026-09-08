@@ -42,7 +42,11 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+      {/* 94-C3 (A3 P1-3 + P3-14): the shadcn default was a bare ~16px
+          icon button pinned to the physical top-RIGHT — in this RTL app
+          the title starts at the right edge, so the close belongs at the
+          opposite corner, and the hit box is now the 44px WCAG floor. */}
+      <DialogPrimitive.Close className="absolute left-4 top-4 z-10 flex h-11 w-11 items-center justify-center touch-target rounded-lg opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
         <X className="h-4 w-4" />
         <span className="sr-only">إغلاق</span>
       </DialogPrimitive.Close>

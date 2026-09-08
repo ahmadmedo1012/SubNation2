@@ -93,14 +93,15 @@ export function AuthErrorBanner() {
 
   // B6-P1-4: tones ride the shared --status-* tokens (like StatusBadge /
   // statusColor) instead of raw blue/amber — raw Tailwind hues were
-  // dark-mode-tuned only and mis-tinted in the light theme. The error
-  // tone already used the destructive token.
+  // dark-mode-tuned only and mis-tinted in the light theme. 94-C3 (A3
+  // P3-8): the error tone joins the SAME family (--status-error) so all
+  // three tones come from one palette instead of mixing --destructive in.
   const palette =
     entry.tone === "info"
       ? "bg-status-info/10 border-status-info/22 text-status-info"
       : entry.tone === "warning"
         ? "bg-status-warning/10 border-status-warning/22 text-status-warning"
-        : "bg-destructive/10 border-destructive/22 text-destructive";
+        : "bg-status-error/10 border-status-error/22 text-status-error";
 
   const Icon = entry.tone === "info" ? Info : AlertCircle;
 
@@ -112,10 +113,13 @@ export function AuthErrorBanner() {
     >
       <Icon className="w-4 h-4 shrink-0" />
       <span className="flex-1 leading-relaxed">{entry.title}</span>
+      {/* 94-C3 (A3 P1-3): the bare icon button was ~14×14px — far under
+          the 44×44 touch floor. Full-size hit box with negative margins
+          so the banner itself keeps its compact height. */}
       <button
         type="button"
         onClick={() => setCode(null)}
-        className="opacity-70 hover:opacity-100 transition-opacity"
+        className="-my-2.5 -mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center touch-target rounded-lg opacity-70 hover:opacity-100 transition-opacity"
         aria-label="إغلاق"
       >
         <X className="w-3.5 h-3.5" />

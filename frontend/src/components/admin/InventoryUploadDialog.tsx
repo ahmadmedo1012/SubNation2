@@ -119,8 +119,18 @@ export function InventoryUploadDialog({
       });
       return;
     }
-    const content = await file.text();
-    setText(content);
+    // 94-C2 (A2 P3-19): a failed file read used to leave an unhandled
+    // rejection with the textarea untouched and no feedback.
+    try {
+      const content = await file.text();
+      setText(content);
+    } catch {
+      toast({
+        title: "تعذّر قراءة الملف",
+        description: "قد يكون الملف محمياً أو غير قابل للقراءة — جرّب لصق المحتوى يدوياً",
+        variant: "destructive",
+      });
+    }
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -152,11 +162,20 @@ export function InventoryUploadDialog({
           })),
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "فشل الرفع");
+      // 94-C2 (A2 P3-19): parse AFTER the ok check — an HTML error page
+      // (proxy 502) used to throw an opaque English SyntaxError before
+      // the real error path could run.
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        added?: number;
+      } | null;
+      if (!res.ok) {
+        throw new Error(data?.error ?? `فشل الرفع (HTTP ${res.status})`);
+      }
       toast({
         title: "تم الرفع",
-        description: data.message ?? `تم إضافة ${data.added} عنصر`,
+        description: data?.message ?? `تم إضافة ${data?.added ?? 0} عنصر`,
       });
       onUploaded();
     } catch (err) {
@@ -361,7 +380,7 @@ export function InventoryUploadDialog({
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-black flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                <CheckCircle className="w-3.5 h-3.5 text-status-success" />
                 معاينة (أول {Math.min(parsed.entries.length, MAX_PREVIEW_ROWS)} من{" "}
                 {parsed.entries.length})
               </h3>
@@ -439,12 +458,15 @@ function StatPill({
   tone: "neutral" | "success" | "warning" | "error";
   muted?: boolean;
 }) {
+  // 94-C2 (A2 colors): the raw emerald/orange/blue/violet pills are
+  // unified on the --status-* tokens (AA-safe on both themes; the old
+  // -400-on-white pairs reached ~1.9–2.5:1 in light mode).
   const toneCls = muted
     ? "bg-muted/15 border-border/40 text-muted-foreground"
     : tone === "success"
-      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+      ? "bg-status-success/10 border-status-success/30 text-status-success"
       : tone === "warning"
-        ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+        ? "bg-status-warning/10 border-status-warning/30 text-status-warning"
         : tone === "error"
           ? "bg-destructive/10 border-destructive/30 text-destructive"
           : "bg-muted/15 border-border/40 text-foreground";
@@ -470,18 +492,18 @@ function PreviewRow({
   return (
     <tr
       className={`border-t border-border/30 ${
-        isDuplicate ? "bg-orange-500/5" : "hover:bg-muted/10"
+        isDuplicate ? "bg-status-warning/5" : "hover:bg-muted/10"
       }`}
     >
       <td className="px-2 py-1.5 text-muted-foreground font-mono">{index + 1}</td>
       <td className="px-2 py-1.5">
         {entry.kind === "credentials" ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-info/10 text-status-info border border-status-info/30 px-1.5 py-0.5 rounded">
             <Mail className="w-2.5 h-2.5" />
             حساب
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-violet-500/10 text-violet-300 border border-violet-500/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
             <Key className="w-2.5 h-2.5" />
             كود
           </span>
@@ -496,12 +518,12 @@ function PreviewRow({
       </td>
       <td className="px-2 py-1.5">
         {isDuplicate ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-warning/10 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
             <AlertCircle className="w-2.5 h-2.5" />
             مكرر
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-success/10 text-status-success border border-status-success/30 px-1.5 py-0.5 rounded">
             <CheckCircle className="w-2.5 h-2.5" />
             جديد
           </span>

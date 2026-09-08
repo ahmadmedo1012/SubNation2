@@ -47,6 +47,13 @@ export default function ProfilePage() {
 
   const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
+  // R94-A1 #8 (P2 — the fifth error-as-empty site F-05 missed): a failed
+  // linked-providers fetch (401/5xx, or a non-JSON body that makes
+  // res.json() throw) used to leave the list empty, which rendered the
+  // «اربط حسابك لحمايته» advice card to a user who ALREADY has two
+  // linked providers. An explicit error state + retry replaces the
+  // false advice.
+  const [providersError, setProvidersError] = useState(false);
   const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,18 +83,26 @@ export default function ProfilePage() {
 
     (async () => {
       setLoadingProviders(true);
+      setProvidersError(false);
       try {
         const res = await fetch("/api/auth/providers/linked", {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
         const data = await res.json();
-        if (!cancelled && res.ok) {
+        if (cancelled) return;
+        if (res.ok) {
           setLinkedProviders(data.providers || []);
+        } else {
+          // 401/5xx — the list stays untouched (stale-but-real beats
+          // fake-empty) and the explicit error card replaces the
+          // link-your-account advice.
+          setProvidersError(true);
         }
       } catch (err) {
         if ((err as { name?: string })?.name !== "AbortError") {
           console.error("Failed to fetch linked providers:", err);
+          if (!cancelled) setProvidersError(true);
         }
       } finally {
         if (!cancelled) setLoadingProviders(false);
@@ -212,7 +227,7 @@ export default function ProfilePage() {
                     <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">
                       النقاط
                     </div>
-                    <div className="font-black text-sm text-yellow-400 tabular-nums flex items-center gap-1">
+                    <div className="font-black text-sm text-status-warning tabular-nums flex items-center gap-1">
                       <Star className="w-3 h-3" />
                       {user.loyalty_points ?? 0}
                     </div>
@@ -253,25 +268,25 @@ export default function ProfilePage() {
               href: "/orders",
               icon: Shield,
               label: "طلباتي",
-              color: "text-blue-400",
-              bg: "bg-blue-400/10",
-              border: "border-blue-400/20",
+              color: "text-status-info",
+              bg: "bg-status-info/10",
+              border: "border-status-info/20",
             },
             {
               href: "/loyalty",
               icon: Crown,
               label: "الولاء",
-              color: "text-yellow-400",
-              bg: "bg-yellow-400/10",
-              border: "border-yellow-400/20",
+              color: "text-status-warning",
+              bg: "bg-status-warning/10",
+              border: "border-status-warning/20",
             },
             {
               href: "/referrals",
               icon: Gift,
               label: "الإحالات",
-              color: "text-emerald-400",
-              bg: "bg-emerald-400/10",
-              border: "border-emerald-400/20",
+              color: "text-status-success",
+              bg: "bg-status-success/10",
+              border: "border-status-success/20",
             },
           ].map((item) => (
             <Link key={item.href} href={item.href}>
@@ -308,9 +323,9 @@ export default function ProfilePage() {
                 >
                   <div className="flex items-center gap-3">
                     {id.provider === "google.com" ? (
-                      <Mail className="w-4 h-4 text-blue-400" />
+                      <Mail className="w-4 h-4 text-status-info" />
                     ) : id.provider === "firebase.com" ? (
-                      <Smartphone className="w-4 h-4 text-emerald-400" />
+                      <Smartphone className="w-4 h-4 text-status-success" />
                     ) : id.provider === "telegram.org" ? (
                       <svg
                         width="16"
@@ -340,7 +355,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
+                    <div className="text-[10px] bg-status-success/10 text-status-success px-2 py-0.5 rounded-full font-bold">
                       نشط
                     </div>
                     <button
@@ -359,7 +374,34 @@ export default function ProfilePage() {
                 </div>
               ))}
 
+            {!loadingProviders && providersError && (
+              /* R94-A1 #8: the fetch failed — show the failure, not the
+                 «link your account» advice (that advice is false for a
+                 user whose providers exist but didn't load). */
+              <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-status-error/22 bg-status-error/8">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-status-error shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-status-error mb-0.5">
+                      تعذّر تحميل الحسابات المرتبطة
+                    </p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      حدث خطأ في الاتصال — حساباتك المرتبطة سليمة، أعد المحاولة لعرضها.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={refetchProviders}
+                  className="shrink-0 text-xs font-bold text-status-error border border-status-error/25 px-3 py-1.5 rounded-xl hover:bg-status-error/10 transition-colors press-spring"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            )}
+
             {!loadingProviders &&
+              !providersError &&
               linkedProviders.length === 0 &&
               !user?.linked_identities?.length && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">

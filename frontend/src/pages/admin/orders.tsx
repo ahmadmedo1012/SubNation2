@@ -9,13 +9,13 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminOrdersQueryKey,
+  listAdminOrders,
   type AdminOrder,
-  useListAdminOrders,
 } from "@workspace/api-client-react";
 import {
   BadgePercent,
@@ -23,8 +23,6 @@ import {
   Calendar,
   CheckSquare,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Download,
   RefreshCw,
@@ -39,7 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
 /** API may return extra delivery / coupon fields */
@@ -71,15 +69,29 @@ const DATE_RANGES = [
   { label: "30 يوم", days: 30 },
 ];
 
-/** 93-C6 / F-07 (A5 O-1, round-93): server-side page size for the
- *  orders list. The backend (routes/admin/orders.ts) clamps limit to
- *  [1, 200] (default 100) and supports `page`; the frontend previously
- *  never sent either — every load silently capped at the newest 100
- *  orders while the header labeled it "طلب إجمالاً" (a false total:
- *  older orders were unreachable, revenue/coupon stats described only
- *  the loaded slice). 100 keeps payload weight unchanged while the
- *  التالي/السابق controls below make history reachable. */
+/** 94-C2 (A2 P1-1 + P2-2): server-side page size for the orders
+ *  list. The backend (routes/admin/orders.ts) clamps limit to
+ *  [1, 200] (default 100) and supports `page` + `search`. Round-93
+ *  made history reachable with page-swapping التالي/السابق controls;
+ *  round-94 replaces them with the accumulating "load more" pattern
+ *  (frozen contract: 1-based `page` + `limit`, response body stays a
+ *  plain array) so fetched rows — and the operator's row selections —
+ *  survive, while the server-side `?search=` (LIKE across order code /
+ *  phone / email / name / product) reaches orders BEYOND the loaded
+ *  window: the old client-side filter searched only what was already
+ *  on screen, so an older order was "غير موجود" until you paged to it. */
 const ORDERS_PAGE_SIZE = 100;
+
+/** Arabic plural forms for the orders counter (formatCount — the
+ *  shared Arabic-plural helper had zero admin usage, A2 P3-4). */
+const ORDER_COUNT_FORMS = {
+  zero: "طلبات",
+  one: "طلب",
+  two: "طلبان",
+  few: "طلبات",
+  many: "طلبًا",
+  other: "طلب",
+};
 
 // Arabic labels for the RefundService failure codes the 207 partial
 // body carries (backend/src/services/refund.service.ts RefundErrorCode).
@@ -120,28 +132,37 @@ export default function AdminOrdersPage() {
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
+  // 94-C2 (A2 P2-3): the GlobalSearch palette deep-links here via
+  // /admin/orders?search=… — useSearch keeps the box in sync on mount
+  // AND on same-route navigations.
+  const searchParam = useSearch();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
-  const [search, setSearch] = useState("");
+  // 94-C2 (A2 P2-2): search is SERVER-side (?search= LIKE) — the raw
+  // input state feeds a 300ms debounce below; only the debounced value
+  // enters the query key, so one request per typing pause.
+  const [search, setSearch] = useState(
+    () => new URLSearchParams(window.location.search).get("search") ?? "",
+  );
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [dateRange, setDateRange] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
-  // 93-C6 / F-07 (A5 O-1): 1-based page number sent to the backend
-  // (`page` param) so order history beyond the newest 100 rows is
-  // reachable from the UI.
-  const [page, setPage] = useState(1);
+  // 94-C2 (A2 P1-1): page accumulation lives in useInfiniteQuery — no
+  // local `page` state (the round-93 prev/next controls are replaced by
+  // the append-in-place «تحميل المزيد» button below).
   // B5-05 (round-92 audit): the raw window.confirm for the destructive
   // bulk actions (refund!) is replaced by the shared styled AlertDialog
   // hook used by admins.tsx / promotions.tsx — same message text.
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const listParams = { page, limit: ORDERS_PAGE_SIZE };
+  const listParams = { search: debouncedSearch.trim() || undefined, limit: ORDERS_PAGE_SIZE };
   const {
-    data: allOrdersRaw = [],
+    data: ordersPages,
     isLoading,
     // 93-C6 / F-07 (A5 S-2/O-1, round-93): `isError`/`error` were never
     // destructured — a failed load (401/500/network) left data=[] and
@@ -150,25 +171,40 @@ export default function AdminOrdersPage() {
     isError,
     error,
     refetch,
-  } = useListAdminOrders(listParams, {
-    query: {
-      queryKey: getListAdminOrdersQueryKey(listParams),
-      enabled: !!adminToken,
-      // Round-4 (perf P1-3): the admin-room socket listener invalidates
-      // orders on every `admin-stats-update` push — 5-min fallback only.
-      refetchInterval: 300_000,
-      refetchIntervalInBackground: false,
-    },
-    request: { headers },
+    // 94-C2 (A2 P1-1): append controls (fetchNextPage) + the server's
+    // implicit "more may exist" flag (a full page).
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AdminOrder[], Error>({
+    // Key keeps the "/api/admin/orders" prefix so the existing
+    // invalidations (bulk-status, dashboard socket pushes…) still
+    // refresh this query; the debounced `search` in the key restarts
+    // at page 1 and aborts the in-flight request via the queryFn's
+    // AbortSignal (94-C2 debounce + abort, A2 P2-2).
+    queryKey: ["/api/admin/orders", "load-more", listParams],
+    queryFn: ({ pageParam, signal }) =>
+      listAdminOrders({ ...listParams, page: pageParam as number }, { signal, headers }),
+    initialPageParam: 1,
+    // Frozen contract (A2 P1-1): the body is a plain array with no
+    // total meta — a full page means the next page MIGHT exist; the
+    // first short/empty page is the definite end.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === ORDERS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    enabled: !!adminToken,
+    // Round-4 (perf P1-3): the admin-room socket listener invalidates
+    // orders on every `admin-stats-update` push — 5-min fallback only.
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: false,
   });
 
-  const allOrders = allOrdersRaw as AdminOrderRow[];
+  // Same relaxed widening the page always used for the delivered-* /
+  // coupon_* extra fields the generated AdminOrder type doesn't carry.
+  const allOrders = (ordersPages?.pages ?? []).flat() as AdminOrderRow[];
 
-  // 93-C6 / F-07 (A5 O-1): a full page means a next page MIGHT exist
-  // (backend returns a plain array, no total meta); the first
-  // short/empty page is the only place the total is provably known.
-  const hasNextPage = allOrders.length === ORDERS_PAGE_SIZE;
-  const knownTotal = page === 1 && allOrders.length < ORDERS_PAGE_SIZE;
+  // A single short page is the only case where the total is provably
+  // known — otherwise the honest count is «عرض N» (A2 P1-1).
+  const knownTotal = (ordersPages?.pages.length ?? 0) <= 1 && allOrders.length < ORDERS_PAGE_SIZE;
   const loadErrorMessage = isError ? getErrorMessage(error) : null;
 
   // B5-02 (round-92 audit): the bulk-status endpoint (including bulk
@@ -295,6 +331,23 @@ export default function AdminOrdersPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // 94-C2 (A2 P2-2): 300ms debounce feeding the server-side search
+  // (same pattern as users.tsx) — one request per typing pause, not per
+  // keystroke; the in-flight request is aborted by the query key change
+  // (AbortSignal passed through listAdminOrders → customFetch → fetch).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // 94-C2 (A2 P2-3): GlobalSearch deep-links (?search=…) — sync the box
+  // when the URL search changes without clobbering local typing (the
+  // operator may have edited the box after arriving).
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam).get("search") ?? "";
+    setSearch((prev) => (prev === q ? prev : q));
+  }, [searchParam]);
+
   // Redirect effect AFTER all hooks so hook order is identical every
   // render (rules-of-hooks). The null return below keeps the guard
   // semantics: unauthenticated admins render nothing until the
@@ -314,14 +367,11 @@ export default function AdminOrdersPage() {
   const byDate = dateRange
     ? byStatus.filter((o) => o.created_at && isWithinDays(o.created_at, dateRange))
     : byStatus;
-  const filtered = search
-    ? byDate.filter(
-        (o) =>
-          o.order_code?.toLowerCase().includes(search.toLowerCase()) ||
-          o.user_phone?.includes(search) ||
-          o.product_name?.toLowerCase().includes(search.toLowerCase()),
-      )
-    : byDate;
+  // 94-C2 (A2 P2-2): search already ran on the server — only the status
+  // tab and date quick-filter stay client-side over the accumulated
+  // pages (keeping status local preserves the tab counts' honesty over
+  // the loaded set — the risk.tsx P3-1 lesson).
+  const filtered = byDate;
 
   const todayCount = allOrders.filter((o) => {
     if (!o.created_at) return false;
@@ -427,14 +477,14 @@ export default function AdminOrdersPage() {
           <div>
             <h1 className="text-xl font-black mb-0.5">الطلبات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {/* 93-C6 / F-07 (A5 O-1): honest count. "إجمالاً" is only
-                  true when the full result set fits this one page; a
-                  capped list is labeled with its page instead of
-                  masquerading as the grand total. */}
+              {/* 94-C2 (A2 P1-1): honest count. «إجمالاً» is only true
+                  when the whole result set provably fits one page; an
+                  accumulating list is labeled with what it actually
+                  shows («عرض N»), never a grand total it can't know. */}
               <span>
                 {knownTotal
-                  ? `${allOrders.length} طلب إجمالاً`
-                  : `${allOrders.length} طلب · صفحة ${page} (الأحدث أولاً)`}
+                  ? `${formatCount(allOrders.length, ORDER_COUNT_FORMS)} إجمالاً`
+                  : `عرض ${formatCount(allOrders.length, ORDER_COUNT_FORMS)} (الأحدث أولاً)`}
               </span>
               {todayCount > 0 && (
                 <>
@@ -533,7 +583,7 @@ export default function AdminOrdersPage() {
                       {formatCurrency(totalRevenueAll)}
                     </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {allOrders.length} طلب
+                      {formatCount(allOrders.length, ORDER_COUNT_FORMS)}
                     </div>
                   </div>
 
@@ -626,15 +676,14 @@ export default function AdminOrdersPage() {
                   </p>
                 )}
 
-                {/* 93-C6 / F-07 (A5 O-1): these aggregates are computed
-                    from the LOADED page (server paged the list); when the
-                    store exceeds one page, say so instead of letting
-                    "إجمالي الإيرادات" silently describe the newest 100
-                    orders. The dashboard KPI reads /admin/stats — the
-                    server-side truth. */}
+                {/* 94-C2 (A2 P1-1): these aggregates are computed
+                    from the LOADED rows (accumulated pages); once the
+                    list is capped, say so instead of letting "إجمالي
+                    الإيرادات" silently describe a slice. The dashboard
+                    KPI reads /admin/stats — the server-side truth. */}
                 {!knownTotal && (
                   <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-1">
-                    الإحصاءات تعكس الطلبات المعروضة (أحدث {ORDERS_PAGE_SIZE} · صفحة {page}) —
+                    الإحصاءات تعكس الطلبات المعروضة ({formatCount(allOrders.length, ORDER_COUNT_FORMS)}) —
                     الإجماليات الكاملة في لوحة التحكم
                   </p>
                 )}
@@ -856,22 +905,22 @@ export default function AdminOrdersPage() {
                           )}
                         </button>
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         رقم الطلب
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستخدم
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المنتج
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المبلغ
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الحالة
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px] uppercase tracking-wide">
+                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         التاريخ
                       </th>
                       <th className="w-8 px-4 py-3" />
@@ -1024,7 +1073,7 @@ export default function AdminOrdersPage() {
               </div>
               <div className="px-4 py-2.5 border-t border-border bg-muted/10 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {filtered.length} طلب
+                  {formatCount(filtered.length, ORDER_COUNT_FORMS)}
                   {search && ` · نتائج "${search}"`}
                   {filtered.length > 0 && ` · إجمالي ${formatCurrency(totalRevenue)}`}
                 </span>
@@ -1108,40 +1157,29 @@ export default function AdminOrdersPage() {
               })}
             </div>
 
-            {/* 93-C6 / F-07 (A5 O-1): server-side pagination controls.
-                The backend supports `page` (1-based, offset-paged) but
-                the UI never sent it — anything past the newest 100
-                orders was unreachable. Chevrons follow the RTL rule
-                (رجوع/السابق points RIGHT, التالي points LEFT — same
-                convention as the risk-event back-link). */}
-            {(hasNextPage || page > 1) && (
-              <div className="flex items-center justify-center gap-3 pt-1">
+            {/* 94-C2 (A2 P1-1): "load more" appends the next page in
+                place (frozen contract: ?page=N+1&limit=…, body stays a
+                plain array) — replacing the round-93 page-swapping
+                controls so accumulated rows and their selections
+                survive. The button hides once a short page arrives. */}
+            {hasNextPage && (
+              <div className="flex justify-center pt-1">
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-9 gap-1.5"
-                  disabled={page <= 1 || isLoading}
-                  onClick={() => {
-                    setPage((p) => Math.max(1, p - 1));
-                    setSelectedIds(new Set());
-                  }}
+                  disabled={isFetchingNextPage || isLoading}
+                  onClick={() => void fetchNextPage()}
                 >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                  السابق
-                </Button>
-                <span className="text-xs text-muted-foreground tabular-nums">صفحة {page}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={!hasNextPage || isLoading}
-                  onClick={() => {
-                    setPage((p) => p + 1);
-                    setSelectedIds(new Set());
-                  }}
-                >
-                  التالي
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  {isFetchingNextPage ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                    </>
+                  )}
                 </Button>
               </div>
             )}

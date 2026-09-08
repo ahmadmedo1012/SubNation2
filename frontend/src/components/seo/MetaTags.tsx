@@ -42,6 +42,15 @@ export interface SeoInput {
 
 const DEFAULT_IMAGE = "/opengraph.jpg";
 
+/** 94-C3 (A3 P3-6): the browser-chrome tint was a single raw #e11d48 —
+ * a rose hex that matches NEITHER theme's --primary (dark 348 80% 48% /
+ * light 348 80% 46%). Two media-scoped values keep both entries inside
+ * the brand ramp and follow the OS color scheme; browsers that ignore
+ * `media` on theme-color fall back to the first (dark) tag — the app's
+ * default theme. */
+const THEME_COLOR_DARK = "#dc1840"; // hsl(348 80% 48%) — :root --primary
+const THEME_COLOR_LIGHT = "#d3173d"; // hsl(348 80% 46%) — .light --primary
+
 /** Ownership epoch — 0 means "no page-level SEO active". */
 let pageOwnerEpoch = 0;
 const fallbackListeners = new Set<() => void>();
@@ -62,11 +71,18 @@ function clamp(text: string, max: number): string {
   return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)).trim() + "…";
 }
 
-function upsertMeta(selector: string, attr: "name" | "property", key: string, content: string): void {
+function upsertMeta(
+  selector: string,
+  attr: "name" | "property",
+  key: string,
+  content: string,
+  media?: string,
+): void {
   let el = document.head.querySelector<HTMLMetaElement>(selector);
   if (!el) {
     el = document.createElement("meta");
     el.setAttribute(attr, key);
+    if (media) el.setAttribute("media", media);
     document.head.appendChild(el);
   }
   el.setAttribute("content", content);
@@ -111,8 +127,20 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const apply = (): void => {
     setTitle(title);
     upsertMeta('meta[name="description"]', "name", "description", description);
-    upsertMeta('meta[name="viewport"]', "name", "viewport", "width=device-width, initial-scale=1, viewport-fit=cover");
-    upsertMeta('meta[name="theme-color"]', "name", "theme-color", "#e11d48");
+    upsertMeta(
+      'meta[name="viewport"]',
+      "name",
+      "viewport",
+      "width=device-width, initial-scale=1, viewport-fit=cover",
+    );
+    upsertMeta('meta[name="theme-color"]:not([media])', "name", "theme-color", THEME_COLOR_DARK);
+    upsertMeta(
+      'meta[name="theme-color"][media="(prefers-color-scheme: light)"]',
+      "name",
+      "theme-color",
+      THEME_COLOR_LIGHT,
+      "(prefers-color-scheme: light)",
+    );
     upsertMeta('meta[name="robots"]', "name", "robots", robots);
     upsertLink("canonical", url);
 

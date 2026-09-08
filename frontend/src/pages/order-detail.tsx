@@ -139,10 +139,21 @@ export default function OrderDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: order, isLoading, isError } = useGetOrder(orderCode ?? "", {
+  const {
+    data: order,
+    isLoading,
+    isError,
+    error,
+  } = useGetOrder(orderCode ?? "", {
     query: { queryKey: getGetOrderQueryKey(orderCode ?? ""), enabled: !!orderCode && !!token },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
+
+  // R94-A1 #4 (P2): a 404 (ORDER_NOT_FOUND — unknown code / another
+  // user's order / stale link) used to render the «خطأ اتصال» card with
+  // a retry button that can never succeed. customFetch throws ApiError
+  // with .status — the same idiom product.tsx already uses for its 404.
+  const isNotFoundError = isError && (error as { status?: number } | null)?.status === 404;
 
   const copyOrderCode = async () => {
     if (!order?.order_code) return;
@@ -168,7 +179,7 @@ export default function OrderDetailPage() {
       </div>
     );
 
-  if (isError)
+  if (isError && !isNotFoundError)
     return (
       <div className="max-w-2xl mx-auto px-4 py-24 text-center">
         <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
@@ -195,6 +206,9 @@ export default function OrderDetailPage() {
     );
 
   if (!order)
+    // Covers both a resolved empty response and the 404 branch above —
+    // an unknown/expired/foreign order code is «الطلب غير موجود», never
+    // a connection error with an infinite retry loop.
     return (
       <div className="max-w-2xl mx-auto px-4 py-24 text-center">
         <div className="w-16 h-16 rounded-2xl bg-muted/55 border border-border/35 mx-auto mb-4 flex items-center justify-center">

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RedisClientType } from "redis";
 
 /**
  * Round-93 C3 (A3 audit R5/R6) — scheduler leadership resilience.
@@ -221,11 +222,57 @@ describe("R6 — losing the lock DEMOTES this process (split-brain fix)", () => 
   });
 });
 
-describe("R6 — dev fallback (no redis) still grants leadership", () => {
-  it("returns isLeader=true with a no-op release", async () => {
+describe("F2 — redis null does NOT grant unguarded leadership (round-94 A6)", () => {
+  it("returns isLeader=false (fail-closed) with a safe release", async () => {
     const { acquireSchedulerLeadership } = await loadCoordinator();
-    const leadership = await acquireSchedulerLeadership(null);
-    expect(leadership.isLeader).toBe(true);
+    const onAcquired = vi.fn();
+    const leadership = await acquireSchedulerLeadership(null, {
+      onAcquired,
+      retryIntervalMs: 20,
+    });
+    // THE regression pin: the old dev fallback returned isLeader=true with
+    // no refresher/no retry loop — reachable from production via the
+    // degraded boot path, it produced split-brain cron until the next
+    // deploy. Jobs must stop safely instead.
+    expect(leadership.isLeader).toBe(false);
+    expect(onAcquired).not.toHaveBeenCalled();
     await expect(leadership.release()).resolves.toBeUndefined();
+    expect(leadership.isLeader).toBe(false);
+    // Give the (unref'd, 20 ms) retry loop a few silent polls — it must
+    // not warn-per-tick and must not spontaneously self-promote without
+    // a real client (getRedisClient() is null in the test process).
+    await sleep(80);
+    expect(leadership.isLeader).toBe(false);
+    expect(onAcquired).not.toHaveBeenCalled();
+    await leadership.release();
+  });
+
+  it("acquires the REAL lock once Redis returns (degraded-boot recovery) and fires onAcquired", async () => {
+    const redis = makeFakeRedis();
+    let client: ReturnType<typeof makeFakeRedis> | null = null;
+    const onAcquired = vi.fn();
+    const { acquireSchedulerLeadership } = await loadCoordinator();
+
+    const leadership = await acquireSchedulerLeadership(null, {
+      onAcquired,
+      retryIntervalMs: 15,
+      // The lazy client source the retry loop polls (production default:
+      // getRedisClient(); seam for this test). Cast through unknown — the
+      // fake Redis satisfies the coordinator's structural usage, same as
+      // the `redis as never` casts in the suites above.
+      redisProvider: (() => client) as unknown as () => RedisClientType | null,
+    });
+    expect(leadership.isLeader).toBe(false); // fail-closed at boot
+
+    // Redis comes back: SETNX wins, onAcquired fires, the refresher runs.
+    redis.set.mockImplementation(() => Promise.resolve("OK"));
+    redis.get.mockImplementation((_key: string) => Promise.resolve(leadership.instanceId));
+    client = redis;
+    await vi.waitFor(() => expect(onAcquired).toHaveBeenCalledTimes(1), { timeout: 2_000 });
+    expect(leadership.isLeader).toBe(true);
+
+    await leadership.release();
+    expect(leadership.isLeader).toBe(false);
+    expect(redis.del).toHaveBeenCalledWith(LEADER_KEY);
   });
 });

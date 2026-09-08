@@ -74,9 +74,9 @@ export default function RegisterPage() {
             <div
               role="status"
               aria-live="polite"
-              className="mb-5 p-3 bg-emerald-500/8 border border-emerald-500/22 rounded-xl text-sm text-emerald-400 flex items-center gap-2.5"
+              className="mb-5 p-3 bg-status-success/8 border border-status-success/22 rounded-xl text-sm text-status-success flex items-center gap-2.5"
             >
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-status-success/15 border border-status-success/20 flex items-center justify-center shrink-0">
                 <CheckCircle className="w-3.5 h-3.5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -86,16 +86,31 @@ export default function RegisterPage() {
                     {referral}
                   </span>
                 </p>
-                <p className="text-[11px] text-emerald-400/80 mt-0.5">
-                  ستحصل على <span className="font-bold">5 د.ل</span> مجاناً عند الشحن الأول
+                {/* R94-A1 #6 (P2): the welcome bonus is credited AT SIGNUP
+                    (Google/WhatsApp — backend firebase-auth.service.ts:476 /
+                    whatsapp-otp.service.ts:402), NOT "عند الشحن الأول" as
+                    the old copy claimed — a referred buyer completing
+                    signup never saw the promised topup trigger and assumed
+                    the bonus was lost. Wording now matches support.tsx's
+                    FAQ (فور التسجيل). */}
+                <p className="text-[11px] text-status-success/80 mt-0.5">
+                  ستُضاف مكافأة ترحيب <span className="font-bold">5 د.ل</span> إلى محفظتك فور
+                  إتمام التسجيل
                 </p>
               </div>
             </div>
           ) : (
-            <div className="mb-5 p-2.5 bg-emerald-500/8 border border-emerald-500/18 rounded-xl text-xs text-emerald-400 flex items-center gap-2">
+            <div className="mb-5 p-2.5 bg-status-success/8 border border-status-success/18 rounded-xl text-xs text-status-success flex items-center gap-2">
               <Gift className="w-3.5 h-3.5 shrink-0" />
+              {/* R94-A1 #6 (P2): the REFERRER earns 50 loyalty points
+                  (POINTS_PER_REFERRAL = 50 ≙ 0.50 د.ل, credited when the
+                  friend completes a first topup — topup.service.ts:353),
+                  NOT 5 د.ل. Unified with referrals.tsx / loyalty.tsx
+                  (نقاط قابلة للتحويل إلى رصيد). */}
               <span>
-                ادعُ صديقاً واحصل على <span className="font-bold">5 د.ل</span> مجاناً
+                ادعُ صديقاً واحصل على{" "}
+                <span className="font-bold">50 نقطة ولاء</span> عند أول شحن له — قابلة للتحويل
+                إلى رصيد
               </span>
             </div>
           )}

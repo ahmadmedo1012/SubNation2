@@ -44,7 +44,13 @@ export default function AuthCallbackPage() {
 
     if (token) {
       // Legacy path — see component doc above.
+      // A8-09 (round-94): scrub the token out of the address bar + history
+      // the moment it is read. A crafted `?token=` link used to leave the
+      // injected credential sitting in the URL (browser history, screen
+      // shares, referrer leakage to embedded third parties). replaceState
+      // with a clean path removes it before the SPA continues.
       setToken(token);
+      window.history.replaceState(null, "", window.location.pathname);
       navigate("/");
       return;
     }

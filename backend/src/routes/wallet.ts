@@ -8,11 +8,20 @@ import { safeDecrypt } from "../lib/encryption";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewTopup } from "../telegram";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
 
 const router = Router();
+
+// A7 (round-94): explicit no-store on the user-scoped wallet surface —
+// balance/pending-topup responses are per-user money state; an
+// intermediary (or the browser HTTP cache) must never serve them stale.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 /**
  * SEC-92-09 (round-92 audit): minimal HTML escape for Telegram's
@@ -104,7 +113,11 @@ router.get("/topups", requireUser, async (req, res) => {
   return res.json(topups.map(formatTopup));
 });
 
-router.post("/topups", requireUser, async (req, res) => {
+// F1 (round-94 A4): soft-block guard on the topup-submission money
+// path — a risk-tagged user's transfer requests are refused until they
+// re-authenticate (friction, not lockout; the hard_block family stays
+// off money paths per its own Constitution Principle I contract).
+router.post("/topups", requireUser, riskSoftBlockGuardMiddleware(), async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateTopupBody.safeParse(req.body);

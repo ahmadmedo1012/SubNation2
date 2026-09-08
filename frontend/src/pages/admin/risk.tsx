@@ -107,18 +107,34 @@ export default function AdminRiskPage() {
     },
   });
 
+  // 94-C2 (A2 P3-1): the chip counters were computed from the FILTERED
+  // response — picking «حرج» made every other chip read (0) even when
+  // high/medium events existed (the server only returned the filtered
+  // subset). A background "all" query (same endpoint, same cache key
+  // namespace — it dedupes with the main query when filter === "all")
+  // now feeds the counters so they stay level-agnostic.
+  const allEventsQuery = useQuery<ListResponse>({
+    queryKey: ["admin-risk-events", "all"],
+    queryFn: async () => {
+      const resp = await fetch(`/api/admin/risk/events?limit=100`, { headers });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    },
+  });
+
   const events = useMemo(() => query.data?.events ?? [], [query.data]);
+  const countSource = allEventsQuery.data?.events ?? events;
   const counts = useMemo(() => {
     const c: Record<RiskLevel | "all", number> = {
-      all: events.length,
+      all: countSource.length,
       low: 0,
       medium: 0,
       high: 0,
       critical: 0,
     };
-    for (const e of events) c[e.level]++;
+    for (const e of countSource) c[e.level]++;
     return c;
-  }, [events]);
+  }, [countSource]);
 
   return (
     <AdminLayout>
@@ -244,6 +260,15 @@ export default function AdminRiskPage() {
         )}
         {events.length > 0 && (
           <>
+            {/* 94-C2 (A2 P3-2): the list is capped at the newest 100 per
+                filter (next_cursor exists) — disclose the truncation
+                instead of silently cutting history. */}
+            {query.data?.next_cursor && (
+              <p className="text-[11px] text-muted-foreground text-center">
+                يُعرض أحدث 100 حدث فقط لهذا الفلتر — استخدم الفلاتر لتضييق النطاق
+                والوصول إلى الأحداث الأقدم.
+              </p>
+            )}
             {/* Canonical admin table chrome + horizontal scroll on mobile —
                 previously a bespoke border-border/40 bg-card/60 card with
                 no overflow handling (7 columns crushed at 375px). */}

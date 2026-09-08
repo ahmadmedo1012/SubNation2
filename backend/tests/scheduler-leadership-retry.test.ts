@@ -108,9 +108,20 @@ describe("acquireSchedulerLeadership — retry until acquired (B7-P1-1)", () => 
     expect(onAcquired).not.toHaveBeenCalled();
   });
 
-  it("grants unguarded leadership without Redis (dev single-instance fallback, unchanged)", async () => {
-    const leadership = await acquireSchedulerLeadership(null);
-    expect(leadership.isLeader).toBe(true);
+  it("never grants leadership without Redis (F2 fail-closed — dev sets REDIS_URL to run schedulers)", async () => {
+    // Round-94 A6/F2: the old unguarded dev fallback let a degraded boot
+    // claim leadership with NO lock — paired with a stale leader on the
+    // previous deploy, every cron double-ran until the next restart.
+    // The contract is now fail-closed: no Redis ⇒ no leadership, the
+    // retry loop silently polls getRedisClient(), and one warn covers
+    // the whole null-client episode. Dev without Redis: set REDIS_URL.
+    const leadership = await acquireSchedulerLeadership(null, {
+      retryIntervalMs: 10,
+    });
+    expect(leadership.isLeader).toBe(false);
+    // Give the retry loop a few poll ticks — it must stay fail-closed.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(leadership.isLeader).toBe(false);
     await leadership.release();
   });
 });

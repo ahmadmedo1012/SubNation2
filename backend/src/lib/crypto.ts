@@ -43,7 +43,15 @@ export function generateReferralCode(): string {
 }
 
 export function generateOrderCode(): string {
-  return "SN" + randomBytes(4).toString("hex").toUpperCase();
+  // F9 (round-94 A4): 48 bits of CSPRNG entropy, not 32. The old
+  // 32-bit space hits a ≥1.2% birthday-collision probability at ~10k
+  // orders and ~40% at 65k — the first collision tripped
+  // orders.order_code UNIQUE as an unclassified 23505 → raw 500 on the
+  // purchase path (money-safe: the tx rolled back, but the buyer saw
+  // "حدث خطأ"). 2^48 makes a collision negligible at any realistic
+  // volume. Same "SN" prefix; orders.order_code is varchar(50) so the
+  // 12-hex-digit body still fits.
+  return "SN" + randomBytes(6).toString("hex").toUpperCase();
 }
 
 export const LIBYAN_PHONE_PREFIXES = ["91", "92", "93", "94"];

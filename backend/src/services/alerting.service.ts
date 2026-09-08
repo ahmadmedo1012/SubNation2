@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { getCorrelationId } from "../lib/correlation";
 import { alertingLogger } from "../lib/logger";
 import { getRegistry } from "../lib/metrics";
-import { getRedisClient } from "../lib/redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { captureException } from "./../lib/sentry";
 
 // ── Types (Design §4.5) ──────────────────────────────────────────────────────
@@ -272,7 +272,17 @@ export class AlertingService {
   private async evalWorkerHeartbeatMissing(rule: AlertRuleSpec): Promise<boolean> {
     const redis = getRedisClient();
     if (!redis) return false; // can't evaluate without Redis; fail safe (no alert)
-    const raw = await redis.get("worker:heartbeat");
+    // F8 (round-94 A6): R5 discipline — this was the one raw, unbounded
+    // `redis.get` left in the rule evaluator. During an outage the
+    // offline-queued command never settled, hanging the entire sequential
+    // evaluation cycle. Bounded now; a timeout/Redis error propagates to
+    // evaluateRules' catch (monitoring-error counter + fail-safe no-alert),
+    // exactly like every other bounded Redis op in this family.
+    const raw = await withRedisCommandTimeout(
+      "heartbeat_rule_get",
+      () => redis.get("worker:heartbeat"),
+      2_000,
+    );
     if (!raw) return true; // no heartbeat at all → fire
     try {
       const parsed = JSON.parse(raw) as { ts: number };

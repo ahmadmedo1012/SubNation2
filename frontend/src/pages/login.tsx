@@ -142,7 +142,10 @@ export default function LoginPage() {
             <div className="mb-4 grid grid-cols-3 gap-1.5">
               <ValueChip icon={ShoppingBag} label="تسوّق فوري" />
               <ValueChip icon={ShieldCheck} label="محفظة آمنة" />
-              <ValueChip icon={Gift} label="5 د.ل عند الإحالة" />
+              {/* R94-A1 #6 (P2): the referrer earns 50 loyalty points
+                  (≙ 0.50 د.ل at first friend topup), not 5 د.ل — honest
+                  label, unified with referrals.tsx / loyalty.tsx. */}
+              <ValueChip icon={Gift} label="50 نقطة عند الإحالة" />
             </div>
           )}
 

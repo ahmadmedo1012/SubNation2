@@ -76,6 +76,7 @@ import { Server as SocketServer, type Socket } from "socket.io";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
 import { logger } from "./logger";
 import { isSessionRowLive } from "./session-liveness";
+import { isValidAdminSession } from "./admin-session";
 import { getConfiguredOrigins } from "./origins";
 import {
   getRegistry,
@@ -107,6 +108,11 @@ export interface SocketIdentity {
   role?: string;
   /** True when admin_token verified. False/undefined otherwise. */
   isAdmin: boolean;
+  /** A8-01 (round-94): admin_sessions row id from the admin JWT. The
+   * liveness gate consults it exactly like requireAdmin does — a revoked
+   * (logout / password-change) admin token loses its socket identity
+   * too, not just its HTTP routes. Absent on legacy sid-less tokens. */
+  adminSessionId?: string;
 }
 
 function getAllowedOrigins(): string[] {
@@ -205,6 +211,10 @@ export function authenticateSocketHandshake(handshake: SocketHandshakeLike): Soc
       identity.adminId = result.payload.adminId;
       identity.role = result.payload.role;
       identity.isAdmin = true;
+      // A8-01: keep the sid for the liveness gate below.
+      if (typeof result.payload.sid === "string" && result.payload.sid.length > 0) {
+        identity.adminSessionId = result.payload.sid;
+      }
     }
   }
 
@@ -249,7 +259,8 @@ export function authorizeJoinAdmin(identity: SocketIdentity | undefined): boolea
 export type SocketLivenessFailure =
   | "session_revoked" // sessions row deleted (logout / logout-all / user deletion) or expired
   | "admin_missing" // admin_users row deleted
-  | "admin_inactive"; // admin_users.is_active = false (soft-disable)
+  | "admin_inactive" // admin_users.is_active = false (soft-disable)
+  | "admin_session_revoked"; // admin_sessions row revoked (logout / password change) — A8-01
 
 export interface SocketLivenessResult {
   /** True when the identity is entirely live (or DB probes failed → fail-open). */
@@ -305,6 +316,18 @@ export async function verifySocketIdentityLive(
 
   if (identity.isAdmin && identity.adminId != null) {
     try {
+      // A8-01: the admin_sessions row is the revocation truth — check it
+      // FIRST (cheap PK lookup) so a logged-out/password-rotated admin
+      // loses the socket at the next liveness pass, mirroring requireAdmin.
+      if (identity.adminSessionId) {
+        const sessionLive = await isValidAdminSession(identity.adminSessionId, identity.adminId);
+        if (!sessionLive) {
+          result.ok = false;
+          result.adminRevoked = true;
+          result.reason = "admin_session_revoked";
+          return result;
+        }
+      }
       const [admin] = await db
         .select({ isActive: adminUsersTable.isActive })
         .from(adminUsersTable)
@@ -388,7 +411,8 @@ type RejectionReason =
   // 93-A1 S1: DB-backed liveness verdicts (handshake gate + mid-session re-verify)
   | "session_revoked"
   | "admin_missing"
-  | "admin_inactive";
+  | "admin_inactive"
+  | "admin_session_revoked"; // A8-01: admin_sessions row revoked
 
 /**
  * Record a rejection with all the defensive observability layers:

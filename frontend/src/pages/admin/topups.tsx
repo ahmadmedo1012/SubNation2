@@ -8,15 +8,15 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { copyToClipboard, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { copyToClipboard, formatCount, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
   approveTopup,
+  customFetch,
   getListAdminTopupsQueryKey,
   type AdminTopup,
   rejectTopup,
-  useListAdminTopups,
 } from "@workspace/api-client-react";
 import {
   AlertTriangle,
@@ -26,6 +26,7 @@ import {
   CheckCheck,
   CheckCircle,
   CheckSquare,
+  ChevronDown,
   Clock,
   Copy,
   Hash,
@@ -80,6 +81,23 @@ const STATUS_FILTERS = [
   { value: "rejected", label: "مرفوض" },
 ];
 
+/** 94-C2 (A2 P1-1): page size for the topup queue — the backend
+ *  truncates at 100 rows with NO page param (money queue), so the
+ *  frontend now drives the frozen `?page=&limit=` contract itself and
+ *  accumulates pages in place. 100 keeps the first payload identical
+ *  to what the route already returned. */
+const TOPUPS_PAGE_SIZE = 100;
+
+/** Arabic plural forms for the queue counter (formatCount, A2 P3-4). */
+const TOPUP_COUNT_FORMS = {
+  zero: "طلبات",
+  one: "طلب",
+  two: "طلبان",
+  few: "طلبات",
+  many: "طلبًا",
+  other: "طلب",
+};
+
 function TopupCardSkeleton() {
   return (
     <div className="bg-card border border-border/60 rounded-2xl p-4">
@@ -128,7 +146,10 @@ function RejectModal({
   return (
     <div
       className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      // 94-C2 (A2 P3-7): backdrop click while the reject POST is in
+      // flight must NOT dismiss the modal (a stray tap mid-money-action
+      // left the request running with no visible surface).
+      onClick={(e) => e.target === e.currentTarget && !loading && onCancel()}
     >
       <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         <div className="flex items-center justify-between mb-4">
@@ -142,8 +163,10 @@ function RejectModal({
             </p>
           </div>
           <button
-            onClick={onCancel}
-            className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
+            onClick={() => !loading && onCancel()}
+            disabled={loading}
+            aria-label="إغلاق"
+            className="p-1.5 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4" />
           </button>
@@ -161,8 +184,10 @@ function RejectModal({
             dir="rtl"
             autoFocus
             onKeyDown={(e) => {
-              if (e.key === "Escape") onCancel();
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") onConfirm(note);
+              // 94-C2 (A2 P3-7): ESC while the request is in flight keeps
+              // the modal open (guarded dismiss — same as the backdrop).
+              if (e.key === "Escape" && !loading) onCancel();
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
             }}
           />
           <p className="text-[10px] text-muted-foreground mt-1">
@@ -176,7 +201,7 @@ function RejectModal({
         </div>
 
         <div className="flex gap-2.5">
-          <Button variant="outline" className="flex-1 h-9 active:scale-[0.97]" onClick={onCancel}>
+          <Button variant="outline" className="flex-1 h-9 active:scale-[0.97]" onClick={onCancel} disabled={loading}>
             إلغاء
           </Button>
           <Button
@@ -348,9 +373,16 @@ export default function AdminTopupsPage() {
     {
       key: "Escape",
       handler: () => {
+        // 94-C2 (A2 P3-7): ESC during an in-flight reject no longer
+        // closes the modal + re-arms the row buttons while the POST is
+        // still running (double-action window). The modal itself guards
+        // ESC/backdrop with `loading` — this global handler defers to it.
         if (rejectTarget) {
-          setRejectTarget(null);
-          setProcessingId(null);
+          const rejecting = processingId === rejectTarget.id;
+          if (!rejecting) {
+            setRejectTarget(null);
+            setProcessingId(null);
+          }
         }
         // Don't dismiss the bulk confirm mid-loop: the money requests
         // are already in flight and the modal carries the live progress
@@ -365,8 +397,15 @@ export default function AdminTopupsPage() {
     },
   ]);
 
+  // 94-C2 (A2 P1-1): the money queue is an accumulating infinite query
+  // over the frozen `?page=&limit=` contract (the backend historically
+  // hard-capped at the newest 100 rows with no page param — pending
+  // topups older than the cap were INVISIBLE while the sidebar badge
+  // counted the true total). The key keeps the "/api/admin/topups"
+  // prefix so the existing invalidations (approve/reject/bulk loops)
+  // still refresh the accumulated pages.
   const {
-    data: allTopupsRaw = [],
+    data: topupsPages,
     isLoading,
     // 93-C6 / F-07 (A5 S-2): a failed load previously fell through to
     // "لا توجد طلبات معلقة" — the money queue LOOKED empty during an
@@ -374,26 +413,44 @@ export default function AdminTopupsPage() {
     isError,
     error,
     refetch,
-  } = useListAdminTopups(
-    {},
-    {
-      query: {
-        queryKey: getListAdminTopupsQueryKey({}),
-        enabled: !!adminToken,
-        // Round-4 (perf P1-3): the admin-room socket listener invalidates
-        // topups on every `admin-stats-update` push (approve/reject) —
-        // 5-min fallback only (was 20 s).
-        refetchInterval: 300_000,
-        refetchIntervalInBackground: false,
-      },
-      request: { headers },
-    },
-  );
+    // 94-C2 (A2 P1-1): append controls + the implicit "more may exist"
+    // flag (a full page).
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<AdminTopupRow[], Error>({
+    queryKey: ["/api/admin/topups", "load-more"],
+    queryFn: ({ pageParam, signal }) =>
+      customFetch<AdminTopupRow[]>(`/api/admin/topups?page=${pageParam}&limit=${TOPUPS_PAGE_SIZE}`, {
+        signal,
+        headers,
+      }),
+    initialPageParam: 1,
+    // Frozen contract (A2 P1-1): plain-array body — a full page means
+    // the next page MIGHT exist; a short page is the definite end.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === TOPUPS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    enabled: !!adminToken,
+    // Round-4 (perf P1-3): the admin-room socket listener invalidates
+    // topups on every `admin-stats-update` push (approve/reject) —
+    // 5-min fallback only (was 20 s).
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: false,
+  });
 
-  const allTopups: AdminTopupRow[] = allTopupsRaw as AdminTopupRow[];
+  const allTopups: AdminTopupRow[] = (topupsPages?.pages ?? []).flat();
+
+  // 94-C2 (A2 P1-1): the queue total is only provably known when a
+  // single short page arrived — otherwise «عرض N» (never «إجمالاً
+  // N» for a truncated window).
+  const knownTotal =
+    (topupsPages?.pages.length ?? 0) <= 1 && allTopups.length < TOPUPS_PAGE_SIZE;
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey({}) });
+    // Base key (no params) so the accumulating infinite query — and any
+    // other consumer under /api/admin/topups — refreshes on approve/
+    // reject/bulk loops.
+    queryClient.invalidateQueries({ queryKey: getListAdminTopupsQueryKey() });
 
   // F-008 (security audit 004) — every state-changing admin call to
   // /api/admin/topups/:id/{approve,reject} carries an Idempotency-Key
@@ -764,7 +821,16 @@ export default function AdminTopupsPage() {
               )}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{allTopups.length} طلب إجمالاً</span>
+              {/* 94-C2 (A2 P1-1): honest count — «إجمالاً» only when a
+                  single short page proves the whole queue fits; the
+                  accumulating list labels what it actually shows. The
+                  pending chip below counts the LOADED pending rows; the
+                  sidebar badge carries the server-side truth. */}
+              <span>
+                {knownTotal
+                  ? `${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} إجمالاً`
+                  : `عرض ${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} (الأحدث أولاً)`}
+              </span>
               {pendingCount > 0 &&
                 (() => {
                   const pendingTotal = allTopups
@@ -1057,6 +1123,33 @@ export default function AdminTopupsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 94-C2 (A2 P1-1): "load more" appends the next page of the
+            frozen `?page=N+1&limit=` contract in place — the pending
+            rows hidden behind the old silent 100-row cap become
+            reachable without wiping the operator's selections. The
+            button hides once a short page arrives. */}
+        {hasNextPage && !isLoading && !isError && (
+          <div className="flex justify-center pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5"
+              disabled={isFetchingNextPage}
+              onClick={() => void fetchNextPage()}
+            >
+              {isFetchingNextPage ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>

@@ -27,10 +27,13 @@ import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminTopupsPage from "@/pages/admin/topups";
-import { useListAdminTopups } from "@workspace/api-client-react";
+import { customFetch } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
-  useListAdminTopups: vi.fn(),
+  // 94-C2 (A2 P1-1): the queue moved from useListAdminTopups to a
+  // useInfiniteQuery over the frozen `?page=&limit=` contract via
+  // customFetch — the mock follows the new module surface.
+  customFetch: vi.fn(),
   getListAdminTopupsQueryKey: () => ["admin-topups"],
   approveTopup: vi.fn(),
   rejectTopup: vi.fn(),
@@ -54,8 +57,6 @@ const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
-
-type TopupsResult = ReturnType<typeof useListAdminTopups>;
 
 const PENDING = [
   {
@@ -85,11 +86,7 @@ const PENDING = [
 ];
 
 function mockTopupsResult(data: unknown[]) {
-  (useListAdminTopups as unknown as Mock).mockReturnValue({
-    data,
-    isLoading: false,
-    refetch: vi.fn(),
-  } as unknown as TopupsResult);
+  (customFetch as unknown as Mock).mockResolvedValue(data);
 }
 
 /** Minimal Response-like object — avoids depending on a global Response. */
@@ -145,13 +142,13 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     delete (window as { isSecureContext?: unknown }).isSecureContext;
   });
 
-  it("replaces the raw window.confirm with the styled BulkConfirmModal", () => {
+  it("replaces the raw window.confirm with the styled BulkConfirmModal", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
     fetchMock.mockResolvedValue(resLike());
 
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /موافقة الكل/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
 
     // The styled modal opened with the pending count — not the native dialog.
     expect(bulkDialog().getByText("3 طلب سيتم معالجته")).toBeInTheDocument();
@@ -171,7 +168,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     });
 
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /موافقة الكل/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
     // The first loop item is in flight: exactly ONE approve request.
@@ -208,7 +205,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     });
 
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /موافقة الكل/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
@@ -226,7 +223,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     fetchMock.mockResolvedValue(resLike({ ok: true }));
 
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /موافقة الكل/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
@@ -239,7 +236,6 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
   it("CopyButton routes through the shared clipboard helper: failures surface, not swallow (B6)", async () => {
     fetchMock.mockResolvedValue(resLike({ ok: true, body: [] }));
     renderPage();
-
     // Clipboard API present but DENIES the write. The previous raw
     // `navigator.clipboard.writeText(text).catch(() => {})` swallowed
     // this rejection and still flipped to the "copied" check icon.
@@ -250,7 +246,9 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
       configurable: true,
     });
 
-    const copyBtn = screen.getAllByRole("button", { name: "نسخ" })[0];
+    // 94-C2: the list is async (useInfiniteQuery via customFetch) —
+    // await the row buttons before clicking.
+    const copyBtn = (await screen.findAllByRole("button", { name: "نسخ" }))[0];
     fireEvent.click(copyBtn);
 
     // The shared helper was asked to write…

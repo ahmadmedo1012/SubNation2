@@ -1,6 +1,6 @@
 import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
@@ -12,15 +12,32 @@ import { RefundError, RefundService } from "../../services/refund.service";
 
 const router = Router();
 
+// Must match the order_status pg enum (shared/db/src/schema/orders.ts).
+const ORDER_STATUS_VALUES = ["pending", "completed", "failed", "refunded"] as const;
+
 router.get("/orders", requireAdmin, async (req, res) => {
-  const { status } = req.query;
+  // A5-03 (round-94): `?status=` feeds the order_status pg-enum column —
+  // an out-of-enum value used to reach Postgres as 22P02 → 500. Validate
+  // up front: bad value → 400 INVALID_DATA with the allowed values.
+  const statusRaw = typeof req.query.status === "string" ? req.query.status : undefined;
+  if (statusRaw !== undefined && !(ORDER_STATUS_VALUES as readonly string[]).includes(statusRaw)) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "حالة طلب غير صالحة (المسموح: pending, completed, failed, refunded)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
+  const conditions = statusRaw !== undefined ? [eq(ordersTable.status, statusRaw as any)] : [];
+
+  // A2 (round-94): keep the limit/page clamps from the R93 pagination fix.
   const limit = Math.min(
     Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
     200,
   );
   const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
-  const conditions =
-    status && typeof status === "string" ? [eq(ordersTable.status, status as any)] : [];
 
   // V4: the admin command palette sends ?search= — previously ignored
   // (silently unfiltered results). Match order code, user phone/email/
@@ -96,9 +113,6 @@ router.get("/orders", requireAdmin, async (req, res) => {
   );
 });
 
-// Must match the order_status pg enum (shared/db/src/schema/orders.ts).
-const ORDER_STATUS_VALUES = ["pending", "completed", "failed", "refunded"] as const;
-
 /**
  * S-01 (security audit 004) — Findings F-005 + F-008 closure.
  *
@@ -167,6 +181,17 @@ router.patch(
       // F-005 — per-order atomic refund. We loop sequentially rather
       // than Promise.all to keep error handling clean and to avoid
       // optimistic-lock thrash if multiple refunds touch the same user.
+      //
+      // F-15 (round-94 A1, socket contract): every order-updated emit
+      // now carries order_code — the storefront identifies orders by
+      // SN… code everywhere; the plain numeric id forced "طلبك رقم #42"
+      // toasts that no UI surface could resolve. One upfront code lookup
+      // for the batch (no per-refund N+1).
+      const codeRows = await db
+        .select({ id: ordersTable.id, orderCode: ordersTable.orderCode })
+        .from(ordersTable)
+        .where(inArray(ordersTable.id, numIds));
+      const codeById = new Map(codeRows.map((r) => [r.id, r.orderCode]));
       const successes: number[] = [];
       const failures: Array<{ orderId: number; code: string; message: string }> = [];
       for (const orderId of numIds) {
@@ -179,7 +204,11 @@ router.patch(
           // Per-refund socket notification — same shape the legacy path used.
           import("../../lib/socket")
             .then(({ emitToUser }) => {
-              emitToUser(result.userId, "order-updated", { id: result.orderId, status });
+              emitToUser(result.userId, "order-updated", {
+                id: result.orderId,
+                status,
+                order_code: codeById.get(result.orderId) ?? null,
+              });
               emitToUser(result.userId, "wallet-updated", {
                 walletBalance: result.walletBalance,
               });
@@ -231,38 +260,56 @@ router.patch(
       });
     }
 
-    // Non-refund status transitions — direct UPDATE preserved, but with a
-    // state-machine guard (r4 red-team F-1): the raw UPDATE previously
-    // allowed `refunded → completed`, which re-armed RefundService's only
-    // double-refund protection (the status column). Three clicks by an
-    // orders-scope admin = wallet credited twice for one order, two
-    // ledger refund rows. An order that has been refunded can NEVER be
-    // un-refunded through this endpoint — refunds are terminal.
+    // Non-refund status transitions — direct UPDATE preserved, but with
+    // state-machine guards:
     //
-    // The UPDATE is also rows-affected honest now (r4 red-team F-4): the
+    // (a) r4 red-team F-1: the raw UPDATE previously allowed
+    // `refunded → completed`, which re-armed RefundService's only
+    // double-refund protection (the status column). An order that has
+    // been refunded can NEVER be un-refunded through this endpoint —
+    // refunds are terminal.
+    //
+    // (b) F3 (round-94 A4): the same hole one step removed —
+    // `failed/pending → completed` then `completed → refunded` credited
+    // the wallet with NO corresponding purchase debit (failed/pending
+    // orders never charged anyone; the purchase tx writes "completed"
+    // directly). "completed" is therefore purchase-tx-only: the only
+    // rows a bulk update may set to completed are the ones ALREADY
+    // completed (an idempotent no-op re-affirmation). Everything else
+    // is skipped with an honest reason, mirroring the refunded guard.
+    //
+    // The UPDATE is also rows-affected honest (r4 red-team F-4): the
     // response reports how many rows ACTUALLY transitioned, not
-    // `numIds.length` (valid-but-nonexistent or refunded ids are
-    // silently skipped today and reported as updated).
+    // `numIds.length` (valid-but-nonexistent or guarded ids are
+    // counted as skipped, not as updated).
+    const guard =
+      status === "completed"
+        ? and(inArray(ordersTable.id, numIds), eq(ordersTable.status, "completed"))
+        : and(inArray(ordersTable.id, numIds), ne(ordersTable.status, "refunded"));
     const flippedRows = await db
       .update(ordersTable)
       .set({ status: status as any })
-      .where(sql`id = ANY(${numIds}) AND ${ordersTable.status} <> 'refunded'`)
-      .returning({ id: ordersTable.id, userId: ordersTable.userId });
+      .where(guard)
+      .returning({ id: ordersTable.id, userId: ordersTable.userId, orderCode: ordersTable.orderCode });
     const updatedCount = flippedRows.length;
 
-    // Distinguish "skipped because refunded" from "id not found" so the
-    // admin sees an honest breakdown instead of a lumped count.
+    // Distinguish WHY each missed id was skipped so the admin sees an
+    // honest breakdown instead of a lumped count.
     const flippedIdSet = new Set(flippedRows.map((r) => r.id));
     const missedIds = numIds.filter((id) => !flippedIdSet.has(id));
     let skippedRefunded = 0;
+    let skippedBlockedCompletion = 0;
     if (missedIds.length > 0) {
-      const refundedRows = await db
-        .select({ id: ordersTable.id })
+      const missedRows = await db
+        .select({ id: ordersTable.id, status: ordersTable.status })
         .from(ordersTable)
-        .where(and(sql`id = ANY(${missedIds})`, eq(ordersTable.status, "refunded")));
-      skippedRefunded = refundedRows.length;
+        .where(inArray(ordersTable.id, missedIds));
+      for (const row of missedRows) {
+        if (row.status === "refunded") skippedRefunded += 1;
+        else skippedBlockedCompletion += 1; // pending/failed → completed blocked (F3)
+      }
     }
-    const skippedMissing = missedIds.length - skippedRefunded;
+    const skippedMissing = missedIds.length - skippedRefunded - skippedBlockedCompletion;
 
     // Notify affected users
     const updatedOrders = flippedRows;
@@ -270,7 +317,13 @@ router.patch(
     for (const o of updatedOrders) {
       import("../../lib/socket")
         .then(({ emitToUser }) => {
-          emitToUser(o.userId, "order-updated", { id: o.id, status });
+          // F-15 (round-94 A1): order_code rides the payload — the
+          // storefront's toast/order-detail identify orders by code.
+          emitToUser(o.userId, "order-updated", {
+            id: o.id,
+            status,
+            order_code: o.orderCode,
+          });
         })
         .catch((err) => logger.warn({ err }, "socket notify failed (bulk status)"));
     }
@@ -287,18 +340,23 @@ router.patch(
       count_requested: numIds.length,
       skipped_invalid: skippedInvalid.length,
       skipped_refunded: skippedRefunded,
+      skipped_blocked_completion: skippedBlockedCompletion,
       skipped_missing: skippedMissing,
     });
 
-    // `updated` now reflects actual rows transitioned. Orders already in
-    // the refunded state (terminal — see guard above) and ids that don't
-    // exist are counted separately instead of being reported as successes.
+    // `updated` now reflects actual rows transitioned. Orders in terminal
+    // (refunded) or purchase-tx-owned (completed) states and ids that
+    // don't exist are counted separately instead of being reported as
+    // successes.
     return res.json({
       success: true,
       updated: updatedCount,
       ...(skippedInvalid.length > 0 ? { skipped_invalid: skippedInvalid.length } : {}),
       ...(skippedRefunded > 0
         ? { skipped_refunded: skippedRefunded, reason: "REFUNDED_IS_TERMINAL" }
+        : {}),
+      ...(skippedBlockedCompletion > 0
+        ? { skipped_blocked_completion: skippedBlockedCompletion, reason: "COMPLETED_IS_PURCHASE_ONLY" }
         : {}),
       ...(skippedMissing > 0 ? { skipped_missing: skippedMissing } : {}),
     });

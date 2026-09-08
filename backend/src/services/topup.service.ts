@@ -29,81 +29,161 @@ function isDuplicatePaymentReferenceViolation(err: unknown): boolean {
 }
 
 export class TopupService {
-  /** Create and immediately approve a topup (for automated gateways) */
+  /**
+   * Create and immediately approve a topup (for automated gateways).
+   *
+   * F5 (round-94 A4): this entry point previously accepted (userId,
+   * amount, provider, ref) with ZERO of the validation battery that
+   * approve() carries — no finiteness/ bounds, no required reference,
+   * no advisory lock, no in-tx duplicate check, and no 23505 mapping.
+   * No production caller today (tests only), but the first payment
+   * gateway wired here would have accepted `amount=-50` (a wallet
+   * DEBIT mislabeled topup), `Infinity` (raw 500 from numeric), and a
+   * gateway retry on the same reference would hit the V1-M9 partial
+   * unique index as an unclassified 23505 → 500 → infinite retry loop.
+   *
+   * Now mirrors approve()'s guard battery:
+   *   - amount: finite, 0 < amount ≤ 5,000 LYD (gateway-appropriate
+   *     bound — the manual approve() window is 0.01..10,000 for
+   *     operator-reviewed receipts; an automated gateway has no human
+   *     in the loop, so the ceiling is tighter);
+   *   - ref: required non-blank (a gateway callback without a
+   *     reference carries no dedup signal);
+   *   - pg_advisory_xact_lock on the reference + in-tx duplicate
+   *     check + the 23505 catch → stable 409 (same operator/gateway
+   *     -facing message approve() returns), so a gateway retry maps
+   *     to a classified conflict instead of a 500 retry storm.
+   */
   static async createApprovedTopup(userId: number, amount: number, provider: string, ref: string) {
+    // ── Input guards (fail before any DB touch) ─────────────────────────
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 5000) {
+      throw new ServiceError(400, "مبلغ الشحن التلقائي غير صالح (يجب أن يكون بين 0.01 و 5000 د.ل)");
+    }
+    const cleanRef = typeof ref === "string" ? ref.trim() : "";
+    if (!cleanRef) {
+      throw new ServiceError(400, "مرجع الدفع مطلوب للشحن التلقائي");
+    }
+    if (cleanRef.length > 255) {
+      throw new ServiceError(400, "مرجع الدفع طويل جداً");
+    }
+    // All money writes go through toFixed(2) — numeric(10,2) parity.
+    const creditAmount = +amount.toFixed(2);
+
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 
     if (!user) throw new ServiceError(404, "المستخدم غير موجود");
 
-    const topup = await db.transaction(async (tx) => {
-      const [t] = await tx
-        .insert(walletTopupsTable)
-        .values({
-          userId,
-          amount: String(amount),
-          paymentMethod: "automated",
-          paymentNetwork: provider,
-          paymentReference: ref,
-          status: "approved",
-          reviewedAt: new Date(),
-          adminNote: "شحن تلقائي عبر بوابة الدفع",
-        })
-        .returning();
+    let topup;
+    try {
+      topup = await db.transaction(async (tx) => {
+        // B2-02 parity: serialize same-reference gateway callbacks.
+        // Two concurrent retries of one gateway notification both pass
+        // the duplicate SELECT below; the advisory lock makes the
+        // second wait, after which the in-tx check + the partial
+        // unique index both see the first approval.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${cleanRef}, 0))`);
 
-      // F-007 (security audit 004) — same optimistic-lock pattern as the
-      // manual approve() path. Re-read the wallet balance inside the
-      // transaction; lock the UPDATE on `walletBalance = balanceBefore`
-      // so a concurrent purchase or another topup approval cannot drop
-      // this credit silently. If the predicate fails the whole tx
-      // (including the inserted topup row) rolls back; the gateway
-      // retry will succeed against the new balance state.
-      const [freshUser] = await tx
-        .select({ walletBalance: usersTable.walletBalance })
-        .from(usersTable)
-        .where(eq(usersTable.id, user.id))
-        .limit(1);
-      if (!freshUser) throw new ServiceError(404, "المستخدم غير موجود");
+        // B2-02 parity: duplicate payment_reference guard, re-run INSIDE
+        // the transaction — a previously APPROVED topup with the same
+        // reference means this callback is a replay of money already
+        // credited. Clean 409 before any mutation.
+        const dup = await tx
+          .select({ id: walletTopupsTable.id })
+          .from(walletTopupsTable)
+          .where(
+            and(eq(walletTopupsTable.paymentReference, cleanRef), eq(walletTopupsTable.status, "approved")),
+          )
+          .limit(1);
+        if (dup.length > 0) {
+          throw new ServiceError(
+            409,
+            "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+          );
+        }
 
-      const balanceBefore = parseFloat(String(freshUser.walletBalance));
-      const newBalance = +(balanceBefore + amount).toFixed(2);
-      const updated = await tx
-        .update(usersTable)
-        .set({
-          walletBalance: String(newBalance),
-        })
-        .where(and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))))
-        .returning({ id: usersTable.id });
-      if (updated.length !== 1) {
-        throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مرة أخرى.");
+        const [t] = await tx
+          .insert(walletTopupsTable)
+          .values({
+            userId,
+            amount: String(creditAmount),
+            paymentMethod: "automated",
+            paymentNetwork: provider,
+            paymentReference: cleanRef,
+            status: "approved",
+            reviewedAt: new Date(),
+            adminNote: "شحن تلقائي عبر بوابة الدفع",
+          })
+          .returning();
+
+        // F-007 (security audit 004) — same optimistic-lock pattern as the
+        // manual approve() path. Re-read the wallet balance inside the
+        // transaction; lock the UPDATE on `walletBalance = balanceBefore`
+        // so a concurrent purchase or another topup approval cannot drop
+        // this credit silently. If the predicate fails the whole tx
+        // (including the inserted topup row) rolls back; the gateway
+        // retry will succeed against the new balance state.
+        const [freshUser] = await tx
+          .select({ walletBalance: usersTable.walletBalance })
+          .from(usersTable)
+          .where(eq(usersTable.id, user.id))
+          .limit(1);
+        if (!freshUser) throw new ServiceError(404, "المستخدم غير موجود");
+
+        const balanceBefore = parseFloat(String(freshUser.walletBalance));
+        const newBalance = +(balanceBefore + creditAmount).toFixed(2);
+        const updated = await tx
+          .update(usersTable)
+          .set({
+            walletBalance: String(newBalance),
+          })
+          .where(and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))))
+          .returning({ id: usersTable.id });
+        if (updated.length !== 1) {
+          throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مرة أخرى.");
+        }
+
+        // Atomic ledger entry — rolls back with the rest if it fails.
+        await insertLedgerEntry(
+          {
+            userId: user.id,
+            type: "topup",
+            amount: String(creditAmount),
+            balanceBefore: String(balanceBefore),
+            balanceAfter: String(newBalance),
+            referenceId: t.id,
+            referenceType: "wallet_topup",
+            description: `Automated topup (${provider}): ${creditAmount.toFixed(2)} د.ل`,
+          },
+          tx as unknown as typeof db,
+        );
+
+        return t;
+      });
+    } catch (err) {
+      if (err instanceof ServiceError) throw err;
+      // B2-02 parity: the commit tripped the partial unique index
+      // uniq_wallet_topups_payment_reference — a same-reference gateway
+      // callback committed between our in-tx check and this insert.
+      // Map the raw 23505 to the same stable 409 the gateway retry
+      // logic can key on (instead of a raw 500 retry storm).
+      if (isDuplicatePaymentReferenceViolation(err)) {
+        throw new ServiceError(
+          409,
+          "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+        );
       }
+      throw err;
+    }
 
-      // Atomic ledger entry — rolls back with the rest if it fails.
-      await insertLedgerEntry(
-        {
-          userId: user.id,
-          type: "topup",
-          amount: String(amount),
-          balanceBefore: String(balanceBefore),
-          balanceAfter: String(newBalance),
-          referenceId: t.id,
-          referenceType: "wallet_topup",
-          description: `Automated topup (${provider}): ${amount.toFixed(2)} د.ل`,
-        },
-        tx as unknown as typeof db,
-      );
-
-      return t;
-    });
-
-    notifyTopupApproved({ phone: user.phone, amount, topupId: topup.id });
+    notifyTopupApproved({ phone: user.phone, amount: creditAmount, topupId: topup.id });
     await createNotification(
       user.id,
       "wallet",
-      `تم شحن ${amount.toFixed(2)} د.ل تلقائياً`,
+      `تم شحن ${creditAmount.toFixed(2)} د.ل تلقائياً`,
       `تمت إضافة الرصيد عبر ${provider} بنجاح`,
       "/wallet",
     );
-    emitToUser(user.id, "topup-updated", { id: topup.id, status: "approved", amount });
+    emitToUser(user.id, "topup-updated", { id: topup.id, status: "approved", amount: creditAmount });
     emitToAdmins("admin-stats-update", { type: "topup-automated" });
 
     return topup;

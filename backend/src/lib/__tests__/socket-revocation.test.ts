@@ -9,7 +9,7 @@ import {
   sessionsTable,
   usersTable,
 } from "../../test/db";
-import { signAdminToken, signUserToken } from "../jwt";
+import { signUserToken } from "../jwt";
 import {
   authenticateSocketHandshake,
   stripIdentityForLiveness,

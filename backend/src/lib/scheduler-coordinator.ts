@@ -40,14 +40,23 @@
  *   3. Web tier stops running schedulers; worker takes over the lock on
  *      its first boot.
  *
- * Without Redis (dev fallback), we always grant leadership so the dev
- * environment still gets all the cron output.
+ * F2 (round-94 A6): Redis null no longer grants unguarded leadership —
+ * the old dev fallback was reachable from PRODUCTION via the degraded
+ * boot path (initRedisClient catches, getRedisClient() → null,
+ * startWebSchedulers(null)): the returned object had no refresher, no
+ * retry loop and no onLost, so an instance that "won" that way kept
+ * running every cron/watcher/alerting forever, in parallel with the old
+ * leader once Redis returned — split-brain until the next deploy. Now a
+ * null client means NO leadership (jobs stop safely, fail-closed) with a
+ * single warn, and the existing acquisition retry loop polls
+ * getRedisClient() so the process takes the REAL lock (onAcquired fires,
+ * schedulers start) the moment Redis comes back.
  */
 
 import { randomUUID } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { logger } from "./logger";
-import { noteRedisDegradedMode, withRedisCommandTimeout } from "./redis-client";
+import { getRedisClient, noteRedisDegradedMode, withRedisCommandTimeout } from "./redis-client";
 
 const SCHEDULER_LEADER_KEY = "scheduler:leader";
 const LEADER_TTL_SEC = 60;
@@ -95,6 +104,13 @@ export interface LeadershipAcquireOptions {
   retryIntervalMs?: number;
   /** TTL-refresh poll interval. Default 20 s. Test seam (R6 tests). */
   refreshIntervalMs?: number;
+  /**
+   * F2 (round-94 A6): lazy client source polled by the acquisition retry
+   * loop while the boot-time client was null (degraded boot). Defaults to
+   * getRedisClient(). Test seam — production callers pass their client as
+   * the first argument and never set this.
+   */
+  redisProvider?: () => RedisClientType | null;
 }
 
 /**
@@ -116,18 +132,22 @@ export async function acquireSchedulerLeadership(
   const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_ACQUIRE_RETRY_MS;
   const refreshIntervalMs = options.refreshIntervalMs ?? REFRESH_INTERVAL_MS;
 
-  // Without Redis, allow leadership in dev (single-instance only).
-  if (!redis) {
+  // F2: the boot-time client may be null (degraded boot). The acquisition
+  // retry loop re-resolves the client through this provider, so leadership
+  // is only ever granted against a REAL lock — never unguarded.
+  const resolveClient = options.redisProvider ?? (redis ? () => redis : getRedisClient);
+  let client: RedisClientType | null = redis;
+  // F2: one warn for the whole null-client episode — NOT one per retry
+  // tick (the loop polls silently; Redis returning is the normal fix).
+  let noRedisWarned = false;
+  const warnNoRedisOnce = () => {
+    if (noRedisWarned) return;
+    noRedisWarned = true;
     logger.warn(
-      { category: "monitoring" },
-      "[scheduler] Redis unavailable — granting unguarded leadership (dev only). Production must have REDIS_URL set.",
+      { category: "monitoring", instanceId },
+      "[scheduler] Redis unavailable at boot — NOT granting leadership (fail-closed, F2). Schedulers stay stopped; the acquisition loop will take the real lock once Redis returns. Dev without Redis: set REDIS_URL to run schedulers.",
     );
-    return {
-      instanceId,
-      isLeader: true,
-      release: async () => {},
-    };
-  }
+  };
 
   let leader = false;
   let refresher: ReturnType<typeof setInterval> | null = null;
@@ -184,19 +204,19 @@ export async function acquireSchedulerLeadership(
     // protects against a clock skew or split-brain situation where another
     // instance has already taken over.
     refresher = setInterval(async () => {
-      if (released || !leader) return;
+      if (released || !leader || !client) return;
       try {
         // R5: bounded — during a Redis outage the raw get queued forever
         // (offline queue) and the 20 s iterations hang-stacked.
         const current = await withRedisCommandTimeout(
           "leader_refresh_get",
-          () => redis.get(SCHEDULER_LEADER_KEY),
+          () => client!.get(SCHEDULER_LEADER_KEY),
           LEADERSHIP_OP_TIMEOUT_MS,
         );
         if (current === instanceId) {
           await withRedisCommandTimeout(
             "leader_refresh_expire",
-            () => redis.expire(SCHEDULER_LEADER_KEY, LEADER_TTL_SEC),
+            () => client!.expire(SCHEDULER_LEADER_KEY, LEADER_TTL_SEC),
             LEADERSHIP_OP_TIMEOUT_MS,
           );
         } else {
@@ -221,13 +241,20 @@ export async function acquireSchedulerLeadership(
     startRefresher();
   };
 
-  const attemptAcquisition = async (): Promise<"acquired" | "busy" | "error"> => {
+  const attemptAcquisition = async (): Promise<
+    "acquired" | "busy" | "error" | "no_client"
+  > => {
     if (released || leader) return "busy";
+    // F2: re-resolve the client each attempt — a null boot-time client
+    // (degraded boot) upgrades to the live one the moment Redis returns.
+    const target = client ?? resolveClient();
+    if (!target) return "no_client";
+    client = target;
     try {
       const result = await withRedisCommandTimeout(
         "leader_acquire_set",
         () =>
-          redis.set(SCHEDULER_LEADER_KEY, instanceId, {
+          target.set(SCHEDULER_LEADER_KEY, instanceId, {
             NX: true,
             EX: LEADER_TTL_SEC,
           }),
@@ -283,9 +310,16 @@ export async function acquireSchedulerLeadership(
         "[scheduler] Another instance currently holds leadership — retrying every 20s until it frees up (blue-green deploy window)",
       );
     }
+    if (first === "no_client") {
+      // F2: fail-closed — no unguarded leadership. Warn ONCE here; the
+      // silent retry loop below upgrades to a real client when Redis
+      // returns, then competes for the actual lock like everyone else.
+      warnNoRedisOnce();
+    }
     // B7-P1-1: keep re-attempting in the background. The old instance's
     // SIGTERM release (or a 60 s TTL expiry after SIGKILL) hands the lock
     // over; when that happens we become leader and notify the caller.
+    // F2: also the recovery path for a degraded (Redis-less) boot.
     startRetryTimer();
   }
 
@@ -312,13 +346,13 @@ export async function acquireSchedulerLeadership(
         // 60 s lock TTL hands leadership over anyway.
         const current = await withRedisCommandTimeout(
           "leader_release_get",
-          () => redis.get(SCHEDULER_LEADER_KEY),
+          () => client!.get(SCHEDULER_LEADER_KEY),
           LEADERSHIP_OP_TIMEOUT_MS,
         );
         if (current === instanceId) {
           await withRedisCommandTimeout(
             "leader_release_del",
-            () => redis.del(SCHEDULER_LEADER_KEY),
+            () => client!.del(SCHEDULER_LEADER_KEY),
             LEADERSHIP_OP_TIMEOUT_MS,
           );
         }

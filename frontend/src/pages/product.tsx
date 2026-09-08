@@ -237,7 +237,7 @@ export default function ProductPage() {
     }
   }, [isLegacyNumeric, byIdQuery.data]);
 
-  const { data: user } = useGetMe({
+  const { data: user, isLoading: userLoading } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -468,6 +468,17 @@ export default function ProductPage() {
     "from-primary/20 via-primary/8 to-transparent";
   const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
 
+  // R94-A1 #7 (P2): both CTA surfaces (desktop block + mobile sticky bar)
+  // must carry the SAME buy-intent (?intent=buy&product=) and wallet-return
+  // (?return=) params. The sticky bar used to navigate to bare /login and
+  // /wallet — for the mobile majority (Libya) that meant a cold login
+  // prompt with no product context, and no return-to-product after a
+  // top-up: the desktop-only funnel, broken on mobile.
+  const loginWithIntent = () =>
+    navigate(`/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}`);
+  const walletWithReturn = () =>
+    navigate(`/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`);
+
   // ── Order success ─────────────────────────────────────────────────────────
   if (orderResult) {
     return (
@@ -623,7 +634,7 @@ export default function ProductPage() {
               <span
                 className={`text-5xl sm:text-6xl font-black select-none drop-shadow-lg ${initialColorClass}`}
               >
-                {product.name[0]}
+                {(product.name || "؟")[0]}
               </span>
             </div>
           </div>
@@ -786,6 +797,7 @@ export default function ProductPage() {
               token={token}
               product={product}
               user={user}
+              userLoading={userLoading}
               displayPrice={couponResult ? couponResult.final_amount : displayPrice}
               canAfford={
                 !!(
@@ -809,25 +821,8 @@ export default function ProductPage() {
                 });
               }}
               onAddToCart={handleAddToCart}
-              onLogin={() =>
-                // Pass buy-intent context so /login can render the
-                // "complete your purchase of X" banner instead of the
-                // cold generic prompt. See login.tsx readLoginIntent().
-                navigate(
-                  `/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}`,
-                )
-              }
-              onWallet={() =>
-                // Pass the current product as the return target so the
-                // user lands back here after a successful top-up — without
-                // this, every wallet-detoured purchase forces the user to
-                // navigate manually back. WalletPage captures the param
-                // and TopupWaitingModal honors it on the approved-state
-                // dismiss.
-                navigate(
-                  `/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`,
-                )
-              }
+              onLogin={loginWithIntent}
+              onWallet={walletWithReturn}
               couponInput={couponInput}
               couponResult={couponResult}
               couponError={couponError}
@@ -855,6 +850,7 @@ export default function ProductPage() {
           token={token}
           product={product}
           user={user}
+          userLoading={userLoading}
           displayPrice={couponResult ? couponResult.final_amount : displayPrice}
           canAfford={
             !!(
@@ -876,8 +872,8 @@ export default function ProductPage() {
               },
             });
           }}
-          onLogin={() => navigate("/login")}
-          onWallet={() => navigate("/wallet")}
+          onLogin={loginWithIntent}
+          onWallet={walletWithReturn}
           couponInput={couponInput}
           couponResult={couponResult}
           couponError={couponError}
@@ -977,9 +973,9 @@ function CouponField({
       {couponResult && (
         <div
           role="status"
-          className="flex items-center justify-between gap-2 text-xs bg-emerald-500/8 border border-emerald-500/20 rounded-lg px-3 py-2"
+          className="flex items-center justify-between gap-2 text-xs bg-status-success/8 border border-status-success/20 rounded-lg px-3 py-2"
         >
-          <div className="flex items-center gap-1.5 text-emerald-400">
+          <div className="flex items-center gap-1.5 text-status-success">
             <CheckCircle className="w-3 h-3 shrink-0" />
             <span dir="ltr" className="font-mono font-black">
               {couponResult.code}
@@ -988,11 +984,11 @@ function CouponField({
               —{" "}
               {couponResult.type === "percentage"
                 ? `${couponResult.value}%`
-                : `${couponResult.value} د.ل`}{" "}
+                : formatCurrency(couponResult.value)}{" "}
               خصم
             </span>
           </div>
-          <span className="font-black text-emerald-400">
+          <span className="font-black text-status-success">
             −{formatCurrency(couponResult.discount_amount)}
           </span>
         </div>
@@ -1005,6 +1001,7 @@ function CtaBlock({
   token,
   product,
   user,
+  userLoading,
   displayPrice,
   canAfford,
   shortfall,
@@ -1025,6 +1022,12 @@ function CtaBlock({
   token: string | null;
   product: Product;
   user?: User;
+  /** R94-A1 #2 (P2): true while /api/auth/me is still resolving. Without
+   * it, `user === undefined` made canAfford=false and the FIRST thing a
+   * solvent buyer saw on a direct SEO landing was «تحتاج إضافة X د.ل /
+   * رصيدك الحالي 0.00 د.ل» — a false money statement during the first
+   * 200–800ms on 3G. */
+  userLoading?: boolean;
   displayPrice: number;
   canAfford: boolean;
   shortfall: number;
@@ -1138,6 +1141,36 @@ function CtaBlock({
       />
     ) : null;
 
+  // R94-A1 #2 (P2): balance still loading — show a neutral verifying
+  // state instead of flashing the «رصيد غير كافٍ» branch at a solvent
+  // user. Disabled button + spinner; lands on the real branch once /me
+  // resolves (the boot probe usually pre-seeds the cache, so this is
+  // mostly a cold-direct-landing state).
+  if (userLoading) {
+    return (
+      <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
+        {!compact && couponField}
+        {compact && (
+          <div className="flex-1 text-right">
+            <div className="font-black text-primary text-xl tabular-nums">
+              {formatCurrency(displayPrice)}
+            </div>
+            <div className="text-xs text-muted-foreground">جارٍ التحقق من رصيدك…</div>
+          </div>
+        )}
+        <Button
+          disabled
+          aria-busy="true"
+          aria-label="جارٍ التحقق من رصيد المحفظة"
+          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-5" : "w-full h-12 text-base"} bg-primary/70 font-bold`}
+        >
+          <Loader2 className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2 animate-spin`} />
+          {compact ? "جارٍ التحقق…" : "جارٍ التحقق من رصيدك…"}
+        </Button>
+      </div>
+    );
+  }
+
   if (!canAfford) {
     return (
       <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
@@ -1197,7 +1230,7 @@ function CtaBlock({
           <div className="font-black text-primary text-xl tabular-nums">
             {formatCurrency(displayPrice)}
           </div>
-          <div className="text-xs text-emerald-400">رصيد كافٍ ✓</div>
+          <div className="text-xs text-status-success">رصيد كافٍ ✓</div>
         </div>
       )}
       <Button
@@ -1288,7 +1321,7 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                     <div className="w-full h-full flex items-center justify-center">
                       <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
                         <span className="text-xl font-black text-muted-foreground/55">
-                          {r.name[0]}
+                          {(r.name || "؟")[0]}
                         </span>
                       </div>
                     </div>

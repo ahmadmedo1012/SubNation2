@@ -10,7 +10,7 @@
  */
 
 import { db, enrichmentDraftsTable, enrichmentRunsTable } from "@workspace/db";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
 export interface RetentionResult {
@@ -18,19 +18,44 @@ export interface RetentionResult {
   runsReaped: number;
 }
 
-export async function runEnrichmentRetention(): Promise<RetentionResult> {
-  const purgeResult = await db
-    .delete(enrichmentDraftsTable)
-    .where(
-      and(
-        sql`${enrichmentDraftsTable.createdAt} < NOW() - INTERVAL '90 days'`,
-        inArray(enrichmentDraftsTable.state, ["published", "rejected", "draft_invalid"]),
-      ),
+const DELETE_BATCH_SIZE = 1000;
+
+/**
+ * Bounded ctid-batch DELETE loop — F11 (round-94 A6), same shape as
+ * risk-retention.ts (B7-P2-5): the first large purge (enrichment pipeline
+ * enabled after a dormant period) must not hold one unbounded statement
+ * lock on Neon's pooler. Predicate embedded verbatim per batch (idempotent,
+ * safe to interleave with concurrent inserts).
+ */
+async function batchedDelete(whereSql: string): Promise<number> {
+  let deleted = 0;
+  for (;;) {
+    const result = await db.execute(
+      sql.raw(`
+      DELETE FROM enrichment_drafts
+      WHERE ctid IN (
+        SELECT ctid FROM enrichment_drafts d
+        WHERE ${whereSql}
+        LIMIT ${DELETE_BATCH_SIZE}
+      )
+      RETURNING id
+    `),
     );
-  const draftsDeleted =
-    (purgeResult as unknown as { rowCount?: number }).rowCount ??
-    (purgeResult as unknown as Array<unknown>).length ??
-    0;
+    const rows =
+      (result as unknown as { rows?: Array<{ id: number }> }).rows ??
+      (result as unknown as Array<{ id: number }>) ??
+      [];
+    deleted += rows.length;
+    if (rows.length < DELETE_BATCH_SIZE) break;
+  }
+  return deleted;
+}
+
+export async function runEnrichmentRetention(): Promise<RetentionResult> {
+  const draftsDeleted = await batchedDelete(
+    `d.created_at < NOW() - INTERVAL '90 days'
+      AND d.state IN ('published', 'rejected', 'draft_invalid')`,
+  );
 
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const reapResult = await db
@@ -61,3 +86,8 @@ export async function runEnrichmentRetention(): Promise<RetentionResult> {
 
   return { draftsDeleted, runsReaped };
 }
+
+// F11: the purge moved to the raw batched DELETE above — reference the
+// table so the import stays valid if the typed builder returns (same
+// convention as risk-retention.ts).
+void enrichmentDraftsTable;

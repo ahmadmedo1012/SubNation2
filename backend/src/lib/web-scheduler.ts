@@ -55,6 +55,7 @@ import { startStockWatcher } from "../jobs/stockWatcher";
 import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
 import { acquireSchedulerLeadership, type SchedulerLeadership } from "./scheduler-coordinator";
+import { getRedisClient } from "./redis-client";
 import { setSchedulerState } from "./scheduler-state";
 import type { CronJobsHandle } from "../jobs/cron";
 
@@ -151,8 +152,13 @@ export async function startWebSchedulers(
     if (started) return;
     started = true;
 
-    if (redis) {
-      heartbeatCleanup = startHeartbeat(redis);
+    // F2 (round-94 A6): resolve the client at START time, not boot time —
+    // when leadership is acquired on a later retry (Redis returned after
+    // a degraded boot), the captured `redis` argument is still null and
+    // the heartbeat would silently never start while cron/watchers ran.
+    const heartbeatClient = getRedisClient();
+    if (heartbeatClient) {
+      heartbeatCleanup = startHeartbeat(heartbeatClient);
       logger.info(
         { category: "monitoring", instanceId: leadership.instanceId },
         "[scheduler] heartbeat started",

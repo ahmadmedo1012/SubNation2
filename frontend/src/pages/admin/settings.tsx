@@ -1199,7 +1199,11 @@ export default function AdminSettingsPage() {
               <div className="space-y-3 text-sm text-muted-foreground">
                 {[
                   { label: "تشفير JWT", value: "HS256 — مفتاح عشوائي آمن", ok: true },
-                  { label: "تشفير كلمات المرور", value: "SHA-256 + salt", ok: true },
+                  // 94-C2 (A2 P2-7): the backend hashes admin passwords
+                  // with argon2 (backend/src/lib/crypto.ts — argon2.hash
+                  // with memory-hard options). «SHA-256 + salt» was a
+                  // hand-written claim that contradicted the server.
+                  { label: "تشفير كلمات المرور", value: "Argon2id", ok: true },
                   { label: "تحديد معدل الطلبات", value: "20 طلب/15 دق على تسجيل الدخول", ok: true },
                   { label: "CORS", value: "مقيّد بنطاقات APP_ORIGINS", ok: true },
                   {

@@ -78,12 +78,16 @@ export function tierLabel(tier: string): string {
   return labels[tier] ?? tier;
 }
 
+// R94-A1 #5 (P2, WCAG AA): gold's text-yellow-400 was 1.53:1 on white
+// cards (light theme) — the tier label was unreadable. gold now rides the
+// shared --status-warning token (theme-aware); silver/platinum move to
+// mid shades that hold on BOTH card colors. bronze was already amber-600.
 export function tierColor(tier: string): string {
   const colors: Record<string, string> = {
     bronze: "text-amber-600",
-    silver: "text-slate-400",
-    gold: "text-yellow-400",
-    platinum: "text-cyan-400",
+    silver: "text-slate-500",
+    gold: "text-status-warning",
+    platinum: "text-cyan-600",
   };
   return colors[tier] ?? "text-muted-foreground";
 }

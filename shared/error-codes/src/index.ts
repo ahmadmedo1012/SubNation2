@@ -106,6 +106,15 @@ export const ErrorCode = {
   // runtime. Rare/ops-facing, but the enum-exhaustiveness guarantee
   // applies to it too.
   CSRF_CONFIG: "CSRF_CONFIG",
+
+  // Round-94 (A5-05): the last two codes the copilot routes actually
+  // emit that previously lived outside the enum/spec contract — the
+  // phase-gate 503 (middlewares/requireCopilotPhase.ts) and the
+  // outbound secret-scan 502 abort (routes/admin/copilot/{ask,draft}.ts).
+  // Same 93-A8 F-8/F-15 class: the enum must stay exhaustive over what
+  // the backend actually emits.
+  COPILOT_PHASE_DISABLED: "COPILOT_PHASE_DISABLED",
+  COPILOT_SECRET_LEAK: "COPILOT_SECRET_LEAK",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -114,7 +114,11 @@ const NETWORKS = [
   {
     value: "libyana",
     label: "ليبيانا",
-    color: "text-green-300",
+    // R94-A1 #5 (P2, WCAG AA): green-300/blue-300 on white cards
+    // measured 1.40:1 / 2.30:1 in the light theme — the selected network
+    // name was near-invisible. The shared --status-* tokens are
+    // theme-aware; border/bg stay brand-tinted (non-text).
+    color: "text-status-success",
     border: "border-green-500/45",
     bg: "bg-green-500/10",
     activeBg: "bg-green-500",
@@ -122,7 +126,7 @@ const NETWORKS = [
   {
     value: "madar",
     label: "مدار",
-    color: "text-blue-300",
+    color: "text-status-info",
     border: "border-blue-500/45",
     bg: "bg-blue-500/10",
     activeBg: "bg-blue-500",
@@ -517,10 +521,24 @@ export default function WalletPage() {
     }
 
     const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError("يرجى إدخال مبلغ صالح");
       return;
     }
+    // R94-A1 #13 (P3): specific bounds + the submit path repeats the
+    // onBlur rounding. A direct Enter (no blur) used to ship an
+    // unrounded fraction, and sub-0.01 values passed the client check
+    // then died on the backend's generic INVALID_DATA envelope.
+    if (parsedAmount < 0.01) {
+      setError("أقل مبلغ شحن هو 0.01 د.ل");
+      return;
+    }
+    if (parsedAmount > 10000) {
+      setError("الحد الأقصى للشحن هو 10,000 د.ل");
+      return;
+    }
+    const normalizedAmount = Math.min(10000, Math.max(1, Math.round(parsedAmount * 2) / 2));
+    if (normalizedAmount !== parsedAmount) setAmount(String(normalizedAmount));
 
     if (method === "mobile_transfer") {
       setSenderPhoneTouched(true);
@@ -550,7 +568,7 @@ export default function WalletPage() {
     const trimmedReference = paymentReference.trim().slice(0, 100);
     topupMutation.mutate({
       data: {
-        amount: parsedAmount,
+        amount: normalizedAmount,
         payment_method: method,
         payment_network: method === "mobile_transfer" ? network : undefined,
         sender_phone: method === "mobile_transfer" ? senderPhone || undefined : undefined,
@@ -632,10 +650,10 @@ export default function WalletPage() {
                           tier === "bronze"
                             ? "bg-amber-500"
                             : tier === "silver"
-                              ? "bg-slate-400"
+                              ? "bg-slate-500"
                               : tier === "gold"
-                                ? "bg-yellow-400"
-                                : "bg-cyan-400"
+                                ? "bg-status-warning"
+                                : "bg-cyan-600"
                         }`}
                       />
                       <span className="text-muted-foreground text-xs">المستوى:</span>
@@ -644,8 +662,8 @@ export default function WalletPage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1 text-xs">
-                      <Star className="w-3 h-3 text-yellow-400" />
-                      <span className="font-black tabular-nums text-yellow-400">
+                      <Star className="w-3 h-3 text-status-warning" />
+                      <span className="font-black tabular-nums text-status-warning">
                         {wallet.loyalty_points ?? 0}
                       </span>
                       <span className="text-muted-foreground">نقطة</span>
@@ -655,12 +673,12 @@ export default function WalletPage() {
                 <div
                   className={`shrink-0 px-3 py-2 rounded-xl border text-[11px] font-black bg-background/30 ${
                     tier === "bronze"
-                      ? "border-amber-500/25 text-amber-400"
+                      ? "border-amber-500/25 text-amber-600"
                       : tier === "silver"
-                        ? "border-slate-400/25 text-slate-300"
+                        ? "border-slate-500/25 text-slate-500"
                         : tier === "gold"
-                          ? "border-yellow-400/25 text-yellow-400"
-                          : "border-cyan-400/25 text-cyan-400"
+                          ? "border-status-warning/25 text-status-warning"
+                          : "border-cyan-600/25 text-cyan-600"
                   }`}
                 >
                   {tierLabel(tier)}
@@ -1123,7 +1141,16 @@ export default function WalletPage() {
               <h2 className="font-black text-sm">سجل الشحن</h2>
               {topups.length > 0 && (
                 <span className="mr-auto text-xs text-muted-foreground font-medium">
-                  {topups.length} طلب
+                  {/* R94-A1 #11 (P3): Arabic pluralization via formatCount
+                      (line 680 in this file already uses it for the pending
+                      counter). */}
+                  {formatCount(topups.length, {
+                    one: "طلب",
+                    two: "طلبان",
+                    few: "طلبات",
+                    many: "طلباً",
+                    other: "طلب",
+                  })}
                 </span>
               )}
             </div>

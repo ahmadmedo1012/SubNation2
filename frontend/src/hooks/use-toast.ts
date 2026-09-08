@@ -37,7 +37,8 @@ export interface ToastInput {
    *                          shadcn API; existing 22 callsites keep working)
    */
   variant?: "default" | "destructive" | "success" | "warning" | "info";
-  /** Auto-dismiss in ms. Default 4000 (Sonner default). */
+  /** Auto-dismiss in ms. Defaults by severity (94-C3 / A3 P3-1):
+   * 8s for destructive/warning, 4s otherwise. */
   duration?: number;
   /** Stable id — passing the same id replaces an existing toast (dedup). */
   id?: string | number;
@@ -56,10 +57,26 @@ export interface ToastHandle {
  *   toast({ title: "تم", description: "تم حفظ التغييرات" });
  *   toast({ title: "خطأ", description: msg, variant: "destructive" });
  */
+/**
+ * Severity-aware auto-dismiss (94-C3 / A3 P3-1).
+ *
+ * The old flat 4s swallowed real errors: a long Arabic failure
+ * message ("تعذّر إرسال الرمز…") needs reading time the success
+ * confirmation doesn't. Errors and warnings — the variants a user
+ * may need to ACT on — stay twice as long; success/info keep the
+ * snappy default. Explicit `duration` still wins for every variant.
+ */
+const SUCCESS_DURATION = 4_000;
+const CRITICAL_DURATION = 8_000;
+
+function defaultDuration(variant: ToastInput["variant"]): number {
+  return variant === "destructive" || variant === "warning" ? CRITICAL_DURATION : SUCCESS_DURATION;
+}
+
 function emit(input: ToastInput, idOverride?: string | number): string | number {
   const opts: Parameters<typeof sonnerToast>[1] = {
     description: input.description ?? undefined,
-    duration: input.duration ?? 4000,
+    duration: input.duration ?? defaultDuration(input.variant),
     id: idOverride ?? input.id,
   };
   const titleText = input.title ?? "";

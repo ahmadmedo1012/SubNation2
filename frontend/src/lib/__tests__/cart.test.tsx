@@ -12,7 +12,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 // JSX in this file compiles with the classic runtime (React.createElement)
 // in the vitest transform, so the React default import is load-bearing.
 import React from "react";
-import { CartProvider, useCart } from "@/lib/cart";
+import { CartProvider, roundToCents, useCart } from "@/lib/cart";
 
 function LocalCartConsumer() {
   const { items, itemCount, totalLYD, addItem, removeItem, updateQuantity, clear } = useCart();
@@ -227,5 +227,110 @@ describe("CartProvider", () => {
     expect(() => {
       render(<Bad />);
     }).toThrow("useCart must be used within <CartProvider>");
+  });
+});
+
+/* ── R94-A1 #1 (P2, FP money gate) ────────────────────────────────────── */
+
+/**
+ * Floating-point-dust regression tests for the cart total (94-C1).
+ *
+ * checkout.tsx's «رصيد غير كافٍ» gate compares the wallet balance to
+ * `totalLYD`. Relative-discount prices (8.33 × 6, 0.1 + 0.2, 12.99 +
+ * 34.99) accumulate FP dust — the raw sum for 8.33 × 6 is
+ * 49.980000000000004, which made `49.98 < total` TRUE for a user whose
+ * balance was EXACTLY the total, blocking the purchase with the
+ * nonsensical «الناقص 0.00 د.ل». lib/cart now rounds every money total
+ * to the cent (roundToCents) at the source.
+ */
+describe("cart money totals — cent rounding (R94-A1 #1)", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        getItem: vi.fn(() => null),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+        clear: vi.fn(),
+      },
+      writable: true,
+    });
+  });
+
+  describe("roundToCents", () => {
+    it("collapses floating-point dust to the exact cent", () => {
+      expect(roundToCents(8.33 * 6)).toBe(49.98);
+      expect(roundToCents(0.1 + 0.2)).toBe(0.3);
+      expect(roundToCents(12.99 + 34.99)).toBe(47.98);
+    });
+
+    it("passes already-exact values through untouched", () => {
+      expect(roundToCents(49.98)).toBe(49.98);
+      expect(roundToCents(0)).toBe(0);
+      expect(roundToCents(5)).toBe(5);
+    });
+  });
+
+  /** Consumer whose line price is the real-world dust producer (8.33). */
+  function FractionalCartConsumer() {
+    const { totalLYD, itemCount, addItem, updateQuantity } = useCart();
+    return (
+      <div>
+        <span data-testid="count">{itemCount}</span>
+        <span data-testid="total">{totalLYD}</span>
+        <button
+          data-testid="add-priced"
+          onClick={() =>
+            addItem({
+              productId: 3,
+              name: "Fractional",
+              slug: null,
+              imageUrl: null,
+              priceLYD: 8.33,
+              salePriceLYD: null,
+              discountPercent: null,
+            })
+          }
+        />
+        <button data-testid="set-six" onClick={() => updateQuantity(3, 6)} />
+      </div>
+    );
+  }
+
+  it("the context total for 8.33 × 6 is EXACTLY 49.98 (no FP dust)", async () => {
+    render(
+      <CartProvider>
+        <FractionalCartConsumer />
+      </CartProvider>,
+    );
+    await act(async () => {
+      screen.getByTestId("add-priced").click();
+    });
+    await act(async () => {
+      screen.getByTestId("set-six").click();
+    });
+    // Without rounding React renders 49.980000000000004.
+    expect(screen.getByTestId("total")).toHaveTextContent(/^49\.98$/);
+    expect(screen.getByTestId("count")).toHaveTextContent(/^6$/);
+  });
+
+  it("the checkout balance-gate contract: an EXACT balance is never insufficient", async () => {
+    render(
+      <CartProvider>
+        <FractionalCartConsumer />
+      </CartProvider>,
+    );
+    await act(async () => {
+      screen.getByTestId("add-priced").click();
+    });
+    await act(async () => {
+      screen.getByTestId("set-six").click();
+    });
+    // checkout.tsx: `insufficient = balance !== null && balance < total`
+    // — encode the gate here so it can never regress to the raw sum.
+    const total = Number(screen.getByTestId("total").textContent);
+    expect(total).toBe(49.98);
+    expect(49.98 < total).toBe(false);
+    // One cent BELOW the total must still gate (rounding is not a bypass).
+    expect(49.97 < total).toBe(true);
   });
 });

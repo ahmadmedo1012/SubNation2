@@ -2,23 +2,50 @@ import { authActivityTable, db } from "@workspace/db";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { Router } from "express";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
 router.get("/auth-activity", requireAdmin, async (req, res) => {
   const { action, startDate, endDate, success } = req.query;
 
+  // A5-09 (round-94): the date filters fed `new Date(startDate as string)`
+  // straight into drizzle — `?startDate=abc` produced `Invalid Date`, and
+  // drizzle's toISOString() then threw RangeError → 500 (verified). Same
+  // guard as admin/risk.ts from/to: parse, NaN → 400 INVALID_DATA.
+  let startDateParsed: Date | null = null;
+  if (typeof startDate === "string" && startDate) {
+    startDateParsed = new Date(startDate);
+    if (Number.isNaN(startDateParsed.getTime())) {
+      return res
+        .status(400)
+        .json(createErrorResponse("تاريخ البداية غير صالح", ErrorCode.INVALID_DATA));
+    }
+  }
+  let endDateParsed: Date | null = null;
+  if (typeof endDate === "string" && endDate) {
+    endDateParsed = new Date(endDate);
+    if (Number.isNaN(endDateParsed.getTime())) {
+      return res
+        .status(400)
+        .json(createErrorResponse("تاريخ النهاية غير صالح", ErrorCode.INVALID_DATA));
+    }
+  }
+
   const conditions = [];
-  if (action && action !== "all") {
-    conditions.push(eq(authActivityTable.action, action as string));
+  // A5-09: only treat action as a filter when it is a single string —
+  // `?action=a&action=b` (array) previously coerced to a comma-joined
+  // string that matched nothing (silent empty result).
+  if (typeof action === "string" && action && action !== "all") {
+    conditions.push(eq(authActivityTable.action, action));
   }
-  if (startDate) {
-    conditions.push(gte(authActivityTable.createdAt, new Date(startDate as string)));
+  if (startDateParsed) {
+    conditions.push(gte(authActivityTable.createdAt, startDateParsed));
   }
-  if (endDate) {
-    conditions.push(lte(authActivityTable.createdAt, new Date(endDate as string)));
+  if (endDateParsed) {
+    conditions.push(lte(authActivityTable.createdAt, endDateParsed));
   }
-  if (success && success !== "all") {
+  if (typeof success === "string" && success && success !== "all") {
     conditions.push(eq(authActivityTable.success, success === "true"));
   }
 

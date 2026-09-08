@@ -84,6 +84,13 @@
   --color-status-low-stock: hsl(var(--status-low-stock));
   --color-status-purple: hsl(var(--status-purple));
 
+  /* Brand marks — fixed identity colors, theme-independent. The
+     WhatsApp pair exists so no component embeds raw hex: `ink` is the
+     AA text companion for the #25d366 surface (≈5.7:1; white on the
+     same green is ≈2:1 and fails AA — A3 P2-5). */
+  --color-brand-whatsapp: #25d366;
+  --color-brand-whatsapp-ink: #054339;
+
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
@@ -108,7 +115,6 @@
 /* ── DARK MODE (default) ──────────────────────────────── */
 :root {
   --button-outline: rgba(255, 255, 255, 0.1);
-  --badge-outline: rgba(255, 255, 255, 0.05);
   --opaque-button-border-intensity: 9;
 
   --elevate-1: rgba(255, 255, 255, 0.04);
@@ -254,7 +260,6 @@
 /* ── LIGHT MODE ──────────────────────────────────────── */
 .light {
   --button-outline: rgba(0, 0, 0, 0.1);
-  --badge-outline: rgba(0, 0, 0, 0.05);
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.06);
 
@@ -733,14 +738,9 @@
     animation-delay: 0.12s;
   }
 
-  /* Stagger delay helpers */
-  .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 20px);
-  }
-  .pt-safe {
-    padding-top: env(safe-area-inset-top, 20px);
-  }
-
+  /* Stagger delay helpers (safe-area helpers live in the dedicated
+     safe-area section near .touch-target — one definition each;
+     the stray duplicate .pb-safe here is what P2-6 removed). */
   .stagger-1 {
     animation-delay: 0.04s;
   }
@@ -1137,9 +1137,18 @@
     min-width: 44px;
   }
 
-  /* ── Safe area padding helper ─────────────────────── */
+  /* ── Safe area padding helpers ─────────────────────── */
+  /* Single definition (A3 P2-6): .pb-safe used to be declared twice
+     in this layer with conflicting fallbacks (20px vs none). The later
+     declaration won wherever env() was supported, and in browsers
+     without env() support the fallback-less one made the whole
+     declaration invalid at computed-value time. One definition, one
+     explicit fallback, next to its safe-area siblings. */
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 20px);
   }
   .pb-safe-4 {
     padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);

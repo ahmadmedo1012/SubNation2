@@ -43,6 +43,12 @@ import { Link, useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
 // ── Backend response shapes (mirror what the deployed API returns) ─────────
+//
+// 94-C2 (A2 P2-10): every «uppercase tracking-widest» on the Arabic
+// metric/health labels below was removed (7 spots) — letter-spacing
+// severs Arabic letter connections and uppercase is a no-op on Arabic
+// anyway (rule A11 §8, documented in layout.tsx). Values keep their
+// tabular-nums treatment; Latin/mono chips are untouched.
 
 import { type CheckStatus, type HealthCheck, type HealthzReadyResponse } from "@/lib/healthz";
 
@@ -179,10 +185,13 @@ function formatUptime(seconds: number): string {
   const h = Math.floor((seconds % 86_400) / 3_600);
   const m = Math.floor((seconds % 3_600) / 60);
   const s = seconds % 60;
-  if (d > 0) return `${d}ي ${h}س`;
-  if (h > 0) return `${h}س ${m}د`;
-  if (m > 0) return `${m}د ${s}ث`;
-  return `${s}ث`;
+  // 94-C2 (A2 P3-20): thin spaces between the digit and the Arabic
+  // unit letter — «3ي 5س» read as a squashed token; «3 ي 5 س» scans.
+  // U+2009 keeps the compact KPI style without a full space's width.
+  if (d > 0) return `${d}\u2009ي ${h}\u2009س`;
+  if (h > 0) return `${h}\u2009س ${m}\u2009د`;
+  if (m > 0) return `${m}\u2009د ${s}\u2009ث`;
+  return `${s}\u2009ث`;
 }
 
 function formatNumber(n: number): string {
@@ -233,7 +242,7 @@ function MetricCard({
         >
           <Icon className={`w-4 h-4 ${color}`} />
         </div>
-        <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+        <span className="text-[10px] text-muted-foreground font-bold">
           {label}
         </span>
       </div>
@@ -337,7 +346,7 @@ function HealthTile({
         <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest leading-none mb-1 truncate">
+        <div className="text-[10px] text-muted-foreground font-bold leading-none mb-1 truncate">
           {label}
         </div>
         <div className={`text-sm font-black tabular-nums leading-none ${meta.color}`}>{value}</div>
@@ -983,7 +992,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="bg-card border border-border/60 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Flag className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                      <span className="text-[10px] text-muted-foreground font-bold">
                         الأعلام التشغيلية
                       </span>
                     </div>
@@ -1094,7 +1103,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-border flex items-center gap-2">
                       <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                      <span className="text-[10px] text-muted-foreground font-bold">
                         أكثر المسارات نشاطاً
                       </span>
                     </div>
@@ -1285,7 +1294,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                        <div className="text-[10px] text-muted-foreground font-bold mb-1">
                           عملاء متّصلون
                         </div>
                         <div className="font-black text-2xl text-cyan-400 tabular-nums">
@@ -1293,7 +1302,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">
+                        <div className="text-[10px] text-muted-foreground font-bold mb-1">
                           إجمالي الأحداث
                         </div>
                         <div className="font-black text-2xl tabular-nums">
@@ -1395,7 +1404,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
                       >
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
+                          <span className="text-[10px] text-muted-foreground font-bold">
                             {label}
                           </span>
                           <span

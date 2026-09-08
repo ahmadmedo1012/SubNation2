@@ -24,6 +24,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import { Counter } from "prom-client";
 import { logger } from "../../../lib/logger";
+import { ErrorCode } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { getRegistry } from "../../../lib/metrics";
@@ -129,7 +130,10 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   if (!intentText || intentText.length > 4000) {
     res
       .status(400)
-      .json({ error: "intent_text required (1–4000 chars)", code: "COPILOT_INVALID_INPUT" });
+      .json({
+        error: "intent_text required (1–4000 chars)",
+        code: ErrorCode.COPILOT_INVALID_INPUT,
+      });
     return;
   }
   const history = sanitizeHistory(body.history);
@@ -138,7 +142,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   if (!copilotLlmAvailable()) {
     res.status(503).json({
       error: "خدمة المساعد غير متاحة (مفتاح المزوّد غير مضبوط)",
-      code: "COPILOT_LLM_UNAVAILABLE",
+      code: ErrorCode.COPILOT_LLM_UNAVAILABLE,
     });
     return;
   }
@@ -163,7 +167,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   if (tools.length === 0) {
     res.status(403).json({
       error: "ليس لديك أي صلاحية تخوّلك استخدام المساعد",
-      code: "COPILOT_OUT_OF_SCOPE",
+      code: ErrorCode.COPILOT_OUT_OF_SCOPE,
     });
     return;
   }
@@ -292,13 +296,13 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     logger.error({ err, adminId: adminReq.adminId, correlationId }, "copilot ask: LLM error");
     commands().inc({ kind: "ask", outcome: "failure" });
     if (wantsStream && sseStarted) {
-      sseWrite("error", { error: "LLM error", code: "COPILOT_LLM_ERROR" });
+      sseWrite("error", { error: "LLM error", code: ErrorCode.COPILOT_LLM_ERROR });
       res.end();
       return;
     }
     res.status(502).json({
       error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
-      code: "COPILOT_LLM_ERROR",
+      code: ErrorCode.COPILOT_LLM_ERROR,
     });
     return;
   }
@@ -326,14 +330,14 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     if (wantsStream && sseStarted) {
       sseWrite("error", {
         error: "secret leak attempted",
-        code: "COPILOT_SECRET_LEAK",
+        code: ErrorCode.COPILOT_SECRET_LEAK,
       });
       res.end();
       return;
     }
     res.status(502).json({
       error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
-      code: "COPILOT_SECRET_LEAK",
+      code: ErrorCode.COPILOT_SECRET_LEAK,
     });
     return;
   }

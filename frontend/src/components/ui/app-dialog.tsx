@@ -24,7 +24,9 @@ import { cn } from "@/lib/utils";
  *     are all prevented, so a half-filled financial form can't be
  *     destroyed by a stray tap (the A12 F-01 / H4-H5 data-loss class).
  *     Idiom proven in TopupWaitingModal's guarded handlers.
- *   • Close button: `aria-label="إغلاق"` + 36px touch target.
+ *   • Close button: `aria-label="إغلاق"` + 44px touch target
+ *     (94-C3 / A3 P1-3 — was h-9 w-9 = 36px, under the WCAG 2.5.5
+ *     mobile floor).
  *
  * Binary confirmations should use `useConfirm()` instead — this shell
  * is for forms and detail overlays.
@@ -134,7 +136,7 @@ export function AppDialog({
               disabled={!dismissable}
               aria-label="إغلاق"
               title="إغلاق"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center touch-target rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               <X className="h-4 w-4" />
             </button>

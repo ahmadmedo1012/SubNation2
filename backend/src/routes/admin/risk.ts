@@ -42,7 +42,26 @@ const router = Router();
 
 const VALID_LEVELS = new Set(["low", "medium", "high", "critical"]);
 const VALID_LABELS = new Set(["confirmed_fraud", "false_positive", "escalated"]);
-
+// A5-03 (round-94): `?eventType=` feeds the risk_event_type pg-enum
+// column. `level` next to it was already validated via VALID_LEVELS, but
+// eventType was the forgotten sibling — any string outside the enum
+// reached Postgres as 22P02 (`invalid input value for enum
+// "risk_event_type"`) → 500 INTERNAL_ERROR. Values mirror
+// riskEventTypeEnum (shared/db/src/schema/risk.ts).
+const VALID_EVENT_TYPES = new Set([
+  "login_attempt",
+  "login_success",
+  "login_failure",
+  "otp_request",
+  "otp_verify",
+  "topup_attempt",
+  "topup_success",
+  "order_create",
+  "order_deliver",
+  "coupon_apply",
+  "referral_event",
+  "admin_force_reauth",
+]);
 // ────────────────────────────────────────────────────────────────────────
 // GET /events — paginated review queue
 // ────────────────────────────────────────────────────────────────────────
@@ -60,7 +79,15 @@ router.get("/risk/events", requireAdmin, async (req, res) => {
   }
 
   const eventType = typeof req.query.eventType === "string" ? req.query.eventType : null;
-  if (eventType) filters.push(eq(riskEventsTable.eventType, eventType as never));
+  if (eventType) {
+    if (!VALID_EVENT_TYPES.has(eventType)) {
+      res.status(400).json(
+        createErrorResponse("نوع حدث مخاطر غير صالح", ErrorCode.INVALID_DATA),
+      );
+      return;
+    }
+    filters.push(eq(riskEventsTable.eventType, eventType as never));
+  }
 
   const fromIso = typeof req.query.from === "string" ? req.query.from : null;
   if (fromIso) {

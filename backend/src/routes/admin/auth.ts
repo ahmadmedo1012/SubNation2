@@ -7,6 +7,12 @@ import { generateSecret, generateURI, verifySync } from "otplib";
 import { writeAuditLog } from "../../lib/audit";
 import { hashPassword, verifyPassword } from "../../lib/crypto";
 import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
+import {
+  createAdminSession,
+  isValidAdminSession,
+  revokeAdminSession,
+  revokeAllAdminSessions,
+} from "../../lib/admin-session";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../../lib/lockout";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -38,7 +44,18 @@ router.post("/login", async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { username, password } = parse.data;
 
-  const lockoutKey = `admin:${username}`;
+  // A8-03 (round-94): the lockout key used to be `admin:${username}`
+  // ALONE — anyone who knows the (single, public-ish) username could
+  // lock the admin out of the money queue remotely with 5 anonymous
+  // failures, repeatable forever, while the IP rate-limit budget
+  // barely noticed. Keying on IP + username keeps per-IP brute force
+  // inside the same 5-attempt envelope while making remote lockout
+  // of the legitimate admin (different IP) structurally impossible.
+  const clientIp =
+    (typeof req.headers["cf-connecting-ip"] === "string" && req.headers["cf-connecting-ip"]) ||
+    req.ip ||
+    "unknown";
+  const lockoutKey = `admin:${username}:${clientIp}`;
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
@@ -88,11 +105,22 @@ router.post("/login", async (req, res) => {
   await resetAttempts(lockoutKey);
 
   if (admin.totpEnabled && admin.totpSecret) {
-    const tempToken = signAdminToken({ adminId: admin.id, role: admin.role, isTemp: true });
+    // A8-05 (round-94): the 2FA challenge token lived as long as a full
+    // session (8h). The window where a half-session token is floating
+    // around is now 10 minutes — plenty for a human to open the
+    // authenticator, worthless for offline brute force (the per-admin
+    // lockout below is the real gate; this just shrinks the target).
+    const tempToken = signAdminToken({ adminId: admin.id, role: admin.role, isTemp: true }, { expiresIn: "10m" });
     return res.json({ requires_2fa: true, temp_token: tempToken });
   }
 
-  const token = signAdminToken({ adminId: admin.id, role: admin.role });
+  // A8-01 (round-94): durable, revocable session row + sid-bound token.
+  const { token } = await createAdminSession({
+    adminId: admin.id,
+    role: admin.role,
+    userAgent: req.headers["user-agent"],
+    ipAddress: clientIp,
+  });
   res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
   return res.json({
     token,
@@ -108,7 +136,7 @@ router.post("/login/verify-2fa", async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير مكتملة", ErrorCode.INVALID_DATA));
 
   try {
-    const decoded = jwt.verify(temp_token, ADMIN_JWT_SECRET) as {
+    const decoded = jwt.verify(temp_token, ADMIN_JWT_SECRET, { algorithms: ["HS256"] }) as {
       adminId?: number;
       isTemp?: boolean;
     };
@@ -117,13 +145,24 @@ router.post("/login/verify-2fa", async (req, res) => {
       return res.status(401).json(createErrorResponse("جلسة غير صالحة", ErrorCode.UNAUTHORIZED));
     }
 
+    // A8-04 (round-94): the 2FA completion path never re-checked
+    // is_active — a soft-disabled admin could still finish the TOTP
+    // challenge and mint a full session (requireAdmin would later
+    // refuse it, but the mint itself was audit noise + a misleading
+    // "success" response). Check it here, same honest 401 envelope.
     const [admin] = await db
       .select()
       .from(adminUsersTable)
       .where(eq(adminUsersTable.id, decoded.adminId))
       .limit(1);
 
-    if (!admin || !admin.totpEnabled || !admin.totpSecret) {
+    if (!admin || !admin.isActive) {
+      return res
+        .status(401)
+        .json(createErrorResponse("بيانات الاعتماد غير صالحة", ErrorCode.UNAUTHORIZED));
+    }
+
+    if (!admin.totpEnabled || !admin.totpSecret) {
       return res
         .status(401)
         .json(createErrorResponse("بيانات الاعتماد غير صالحة", ErrorCode.UNAUTHORIZED));
@@ -158,7 +197,14 @@ router.post("/login/verify-2fa", async (req, res) => {
     }
     await resetAttempts(lockoutKey);
 
-    const token = signAdminToken({ adminId: admin.id, role: admin.role });
+    // A8-01: full session after TOTP — row-backed and revocable, same
+    // as the non-2FA login path.
+    const { token } = await createAdminSession({
+      adminId: admin.id,
+      role: admin.role,
+      userAgent: req.headers["user-agent"],
+      ipAddress: req.ip,
+    });
     res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
     return res.json({
       token,
@@ -194,9 +240,13 @@ router.get("/probe", async (req, res) => {
     return res.status(200).json({ authenticated: false });
   }
 
-  let decoded: { adminId?: number; isTemp?: boolean };
+  let decoded: { adminId?: number; isTemp?: boolean; sid?: string };
   try {
-    decoded = jwt.verify(token, ADMIN_JWT_SECRET) as { adminId?: number; isTemp?: boolean };
+    decoded = jwt.verify(token, ADMIN_JWT_SECRET, { algorithms: ["HS256"] }) as {
+      adminId?: number;
+      isTemp?: boolean;
+      sid?: string;
+    };
   } catch {
     return res.status(200).json({ authenticated: false });
   }
@@ -227,6 +277,20 @@ router.get("/probe", async (req, res) => {
   if (!admin || !admin.isActive) {
     // Treat soft-disabled admins like missing — SPA navigates them to
     // the login screen instead of rendering a half-broken admin shell.
+    return res.status(200).json({ authenticated: false });
+  }
+
+  // A8-01: the row is the revocation truth — a logout/password-change
+  // on another device must reflect here so the SPA's cold-boot hydrate
+  // lands on the login screen instead of a dead session.
+  if (typeof decoded.sid === "string" && decoded.sid.length > 0) {
+    const sessionValid = await isValidAdminSession(decoded.sid, admin.id);
+    if (!sessionValid) {
+      return res.status(200).json({ authenticated: false });
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    // Same fail-closed strictness as requireAdmin: pre-migration
+    // sid-less tokens are not sessions anymore.
     return res.status(200).json({ authenticated: false });
   }
 
@@ -277,12 +341,22 @@ router.get("/session", requireAdmin, async (req, res) => {
 });
 
 /**
- * POST /api/admin/logout — clears the admin_token cookie + emits
- * an audit log entry. Idempotent: clearing an already-cleared cookie
- * is fine, the response is always 200.
+ * POST /api/admin/logout — revokes the server-side session row,
+ * clears the admin_token cookie + emits an audit log entry. Idempotent:
+ * revoking an already-revoked row is a no-op, the response is always 200.
+ *
+ * A8-01 (round-94): this used to be cookie-clearing ONLY — the bearer
+ * token in the admin SPA's memory kept full authority for its whole
+ * 8h JWT TTL after "logout". The row revocation is what makes logout
+ * real.
  */
 router.post("/logout", requireAdmin, async (req, res) => {
-  const adminId = (req as AdminAuthenticatedRequest).adminId;
+  const adminReq = req as AdminAuthenticatedRequest;
+  const adminId = adminReq.adminId;
+  const sid = adminReq.adminSessionId;
+  if (sid) {
+    await revokeAdminSession(sid, "logout");
+  }
   res.clearCookie(ADMIN_COOKIE_NAME, { ...ADMIN_COOKIE_OPTIONS, maxAge: undefined });
   void writeAuditLog(req, "admin.logout", "admin_user", adminId, {});
   return res.json({ success: true });
@@ -297,9 +371,11 @@ router.post("/logout", requireAdmin, async (req, res) => {
  *   - Rate-limited via the same lockout helper as login (so a
  *     compromised session can't brute-force the old password).
  *   - Audit-logged on every attempt + success.
- *   - Does NOT clear the existing session cookie — the operator
- *     stays logged in on the same device. They can revoke other
- *     sessions explicitly via /logout if needed.
+ *   - A8-01 (round-94): now revokes EVERY session row for the admin
+ *     (including this one) — a password change is a compromise
+ *     response, so all outstanding tokens die with it. The operator
+ *     re-authenticates with the new password (standard practice; the
+ *     SPA already redirects to login on the resulting 401).
  */
 router.post("/change-password", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
@@ -368,8 +444,15 @@ router.post("/change-password", requireAdmin, async (req, res) => {
     .set({ passwordHash: await hashPassword(new_password) })
     .where(eq(adminUsersTable.id, adminId));
 
+  // A8-01: kill every outstanding session — password rotation is a
+  // compromise response, not a profile edit.
+  await revokeAllAdminSessions(adminId, "password_changed");
+
   void writeAuditLog(req, "admin.password_changed", "admin_user", adminId, {});
-  return res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح" });
+  return res.json({
+    success: true,
+    message: "تم تغيير كلمة المرور بنجاح — سيتم تسجيل خروجك من كل الجلسات",
+  });
 });
 
 /**

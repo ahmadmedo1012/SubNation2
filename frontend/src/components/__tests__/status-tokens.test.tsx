@@ -73,12 +73,23 @@ describe("AuthErrorBanner — tone palettes ride the status tokens (B6-P1-4)", (
     expect(banner.className).not.toMatch(RAW_HUE);
   });
 
-  it("error tone keeps the destructive token", () => {
+  it("error tone rides the status-error token (94-C3 A3 P3-8 — one family)", () => {
     window.history.pushState({}, "", "/login?error=server_error");
     render(<AuthErrorBanner />);
 
     const banner = screen.getByRole("alert");
-    expect(banner.className).toContain("text-destructive");
+    expect(banner.className).toContain("text-status-error");
     expect(banner.className).not.toMatch(RAW_HUE);
+  });
+
+  it("the dismiss button is a full 44×44 touch target (94-C3 A3 P1-3)", () => {
+    window.history.pushState({}, "", "/login?error=cancelled");
+    render(<AuthErrorBanner />);
+
+    const close = screen.getByRole("button", { name: "إغلاق" });
+    // h-11 w-11 + touch-target = 44px hit box; negative margins keep the
+    // banner height compact (the old bare icon button was ~14×14px).
+    expect(close.className).toContain("touch-target");
+    expect(close.className).toContain("h-11 w-11");
   });
 });

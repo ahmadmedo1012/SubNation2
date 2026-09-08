@@ -93,7 +93,10 @@ export const TYPE_CONFIG: Record<
   },
   product: {
     icon: Package,
-    color: "text-primary",
+    // 94-C3 (A3 P2-4): text-primary → text-primary-text — the row icon
+    // sits on a bg-primary/10 chip over a dark card; --primary (48%L) is
+    // the surface variant, --primary-text (65%L) is the text/icon one.
+    color: "text-primary-text",
     bg: "bg-primary/10",
     border: "border-primary/20",
     actionLabel: "تصفح",
@@ -271,13 +274,14 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={wrapRef}>
-      {/* Bell button */}
+      {/* Bell button — 94-C3 (A3 P1-3): touch-target lifts the hit box
+          from 32×32 (p-2 + w-4 icon) to the 44×44 WCAG 2.5.5 floor. */}
       <button
         ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
-        className={`relative p-2 rounded-lg transition-all duration-150 active:scale-90 ${
+        className={`relative p-2 touch-target rounded-lg transition-all duration-150 active:scale-90 ${
           open
-            ? "bg-primary/12 text-primary"
+            ? "bg-primary/12 text-primary-text"
             : "hover:bg-secondary/70 text-muted-foreground hover:text-foreground"
         }`}
         aria-label="الإشعارات"
@@ -286,7 +290,7 @@ export function NotificationBell() {
       >
         {unread > 0 ? <BellDot className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (
-          <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
+          <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-primary-foreground text-[9px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -410,17 +414,21 @@ function NotificationPanel({
         <div className="flex items-center gap-0.5">
           {unread > 0 && (
             <button
+              type="button"
               onClick={onMarkAllRead}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors px-2.5 py-1.5 rounded-lg hover:bg-primary/8 press-spring"
+              className="-my-2 flex items-center gap-1.5 touch-target text-xs text-muted-foreground hover:text-primary-text transition-colors px-2.5 py-1.5 rounded-lg hover:bg-primary/8 press-spring"
             >
               <CheckCheck className="w-3 h-3" />
               {/* 93-C8 (A11 §2): unified mark-as-read verb. */}
               تحديد الكل كمقروء
             </button>
           )}
+          {/* 94-C3 (A3 P1-3): 26×26 → 44×44 hit box; -my-2 keeps the
+              header row from growing. */}
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors press-spring"
+            className="-my-2 flex h-11 w-11 items-center justify-center touch-target p-1.5 rounded-lg hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors press-spring"
             aria-label="إغلاق"
           >
             <X className="w-3.5 h-3.5" />
@@ -507,8 +515,9 @@ function NotificationPanel({
                   <div className="flex items-center gap-2 mt-2 mr-11">
                     {actionHref && cfg.actionLabel && (
                       <button
+                        type="button"
                         onClick={() => onAction(n, actionHref)}
-                        className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all duration-150 hover:opacity-80 active:scale-95 ${cfg.bg} ${cfg.border} ${cfg.color}`}
+                        className={`flex min-h-11 items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-150 hover:opacity-80 active:scale-95 ${cfg.bg} ${cfg.border} ${cfg.color}`}
                       >
                         {cfg.actionLabel}
                         {ActionIconComp && <ActionIconComp className="w-3 h-3" />}
@@ -516,11 +525,12 @@ function NotificationPanel({
                     )}
                     {!n.is_read && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onMarkRead(n.id);
                         }}
-                        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2 py-1 rounded-lg hover:bg-muted/40 transition-all duration-150"
+                        className="flex min-h-11 items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-all duration-150"
                       >
                         <CheckCheck className="w-2.5 h-2.5" />
                         تحديد كمقروء

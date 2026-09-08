@@ -22,6 +22,7 @@
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { logger } from "../../../lib/logger";
+import { ErrorCode } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
@@ -53,11 +54,17 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   if (!intentText || intentText.length > 4000) {
     res
       .status(400)
-      .json({ error: "intent_text required (1–4000 chars)", code: "COPILOT_INVALID_INPUT" });
+      .json({
+        error: "intent_text required (1–4000 chars)",
+        code: ErrorCode.COPILOT_INVALID_INPUT,
+      });
     return;
   }
   if (!copilotLlmAvailable()) {
-    res.status(503).json({ error: "خدمة المساعد غير متاحة", code: "COPILOT_LLM_UNAVAILABLE" });
+    res.status(503).json({
+      error: "خدمة المساعد غير متاحة",
+      code: ErrorCode.COPILOT_LLM_UNAVAILABLE,
+    });
     return;
   }
 
@@ -73,7 +80,10 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   const reads = readToolsForScopes(scopes);
   const drafts = draftToolsForScopes(scopes);
   if (drafts.length === 0) {
-    res.status(403).json({ error: "ليس لديك صلاحية لطرح تعديلات", code: "COPILOT_OUT_OF_SCOPE" });
+    res.status(403).json({
+      error: "ليس لديك صلاحية لطرح تعديلات",
+      code: ErrorCode.COPILOT_OUT_OF_SCOPE,
+    });
     return;
   }
   const tools = [...reads.map((t) => t.spec), ...drafts.map((t) => t.spec)];
@@ -123,7 +133,10 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     logger.error({ err, adminId: adminReq.adminId, correlationId }, "copilot draft: LLM error");
     res
       .status(502)
-      .json({ error: "حدث خطأ أثناء التواصل مع نموذج اللغة", code: "COPILOT_LLM_ERROR" });
+      .json({
+        error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
+        code: ErrorCode.COPILOT_LLM_ERROR,
+      });
     return;
   }
 
@@ -150,8 +163,17 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   }
 
   if (!captured) {
-    // The model declined to draft (e.g. answered as text). Surface that to
-    // the caller so the UI can render it as a normal answer.
+    // The model declined to draft (answered as plain text instead of
+    // calling a draft tool).
+    //
+    // A5-07 (round-94): this used to return 200 with `preview_id: null` —
+    // a contract violation (CopilotDraftResponse requires a string
+    // preview_id; the orval-generated zod fails parsing on every such
+    // response). The contract-honest shape is a stable error: 503 +
+    // COPILOT_UNEXPECTED_STATE. The admin UI already treats a 503 from
+    // /draft as "fall back to /ask" (CopilotPanel runAsk), so the admin
+    // still gets the model's answer — through the endpoint whose schema
+    // actually allows a text-only reply.
     //
     // Same secret-scan posture as /ask: the model's plain-text reply is
     // user-facing content, so it MUST pass the outbound scanner before
@@ -172,17 +194,14 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
       });
       res.status(502).json({
         error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
-        code: "COPILOT_SECRET_LEAK",
+        code: ErrorCode.COPILOT_SECRET_LEAK,
       });
       return;
     }
-    res.json({
-      preview_id: null,
-      preview: null,
-      assistant_text: result.text,
-      input_tokens: result.inputTokens,
-      output_tokens: result.outputTokens,
-      correlation_id: correlationId,
+    res.status(503).json({
+      error:
+        "لم ينتج المساعد معاينة تعديل لهذا الطلب — أعد صياغته كطلب تعديل واضح، أو استخدم «سؤال» للحصول على إجابة نصية",
+      code: ErrorCode.COPILOT_UNEXPECTED_STATE,
     });
     return;
   }
@@ -206,7 +225,7 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     });
     res.status(502).json({
       error: "تم إيقاف المعاينة لأن المحتوى المقترح يحتوي معلومات حساسة.",
-      code: "COPILOT_SECRET_LEAK",
+      code: ErrorCode.COPILOT_SECRET_LEAK,
     });
     return;
   }

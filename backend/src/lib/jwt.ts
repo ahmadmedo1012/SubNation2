@@ -104,12 +104,18 @@ export function signUserToken(payload: Record<string, unknown>): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
 }
 
+// A8-08 (round-94): every verify pins algorithms: ["HS256"]. jsonwebtoken
+// 9 accepts HS384/HS512 with the same symmetric secret — harmless today,
+// but pinning removes the entire algorithm-negotiation surface (the
+// classic alg-confusion class) for free.
+const VERIFY_OPTS = { algorithms: ["HS256"] as Array<"HS256"> };
+
 export type TokenError = "expired" | "invalid";
 export type VerifyResult<T> = { ok: true; payload: T } | { ok: false; reason: TokenError };
 
 export function verifyUserToken(token: string): { userId: number; sessionId?: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: number; sessionId?: string };
+    return jwt.verify(token, JWT_SECRET, VERIFY_OPTS) as { userId: number; sessionId?: string };
   } catch {
     return null;
   }
@@ -119,7 +125,7 @@ export function verifyUserTokenDetailed(
   token: string,
 ): VerifyResult<{ userId: number; sessionId?: string }> {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { userId: number; sessionId?: string };
+    const payload = jwt.verify(token, JWT_SECRET, VERIFY_OPTS) as { userId: number; sessionId?: string };
     return { ok: true, payload };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };
@@ -127,13 +133,21 @@ export function verifyUserTokenDetailed(
   }
 }
 
-export function signAdminToken(payload: Record<string, unknown>): string {
-  return jwt.sign(payload, ADMIN_JWT_SECRET, { expiresIn: "8h" });
+export interface SignAdminTokenOptions {
+  /** JWT TTL. Default 8h (full session). The 2FA challenge token uses 10m (A8-05). */
+  expiresIn?: jwt.SignOptions["expiresIn"];
+}
+
+export function signAdminToken(
+  payload: Record<string, unknown>,
+  options: SignAdminTokenOptions = {},
+): string {
+  return jwt.sign(payload, ADMIN_JWT_SECRET, { expiresIn: options.expiresIn ?? "8h" });
 }
 
 export function verifyAdminToken(token: string): { adminId: number; role: string } | null {
   try {
-    return jwt.verify(token, ADMIN_JWT_SECRET) as { adminId: number; role: string };
+    return jwt.verify(token, ADMIN_JWT_SECRET, VERIFY_OPTS) as { adminId: number; role: string };
   } catch {
     return null;
   }
@@ -141,12 +155,13 @@ export function verifyAdminToken(token: string): { adminId: number; role: string
 
 export function verifyAdminTokenDetailed(
   token: string,
-): VerifyResult<{ adminId: number; role: string; isTemp?: boolean }> {
+): VerifyResult<{ adminId: number; role: string; isTemp?: boolean; sid?: string }> {
   try {
-    const payload = jwt.verify(token, ADMIN_JWT_SECRET) as {
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET, VERIFY_OPTS) as {
       adminId: number;
       role: string;
       isTemp?: boolean;
+      sid?: string;
     };
     return { ok: true, payload };
   } catch (err) {

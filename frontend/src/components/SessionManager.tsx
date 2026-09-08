@@ -90,7 +90,7 @@ export function SessionManager() {
     <div className="bg-card border border-border/55 rounded-2xl p-5 float-in" dir="rtl">
       <div className="flex items-center gap-2.5 mb-4">
         <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
-          <Smartphone className="w-3.5 h-3.5 text-primary" />
+          <Smartphone className="w-3.5 h-3.5 text-primary-text" />
         </div>
         <h2 className="font-black">الأجهزة النشطة</h2>
       </div>
@@ -117,7 +117,7 @@ export function SessionManager() {
                 </p>
               </div>
               {session.current && (
-                <span className="text-[10px] bg-primary/15 text-primary border border-primary/25 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
+                <span className="text-[10px] bg-primary/15 text-primary-text border border-primary/25 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
                   الحالي
                 </span>
               )}

@@ -58,7 +58,14 @@ import { startWebSchedulers } from "../web-scheduler";
 type CoordinatorOptions = Parameters<typeof acquireSchedulerLeadership>[1];
 let capturedOptions: CoordinatorOptions;
 
-const fakeRedis = { get: vi.fn(), set: vi.fn() } as never;
+// F2 (round-94 C6): web-scheduler now resolves the heartbeat client via
+// getRedisClient() at START time (a leader acquired on a later retry must
+// not run cron against a stale null client). Mocked here so the heartbeat
+// path stays exercised exactly like the old boot-time argument did.
+const { fakeRedis } = vi.hoisted(() => ({ fakeRedis: { get: vi.fn(), set: vi.fn() } }));
+vi.mock("../redis-client", () => ({
+  getRedisClient: () => fakeRedis,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -82,7 +89,7 @@ afterEach(() => {
 
 describe("R6 — startWebSchedulers demotion wiring", () => {
   it("starts heartbeat + alerting + watchers + cron when it holds leadership", async () => {
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
 
     expect(handle.active).toBe(true);
     expect(startHeartbeat).toHaveBeenCalledTimes(1);
@@ -95,7 +102,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
   });
 
   it("onLost (leadership loss) STOPS everything — the split-brain fix", async () => {
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
     expect(handle.active).toBe(true);
 
     // Another instance took the lock → coordinator fires onLost.
@@ -124,7 +131,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
   });
 
   it("after demotion, a later re-acquisition (onAcquired) restarts everything", async () => {
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
     capturedOptions?.onLost?.();
     expect(handle.active).toBe(false);
 
@@ -145,7 +152,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
       },
     );
 
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
     await handle.stop();
 
     // Everything local stopped once...
@@ -168,7 +175,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
       },
     );
 
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("not_leader");
     expect(alertingService.start).not.toHaveBeenCalled();
@@ -177,7 +184,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
 
   it("DISABLE_WEB_SCHEDULERS=true skips everything (unchanged migration switch)", async () => {
     process.env.DISABLE_WEB_SCHEDULERS = "true";
-    const handle = await startWebSchedulers(fakeRedis);
+    const handle = await startWebSchedulers(fakeRedis as never);
 
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("disabled_by_env");

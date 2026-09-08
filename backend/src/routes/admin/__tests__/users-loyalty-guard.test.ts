@@ -220,6 +220,7 @@ describe("PATCH /api/admin/users/:id — loyalty happy paths (S6 guard, no race)
       const { status } = await patchUser(url, token, userId, {
         loyalty_points: 200,
         wallet_adjustment: 10,
+        note: "اختبار تعديل مركّب",
       });
       expect(status).toBe(200);
       const row = await getUser(userId);
@@ -293,6 +294,7 @@ describe("PATCH /api/admin/users/:id — the S6 race (concurrent referral award)
       const { status, body } = await patchUser(url, token, userId, {
         loyalty_points: 200,
         wallet_adjustment: 10,
+        note: "اختبار تعارض التعديل",
       });
 
       expect(status).toBe(409);

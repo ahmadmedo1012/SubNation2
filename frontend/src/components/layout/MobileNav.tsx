@@ -41,8 +41,11 @@ export function MobileNav() {
       className="md:hidden fixed bottom-0 left-0 right-0 z-50"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* Blur + glass background */}
-      <div className="absolute inset-0 bg-card/92 backdrop-blur-3xl border-t border-white/[0.06]" />
+      {/* Blur + glass background — 94-C3 (A3 P2-7): the raw white/[0.06]
+          border vanished on the light theme (white on white); the
+          themed border token re-tints per theme exactly like Navbar's
+          border-border/35 treatment. */}
+      <div className="absolute inset-0 bg-card/92 backdrop-blur-3xl border-t border-border/35" />
 
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
@@ -73,9 +76,11 @@ export function MobileNav() {
                   <div className="absolute inset-x-2 inset-y-[6px] rounded-2xl bg-primary/12 tab-slide-in" />
                 )}
 
-                {/* Active top accent bar */}
+                {/* Active top accent bar — 94-C3 (A3 P3-3): same
+                    bg-primary/80 strength as the Navbar underline so the
+                    active-route indicator reads identically in both navs. */}
                 {active && (
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[2.5px] rounded-full bg-primary tab-slide-in" />
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[2.5px] rounded-full bg-primary/80 tab-slide-in" />
                 )}
 
                 {/* Icon */}

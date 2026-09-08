@@ -22,7 +22,10 @@ const buttonVariants = cva(
         // so size math matches the other variants — pure-text ghosts
         // were 1px shorter and broke flex alignment in toolbars).
         ghost: "border border-transparent hover:bg-muted/45 hover:text-foreground",
-        link: "text-primary underline-offset-4 hover:underline active:scale-100",
+        // 94-C3 (A3 P2-4): link text rides --primary-text (the text-safe
+        // variant of the brand hue) — raw text-primary is the surface
+        // color and lands ~3.9:1 on dark surfaces.
+        link: "text-primary-text underline-offset-4 hover:underline active:scale-100",
       },
       size: {
         default: "min-h-9 px-4 py-2",

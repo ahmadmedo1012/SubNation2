@@ -36,6 +36,10 @@ export function NavigationProgress() {
   const lastLocation = useRef(location);
   const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 94-C3 (A3 P3-10): the 200ms hide timer fired inside the complete
+  // callback was never tracked — a route change or unmount during those
+  // 200ms left it running (setState on an unmounted component).
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (location === lastLocation.current) return;
@@ -43,6 +47,7 @@ export function NavigationProgress() {
 
     if (showTimer.current) clearTimeout(showTimer.current);
     if (completeTimer.current) clearTimeout(completeTimer.current);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
 
     setProgress(0);
     setVisible(false);
@@ -61,12 +66,14 @@ export function NavigationProgress() {
     // as the "still loading" cue from there.
     completeTimer.current = setTimeout(() => {
       setProgress(100);
-      setTimeout(() => setVisible(false), 200);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      hideTimer.current = setTimeout(() => setVisible(false), 200);
     }, 600);
 
     return () => {
       if (showTimer.current) clearTimeout(showTimer.current);
       if (completeTimer.current) clearTimeout(completeTimer.current);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
     };
   }, [location]);
 
@@ -75,7 +82,9 @@ export function NavigationProgress() {
   return (
     <div aria-hidden="true" className="fixed top-0 inset-x-0 h-[2px] z-[100] pointer-events-none">
       <div
-        className="h-full origin-left bg-gradient-to-r from-primary via-primary to-primary/60 shadow-[0_0_8px_hsl(var(--primary)/0.6)] transition-transform duration-500 ease-out"
+        // 94-C3 (A3 P3-2): origin-right — in RTL the bar grows from the
+        // reading origin (right edge) instead of sweeping left-to-right.
+        className="h-full origin-right bg-gradient-to-l from-primary via-primary to-primary/60 shadow-[0_0_8px_hsl(var(--primary)/0.6)] transition-transform duration-500 ease-out"
         style={{ transform: `scaleX(${progress / 100})` }}
       />
     </div>

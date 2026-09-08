@@ -243,25 +243,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // and re-hydrates `adminToken` to the sentinel so the admin
     // routes render immediately. The actual JWT stays in the
     // httpOnly cookie — JS never sees it.
-    const adminProbe = fetch("/api/admin/probe", {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (!res.ok) return;
-        const body = await res.json().catch(() => null);
-        if (!body || cancelled) return;
-        if (body.authenticated && body.admin) {
-          setAdminTokenState(COOKIE_AUTH_SENTINEL);
-          setAdminPermissionsState(
-            Array.isArray(body.admin.permissions) ? body.admin.permissions : [],
-          );
-        }
-      })
-      .catch(() => {
-        /* admin-unauth path; Sentry already captures real network errors. */
-      });
+    //
+    // R94-A1 (A7 P3 — /api/admin/probe for every anonymous visitor):
+    // the probe used to fire on EVERY boot, including the ~100% of
+    // storefront visitors who will never touch /admin. There is no
+    // storefront → /admin client-side link (admins reach the panel by
+    // direct URL, i.e. a full page load), so gating on the boot path
+    // is sufficient: only /admin* boots pay the request.
+    const routerBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const bootPath = window.location.pathname;
+    const isAdminBoot =
+      bootPath === `${routerBase}/admin` || bootPath.startsWith(`${routerBase}/admin/`);
+    const adminProbe = isAdminBoot
+      ? fetch("/api/admin/probe", {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        })
+          .then(async (res) => {
+            if (cancelled) return;
+            if (!res.ok) return;
+            const body = await res.json().catch(() => null);
+            if (!body || cancelled) return;
+            if (body.authenticated && body.admin) {
+              setAdminTokenState(COOKIE_AUTH_SENTINEL);
+              setAdminPermissionsState(
+                Array.isArray(body.admin.permissions) ? body.admin.permissions : [],
+              );
+            }
+          })
+          .catch(() => {
+            /* admin-unauth path; Sentry already captures real network errors. */
+          })
+      : Promise.resolve();
 
     Promise.allSettled([userProbe, adminProbe]).finally(() => {
       if (!cancelled) setInitializing(false);

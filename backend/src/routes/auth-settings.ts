@@ -17,6 +17,8 @@ import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@w
 import * as Sentry from "@sentry/node";
 import { eq, sql } from "drizzle-orm";
 import { Router } from "express";
+import { z } from "zod";
+import { writeAuditLog } from "../lib/audit";
 import { generateReferralCode } from "../lib/crypto";
 import { stringParam } from "../lib/http";
 import { createUserSession } from "../lib/session";
@@ -976,26 +978,74 @@ authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
 });
 
 // PATCH /api/admin/settings/auth/:id
+//
+// A5-11 (round-94): the body used to be read raw — `String(val).trim()`
+// stored "[object Object]" for an object-valued bot_token, there was no
+// length bound (up to the 1 MB JSON limit), and the route had no audit
+// row despite flipping provider enablement + credentials. Values are
+// schema-validated per provider field now (strings, bounded), and every
+// write is audited (secret values are never logged — keys only).
+const MAX_PROVIDER_FIELD_LENGTH: Record<string, number> = {
+  // A .p8 private key is multi-line PEM (~1.7 KB); everything else is a
+  // short token/identifier.
+  private_key: 4000,
+};
+
+function providerFieldSchema(field: ProviderField): z.ZodString {
+  const max = MAX_PROVIDER_FIELD_LENGTH[field.key] ?? 500;
+  return z.string().trim().min(1).max(max);
+}
+
+function buildProviderPatchSchema(meta: ProviderMeta) {
+  const shape: Record<string, z.ZodTypeAny> = { enabled: z.boolean().optional() };
+  for (const field of meta.fields) {
+    shape[field.key] = providerFieldSchema(field);
+  }
+  return z.object(shape).strict();
+}
+
 authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
   const meta = PROVIDERS.find((p) => p.id === stringParam(req, "id"));
   if (!meta)
     return res.status(404).json(createErrorResponse("مزود غير موجود", ErrorCode.NOT_FOUND));
 
+  const parse = buildProviderPatchSchema(meta).safeParse(req.body ?? {});
+  if (!parse.success) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "قيمة غير صالحة لإعدادات المزوّد (نصوص فقط ضمن الحدود المسموحة)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
+  const { enabled, ...incoming } = parse.data;
+
   const key = `auth.${meta.id}`;
   const existing = await getSetting(key);
-  const { enabled, ...incoming } = req.body ?? {};
 
   const updated: Record<string, any> = { ...existing };
   if (typeof enabled === "boolean") updated.enabled = enabled;
 
+  const changedFields: string[] = [];
   for (const field of meta.fields) {
     const val = incoming[field.key];
     if (val === undefined) continue;
     if (field.isSecret && (val === "[SET]" || val === "")) continue;
-    updated[field.key] = String(val).trim();
+    updated[field.key] = val;
+    changedFields.push(field.key);
   }
 
   await upsertSetting(key, updated);
+
+  void writeAuditLog(req, "settings.auth_provider.update", "settings", null, {
+    provider: meta.id,
+    enabled: !!updated.enabled,
+    // Keys only — secret VALUES (bot_token / private_key) never enter the
+    // audit trail; "[SET]" markers are skipped client-side already.
+    fields_changed: changedFields,
+  });
 
   return res.json({
     id: meta.id,

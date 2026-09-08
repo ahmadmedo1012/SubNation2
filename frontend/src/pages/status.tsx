@@ -28,34 +28,37 @@ const STATUS_META: Record<
     icon: typeof CheckCircle2;
   }
 > = {
+  // R94-A1 #5 (P2, WCAG AA): raw -400 shades measured 1.92–2.54:1 on
+  // white/light surfaces — the shared --status-* tokens carry
+  // theme-aware values tuned for AA contrast on card surfaces.
   ok: {
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    border: "border-emerald-400/30",
+    color: "text-status-success",
+    bg: "bg-status-success/10",
+    border: "border-status-success/30",
     label: "جميع الخدمات تعمل بشكل طبيعي",
     description: "المنصة تعمل بشكل كامل وجميع العمليات متاحة.",
     icon: CheckCircle2,
   },
   degraded: {
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
-    border: "border-yellow-400/30",
+    color: "text-status-warning",
+    bg: "bg-status-warning/10",
+    border: "border-status-warning/30",
     label: "أداء متدنٍ في بعض الخدمات",
     description: "المنصة تعمل لكن قد تلاحظ بطئاً أو تأخراً في بعض الميزات.",
     icon: AlertTriangle,
   },
   failing: {
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    border: "border-red-400/30",
+    color: "text-status-error",
+    bg: "bg-status-error/10",
+    border: "border-status-error/30",
     label: "هناك خلل في الخدمة",
     description: "نعمل حالياً على إصلاح المشكلة. يرجى المحاولة لاحقاً.",
     icon: XCircle,
   },
   unknown: {
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    border: "border-red-400/30",
+    color: "text-status-error",
+    bg: "bg-status-error/10",
+    border: "border-status-error/30",
     label: "تعطل — حالة غير معروفة",
     description: "لم نتمكن من التحقق من حالة المنصة. نعمل حالياً على إصلاح المشكلة.",
     icon: XCircle,

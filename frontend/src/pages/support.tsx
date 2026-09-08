@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
-import { formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
 import {
   AlertCircle,
   ArrowRight,
@@ -20,7 +20,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
 import { buildFaqLd, type FaqItem } from "@/lib/seo-builders";
@@ -112,15 +112,18 @@ const STATUS_CONFIG: Record<
 > = {
   open: {
     label: "مفتوحة",
-    color: "text-blue-400 bg-blue-400/10",
+    // R94-A1 #5 (P2, WCAG AA): raw blue-400/yellow-400 on white cards
+    // measured 2.54:1 / 1.53:1 in the light theme — the shared --status-*
+    // tokens carry theme-aware values tuned for card surfaces.
+    color: "text-status-info bg-status-info/10",
     icon: <Clock className="w-3 h-3" />,
-    border: "border-blue-400/25",
+    border: "border-status-info/25",
   },
   in_progress: {
     label: "قيد المعالجة",
-    color: "text-yellow-400 bg-yellow-400/10",
+    color: "text-status-warning bg-status-warning/10",
     icon: <AlertCircle className="w-3 h-3" />,
-    border: "border-yellow-400/25",
+    border: "border-status-warning/25",
   },
   closed: {
     label: "مغلقة",
@@ -237,6 +240,10 @@ export default function SupportPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    // R94-A1 #3 (P2, consistency with handleReply): a second submit while
+    // the first POST is in flight must be a no-op — the submit button is
+    // disabled, but a double form-submit (Enter) bypasses it.
+    if (submitting) return;
     if (!form.title.trim() || !form.message.trim()) {
       toast({ title: "أدخل العنوان والرسالة", variant: "destructive" });
       return;
@@ -267,6 +274,11 @@ export default function SupportPage() {
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
+    // R94-A1 #3 (P2): the Enter keydown handler calls this directly,
+    // bypassing the disabled submit button — two quick Enters during the
+    // in-flight POST duplicated the reply in the ticket. `sending` is the
+    // single source of truth for in-flight state.
+    if (sending) return;
     if (!selectedTicket || !replyText.trim()) return;
     setSending(true);
     try {
@@ -292,6 +304,23 @@ export default function SupportPage() {
 
   const openCount = tickets.filter((t) => t.status === "open").length;
 
+  // R94-A1 #12 (P3): order-detail's failure card links here with
+  // ?ref=<order_code> — the exact moment the user needs context. Read it
+  // once at mount; when present, auto-open the create form with the
+  // orders category and a prefilled title so the code never has to be
+  // copied manually.
+  const refParam = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return (new URLSearchParams(window.location.search).get("ref") ?? "").trim().slice(0, 32);
+  }, []);
+  useEffect(() => {
+    if (!refParam || !token) return;
+    setShowCreate(true);
+    setForm((f) =>
+      f.title ? f : { ...f, title: `بخصوص الطلب ${refParam}`, category: "order" },
+    );
+  }, [refParam, token]);
+
   // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD
   // built from SUPPORT_FAQ. Note: the same Q&A is rendered visibly on
   // the page below (Google requires JSON-LD content to also be visible).
@@ -314,6 +343,7 @@ export default function SupportPage() {
           {selectedTicket ? (
             <button
               onClick={() => setSelectedTicket(null)}
+              aria-label="رجوع لقائمة التذاكر"
               className="w-9 h-9 rounded-xl flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border/50 transition-all press-spring"
             >
               <ArrowRight className="w-4 h-4" />
@@ -329,15 +359,21 @@ export default function SupportPage() {
                 {selectedTicket ? selectedTicket.title : "الدعم الفني"}
               </h1>
               {!selectedTicket && openCount > 0 && (
-                <span className="text-[11px] font-black bg-blue-400/12 text-blue-400 border border-blue-400/25 px-2 py-0.5 rounded-full">
-                  {openCount} مفتوحة
+                <span className="text-[11px] font-black bg-status-info/12 text-status-info border border-status-info/25 px-2 py-0.5 rounded-full">
+                  {formatCount(openCount, {
+                    one: "مفتوحة",
+                    two: "مفتوحتان",
+                    few: "مفتوحة",
+                    many: "مفتوحة",
+                    other: "مفتوحة",
+                  })}
                 </span>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
               {selectedTicket
                 ? `#${selectedTicket.id} · ${formatRelativeTime(selectedTicket.created_at)}`
-                : "نحن هنا للمساعدة على مدار الساعة"}
+                : "نرد عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل — التذاكر خارجها تُعالَج أول النهار"}
             </p>
           </div>
         </div>
@@ -357,6 +393,7 @@ export default function SupportPage() {
               setShowCreate(false);
               setForm({ title: "", message: "", category: "other" });
             }}
+            aria-label="إغلاق نموذج التذكرة الجديدة"
             className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all press-spring"
           >
             <X className="w-4 h-4" />
@@ -371,9 +408,9 @@ export default function SupportPage() {
           <div
             className={`h-[3px] ${
               selectedTicket.status === "open"
-                ? "bg-gradient-to-l from-blue-400/80 via-blue-400/40 to-transparent"
+                ? "bg-gradient-to-l from-status-info/80 via-status-info/40 to-transparent"
                 : selectedTicket.status === "in_progress"
-                  ? "bg-gradient-to-l from-yellow-400/80 via-yellow-400/40 to-transparent"
+                  ? "bg-gradient-to-l from-status-warning/80 via-status-warning/40 to-transparent"
                   : "bg-gradient-to-l from-border to-transparent"
             }`}
           />
@@ -491,7 +528,7 @@ export default function SupportPage() {
           <div className="border-t border-border/25 p-4">
             {selectedTicket.status === "closed" ? (
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/25 border border-border/30 rounded-xl px-4 py-3">
-                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
                 التذكرة مغلقة — أنشئ تذكرة جديدة إذا احتجت مساعدة إضافية
               </div>
             ) : (
@@ -682,14 +719,14 @@ export default function SupportPage() {
                     w-full bg-card border border-border/50 border-r-[3px] rounded-2xl p-4
                     hover:border-border/80 hover:shadow-lg hover:shadow-black/12 hover:-translate-y-0.5
                     transition-all duration-220 text-right group active:scale-[0.995] active:translate-y-0
-                    ${t.status === "open" ? "border-r-blue-500/55" : t.status === "in_progress" ? "border-r-yellow-500/55" : "border-r-border/40"}
+                    ${t.status === "open" ? "border-r-status-info/55" : t.status === "in_progress" ? "border-r-status-warning/55" : "border-r-border/40"}
                   `}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         {t.status === "open" && (
-                          <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 pulse-dot" />
+                          <span className="w-2 h-2 rounded-full bg-status-info shrink-0 pulse-dot" />
                         )}
                         <span className="font-bold text-sm truncate flex-1 leading-snug group-hover:text-primary transition-colors duration-150">
                           {t.title}

@@ -144,6 +144,38 @@ function RouteSuspenseFallback({ adminOnly = false }: { adminOnly?: boolean }) {
   return <RouteSkeleton shape={adminOnly ? "admin" : shapeForRoute(location)} />;
 }
 
+/**
+ * A7 (round-94): mirrors the robots.txt Disallow list served by
+ * backend/src/routes/seo.ts. Routes that are auth flows, transactional
+ * funnels, user-private pages, or admin surfaces must never be indexed
+ * — the old fallback stamped index,follow on all of them. Kept in sync
+ * with robots.txt by construction (same path families, same intent).
+ * `follow` (not none) so crawlers keep walking the page's outbound
+ * links instead of treating them as dangling.
+ */
+const NOINDEX_ROUTES: RegExp[] = [
+  /^\/login$/,
+  /^\/register$/,
+  /^\/forgot-password$/,
+  /^\/onboarding/,
+  /^\/auth\//,
+  /^\/cart/,
+  /^\/checkout/,
+  /^\/wallet/,
+  /^\/orders/,
+  /^\/loyalty/,
+  /^\/referrals/,
+  /^\/profile/,
+  /^\/admin/,
+  /^\/status/,
+];
+
+function robotsForPath(path: string | undefined): string {
+  const p = path ?? "/";
+  if (NOINDEX_ROUTES.some((re) => re.test(p))) return "noindex,follow";
+  return "index,follow";
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -285,12 +317,22 @@ function AppRoutes() {
           useSeo() block owns the head, and re-applies when one unmounts.
           Page values always win (child effects run before this one);
           head writes are direct DOM upserts — react-helmet-async could
-          not apply page-level tags under React 19 and tripled <title>. */}
+          not apply page-level tags under React 19 and tripled <title>.
+
+          A7 (round-94): the fallback used to stamp index,follow + a
+          canonical on EVERY route — including /wallet, /orders/:code,
+          /admin/* that robots.txt Disallows. Mixed signals (a canonical
+          pointing at a disallowed URL) and private pages nominally
+          "indexable". The robots directive is now derived from the SAME
+          allow-list robots.txt serves (backend/src/routes/seo.ts):
+          private funnels get noindex,follow; the public surface keeps
+          index,follow. */}
       <MetaTags
         fallback
         title="SubNation — سوق الاشتراكات الرقمية"
         description="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
         path={location || "/"}
+        robots={robotsForPath(location)}
       />
       {/* Skip-to-content (V2-H1, WCAG 2.4.1): keyboard users otherwise
           Tab through Navbar + banner + search on EVERY page before the

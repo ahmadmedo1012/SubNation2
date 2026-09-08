@@ -8,11 +8,20 @@ import { stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { idempotency } from "../middlewares/idempotency";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
 import { CheckoutService } from "../services/checkout.service";
 import { toNumber } from "../lib/numeric";
 
 const router = Router();
+
+// A7 (round-94): explicit no-store on the user-scoped orders surface —
+// order lists / credentials-bearing detail responses are per-user money
+// state; an intermediary must never serve them from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 function formatOrder(
   order: typeof ordersTable.$inferSelect,
@@ -90,138 +99,182 @@ router.get("/", requireUser, async (req, res) => {
 // them) replays the cached response instead of charging the wallet a
 // second time. The frontend sends a fresh Idempotency-Key per unit
 // order (checkout.tsx) so distinct units stay distinct.
-router.post("/", requireUser, idempotency({ routeKey: "orders.create" }), async (req, res) => {
-  const { userId } = req as AuthenticatedRequest;
+//
+// F1 (round-94 A4): the soft-block guard sits BETWEEN requireUser and
+// the idempotency middleware — a risk-tagged buyer is refused BEFORE
+// anything is charged or cached, and a refusal must not consume the
+// caller's Idempotency-Key (the retry after re-auth must be able to
+// claim it). Order matters: guard first, idempotency second.
+router.post(
+  "/",
+  requireUser,
+  riskSoftBlockGuardMiddleware(),
+  idempotency({ routeKey: "orders.create" }),
+  async (req, res) => {
+    const { userId } = req as AuthenticatedRequest;
 
-  const parse = CreateOrderBody.safeParse(req.body);
-  if (!parse.success)
-    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
-  const { product_id } = parse.data;
-  const couponCode: string | undefined =
-    typeof req.body.coupon_code === "string"
-      ? req.body.coupon_code.trim().toUpperCase()
-      : undefined;
+    const parse = CreateOrderBody.safeParse(req.body);
+    if (!parse.success)
+      return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    const { product_id } = parse.data;
+    const couponCode: string | undefined =
+      typeof req.body.coupon_code === "string"
+        ? req.body.coupon_code.trim().toUpperCase()
+        : undefined;
 
-  const result = await CheckoutService.purchase({
-    userId,
-    productId: product_id,
-    couponCode,
-  });
+    const result = await CheckoutService.purchase({
+      userId,
+      productId: product_id,
+      couponCode,
+      // F10 (round-94 C4→C5 wiring): pass the raw Idempotency-Key header
+      // through to the service — the durable in-tx guard (lib/idempotency.ts)
+      // scopes it per-user, replays the original order on a retry, and
+      // claims it atomically with the purchase. The HTTP middleware above
+      // is the fast Redis layer; this is the transactional backstop.
+      idempotencyKey: req.header("Idempotency-Key"),
+    });
 
-  if (!result.ok) {
-    // Map service reasons → the exact HTTP status + message the inline
-    // handler returned before, so responses stay byte-identical.
-    switch (result.reason) {
-      case "PRODUCT_NOT_FOUND":
-        return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
-      case "INVALID_COUPON":
-        return res
-          .status(400)
-          .json(createErrorResponse(result.message ?? "كوبون غير صالح", ErrorCode.INVALID_DATA));
-      case "USER_NOT_FOUND":
-        return res
-          .status(401)
-          .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
-      case "INSUFFICIENT_BALANCE":
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.",
-              ErrorCode.INSUFFICIENT_BALANCE,
-            ),
-          );
-      case "OUT_OF_STOCK":
-        return res
-          .status(404)
-          .json(
-            createErrorResponse("المنتج غير متوفر حالياً. حاول لاحقاً.", ErrorCode.OUT_OF_STOCK),
-          );
-      case "INVALID_PRICE":
-        // M1 defense-in-depth gate — non-finite/non-positive final price.
-        // The client can't fix this; it's a data-integrity signal.
-        return res
-          .status(500)
-          .json(
-            createErrorResponse(
-              "تعذر إتمام الشراء بسبب خطأ في بيانات السعر. تواصل مع الدعم.",
-              ErrorCode.INTERNAL_ERROR,
-            ),
-          );
-      case "INVENTORY_CLAIMED":
-        return res
-          .status(409)
-          .json(
-            createErrorResponse(
-              "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى.",
-              ErrorCode.OUT_OF_STOCK,
-            ),
-          );
-      case "CONCURRENCY_ERROR":
-        // H5 — optimistic wallet deduction lost a race with a concurrent
-        // balance mutation. Retryable by design (re-reads the balance).
-        return res
-          .status(409)
-          .json(
-            createErrorResponse(
-              "تعارض أثناء تنفيذ العملية. أعد المحاولة بعد لحظات.",
-              ErrorCode.CONFLICT,
-            ),
-          );
-      case "COUPON_EXHAUSTED":
-        // F-006 (security audit 004) — atomic-with-check coupon
-        // increment lost the race; another concurrent purchase already
-        // consumed the last redemption slot.
-        return res
-          .status(409)
-          .json(
-            createErrorResponse(
-              "تم استخدام الكوبون من قبل عميل آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
-              ErrorCode.INVALID_DATA,
-            ),
-          );
-      case "STALE_FLASH_SALE":
-        // B2-06 (round-92 audit) — the flash sale that priced this purchase
-        // ended (or changed) between pricing and the transaction. Retryable:
-        // the client re-prices at the current price.
-        return res
-          .status(409)
-          .json(
-            createErrorResponse(
-              "انتهى عرض التخفيض أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
-              ErrorCode.CONFLICT,
-            ),
-          );
-      case "INVENTORY_CORRUPT":
-        // R93-DATA (round-93) — the claimed unit's credentials are
-        // undecryptable with the current key (or empty). Nothing was
-        // charged: the transaction failed closed BEFORE any mutation. The
-        // buyer is pointed to support; the operator already received a
-        // deduped inventory_corrupt alert with the product + unit id.
-        return res
-          .status(503)
-          .json(
-            createErrorResponse(
-              "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
-              ErrorCode.SERVICE_UNAVAILABLE,
-            ),
-          );
+    if (!result.ok) {
+      // Map service reasons → the exact HTTP status + message the inline
+      // handler returned before, so responses stay byte-identical.
+      switch (result.reason) {
+        case "PRODUCT_NOT_FOUND":
+          return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+        case "INVALID_COUPON":
+          return res
+            .status(400)
+            .json(createErrorResponse(result.message ?? "كوبون غير صالح", ErrorCode.INVALID_DATA));
+        case "USER_NOT_FOUND":
+          return res
+            .status(401)
+            .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
+        case "INSUFFICIENT_BALANCE":
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.",
+                ErrorCode.INSUFFICIENT_BALANCE,
+              ),
+            );
+        case "OUT_OF_STOCK":
+          return res
+            .status(404)
+            .json(
+              createErrorResponse("المنتج غير متوفر حالياً. حاول لاحقاً.", ErrorCode.OUT_OF_STOCK),
+            );
+        case "INVALID_PRICE":
+          // M1 defense-in-depth gate — non-finite/non-positive final price.
+          // The client can't fix this; it's a data-integrity signal.
+          return res
+            .status(500)
+            .json(
+              createErrorResponse(
+                "تعذر إتمام الشراء بسبب خطأ في بيانات السعر. تواصل مع الدعم.",
+                ErrorCode.INTERNAL_ERROR,
+              ),
+            );
+        case "INVENTORY_CLAIMED":
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "المنتج تم حجزه بواسطة مستخدم آخر. حاول مرة أخرى.",
+                ErrorCode.OUT_OF_STOCK,
+              ),
+            );
+        case "CONCURRENCY_ERROR":
+          // F4 (round-94 C4): the product's price/active/archive changed
+          // between pricing and the purchase tx — nothing was mutated.
+          // Distinguished from the generic wallet race by the stable
+          // code riding the failure envelope so the client can re-price
+          // and retry with the CURRENT price.
+          if (result.code === "PRODUCT_STALE") {
+            return res
+              .status(409)
+              .json(
+                createErrorResponse(
+                  "تغيّرت بيانات المنتج أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي",
+                  ErrorCode.CONFLICT,
+                ),
+              );
+          }
+          // H5 — optimistic wallet deduction lost a race with a concurrent
+          // balance mutation. Retryable by design (re-reads the balance).
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "تعارض أثناء تنفيذ العملية. أعد المحاولة بعد لحظات.",
+                ErrorCode.CONFLICT,
+              ),
+            );
+        case "COUPON_EXHAUSTED":
+          // F-006 (security audit 004) — atomic-with-check coupon
+          // increment lost the race; another concurrent purchase already
+          // consumed the last redemption slot.
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "تم استخدام الكوبون من قبل عميل آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        case "STALE_FLASH_SALE":
+          // B2-06 (round-92 audit) — the flash sale that priced this purchase
+          // ended (or changed) between pricing and the transaction. Retryable:
+          // the client re-prices at the current price.
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "انتهى عرض التخفيض أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+                ErrorCode.CONFLICT,
+              ),
+            );
+        case "INVENTORY_CORRUPT":
+          // R93-DATA (round-93) — the claimed unit's credentials are
+          // undecryptable with the current key (or empty). Nothing was
+          // charged: the transaction failed closed BEFORE any mutation. The
+          // buyer is pointed to support; the operator already received a
+          // deduped inventory_corrupt alert with the product + unit id.
+          return res
+            .status(503)
+            .json(
+              createErrorResponse(
+                "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
+                ErrorCode.SERVICE_UNAVAILABLE,
+              ),
+            );
+      }
     }
-  }
 
-  const { order, product, user, finalPrice } = result;
+    const { order, product, user, finalPrice, idempotentReplay } = result;
 
-  notifyNewOrder({
-    phone: user.phone,
-    productName: product.name,
-    amount: finalPrice,
-    orderId: order.id,
-    orderCode: order.orderCode ?? null,
-    provider: derivePrimaryProvider(user),
-  });
+    // F10 (round-94 C4→C5 wiring): this call REPLAYED an order a previous
+    // same-key purchase already created — nothing was charged or claimed
+    // now. Contract: 200 (not 201 — nothing new was created), the
+    // Idempotent-Replayed header for clients that want to distinguish,
+    // and NO new-order notifications (the operator already got the card
+    // when the order was originally created).
+    if (idempotentReplay) {
+      res.setHeader("Idempotent-Replayed", "true");
+      return res.json(formatOrder(order, product.name, product.imageUrl));
+    }
 
-  return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
-});
+    notifyNewOrder({
+      phone: user.phone,
+      productName: product.name,
+      amount: finalPrice,
+      orderId: order.id,
+      orderCode: order.orderCode ?? null,
+      provider: derivePrimaryProvider(user),
+    });
+
+    return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
+  },
+);
 
 router.get("/:orderCode", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;

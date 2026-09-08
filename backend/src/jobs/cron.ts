@@ -8,6 +8,7 @@ import { runEnrichmentIfPermitted } from "./enrichment-runner";
 import { runEnrichmentRetention } from "./enrichment-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { pruneExpiredSessions } from "./session-prune";
+import { pruneStaleAdminSessions } from "../lib/admin-session";
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -25,6 +26,13 @@ export function initCronJobs(): CronJobsHandle {
   // code path could ever stop the crons. The drain sequence (web-scheduler
   // stop) and the R6 leadership-demotion path both need real handles, so
   // every schedule() result is captured here and returned to the caller.
+  //
+  // F6 (round-94 A6): every wall-clock-sensitive (daily) schedule passes
+  // timezone: "UTC" explicitly. node-cron without a timezone option uses
+  // the process-local TZ — UTC only by Alpine's default accident — so a
+  // base-image change or an injected TZ env would silently shift every
+  // documented slot (incl. the 05:00 pre-peak window). The runtime image
+  // also pins ENV TZ=UTC (Dockerfile); this is the belt to that suspender.
   const tasks: Array<{ stop: () => void }> = [];
   const schedule = (...args: Parameters<typeof cron.schedule>) => {
     const task = cron.schedule(...args);
@@ -61,7 +69,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "0 0 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 1a. Daily at 00:05 UTC: TOTP security advisory (A6 P3#14, round-93).
   //      checkAdminTotpAdvisory used to be a boot one-shot ONLY — its
@@ -82,7 +90,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "5 0 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 1b. Daily at 05:00 UTC: expired-session prune (Round-5). Sessions
   //     whose expires_at passed are already rejected by requireUser,
@@ -98,13 +106,21 @@ export function initCronJobs(): CronJobsHandle {
           { category: "sessions.retention", removed },
           `Pruned ${removed} expired session row(s)`,
         );
+      // V1-M13 (round-94 A8): same retention window for the admin
+      // session rows — expired > 24h or revoked > 30 days.
+      const adminRemoved = await pruneStaleAdminSessions();
+      if (adminRemoved > 0)
+        logger.info(
+          { category: "sessions.retention", removed: adminRemoved },
+          `Pruned ${adminRemoved} stale admin session row(s)`,
+        );
     } catch (err) {
       logger.error({ err, category: "sessions.retention" }, "Session prune failed");
       captureSchedulerFailure("session_prune", err, {
         cron_expression: "0 5 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 2. Every hour: Health Check / Cleanup (Example)
   //    (Round-5 note: still a no-op heartbeat — kept for log cadence.)
@@ -209,7 +225,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "30 3 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 6. Daily at 02:15 UTC: inventory demand forecast (011-inventory-demand-
   //    forecast). Refuses to run unless WORKER_TIER=true AND
@@ -226,7 +242,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "15 2 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 7. Daily at 03:35 UTC: forecast retention + capture-rate measurement
   //    (011-inventory-demand-forecast). Purges forecasts > 90 days, reaps
@@ -244,7 +260,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "35 3 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 8. Daily at 03:50 UTC: catalog enrichment runner
   //    (012-arabic-catalog-enrichment). Refuses to run unless
@@ -262,7 +278,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "50 3 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 9. Daily at 04:00 UTC: enrichment retention (90-day purge of
   //    terminal-state drafts; reap orphaned in_flight runs).
@@ -276,7 +292,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "0 4 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   // 10. Daily at 04:30 UTC: auth-activity retention (B7-P1-2, round-92).
   //     auth_activity grows with EVERY login/OTP event (success and failure)
@@ -300,7 +316,7 @@ export function initCronJobs(): CronJobsHandle {
         cron_expression: "30 4 * * *",
       });
     }
-  });
+  }, { timezone: "UTC" });
 
   logger.info("Cron jobs initialized");
   return {

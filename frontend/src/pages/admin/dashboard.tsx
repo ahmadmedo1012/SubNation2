@@ -463,7 +463,9 @@ export default function AdminDashboardPage() {
         {/* Quick actions strip */}
         {stats && !statsLoading && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest hidden sm:inline">
+            {/* 94-C2 (A2 P2-10): uppercase/tracking dropped — the label
+                is Arabic (A11 §8). */}
+            <span className="text-[10px] text-muted-foreground font-medium hidden sm:inline">
               إجراءات:
             </span>
             {(stats.pending_topups ?? 0) > 0 && (

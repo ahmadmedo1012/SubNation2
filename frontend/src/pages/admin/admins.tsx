@@ -1,5 +1,10 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+// 94-C2 (A2 P2-6): the create/edit admin shells migrate from the
+// hand-rolled overlay (unguarded backdrop, no ESC/aria/focus-trap) to
+// the shared AppDialog — dismissable while busy is false keeps the
+// form alive while the POST/PATCH runs.
+import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
@@ -14,7 +19,6 @@ import {
   RefreshCw,
   ShieldCheck,
   WifiOff,
-  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -217,17 +221,19 @@ export default function AdminAdminsPage() {
                         <div className="font-black text-base flex items-center gap-2 flex-wrap">
                           {admin.display_name}
                           {isMe && (
-                            <span className="text-[9px] font-bold uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            /* 94-C2 (A2 P2-10): uppercase dropped on the
+                                Arabic badges (A11 §8). */
+                            <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                               أنت
                             </span>
                           )}
                           {!admin.is_active && (
-                            <span className="text-[9px] font-bold uppercase bg-orange-500/15 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded">
+                            <span className="text-[9px] font-bold bg-status-warning/12 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
                               معطّل
                             </span>
                           )}
                           {admin.totp_enabled && (
-                            <span className="text-[9px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                            <span className="text-[9px] font-bold uppercase bg-status-success/10 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded">
                               2FA
                             </span>
                           )}
@@ -371,7 +377,7 @@ function CreateAdminDialog({
   };
 
   return (
-    <DialogShell title="إضافة مسؤول جديد" onClose={onClose}>
+    <DialogShell title="إضافة مسؤول جديد" onClose={onClose} busy={saving}>
       <form onSubmit={submit} className="space-y-3">
         <div>
           <label className="text-xs font-bold mb-1 block">اسم المستخدم</label>
@@ -501,7 +507,7 @@ function EditAdminDialog({
   };
 
   return (
-    <DialogShell title={`تعديل: @${admin.username}`} onClose={onClose}>
+    <DialogShell title={`تعديل: @${admin.username}`} onClose={onClose} busy={saving}>
       <form onSubmit={submit} className="space-y-3">
         <div>
           <label className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
@@ -563,34 +569,29 @@ function EditAdminDialog({
 function DialogShell({
   title,
   onClose,
+  busy = false,
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** 94-C2 (A2 P2-6): while a save is in flight the dialog is NOT
+   * dismissable (ESC / backdrop / close button all guarded) — the old
+   * shell's backdrop closed mid-POST and stranded the request with no
+   * visible surface for its result. */
+  busy?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+    <AppDialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={title}
+      dismissable={!busy}
     >
-      <div
-        className="bg-card border border-border/60 rounded-2xl p-5 w-full max-w-md shadow-xl max-h-[90vh] flex flex-col overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-black text-lg">{title}</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-muted/40 flex items-center justify-center"
-            aria-label="إغلاق"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+      <AppDialogBody>{children}</AppDialogBody>
+    </AppDialog>
   );
 }
 
