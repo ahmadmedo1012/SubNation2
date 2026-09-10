@@ -123,6 +123,29 @@ function asErrorLike(error: unknown): ErrorLike | null {
   return error as ErrorLike;
 }
 
+// ── 96-F7 (R96 A6 #14): technical-message leak guard ──────────────────────
+// The fallthrough paths below (`err.error`, envelope `error` strings,
+// raw `message`) used to pass ANY string to the user verbatim. Every
+// message this app's own backend authors is Arabic (the map above +
+// the server's `error` bodies), so a string with NO Arabic script is,
+// by construction, a technical/English string from a middleware layer
+// (customFetch's "HTTP 404 Not Found" prefix, a proxy's "Bad Gateway",
+// an HTTP-status line, an enum code). Those collapse to the generic
+// Arabic message instead of landing raw inside an Arabic toast.
+// Detection is script-based, not an allowlist of exact strings, so new
+// Arabic server messages keep flowing through with zero maintenance.
+const ARABIC_SCRIPT_RE = /[\u0600-\u06FF]/;
+
+/** The shared Arabic fallback for any message we cannot trust to be
+ *  user-language (network-level failures and middleware English). */
+const GENERIC_SERVER_ERROR_AR = "تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.";
+
+/** Pass through only messages that visibly carry Arabic script (the
+ *  server's own wording); everything else gets the Arabic fallback. */
+function trustedServerMessage(raw: string): string {
+  return ARABIC_SCRIPT_RE.test(raw) ? raw : GENERIC_SERVER_ERROR_AR;
+}
+
 // Helper function to get error message from error code
 export function getErrorMessage(error: unknown): string {
   const err = asErrorLike(error);
@@ -144,39 +167,57 @@ export function getErrorMessage(error: unknown): string {
   }
 
   // If error has an error field, use it directly (for backward compatibility)
+  // 96-F7 (R96 A6 #14): only Arabic-script strings pass through — raw
+  // English from middleware layers ("Forbidden", "HTTP 404", enum
+  // codes…) falls back to the Arabic generic message.
   if (err.error) {
-    return err.error;
+    return trustedServerMessage(err.error);
   }
 
   if (err.data && typeof err.data === "object" && "error" in err.data) {
     const d = (err.data as { error?: string }).error;
-    if (typeof d === "string" && d) return d;
+    if (typeof d === "string" && d) return trustedServerMessage(d);
   }
 
   // Check if error is from axios with response data
   if (err.response?.data?.error) {
-    return err.response.data.error;
+    return trustedServerMessage(err.response.data.error);
   }
 
   // Round-3 (8-e §1/§7): network-level failures surfaced as English —
   // browser TypeError("Failed to fetch") and customFetch's
   // "HTTP 502 Bad Gateway: …" prefix landed verbatim in Arabic toasts.
   // Detect the known network-failure shapes and speak Arabic.
+  // 96-F7 (R96 A6 #14): the HTTP-prefix check now catches EVERY status
+  // code (4xx included — "HTTP 404 Not Found" from customFetch used to
+  // slip through the 5xx-only regex). customFetch messages look like
+  // "HTTP <status> <statusText>" or "HTTP <status> <statusText>: <server
+  // message>" — the prefix is technical, so it is stripped; the server
+  // suffix survives only when it carries Arabic script (a known Arabic
+  // server message). A bare "HTTP 404 Not Found" (no usable suffix)
+  // falls back to the generic Arabic message. Any OTHER non-Arabic
+  // message (middleware English, HTML fragments, enum codes) collapses
+  // the same way.
   const message = typeof err.message === "string" ? err.message.trim() : "";
   if (message) {
+    if (/^HTTP \d{3}/.test(message)) {
+      const sep = message.indexOf(":");
+      const detail = sep >= 0 ? message.slice(sep + 1).trim() : "";
+      return detail && ARABIC_SCRIPT_RE.test(detail) ? detail : GENERIC_SERVER_ERROR_AR;
+    }
     if (
       message === "Failed to fetch" ||
       message === "NetworkError when attempting to fetch resource." ||
-      message === "Load failed" ||
-      /^HTTP 5\d\d/.test(message)
+      message === "Load failed"
     ) {
-      return "تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.";
+      return GENERIC_SERVER_ERROR_AR;
     }
-    return message;
+    return trustedServerMessage(message);
   }
 
   if (error instanceof Error && error.message) {
-    return error.message;
+    // Same leak guard as above for the direct Error branch.
+    return trustedServerMessage(error.message);
   }
 
   // Fallback to generic error

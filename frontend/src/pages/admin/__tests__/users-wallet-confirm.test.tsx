@@ -254,6 +254,29 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     });
   });
 
+  // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5" from
+  // surviving programmatic submits — the save path clamps loyalty_points
+  // to ≥0 so a negative value can never reach the PATCH (r94 P3-13).
+  it("a NEGATIVE loyalty_points value is clamped to 0 at the save path (96-F7 M14)", async () => {
+    fetchMock.mockResolvedValue(resLike({ body: { id: 16, loyalty_points: 0 } }));
+    renderPage();
+
+    const dialog = await openEditModal();
+    // Wallet left EMPTY → loyalty-only PATCH, no money confirm dialog.
+    const pointsInput = within(dialog).getByDisplayValue("100");
+    fireEvent.change(pointsInput, { target: { value: "-5" } });
+
+    // Direct submit dispatch bypasses the browser's min=0 constraint
+    // validation (jsdom blocks the click path) — the SAVE-PATH clamp is
+    // the guard under test, mirroring novalidate/programmatic submits.
+    fireEvent.submit(pointsInput.closest("form") as HTMLElement);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body).toMatchObject({ loyalty_points: 0 });
+    expect(body.loyalty_points).not.toBe(-5);
+  });
+
   it("ESC does NOT destroy the edit dialog while the money PATCH is in flight (94-C2 A2 P2-5)", async () => {
     // The old hand-rolled overlay closed on any backdrop/ESC tap — a
     // stray ESC mid-PATCH hid the form while the request kept flying

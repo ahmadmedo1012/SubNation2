@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const TABS = [
   { href: "/", icon: Home, label: "الرئيسية" },
@@ -34,18 +35,52 @@ export function MobileNav() {
   const { token } = useAuth();
   const [location] = useLocation();
 
+  // 96-F5 (R96 P2-3): hide the nav while the virtual keyboard is open —
+  // a fixed bottom bar riding above the keyboard eats the vertical
+  // space next to the caret and, on some iOS versions, visually covers
+  // the focused input's row. Strategy: watch window.visualViewport; a
+  // drop of >120px from the anchored baseline means a keyboard is
+  // covering the viewport → set the hidden state (plain `hidden`
+  // class, i.e. display: none). Growing back re-anchors the baseline
+  // and restores the nav. The [@media(max-height:480px)]:hidden class
+  // below is the no-JS fallback for short viewports (landscape phones,
+  // keyboard-resized layouts that don't fire visualViewport).
+  const [keyboardHidden, setKeyboardHidden] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return; // jsdom / old browsers — CSS fallback still applies
+    let baseline = vv.height;
+    const onResize = () => {
+      if (vv.height >= baseline) {
+        // Grew back (keyboard closed / rotated to a taller viewport) —
+        // re-anchor and restore.
+        baseline = vv.height;
+        setKeyboardHidden(false);
+        return;
+      }
+      setKeyboardHidden(baseline - vv.height > 120);
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
   if (!token) return null;
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 left-0 right-0 z-50"
+      className={`md:hidden fixed bottom-0 left-0 right-0 z-50 [@media(max-height:480px)]:hidden ${
+        keyboardHidden ? "hidden" : ""
+      }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* Blur + glass background — 94-C3 (A3 P2-7): the raw white/[0.06]
-          border vanished on the light theme (white on white); the
-          themed border token re-tints per theme exactly like Navbar's
-          border-border/35 treatment. */}
-      <div className="absolute inset-0 bg-card/92 backdrop-blur-3xl border-t border-border/35" />
+      {/* 96-F5 (R96 F-4): solid bg-card replaces bg-card/92 +
+          backdrop-blur-3xl — a 64px backdrop-filter on an always-mounted
+          fixed bar over constantly scrolling content forced per-frame GPU
+          re-rasterization on low-end Android for a blur that was barely
+          visible behind the 92%-opaque background anyway. The themed
+          border (94-C3 A3 P2-7) stays, plus a subtle top shadow for the
+          depth the blur used to fake. */}
+      <div className="absolute inset-0 bg-card border-t border-border/35 shadow-[0_-4px_12px_rgba(0,0,0,0.12)]" />
 
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />

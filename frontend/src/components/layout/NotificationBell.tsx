@@ -348,14 +348,35 @@ function NotificationPanel({
 
   const isMobile = vw < 480;
 
+  // 96-F5 (R96-M08 + M02 + M16): the mobile panel used to sit at a
+  // hard-coded top: 56 with NO maxHeight. In the installed PWA
+  // (black-translucent) the Navbar header now grows by
+  // env(safe-area-inset-top), so 56 was wrong by exactly that inset —
+  // and a long list ran past the viewport with the bottom rows
+  // unreachable (position: fixed ignores page scroll). Derive the
+  // offset from the header's REAL bottom edge (measured live from the
+  // marker attribute Navbar sets) and cap the panel with a dvh-based
+  // maxHeight so the body's overflow-y-auto actually engages.
+  const headerEl =
+    typeof document !== "undefined"
+      ? document.querySelector<HTMLElement>('[data-navbar-header="1"]')
+      : null;
+  const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 56;
+
   // Compute panel position. On mobile we ignore anchorRect.
   // On desktop we right-align under the button, clamped 8px inside viewport.
   const panelStyle: React.CSSProperties = isMobile
     ? {
         position: "fixed",
-        top: 56, // below the typical 48–52px top bar
+        // 8px breathing gap below the real header bottom (safe-area
+        // aware in PWA mode; 56 + inset + 8 in browser mode).
+        top: headerBottom + 8,
         left: 8,
         right: 8,
+        // 96-F5 (R96-M02): cap = viewport − header − 8px top gap − 8px
+        // bottom gap, in dvh so the iOS URL-bar resize can't leave
+        // rows below the fold. The flex-1 body then scrolls internally.
+        maxHeight: `calc(100dvh - ${headerBottom + 16}px)`,
         zIndex: 70,
       }
     : (() => {

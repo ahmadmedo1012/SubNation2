@@ -1,5 +1,17 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
+  /**
+   * 96-F3 (R96 M3): per-request network timeout in milliseconds.
+   *
+   * Defaults to {@link DEFAULT_REQUEST_TIMEOUT_MS} (20 s). Pass `0` to
+   * disable the timeout entirely (e.g. a deliberately long-running
+   * upload). The timeout is implemented with `AbortSignal.timeout()`
+   * and merged with any caller-provided `init.signal` via
+   * `AbortSignal.any()` when both exist — whichever aborts first wins,
+   * so a caller cancellation (React Query unmount) still aborts
+   * immediately and is propagated unchanged.
+   */
+  timeoutMs?: number;
 };
 
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -30,6 +42,39 @@ let _unauthorizedHandler: UnauthorizedHandler | null = null;
  */
 export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
   _unauthorizedHandler = handler;
+}
+
+// ── 96-F3 (R96 M5 + A4 §3.1): additive observer registry ──────────────────
+//
+// The single slot above is owned by the ADMIN session handler
+// (frontend lib/admin-session via useAdminHeaders — last registration
+// wins, and every admin page re-registers it on mount). A storefront
+// (user-session) handler cannot live in that slot: mounting any admin
+// page would clobber it and silently kill storefront 401 handling for
+// the rest of the session.
+//
+// `addUnauthorizedHandler` registers PERMANENT observers that coexist
+// with the single-slot handler: every 401 notifies the additive list
+// (registration order) AND the single slot. Each handler decides by URL
+// whether the failure is its business — the user-session router
+// ignores /api/admin/* and delegates to admin-session; admin-session's
+// own handler ignores everything else. Dedupe windows on both sides
+// make a double-dispatch (additive router + single-slot both seeing an
+// admin URL) side-effect-free.
+const _unauthorizedHandlers: UnauthorizedHandler[] = [];
+
+/**
+ * Register an additional 401 observer that cannot be clobbered by
+ * `setUnauthorizedHandler` registrations. Returns an unsubscribe
+ * function. Errors thrown by an observer are swallowed — an observer
+ * must never break the request pipeline.
+ */
+export function addUnauthorizedHandler(handler: UnauthorizedHandler): () => void {
+  _unauthorizedHandlers.push(handler);
+  return () => {
+    const index = _unauthorizedHandlers.indexOf(handler);
+    if (index !== -1) _unauthorizedHandlers.splice(index, 1);
+  };
 }
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
@@ -310,6 +355,92 @@ function inferResponseType(response: Response): "json" | "text" | "blob" {
   return "blob";
 }
 
+// ── 96-F3 (R96 M3): default request timeout ──────────────────────────────
+//
+// A request that lands on a dead NAT mapping / cold-starting free-tier
+// server used to hang for minutes: TanStack stayed `pending` (endless
+// skeletons, disabled "جارٍ…" money buttons) with no signal that the
+// request was dead. 20 s covers every legitimate backend operation
+// that goes through this client (DB statements are capped at 15 s
+// server-side; the long WhatsApp OTP flows use raw fetch, not this
+// client) while bounding the pathological case.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+
+type AbortSignalStatics = {
+  timeout?: (ms: number) => AbortSignal;
+  any?: (signals: AbortSignal[]) => AbortSignal;
+};
+
+function abortSignalStatics(): AbortSignalStatics {
+  // Feature-detect: some runtimes (React Native polyfills, old
+  // Safari) lack the static helpers. Everything degrades to the
+  // pre-96-F3 behavior (no timeout) rather than throwing.
+  if (typeof AbortSignal === "undefined") return {};
+  return AbortSignal as unknown as AbortSignalStatics;
+}
+
+/**
+ * Compute the effective request signal for a fetch:
+ *
+ *   - timeoutMs <= 0                     → caller signal alone (or none)
+ *   - no caller signal                   → timeout signal
+ *   - caller signal + AbortSignal.any    → merged (first abort wins)
+ *   - caller signal, no AbortSignal.any  → caller signal alone (the
+ *     timeout is dropped — aborting the caller's cancellation would
+ *     break React Query's own unmount cancellation semantics)
+ */
+function resolveRequestSignal(
+  callerSignal: AbortSignal | null | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal | undefined; timeoutSignal: AbortSignal | undefined } {
+  if (timeoutMs <= 0) return { signal: callerSignal ?? undefined, timeoutSignal: undefined };
+
+  const statics = abortSignalStatics();
+  if (typeof statics.timeout !== "function") {
+    return { signal: callerSignal ?? undefined, timeoutSignal: undefined };
+  }
+
+  const timeoutSignal = statics.timeout(timeoutMs);
+  if (!callerSignal) return { signal: timeoutSignal, timeoutSignal };
+  if (typeof statics.any !== "function") {
+    return { signal: callerSignal, timeoutSignal: undefined };
+  }
+
+  return { signal: statics.any([callerSignal, timeoutSignal]), timeoutSignal };
+}
+
+/**
+ * True when OUR timeout fired (as opposed to a caller-initiated
+ * cancellation). Signal state is authoritative: the timeout signal
+ * aborted while the caller's did not. A caller cancellation (the
+ * caller signal IS aborted) always propagates unchanged so React
+ * Query's unmount/cancel semantics stay intact.
+ */
+function isOurTimeoutAbort(
+  callerSignal: AbortSignal | null | undefined,
+  timeoutSignal: AbortSignal | undefined,
+): boolean {
+  if (!timeoutSignal || !timeoutSignal.aborted) return false;
+  if (callerSignal && callerSignal.aborted) return false;
+  return true;
+}
+
+/**
+ * Map a timeout abort onto the shape the web app's existing
+ * network-error path recognizes. lib/errors.ts (getErrorMessage)
+ * keys its Arabic «تعذّر الاتصال بالخدمة» branch off the exact browser
+ * network-failure messages ("Failed to fetch" / "Load failed"), so a
+ * raw `DOMException: signal timed out` would leak English into
+ * Arabic toasts. Throwing the canonical network-error TypeError keeps
+ * every existing caller mapping intact; the original TimeoutError is
+ * preserved as `cause` for Sentry/console diagnostics. The ApiError
+ * contract is untouched — timeouts never produce an ApiError (there
+ * is no response to wrap).
+ */
+function toNetworkErrorShape(error: unknown): TypeError {
+  return new TypeError("Failed to fetch", { cause: error });
+}
+
 async function parseSuccessBody(
   response: Response,
   responseType: "json" | "text" | "blob" | "auto",
@@ -346,7 +477,12 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const {
+    responseType = "auto",
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    headers: headersInit,
+    ...init
+  } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -384,22 +520,51 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // 96-F3 (R96 M3): default 20 s timeout merged with the caller's
+  // signal. `timeoutSignal` is retained so the catch boundary can
+  // distinguish OUR timeout from a caller cancellation.
+  const { signal: effectiveSignal, timeoutSignal } = resolveRequestSignal(
+    init.signal,
+    timeoutMs,
+  );
 
-  if (!response.ok) {
-    // 93-C6 / F-07: notify the host app BEFORE building/throwing the
-    // ApiError — the error itself still propagates unchanged so query
-    // error states (isError → error cards) keep working.
-    if (response.status === 401 && _unauthorizedHandler) {
-      try {
-        _unauthorizedHandler({ url: requestInfo.url, method });
-      } catch {
-        // An observer must never break the request pipeline.
+  try {
+    const response = await fetch(input, { ...init, signal: effectiveSignal, method, headers });
+
+    if (!response.ok) {
+      // 93-C6 / F-07 + 96-F3: notify the host app BEFORE building/
+      // throwing the ApiError — the error itself still propagates
+      // unchanged so query error states (isError → error cards) keep
+      // working. The additive list (96-F3) fires first, then the
+      // single-slot handler; both are individually guarded.
+      if (response.status === 401) {
+        for (const handler of [..._unauthorizedHandlers]) {
+          try {
+            handler({ url: requestInfo.url, method });
+          } catch {
+            // An observer must never break the request pipeline.
+          }
+        }
+        if (_unauthorizedHandler) {
+          try {
+            _unauthorizedHandler({ url: requestInfo.url, method });
+          } catch {
+            // An observer must never break the request pipeline.
+          }
+        }
       }
+      const errorData = await parseErrorBody(response, method);
+      throw new ApiError(response, errorData, requestInfo);
     }
-    const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
-  }
 
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    // Body reads are inside the try on purpose: the timeout signal
+    // aborts in-flight body streaming too, and that rejection must
+    // land in the same Arabic network-error mapping.
+    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  } catch (error) {
+    if (isOurTimeoutAbort(init.signal, timeoutSignal)) {
+      throw toNetworkErrorShape(error);
+    }
+    throw error;
+  }
 }

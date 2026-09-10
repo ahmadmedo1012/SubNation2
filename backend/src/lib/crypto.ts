@@ -58,7 +58,20 @@ export const LIBYAN_PHONE_PREFIXES = ["91", "92", "93", "94"];
 
 export function normalizeLibyanPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
-  const normalized = digits.length === 10 && digits.startsWith("0") ? digits.slice(1) : digits;
+  // 96-F1 (R96-A4 §3.2): accept the international paste forms Libyans
+  // actually copy from contacts / WhatsApp profiles. After the
+  // digit-strip, shed the international prefix chain BEFORE the
+  // 9-digit validation so +218 / 00218 / 218 / 09x / 9x all normalize
+  // to the bare local form. Longest prefix first; a leading 0 (trunk)
+  // is only shed when exactly 10 digits remain, so a truncated
+  // international paste still fails validation honestly.
+  let candidate = digits;
+  if (candidate.startsWith("00218")) {
+    candidate = candidate.slice(5);
+  } else if (candidate.startsWith("218")) {
+    candidate = candidate.slice(3);
+  }
+  const normalized = candidate.length === 10 && candidate.startsWith("0") ? candidate.slice(1) : candidate;
   if (normalized.length !== 9) return null;
   if (!LIBYAN_PHONE_PREFIXES.some((p) => normalized.startsWith(p))) return null;
   return normalized;

@@ -3,6 +3,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import { formatCurrency } from "@/lib/utils";
 import { CheckCircle, Gift } from "lucide-react";
 import { useMemo } from "react";
 import { Link } from "wouter";
@@ -93,9 +94,14 @@ export default function RegisterPage() {
                     signup never saw the promised topup trigger and assumed
                     the bonus was lost. Wording now matches support.tsx's
                     FAQ (فور التسجيل). */}
-                <p className="text-[11px] text-status-success/80 mt-0.5">
-                  ستُضاف مكافأة ترحيب <span className="font-bold">5 د.ل</span> إلى محفظتك فور
-                  إتمام التسجيل
+                {/* 96-F6 (R96 A6 #18 + #12): formatCurrency(5) — the
+                    hardcoded «5 د.ل» violated the money convention
+                    (2 decimals + thousands grouping, single-sourced in
+                    lib/utils.ts); the /80 opacity also failed AA
+                    (≈4.0:1) on small text in light mode. */}
+                <p className="text-[11px] text-status-success mt-0.5">
+                  ستُضاف مكافأة ترحيب <span className="font-bold">{formatCurrency(5)}</span> إلى
+                  محفظتك فور إتمام التسجيل
                 </p>
               </div>
             </div>

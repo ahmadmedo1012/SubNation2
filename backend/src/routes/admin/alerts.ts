@@ -1,5 +1,5 @@
 import { adminAlertsTable, db } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { desc, eq, gt } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
@@ -83,11 +83,29 @@ router.post("/test", requireAdmin, async (req, res) => {
 router.get("/new", requireAdmin, async (req, res) => {
   try {
     const sinceId = Number.parseInt(queryString(req, "since", "0"), 10) || 0;
-    const allAlerts = await getAdminAlerts(50);
-    const newAlerts = allAlerts.filter((a) => a.id > sinceId);
+    // 96-F1 (R96-A5 M15): the since filter now runs in SQL
+    // (WHERE id > sinceId ORDER BY id DESC LIMIT 50) instead of
+    // fetching the last-50-by-created_at and filtering in JS. Polled
+    // every 5 minutes from every open admin page — the old shape paid
+    // the full 50-row fetch + deserialization even when ZERO rows were
+    // new. id is the serial PK (monotonic with insert order), so
+    // id-desc ordering is equivalent to the previous createdAt-desc
+    // for this polling surface. (Kept in the route rather than threaded
+    // through jobs/alertLogger.getAdminAlerts — that service helper is
+    // shared with the observability cache and stays shape-compatible.)
+    const newAlerts = await db
+      .select()
+      .from(adminAlertsTable)
+      .where(gt(adminAlertsTable.id, sinceId))
+      .orderBy(desc(adminAlertsTable.id))
+      .limit(50);
     return res.json({ alerts: newAlerts });
   } catch (err) {
-    req.log.error({ err }, "Failed to fetch new alerts");
+    // (req.log ?? logger): pino-http is only mounted on the production
+    // app — bare-router test mounts must not turn a handled 500 into an
+    // unhandled HTML crash (same fallback as the /test route above).
+    const log = (req.log ?? logger) as typeof req.log;
+    log.error({ err }, "Failed to fetch new alerts");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });

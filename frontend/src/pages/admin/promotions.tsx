@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle,
@@ -360,7 +360,10 @@ export default function AdminPromotionsPage() {
                   <div className="text-xs text-foreground/90 leading-relaxed">
                     منتج بسعر <span className="font-mono font-bold">10.00 د.ل</span> سيُعرض بـ{" "}
                     <span className="font-mono font-bold text-primary">
-                      {(10 * (1 - d / 100)).toFixed(2)} د.ل
+                      {/* 96-F7 (R96 A6 #18): formatCurrency — the manual
+                          toFixed(2) skipped the two-decimal + grouping
+                          money convention (see utils.ts). */}
+                      {formatCurrency(10 * (1 - d / 100))}
                     </span>{" "}
                     (وفر {d}%).
                     {d >= 30 && (

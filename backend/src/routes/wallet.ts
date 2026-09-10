@@ -9,6 +9,9 @@ import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
+// 96-F1 (R96-A5 M2): POST /topups is the last unprotected money path —
+// same Redis-backed replay guard checkout already mounts.
+import { idempotency } from "../middlewares/idempotency";
 import { notifyNewTopup } from "../telegram";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
@@ -117,7 +120,20 @@ router.get("/topups", requireUser, async (req, res) => {
 // path — a risk-tagged user's transfer requests are refused until they
 // re-authenticate (friction, not lockout; the hard_block family stays
 // off money paths per its own Constitution Principle I contract).
-router.post("/topups", requireUser, riskSoftBlockGuardMiddleware(), async (req, res) => {
+//
+// 96-F1 (R96-A5 M2): idempotency now mounted after requireUser — the
+// exact orders.ts:~112 pattern. A slow-network retry or impatient
+// double-tap replays the cached 2xx instead of inserting a SECOND
+// identical pending row (the approval-time reference dedup only helps
+// when a payment_reference was entered — the field is optional). The
+// risk guard stays BEFORE idempotency (a refusal must not consume the
+// caller's Idempotency-Key; same ordering rationale as orders.ts).
+router.post(
+  "/topups",
+  requireUser,
+  riskSoftBlockGuardMiddleware(),
+  idempotency({ routeKey: "wallet.topups.create" }),
+  async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
   const parse = CreateTopupBody.safeParse(req.body);

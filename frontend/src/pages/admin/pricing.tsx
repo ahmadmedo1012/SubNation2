@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -266,8 +267,11 @@ export default function AdminPricingPage() {
                   const cp = (p as { cost_price?: number | null }).cost_price;
                   return (
                     <option key={p.id} value={p.id}>
-                      {p.name} — {p.price.toFixed(2)} د.ل
-                      {cp != null ? ` (تكلفة ${cp.toFixed(2)})` : " (تكلفة غير محددة)"}
+                      {/* 96-F7 (R96 A6 #18): formatCurrency — the manual
+                          toFixed(2) skipped thousands grouping (the
+                          established money convention, see utils.ts). */}
+                      {p.name} — {formatCurrency(p.price)}
+                      {cp != null ? ` (تكلفة ${formatCurrency(cp)})` : " (تكلفة غير محددة)"}
                     </option>
                   );
                 })}

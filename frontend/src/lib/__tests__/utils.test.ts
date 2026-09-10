@@ -21,11 +21,13 @@
  *      input value rather than rendering "undefined" in the UI
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   categoryLabel,
   cn,
   formatCurrency,
+  formatDate,
+  formatDateShort,
   statusColor,
   statusLabel,
   tierColor,
@@ -197,5 +199,49 @@ describe("formatCount (Arabic pluralization, round-3)", () => {
 
   it("groups large counts like money values do", () => {
     expect(formatCount(1234567, { other: "طلب" })).toBe("1,234,567 طلب");
+  });
+});
+
+/**
+ * 96-F7 (R96 A6 #6) — pinned Latin-digit dates.
+ *
+ * formatDate / formatDateShort (and formatRelativeTime's calendar
+ * fallback) now pass the `ar-LY-u-nu-latn` locale extension instead of
+ * bare "ar-LY": engines without ar-LY locale data resolve the "ar" root
+ * whose CLDR default numbering is Arabic-Indic (٠١٢…), silently
+ * breaking the site-wide Latin-numerals convention (formatRelativeTime
+ * already pinned the extension — these tests pin the OTHER two
+ * helpers). Assertions are script-based (never Arabic-Indic, always at
+ * least one ASCII digit) so they hold in any runtime timezone.
+ */
+describe("formatDate / formatDateShort — pinned Latin digits (96-F7)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-07T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("formatDate renders Latin digits — never Arabic-Indic (٠١٢)", () => {
+    const out = formatDate("2026-09-08T14:30:00.000Z");
+    expect(out).toMatch(/[0-9]/);
+    expect(out).not.toMatch(/[٠-٩]/u);
+  });
+
+  it("formatDate keeps the Arabic month name (locale still ar)", () => {
+    // The pin must change the NUMBERING SYSTEM only — not silently
+    // switch the calendar/date language to Latin.
+    const out = formatDate("2026-09-08T14:30:00.000Z");
+    expect(out).toMatch(/[\u0600-\u06FF]/u);
+  });
+
+  it("formatDateShort's calendar fallback (>48h) renders Latin digits", () => {
+    // 37 days before the frozen "now" → the calendar-date branch.
+    const out = formatDateShort("2026-08-01T10:00:00.000Z");
+    expect(out).toMatch(/[0-9]/);
+    expect(out).not.toMatch(/[٠-٩]/u);
+    expect(out).not.toContain("قبل");
+    expect(out).not.toContain("خلال");
   });
 });

@@ -425,6 +425,13 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
           <div className="flex gap-3">
             <input
               type="text"
+              /* 96-F7 (R96 M6): numeric keypad on mobile for the 6-digit
+                 TOTP verification code (+ one-time-code autocomplete so
+                 authenticator apps can offer to fill it) — Android
+                 opened a full QWERTY keyboard on every setup. */
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
@@ -634,7 +641,10 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
             <div>
               <span className="block text-foreground/50">تاريخ الإنشاء</span>
               <span className="font-bold text-foreground">
-                {new Date(session.created_at).toLocaleDateString("ar-LY", {
+                {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
+                    engines without ar-LY data fall back to the "ar" root
+                    and emit Arabic-Indic numerals otherwise. */}
+                {new Date(session.created_at).toLocaleDateString("ar-LY-u-nu-latn", {
                   day: "numeric",
                   month: "short",
                   year: "numeric",

@@ -34,7 +34,13 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        /* 96-F5 (R96-M09 + P2-4): same mobile geometry as dialog.tsx —
+           16px side margins via a WIDTH (survives consumer max-w
+           overrides), rounded corners below sm, and a dvh height cap
+           with internal scroll so a long confirm description can never
+           push the action buttons below the fold while page scroll is
+           Radix-locked. */
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100vw-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl sm:rounded-lg max-h-[85dvh] overflow-y-auto",
         className,
       )}
       {...props}
@@ -84,7 +90,16 @@ const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
-  <AlertDialogPrimitive.Action ref={ref} className={cn(buttonVariants(), className)} {...props} />
+  <AlertDialogPrimitive.Action
+    ref={ref}
+    /* 96-F5 (R96 P2-4): min-h-11 (44px) — every useConfirm() confirm is a
+       money/destructive decision, and the default button size (min-h-9 =
+       36px) was under the 44px WCAG 2.5.5 floor the rest of the app
+       enforces on far less consequential taps. twMerge drops the
+       base min-h-9 in favor of this. */
+    className={cn(buttonVariants(), "min-h-11", className)}
+    {...props}
+  />
 ));
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 
@@ -94,7 +109,11 @@ const AlertDialogCancel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
     ref={ref}
-    className={cn(buttonVariants({ variant: "outline" }), "mt-2 sm:mt-0", className)}
+    /* 96-F5 (R96 P2-4): 44px hit box + mt-3 (12px) separation in the
+       mobile flex-col-reverse footer — two adjacent 44px money-path
+       buttons 8px apart invited mis-taps; 12px matches the app's other
+       stacked destructive pairs. */
+    className={cn(buttonVariants({ variant: "outline" }), "min-h-11 mt-3 sm:mt-0", className)}
     {...props}
   />
 ));

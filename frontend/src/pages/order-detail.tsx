@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/CopyButton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
@@ -40,53 +41,46 @@ function CopyField({
   /** Mask the value until explicitly revealed (passwords). */
   secret?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
   const [revealed, setRevealed] = useState(!secret);
-  const copy = async () => {
-    const ok = await copyToClipboard(value);
-    if (!ok) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
   return (
-    <div className="group flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-muted/15 transition-colors">
-      <div className="min-w-0">
-        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5">
-          {label}
-        </div>
+    <div className="group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/15 transition-colors">
+      <div className="min-w-0 flex-1">
+        {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed from the
+            Arabic credential labels («البريد الإلكتروني»/«كلمة المرور») —
+            letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
+        <div className="text-[10px] text-muted-foreground font-bold mb-0.5">{label}</div>
         {/* dir="ltr": credentials are LTR runs — without it the bidi
             algorithm visually scrambles values ending in digits/symbols
-            even though the copied text is correct. */}
+            even though the copied text is correct.
+            96-F4 (R96 A2 P1-4/P1-5): the value stays in a NON-button
+            selectable element (select-text + break-all) — the paid data
+            remains long-press-selectable as the fallback when copy fails. */}
         <div
           dir="ltr"
-          className="font-mono font-bold text-sm break-all leading-snug text-left"
+          className="font-mono font-bold text-sm break-all leading-snug text-left select-text"
         >
           {revealed ? value : "•".repeat(Math.min(value.length, 12))}
         </div>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
         {secret && (
+          /* 96-F4 (R96 A2 P1-4): reveal is its own 44px control on the
+              LABEL side — visually separated from the copy affordance on
+              the opposite side (they used to be twin ~28px pills and a
+              mis-tap hit the neighbor's identical pill). */
           <button
+            type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
           >
-            {revealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {revealed ? "إخفاء" : "إظهار"}
           </button>
         )}
-        <button
-          onClick={copy}
-          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring ${
-            copied
-              ? "bg-status-success/12 text-status-success border-status-success/22"
-              : "bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
-          }`}
-        >
-          {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-          {copied ? "تم" : "نسخ"}
-        </button>
       </div>
+      {/* 96-F4 (R96 A2 P1-3): the shared CopyButton (size="md", min-h-11)
+          replaces the local reimplementation — copy failure now announces
+          itself («تعذّر النسخ») instead of silently keeping the «نسخ» label. */}
+      <CopyButton text={value} size="md" />
     </div>
   );
 }
@@ -288,7 +282,12 @@ export default function OrderDetailPage() {
                     className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[11px] font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
-                    <Copy className="w-2.5 h-2.5 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                    {/* 96-F4 (R96 A6 #9 / A2 P2-10): the copy affordance is
+                        ALWAYS faintly visible on touch (opacity-60 base —
+                        hover doesn't exist on phones, so the old
+                        opacity-0/group-hover reveal made the code look like
+                        plain text); hover only strengthens it on md+. */}
+                    <Copy className="w-2.5 h-2.5 opacity-60 md:group-hover/code:opacity-100 transition-opacity" />
                   </button>
                 </div>
               </div>
@@ -359,7 +358,15 @@ export default function OrderDetailPage() {
                 <CopyField label="كلمة المرور" value={order.delivered_password} secret />
               )}
               {order.delivered_extra_details && (
-                <div className="px-5 py-3.5 text-sm text-muted-foreground leading-relaxed">
+                /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
+                   direction runs (activation links / PIN codes inside Arabic
+                   sentences) — dir="auto" + start alignment let the bidi
+                   algorithm pick the base direction from the first strong
+                   character instead of scrambling the visual order. */
+                <div
+                  dir="auto"
+                  className="px-5 py-3.5 text-sm text-muted-foreground leading-relaxed text-start"
+                >
                   {order.delivered_extra_details}
                 </div>
               )}

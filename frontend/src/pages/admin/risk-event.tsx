@@ -172,7 +172,13 @@ export default function AdminRiskEventPage() {
           <Stat label="النقاط" value={String(event.score)} />
           <Stat label="الثقة" value={`${(event.confidence * 100).toFixed(0)}%`} />
           <Stat label="الإجراء" value={event.action_taken} />
-          <Stat label="الوقت" value={new Date(event.created_at).toLocaleString("ar-LY")} mono />
+          {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits (engines
+              without ar-LY data fall back to Arabic-Indic numerals). */}
+          <Stat
+            label="الوقت"
+            value={new Date(event.created_at).toLocaleString("ar-LY-u-nu-latn")}
+            mono
+          />
         </div>
 
         <Section title="المستخدم">
@@ -233,7 +239,8 @@ export default function AdminRiskEventPage() {
                         {l.labeled_by_username ?? `admin#${l.labeled_by}`}
                       </span>
                       <span className="text-muted-foreground mr-auto">
-                        {new Date(l.labeled_at).toLocaleString("ar-LY")}
+                        {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits. */}
+                        {new Date(l.labeled_at).toLocaleString("ar-LY-u-nu-latn")}
                       </span>
                     </div>
                     {l.notes && <div className="text-muted-foreground">{l.notes}</div>}

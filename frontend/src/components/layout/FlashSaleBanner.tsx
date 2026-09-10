@@ -213,7 +213,14 @@ export function FlashSaleBanner() {
                   </span>
                   {/* 94-C3 (A3 P2-11): 7px/50% was unreadable on small
                       screens — the unit is functional copy, not decor. */}
-                  <span className="text-[10px] opacity-70 leading-none">{seg.label}</span>
+                  {/* 96-F5 (R96-M22): the label hides at ≤359px so the
+                      sale title survives — the fixed clusters (icon +
+                      countdown digits + dismiss) left the title ~116px
+                      at 320px; dropping the unit labels frees ~30px for
+                      the actual message (the digits stay readable). */}
+                  <span className="text-[10px] opacity-70 leading-none max-[359px]:hidden">
+                    {seg.label}
+                  </span>
                 </div>
               </div>
             ))}

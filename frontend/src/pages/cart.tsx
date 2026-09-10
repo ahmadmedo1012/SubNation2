@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { useCart, type LocalCartItem } from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
+import { toast as sonnerToast } from "sonner";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
@@ -44,34 +46,62 @@ export default function CartPage() {
 
   const { token } = useAuth();
   const { toast } = useToast();
+  // 96-F4 (R96 A2 P1-2): «إفراغ السلة» is the storefront's most destructive
+  // tap — now behind the house-standard confirm dialog (destructive tone)
+  // instead of firing instantly on a 32px ghost button.
+  const { confirm, ConfirmDialog } = useConfirm();
   // Round-4 dead-code removal: the "server cart" simulation
   // (ServerCartItem/ServerCart/localToServerItems + a serverItems state
   // that was only ever set to []) never had a real server behind it —
   // the page renders the local cart directly. Verified unused in the
   // r4-1-c org audit (docs/ux-audit-storefront.md:73 documents the
   // remnant as known-dead since rounds ago).
-  const { items, isLoaded, updateQuantity, removeItem, clear } = useCart();
+  const { items, isLoaded, updateQuantity, removeItem, clear, addItem } = useCart();
 
   const total = useMemo(() => {
     return +items.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0).toFixed(2);
   }, [items]);
 
-  async function handleUpdate(productId: number, qty: number) {
+  // 96-F4 (R96 A2 P1-1): every line removal (minus-at-qty-1 AND the trash
+  // button) now carries a 6s undo toast that re-adds the item WITH ITS
+  // QUANTITY — the snapshot is taken before removeItem fires. The toast
+  // rides sonner directly because the shared use-toast shim doesn't expose
+  // sonner's action API, and an undo affordance needs a real button — the
+  // same mounted <Toaster/> renders it either way.
+  const removeWithUndo = (item: LocalCartItem) => {
+    removeItem(item.productId);
+    sonnerToast("تمت إزالة المنتج", {
+      description: item.name,
+      action: {
+        label: "تراجع",
+        onClick: () => addItem({ ...item }),
+      },
+      duration: 6000,
+    });
+  };
+
+  const handleUpdate = (item: LocalCartItem, qty: number) => {
     // qty 0 means "remove" — the previous code early-returned here, which
     // made the X-shown-at-qty-1 button a silent no-op with delete
-    // affordance. Route it to removeItem instead.
+    // affordance. Route it to removeWithUndo instead (destructive, but
+    // now with feedback + undo).
     if (qty < 1) {
-      removeItem(productId);
+      removeWithUndo(item);
       return;
     }
-    updateQuantity(productId, qty);
-  }
+    updateQuantity(item.productId, qty);
+  };
 
-  async function handleRemove(productId: number) {
-    removeItem(productId);
-  }
-
-  function handleClear() {
+  const handleClear = async () => {
+    // 96-F4 (R96 A2 P1-2): confirm before the wipe.
+    const ok = await confirm({
+      title: "إفراغ السلة؟",
+      description: "ستُزال جميع المنتجات من سلتك نهائياً.",
+      confirmLabel: "إفراغ السلة",
+      cancelLabel: "إلغاء",
+      destructive: true,
+    });
+    if (!ok) return;
     // 93-C5 / F-05 (A4 #10): "إفراغ السلة" for logged-in users was gated on
     // a server DELETE the rendered cart doesn't depend on (the page is
     // purely local — lib/cart.tsx, the server cart is documented dead
@@ -87,7 +117,7 @@ export default function CartPage() {
         // copy (when the endpoint is alive) follows along eventually.
       });
     }
-  }
+  };
 
   if (!isLoaded) {
     return (
@@ -125,9 +155,10 @@ export default function CartPage() {
         {items.length > 0 && (
           <Button
             variant="ghost"
-            size="sm"
             onClick={handleClear}
-            className="text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
+            /* 96-F4 (R96 A2 P1-2): 44px target (size="sm" shipped 32px on the
+               most destructive control in the storefront). */
+            className="min-h-11 text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
           >
             <Trash2 className="w-3.5 h-3.5 ml-1.5" />
             إفراغ السلة
@@ -168,7 +199,16 @@ export default function CartPage() {
                   key={it.productId}
                   className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 hover:border-border transition-all duration-200 group`}
                 >
-                  <div className="flex items-center gap-3.5">
+                  {/* 96-F4 (R96 A1 M13 + A2 P1-1): flex-wrap row — on wide
+                      viewports it reads exactly like before (thumb |
+                      title+price | controls). Below ~480px the 44px controls
+                      cluster wraps onto its own row, which frees the middle
+                      column so the price cluster sits on ONE clean line — at
+                      320px it used to ragged-wrap into 2–3 lines inside a
+                      ~92px column, degrading the money info exactly where
+                      users verify totals. min-w-[10rem] forces the wrap
+                      before the title column gets that narrow. */}
+                  <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
                     <Link href={it.slug ? `/product/${it.slug}` : "/"}>
                       <div className="w-14 h-14 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
                         {it.imageUrl ? (
@@ -186,13 +226,16 @@ export default function CartPage() {
                         )}
                       </div>
                     </Link>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-[10rem]">
                       <Link href={it.slug ? `/product/${it.slug}` : "/"}>
                         <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors">
                           {it.name}
                         </div>
                       </Link>
-                      <div className="flex items-baseline gap-2 mt-0.5">
+                      {/* 96-F4 (M13): price cluster on its own line — flex-wrap
+                          keeps the trio (price / strikethrough / discount) on
+                          one clean row now that the column is wide enough. */}
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mt-0.5">
                         <span className="font-black text-sm tabular-nums text-primary-text">
                           {formatCurrency(price)}
                         </span>
@@ -209,39 +252,47 @@ export default function CartPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    {/* 96-F4 (R96 A2 P1-1): 44px stepper/trash targets with
+                        ≥8px separation (gap-2) between the stepper cluster
+                        and the trash — the old 26px buttons sat 4px apart, so
+                        a rapid "+" double-tap landed on the trash and
+                        silently deleted the line. */}
+                    <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-0 bg-muted/50 border border-border/40 rounded-lg overflow-hidden">
                         <button
                           type="button"
-                          onClick={() => handleUpdate(it.productId, it.quantity - 1)}
-                          className="p-1.5 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground"
+                          onClick={() => handleUpdate(it, it.quantity - 1)}
+                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
                           aria-label={it.quantity === 1 ? "حذف المنتج" : "إنقاص الكمية"}
                         >
                           {it.quantity === 1 ? (
-                            <X className="w-3.5 h-3.5 text-status-error" />
+                            <X className="w-4 h-4 text-status-error" />
                           ) : (
-                            <Minus className="w-3.5 h-3.5" />
+                            <Minus className="w-4 h-4" />
                           )}
                         </button>
-                        <span className="font-black text-sm tabular-nums px-2 min-w-[28px] text-center">
+                        <span
+                          className="font-black text-sm tabular-nums px-2 min-w-[28px] text-center"
+                          aria-label={`الكمية ${it.quantity}`}
+                        >
                           {it.quantity}
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleUpdate(it.productId, it.quantity + 1)}
-                          className="p-1.5 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground"
+                          onClick={() => handleUpdate(it, it.quantity + 1)}
+                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
                           aria-label="زيادة الكمية"
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          <Plus className="w-4 h-4" />
                         </button>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleRemove(it.productId)}
-                        className="p-1.5 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors"
-                        aria-label="حذف"
+                        onClick={() => removeWithUndo(it)}
+                        className="min-h-11 min-w-11 px-2 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors flex items-center justify-center"
+                        aria-label="حذف المنتج"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -288,6 +339,9 @@ export default function CartPage() {
           </div>
         </>
       )}
+
+      {/* 96-F4 (R96 A2 P1-2): the destructive-clear confirm dialog. */}
+      <ConfirmDialog />
     </div>
   );
 }

@@ -110,6 +110,13 @@ export function ProductCardShell() {
           <div className="h-5 w-10 skeleton-shimmer rounded-full" />
         </div>
       </div>
+      {/* 96-F4 (R96 A1 M12): mobile CTA placeholder — every REAL card renders
+          an always-visible `md:hidden min-h-11` buy button (or the «نفد
+          المخزون» bar) below the details block; the skeleton mirrored only
+          the image + text rows, so each card grew ~58px on the skeleton →
+          content swap of the 8-card mobile grid — a visible CLS jump on the
+          highest-traffic page. Same geometry classes as the real CTA. */}
+      <div className="md:hidden min-h-11 mx-3.5 mb-3.5 rounded-xl skeleton-shimmer" />
     </div>
   );
 }

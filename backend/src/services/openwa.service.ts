@@ -53,6 +53,18 @@
  *                           explicitly disabled, missing sessions
  *                           surface as `session_not_found` so they
  *                           can be provisioned out-of-band.
+ *   WHATSAPP_OTP_SETTLE_MS  96-F1 (R96-A4 §1.3A): post-link settle
+ *                           window in ms before a freshly-paired
+ *                           session may dispatch (default 45 000,
+ *                           clamped 0–300 000). Kills the "Waiting
+ *                           for this message" race.
+ *   WHATSAPP_OTP_OPERATOR_E164  96-F1 (R96-A4 §1.3B): the operator's
+ *                           own linked number (E164 digits, optional
+ *                           leading `+`). When set, a benign Arabic
+ *                           warm-up self-check must DELIVER to this
+ *                           number before OTP dispatch is enabled, and
+ *                           repeats every 6 h. Unset → warm-up disabled
+ *                           (settle gate alone).
  *
  * The function is defensive: any throw / non-2xx is captured and
  * returned as a typed failure so callers can decide between
@@ -60,6 +72,10 @@
  */
 
 import { logger } from "../lib/logger";
+// 96-F1 (R96-A4 §1.3A): ready-since mirror — Redis shares the settle-gate
+// observation across restarts and sibling instances. Reuses the same
+// resilient singleton + bounded-command helpers as idempotency.ts.
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 
 interface GatewayAuthConfig {
   baseUrl: string;
@@ -114,6 +130,10 @@ export type SendResult =
         | "not_configured"
         | "session_not_found"
         | "session_not_ready"
+        // 96-F1 (R96-A4 §1.3A): the session reports `ready` but is still
+        // inside the post-link settle / warm-up window — dispatch is
+        // gated, the caller should retry after `readyInMs`.
+        | "session_settling"
         | "recipient_not_on_whatsapp"
         | "request_failed"
         | "non_ok_status";
@@ -121,6 +141,8 @@ export type SendResult =
       status?: number;
       /** OpenWA session lifecycle state when `reason === "session_not_ready"`. */
       sessionStatus?: string;
+      /** 96-F1: ms until the settle/warm-up window elapses (`reason === "session_settling"`). */
+      readyInMs?: number;
     };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +157,287 @@ export type SendResult =
  */
 const READY_CACHE_TTL_MS = 30_000;
 let readySessionCache: { id: string; expiresAt: number } | null = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 96-F1 (R96-A4 §1.3 A+B): post-link settle gate + warm-up self-check
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The production "Waiting for this message" incident: OpenWA flips a
+// session to `ready` the moment the companion device authenticates —
+// BEFORE WhatsApp's multi-device key distribution (sender-keys, prekeys,
+// app-state sync) has propagated to peers. An OTP dispatched in that
+// window is encrypted under keys the receiving phone cannot resolve and
+// renders as "Waiting for this message. This may take a while."
+// (openwa.service used to treat `ready` as immediately sendable — the
+// race was confirmed in code at r96-A4 §1.2.)
+//
+//   A. Settle gate: the first time a session is observed `ready`, record
+//      the timestamp (in-memory Map + Redis mirror
+//      `openwa:ready-since:{sessionId}` so restarts and sibling
+//      instances share the observation). No dispatch until
+//      POST_LINK_SETTLE_MS has elapsed since that first observation.
+//
+//   B. Warm-up self-check: after the settle window, send a benign Arabic
+//      message to the operator's own linked number
+//      (WHATSAPP_OTP_OPERATOR_E164). A successful self-chat send forces
+//      LID resolution + sender-key distribution on a harmless chat
+//      BEFORE any OTP flows, and repeats every 6 h to keep keys fresh
+//      (and the free-tier gateway warm). When the env is unset the
+//      warm-up is skipped silently and dispatch relies on the settle
+//      gate alone; when set, dispatch additionally requires warmup-ok.
+
+const POST_LINK_SETTLE_DEFAULT_MS = 45_000;
+const POST_LINK_SETTLE_MAX_MS = 300_000;
+
+/**
+ * Env-tunable settle window (WHATSAPP_OTP_SETTLE_MS, default 45 s,
+ * clamped 0–300 s). Pair-code linking typically completes key
+ * propagation in 10–30 s; QR (device-list rebuild) can take longer —
+ * 45 s covers both while staying under the 60 s resend cooldown.
+ */
+function readPostLinkSettleMs(): number {
+  const raw = Number(process.env.WHATSAPP_OTP_SETTLE_MS);
+  if (!Number.isFinite(raw)) return POST_LINK_SETTLE_DEFAULT_MS;
+  return Math.min(Math.max(Math.trunc(raw), 0), POST_LINK_SETTLE_MAX_MS);
+}
+export const POST_LINK_SETTLE_MS = readPostLinkSettleMs();
+
+/** Bounded in-request wait inside the OTP send path (§1.3A): one honest
+ *  spinner beats a 503 round-trip, but no request may hang for the whole
+ *  window. */
+const SETTLE_WAIT_CAP_MS = 20_000;
+
+/** Warm-up cadence (§1.3B). */
+const WARMUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/** Conservative "channel becomes ready" estimate while the warm-up
+ *  self-check send is still in flight (used as readyInMs so the route
+ *  can emit a sane Retry-After). */
+const WARMUP_PENDING_ESTIMATE_MS = 10_000;
+
+/** Benign self-check text — Arabic, no code, no PII (§1.3B). */
+const WARMUP_TEXT = "قناة SubNation جاهزة ✓ (رسالة تهيئة)";
+
+/** Redis mirror TTL — 7 days, long outlives any settle window. */
+const READY_SINCE_TTL_SEC = 7 * 24 * 60 * 60;
+
+/** E164 shape for the operator env (digits, optional leading +). */
+const OPERATOR_E164_RE = /^\d{10,15}$/;
+
+/**
+ * The operator's own linked number (WHATSAPP_OTP_OPERATOR_E164) — the
+ * warm-up self-check destination. Digits only (leading `+` tolerated).
+ * null when unset/invalid → warm-up disabled, silently skipped.
+ */
+function readOperatorNumber(): string | null {
+  const raw = (process.env.WHATSAPP_OTP_OPERATOR_E164 ?? "").trim().replace(/^\+/, "");
+  if (!raw) return null;
+  return OPERATOR_E164_RE.test(raw) ? raw : null;
+}
+
+/** First-observation timestamps per session id (epoch ms). */
+const sessionReadySince = new Map<string, number>();
+/** Warm-up-ok flag per session id — only meaningful when the operator env is set. */
+const dispatchReady = new Map<string, boolean>();
+/** Session ids with a pending one-shot initial warm-up scheduled. */
+const pendingInitialWarmups = new Set<string>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** ms remaining in the settle window (0 once settled). */
+function settleRemainingMs(readySince: number): number {
+  return Math.max(0, readySince + POST_LINK_SETTLE_MS - Date.now());
+}
+
+/** Warm-up gate — applies ONLY when the operator number is configured. */
+function isWarmupOk(sessionId: string): boolean {
+  if (!readOperatorNumber()) return true;
+  return dispatchReady.get(sessionId) === true;
+}
+
+/**
+ * Record (or adopt) the first `ready` observation for a session.
+ *
+ * In-memory first; on a miss, the Redis mirror is checked so a cold
+ * start / sibling instance ADOPTS the shared timestamp instead of
+ * re-opening the window. When neither exists, now is recorded locally
+ * AND via SETNX in Redis (TTL 7 d). Any freshly-recorded observation
+ * also busts the readiness cache — a session must never be cached as
+ * `ready` from a probe that predates its pairing.
+ */
+async function recordReadySince(session: SessionRecord): Promise<number> {
+  const known = sessionReadySince.get(session.id);
+  if (known !== undefined) return known;
+
+  const redis = getRedisClient();
+  if (redis) {
+    try {
+      const key = `openwa:ready-since:${session.id}`;
+      const raw = await withRedisCommandTimeout("openwa_ready_since_get", () => redis.get(key));
+      if (raw) {
+        const ts = Number(raw);
+        if (Number.isFinite(ts) && ts > 0) {
+          sessionReadySince.set(session.id, ts);
+          scheduleInitialWarmup(session.id, ts);
+          return ts;
+        }
+      }
+      // Claim the observation for the fleet (NX: a sibling that raced
+      // us keeps its own value — ms-level divergence, harmless).
+      await withRedisCommandTimeout("openwa_ready_since_setnx", () =>
+        redis.set(key, String(Date.now()), { NX: true, EX: READY_SINCE_TTL_SEC }),
+      );
+    } catch {
+      // Redis degraded/absent — in-memory only (single-instance shape).
+    }
+  }
+
+  const now = Date.now();
+  sessionReadySince.set(session.id, now);
+  readinessCache = null; // never cache a pre-gate `ready` verdict
+  logger.info(
+    { category: "whatsapp.gateway", sessionId: session.id, settleMs: POST_LINK_SETTLE_MS },
+    "[whatsapp-otp] session observed ready — post-link settle window started",
+  );
+  scheduleInitialWarmup(session.id, now);
+  return now;
+}
+
+/**
+ * One-shot initial warm-up: the FIRST observation of a ready session
+ * schedules the self-check for right after the settle window elapses
+ * (delay 0 when the window already passed — e.g. a cold start adopting
+ * an old Redis timestamp) instead of waiting for the 6 h loop tick.
+ */
+function scheduleInitialWarmup(sessionId: string, readySince: number): void {
+  const operator = readOperatorNumber();
+  if (!operator) return; // warm-up disabled — skip silently (§1.3B)
+  if (dispatchReady.get(sessionId)) return;
+  if (pendingInitialWarmups.has(sessionId)) return;
+  pendingInitialWarmups.add(sessionId);
+  const delay = Math.max(0, readySince + POST_LINK_SETTLE_MS - Date.now());
+  const timer = setTimeout(() => {
+    pendingInitialWarmups.delete(sessionId);
+    void runWarmupCycle().catch((err) =>
+      logger.warn(
+        { category: "whatsapp.gateway", err: err instanceof Error ? err.message : String(err) },
+        "[whatsapp-otp] initial warm-up failed (non-fatal)",
+      ),
+    );
+  }, delay);
+  timer.unref?.();
+}
+
+/**
+ * The warm-up cycle (shared by the one-shot initial warm-up and the 6 h
+ * loop): resolve the session, and when it is ready + settled + not yet
+ * warm, send the benign self-check to the operator's own number and —
+ * only on a delivered send — flip dispatchReady for this process.
+ * Never throws (scheduler contract); every failure is logged and
+ * retried by the next tick.
+ */
+async function runWarmupCycle(): Promise<void> {
+  const config = readGatewayConfig();
+  if (!config) return;
+  const operator = readOperatorNumber();
+  if (!operator) return;
+
+  let session: SessionRecord | null;
+  try {
+    session = await findSession(config);
+  } catch (err) {
+    logger.warn(
+      { category: "whatsapp.gateway", err: err instanceof Error ? err.message : String(err) },
+      "[whatsapp-otp] warm-up session lookup failed (non-fatal)",
+    );
+    return;
+  }
+  if (!session || session.status !== "ready") return;
+
+  const readySince = await recordReadySince(session);
+  if (settleRemainingMs(readySince) > 0) return; // still settling — the one-shot will fire
+  if (dispatchReady.get(session.id)) return; // already warm
+
+  // The self-check intentionally bypasses the warm-up gate (chicken-and-
+  // egg) and the OTP preflight (the operator's own number is on the
+  // session by definition) — it keeps the network/5xx retry resilience.
+  const result = await sendTextWithRetry(
+    config,
+    session.id,
+    `${operator}@c.us`,
+    WARMUP_TEXT,
+    { skipWarmupGate: true },
+  );
+  if (result.ok) {
+    dispatchReady.set(session.id, true);
+    logger.info(
+      { category: "whatsapp.gateway", sessionId: session.id },
+      "[whatsapp-otp] warm-up self-check delivered — OTP dispatch enabled for this session",
+    );
+  } else {
+    logger.warn(
+      { category: "whatsapp.gateway", sessionId: session.id, reason: result.reason },
+      "[whatsapp-otp] warm-up self-check failed — dispatch stays gated until the next cycle",
+    );
+  }
+}
+
+/**
+ * 96-F1 (R96-A4 §1.3B): start the periodic warm-up self-check loop.
+ *
+ * Every 6 h, when the configured session is ready + settled, send the
+ * benign Arabic self-check to WHATSAPP_OTP_OPERATOR_E164 so sender-key
+ * distribution / LID resolution / app-state sync stay warm before any
+ * OTP flows. Silently no-ops when the operator number is unset. Errors
+ * are swallowed with logging — nothing ever throws across the scheduler.
+ */
+export function startWhatsAppWarmupLoop(): { stop: () => void } {
+  const operator = readOperatorNumber();
+  if (!operator) {
+    logger.info(
+      { category: "whatsapp.gateway" },
+      "[whatsapp-otp] WHATSAPP_OTP_OPERATOR_E164 unset — warm-up self-check disabled (settle gate remains active)",
+    );
+    return { stop: () => {} };
+  }
+
+  let stopped = false;
+  let timer: NodeJS.Timeout | null = null;
+
+  const tick = async (): Promise<void> => {
+    if (stopped) return;
+    try {
+      await runWarmupCycle();
+    } catch (err) {
+      // Never throw across the loop — log and carry on to the next tick.
+      logger.warn(
+        { category: "whatsapp.gateway", err: err instanceof Error ? err.message : String(err) },
+        "[whatsapp-otp] warm-up cycle failed (non-fatal)",
+      );
+    }
+    if (stopped) return;
+    timer = setTimeout(() => void tick(), WARMUP_INTERVAL_MS);
+    timer.unref?.();
+  };
+
+  timer = setTimeout(() => void tick(), WARMUP_INTERVAL_MS);
+  timer.unref?.();
+
+  logger.info(
+    { category: "whatsapp.gateway", intervalMs: WARMUP_INTERVAL_MS },
+    "[whatsapp-otp] warm-up self-check loop scheduled (every 6h)",
+  );
+
+  return {
+    stop: () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+  };
+}
 
 /** OpenWA session lifecycle states (from Swagger SessionResponseDto). */
 type SessionStatus =
@@ -239,10 +542,17 @@ async function createAndStartSession(config: GatewayConfig): Promise<SessionReco
  * restarting as needed. Returns a typed failure when the session
  * exists but is not yet usable.
  *
+ * 96-F1 (R96-A4 §1.3A): a `ready` status additionally requires the
+ * post-link settle window to have elapsed AND (when the operator number
+ * is configured) a successful warm-up self-check — see the settle-gate
+ * block above. `skipWarmupGate` lets the warm-up send itself pass with
+ * the settle gate alone (chicken-and-egg).
+ *
  * Cached for {@link READY_CACHE_TTL_MS} on success.
  */
 async function ensureSession(
   config: GatewayConfig,
+  opts: { skipWarmupGate?: boolean } = {},
 ): Promise<{ ok: true; id: string } | Extract<SendResult, { ok: false }>> {
   const now = Date.now();
   if (readySessionCache && readySessionCache.expiresAt > now) {
@@ -317,6 +627,24 @@ async function ensureSession(
       ok: false,
       reason: "session_not_ready",
       sessionStatus: session.status,
+    };
+  }
+
+  // 96-F1 (R96-A4 §1.3A): settle gate — `ready` from OpenWA means the
+  // companion device authenticated, NOT that multi-device key
+  // distribution has propagated. First observation is recorded (memory
+  // + Redis mirror) and dispatch is refused until the window elapses;
+  // with an operator number configured, a delivered warm-up self-check
+  // is additionally required before dispatch.
+  const readySince = await recordReadySince(session);
+  const remainingMs = settleRemainingMs(readySince);
+  const settled = remainingMs === 0;
+  const warmed = opts.skipWarmupGate === true || isWarmupOk(session.id);
+  if (!settled || !warmed) {
+    return {
+      ok: false,
+      reason: "session_settling",
+      readyInMs: settled ? WARMUP_PENDING_ESTIMATE_MS : Math.max(1, remainingMs),
     };
   }
 
@@ -406,6 +734,93 @@ function chatIdToDigits(chatId: string): string {
 // Public send
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 96-F1 (R96-A4 §1.3D): send resilience — POST send-text retried up to
+// 3 attempts with 1.5 s → 4 s backoff, ONLY on network errors / 5xx /
+// timeout. A 4xx is a real rejection (bad chatId, engine refusal) and is
+// never retried; re-running ensureSession() between attempts re-resolves
+// a session that flapped (the ready cache is invalidated on every failure).
+const SEND_MAX_ATTEMPTS = 3;
+const SEND_RETRY_BACKOFF_MS: readonly number[] = [1_500, 4_000];
+
+function isRetryableSendFailure(result: SendResult): boolean {
+  if (result.ok) return false;
+  if (result.reason === "request_failed") return true; // network error / timeout
+  // 5xx from a ready session = transient gateway flap (free-tier cold
+  // start included). 4xx (400/404/…) is a definitive rejection.
+  return result.reason === "non_ok_status" && (result.status ?? 0) >= 500;
+}
+
+/**
+ * The retrying send core shared by the OTP dispatch and the warm-up
+ * self-check. `opts.skipWarmupGate` is passed through to the mid-retry
+ * ensureSession() re-check (the warm-up send itself must not require
+ * warmup-ok — chicken-and-egg).
+ */
+async function sendTextWithRetry(
+  config: GatewayConfig,
+  sessionId: string,
+  chatId: string,
+  text: string,
+  opts: { skipWarmupGate?: boolean } = {},
+): Promise<SendResult> {
+  let currentSessionId = sessionId;
+  for (let attempt = 1; ; attempt++) {
+    let result: SendResult;
+    try {
+      const res = await gatewayFetch(
+        config,
+        `/api/sessions/${encodeURIComponent(currentSessionId)}/messages/send-text`,
+        {
+          method: "POST",
+          body: JSON.stringify({ chatId, text }),
+        },
+      );
+      if (!res.ok) {
+        // Invalidate the ready cache so a transient session flap forces
+        // a re-bootstrap on the next attempt rather than wedging on a
+        // stale id.
+        readySessionCache = null;
+        // NOTE: deliberately NOT reading the body — keeps error log free
+        // of any hint of the OTP if the gateway echoes it back.
+        logger.warn(
+          { category: "whatsapp.gateway", chatId, status: res.status, attempt },
+          "[whatsapp-otp] gateway non-2xx",
+        );
+        result = { ok: false, reason: "non_ok_status", status: res.status };
+      } else {
+        result = { ok: true };
+      }
+    } catch (err) {
+      readySessionCache = null;
+      logger.warn(
+        {
+          category: "whatsapp.gateway",
+          chatId,
+          attempt,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[whatsapp-otp] gateway request failed",
+      );
+      result = { ok: false, reason: "request_failed" };
+    }
+
+    if (result.ok || attempt >= SEND_MAX_ATTEMPTS || !isRetryableSendFailure(result)) {
+      return result;
+    }
+
+    await sleep(SEND_RETRY_BACKOFF_MS[attempt - 1] ?? SEND_RETRY_BACKOFF_MS[SEND_RETRY_BACKOFF_MS.length - 1]);
+
+    // §1.3D: re-run ensureSession() between attempts — the ready cache was
+    // invalidated by the failure above, so this re-resolves the session
+    // (and can nudge a flapped one back to life) before the next attempt.
+    // A failed re-check is returned as-is (an honest verdict beats a
+    // doomed send attempt into a dead session).
+    const recheck = await ensureSession(config, opts);
+    if (!recheck.ok) return recheck;
+    currentSessionId = recheck.id;
+  }
+}
+
 /**
  * Send a WhatsApp text message via OpenWA.
  *
@@ -415,6 +830,13 @@ function chatIdToDigits(chatId: string): string {
  *     even on failure (the logger calls below intentionally omit it).
  *   - On failure, only the chatId + HTTP status are recorded; the
  *     full response body is dropped on the floor for the same reason.
+ *
+ * 96-F1 (R96-A4 §1.3A bounded wait): when the session is ready but still
+ * settling, await the REMAINING settle window capped at 20 s before
+ * giving up with `session_settling` — the first OTP after linking then
+ * rides out the window inside one request (one honest spinner) instead
+ * of a 503 round-trip. Network/5xx failures retry inside
+ * {@link sendTextWithRetry}.
  */
 export async function sendWhatsAppMessage(chatId: string, text: string): Promise<SendResult> {
   const config = readGatewayConfig();
@@ -426,7 +848,14 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     return { ok: false, reason: "not_configured" };
   }
 
-  const session = await ensureSession(config);
+  let session = await ensureSession(config);
+  if (!session.ok && session.reason === "session_settling") {
+    const waitMs = Math.min(Math.max(session.readyInMs ?? 0, 0), SETTLE_WAIT_CAP_MS);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+      session = await ensureSession(config);
+    }
+  }
   if (!session.ok) return session;
 
   // Preflight: resolves the recipient's LID in the engine cache (the
@@ -444,41 +873,7 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     return { ok: false, reason: "recipient_not_on_whatsapp" };
   }
 
-  try {
-    const res = await gatewayFetch(
-      config,
-      `/api/sessions/${encodeURIComponent(session.id)}/messages/send-text`,
-      {
-        method: "POST",
-        body: JSON.stringify({ chatId, text }),
-      },
-    );
-    if (!res.ok) {
-      // Invalidate the ready cache so a transient session flap forces
-      // a re-bootstrap on the next attempt rather than wedging on a
-      // stale id.
-      readySessionCache = null;
-      // NOTE: deliberately NOT reading the body — keeps error log free
-      // of any hint of the OTP if the gateway echoes it back.
-      logger.warn(
-        { category: "whatsapp.gateway", chatId, status: res.status },
-        "[whatsapp-otp] gateway non-2xx",
-      );
-      return { ok: false, reason: "non_ok_status", status: res.status };
-    }
-    return { ok: true };
-  } catch (err) {
-    readySessionCache = null;
-    logger.warn(
-      {
-        category: "whatsapp.gateway",
-        chatId,
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "[whatsapp-otp] gateway request failed",
-    );
-    return { ok: false, reason: "request_failed" };
-  }
+  return sendTextWithRetry(config, session.id, chatId, text);
 }
 
 /** Probe used by `/api/auth/providers` and admin diagnostics. */
@@ -493,10 +888,19 @@ export function isWhatsAppGatewayConfigured(): boolean {
 export interface WhatsAppGatewayReadiness {
   /** Env config present (BASE_URL + API_KEY + SESSION). */
   configured: boolean;
-  /** The configured session is in `ready` state — OTPs can flow. */
+  /**
+   * The configured session is paired, settled AND warm — OTPs can flow.
+   * 96-F1 (R96-A4 §1.3C): `ready:true` now additionally requires the
+   * post-link settle window to have elapsed and (when the operator
+   * number is configured) a delivered warm-up self-check.
+   */
   ready: boolean;
   /** Current session lifecycle status, null when unknown/unresolvable. */
   status: string | null;
+  /** 96-F1: the session is paired (`status === "ready"`) but still inside the settle/warm-up window. */
+  settling: boolean;
+  /** 96-F1: seconds until the channel becomes ready (null once settled / not settling). */
+  readyInSec: number | null;
   /** Epoch ms of the probe backing this value. */
   probedAt: number;
 }
@@ -510,13 +914,27 @@ let readinessCache: WhatsAppGatewayReadiness | null = null;
  * delivered right now". Result cached 30s so the public providers
  * endpoint cannot be turned into a free high-frequency gateway probe.
  *
+ * 96-F1 (R96-A4 §1.3C honest readiness): a freshly-paired session is
+ * NOT reported ready — the probe observation feeds the settle gate
+ * (recordReadySince) and `ready` stays false until the window elapses
+ * and the warm-up self-check (when configured) has delivered. The cache
+ * is never populated with a pre-gate `ready` verdict because a new
+ * ready-since observation busts it before this probe caches its result.
+ *
  * Failure semantics: a gateway that cannot be reached reports
  * `status: null` (unknown) — never a false `ready`.
  */
 export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayReadiness> {
   const config = readGatewayConfig();
   if (!config) {
-    return { configured: false, ready: false, status: null, probedAt: Date.now() };
+    return {
+      configured: false,
+      ready: false,
+      status: null,
+      settling: false,
+      readyInSec: null,
+      probedAt: Date.now(),
+    };
   }
   const now = Date.now();
   if (readinessCache && now - readinessCache.probedAt < READINESS_CACHE_TTL_MS) {
@@ -524,10 +942,25 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
   }
   try {
     const session = await findSession(config);
+    let settled = false;
+    let readyInSec: number | null = null;
+    let warmed = false;
+    if (session && session.status === "ready") {
+      // Probe observation feeds the settle gate — this is also how a
+      // freshly-paired session gets its warm-up scheduled without any
+      // OTP traffic (the /api/auth/providers poll drives it).
+      const readySince = await recordReadySince(session);
+      const remainingMs = settleRemainingMs(readySince);
+      settled = remainingMs === 0;
+      readyInSec = settled ? null : Math.max(1, Math.ceil(remainingMs / 1000));
+      warmed = isWarmupOk(session.id);
+    }
     const result: WhatsAppGatewayReadiness = {
       configured: true,
-      ready: session?.status === "ready",
+      ready: settled && warmed,
       status: session?.status ?? null,
+      settling: Boolean(session && session.status === "ready" && (!settled || !warmed)),
+      readyInSec,
       probedAt: now,
     };
     readinessCache = result;
@@ -539,6 +972,8 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
       configured: true,
       ready: false,
       status: null,
+      settling: false,
+      readyInSec: null,
       probedAt: now,
     };
     readinessCache = result;
@@ -728,8 +1163,40 @@ export async function deleteWhatsAppSession(
  * the public contract; exported only so unit tests / hot-reload can
  * force a re-bootstrap.
  *
+ * 96-F1: also resets the settle-gate bookkeeping (ready-since map,
+ * dispatch-ready map, pending initial warm-ups) so each test observes
+ * a pristine first-observation state.
+ *
  * @internal
  */
 export function __resetWhatsAppGatewayCacheForTests(): void {
   readySessionCache = null;
+  sessionReadySince.clear();
+  dispatchReady.clear();
+  pendingInitialWarmups.clear();
 }
+
+/**
+ * Test seams for the 96-F1 settle gate / warm-up self-check. Not part
+ * of the public contract.
+ *
+ * @internal
+ */
+export const __whatsappSettleGateTest = {
+  /** First-observation timestamp recorded for a session (undefined = none). */
+  getReadySince(sessionId: string): number | undefined {
+    return sessionReadySince.get(sessionId);
+  },
+  /** Warm-up-ok flag for a session. */
+  isDispatchReady(sessionId: string): boolean {
+    return dispatchReady.get(sessionId) === true;
+  },
+  /** Force-mark a session warm (simulates a delivered self-check). */
+  markDispatchReady(sessionId: string): void {
+    dispatchReady.set(sessionId, true);
+  },
+  /** Run one warm-up cycle on demand (the 6 h loop body). */
+  runWarmupCycle(): Promise<void> {
+    return runWarmupCycle();
+  },
+};

@@ -75,6 +75,14 @@ export type StartOtpResult =
         | "delivery_failed"
         | "recipient_not_on_whatsapp"
         | "whatsapp_not_paired"
+        // 96-F1 (R96-A4 §1.3C): the session was just linked and is still
+        // inside the settle / warm-up window — retry after retryAfterSec.
+        | "whatsapp_settling"
+        // 96-F1 (R96-A4 §4.2): the WhatsApp message WAS delivered but the
+        // OTP row could not be persisted (insert failed twice). The client
+        // gets a short cooldown so it does not instantly re-send a SECOND
+        // WhatsApp message ("which code is mine?") while the first is live.
+        | "store_failed"
         | "gateway_disabled";
       retryAfterSec?: number;
     };
@@ -187,17 +195,27 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     // `recipient_not_on_whatsapp` is a client-fixable condition (wrong
     // number) — surface it as its own reason so the UI can show a
     // targeted Arabic message rather than a generic "delivery failed".
+    //
+    // 96-F1 (R96-A4 §1.3C): `session_settling` is the settle-gate
+    // verdict — the channel was paired moments ago and WhatsApp's
+    // multi-device key distribution has not propagated yet (the
+    // "Waiting for this message" race). It maps to its own honest
+    // reason + retryAfterSec so the route can answer 503 + Retry-After
+    // and the client can auto-retry instead of burning a resend.
     const isGatewayDisabled =
       send.reason === "not_configured" || send.reason === "session_not_found";
     const isNotPaired = send.reason === "session_not_ready";
+    const isSettling = send.reason === "session_settling";
     const isRecipientMissing = send.reason === "recipient_not_on_whatsapp";
     const failureReason = isGatewayDisabled
       ? "gateway_disabled"
       : isNotPaired
         ? "whatsapp_not_paired"
-        : isRecipientMissing
-          ? "recipient_not_on_whatsapp"
-          : "delivery_failed";
+        : isSettling
+          ? "whatsapp_settling"
+          : isRecipientMissing
+            ? "recipient_not_on_whatsapp"
+            : "delivery_failed";
     await safeLog({
       identifier: `wa:${phone}`,
       action: "register",
@@ -209,17 +227,57 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     return {
       ok: false,
       reason: failureReason,
+      ...(isSettling && send.readyInMs !== undefined
+        ? { retryAfterSec: Math.max(1, Math.ceil(send.readyInMs / 1000)) }
+        : {}),
     };
   }
 
   const expiresAt = new Date(Date.now() + OTP_TTL_SEC * 1000);
-  await db.insert(whatsappOtpsTable).values({
+  const insertValues = {
     phone,
     codeHash: hashOtp(code, phone, input.purpose, getServerSecret()),
     purpose: input.purpose,
     expiresAt,
     ipAddress: input.ipAddress,
-  });
+  };
+
+  // 96-F1 (R96-A4 §4.2): the message is ALREADY on the user's phone at
+  // this point — a DB blip on the insert must not 500 with no cooldown
+  // (the old shape let the client instantly re-request → a SECOND
+  // WhatsApp message while the first code is still valid and readable).
+  // Retry the insert once; on final failure return `store_failed` with
+  // retry_after_sec: 30 so the route answers 500 + Retry-After and the
+  // client applies a short cooldown instead of re-sending.
+  let stored = false;
+  for (let attempt = 1; attempt <= 2 && !stored; attempt++) {
+    try {
+      await db.insert(whatsappOtpsTable).values(insertValues);
+      stored = true;
+    } catch (err) {
+      logger.warn(
+        {
+          category: "whatsapp.otp",
+          attempt,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        attempt === 1
+          ? "[whatsapp-otp] OTP row insert failed — retrying once"
+          : "[whatsapp-otp] OTP row insert failed after retry",
+      );
+    }
+  }
+  if (!stored) {
+    await safeLog({
+      identifier: `wa:${phone}`,
+      action: "register",
+      success: false,
+      failureReason: "store_failed",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    });
+    return { ok: false, reason: "store_failed", retryAfterSec: 30 };
+  }
 
   await safeLog({
     identifier: `wa:${phone}`,
@@ -500,9 +558,14 @@ async function safeLog(params: {
 }
 
 /**
- * Best-effort pruning helper. Not wired to a cron job in this commit
- * — exposed so a future job can call `pruneExpiredOtps()` periodically.
+ * Best-effort pruning helper. Wired to the hourly :15 cron slot in
+ * jobs/cron.ts (job 3) — deletes rows older than 24 h, well past the
+ * 5-minute TTL and any verify window, so no active session is at risk.
  * Idempotent. Returns the number of rows deleted.
+ *
+ * 96-F1 note (R96-A4 §4.3): the inspection asked for wiring into the
+ * 00:00 retention sweep; the hourly :15 slot (wired in round-95) is
+ * strictly stronger coverage, so no duplicate 00:00 mount was added.
  */
 export async function pruneExpiredOtps(): Promise<number> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);

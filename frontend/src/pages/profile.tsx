@@ -2,6 +2,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { CopyButton } from "@/components/CopyButton";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
@@ -39,11 +40,27 @@ type ProfileUser = MeUser & {
   display_name?: string | null;
 };
 
+/**
+ * 96-F6 (R96 A2 P2-8): display name for a linked provider — used by the
+ * row render AND the unlink confirmation copy so the dialog names the
+ * exact provider being detached («فصل Telegram؟» not «فصل الحساب؟»).
+ */
+function providerDisplayName(provider: string): string {
+  if (provider === "google.com") return "Google";
+  if (provider === "firebase.com") return "رقم الهاتف";
+  if (provider === "telegram.org") return "Telegram";
+  return provider;
+}
+
 export default function ProfilePage() {
   const { token, logout } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // 96-F6 (R96 A2 P2-8): destructive-confirm dialog for unlinking an
+  // auth provider — the house standard (SessionManager + every admin
+  // page) instead of a bare 24px icon tap firing immediately.
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
@@ -116,6 +133,20 @@ export default function ProfilePage() {
   }, [token, providersVersion]);
 
   const handleUnlinkProvider = async (provider: string, providerUid: string) => {
+    // 96-F6 (R96 A2 P2-8): unlinking can lock the account out of its
+    // only sign-in method — confirm first (destructive treatment), with
+    // the provider named in the copy.
+    const displayName = providerDisplayName(provider);
+    const ok = await confirm({
+      title: `فصل ${displayName}؟`,
+      description:
+        "لن تتمكن من الدخول عبر هذه الطريقة بعد الفصل. تأكد من بقاء طريقة دخول أخرى مرتبطة بحسابك قبل المتابعة.",
+      confirmLabel: "فصل",
+      cancelLabel: "إلغاء",
+      destructive: true,
+    });
+    if (!ok) return;
+
     setUnlinkingProvider(providerUid);
     try {
       const res = await fetch("/api/auth/providers/unlink", {
@@ -126,7 +157,7 @@ export default function ProfilePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "فشل فصل مزود المصادقة");
 
-      toast({ title: "تم فصل الحساب", description: "تم فصل مزود المصادقة بنجاح." });
+      toast({ title: "تم فصل الحساب", description: `تم فصل ${displayName} بنجاح.` });
       await refetchProviders();
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
     } catch (err: unknown) {
@@ -340,15 +371,7 @@ export default function ProfilePage() {
                       <User className="w-4 h-4 text-muted-foreground" />
                     )}
                     <div>
-                      <div className="text-xs font-bold">
-                        {id.provider === "google.com"
-                          ? "Google"
-                          : id.provider === "firebase.com"
-                            ? "رقم الهاتف"
-                            : id.provider === "telegram.org"
-                              ? "Telegram"
-                              : id.provider}
-                      </div>
+                      <div className="text-xs font-bold">{providerDisplayName(id.provider)}</div>
                       <div className="text-[10px] text-muted-foreground">
                         {id.email || id.phone || id.providerUid}
                       </div>
@@ -358,17 +381,25 @@ export default function ProfilePage() {
                     <div className="text-[10px] bg-status-success/10 text-status-success px-2 py-0.5 rounded-full font-bold">
                       نشط
                     </div>
+                    {/* 96-F6 (R96 A2 P2-8): unlink was a 24px unlabeled icon
+                       that fired IMMEDIATELY — a destructive
+                       account-security action (could lock the account out
+                       of its only sign-in method). Now: 44px target +
+                       visible «فصل» label + useConfirm (destructive) in
+                       handleUnlinkProvider. */}
                     <button
-                      onClick={() => handleUnlinkProvider(id.provider, id.providerUid)}
+                      type="button"
+                      onClick={() => void handleUnlinkProvider(id.provider, id.providerUid)}
                       disabled={unlinkingProvider === id.providerUid}
-                      className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed p-1"
-                      title="فصل الحساب"
+                      aria-label={`فصل ${providerDisplayName(id.provider)}`}
+                      className="h-11 min-w-11 px-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/8 hover:border-destructive/25 border border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 press-spring"
                     >
                       {unlinkingProvider === id.providerUid ? (
                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <Unlink className="w-4 h-4" />
                       )}
+                      <span>فصل</span>
                     </button>
                   </div>
                 </div>
@@ -449,9 +480,11 @@ export default function ProfilePage() {
 
         {/* ── Danger zone ─────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">
-          <h2 className="font-black text-xs text-muted-foreground mb-3 uppercase tracking-wider">
-            خيارات الحساب
-          </h2>
+          {/* 96-F6 (R96 A6 #1, profile.tsx site): uppercase + tracking-wider
+              removed — letter-spacing breaks Arabic letter joining (the
+              header text «خيارات الحساب» is Arabic; the classes were a
+              Latin design-system carry-over). */}
+          <h2 className="font-black text-xs text-muted-foreground mb-3">خيارات الحساب</h2>
           <Button
             variant="outline"
             onClick={() => {
@@ -467,6 +500,10 @@ export default function ProfilePage() {
 
         <div className="h-4 md:h-0" />
       </div>
+
+      {/* 96-F6 (R96 A2 P2-8): the useConfirm dialog instance — one mount,
+          reused for every unlink confirmation. */}
+      <ConfirmDialog />
     </div>
   );
 }

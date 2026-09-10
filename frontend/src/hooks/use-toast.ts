@@ -42,6 +42,12 @@ export interface ToastInput {
   duration?: number;
   /** Stable id — passing the same id replaces an existing toast (dedup). */
   id?: string | number;
+  /** 96-main (R96 F-7b): sonner action button — used by the SW-update
+   * toast («إعادة التحميل»). Untouched by every other variant path. */
+  action?: {
+    label: ReactNode;
+    onClick: () => void;
+  };
 }
 
 export interface ToastHandle {
@@ -78,6 +84,8 @@ function emit(input: ToastInput, idOverride?: string | number): string | number 
     description: input.description ?? undefined,
     duration: input.duration ?? defaultDuration(input.variant),
     id: idOverride ?? input.id,
+    // 96-main (R96 F-7b): pass-through — only the SW-update toast sets it.
+    action: input.action,
   };
   const titleText = input.title ?? "";
 

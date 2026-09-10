@@ -34,6 +34,28 @@ export function Navbar() {
     setOpen(false);
   }, [location]);
 
+  // 96-F5 (R96 P2-2a guard): index.html now ships
+  // interactive-widget=resizes-content (Android reflows under the virtual
+  // keyboard instead of only the visual viewport). MetaTags (owned by
+  // another file) re-upserts the viewport meta with a fixed legacy content
+  // string on every route, which silently strips the key at runtime. This
+  // component-level guard keeps the key alive: it re-appends it on mount
+  // and whenever the content attribute is overwritten (MutationObserver,
+  // no index.css / foreign-file edits).
+  useEffect(() => {
+    const el = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!el) return;
+    const KEY = "interactive-widget=resizes-content";
+    const ensure = () => {
+      const c = el.getAttribute("content") ?? "";
+      if (!c.includes(KEY)) el.setAttribute("content", `${c.trimEnd()}, ${KEY}`);
+    };
+    ensure();
+    const mo = new MutationObserver(ensure);
+    mo.observe(el, { attributes: true, attributeFilter: ["content"] });
+    return () => mo.disconnect();
+  }, []);
+
   const { data: user } = useGetMe({
     query: {
       queryKey: getGetMeQueryKey(),
@@ -75,6 +97,13 @@ export function Navbar() {
 
   return (
     <header
+      // 96-F5 (R96-M08): installed-PWA (black-translucent status bar)
+      // sessions render page content behind the clock/notch — the sticky
+      // header grows by the top inset (component-level style; index.css
+      // is owned by another agent and stays untouched). The h-14 content
+      // row below keeps its fixed height; only the chrome band grows.
+      data-navbar-header="1"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
       className={`
       sticky top-0 z-50 transition-all duration-300
       ${
@@ -84,7 +113,20 @@ export function Navbar() {
       }
     `}
     >
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+      {/* 96-F5 (R96-M01 P0): the mobile row needs ≈337–381px for an
+          authed user (logo 123 + theme 44 + bell 44 + wallet chip ≥60 +
+          cart 44 + gaps) but only 288px exists at 320px — the cart, as
+          the last cluster item, was clipped off-screen (html has
+          overflow-x: clip, so it could never scroll into view) and
+          MobileNav has no cart tab → the whole cart funnel was
+          unreachable on small phones for authed users. Fixes: the row
+          gap drops to gap-2 below sm (≈271px worst case), the wallet
+          chip hides below sm (balance stays reachable via MobileNav
+          «المحفظة» + home hero + /wallet), and the bell is only mounted
+          for authed users (guests' transient 32px Suspense fallback was
+          enough to clip the cart at 320px — and guests never had a bell
+          to begin with). */}
+      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-2 sm:gap-3">
         <Link href="/">
           <Logo size="sm" />
         </Link>
@@ -116,9 +158,16 @@ export function Navbar() {
 
           {/* 94-C3 (A3 P3-4): bell fallback joins the app-wide skeleton
               pattern (skeleton-shimmer) instead of a silent gray block. */}
-          <Suspense fallback={<div className="w-8 h-8 rounded-lg skeleton-shimmer" />}>
-            <NotificationBell />
-          </Suspense>
+          {/* 96-F5 (R96-M01 P0): mounted only when authed — the bell
+              renders null for guests anyway, and its lazy fallback used
+              to consume 32px of the guest row (enough to transiently
+              clip the cart at 320px). Guests now skip the chunk fetch
+              entirely. */}
+          {token && (
+            <Suspense fallback={<div className="w-8 h-8 rounded-lg skeleton-shimmer" />}>
+              <NotificationBell />
+            </Suspense>
+          )}
 
           {/* Desktop: user actions */}
           {token ? (
@@ -186,16 +235,28 @@ export function Navbar() {
             </button>
           )}
 
-          {/* Mobile wallet chip — logged-in */}
+          {/* Mobile wallet chip — logged-in, sm…md band only */}
           {token && (
-            <div className="md:hidden">
-              <Link href="/wallet">
+            /* 96-F5 (R96-M01 P0): hidden below sm (640px). At 320px the
+               chip's content floor (≈80–102px with a real balance) pushed
+               the cart icon out of the clipped viewport; the balance
+               remains reachable via MobileNav «المحفظة» + the home hero
+               wallet card + /wallet. Visible again in the 640–768px band
+               where the row has ≥608px of room. */
+            <div className="hidden sm:block md:hidden">
+              <Link href="/wallet" aria-label="المحفظة">
                 {/* 94-C3 (A3 P1-3): h-8 (32px) → min-h-11 (44px) hit box —
                     wallet is a money path; the chip stays visually compact. */}
                 <div className="flex min-h-11 items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px]">
                   <Wallet className="w-3 h-3 text-primary-text" />
                   {user ? (
-                    <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+                    /* 96-F5 (R96-M01): capped + truncated so a long
+                       balance can never re-overflow the sm…md row. The
+                       span is a flex item (blockified) so max-w +
+                       truncate apply. */
+                    <span className="tabular-nums max-w-[96px] truncate">
+                      {formatCurrency(user.wallet_balance ?? 0)}
+                    </span>
                   ) : (
                     <div className="w-8 h-3 rounded skeleton-shimmer" />
                   )}
@@ -222,8 +283,12 @@ export function Navbar() {
             <div className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
               <ShoppingCart className="w-4 h-4" />
               {itemCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
-                  {itemCount > 99 ? "99+" : itemCount}
+                /* 96-F5 (R96-M20 + A6 #21): badge unified with the bell's —
+                   inline-end physical corner (LEFT in RTL, like
+                   NotificationBell's -left-0.5) and the same 9+ cap, so
+                   the two unread indicators read as one system. */
+                <span className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                  {itemCount > 9 ? "9+" : itemCount}
                 </span>
               )}
             </div>

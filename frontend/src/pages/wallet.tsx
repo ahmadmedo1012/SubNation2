@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { generateIdempotencyKey } from "@/lib/idempotency";
 import {
   RECEIVER_PHONE,
   transferCode,
@@ -46,7 +47,7 @@ import {
   WifiOff,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
 
@@ -147,6 +148,30 @@ function topupStatusIcon(status: string) {
   return <Clock className="w-4 h-4 text-status-warning pulse-dot" />;
 }
 
+/**
+ * 96-F6 (R96 A2 P1-6): amount-field sanitizer for the type="text" +
+ * inputMode="decimal" inputs below. An Arabic-locale virtual keyboard can
+ * deliver Arabic-Indic (٠-٩) or Persian (۰-۹) digits and locale decimal
+ * separators (٫ / ,); paste can deliver letters and multiple dots. Only
+ * digits and ONE decimal point survive — mirrors the sender-phone digit
+ * sanitizer in step 4. The 0.5-step rounding stays in onBlur +
+ * handleSubmit (unchanged).
+ */
+function sanitizeAmountInput(raw: string): string {
+  let s = raw
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    // Locale decimal separators (Arabic ٫, Latin comma) → dot
+    .replace(/[٫,]/g, ".");
+  s = s.replace(/[^0-9.]/g, "");
+  const dot = s.indexOf(".");
+  if (dot !== -1) {
+    // Collapse to a single decimal point (keep the first).
+    s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
+  }
+  return s;
+}
+
 function CopyBtn({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -188,7 +213,24 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
   );
 }
 
-function StepDot({ n, label, active }: { n: number; label: string; active: boolean }) {
+function StepDot({
+  n,
+  label,
+  active,
+  htmlFor,
+}: {
+  n: number;
+  label: string;
+  active: boolean;
+  /**
+   * 96-F6 (R96 A6 #2 P1): when set, the step text renders as a <label>
+   * bound to the field it names — the PaymentReferenceField recipe in
+   * this file (93-C5 / F-03, A4 P3 #37). Only field steps pass it; the
+   * informational steps keep the plain span. Bonus: tapping the step
+   * label focuses/activates the bound field (bigger hit area).
+   */
+  htmlFor?: string;
+}) {
   return (
     <div
       className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground"}`}
@@ -202,7 +244,13 @@ function StepDot({ n, label, active }: { n: number; label: string; active: boole
       >
         {n}
       </div>
-      <span>{label}</span>
+      {htmlFor ? (
+        <Label htmlFor={htmlFor} className="text-xs font-bold cursor-pointer">
+          {label}
+        </Label>
+      ) : (
+        <span>{label}</span>
+      )}
     </div>
   );
 }
@@ -275,14 +323,26 @@ function TransferCodePanel({
         {code && <CopyBtn text={code} />}
       </div>
 
-      <div
-        dir="ltr"
-        className={`font-mono font-black text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 mb-3 break-all min-h-[44px] flex items-center ${
-          code ? "text-foreground" : "text-muted-foreground/60"
-        }`}
-        aria-live="polite"
-      >
-        {code ?? "أدخل المبلغ لإنشاء الكود تلقائياً"}
+      {/* 96-F6 (R96 A6 #19): the empty-state hint is Arabic — it used to
+          sit INSIDE the dir="ltr" text-left font-mono box (left-aligned
+          Arabic in an LTR-declared element, announced to screen readers
+          with LTR context). The hint now renders as its own RTL element
+          outside the LTR box; one persistent aria-live wrapper keeps the
+          live region mounted across the swap so the generated code is
+          still announced. */}
+      <div aria-live="polite" className="mb-3">
+        {code ? (
+          <div
+            dir="ltr"
+            className="font-mono font-black text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
+          >
+            {code}
+          </div>
+        ) : (
+          <div className="rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/60 text-sm">
+            أدخل المبلغ لإنشاء الكود تلقائياً
+          </div>
+        )}
       </div>
 
       {/* Disclaimer ABOVE the button — desktop users who tap the
@@ -399,6 +459,46 @@ export default function WalletPage() {
     setReturnTo(sessionStorage.getItem(STORAGE_KEY));
   }, []);
 
+  // ── 96-F6 (R96 §5.1 — frontend half of topup idempotency) ─────────
+  // ONE Idempotency-Key per submission INTENT, sent on every
+  // POST /api/wallet/topups (the backend middleware — mounted in
+  // parallel — replays the cached response for a same-key retry instead
+  // of creating a second identical pending topup). The orval mutation
+  // closes over the `request` headers at RENDER time, so the ref is read
+  // on every render (see useCreateTopup below) and rotated ONLY at
+  // explicit reset points — never mid-render:
+  //   • a SUCCESSFUL submit (onSuccess resets the form ⇒ new intent)
+  //   • any payload-defining edit (amount / network / method / phone /
+  //     account / reference) — also guards the backend's 409
+  //     same-key-with-different-body branch.
+  // Rotations are guarded by an actual value change: a no-op keystroke
+  // (sanitized value unchanged) bails out of setState with NO re-render,
+  // which would desync the ref from the headers the mutation captured.
+  const topupKeyRef = useRef<string | null>(null);
+  // Lazy init — idempotent null-guard (StrictMode double-render safe).
+  if (topupKeyRef.current === null) {
+    topupKeyRef.current = generateIdempotencyKey();
+  }
+  const resetTopupKey = () => {
+    topupKeyRef.current = generateIdempotencyKey();
+  };
+  // 96-F6 (R96 A2 P1-6): shared amount-field onChange — sanitizer +
+  // key rotation. Used by BOTH topup flows' amount inputs.
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = sanitizeAmountInput(e.target.value);
+    if (next !== amount) resetTopupKey();
+    setAmount(next);
+  };
+  const applyAmountPreset = (p: number) => {
+    if (String(p) !== amount) resetTopupKey();
+    setAmount(String(p));
+  };
+  // 96-F6 (R96 §5.1): PaymentReferenceField's onChange for both flows.
+  const handlePaymentReferenceChange = (v: string) => {
+    if (v !== paymentReference) resetTopupKey();
+    setPaymentReference(v);
+  };
+
   // Load saved preferences on mount
   useEffect(() => {
     const prefs = getTopupPreferences();
@@ -480,9 +580,21 @@ export default function WalletPage() {
     .at(0);
 
   const topupMutation = useCreateTopup({
-    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+    request: {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : "",
+        // 96-F6 (R96 §5.1): per-intent idempotency key — see topupKeyRef
+        // above for the rotation contract. Read at render time; a retry
+        // of an unchanged intent replays the SAME key.
+        "Idempotency-Key": topupKeyRef.current,
+      },
+    },
     mutation: {
       onSuccess(created) {
+        // 96-F6 (R96 §5.1): the intent was successfully submitted —
+        // rotate the key so the next topup (fresh form) gets a new one.
+        resetTopupKey();
+
         // Save sender phone if remember is checked
         if (rememberPhone && method === "mobile_transfer" && senderPhone) {
           saveSenderPhone(senderPhone);
@@ -693,7 +805,10 @@ export default function WalletPage() {
               <Lock className="w-4.5 h-4.5 text-status-warning shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-sm text-status-warning">طلبات الشحن موقوفة مؤقتاً</p>
-                <p className="text-xs text-status-warning/75 mt-0.5">
+                {/* 96-F6 (R96 A6 #4 P1): /75 → full token — the translucent
+                    warning text measured ≈2.07:1 on white in light mode
+                    (AA fail). Background tints stay as-is. */}
+                <p className="text-xs text-status-warning mt-0.5">
                   لديك{" "}
                   {formatCount(pendingCount, {
                     one: "طلب",
@@ -705,7 +820,7 @@ export default function WalletPage() {
                   قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
                 {oldestPending && (
-                  <p className="text-[11px] text-status-warning/75 mt-1">
+                  <p className="text-[11px] text-status-warning mt-1">
                     أقدم طلب: {formatRelativeTime(oldestPending)} — تُعتمد الطلبات عادةً خلال 30
                     دقيقة.
                   </p>
@@ -774,6 +889,10 @@ export default function WalletPage() {
                     key={m.id}
                     type="button"
                     onClick={() => {
+                      // 96-F6 (R96 §5.1): switching method = new intent →
+                      // rotate the key (the payload carries
+                      // payment_method / payment_network).
+                      if (m.id !== method) resetTopupKey();
                       setMethod(m.id);
                       setError("");
                     }}
@@ -814,7 +933,11 @@ export default function WalletPage() {
                       <button
                         key={n.value}
                         type="button"
-                        onClick={() => setNetwork(n.value)}
+                        onClick={() => {
+                          // 96-F6 (R96 §5.1): network is part of the payload.
+                          if (n.value !== network) resetTopupKey();
+                          setNetwork(n.value);
+                        }}
                         className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
                           network === n.value
                             ? `${n.border} ${n.bg} ${n.color} shadow-sm`
@@ -831,14 +954,22 @@ export default function WalletPage() {
 
                 {/* Step 2: Amount */}
                 <div>
-                  <StepDot n={2} label="المبلغ بالدينار الليبي" active />
+                  {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
+                  <StepDot
+                    n={2}
+                    label="المبلغ بالدينار الليبي"
+                    active
+                    htmlFor="topup-amount-mobile"
+                  />
+                  {/* 96-F6 (R96 A2 P2-7): preset chips raised to the 44px
+                      touch floor (wrap already flex-wrap). */}
                   <div className="flex gap-2 mt-3 mb-2.5 flex-wrap">
                     {presets.map((p) => (
                       <button
                         key={p}
                         type="button"
-                        onClick={() => setAmount(String(p))}
-                        className={`flex-1 min-w-[52px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                        onClick={() => applyAmountPreset(p)}
+                        className={`flex-1 min-w-[52px] min-h-11 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
                           amount === String(p)
                             ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
                             : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
@@ -849,13 +980,24 @@ export default function WalletPage() {
                     ))}
                   </div>
                   <Input
-                    type="number"
+                    id="topup-amount-mobile"
+                    /* 96-F6 (R96 A2 P1-6): type="text" + inputMode="decimal"
+                       — type="number" on the Arabic-locale iOS keypad has
+                       NO decimal separator, so fractional amounts (the
+                       0.5-step domain) were literally untypable. The
+                       sanitizer in handleAmountChange keeps digits + ONE
+                       decimal point alive; min/step semantics stay enforced
+                       by the onBlur rounding + handleSubmit's own bounds. */
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    enterKeyHint="done"
                     min="1"
                     max="10000"
                     step="0.5"
                     placeholder="أو أدخل مبلغاً آخر..."
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={handleAmountChange}
                     onBlur={(e) => {
                       // Native step="0.5" only enforces on the spinner;
                       // a typed "1.3" would otherwise reach the backend.
@@ -875,7 +1017,7 @@ export default function WalletPage() {
                   <PaymentReferenceField
                     id="topup-payment-reference-mobile"
                     value={paymentReference}
-                    onChange={setPaymentReference}
+                    onChange={handlePaymentReferenceChange}
                   />
                 </div>
 
@@ -895,20 +1037,33 @@ export default function WalletPage() {
 
                 {/* Step 4: Phone */}
                 <div>
-                  <StepDot n={4} label="رقم هاتف المُرسل" active />
+                  {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
+                  <StepDot
+                    n={4}
+                    label="رقم هاتف المُرسل"
+                    active
+                    htmlFor="topup-sender-phone"
+                  />
                   <p className="text-xs text-muted-foreground mt-2 mb-3">
                     أدخل رقمك الذي حوّلت منه الرصيد لتأكيد العملية.
                   </p>
 
                   {/* Saved phones dropdown */}
                   {savedPhones.length > 0 && (
+                    /* 96-F6 (R96 A2 P2-7): saved-phone chips raised to the
+                       44px touch floor — a money-verification field. */
                     <div className="flex gap-1.5 mb-3 flex-wrap">
                       {savedPhones.map((phone) => (
                         <button
                           key={phone}
                           type="button"
-                          onClick={() => setSenderPhone(phone)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono border transition-all ${
+                          onClick={() => {
+                            // 96-F6 (R96 §5.1): picking a different saved
+                            // phone changes the intent → rotate the key.
+                            if (phone !== senderPhone) resetTopupKey();
+                            setSenderPhone(phone);
+                          }}
+                          className={`min-h-11 px-2.5 py-1 rounded-lg text-xs font-mono border transition-all flex items-center justify-center ${
                             senderPhone === phone
                               ? "bg-primary/15 border-primary/50 text-primary"
                               : "bg-secondary/30 border-border/50 hover:bg-secondary/50 text-muted-foreground"
@@ -922,11 +1077,18 @@ export default function WalletPage() {
 
                   <div className="relative">
                     <Input
+                      id="topup-sender-phone"
                       type="tel"
+                      /* 96-F6 (R96 A6 #2 P1): autoComplete=tel lets the OS
+                         offer the user's phone numbers for this field. */
+                      autoComplete="tel"
                       placeholder="091XXXXXXX"
                       value={senderPhone}
                       onChange={(e) => {
                         const d = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        // 96-F6 (R96 §5.1): a different (sanitized) phone
+                        // is a different intent → rotate the key.
+                        if (d !== senderPhone) resetTopupKey();
                         setSenderPhone(d);
                         // Surface validation as the user types once they
                         // start entering digits — used to wait for blur,
@@ -941,6 +1103,15 @@ export default function WalletPage() {
                       onBlur={() => setSenderPhoneTouched(true)}
                       required
                       dir="ltr"
+                      /* 96-F6 (R96 A6 #13): the live validation error is
+                         announced + bound via aria-describedby/aria-invalid
+                         on the field itself. */
+                      aria-invalid={senderPhoneTouched && !!senderPhoneErr}
+                      aria-describedby={
+                        senderPhoneTouched && senderPhoneErr
+                          ? "topup-sender-phone-error"
+                          : undefined
+                      }
                       className={`text-left pl-10 h-11 rounded-xl bg-card transition-all ${
                         senderPhoneTouched && senderPhoneErr
                           ? "border-destructive/60 focus:ring-destructive/15"
@@ -960,7 +1131,14 @@ export default function WalletPage() {
                     </div>
                   </div>
                   {senderPhoneTouched && senderPhoneErr && (
-                    <p className="text-xs text-destructive mt-1.5">{senderPhoneErr}</p>
+                    /* 96-F6 (R96 A6 #13): id the input points at via
+                       aria-describedby above. */
+                    <p
+                      id="topup-sender-phone-error"
+                      className="text-xs text-destructive mt-1.5"
+                    >
+                      {senderPhoneErr}
+                    </p>
                   )}
 
                   {/* Remember phone checkbox */}
@@ -1039,14 +1217,22 @@ export default function WalletPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div>
-                    <StepDot n={2} label="المبلغ المحوّل (د.ل)" active />
+                    {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
+                    <StepDot
+                      n={2}
+                      label="المبلغ المحوّل (د.ل)"
+                      active
+                      htmlFor="topup-amount-lypay"
+                    />
+                    {/* 96-F6 (R96 A2 P2-7): preset chips raised to the 44px
+                        touch floor (wrap already flex-wrap). */}
                     <div className="flex flex-wrap gap-2 mt-3 mb-2.5">
                       {presets.map((p) => (
                         <button
                           key={p}
                           type="button"
-                          onClick={() => setAmount(String(p))}
-                          className={`flex-1 min-w-[64px] py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                          onClick={() => applyAmountPreset(p)}
+                          className={`flex-1 min-w-[64px] min-h-11 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
                             amount === String(p)
                               ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
                               : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70"
@@ -1057,13 +1243,20 @@ export default function WalletPage() {
                       ))}
                     </div>
                     <Input
-                      type="number"
+                      id="topup-amount-lypay"
+                      /* 96-F6 (R96 A2 P1-6): decimal keyboard — twin of the
+                         mobile-transfer amount field (type="number" had no
+                         decimal separator on Arabic-locale iOS keypads). */
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      enterKeyHint="done"
                       min="1"
                       max="10000"
                       step="0.5"
                       placeholder="المبلغ بالدينار الليبي"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      onChange={handleAmountChange}
                       onBlur={(e) => {
                         const v = parseFloat(e.target.value);
                         if (!Number.isFinite(v)) return;
@@ -1079,19 +1272,30 @@ export default function WalletPage() {
                     <PaymentReferenceField
                       id="topup-payment-reference-lypay"
                       value={paymentReference}
-                      onChange={setPaymentReference}
+                      onChange={handlePaymentReferenceChange}
                     />
                   </div>
 
                   <div className="border-t border-border/20" />
 
                   <div>
-                    <StepDot n={3} label="رقم حسابك (المُرسل)" active />
+                    {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
+                    <StepDot
+                      n={3}
+                      label="رقم حسابك (المُرسل)"
+                      active
+                      htmlFor="topup-sender-account"
+                    />
                     <Input
+                      id="topup-sender-account"
                       type="text"
                       placeholder="أدخل رقم حساب المُرسل"
                       value={senderAccount}
-                      onChange={(e) => setSenderAccount(e.target.value)}
+                      onChange={(e) => {
+                        // 96-F6 (R96 §5.1): account edits change the intent.
+                        if (e.target.value !== senderAccount) resetTopupKey();
+                        setSenderAccount(e.target.value);
+                      }}
                       required
                       dir="ltr"
                       className="text-left font-mono mt-3 h-11 rounded-xl bg-card"

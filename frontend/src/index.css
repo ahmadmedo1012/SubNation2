@@ -356,7 +356,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-variant-numeric: tabular-nums;
-    line-height: 1.58;
+    /* 96-F7 (R96 A6 #5): 1.58 → 1.7 — Arabic running text needs ≥1.7 to
+       clear diacritics; Readex Pro specifically carries tall vertical
+       metrics, and 1.58 crowded paragraphs (terms page, long product
+       descriptions) on mobile. Latin visually unchanged for practical
+       purposes. */
+    line-height: 1.7;
     /* Prevent rubber-band overscroll on iOS */
     overscroll-behavior-y: contain;
     min-width: 320px;
@@ -378,7 +383,10 @@
   h2,
   h3,
   h4 {
-    line-height: 1.2;
+    /* 96-F7 (R96 A6 #5): 1.2 → 1.3 — Arabic headlines with harakat /
+       maddah (أُـ آ) clip and collide at 1.2 given Readex Pro's tall
+       ascender metrics. 1.3 is the Arabic-safe minimum. */
+    line-height: 1.3;
     letter-spacing: 0;
   }
 
@@ -1039,8 +1047,21 @@
     font-size: clamp(1.85rem, 5.5vw + 0.5rem, 2.9rem);
   }
 
+  /* 96-F7 (R96 A6 #1): letter-spacing on connected Arabic script
+     severs the letter joins (and disables kashida elongation) — the
+     guard previously covered only the NEGATIVE side
+     (tracking-tight/-tighter, from round-4). The POSITIVE utilities
+     (tracking-wide/-wider/-widest, e.g. `uppercase tracking-wider`
+     label styles copied from Latin design systems) were still applied
+     to Arabic text in storefront pages. All five utilities now collapse
+     to 0. Global scope (not [dir="rtl"]-scoped) keeps the selector
+     identical in specificity and order to the existing guard — the app
+     is RTL-first anyway (document direction is locked to ar). */
   .tracking-tight,
-  .tracking-tighter {
+  .tracking-tighter,
+  .tracking-wide,
+  .tracking-wider,
+  .tracking-widest {
     letter-spacing: 0;
   }
 
@@ -1353,7 +1374,9 @@
   font-weight: 600;
   line-height: 1.4;
   color: hsl(var(--foreground));
-  letter-spacing: -0.005em;
+  /* 96-F7 (R96 A6 #1): the -0.005em negative tracking removed — an
+     imperceptible nicety on Latin, but letter-spacing (negative or
+     positive) breaks Arabic letter connections in toast titles. */
 }
 
 [data-sonner-toast][data-styled="true"].premium-toast [data-description],
@@ -1385,6 +1408,17 @@
 [data-sonner-toast][data-styled="true"].premium-toast:hover [data-close-button],
 [data-sonner-toast][data-styled="true"].premium-toast:focus-within [data-close-button] {
   opacity: 1;
+}
+/* 96-F7 (R96 A6 #1): touch devices have no hover — the close chip was
+   opacity:0 until hover/focus-within, i.e. invisible (and only
+   discoverable by blind-tapping) on phones. Opacity-only fix: the
+   22px chip size stays unchanged because enlarging it to 28px would
+   overlap the 36px icon bubble inside the 14px/18px toast padding;
+   Sonner's own hit area (the chip's absolute box) is unchanged. */
+@media (hover: none) {
+  [data-sonner-toast][data-styled="true"].premium-toast [data-close-button] {
+    opacity: 1;
+  }
 }
 [data-sonner-toast][data-styled="true"].premium-toast [data-close-button]:hover {
   background: hsl(var(--muted));

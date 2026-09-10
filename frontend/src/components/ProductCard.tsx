@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -156,8 +156,19 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   // div that navigated to the product page while labeled "اشترِ
   // الآن", so the cart page and the Navbar badge were permanently
   // empty: the whole cart → checkout funnel was unreachable.
+  // 96-F4 (R96 A2 P1-7): 500ms re-entry lock via a ref timestamp — a
+  // double-tap on a laggy phone added qty 2 in one gesture (and the
+  // funnel charged twice at checkout). The toast already confirms the
+  // first add, so the second tap inside the lock window is swallowed.
+  // null (not 0) so the FIRST tap always passes regardless of the clock
+  // (a 0-init ref would swallow taps at epoch-0 test clocks and is
+  // semantically "never tapped" — model it explicitly).
+  const lastAddTapRef = useRef<number | null>(null);
   const handleAddToCart = () => {
     if (unavailable) return;
+    const now = Date.now();
+    if (lastAddTapRef.current !== null && now - lastAddTapRef.current < 500) return;
+    lastAddTapRef.current = now;
     addItem({
       productId: product.id,
       slug: product.slug ?? null,
@@ -302,7 +313,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               {product.name}
             </h2>
             <span
-              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
+              /* 96-F4 (R96 A6 #11): 9px Arabic was unreadable in the
+                 2-up mobile grid (connected glyphs lose ح/ج/خ distinction
+                 above ~40yo) — 10px + semibold keeps the badge compact
+                 while staying legible. */
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
             >
               {categoryLabel(product.category)}
             </span>
@@ -344,7 +359,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 </div>
               )
             ) : (
-              <span className="text-[10px] font-bold text-muted-foreground/80">نفد</span>
+              /* 96-F4 (R96 A6 #12): full-opacity muted token — the /80
+                 variant measured ≈4.14:1 on the light card, failing AA
+                 for a 10px status text. */
+              <span className="text-[10px] font-bold text-muted-foreground">نفد</span>
             )}
           </div>
         </div>

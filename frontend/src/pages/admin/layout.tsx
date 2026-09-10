@@ -536,7 +536,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         {/* Footer */}
         {/* 94-C2 (A2 P2-3): the hints now tell the truth — ↑/↓ move the
             highlight, ↵ opens the highlighted result (keeping the query). */}
-        <div className="px-4 py-2 border-t border-border bg-muted/10 flex items-center gap-4 text-[10px] text-muted-foreground">
+        {/* 96-F7 (R96 M13): hidden below sm — the ↑↓/↵/esc/⌘K promises
+            are keyboard-only and dead weight on touch devices (no
+            hardware keyboard to fulfill them; the backdrop tap closes). */}
+        <div className="hidden sm:flex px-4 py-2 border-t border-border bg-muted/10 items-center gap-4 text-[10px] text-muted-foreground">
           <span>
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↑↓</kbd>{" "}
             تنقّل
@@ -788,7 +791,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 text-right">بحث سريع</span>
-            <kbd className="text-[9px] font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">
+            <kbd className="text-[10px] font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">
               ⌘K
             </kbd>
           </button>
@@ -841,10 +844,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         {/* Top bar */}
         <div className="sticky top-0 z-30 border-b border-border bg-card/93 backdrop-blur-md px-4 md:px-5 h-12 flex items-center gap-3">
           <button
-            className="md:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
+            /* 96-F7 (R96 M12): p-2 + w-5 icons ≈ 36×36px hit area (was
+               p-1.5 + w-4 ≈ 28px) — this is the screen-edge button, the
+               hardest region to hit with a thumb. */
+            className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
             onClick={() => setMobileOpen((v) => !v)}
           >
-            {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             {!mobileOpen && totalBadges > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
                 {totalBadges > 9 ? "9+" : totalBadges}
@@ -861,7 +867,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           >
             <Search className="w-3 h-3" />
             <span>بحث...</span>
-            <kbd className="text-[9px] font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
+            <kbd className="text-[10px] font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
               ⌘K
             </kbd>
           </button>
@@ -869,9 +875,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           {/* Mobile search icon */}
           <button
             onClick={() => setShowSearch(true)}
-            className="sm:hidden p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+            /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
+               target, was ~28px). */
+            className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
           >
-            <Search className="w-4 h-4" />
+            <Search className="w-5 h-5" />
           </button>
 
           {/* Last updated */}
@@ -885,20 +893,22 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               and this one stay in lockstep. */}
           <button
             onClick={toggleTheme}
-            className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
+            /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
+            className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
             title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
             aria-label={theme === "dark" ? "تبديل المظهر (داكن/فاتح)" : "تبديل المظهر (فاتح/داكن)"}
           >
-            {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
 
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
+              /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
+              className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
               title="تحديث البيانات"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-5 h-5" />
             </button>
           )}
         </div>

@@ -2,6 +2,7 @@
   "name": "SubNation — سوق الاشتراكات الرقمية",
   "short_name": "SubNation",
   "description": "سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وأكثر بالدينار الليبي.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

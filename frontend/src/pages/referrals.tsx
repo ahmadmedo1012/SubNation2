@@ -340,7 +340,10 @@ export default function ReferralsPage() {
 
             <div className="relative space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
+                {/* 96-F6 (R96 A6 #12): truncate guard for long codes — the
+                    text-2xl mono code previously had no overflow guard on
+                    narrow screens. min-w-0 lets the flex item shrink. */}
+                <div className="min-w-0">
                   <p className="text-xs text-muted-foreground font-bold mb-1">
                     رمز الإحالة الخاص بك
                   </p>
@@ -349,7 +352,7 @@ export default function ReferralsPage() {
                   ) : (
                     <div
                       dir="ltr"
-                      className="font-mono text-2xl font-black tracking-[0.2em] text-foreground"
+                      className="font-mono text-2xl font-black tracking-[0.2em] text-foreground truncate max-w-full"
                     >
                       {overview?.referral_code ?? "—"}
                     </div>
@@ -504,7 +507,10 @@ export default function ReferralsPage() {
                             +{ev.points_earned} نقطة
                           </span>
                         ) : (
-                          <span className="text-xs font-bold text-status-warning/80 bg-status-warning/8 border border-status-warning/15 px-2 py-0.5 rounded-full">
+                          /* 96-F6 (R96 A6 #4): /80 → full token — ≈2.2:1 on
+                             white in light mode (AA fail); bg/border tints
+                             stay as-is. */
+                          <span className="text-xs font-bold text-status-warning bg-status-warning/8 border border-status-warning/15 px-2 py-0.5 rounded-full">
                             قيد الانتظار
                           </span>
                         )}

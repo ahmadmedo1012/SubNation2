@@ -265,7 +265,11 @@ function ApprovedBody({
   onContinue?: () => void;
 }) {
   return (
-    <div className="p-6 text-center">
+    /* 96-F6 (R96 A6 #3 P1): the approved state must be ANNOUNCED — the
+       waiting state's only live region (the countdown) unmounts on the
+       swap, so screen readers went silent exactly at the money moment.
+       role=status + aria-live=polite announces the full body on mount. */
+    <div role="status" aria-live="polite" className="p-6 text-center">
       <div className="relative mx-auto mb-4 w-20 h-20 rounded-full bg-status-success/15 border border-status-success/35 flex items-center justify-center">
         <CheckCircle2 className="w-10 h-10 text-status-success" />
         <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
@@ -274,7 +278,9 @@ function ApprovedBody({
       <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
 
       <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
-        <div className="text-[11px] text-status-success/80 font-bold mb-0.5">المبلغ المُضاف</div>
+        {/* 96-F6 (R96 A6 #12): /80 → full token — ≈4.0:1 on white fell
+            below the 4.5:1 AA floor for small text in light mode. */}
+        <div className="text-[11px] text-status-success font-bold mb-0.5">المبلغ المُضاف</div>
         <div className="text-2xl font-black tabular-nums text-status-success">
           + {formatCurrency(amount)}
         </div>
@@ -327,7 +333,10 @@ function ApprovedBody({
 
 function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClose: () => void }) {
   return (
-    <div className="p-6 text-center">
+    /* 96-F6 (R96 A6 #3 P1): the rejected state is asserted live
+       (role=alert ⇒ assertive) so the refusal + admin note reach the
+       screen-reader user the moment the status flips. */
+    <div role="alert" className="p-6 text-center">
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>

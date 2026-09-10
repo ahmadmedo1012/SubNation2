@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { useAdminLogin } from "@workspace/api-client-react";
 import { AlertCircle, Eye, EyeOff, KeyRound, Shield } from "lucide-react";
 import { useState } from "react";
@@ -11,7 +11,6 @@ import { useLocation } from "wouter";
 export default function AdminLoginPage() {
   const [, navigate] = useLocation();
   const { setAdminToken, setAdminPermissions } = useAuth();
-  const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -53,24 +52,39 @@ export default function AdminLoginPage() {
 
   const verify2FA = async () => {
     setIsVerifying(true);
+    // 96-F7 (R96 M18): 2FA verify errors now render INLINE with the
+    // exact same visual treatment as the password errors (the #error
+    // block below) — the old toast-only path made the same form show
+    // two different error experiences, and the toast vanished under
+    // the keyboard on mobile.
+    setError("");
     try {
       const res = await fetch("/api/admin/login/verify-2fa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ temp_token: tempToken, code: otpCode }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "رمز خاطئ");
+      // 96-F7 (R96 M18): parse AFTER the ok guard — a non-JSON error
+      // body (proxy HTML on a 502) used to throw an opaque English
+      // SyntaxError into the error surface.
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+        token?: string;
+        permissions?: string[];
+      } | null;
+      if (!res.ok || !data?.token) {
+        // Round-4 (org §6a) pattern: map the backend `code`/`error` to
+        // Arabic via getErrorMessage; raw English never reaches the
+        // operator.
+        throw new Error(getErrorMessage(data) || "رمز التحقق غير صحيح أو منتهي الصلاحية");
+      }
 
       setAdminToken(data.token);
       setAdminPermissions(Array.isArray(data.permissions) ? data.permissions : []);
       navigate("/admin");
     } catch (err: unknown) {
-      toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
-        variant: "destructive",
-      });
+      setError(err instanceof Error ? err.message : "فشلت العملية");
     } finally {
       setIsVerifying(false);
     }
@@ -149,12 +163,18 @@ export default function AdminLoginPage() {
                   name="otpCode"
                   type="text"
                   autoComplete="one-time-code"
+                  /* 96-F7 (R96 M6): numeric keypad on mobile for the
+                     6-digit TOTP — Android opened a full QWERTY keyboard
+                     on every admin login from a phone. */
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="000000"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   required
                   dir="ltr"
                   className="text-center h-11 tracking-widest text-lg font-mono"
+                  aria-describedby={error ? "admin-login-error" : undefined}
                   autoFocus
                 />
               </div>

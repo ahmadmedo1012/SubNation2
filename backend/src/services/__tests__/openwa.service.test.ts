@@ -44,6 +44,12 @@ beforeEach(() => {
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "sess_existing-id";
   delete process.env.WHATSAPP_OTP_AUTO_CREATE_SESSION;
+  // 96-F1 (R96-A4 §1.3A): the post-link settle gate is part of the same
+  // send path these wire-format tests exercise. Settle=0 keeps them
+  // focused on the TRANSPORT contract (headers/body/paths); the gate
+  // itself has dedicated coverage in openwa-settle-gate.test.ts.
+  process.env.WHATSAPP_OTP_SETTLE_MS = "0";
+  delete process.env.WHATSAPP_OTP_OPERATOR_E164;
   vi.resetModules();
 });
 
@@ -181,7 +187,7 @@ describe("openwa transport — wire format", () => {
     expect(mod.buildChatId("913456789")).toBe("218913456789@c.us");
   });
 
-  it("invalidates the ready cache on a non-2xx send so the next call re-bootstraps", async () => {
+  it("invalidates the ready cache on a non-2xx send so the next call re-bootstraps (5xx retries exhausted)", async () => {
     let lookups = 0;
     let sends = 0;
     installFetchMock(({ url }) => {
@@ -191,10 +197,9 @@ describe("openwa transport — wire format", () => {
       }
       if (url.endsWith("/messages/send-text")) {
         sends++;
-        // First send: 500 (gateway flap). Second send: 200.
-        return sends === 1
-          ? new Response("boom", { status: 500 })
-          : jsonResponse({ success: true });
+        // First sendWhatsAppMessage call: every attempt 500s (gateway
+        // down hard). Second call: 200.
+        return sends <= 3 ? new Response("boom", { status: 500 }) : jsonResponse({ success: true });
       }
       return new Response("unexpected", { status: 500 });
     });
@@ -202,15 +207,27 @@ describe("openwa transport — wire format", () => {
     const mod = await import("../openwa.service");
     mod.__resetWhatsAppGatewayCacheForTests();
 
-    const first = await mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
-    expect(first).toEqual({ ok: false, reason: "non_ok_status", status: 500 });
+    // 96-F1 (R96-A4 §1.3D): a 5xx is now retried (3 attempts, backoff
+    // 1.5 s → 4 s) with ensureSession re-run between attempts — fake
+    // timers advance the backoff without wall-clock delay.
+    vi.useFakeTimers();
+    try {
+      const firstPromise = mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
+      await vi.advanceTimersByTimeAsync(1_500);
+      await vi.advanceTimersByTimeAsync(4_000);
+      const first = await firstPromise;
+      expect(first).toEqual({ ok: false, reason: "non_ok_status", status: 500 });
 
-    const second = await mod.sendWhatsAppMessage("218913456789@c.us", "code-2");
-    expect(second).toEqual({ ok: true });
+      const second = await mod.sendWhatsAppMessage("218913456789@c.us", "code-2");
+      expect(second).toEqual({ ok: true });
+    } finally {
+      vi.useRealTimers();
+    }
 
-    // Cache was busted by the failure, so we re-looked-up the session.
-    expect(lookups).toBe(2);
-    expect(sends).toBe(2);
+    // Cache was busted by every failure (re-ensure ran between attempts:
+    // 3 lookups on the first call), and the second call re-looked-up too.
+    expect(lookups).toBe(4);
+    expect(sends).toBe(4);
   });
 
   it("calls preflight contacts/check before send-text and returns recipient_not_on_whatsapp when exists=false", async () => {

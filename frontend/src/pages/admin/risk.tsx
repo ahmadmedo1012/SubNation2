@@ -93,6 +93,11 @@ export default function AdminRiskPage() {
       return resp.json();
     },
     refetchInterval: 30_000,
+    // 96-F7 (R96 M11): 30s polling must pause when the tab is hidden —
+    // an idle risk-monitor tab on a phone burned 2 requests/minute on
+    // mobile data. Every other admin poller (orders/products/alerts)
+    // already sets this to false.
+    refetchIntervalInBackground: false,
   });
 
   const query = useQuery<ListResponse>({
@@ -277,13 +282,17 @@ export default function AdminRiskPage() {
                 <table className="w-full text-sm min-w-[720px]">
                   <thead className="bg-muted/30 text-xs text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-2.5 text-right font-bold">المستوى</th>
-                      <th className="px-4 py-2.5 text-right font-bold">النوع</th>
-                      <th className="px-4 py-2.5 text-right font-bold">المستخدم</th>
-                      <th className="px-4 py-2.5 text-right font-bold">القاعدة</th>
-                      <th className="px-4 py-2.5 text-right font-bold">النقاط</th>
-                      <th className="px-4 py-2.5 text-right font-bold">الإجراء</th>
-                      <th className="px-4 py-2.5 text-right font-bold">الوقت</th>
+                      {/* 96-F7 (R96 A6 #15 + #6): scope="col" for screen
+                          readers; dates pinned to -u-nu-latn so engines
+                          without ar-LY data never emit Arabic-Indic
+                          numerals. */}
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">المستوى</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">النوع</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">المستخدم</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">القاعدة</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">النقاط</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">الإجراء</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">الوقت</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -318,7 +327,7 @@ export default function AdminRiskPage() {
                               href={`/admin/risk/events/${e.id}`}
                               className="text-primary hover:underline"
                             >
-                              {new Date(e.created_at).toLocaleString("ar-LY")}
+                              {new Date(e.created_at).toLocaleString("ar-LY-u-nu-latn")}
                             </Link>
                           </td>
                         </tr>
@@ -349,7 +358,7 @@ export default function AdminRiskPage() {
                       <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/30 pt-2">
                         <span>{e.action_taken}</span>
-                        <span>{new Date(e.created_at).toLocaleString("ar-LY")}</span>
+                        <span>{new Date(e.created_at).toLocaleString("ar-LY-u-nu-latn")}</span>
                       </div>
                     </div>
                   </Link>

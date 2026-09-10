@@ -5,9 +5,13 @@ import { MetaTags } from "@/components/seo/MetaTags";
 import { RouteSkeleton, type RouteSkeletonShape } from "@/components/ui/route-skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { UserSessionWatcher } from "@/lib/user-session";
+import { apiUrl } from "@/lib/api-config";
 import { useTelegramWebAppAutoLogin } from "@/hooks/use-telegram-webapp-auto-login";
 import { useDocumentDirection } from "@/lib/direction";
 import { ThemeProvider } from "@/lib/theme";
+import { getListProductsQueryKey } from "@workspace/api-client-react";
+import type { Product } from "@workspace/api-client-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, useEffect, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
@@ -197,6 +201,90 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// ── 96-F3 (R96 F-1 / mobile-performance-pwa §5): boot parallelization ──────
+//
+// The AuthGate below blocks the ENTIRE route tree until the
+// /api/auth/probe resolves (measured live at 210–650 ms through the
+// Vercel→Render proxy hop). Only AFTER it did the home route's lazy
+// import() and useListProducts fire — three SERIAL round-trips
+// (probe → home chunk → /api/products) before a single product
+// painted, ~+0.6–1.2 s of LCP on 3G/4G.
+//
+// The gate itself stays (it is what prevents the logout flicker); the
+// waterfall around it goes: while the probe is in flight we
+//   (a) warm the home route chunk — the SAME dynamic import
+//       `lazyWithRetry(() => import("@/pages/home"))` resolves against,
+//       so the later lazy mount finds the module already in the module
+//       map (zero-RTT swap-in), and
+//   (b) head-start the public /api/products request and seed the
+//       query cache under the SAME key home's useListProducts uses,
+//       mirroring how the auth probe pre-seeds the /me query
+//       (auth.tsx) — prefetchQuery additionally de-duplicates against
+//       home's own useQuery when the gate opens before the response
+//       lands (one request, never two).
+//
+// Failure of either leg must never break boot: the dynamic import is
+// .catch-ed (stale-chunk 404s after a deploy are the known case) and
+// prefetchQuery swallows query errors internally — a failed
+// head-start just means home fetches on mount exactly as before.
+function startBootHeadStart(): void {
+  if (typeof window === "undefined") return;
+
+  // Admin boots never mount a storefront surface without a full
+  // navigation (mirrors the admin probe gate in AuthProvider) — the
+  // head-start would be pure cellular waste there.
+  const routerBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+  const bootPath = window.location.pathname;
+  if (bootPath === `${routerBase}/admin` || bootPath.startsWith(`${routerBase}/admin/`)) {
+    return;
+  }
+
+  // (a) home route chunk warm-up (same specifier the lazy route uses).
+  void import("@/pages/home").catch(() => {
+    // Stale-chunk / offline — the lazyWithRetry route handles its own
+    // recovery when it actually mounts.
+  });
+
+  // (b) products head-start. NOTE the `{}` argument: home always
+  // builds its params as an object (`const params: Record<string,
+  // string> = {}`), so its unfiltered key is ["/api/products", {}] —
+  // `getListProductsQueryKey()` (no argument) would hash to a
+  // DIFFERENT key and seed nothing.
+  //
+  // Raw fetch + apiUrl (not the generated client): this fires at
+  // module-eval time, BEFORE main.tsx installs the API fetch bridge
+  // and setBaseUrl — apiUrl() is self-contained (env → absolute URL
+  // for split deployments) so the request lands on the API origin in
+  // every deployment shape.
+  void queryClient
+    .prefetchQuery({
+      queryKey: getListProductsQueryKey({}),
+      queryFn: async (): Promise<Product[]> => {
+        const res = await fetch(apiUrl("/api/products"), {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as Product[];
+      },
+      // Match home's products staleTime (3 min) so the seeded entry
+      // is treated as fresh when home mounts.
+      staleTime: 3 * 60 * 1000,
+    })
+    .catch(() => {
+      // prefetchQuery already swallows query failures; this guards
+      // against any unexpected synchronous/rejection path.
+    });
+}
+
+// Module scope: fires during entry-chunk evaluation — BEFORE React
+// renders, so the products request is in flight while AuthProvider
+// is still mounting and the probe has not even started. Gated out of
+// tests (MODE === "test") so module imports in vitest stay inert.
+if (typeof window !== "undefined" && import.meta.env.MODE !== "test") {
+  startBootHeadStart();
+}
 
 function AdminProtectedRoutes() {
   const { adminToken, setAdminToken } = useAuth();
@@ -406,14 +494,31 @@ const SocketInitializer = lazyWithRetry(() =>
   import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
 );
 
-function DeferredSocketInitializer() {
+/**
+ * 96-F3 (R96 F-5 / mobile-performance-pwa §8-F5): the deferral mount
+ * is now TOKEN-GATED. Anonymous visitors — the majority of traffic —
+ * previously downloaded the socket.io stack (~16 KB gzip + engine.io
+ * parse/TBT) 3.5 s after mount for nothing (`useSocket(undefined)`
+ * no-ops, `useGetMe` disabled). Any authed token (user sentinel OR
+ * admin sentinel — operators on /admin need the admin room) keeps the
+ * deferral timer so first paint stays uncontended.
+ *
+ * Exported for the guest-gating regression test (same pattern as
+ * shapeForRoute above).
+ */
+export function DeferredSocketInitializer() {
+  const { token, adminToken } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Guests: never warm the socket chunk. Login mid-session re-arms
+    // the timer (token flips truthy → effect re-runs).
+    if (!token && !adminToken) return;
+
     // Wait for initial hydration and paint to settle
     const timeout = setTimeout(() => setMounted(true), 3500);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [token, adminToken]);
 
   if (!mounted) return null;
 
@@ -434,6 +539,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
+          {/* 96-F3 (R96 A4 §3.1): storefront 401 router — mirrors the */}
+          {/* auth token into lib/user-session and registers its additive */}
+          {/* observer on the shared client. Renders nothing. */}
+          <UserSessionWatcher />
           <AuthGate>
             <DeferredSocketInitializer />
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>

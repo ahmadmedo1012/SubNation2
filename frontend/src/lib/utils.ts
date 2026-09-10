@@ -58,8 +58,19 @@ export function formatCount(count: number, forms: ArabicPluralForms): string {
   return `${COUNT_FORMATTER.format(count)} ${label}`;
 }
 
+// 96-F7 (R96 A6 #6): every ar-LY DATE call below pins -u-nu-latn.
+// Bare "ar-LY" relies on the engine having ar-LY locale data; engines
+// that lack it (older Safari/WebView) fall back to the generic "ar"
+// root whose CLDR default numbering is Arabic-Indic (٠١٢…) — that
+// silently breaks the site-wide Latin-digits convention. This mirrors
+// formatRelativeTime, which already pinned the extension (93-C6/F-06).
+// NOTE: never use Intl.NumberFormat("ar-LY") for money — European
+// separators + a trailing-dot currency glyph — formatCurrency's en-US
+// grouping stays the money path (comment atop this file).
+const AR_DATE_LOCALE = "ar-LY-u-nu-latn";
+
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("ar-LY", {
+  return new Date(dateStr).toLocaleDateString(AR_DATE_LOCALE, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -206,7 +217,9 @@ export function formatRelativeTime(dateStr: string): string {
   // Older / farther than a week: the calendar date says more than a
   // unit count. (Future >1 week on this helper is unusual — promotions
   // cap at days — but the date is still the honest answer.)
-  return new Date(dateStr).toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
+  // 96-F7 (R96 A6 #6): pinned to the Latin-digit extension like the
+  // formatter above it.
+  return new Date(dateStr).toLocaleDateString(AR_DATE_LOCALE, { month: "short", day: "numeric" });
 }
 
 export function formatDateShort(dateStr: string): string {
@@ -214,7 +227,9 @@ export function formatDateShort(dateStr: string): string {
   const diff = Date.now() - d.getTime();
   const hours = Math.floor(diff / 3_600_000);
   if (hours < 48) return formatRelativeTime(dateStr);
-  return d.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
+  // 96-F7 (R96 A6 #6): pinned to the Latin-digit extension (see
+  // AR_DATE_LOCALE above).
+  return d.toLocaleDateString(AR_DATE_LOCALE, { month: "short", day: "numeric" });
 }
 
 /**

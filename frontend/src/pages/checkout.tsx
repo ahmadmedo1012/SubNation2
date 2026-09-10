@@ -81,6 +81,68 @@ function isCouponFailureMessage(message: string | undefined): boolean {
 }
 
 /**
+ * 96-F4 (R96 A4 §2.2 — money P1): stable per-unit Idempotency-Key storage.
+ *
+ * The unit loop below used to call generateIdempotencyKey() inline on every
+ * confirm click, so a manual retry after a NETWORK-level failure (the outer
+ * catch deliberately keeps the cart — server state unknown) minted NEW keys
+ * for units whose request may already have committed → double charge on
+ * flaky mobile links. The backend guard (Redis replay + durable in-tx check,
+ * routes/orders.ts) can only dedupe when it sees the SAME key twice — so the
+ * key must survive the retry attempt.
+ *
+ * Lifecycle (lazy — a key is minted only when its unit is first attempted):
+ *   • read:   reuse a stored key when one exists → a retry of an unresolved
+ *             unit replays the server's cached response instead of charging
+ *             again (this is the double-charge fix).
+ *   • write:  at generation time, under
+ *             subnation_checkout_key:{productId}:{unitIndex}
+ *   • delete: ONLY at a definitive resolution —
+ *       - a per-unit HTTP rejection (ApiError): cleared in the catch below so
+ *         a retry of that unit isn't answered forever by the cached error;
+ *       - accounted 2xx successes: cleared in the cart-sync step, NOT at the
+ *         per-unit 2xx. The network-failure path intentionally skips the
+ *         cart-sync, so the cart still contains the already-charged units on
+ *         retry — deleting their keys there would re-charge them under fresh
+ *         keys. The sync step (which runs on every definitive flow outcome:
+ *         partial HTTP failure AND full success) is the safe deletion point.
+ *
+ * sessionStorage (per-tab) rather than localStorage: these are retry tokens
+ * for THIS checkout session, not durable state — they die with the tab.
+ * Every access is try/catch-guarded: a private-mode / quota failure just
+ * degrades to the old unstable-key behavior, it never blocks the money path.
+ */
+const CHECKOUT_KEY_PREFIX = "subnation_checkout_key:";
+
+function checkoutUnitKeyId(productId: number, unitIndex: number): string {
+  return `${CHECKOUT_KEY_PREFIX}${productId}:${unitIndex}`;
+}
+
+function loadCheckoutUnitKey(productId: number, unitIndex: number): string | null {
+  try {
+    return sessionStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
+  } catch {
+    return null;
+  }
+}
+
+function persistCheckoutUnitKey(productId: number, unitIndex: number, key: string): void {
+  try {
+    sessionStorage.setItem(checkoutUnitKeyId(productId, unitIndex), key);
+  } catch {
+    // degraded: unstable keys (pre-fix behavior) — never throw on money path
+  }
+}
+
+function clearCheckoutUnitKey(productId: number, unitIndex: number): void {
+  try {
+    sessionStorage.removeItem(checkoutUnitKeyId(productId, unitIndex));
+  } catch {
+    // ignore
+  }
+}
+
+/**
  * Checkout — the money path.
  *
  * Payment method is wallet-only BY DESIGN: the backend's POST /api/orders
@@ -345,28 +407,39 @@ export default function CheckoutPage() {
         for (let unit = 0; unit < unitsWanted; unit++) {
           const body: CreateOrderBody = { product_id: it.productId };
           if (couponCode) body.coupon_code = couponCode;
-          // V4-P0: one fresh Idempotency-Key PER UNIT ORDER — a network
-          // retry or double-click of this exact unit replays the cached
-          // server response instead of charging the wallet twice, while
-          // different units (and a NEW confirm click) stay distinct.
+          // 96-F4 (R96 A4 §2.2): one STABLE Idempotency-Key per unit order —
+          // minted lazily on the unit's first attempt, persisted in
+          // sessionStorage, and reused verbatim when this exact unit is
+          // retried. A network retry / double-click of an unresolved unit now
+          // replays the cached server response instead of charging the wallet
+          // twice, while different units — and a genuinely NEW confirm intent
+          // after a definitive resolution — stay distinct because resolved
+          // keys are cleared (see the helpers' docblock for the lifecycle).
           // Round-4: raw fetch("/api/orders") replaced by the orval-generated
           // createOrder() — per-call RequestInit carries the per-unit
           // Idempotency-Key, and the typed Order response kills the local
           // CreatedOrder interface. Auth rides the shared customFetch wiring
           // (cookie session + global bearer-token getter from main.tsx).
+          const unitKey = loadCheckoutUnitKey(it.productId, unit) ?? generateIdempotencyKey();
+          persistCheckoutUnitKey(it.productId, unit, unitKey);
           try {
             const order = await createOrder(body, {
-              headers: { "Idempotency-Key": generateIdempotencyKey() },
+              headers: { "Idempotency-Key": unitKey },
             });
             created.push(order);
             unitsOrdered++;
+            // 2xx success — the unit is resolved, but the key is NOT deleted
+            // here: if a LATER unit network-fails, the cart-sync below is
+            // skipped and a retry must replay this unit (not re-charge it).
+            // The sync step deletes it once the charge is accounted in cart.
             if (!firstOrderCode) firstOrderCode = order.order_code;
           } catch (e) {
             if (!isHttpApiError(e)) {
               // Network-level failure: this unit's server state is UNKNOWN
               // (it may have been charged). Rethrow to the outer catch —
               // it shows the error WITHOUT the cart-sync step, so a manual
-              // retry can't double-buy units that actually succeeded.
+              // retry can't double-buy units that actually succeeded. The
+              // stored key deliberately SURVIVES so that retry reuses it.
               throw e;
             }
             // HTTP-level failure: the backend error envelope arrives as
@@ -374,6 +447,10 @@ export default function CheckoutPage() {
             // 93-C5 / F-15: prefer the envelope's specific Arabic sentence
             // over the code map (coupon failures map to INVALID_DATA →
             // "بيانات غير صالحة", which reads like a money error).
+            // 96-F4 (A4 §2.2): the rejection is definitive — clear this
+            // unit's stored key so a retry isn't answered forever by the
+            // cached error response.
+            clearCheckoutUnitKey(it.productId, unit);
             failureMessage = apiErrorData(e)?.error || getErrorMessage(e) || "فشل في إنشاء الطلب";
             couponFailure = isCouponFailureMessage(failureMessage ?? undefined);
             break;
@@ -407,6 +484,14 @@ export default function CheckoutPage() {
         if (!line) return;
         if (unitsOrdered >= line.quantity) removeItem(productId);
         else updateQuantity(productId, line.quantity - unitsOrdered);
+        // 96-F4 (R96 A4 §2.2): the charged units are now ACCOUNTED in the
+        // cart (line removed / shrunk to the remainder) — their retry keys
+        // are resolved and can be cleared. This is the ONLY success-side
+        // deletion point: the network-failure path above skips the sync
+        // precisely so a retry replays those units instead of re-charging.
+        for (let unit = 0; unit < unitsOrdered; unit++) {
+          clearCheckoutUnitKey(productId, unit);
+        }
       });
 
       // Every unit that was charged moved the wallet balance — refresh the
@@ -570,6 +655,13 @@ export default function CheckoutPage() {
                 }}
                 placeholder="أدخل رمز الكوبون"
                 aria-label="رمز الكوبون"
+                /* 96-F4 (R96 A2 P3-1 / A1 M05): Safari/iOS happily autofills
+                   coupon inputs from saved emails, and the shared Input's
+                   text-base (16px < md) already prevents the iOS focus-zoom —
+                   keep the default size, just opt out of autofill and label
+                   the mobile Enter key with its real action (apply). */
+                autoComplete="off"
+                enterKeyHint="send"
                 className="flex-1 font-mono uppercase"
                 dir="ltr"
               />
@@ -737,9 +829,12 @@ export default function CheckoutPage() {
                       type="button"
                       onClick={() => setOrderError(null)}
                       aria-label="إغلاق رسالة الخطأ"
-                      className="shrink-0 p-1 -m-1 rounded-md hover:bg-status-error/10"
+                      /* 96-F4 (R96 A2 P2-12): 44×44 touch target with the
+                         negative-margin trick preserved (the banner keeps its
+                         tight padding while the hit area grows to the floor). */
+                      className="shrink-0 h-11 w-11 -m-2 p-2 rounded-md hover:bg-status-error/10"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 )}
@@ -747,7 +842,15 @@ export default function CheckoutPage() {
                 <Button
                   onClick={handleConfirm}
                   disabled={!canSubmit}
-                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+                  /* 96-F4 (R96 A1 M06): the coupon-state label («تأكيد الطلب —
+                     الإجمالي بعد الكوبون (…)» ≈ 300–330px of Arabic + tabular
+                     digits) overflowed the button's inner width at ≤390px because
+                     buttonVariants' base ships whitespace-nowrap — the label bled
+                     symmetrically outside the rounded CTA on the money screen.
+                     whitespace-normal + text-balance override the base (twMerge)
+                     so the honest full label wraps gracefully instead, and
+                     min-h-12 (was fixed h-12) lets the button grow for 2 lines. */
+                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold min-h-12 whitespace-normal text-balance leading-snug"
                 >
                   {submitting ? (
                     <>

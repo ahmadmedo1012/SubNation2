@@ -86,7 +86,10 @@ const CONFIDENCE_META: Record<Confidence, { label: string; tone: StatusBadgeVari
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   try {
-    return new Date(`${iso}T00:00:00Z`).toLocaleDateString("ar-LY", {
+    // 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits (engines without
+    // ar-LY data fall back to the "ar" root and emit Arabic-Indic
+    // numerals otherwise).
+    return new Date(`${iso}T00:00:00Z`).toLocaleDateString("ar-LY-u-nu-latn", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -141,7 +144,8 @@ export function StockoutRiskPanel() {
         <h2 className="text-sm font-bold flex-1">خطر النفاد</h2>
         <span className="text-[11px] text-muted-foreground">
           {data.last_successful_run_at
-            ? `آخر تحديث: ${new Date(data.last_successful_run_at).toLocaleString("ar-LY", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+            ? /* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits. */
+              `آخر تحديث: ${new Date(data.last_successful_run_at).toLocaleString("ar-LY-u-nu-latn", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
             : ""}
         </span>
         <button

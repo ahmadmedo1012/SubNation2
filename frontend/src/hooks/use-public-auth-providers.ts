@@ -5,13 +5,24 @@ interface PublicAuthProviders {
   whatsappEnabled: boolean;
   /**
    * Live pairing status of the WhatsApp session (r95): "ready" when
-   * OTPs can flow right now, any other OpenWA lifecycle value
-   * (qr_ready / initializing / disconnected / …) or null (probe
+   * OTPs can flow right now, "settling" while the just-linked session
+   * is inside the settle window (96-F2), any other OpenWA lifecycle
+   * value (qr_ready / initializing / disconnected / …) or null (probe
    * failed) otherwise. Used for an honest hint under the button —
    * never to hard-hide the entry (the operator can complete pairing
    * at any moment).
    */
   whatsappStatus: string | null;
+  /**
+   * 96-F2 (R96-A4 §1.3E): derived from whatsappStatus — true while
+   * the live probe reports "settling": the session was JUST linked
+   * and the settle window (sender-key / app-state propagation) is
+   * still running. Consumers render an honest "preparing" hint
+   * instead of letting the first OTP land in WhatsApp's "Waiting for
+   * this message" window. Never blocks the entry — the window is
+   * short by design.
+   */
+  whatsappSettling: boolean;
   /** True once the providers endpoint has been queried (success or fail). */
   fetched: boolean;
 }
@@ -59,5 +70,5 @@ export function usePublicAuthProviders(): PublicAuthProviders {
     };
   }, []);
 
-  return { whatsappEnabled, whatsappStatus, fetched };
+  return { whatsappEnabled, whatsappStatus, whatsappSettling: whatsappStatus === "settling", fetched };
 }

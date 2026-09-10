@@ -39,7 +39,12 @@ export function Footer() {
         </div>
 
         {/* Right: legal + support */}
-        <div className="flex items-center gap-4">
+        {/* 96-F5 (R96-M15): flex-wrap + tighter gap below sm — the three
+            links + two separators measured ≈271px against 288px available
+            at 320px, so any wider glyph run (font fallback, longer labels)
+            clipped the last link under the global overflow-x: clip. Wrapping
+            guarantees the row degrades gracefully instead of clipping. */}
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4">
           <Link href="/terms#terms">
             <span className="hover:text-foreground transition-colors cursor-pointer">
               الشروط والأحكام

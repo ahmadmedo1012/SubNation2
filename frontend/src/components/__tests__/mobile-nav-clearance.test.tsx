@@ -20,7 +20,7 @@
  * single non-collapsing reservation.
  */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -94,5 +94,99 @@ describe("MobileNav — single-source clearance constant (B6-P1-7)", () => {
     expect(cls).toContain("mobile-nav-footer-pad");
     // The old double reservation: a hardcoded 60px margin bottom.
     expect(cls).not.toContain("mb-[calc(60px");
+  });
+});
+
+describe("MobileNav — 96-F5 (R96 F-4 + P2-3): GPU diet + keyboard hide", () => {
+  it("rides a SOLID background — no backdrop-blur on the fixed bar", () => {
+    render(
+      <Router>
+        <MobileNav />
+      </Router>,
+    );
+    const nav = screen.getByRole("navigation");
+    // The background layer is the nav's first child (absolute inset-0).
+    const bgLayer = nav.firstElementChild as HTMLElement;
+    expect(bgLayer.className).toContain("bg-card");
+    expect(bgLayer.className).not.toContain("backdrop-blur");
+    expect(bgLayer.className).not.toContain("bg-card/92");
+  });
+
+  it("carries the no-JS short-viewport fallback class (keyboard/landscape)", () => {
+    render(
+      <Router>
+        <MobileNav />
+      </Router>,
+    );
+    const nav = screen.getByRole("navigation");
+    expect(nav.className).toContain("[@media(max-height:480px)]:hidden");
+  });
+
+  it("hides while the virtual keyboard is open (visualViewport drop > 120px) and restores on close", () => {
+    const listeners: Record<string, (() => void) | undefined> = {};
+    const vv = {
+      height: 800,
+      addEventListener: (type: string, cb: () => void) => {
+        listeners[type] = cb;
+      },
+      removeEventListener: () => {},
+    };
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    try {
+      const { unmount } = render(
+        <Router>
+          <MobileNav />
+        </Router>,
+      );
+      const nav = screen.getByRole("navigation");
+      // Exact-token check — "md:hidden" must not count as "hidden".
+      expect(nav.classList.contains("hidden")).toBe(false);
+
+      // Keyboard opens: 800 → 460 (drop 340 > 120).
+      act(() => {
+        vv.height = 460;
+        listeners.resize?.();
+      });
+      expect(nav.classList.contains("hidden")).toBe(true);
+
+      // Keyboard closes: back to the anchored baseline.
+      act(() => {
+        vv.height = 800;
+        listeners.resize?.();
+      });
+      expect(nav.classList.contains("hidden")).toBe(false);
+
+      unmount();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).visualViewport;
+    }
+  });
+
+  it("small sub-120px jitters do NOT hide the nav (no false positives)", () => {
+    const listeners: Record<string, (() => void) | undefined> = {};
+    const vv = {
+      height: 800,
+      addEventListener: (type: string, cb: () => void) => {
+        listeners[type] = cb;
+      },
+      removeEventListener: () => {},
+    };
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    try {
+      const { unmount } = render(
+        <Router>
+          <MobileNav />
+        </Router>,
+      );
+      const nav = screen.getByRole("navigation");
+      act(() => {
+        vv.height = 720; // URL-bar collapse / pinch-zoom wiggle — only 80px
+        listeners.resize?.();
+      });
+      expect(nav.classList.contains("hidden")).toBe(false);
+      unmount();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).visualViewport;
+    }
   });
 });

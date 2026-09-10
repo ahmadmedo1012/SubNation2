@@ -82,6 +82,15 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         // unpaired (or dropped). Honest copy — an operator action is
         // pending on the session, not a client-fixable condition.
         whatsapp_not_paired: "قناة WhatsApp غير مربوطة مؤقتاً، جاري استعادة الخدمة",
+        // 96-F1 (R96-A4 §1.3C): the session was JUST linked and is inside
+        // the settle/warm-up window (the "Waiting for this message"
+        // race). Honest copy + Retry-After so the client auto-retries
+        // instead of burning a resend on an undecryptable dispatch.
+        whatsapp_settling: "قناة WhatsApp ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من دقيقة",
+        // 96-F1 (R96-A4 §4.2): the code WAS delivered but storing it
+        // failed twice — 500 with a short cooldown instead of an instant
+        // re-send that would deliver a SECOND WhatsApp message.
+        store_failed: "تم إرسال الرمز لكن تعذّر حفظه، أعد المحاولة بعد قليل",
         gateway_disabled: "خدمة WhatsApp غير مفعّلة حالياً",
       };
       const status =
@@ -89,12 +98,23 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
           ? 400
           : result.reason === "cooldown" || result.reason === "hourly_limit"
             ? 429
-            : result.reason === "gateway_disabled" || result.reason === "whatsapp_not_paired"
+            : result.reason === "gateway_disabled" ||
+                result.reason === "whatsapp_not_paired" ||
+                // 96-F1: settling is a transient server-side state —
+                // 503 + Retry-After is the honest mapping.
+                result.reason === "whatsapp_settling"
               ? 503
-              : 502;
+              : result.reason === "store_failed"
+                ? 500
+                : 502;
+      // 96-F1: Retry-After (+ details.retry_after_sec) is emitted for every
+      // reason that carries retryAfterSec — cooldown (pre-existing),
+      // whatsapp_settling (ceil(readyInMs/1000)) and store_failed (30s short
+      // cooldown so the client does not instantly re-send).
+      const retryAfter = result.retryAfterSec;
       const headers: Record<string, string | number> = {};
-      if (result.reason === "cooldown" && result.retryAfterSec) {
-        headers["Retry-After"] = result.retryAfterSec;
+      if (retryAfter) {
+        headers["Retry-After"] = retryAfter;
       }
       res.set(headers as Record<string, string>);
       return res.status(status).json(
@@ -103,9 +123,7 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
           ErrorCode.INVALID_DATA,
           {
             reason: result.reason,
-            ...(result.reason === "cooldown" && result.retryAfterSec
-              ? { retry_after_sec: result.retryAfterSec }
-              : {}),
+            ...(retryAfter ? { retry_after_sec: retryAfter } : {}),
           },
         ),
       );

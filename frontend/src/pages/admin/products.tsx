@@ -132,7 +132,7 @@ function InlineStockEdit({
   };
 
   return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
       <input
         type="number"
         min="0"
@@ -143,22 +143,29 @@ function InlineStockEdit({
           if (e.key === "Escape") onDone();
         }}
         autoFocus
-        className="w-16 h-6 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
+        /* 96-F7 (R96 M8): h-9 input (was w-16 h-6 — a 24px touch target
+           for a money-adjacent field). */
+        className="w-16 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
       />
+      {/* 96-F7 (R96 M8): the save/cancel controls are now ≥36px tall
+         with Arabic TEXT labels («حفظ»/«إلغاء») + gap-2 — the old p-0.5
+         icon-only pair (~18px, gap-1) was unmissable under a thumb, and
+         Enter/Esc shortcuts don't exist on touch keyboards. Enter/Escape
+         still work (the input's onKeyDown above is untouched). */}
       <button
         onClick={save}
         disabled={saving}
         aria-label="حفظ المخزون"
-        className="p-0.5 rounded text-emerald-400 hover:bg-emerald-400/10 transition-colors"
+        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-emerald-400 hover:bg-emerald-400/10 transition-colors active:scale-95 disabled:opacity-50"
       >
-        <CheckCircle className="w-3.5 h-3.5" />
+        حفظ
       </button>
       <button
         onClick={onDone}
         aria-label="إلغاء تعديل المخزون"
-        className="p-0.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-muted-foreground hover:bg-secondary transition-colors active:scale-95"
       >
-        <X className="w-3.5 h-3.5" />
+        إلغاء
       </button>
     </div>
   );
@@ -185,7 +192,6 @@ export default function AdminProductsPage() {
     () => new URLSearchParams(window.location.search).get("search") ?? "",
   );
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingStockId, setEditingStockId] = useState<number | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
@@ -263,7 +269,6 @@ export default function AdminProductsPage() {
       onSuccess() {
         invalidate();
         toast({ title: "تمت الأرشفة" });
-        setDeleteConfirm(null);
       },
       onError(err: unknown) {
         toast({
@@ -274,6 +279,23 @@ export default function AdminProductsPage() {
       },
     },
   });
+
+  // 96-F7 (R96 M9): single-product archive now runs through the same
+  // shared styled confirm the bulk archive uses — the old inline
+  // Archive/X icon pair (~28px buttons, gap-1) sat directly beside the
+  // other card actions, and a 4px thumb slip turned «إلغاء» into an
+  // archiving (terminal in this UI). The dialog names the product so
+  // the operator knows exactly what is being archived.
+  const archiveProduct = async (product: AdminProduct) => {
+    const confirmed = await confirm({
+      title: "أرشفة المنتج؟",
+      description: `سيتم أرشفة «${product.name}» — يُخفى من المتجر وتبقى بياناته ومبيعاته.`,
+      confirmLabel: "أرشفة",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    deleteMutation.mutate({ id: product.id });
+  };
 
   // Keyboard shortcut: Ctrl+S to save form
   useEffect(() => {
@@ -614,7 +636,9 @@ export default function AdminProductsPage() {
               <div>
                 <Label className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2">
                   سعر التكلفة (د.ل)
-                  <span className="text-[9px] font-normal text-muted-foreground/70">
+                  {/* 96-F7 (R96 A6 #11): 9px → 10px — functional hint
+                      text, not decoration. */}
+                  <span className="text-[10px] font-normal text-muted-foreground/70">
                     اختياري — للإدارة فقط، لا يظهر للمستخدم
                   </span>
                 </Label>
@@ -643,7 +667,11 @@ export default function AdminProductsPage() {
                             : "text-emerald-500";
                       return (
                         <span className={tone}>
-                          هامش الربح: {margin.toFixed(2)} د.ل ({pct.toFixed(1)}%)
+                          {/* 96-F7 (R96 A6 #18): formatCurrency — the
+                              manual toFixed(2) skipped thousands grouping
+                              (the established money convention, see
+                              utils.ts). */}
+                          هامش الربح: {formatCurrency(margin)} ({pct.toFixed(1)}%)
                         </span>
                       );
                     })()}
@@ -979,8 +1007,11 @@ export default function AdminProductsPage() {
                                 : "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
                           return (
                             <span
-                              className={`text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
-                              title={`تكلفة: ${cp.toFixed(2)} د.ل / هامش: ${margin.toFixed(2)} د.ل`}
+                              /* 96-F7 (R96 A6 #11): 9px → 10px — a
+                                  functional money hint (margin %), not
+                                  decoration. */
+                              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
+                              title={`تكلفة: ${formatCurrency(cp)} / هامش: ${formatCurrency(margin)}`}
                             >
                               {margin >= 0 ? "+" : ""}
                               {pct.toFixed(0)}%
@@ -1015,6 +1046,11 @@ export default function AdminProductsPage() {
                     </div>
 
                     {/* Actions */}
+                    {/* 96-F7 (R96 M9): destructive archive stays visually
+                        separated (gap-2 + min-w-9) from the adjacent
+                        «رفع مخزون» button, and now opens the shared
+                        confirm dialog instead of swapping into the inline
+                        Archive/X icon pair. */}
                     <div className="flex gap-2">
                       <Button
                         size="sm"
@@ -1038,37 +1074,15 @@ export default function AdminProductsPage() {
                       >
                         <Upload className="w-3 h-3 ml-1" /> رفع مخزون
                       </Button>
-                      {deleteConfirm === product.id ? (
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="px-2 h-8 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 active:scale-90"
-                            onClick={() => deleteMutation.mutate({ id: product.id })}
-                            aria-label={`تأكيد أرشفة ${product.name}`}
-                          >
-                            <Archive className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="px-2 h-8 text-xs"
-                            onClick={() => setDeleteConfirm(null)}
-                            aria-label="إلغاء الأرشفة"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 border-destructive/15 text-destructive/50 hover:border-destructive/35 hover:text-destructive hover:bg-destructive/8 active:scale-90"
-                          onClick={() => setDeleteConfirm(product.id)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`أرشفة ${product.name}`}
+                        className="h-8 min-w-9 px-2 border-destructive/15 text-destructive/50 hover:border-destructive/35 hover:text-destructive hover:bg-destructive/8 active:scale-90"
+                        onClick={() => void archiveProduct(product)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
 

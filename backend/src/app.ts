@@ -496,10 +496,33 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   store: makeRateLimitStore(),
   skipFailedRequests: false,
-  // Counting successes too: /api/auth/whatsapp/start sits behind this
-  // limiter, and skipping successes let one IP SMS-bomb unlimited phone
+  // Counting successes too: OTP send endpoints sit behind these auth
+  // limiters, and skipping successes let one IP SMS-bomb unlimited phone
   // numbers as long as each attempt "worked". 10 sends / 15 min / IP is
-  // still far above any legitimate login cadence.
+  // still far above any legitimate login cadence. (96-F1: /api/auth/
+  // whatsapp/start moved to whatsappStartAuthLimiter below — CGNAT
+  // mitigation — but the same counting policy applies there.)
+  skipSuccessfulRequests: false,
+  message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة.", code: "RATE_LIMITED" },
+});
+
+// 96-F1 (R96-A4 §3.4): /api/auth/whatsapp/start gets its own, higher
+// IP ceiling as a CGNAT false-lock mitigation. One OTP login already
+// costs start+verify against the shared budget; a wrong-code retry
+// loop (5-attempt cap) plus a resend exhausts 10/15min quickly — and
+// Libya's mobile carriers extensively share egress IPs (see the
+// apiLimiter CGNAT note above), so strangers behind the same IP were
+// being locked out of LOGIN for 15 minutes. 20/15min for start only;
+// the per-phone caps in the OTP orchestration (60 s cooldown, 5/hour,
+// 5 attempts) remain the real anti-abuse gate. /verify, admin login
+// and every other credential endpoint stay on the strict authLimiter.
+const whatsappStartAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  store: makeRateLimitStore(),
+  skipFailedRequests: false,
   skipSuccessfulRequests: false,
   message: { error: "عدد كبير من المحاولات. حاول مجدداً بعد 15 دقيقة.", code: "RATE_LIMITED" },
 });
@@ -758,7 +781,15 @@ app.use("/api/admin/login/verify-2fa", authLimiter);
 // keep brute-force resistance consistent across auth surfaces.
 app.use("/api/auth/telegram", authLimiter);
 app.use("/api/auth/telegram/callback", authLimiter);
-app.use("/api/auth/whatsapp", authLimiter);
+// 96-F1 (R96-A4 §3.4): split WhatsApp OTP endpoints onto separate
+// limiters — start takes the CGNAT-friendly whatsappStartAuthLimiter
+// (20/15min), verify keeps the strict authLimiter (10/15min). Mounted
+// per-path (NOT a blanket "/api/auth/whatsapp" prefix) so /start is
+// never double-limited by the strict budget it was split from. When
+// later phases add more /api/auth/whatsapp/* routes, mount them here
+// explicitly on the appropriate limiter.
+app.use("/api/auth/whatsapp/start", whatsappStartAuthLimiter);
+app.use("/api/auth/whatsapp/verify", authLimiter);
 // Coupon enumeration guard — must mount BEFORE the generic /api limiters
 // so the tighter 10/min budget applies.
 app.use("/api/coupons/validate", couponValidateLimiter);

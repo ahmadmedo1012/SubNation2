@@ -1,22 +1,25 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CopyButton } from "@/components/CopyButton";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
+import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
 import { categoryLabel, copyToClipboard, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createOrder,
   getGetMeQueryKey,
   getGetProductQueryKey,
   getGetProductRecommendationsQueryKey,
   getListOrdersQueryKey,
   getMe,
+  type CreateOrderBody,
   type Product,
   type User,
-  useCreateOrder,
   useGetMe,
   useGetProduct,
   useGetProductRecommendations,
@@ -24,7 +27,6 @@ import {
 import {
   AlertCircle,
   ArrowRight,
-  Check,
   CheckCircle,
   Copy,
   Eye,
@@ -42,7 +44,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 // Category-tinted hero gradients on the product page. Ride the shared
@@ -96,54 +98,45 @@ function CopyField({
    * masked the exact same credential. */
   secret?: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
   const [revealed, setRevealed] = useState(!secret);
-  const handleCopy = async () => {
-    const ok = await copyToClipboard(value);
-    if (!ok) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
-      <div className="flex items-center gap-1.5 shrink-0">
+    <div className="flex items-start justify-between gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        {/* 96-F4 (R96 A6 #1): no uppercase/tracking-wider on Arabic labels —
+            letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
+        <div className="text-[10px] text-muted-foreground font-bold mb-0.5">{label}</div>
+        {/* 96-F4 (R96 A2 P1-5): the credential VALUE lives in a NON-button
+            selectable element (select-text + break-all) — the old markup
+            trapped it inside the copy <button> (unselectable on iOS) and
+            clipped it at max-w-[160px] truncate, leaving zero fallback
+            when copy failed. dir="ltr" isolation kept from V2-H10: the
+            exact data the user PAID for must read (and copy) correctly. */}
+        <div
+          dir="ltr"
+          className="font-mono font-bold text-sm break-all leading-snug text-left select-text"
+        >
+          {revealed ? value : "•".repeat(Math.min(value.length, 12))}
+        </div>
         {secret && (
+          /* 96-F4 (R96 A2 P1-4): reveal is its own 44px control on the
+              LABEL side — visually separated from the copy affordance on
+              the opposite side (they used to be twin pills; a mis-tap hit
+              the neighbor's identical pill). */
           <button
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
           >
-            {revealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {revealed ? "إخفاء" : "إظهار"}
           </button>
         )}
-        <button
-          onClick={handleCopy}
-          // Credentials/emails are LTR strings — without dir="ltr" the
-          // digit-suffixed tails visually scramble inside the RTL page
-          // (V2-H10: the exact data the user PAID for must copy correctly).
-          dir="ltr"
-          aria-label={`نسخ ${label}`}
-          className={`flex items-center gap-2 font-mono font-bold text-sm transition-all duration-200 active:scale-95 group text-left ${
-            copied ? "text-status-success" : "text-foreground hover:text-primary"
-          }`}
-        >
-          <span className="max-w-[160px] truncate">
-            {revealed ? value : "•".repeat(Math.min(value.length, 12))}
-          </span>
-          <div
-            className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${
-              copied
-                ? "bg-status-success/15 text-status-success"
-                : "bg-muted/60 text-muted-foreground group-hover:bg-primary/12 group-hover:text-primary"
-            }`}
-          >
-            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-          </div>
-        </button>
       </div>
+      {/* 96-F4 (R96 A2 P1-3): the shared CopyButton (size="md", min-h-11)
+          replaces the local reimplementation — copy failure now announces
+          itself («تعذّر النسخ») instead of silently keeping the label. */}
+      <CopyButton text={value} size="md" />
     </div>
   );
 }
@@ -242,36 +235,69 @@ export default function ProductPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const createOrderMutation = useCreateOrder({
-    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
-    mutation: {
-      onSuccess(data) {
-        setOrderResult(data);
-        // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
-        // /api/auth/me can be answered from the browser HTTP cache
-        // (Cache-Control: private, max-age=30) with the pre-purchase body,
-        // leaving the Navbar's balance chip stale. Fetch me with
-        // cache:"no-store" and seed the query cache directly (no refetch
-        // race); fall back to a plain invalidation if the refresh fails.
-        // (checkout.tsx runs the identical refresh after its unit loop.)
-        void (async () => {
-          try {
-            const freshUser = await getMe({ cache: "no-store" });
-            queryClient.setQueryData(getGetMeQueryKey(), freshUser);
-          } catch {
-            queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-          }
-        })();
-        // 93-C5 (A4 #20): the purchase must appear in the orders list
-        // (home's "آخر الطلبات" strip, /orders) immediately — not ≤60 s
-        // later. No-arg form invalidates every list param variant.
-        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-      },
-      onError(err: unknown) {
-        setError(getErrorMessage(err));
-      },
-    },
-  });
+  // 96-F4 (R96 A4 §2.3 — money P1): one Idempotency-Key per buy-intent.
+  // This page used to send NO key at all on POST /api/orders (the
+  // middleware passes through when the header is absent), so a jittery
+  // tap whose response was lost + an impatient re-tap created two
+  // orders and two wallet deductions. The key is minted once per
+  // intent (useRef — survives the async attempt), sent via
+  // createOrder's second argument (exactly the shape checkout.tsx's
+  // per-unit loop uses), and reset ONLY on a definitive resolution:
+  //  - 2xx success, or
+  //  - an HTTP-level ApiError rejection (the server definitively
+  //    refused — a re-tap is a NEW intent and must not be answered by
+  //    the cached rejection).
+  // A network-level failure (server state unknown) deliberately KEEPS
+  // the key — the retry of the same intent must replay the server's
+  // cached response instead of charging again.
+  const buyIntentKeyRef = useRef<string | null>(null);
+  const [buyPending, setBuyPending] = useState(false);
+
+  const handleBuyIntent = async () => {
+    if (!product || buyPending) return;
+    const body: CreateOrderBody = { product_id: product.id };
+    if (couponResult?.code) body.coupon_code = couponResult.code;
+    const intentKey = buyIntentKeyRef.current ?? generateIdempotencyKey();
+    buyIntentKeyRef.current = intentKey;
+    setBuyPending(true);
+    setError("");
+    try {
+      const order = await createOrder(body, {
+        headers: { "Idempotency-Key": intentKey },
+      });
+      // Success — the intent is resolved; the next buy mints a fresh key.
+      buyIntentKeyRef.current = null;
+      setOrderResult(order);
+      // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
+      // /api/auth/me can be answered from the browser HTTP cache
+      // (Cache-Control: private, max-age=30) with the pre-purchase body,
+      // leaving the Navbar's balance chip stale. Fetch me with
+      // cache:"no-store" and seed the query cache directly (no refetch
+      // race); fall back to a plain invalidation if the refresh fails.
+      // (checkout.tsx runs the identical refresh after its unit loop.)
+      void (async () => {
+        try {
+          const freshUser = await getMe({ cache: "no-store" });
+          queryClient.setQueryData(getGetMeQueryKey(), freshUser);
+        } catch {
+          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        }
+      })();
+      // 93-C5 (A4 #20): the purchase must appear in the orders list
+      // (home's "آخر الطلبات" strip, /orders) immediately — not ≤60 s
+      // later. No-arg form invalidates every list param variant.
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    } catch (err: unknown) {
+      // Definitive HTTP rejection → the intent is resolved; reset the
+      // key. Network-level failure keeps it for the retry's replay.
+      if (err instanceof Error && err.name === "ApiError") {
+        buyIntentKeyRef.current = null;
+      }
+      setError(getErrorMessage(err));
+    } finally {
+      setBuyPending(false);
+    }
+  };
 
   const validateCoupon = async () => {
     if (!couponInput.trim() || !product) return;
@@ -321,8 +347,16 @@ export default function ProductPage() {
 
   // Add current product (at its effective post-coupon price context is
   // revalidated at checkout) to the local cart — the multi-item funnel.
+  // 96-F4 (R96 A2 P1-7): 500ms re-entry lock — a double-tap on a laggy
+  // phone used to add qty 2 in one gesture (and the funnel charged twice
+  // at checkout); the toast already confirms the first add, so the second
+  // tap inside the lock window is safely swallowed.
+  const lastAddTapRef = useRef(0);
   const handleAddToCart = () => {
     if (!product) return;
+    const now = Date.now();
+    if (now - lastAddTapRef.current < 500) return;
+    lastAddTapRef.current = now;
     addItem({
       productId: product.id,
       slug: product.slug ?? null,
@@ -474,8 +508,17 @@ export default function ProductPage() {
   // /wallet — for the mobile majority (Libya) that meant a cold login
   // prompt with no product context, and no return-to-product after a
   // top-up: the desktop-only funnel, broken on mobile.
+  //
+  // 96-F4 (R96 A4 §2.4): the intent navigation now also appends
+  // &redirect=/product/<slug> — login.tsx honors ONLY ?redirect= on
+  // success, so the intent flow used to land the freshly-signed-in buyer
+  // on home while the banner had just promised «سجّل دخولك لإكمال شراء «X»».
+  // The ?intent= mechanism keeps working (the banner still reads it); the
+  // redirect param simply threads the product context through sign-in.
   const loginWithIntent = () =>
-    navigate(`/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}`);
+    navigate(
+      `/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}&redirect=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`,
+    );
   const walletWithReturn = () =>
     navigate(`/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`);
 
@@ -518,9 +561,9 @@ export default function ProductPage() {
               <div className="bg-muted/20 border border-border/50 rounded-xl overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 flex items-center gap-2">
                   <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
-                  <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                    بيانات الحساب
-                  </h3>
+                  {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed —
+                      no-op on Arabic but tears the letter joins visually. */}
+                  <h3 className="text-xs font-bold text-muted-foreground">بيانات الحساب</h3>
                 </div>
                 <div className="divide-y divide-border/25">
                   {orderResult.delivered_email && (
@@ -534,7 +577,15 @@ export default function ProductPage() {
             )}
 
             {orderResult.delivered_extra_details && (
-              <div className="bg-muted/15 border border-border/40 rounded-xl px-4 py-3 text-sm text-muted-foreground leading-relaxed">
+              /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
+                 direction runs (activation links / PIN codes inside Arabic
+                 sentences) — dir="auto" + start alignment let the bidi
+                 algorithm pick the base direction from the first strong
+                 character instead of scrambling the visual order. */
+              <div
+                dir="auto"
+                className="bg-muted/15 border border-border/40 rounded-xl px-4 py-3 text-sm text-muted-foreground leading-relaxed text-start"
+              >
                 {orderResult.delivered_extra_details}
               </div>
             )}
@@ -810,16 +861,8 @@ export default function ProductPage() {
                 (couponResult ? couponResult.final_amount : displayPrice) -
                 (user?.wallet_balance ?? 0)
               }
-              isPending={createOrderMutation.isPending}
-              onBuy={() => {
-                setError("");
-                createOrderMutation.mutate({
-                  data: { product_id: product.id, coupon_code: couponResult?.code } as {
-                    product_id: number;
-                    coupon_code?: string;
-                  },
-                });
-              }}
+              isPending={buyPending}
+              onBuy={handleBuyIntent}
               onAddToCart={handleAddToCart}
               onLogin={loginWithIntent}
               onWallet={walletWithReturn}
@@ -842,8 +885,21 @@ export default function ProductPage() {
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
-        className={`sm:hidden fixed left-0 right-0 z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
-          token ? "mobile-sticky-above-nav pb-3" : "mobile-sticky-bottom-safe"
+        className={`sm:hidden z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
+          token
+            ? "fixed left-0 right-0 mobile-sticky-above-nav pb-3"
+            : /* 96-F4 (R96 A1 M11): guests get neither clearance utility
+                 (mobile-nav-footer-pad is auth-gated; main is unpadded) and
+                 the Footer is the last in-flow element — a `fixed` bar
+                 geometrically MUST cover its legal row at scroll end, no
+                 matter how much bottom padding the page root carries.
+                 position:sticky bottom-0 keeps the same mid-scroll docking
+                 (the bar pins to the viewport bottom while the page root
+                 extends below it) but lands with the content BEFORE the
+                 footer enters — never covering it. -mx-4 restores the
+                 full-bleed width inside the px-4 page root;
+                 mobile-sticky-bottom-safe keeps the env(safe-area) padding. */
+              "sticky bottom-0 -mx-4 mobile-sticky-bottom-safe"
         }`}
       >
         <CtaBlock
@@ -862,16 +918,8 @@ export default function ProductPage() {
           shortfall={
             (couponResult ? couponResult.final_amount : displayPrice) - (user?.wallet_balance ?? 0)
           }
-          isPending={createOrderMutation.isPending}
-          onBuy={() => {
-            setError("");
-            createOrderMutation.mutate({
-              data: { product_id: product.id, coupon_code: couponResult?.code } as {
-                product_id: number;
-                coupon_code?: string;
-              },
-            });
-          }}
+          isPending={buyPending}
+          onBuy={handleBuyIntent}
           onLogin={loginWithIntent}
           onWallet={walletWithReturn}
           couponInput={couponInput}
@@ -935,7 +983,14 @@ function CouponField({
               if (e.key === "Enter" && !couponResult && !couponValidating) onCouponValidate();
             }}
             placeholder="رمز الكوبون"
-            className="pr-9 h-9 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            /* 96-F4 (R96 A1 M05 / A2 P3-1): the old text-sm override beat
+               the shared Input's iOS-zoom-safe text-base → a 14px coupon
+               field on the money path zoomed the whole page on focus.
+               text-base under md restores 16px; autoComplete/enterKeyHint
+               mirror checkout's coupon field (Enter already validates). */
+            autoComplete="off"
+            enterKeyHint="send"
+            className="pr-9 h-9 text-base md:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
             disabled={!!couponResult}
           />
         </div>

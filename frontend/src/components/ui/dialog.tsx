@@ -36,7 +36,18 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        /* 96-F5 (R96-M09): mobile geometry for the legacy shell — it was
+           full-bleed edge-to-edge (w-full + no margin → touching both
+           screen edges), sharp-cornered below sm (rounding was sm-only),
+           and had NO height cap or internal scroll, so a long body
+           (TopupWaitingModal's rejected note, long confirm descriptions)
+           pushed the footer buttons below the 568px fold with no way to
+           reach them (Radix locks page scroll). Width rides
+           w-[calc(100vw-2rem)] — a WIDTH (not max-w) so consumers that
+           override max-w (TopupWaitingModal passes max-w-md) still keep
+           the 16px side margins; max-w-lg keeps the desktop cap.
+           max-h-[85dvh] + overflow-y-auto mirror AppDialog's contract. */
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100vw-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-2xl sm:rounded-lg max-h-[85dvh] overflow-y-auto",
         className,
       )}
       {...props}

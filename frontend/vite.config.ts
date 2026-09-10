@@ -1,12 +1,11 @@
 import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react";
-import { createReadStream, existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
 import path from "path";
-import { pipeline } from "stream/promises";
 import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { createGzip } from "zlib";
+import { gzipSync } from "zlib";
 
 /**
  * Bundle budget plugin that checks gzip size of the main index JS bundle.
@@ -35,15 +34,12 @@ function bundleBudgetPlugin(): Plugin {
 
       const filePath = path.join(outDir, indexFile);
 
-      // Calculate gzip size
-      let gzipSize = 0;
-      const gzip = createGzip();
-      gzip.on("data", (chunk) => {
-        gzipSize += chunk.length;
-      });
-
-      const source = createReadStream(filePath);
-      await pipeline(source, gzip);
+      // 96-main (R96 P3-8): gzipSync over the full buffer — the old
+      // streaming createGzip + pipeline combo resolved on "finish" and
+      // missed the final flushed chunk, undercounting ~35% (21,482
+      // reported vs 33,090 actual for the same file, reproduced in
+      // isolation). The gate now measures what it claims.
+      const gzipSize = gzipSync(readFileSync(filePath)).length;
 
       const GZIP_LIMIT_ERROR = 56320; // 55 KiB
       const GZIP_LIMIT_WARN = 47120; // ~46 KiB
@@ -140,6 +136,40 @@ function fontPreloadInject(): Plugin {
   };
 }
 
+/**
+ * 96-main (R96 F-8): sourcemap guard — after the build settles, sweep any
+ * *.map left in dist/public/assets. With a Sentry token the plugin's
+ * deleteSourcemapsAfterUpload should have removed them (a failed upload
+ * would leave them — sweep so they never deploy, warn). Without a token
+ * sourcemap:false should have produced none — if maps exist anyway,
+ * delete them AND fail the build (a source-exposure regression must
+ * never ship silently).
+ */
+function sourcemapGuardPlugin(): Plugin {
+  return {
+    name: "sourcemap-guard",
+    apply: "build",
+    enforce: "post",
+    closeBundle() {
+      const assetsDir = path.resolve(import.meta.dirname, "dist/public/assets");
+      if (!existsSync(assetsDir)) return;
+      const maps = readdirSync(assetsDir).filter((f) => f.endsWith(".map"));
+      if (maps.length === 0) return;
+      for (const m of maps) rmSync(path.join(assetsDir, m));
+      if (process.env.SENTRY_AUTH_TOKEN) {
+        console.warn(
+          `[sourcemap-guard] deleted ${maps.length} lingering .map file(s) from dist after the Sentry upload path — they will not deploy`,
+        );
+      } else {
+        console.error(
+          `[sourcemap-guard] ${maps.length} sourcemap(s) were produced WITHOUT SENTRY_AUTH_TOKEN — deleted locally and failing the build; investigate why sourcemap was not disabled`,
+        );
+        process.exit(1);
+      }
+    },
+  };
+}
+
 const rawPort = process.env.PORT?.trim() || process.env.FRONTEND_PORT?.trim() || "5173";
 
 const port = Number(rawPort);
@@ -198,7 +228,13 @@ export default defineConfig({
               cacheName: "api-catalog-v1",
               expiration: {
                 maxEntries: 32,
-                maxAgeSeconds: 60,
+                // 96-main (R96 F-7a): 60s → 7 days. The old TTL made an
+                // offline user older than 60s hit the WifiOff error card
+                // instead of the last-known catalog. SWR still refreshes
+                // whenever online — the staleness bound is the RESPONSE
+                // age, not a cache TTL — so online behavior is unchanged
+                // while the offline story completes.
+                maxAgeSeconds: 604_800,
               },
               cacheableResponse: {
                 statuses: [0, 200],
@@ -233,8 +269,10 @@ export default defineConfig({
         // not appear here (workbox hard-fails on unmatched globs).
         globPatterns: [
           "index.html",
-          "favicon.svg",
-          "subnation-logo.png",
+          // 96-main (R96 P3-2): favicon.svg + subnation-logo.png removed —
+          // includeAssets above already precaches them; the overlap made
+          // each appear TWICE in the generated precache manifest (14
+          // advertised entries, 12 unique).
           "opengraph.jpg",
           "manifest.json",
           "assets/*.css",
@@ -256,10 +294,13 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],
       },
     }),
-    // Sentry source-map upload — only active when SENTRY_AUTH_TOKEN is set
-    // (so local + unprovisioned CI builds skip cleanly). With sourcemap:
-    // "hidden" below, maps are produced + uploaded but never linked from
-    // the production bundle, so end users can't fetch them.
+    // 96-main (R96 F-8): sourcemap hygiene — 9.38 MB of hidden .map
+    // files were deployed publicly at /assets/*.js.map (fetchable by
+    // URL; full TS sources exposed + dead deploy weight). With a Sentry
+    // token the maps are uploaded then DELETED from dist
+    // (deleteSourcemapsAfterUpload); without a token no maps are
+    // generated at all (sourcemap: false) — plus the sourcemap-guard
+    // plugin sweeps/fails the build if any *.map still lingers.
     ...(process.env.SENTRY_AUTH_TOKEN
       ? [
           sentryVitePlugin({
@@ -268,9 +309,11 @@ export default defineConfig({
             authToken: process.env.SENTRY_AUTH_TOKEN,
             telemetry: false,
             silent: false,
+            sourcemaps: { deleteSourcemapsAfterUpload: true },
           }),
         ]
       : []),
+    sourcemapGuardPlugin(),
   ],
   resolve: {
     alias: {
@@ -282,10 +325,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    // "hidden" = produce source maps but don't reference them from the bundle.
-    // Sentry's vite plugin uploads them by hash, so issues get readable stack
-    // traces while end users can't fetch the maps.
-    sourcemap: "hidden",
+    // 96-main (R96 F-8): hidden maps ONLY when they will actually be
+    // uploaded (and deleted) by the Sentry plugin; without a token no
+    // maps are generated at all — a publicly fetchable .map at
+    // /assets/<chunk>.js.map must never ship.
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? ("hidden" as const) : false,
     // Split CSS per chunk so non-critical routes don’t block initial load
     cssCodeSplit: true,
     chunkSizeWarningLimit: 600,

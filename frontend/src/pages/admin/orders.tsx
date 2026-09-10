@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,8 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  Eye,
+  EyeOff,
   RefreshCw,
   Search,
   ShoppingBag,
@@ -124,6 +127,37 @@ function TableSkeleton() {
         "w-20 shrink-0",
       ]}
     />
+  );
+}
+
+// 96-F7 (R96 M7): delivery credentials (email / password) render MASKED
+// (••••••) with an eye toggle to reveal + the shared CopyButton per
+// value (the topups.tsx idiom, on the canonical 44px component). Both
+// the mobile card expansion and the desktop expanded row previously
+// printed them in plain mono text — shoulder-surfing exposure in
+// public, and no way to copy a long password from a phone. The reveal
+// state lives INSIDE the component, so it resets (re-masks) when the
+// row collapses. stopPropagation on the root keeps the copy/eye taps
+// from toggling the parent row expansion (the mobile card's onClick).
+function MaskedCredential({ label, value }: { label: string; value: string }) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-wrap text-xs" onClick={(e) => e.stopPropagation()}>
+      <span className="text-muted-foreground shrink-0">{label}: </span>
+      <span dir="ltr" className="font-mono font-bold min-w-0 break-all text-left">
+        {revealed ? value : "••••••"}
+      </span>
+      <button
+        type="button"
+        onClick={() => setRevealed((v) => !v)}
+        aria-label={revealed ? `إخفاء ${label}` : `إظهار ${label}`}
+        aria-pressed={revealed}
+        className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors shrink-0"
+      >
+        {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+      </button>
+      <CopyButton text={value} size="sm" />
+    </div>
   );
 }
 
@@ -893,7 +927,10 @@ export default function AdminOrdersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
-                      <th className="px-4 py-3 w-8">
+                      {/* 96-F7 (R96 A6 #15): scope="col" so screen readers
+                          announce the header↔cell relation on vertical
+                          sweeps instead of a bare "خلية". */}
+                      <th scope="col" className="px-4 py-3 w-8">
                         <button
                           onClick={toggleSelectAll}
                           className="text-muted-foreground hover:text-primary transition-colors"
@@ -905,25 +942,25 @@ export default function AdminOrdersPage() {
                           )}
                         </button>
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         رقم الطلب
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستخدم
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المنتج
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المبلغ
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الحالة
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         التاريخ
                       </th>
-                      <th className="w-8 px-4 py-3" />
+                      <th scope="col" className="w-8 px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1019,20 +1056,16 @@ export default function AdminOrdersPage() {
                               <td colSpan={8} className="px-4 py-3 border-b border-border/30">
                                 <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
                                   {order.delivered_email && (
-                                    <div>
-                                      <span className="text-muted-foreground">البريد: </span>
-                                      <span className="font-mono font-bold">
-                                        {order.delivered_email}
-                                      </span>
-                                    </div>
+                                    <MaskedCredential
+                                      label="البريد"
+                                      value={order.delivered_email}
+                                    />
                                   )}
                                   {order.delivered_password && (
-                                    <div>
-                                      <span className="text-muted-foreground">كلمة المرور: </span>
-                                      <span className="font-mono font-bold">
-                                        {order.delivered_password}
-                                      </span>
-                                    </div>
+                                    <MaskedCredential
+                                      label="كلمة المرور"
+                                      value={order.delivered_password}
+                                    />
                                   )}
                                   {order.delivered_extra_details && (
                                     <div>
@@ -1135,20 +1168,15 @@ export default function AdminOrdersPage() {
                     </div>
                     {expandedRow === order.id &&
                       (order.delivered_email || order.delivered_password) && (
-                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1 text-xs">
+                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
                           {order.delivered_email && (
-                            <div>
-                              <span className="text-muted-foreground">البريد: </span>
-                              <span className="font-mono font-bold">{order.delivered_email}</span>
-                            </div>
+                            <MaskedCredential label="البريد" value={order.delivered_email} />
                           )}
                           {order.delivered_password && (
-                            <div>
-                              <span className="text-muted-foreground">كلمة المرور: </span>
-                              <span className="font-mono font-bold">
-                                {order.delivered_password}
-                              </span>
-                            </div>
+                            <MaskedCredential
+                              label="كلمة المرور"
+                              value={order.delivered_password}
+                            />
                           )}
                         </div>
                       )}

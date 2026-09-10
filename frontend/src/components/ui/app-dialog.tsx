@@ -81,6 +81,32 @@ export function AppDialog({
     [dismissable],
   );
 
+  // 96-F5 (R96 P2-2b): virtual-keyboard obscuring. With the body scroll
+  // locked by Radix, the browser's own scroll-into-view on focus is a
+  // no-op, so a focused input inside the sheet could sit permanently
+  // under the keyboard (iOS) — exactly the wallet/admin form fields that
+  // ride this shell. onFocusCapture (React maps it to the bubbling
+  // `focusin`) fires regardless of Radix's portal mount timing, which a
+  // ref+effect approach does NOT (the portal container mounts in a
+  // child effect AFTER this component's effect ran, leaving the ref
+  // empty on the first pass). The handler scrolls the focused FIELD to
+  // the center of the sheet's own overflow region after one beat (the
+  // keyboard's viewport resize settles first); field types only —
+  // focusing a button must never scroll.
+  const handleFocusCapture = React.useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const tag = target.tagName;
+    if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT" && !target.isContentEditable) {
+      return;
+    }
+    // jsdom has no scrollIntoView — guard instead of crashing there.
+    if (typeof target.scrollIntoView !== "function") return;
+    window.setTimeout(() => {
+      target.scrollIntoView({ block: "center" });
+    }, 50);
+  }, []);
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -92,6 +118,7 @@ export function AppDialog({
           )}
         />
         <DialogPrimitive.Content
+          onFocusCapture={handleFocusCapture}
           onEscapeKeyDown={guardDismiss}
           onPointerDownOutside={guardDismiss}
           onInteractOutside={guardDismiss}
@@ -113,7 +140,17 @@ export function AppDialog({
             "sm:data-[state=closed]:slide-out-to-left-1/2 sm:data-[state=closed]:slide-out-to-top-[48%]",
             "sm:data-[state=open]:slide-in-from-left-1/2 sm:data-[state=open]:slide-in-from-top-[48%]",
             // §11.2 rule 5: outer cap for long Arabic content.
-            "max-h-[85vh]",
+            // 96-F5 (R96-M10): vh → dvh — on iOS Safari with the URL bar
+            // visible, 85vh was computed against the LARGE viewport, so a
+            // bottom-anchored sheet could extend above the visible top
+            // edge until the toolbars collapsed. Every other full-height
+            // surface in the app already migrated to dvh.
+            "max-h-[85dvh]",
+            // 96-F5 (R96-M07): footer-less sheets get the bottom
+            // safe-area on the card itself so their body padding never
+            // lands in the home-indicator strip (footer'd sheets take
+            // it on the footer row instead — never both).
+            !footer && "max-sm:pb-[env(safe-area-inset-bottom)]",
             APP_DIALOG_SIZES[size],
             className,
           )}
@@ -146,7 +183,12 @@ export function AppDialog({
           <AppDialogBody>{children}</AppDialogBody>
 
           {footer && (
-            <div className="flex shrink-0 flex-wrap justify-end gap-2.5 border-t border-border px-5 py-4">
+            /* 96-F5 (R96-M07): bottom safe-area on the mobile sheet — with
+               viewport-fit=cover on Face-ID iPhones the footer buttons sat
+               inside the 34px home-indicator gesture strip. max-sm scoped:
+               the ≥sm centered card never grows this padding (mobile-only
+               arbitrary value; index.css is owned by another agent). */
+            <div className="flex shrink-0 flex-wrap justify-end gap-2.5 border-t border-border px-5 pt-4 pb-4 max-sm:pb-[calc(1rem_+_env(safe-area-inset-bottom))]">
               {footer}
             </div>
           )}

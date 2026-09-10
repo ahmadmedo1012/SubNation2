@@ -328,8 +328,12 @@ export default function AdminUsersPage() {
       else body.wallet_adjustment = -walletValue;
     }
     if (form.loyalty_points !== "") {
-      const pts = parseInt(form.loyalty_points);
-      if (!isNaN(pts)) body.loyalty_points = pts;
+      // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5"
+      // from surviving programmatic submits — the save path clamps to
+      // ≥0 so a negative points value can never reach the PATCH (the
+      // wallet field got this guard in round-93; points didn't — r94
+      // P3-13).
+      body.loyalty_points = Math.max(0, parseInt(form.loyalty_points) || 0);
     }
     if (form.loyalty_tier) body.loyalty_tier = form.loyalty_tier;
     try {
@@ -813,31 +817,34 @@ export default function AdminUsersPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
+                          announce the header↔cell relation on vertical
+                          sweeps instead of a bare "خلية". */}
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستخدم
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المصدر
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الرصيد
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         المستوى
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         النقاط
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الإجمالي المنفق
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         الطلبات
                       </th>
-                      <th className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
                         التسجيل
                       </th>
-                      <th className="px-4 py-3 w-10" />
+                      <th scope="col" className="px-4 py-3 w-10" />
                     </tr>
                   </thead>
                   <tbody>

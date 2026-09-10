@@ -274,6 +274,12 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
   // "قيد الربط مؤقتاً" instead of letting the user fail at code-send.
   // Status strings are the OpenWA lifecycle values (ready/qr_ready/…)
   // or null when the probe fails — never a fabricated "ready".
+  //
+  // 96-F1 (R96-A4 §1.3C): a paired-but-settling session (the post-link
+  // settle / warm-up window behind the "Waiting for this message"
+  // incident) now reports the dedicated "settling" value so the login
+  // hint can tell the truth during the window. Additive — older clients
+  // treat it as just another not-"ready" status.
   const readiness = await getWhatsAppGatewayReadiness();
 
   return res.json({
@@ -281,7 +287,11 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     // Boolean only — never exposes the API key. Clients gate the
     // <WhatsAppPhoneSignIn /> render on this flag.
     whatsapp_enabled: isWhatsAppGatewayConfigured(),
-    whatsapp_status: readiness.ready ? "ready" : readiness.status,
+    whatsapp_status: readiness.ready
+      ? "ready"
+      : readiness.settling
+        ? "settling"
+        : readiness.status,
   });
 });
 

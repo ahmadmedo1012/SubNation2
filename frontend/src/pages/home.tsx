@@ -135,6 +135,15 @@ export default function HomePage() {
   // were still tabbing INTO it, dropping focus to <body>.
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
 
+  // 96-F5 (R96 F-4b): pause the guest hero's animated blur-3xl blobs when
+  // the hero scrolls off-screen — two 9s/13s infinite animations with
+  // will-change:transform kept rasterizing big blurred layers on the
+  // most-visited page long after anyone could see them. IntersectionObserver
+  // toggles animation-play-state via inline style (className/JS-level only;
+  // the keyframes live in index.css which is owned by another agent).
+  const guestHeroRef = useRef<HTMLDivElement | null>(null);
+  const [heroOnScreen, setHeroOnScreen] = useState(true);
+
   // Load search history on mount
   useEffect(() => {
     setSearchHistory(getSearchHistory());
@@ -213,6 +222,22 @@ export default function HomePage() {
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
+
+  // 96-F5 (R96 F-4b), continued: the guest hero renders for !token OR a
+  // failed /me probe (see the three-branch conditional below) — keying the
+  // blob-pause observer on the same flag re-arms it if auth state flips.
+  const showGuestHero = !token || !!userError;
+  useEffect(() => {
+    if (!showGuestHero) return;
+    const el = guestHeroRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => setHeroOnScreen(entries[0]?.isIntersecting ?? true),
+      { rootMargin: "64px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [showGuestHero]);
 
   // Round-3 (8-c §2.4): fetched up to 200 orders (each row with a
   // safeDecrypt'd credential payload server-side) just to render 4 rows.
@@ -394,15 +419,26 @@ export default function HomePage() {
           </div>
         ) : (
           /* Guest: editorial hero */
-          <div className="relative overflow-hidden rounded-3xl border border-border/40 mb-6 bg-card page-in shadow-xl shadow-black/20">
+          <div
+            ref={guestHeroRef}
+            className="relative overflow-hidden rounded-3xl border border-border/40 mb-6 bg-card page-in shadow-xl shadow-black/20"
+          >
             {/* Background layers */}
             <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
             <div className="absolute inset-0 bg-gradient-to-l from-primary/10 via-transparent to-transparent pointer-events-none" />
             <div className="absolute right-0 top-0 bottom-0 w-[2.5px] bg-gradient-to-b from-primary/80 via-primary/30 to-transparent" />
 
-            {/* Ambient glow blobs */}
-            <div className="absolute top-[-50px] right-[8%] w-72 h-72 bg-primary/8 rounded-full blur-3xl pointer-events-none blob-drift" />
-            <div className="absolute bottom-[-40px] left-[15%] w-56 h-56 bg-primary/5 rounded-full blur-3xl pointer-events-none blob-drift-slow" />
+            {/* Ambient glow blobs — 96-F5 (R96 F-4b): animation-play-state
+                flips to paused when the hero leaves the viewport (IO above);
+                prefers-reduced-motion keeps winning via the global kill-switch. */}
+            <div
+              className="absolute top-[-50px] right-[8%] w-72 h-72 bg-primary/8 rounded-full blur-3xl pointer-events-none blob-drift"
+              style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
+            />
+            <div
+              className="absolute bottom-[-40px] left-[15%] w-56 h-56 bg-primary/5 rounded-full blur-3xl pointer-events-none blob-drift-slow"
+              style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
+            />
 
             <div className="relative px-5 py-7 sm:px-9 sm:py-10">
               <div className="flex flex-wrap items-start justify-between gap-5">
@@ -438,7 +474,10 @@ export default function HomePage() {
                       مايكروسوفت ٣٦٥، الدينار الليبي، تسليم فوري. NOT
                       keyword-stuffing — every term serves the sentence.
                     */}
-                    <strong className="font-bold text-foreground">SubNation</strong> سوق إلكتروني
+                    <strong lang="en" className="font-bold text-foreground">
+                      SubNation
+                    </strong>{" "}
+                    سوق إلكتروني
                     متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة اشتراكات البثّ
                     المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي، واشتراكات
                     الألعاب مثل بلايستيشن بلاس، وأدوات الإنتاجية مثل أدوبي ومايكروسوفت 365 — كلّها
@@ -454,7 +493,14 @@ export default function HomePage() {
                           aria-label={brand.ar}
                           className={`shrink-0 text-[11px] font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
                         >
-                          <span aria-hidden="true">{brand.latin}</span>
+                          {/* 96-F5 (R96 A6 #16): lang="en" on the Latin label
+                              so screen readers stop spelling brand names with
+                              Arabic phonemes («نِتفليكس»); the Arabic sr-only
+                              transliteration below already carries the SEO
+                              weight. */}
+                          <span aria-hidden="true" lang="en">
+                            {brand.latin}
+                          </span>
                           {/* Visually hidden Arabic transliteration so the
                               crawler indexes "نتفلكس", "بلايستيشن", etc.
                               alongside the Latin form. .sr-only is the
@@ -583,7 +629,11 @@ export default function HomePage() {
         )}
 
         {/* ── Filters ──────────────────────────────────────── */}
-        <div className="sticky top-14 z-30 -mx-4 px-4 py-3 bg-background/96 backdrop-blur-2xl border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mb-6">
+        {/* 96-F5 (R96-M08): the sticky offset tracks the Navbar's real
+            chrome height — 3.5rem (h-14) + the top safe-area inset the
+            header now grows by in installed-PWA mode, so the bar tucks
+            UNDER the taller header instead of sliding beneath it. */}
+        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-3 bg-background/96 backdrop-blur-2xl border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mb-6">
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
             <div className="relative flex-1" ref={searchWrapRef}>
@@ -617,7 +667,12 @@ export default function HomePage() {
                   }
                   setTimeout(() => setShowSearchHistory(false), 200);
                 }}
-                className="pr-9 h-10 text-sm bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
+                className="pr-9 h-10 bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
+                /* 96-F5 (R96-M03): the `text-sm` override is GONE — twMerge
+                    let it beat the shared Input's iOS-zoom-safe
+                    text-base/md:text-sm baseline, so focusing the catalog
+                    search zoomed iOS Safari ~1.14× and never zoomed back.
+                    Mobile is 16px again; ≥md keeps the compact 14px look. */
               />
               {/* Search history dropdown */}
               {showSearchHistory && searchHistory.length > 0 && (
@@ -655,7 +710,9 @@ export default function HomePage() {
                 onChange={(e) => setSort(e.target.value)}
                 aria-label="ترتيب المنتجات"
                 title="ترتيب المنتجات"
-                className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
+                className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
+                /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
+                    field — raw select rode text-sm at every breakpoint. */
               >
                 {SORTS.map((s) => (
                   <option key={s.value} value={s.value}>

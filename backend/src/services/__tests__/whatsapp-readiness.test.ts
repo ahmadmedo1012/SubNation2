@@ -36,6 +36,12 @@ beforeEach(() => {
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "subnation-otp";
+  // 96-F1 (R96-A4 §1.3A): these tests pin the pairing-status honesty of
+  // the probe. Settle=0 + no operator number keeps them semantics-focused
+  // (ready ⇔ status==="ready"); the settle/warm-up gating itself has
+  // dedicated coverage in openwa-settle-gate.test.ts.
+  process.env.WHATSAPP_OTP_SETTLE_MS = "0";
+  delete process.env.WHATSAPP_OTP_OPERATOR_E164;
   vi.resetModules();
 });
 

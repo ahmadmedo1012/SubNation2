@@ -81,6 +81,42 @@ scheduleIdle(() => {
   }
 });
 
+// ── 96-main (R96 F-7b): service-worker update honesty ────────────────
+// The SW is autoUpdate (skipWaiting + clientsClaim): during a deploy the
+// new SW silently takes control of open tabs while their JS chunks are
+// still the old release — navigations rely on lazyWithRetry to rescue
+// stale-chunk 404s. This listener makes the takeover VISIBLE: when the
+// controller changes and a controller already existed earlier in this
+// session (i.e. it's an UPDATE, not the very first install), show one
+// Arabic toast with a reload action. If the user ignores it, nothing is
+// forced — the next full navigation picks up the new release anyway.
+void (() => {
+  const sw = navigator.serviceWorker;
+  if (!sw) return;
+  let sawController = !!sw.controller;
+  let prompted = false;
+  sw.addEventListener("controllerchange", () => {
+    if (!sawController) {
+      // First activation after install — nothing to reload into.
+      sawController = true;
+      return;
+    }
+    if (prompted) return;
+    prompted = true;
+    void import("./hooks/use-toast").then(({ toast }) => {
+      toast({
+        title: "تحديث جديد متاح",
+        description: "صدر تحديث للتطبيق — أعد التحميل للحصول على أحدث نسخة.",
+        duration: 10_000,
+        action: {
+          label: "إعادة التحميل",
+          onClick: () => window.location.reload(),
+        },
+      });
+    });
+  });
+})();
+
 createRoot(document.getElementById("root")!, {
   // React 19 error capture pattern from the official Sentry React skill.
   // Each callback forwards its error to Sentry while preserving the React

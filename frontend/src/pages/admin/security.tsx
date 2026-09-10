@@ -337,7 +337,10 @@ export function AdminSecurityDashboard() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">{actionLabel(activity.action)}</span>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(activity.createdAt).toLocaleString("ar-LY")}
+                        {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
+                            engines without ar-LY data fall back to the
+                            "ar" root and emit Arabic-Indic numerals. */}
+                        {new Date(activity.createdAt).toLocaleString("ar-LY-u-nu-latn")}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{activity.identifier}</p>

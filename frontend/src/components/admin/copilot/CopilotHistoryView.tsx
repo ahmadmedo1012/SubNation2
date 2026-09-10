@@ -136,7 +136,10 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                   <span className="text-[10px] text-status-warning">عالي</span>
                 )}
                 <span className="mr-auto text-[10px] text-muted-foreground">
-                  {ts.toLocaleString("ar-LY")}
+                  {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
+                      engines without ar-LY data fall back to the "ar"
+                      root and emit Arabic-Indic numerals otherwise. */}
+                  {ts.toLocaleString("ar-LY-u-nu-latn")}
                 </span>
               </div>
               <div className="text-xs leading-5">{oneLine}</div>

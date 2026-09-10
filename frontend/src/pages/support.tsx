@@ -341,10 +341,11 @@ export default function SupportPage() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           {selectedTicket ? (
+            /* 96-F6 (R96 A2 P2-6): back button at the 44px touch floor. */
             <button
               onClick={() => setSelectedTicket(null)}
               aria-label="رجوع لقائمة التذاكر"
-              className="w-9 h-9 rounded-xl flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border/50 transition-all press-spring"
+              className="w-11 h-11 rounded-xl flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border/50 transition-all press-spring"
             >
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -388,13 +389,14 @@ export default function SupportPage() {
           </Button>
         )}
         {showCreate && !selectedTicket && (
+          /* 96-F6 (R96 A2 P2-6): close button at the 44px touch floor. */
           <button
             onClick={() => {
               setShowCreate(false);
               setForm({ title: "", message: "", category: "other" });
             }}
             aria-label="إغلاق نموذج التذكرة الجديدة"
-            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all press-spring"
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all press-spring"
           >
             <X className="w-4 h-4" />
           </button>
@@ -538,7 +540,14 @@ export default function SupportPage() {
                   onChange={(e) => setReplyText(e.target.value)}
                   placeholder="اكتب ردك هنا..."
                   aria-label="نص الرد على التذكرة"
-                  className="flex-1 h-10 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 transition-all"
+                  /* 96-F6 (R96 A2 P2-6 + P3-3): 44px row (matches the send
+                     button) + mobile Enter key labelled “send” + the
+                     backend's reply cap (TicketMessageBody, 4000 chars) as
+                     a live client-side limit instead of a server
+                     round-trip error. */
+                  maxLength={4000}
+                  enterKeyHint="send"
+                  className="flex-1 h-11 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 transition-all"
                   dir="rtl"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -551,7 +560,7 @@ export default function SupportPage() {
                   type="submit"
                   disabled={sending || !replyText.trim()}
                   aria-label="إرسال الرد"
-                  className="w-10 h-10 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/25 press-spring"
+                  className="w-11 h-11 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/25 press-spring"
                 >
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -581,8 +590,22 @@ export default function SupportPage() {
           <form onSubmit={handleCreate} className="p-5 space-y-4">
             {/* Category pills */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-2.5 block">الفئة</Label>
-              <div className="flex flex-wrap gap-2">
+              {/* 96-F6 (R96 A6 #10): the category control is a pill GROUP,
+                 not a single form control — htmlFor can't bind to it. The
+                 group idiom: visible heading with an id +
+                 role=group/aria-labelledby on the button row (same
+                 labelling outcome as Label+htmlFor for a single field). */}
+              <p
+                id="support-ticket-category-label"
+                className="text-xs font-bold text-muted-foreground mb-2.5"
+              >
+                الفئة
+              </p>
+              <div
+                role="group"
+                aria-labelledby="support-ticket-category-label"
+                className="flex flex-wrap gap-2"
+              >
                 {CATEGORIES.map((c) => (
                   <button
                     key={c.value}
@@ -602,25 +625,46 @@ export default function SupportPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground">عنوان المشكلة *</Label>
+              {/* 96-F6 (R96 A6 #10): programmatic label + API-aligned cap
+                  (backend CreateTicketBody: title ≤ 255, message ≤ 4000 —
+                  A2 P3-3 turns the server round-trip error into a live
+                  client-side limit). */}
+              <Label
+                htmlFor="support-ticket-title"
+                className="text-xs font-bold text-muted-foreground"
+              >
+                عنوان المشكلة *
+              </Label>
               <Input
+                id="support-ticket-title"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="وصف مختصر للمشكلة..."
                 required
+                maxLength={255}
                 className="h-10 rounded-xl border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 bg-card transition-all"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-muted-foreground">تفاصيل المشكلة *</Label>
+              <Label
+                htmlFor="support-ticket-message"
+                className="text-xs font-bold text-muted-foreground"
+              >
+                تفاصيل المشكلة *
+              </Label>
               <textarea
+                id="support-ticket-message"
                 value={form.message}
                 onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
                 placeholder="اشرح المشكلة بالتفصيل لنتمكن من مساعدتك بشكل أسرع..."
                 required
                 rows={4}
-                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground"
+                maxLength={4000}
+                /* 96-F6 (R96 A1 #3 / A6 #10): 16px on mobile kills the
+                   iOS focus-zoom (the shared Input does the same via its
+                   own text-base; this raw textarea had text-sm). */
+                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground"
                 dir="rtl"
               />
             </div>
