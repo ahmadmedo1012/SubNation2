@@ -98,9 +98,7 @@ export default function AdminPromotionsPage() {
           error?: string;
           code?: string;
         } | null;
-        throw new Error(
-          getErrorMessage(body) || `فشل تحميل العروض (HTTP ${r.status})`,
-        );
+        throw new Error(getErrorMessage(body) || `فشل تحميل العروض (HTTP ${r.status})`);
       }
       const d = await r.json();
       setSales(Array.isArray(d?.flash_sales) ? d.flash_sales : []);

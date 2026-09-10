@@ -56,10 +56,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 import { AuthProvider, useAuth } from "@/lib/auth";
-import {
-  __resetAdminSessionForTests,
-  setAdminSessionMirror,
-} from "@/lib/admin-session";
+import { __resetAdminSessionForTests, setAdminSessionMirror } from "@/lib/admin-session";
 import {
   USER_SESSION_EXPIRED_MESSAGE,
   UserSessionWatcher,

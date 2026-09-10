@@ -618,7 +618,10 @@ export default function CheckoutPage() {
               >
                 <X className="w-4 h-4 shrink-0 mt-px" />
                 <div className="flex-1">
-                  <p>رصيد المحفظة غير كافٍ (الناقص {formatCurrency(comparisonTotal - (balance ?? 0))}).</p>
+                  <p>
+                    رصيد المحفظة غير كافٍ (الناقص {formatCurrency(comparisonTotal - (balance ?? 0))}
+                    ).
+                  </p>
                   <Link
                     href="/wallet?return=/checkout"
                     className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"

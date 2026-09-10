@@ -363,13 +363,9 @@ async function runWarmupCycle(): Promise<void> {
   // The self-check intentionally bypasses the warm-up gate (chicken-and-
   // egg) and the OTP preflight (the operator's own number is on the
   // session by definition) — it keeps the network/5xx retry resilience.
-  const result = await sendTextWithRetry(
-    config,
-    session.id,
-    `${operator}@c.us`,
-    WARMUP_TEXT,
-    { skipWarmupGate: true },
-  );
+  const result = await sendTextWithRetry(config, session.id, `${operator}@c.us`, WARMUP_TEXT, {
+    skipWarmupGate: true,
+  });
   if (result.ok) {
     dispatchReady.set(session.id, true);
     logger.info(
@@ -808,7 +804,9 @@ async function sendTextWithRetry(
       return result;
     }
 
-    await sleep(SEND_RETRY_BACKOFF_MS[attempt - 1] ?? SEND_RETRY_BACKOFF_MS[SEND_RETRY_BACKOFF_MS.length - 1]);
+    await sleep(
+      SEND_RETRY_BACKOFF_MS[attempt - 1] ?? SEND_RETRY_BACKOFF_MS[SEND_RETRY_BACKOFF_MS.length - 1],
+    );
 
     // §1.3D: re-run ensureSession() between attempts — the ready cache was
     // invalidated by the failure above, so this re-resolves the session

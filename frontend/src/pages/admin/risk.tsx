@@ -270,8 +270,8 @@ export default function AdminRiskPage() {
                 instead of silently cutting history. */}
             {query.data?.next_cursor && (
               <p className="text-[11px] text-muted-foreground text-center">
-                يُعرض أحدث 100 حدث فقط لهذا الفلتر — استخدم الفلاتر لتضييق النطاق
-                والوصول إلى الأحداث الأقدم.
+                يُعرض أحدث 100 حدث فقط لهذا الفلتر — استخدم الفلاتر لتضييق النطاق والوصول إلى
+                الأحداث الأقدم.
               </p>
             )}
             {/* Canonical admin table chrome + horizontal scroll on mobile —
@@ -286,13 +286,27 @@ export default function AdminRiskPage() {
                           readers; dates pinned to -u-nu-latn so engines
                           without ar-LY data never emit Arabic-Indic
                           numerals. */}
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">المستوى</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">النوع</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">المستخدم</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">القاعدة</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">النقاط</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">الإجراء</th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">الوقت</th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        المستوى
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        النوع
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        المستخدم
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        القاعدة
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        النقاط
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        الإجراء
+                      </th>
+                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                        الوقت
+                      </th>
                     </tr>
                   </thead>
                   <tbody>

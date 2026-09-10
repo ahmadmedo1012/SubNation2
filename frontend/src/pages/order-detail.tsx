@@ -152,7 +152,10 @@ export default function OrderDetailPage() {
   const copyOrderCode = async () => {
     if (!order?.order_code) return;
     const ok = await copyToClipboard(order.order_code);
-    toast({ title: ok ? "تم نسخ رقم الطلب" : "تعذّر نسخ رقم الطلب", variant: ok ? "default" : "destructive" });
+    toast({
+      title: ok ? "تم نسخ رقم الطلب" : "تعذّر نسخ رقم الطلب",
+      variant: ok ? "default" : "destructive",
+    });
   };
 
   useEffect(() => {
@@ -185,13 +188,19 @@ export default function OrderDetailPage() {
         </p>
         <div className="flex items-center justify-center gap-2.5">
           <Button
-            onClick={() => queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderCode ?? "") })}
+            onClick={() =>
+              queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderCode ?? "") })
+            }
             className="gap-1.5 rounded-xl"
           >
             <Clock className="w-4 h-4" />
             إعادة المحاولة
           </Button>
-          <Button onClick={() => navigate("/orders")} variant="outline" className="gap-2 rounded-xl">
+          <Button
+            onClick={() => navigate("/orders")}
+            variant="outline"
+            className="gap-2 rounded-xl"
+          >
             <ArrowRight className="w-4 h-4" />
             العودة للطلبات
           </Button>
@@ -328,7 +337,10 @@ export default function OrderDetailPage() {
               <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/15 text-xs text-status-success">
                 <Tag className="w-3 h-3 shrink-0" />
                 <span>
-                  كوبون <span dir="ltr" className="font-mono font-black">{couponCode}</span>
+                  كوبون{" "}
+                  <span dir="ltr" className="font-mono font-black">
+                    {couponCode}
+                  </span>
                 </span>
                 <span className="mr-auto font-bold bg-status-success/10 border border-status-success/22 px-2 py-0.5 rounded-full">
                   وفّرت {formatCurrency(discountAmount)}

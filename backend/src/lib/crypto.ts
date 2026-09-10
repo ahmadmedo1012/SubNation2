@@ -71,7 +71,8 @@ export function normalizeLibyanPhone(raw: string): string | null {
   } else if (candidate.startsWith("218")) {
     candidate = candidate.slice(3);
   }
-  const normalized = candidate.length === 10 && candidate.startsWith("0") ? candidate.slice(1) : candidate;
+  const normalized =
+    candidate.length === 10 && candidate.startsWith("0") ? candidate.slice(1) : candidate;
   if (normalized.length !== 9) return null;
   if (!LIBYAN_PHONE_PREFIXES.some((p) => normalized.startsWith(p))) return null;
   return normalized;

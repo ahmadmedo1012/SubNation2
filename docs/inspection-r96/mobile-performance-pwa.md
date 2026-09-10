@@ -4,7 +4,7 @@
 - **Agent:** diagnostic specialist (RESEARCH ONLY — no source files modified; one fresh build executed)
 - **Date:** 2026-09-10
 - **Scope:** frontend/ (Vite + React 19 + TS + Tailwind + wouter + TanStack Query + Radix + recharts + lucide + sonner + Sentry + vite-plugin-pwa/workbox), deployed on Vercel; API proxied `subnation.ly/api/* → subnation2.onrender.com`.
-- **Method:** fresh production build (`npx vite build`; pnpm not on PATH in sandbox, deps pre-installed), per-chunk raw + `gzip -9` measurement of `dist/public/assets`, static analysis of the full boot path, generated `sw.js` + `registerSW.js` inspection, **live production probes** against `https://subnation.ly` (headers, transfer sizes, `/api/products` payload), plus review of prior-round work (r3/4/8 + r92/93/94 docs) to isolate what *remains*.
+- **Method:** fresh production build (`npx vite build`; pnpm not on PATH in sandbox, deps pre-installed), per-chunk raw + `gzip -9` measurement of `dist/public/assets`, static analysis of the full boot path, generated `sw.js` + `registerSW.js` inspection, **live production probes** against `https://subnation.ly` (headers, transfer sizes, `/api/products` payload), plus review of prior-round work (r3/4/8 + r92/93/94 docs) to isolate what _remains_.
 
 ---
 
@@ -20,42 +20,42 @@ PWA v1.3.0 · generateSW · precache 14 entries (424.62 KiB advertised)
 
 **EAGER (entry + `<link rel="modulepreload">` in dist index.html + CSS):**
 
-| Chunk | Raw B | Gzip B | Notes |
-|---|---:|---:|---|
-| `index-DENcVcvo.js` (entry) | 110,719 | **32,738** | App shell, Navbar, NotFound, shared UI (all inline) |
-| `vendor-react-3l2p7574.js` | 185,868 | 58,343 | react + react-dom + scheduler (React 19 prod) |
-| `vendor-icons-D81VXjUv.js` | 32,496 | 10,682 | lucide-react, tree-shaken (~129 icons) |
-| `vendor-utils-PJZsc2dN.js` | 30,986 | 9,645 | clsx + tailwind-merge + cva + radix-slot |
-| `vendor-router-B4JciV8b.js` | 5,024 | 2,471 | wouter + regexparam |
-| `vendor-query-CdLgOk98.js` | 36,452 | 10,714 | TanStack Query |
-| `index-2_jCgVKj.css` | 247,095 | 28,974 | single CSS bundle (Tailwind + all fonts' @font-face) |
-| fonts preloaded (`arabic-400` + `latin-400` woff2) | 24,160 | — | injected per-build by `fontPreloadInject()` |
+| Chunk                                              |   Raw B |     Gzip B | Notes                                                |
+| -------------------------------------------------- | ------: | ---------: | ---------------------------------------------------- |
+| `index-DENcVcvo.js` (entry)                        | 110,719 | **32,738** | App shell, Navbar, NotFound, shared UI (all inline)  |
+| `vendor-react-3l2p7574.js`                         | 185,868 |     58,343 | react + react-dom + scheduler (React 19 prod)        |
+| `vendor-icons-D81VXjUv.js`                         |  32,496 |     10,682 | lucide-react, tree-shaken (~129 icons)               |
+| `vendor-utils-PJZsc2dN.js`                         |  30,986 |      9,645 | clsx + tailwind-merge + cva + radix-slot             |
+| `vendor-router-B4JciV8b.js`                        |   5,024 |      2,471 | wouter + regexparam                                  |
+| `vendor-query-CdLgOk98.js`                         |  36,452 |     10,714 | TanStack Query                                       |
+| `index-2_jCgVKj.css`                               | 247,095 |     28,974 | single CSS bundle (Tailwind + all fonts' @font-face) |
+| fonts preloaded (`arabic-400` + `latin-400` woff2) |  24,160 |          — | injected per-build by `fontPreloadInject()`          |
 
 **Eager critical-path total ≈ 124.6 KB JS gz + 29.0 KB CSS gz + 24.2 KB fonts ≈ 178 KB transfer** (before brotli, which Vercel also applies). Verified live on production (`index-DJO46LN0.js` transferred 33,040 B gzip ≈ local build).
 
 **DEFERRED (load during session, off the critical path):**
 
-| Chunk | Raw B | Gzip B | Trigger |
-|---|---:|---:|---|
-| `vendor-sentry-CZFMmwmu.js` | 469,406 | **155,424** | `requestIdleCallback` after boot (boot-sentry) |
-| `home-BUqO9zx-.js` | 22,888 | 6,682 | lazy route — **only after auth probe resolves** (see F-1) |
-| `vendor-socket-DsENSA6R.js` | 42,478 | 13,194 | +3.5 s after mount (DeferredSocketInitializer) |
-| `vendor-firebase-DG6ky1FZ.js` | 153,638 | 44,091 | login-action only (dynamic `import("firebase/auth")`) |
-| `browser-iDJW9IsH.js` (qrcode) | 25,783 | 10,018 | admin TOTP setup only |
+| Chunk                          |   Raw B |      Gzip B | Trigger                                                   |
+| ------------------------------ | ------: | ----------: | --------------------------------------------------------- |
+| `vendor-sentry-CZFMmwmu.js`    | 469,406 | **155,424** | `requestIdleCallback` after boot (boot-sentry)            |
+| `home-BUqO9zx-.js`             |  22,888 |       6,682 | lazy route — **only after auth probe resolves** (see F-1) |
+| `vendor-socket-DsENSA6R.js`    |  42,478 |      13,194 | +3.5 s after mount (DeferredSocketInitializer)            |
+| `vendor-firebase-DG6ky1FZ.js`  | 153,638 |      44,091 | login-action only (dynamic `import("firebase/auth")`)     |
+| `browser-iDJW9IsH.js` (qrcode) |  25,783 |      10,018 | admin TOTP setup only                                     |
 
 **ADMIN-ONLY (never downloaded by storefront visitors):**
 
-| Chunk | Raw B | Gzip B |
-|---|---:|---:|
-| `vendor-charts-aHp5your.js` (recharts + d3) | 403,540 | **109,128** |
-| `layout-Bpus9WHG.js` (admin layout/nav) | 54,289 | 15,475 |
+| Chunk                                                                           |        Raw B |      Gzip B |
+| ------------------------------------------------------------------------------- | -----------: | ----------: |
+| `vendor-charts-aHp5your.js` (recharts + d3)                                     |      403,540 | **109,128** |
+| `layout-Bpus9WHG.js` (admin layout/nav)                                         |       54,289 |      15,475 |
 | `products/settings/system/topups/users/orders-jkiv7pRV/dashboard/…` (20 chunks) | 10–43 K each | 3–13 K each |
 
 **Storefront lazy routes:** `category` 20.0K/6.0K, `product` 28.5K/8.0K, `checkout` 14.1K/4.7K, `cart` 7.8K/2.6K, `orders` 10.5K/3.2K, `login` 4.3K/1.8K, `register` 3.8K/1.6K, `wallet` 37.5K/10.1K, `support` 22.8K/6.9K, `terms` 9.1K/3.2K, `loyalty` 12.8K/4.0K, `referrals` 11.2K/3.8K, `profile` 14.4K/4.7K, `flash-sales` 7.5K/2.7K, `order-detail` 13.5K/3.8K, `status` 3.9K/1.7K, `onboarding` 5.2K/2.1K, `auth-callback` 1.9K/1.0K, `telegram-callback` 3.4K/1.6K, `not-found` (in entry), `MobileNav` 2.2K/1.1K, `Footer` 1.8K/0.8K, `FlashSaleBanner` 4.1K/1.7K, `NotificationBell` 9.4K/3.4K.
 
 ### 1.2 Threshold scan (task's criteria)
 
-- **Chunks > 200 KB raw:** `vendor-sentry` (469 K), `vendor-charts` (404 K) — both *off* the storefront critical path. ✔ no eager offender.
+- **Chunks > 200 KB raw:** `vendor-sentry` (469 K), `vendor-charts` (404 K) — both _off_ the storefront critical path. ✔ no eager offender.
 - **Chunks > 80 KB gzip:** `vendor-sentry` (155.4 K), `vendor-charts` (109.1 K) — same as above.
 - **recharts in storefront entry?** **No.** `vendor-charts` is statically imported only by admin `dashboard-*.js` and `system-*.js`; the entry references it solely inside `__vite__mapDeps` (dynamic map). ✔
 - **lucide-react whole lib?** **No.** 32.5 K raw for ~129 icons (full lib ≈ 1 MB+). Tree-shaking works; the 10.7 K gz is eager because Navbar/ProductCard statically import icons (P3-9).
@@ -76,6 +76,7 @@ PWA v1.3.0 · generateSW · precache 14 entries (424.62 KiB advertised)
 ## 3. Images (LCP) — CLS-safe today; P1 risk when enrichment lands
 
 `ProductCard.tsx` (storefront grid):
+
 - `width={400} height={400}` attrs + `aspect-square` container → **CLS-reserved** ✔; `decoding="async"` ✔.
 - `loading={index < 4 ? "eager" : "lazy"}` — correct (lazy on the LCP image is a known 400-800 ms LCP regression; avoided) ✔.
 - `fetchPriority={0:"high" / 1-3:"auto" / ≥4:"low"}` — a proper priority ladder ✔.
@@ -83,7 +84,7 @@ PWA v1.3.0 · generateSW · precache 14 entries (424.62 KiB advertised)
 - **No `srcset`/`sizes`** — no responsive variants exist upstream (see F-2).
 - Home hero = text + CSS gradients (no hero `<img>`) → LCP element is `h1` text (fonts) + first cards. Product page main image: `width/height 800`, `fetchPriority="high"` ✔; recommendations + recent-orders thumbs `loading="lazy"` ✔.
 
-**Live reality check (production, 2026-09-10):** `/api/products` returns **18 products, 0 with `image_url`** (matches worklog round-5: enrichment pipeline not yet activated). Today's LCP = text + SVG fallbacks + fonts (both preloaded). The entire image pipeline is *dormant-but-ready*: `preconnect https://image2url.com` (no-cors — correctly fixed in r94 A7 F-1), `images-v1` CacheFirst SW rule, priority ladder. **When images arrive, F-2 becomes the #1 mobile cost.**
+**Live reality check (production, 2026-09-10):** `/api/products` returns **18 products, 0 with `image_url`** (matches worklog round-5: enrichment pipeline not yet activated). Today's LCP = text + SVG fallbacks + fonts (both preloaded). The entire image pipeline is _dormant-but-ready_: `preconnect https://image2url.com` (no-cors — correctly fixed in r94 A7 F-1), `images-v1` CacheFirst SW rule, priority ladder. **When images arrive, F-2 becomes the #1 mobile cost.**
 
 ---
 
@@ -123,6 +124,7 @@ Mitigating factors already present: probe pre-seeds the `/me` query cache (no du
 ## 6. PWA audit
 
 ### 6.1 manifest.json (public/, single source of truth — `manifest:false` in VitePWA ✔)
+
 - `name` (Arabic) / `short_name` ✔ · `lang:"ar"` + `dir:"rtl"` ✔ · `display:"standalone"` + `orientation:"portrait-primary"` ✔ · `start_url:"/"` + `scope:"/"` ✔.
 - Icons: 96 + 192 + 512 (`any`) **+ 512 `maskable`** ✔; files exist in `public/` ✔; `apple-touch-icon` → `pwa-192x192.png` (13.4 K) ✔; all meta (`apple-mobile-web-app-*`, `mobile-web-app-capable`) ✔.
 - `theme_color #e11d48` matches index.html meta & runtime upserts ✔; `background_color #0a0a0a` matches `--background` ✔.
@@ -130,6 +132,7 @@ Mitigating factors already present: probe pre-seeds the `/me` query cache (no du
 - Gaps: **no `id` field** (PWA identity — Chrome derives from start_url today, breaks if start_url ever changes); **`screenshots: []`** (no rich install sheet on Android) → P3-1.
 
 ### 6.2 Workbox (generateSW, verified in dist sw.js)
+
 - `skipWaiting()` + `clientsClaim()` + `cleanupOutdatedCaches()` — autoUpdate ✔.
 - **Precache diet** (r3 §1.1): allowlist = index.html, favicon, logo, opengraph.jpg, manifest.json, `assets/*.css`, `assets/*.woff2`; `globIgnores: ["**/*.js"]`; `maximumFileSizeToCacheInBytes: 256 K`. Dist sw.js precache manifest confirmed: 14 entries, **no JS** ✔. Two entries duplicated (favicon.svg, subnation-logo.png appear twice — `includeAssets` + `globPatterns` overlap) → P3-2.
 - **runtimeCaching (verified baked into sw.js):**
@@ -141,6 +144,7 @@ Mitigating factors already present: probe pre-seeds the `/me` query cache (no du
 - **Offline behavior:** shell + CSS + fonts + (≤60 s old) catalog served from cache → **stale product list works** ✔. Beyond 60 s offline: catalog cache expired → SWR fails → home renders its honest `WifiOff` error card with retry ✔; `/api/auth/probe` fails → guest view (acceptable). `init.js` + `registerSW.js` are referenced by precached index.html but **not themselves precached** (404 offline; harmless) → P3-3. No dedicated offline page → covered by F-7 fix.
 
 ### 6.3 Vercel headers — verified LIVE on subnation.ly
+
 - `/assets/*` → `Cache-Control: public, max-age=31536000, immutable` ✔ (measured on prod entry chunk).
 - Everything else (HTML, sw.js, manifest, init.js) → `no-cache, must-revalidate` + nosniff/DENY/strict-referrer/permissions-policy ✔ (sw.js MUST be revalidated — correct).
 - Rewrites: `/api/* → render` + SPA fallback ✔. Brotli on API + assets verified (`content-encoding: br`, /api/products 7,981 B raw → 2,193 B br).
@@ -178,20 +182,23 @@ Mitigating factors already present: probe pre-seeds the `/me` query cache (no du
 ## 10. FINDINGS (severity-ranked)
 
 ### 🔴 P0 — none
+
 Entry = 32.7 K gz (< 300 K), full route splitting, SW valid/registered/precache-dieted. The P0 class of failures does not exist in this codebase anymore.
 
 ---
 
 ### 🟠 P1 — 2
 
-**F-1 · AuthGate serial waterfall delays LCP on mobile** *(biggest remaining LCP lever)*
+**F-1 · AuthGate serial waterfall delays LCP on mobile** _(biggest remaining LCP lever)_
+
 - **Evidence:** `App.tsx` `AuthGate` renders splash until `/api/auth/probe` resolves; the entire router (and therefore the `HomePage` lazy `import()`) sits **inside** the gate. Home chunk (6.7 K gz) is not preloaded in dist index.html (`rg home-BUqO9zx dist/index.html` → 0 hits). Probe measured 210–650 ms live (Vercel→Render proxy, not the "same-origin 50-300 ms" the comment assumes). `/api/products` is public and unauthenticated but only fires after the gate + chunk + mount.
 - **Mobile impact:** 3 serial round-trips (probe → home chunk → products) before any product paints ≈ **+0.6–1.2 s LCP on 3G/4G**; splash shows (>250 ms threshold) on most mobile loads.
 - **Fix (pick 1+2):** (1) render the router immediately and gate only auth-dependent chrome (Navbar user chip, MobileNav) — logout-flicker is the documented tradeoff but it costs ~0; or keep the gate but (2) fire `import("@/pages/home")` + a head-start `fetch("/api/products")` (seed the query cache) in parallel with the probe from `main.tsx`. Either removes 1–2 RTTs from LCP with no UX regression.
 
 **F-2 · Product images = un-resized originals from image2url.com (dormant → will dominate mobile cost when enrichment lands)**
+
 - **Evidence:** 0/18 products have images today (live API), but the pipeline (enrichment spec 012) is designed to fill `image_url` with image2url.com URLs. `ProductCard` hints `width=400` but the browser downloads the **original file** — vite.config's own comment budgets "**~0.8–3 MB per product-grid page view**". No `srcset`/`sizes`, no resize proxy anywhere (image2url has no variant support per that same comment).
-- **Mobile impact:** when images arrive: multi-MB cellular data per grid view; LCP image likely 300 K–1 MB+ originals; 30-day CacheFirst SW rule softens *revisits* only.
+- **Mobile impact:** when images arrive: multi-MB cellular data per grid view; LCP image likely 300 K–1 MB+ originals; 30-day CacheFirst SW rule softens _revisits_ only.
 - **Fix:** front the images with a resizing CDN/proxy that emits variants (e.g. wsrv.nl `?w=` — no vendor lock, or Cloudflare Images / image2url's own resize params if any) and add `srcset="… 320w, … 480w, … 800w" sizes="(min-width:1024px) 240px, 45vw"` to ProductCard + product page. Keep the existing eager-first-4 + fetchpriority ladder. ~70–90% byte cut on mobile.
 
 ---
@@ -199,36 +206,43 @@ Entry = 32.7 K gz (< 300 K), full route splitting, SW valid/registered/precache-
 ### 🟡 P2 — 7
 
 **F-3 · Cart context re-renders the whole product grid on every add-to-cart (INP)** — still open from r94 F-4.
+
 - Evidence: `cart.tsx:144-146` — inline non-memoized `value={{items, itemCount, totalLYD, addItem…}}`; single wide context; `ProductCard` consumes `useCart()`. `React.memo` comparator (ProductCard.tsx:398) can't stop context propagation.
 - Impact: every cart tap re-renders N cards (N=18 today, up to 500 at scale) + Navbar; visible as tap-response jank on low-end Android.
-- Fix: split contexts (state vs commands) + `useMemo` the command object (stable identity — commands are already `useCallback`s); cards then re-render only when `items` actually changes identity *and* they read it (they don't need `items` at all). One-file change.
+- Fix: split contexts (state vs commands) + `useMemo` the command object (stable identity — commands are already `useCallback`s); cards then re-render only when `items` actually changes identity _and_ they read it (they don't need `items` at all). One-file change.
 
 **F-4 · `backdrop-blur-3xl` (64px) on the always-mounted fixed MobileNav**
+
 - Evidence: `MobileNav.tsx:48` — `bg-card/92 backdrop-blur-3xl`, rendered on every logged-in mobile page, over constantly-scrolling content.
 - Impact: 64 px backdrop-filter forces per-frame GPU re-rasterization under the bar on low-end Android (the exact market per AppSplashScreen's own comment); the 92%-opaque background makes the blur barely visible — it's cost without visual payoff.
 - Fix: `bg-card` solid (or `/97` + `backdrop-blur-md` at most). One class change.
 
 **F-4b · Home hero animated `blur-3xl` blobs (GPU)**
+
 - Evidence: `home.tsx:404-405` — two `blur-3xl` circles with `blob-drift` 9 s/13 s infinite + `will-change: transform` (index.css:828-834).
 - Impact: continuous compositor work + big blurred-layer rasterization on the most-visited page for guests; disables only under prefers-reduced-motion.
 - Fix: pre-render the blur into a static PNG/WebP and animate `transform` only (still cheap), or cap at `blur-xl` + one blob, or pause animation when hero is off-screen (IntersectionObserver).
 
 **F-5 · Guests download the socket.io stack for nothing**
+
 - Evidence: `App.tsx` mounts `DeferredSocketInitializer` unconditionally (after gate); chunk graph: `SocketInitializer` (2.8 K) + `vendor-socket` (13.2 K gz) load at +3.5 s for anonymous visitors; `useSocket(undefined)` no-ops; `useGetMe` disabled.
 - Impact: 16 K gz wasted cellular data + engine.io parse/TBT on the majority (guest) traffic.
 - Fix: `if (!token) return null` inside `DeferredSocketInitializer` (it already sits under `AuthProvider`), or mount conditionally in `App`.
 
 **F-6 · Sentry downloads 155.4 K gz on every session (deferred, but unconditional)**
+
 - Evidence: `boot-sentry.ts` schedules `import("../instrument")` on idle for 100% of loads; vendor-sentry is the largest chunk in the app (469 K raw / 155.4 K gz incl. Replay + BrowserTracing). tracesSampleRate 10%, replaySession 10%, replayOnError 100%.
 - Impact: after the ~178 K critical path settles, mobile users still pull another ~156 K (≈ another full critical path) for observability; on metered connections this is real money, and Replay's rrweb recording adds main-thread cost during the session.
-- Fix (options, all preserving error coverage): (a) init on idle only when `navigator.connection.saveData !== true` / `effectiveType` ≥ 3G for the *SDK*, keep the tiny error-buffer shim always; (b) disable Replay on mobile viewports (largest single win — Replay is ~half the chunk); (c) accepted-tradeoff documentation if ops insists. Also note `sendDefaultPii: true` + `enableLogs` ship extra weight/traffic — sample logs in prod.
+- Fix (options, all preserving error coverage): (a) init on idle only when `navigator.connection.saveData !== true` / `effectiveType` ≥ 3G for the _SDK_, keep the tiny error-buffer shim always; (b) disable Replay on mobile viewports (largest single win — Replay is ~half the chunk); (c) accepted-tradeoff documentation if ops insists. Also note `sendDefaultPii: true` + `enableLogs` ship extra weight/traffic — sample logs in prod.
 
 **F-7 · SW update flow: silent takeover, no refresh prompt; offline > 60 s = error card**
+
 - Evidence: sw.js = `skipWaiting + clientsClaim` (autoUpdate), registerSW.js is the stock 3-liner; no `onUpdateFound`/`onActivated` → reload or toast. `api-catalog-v1` `maxAgeSeconds: 60` expires offline entries.
 - Impact: user on an open tab during a deploy keeps old UI until a full navigation (lazyWithRetry rescues broken navigations with one reload — decent net). Offline user past 60 s gets the WifiOff error page instead of a last-known catalog.
-- Fix: (a) raise catalog `maxAgeSeconds` to e.g. 7 days (SWR still refreshes whenever online — staleness bound is the *response* age, not cache TTL; or switch to `NetworkFirst` with `networkTimeoutSeconds: 3`); (b) add `clientsClaim`-activated `postMessage` → sonner toast "تحديث جديد — إعادة تحميل" with a reload action (or auto `location.reload()` when the tab is hidden).
+- Fix: (a) raise catalog `maxAgeSeconds` to e.g. 7 days (SWR still refreshes whenever online — staleness bound is the _response_ age, not cache TTL; or switch to `NetworkFirst` with `networkTimeoutSeconds: 3`); (b) add `clientsClaim`-activated `postMessage` → sonner toast "تحديث جديد — إعادة تحميل" with a reload action (or auto `location.reload()` when the tab is hidden).
 
 **F-8 · Hidden sourcemaps (9.38 MB) are deployed publicly**
+
 - Evidence: `sourcemap: "hidden"` + Sentry plugin gated on `SENTRY_AUTH_TOKEN`, but `sourcemaps.deleteSourcemapsAfterUpload` is not configured → `.map` files remain in `dist/public` (9,376,625 B across 71 maps) and ship to Vercel. Not referenced by bundles, but fetchable by URL (`/assets/index-*.js.map`).
 - Impact: full TypeScript sources exposed to anyone who guesses the URL (security hygiene); 9.4 MB of dead deploy weight; slows deploys.
 - Fix: `sentryVitePlugin({ sourcemaps: { deleteSourcemapsAfterUpload: true } })`, plus a build-time guard that fails if `*.map` exists in `dist/public` without the token.
@@ -261,7 +275,7 @@ Route splitting of all 31 pages + admin double-isolation; recharts/firebase/sock
 2. **F-3** — cart context split + memoized value. Cheapest big INP win.
 3. **F-4/F-4b** — remove backdrop-blur-3xl from MobileNav; de-animate/de-blur hero blobs. Cheapest GPU win on low-end Android.
 4. **F-5** — token-gate the socket initializer (guests stop paying 16 K gz).
-5. **F-2** — design the image variant pipeline *before* enrichment activates image_url (srcset + resize proxy); otherwise the P1 materializes silently.
+5. **F-2** — design the image variant pipeline _before_ enrichment activates image_url (srcset + resize proxy); otherwise the P1 materializes silently.
 6. **F-7** — catalog cache TTL 60 s → 7 d + update toast; offline story completes.
 7. **F-8/P3-8** — sourcemap deletion + budget-plugin measurement fix (guardrail integrity).
 8. **F-6** — decide the Sentry/Replay mobile tradeoff (document or gate on saveData/viewport).

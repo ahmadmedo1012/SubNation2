@@ -392,10 +392,18 @@ export function InventoryUploadDialog({
                     {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
                         announce the header↔cell relation on vertical
                         sweeps instead of a bare "خلية". */}
-                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-10">#</th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-20">النوع</th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5">المعرّف</th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5">حالة</th>
+                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-10">
+                      #
+                    </th>
+                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-20">
+                      النوع
+                    </th>
+                    <th scope="col" className="text-right font-bold px-2 py-1.5">
+                      المعرّف
+                    </th>
+                    <th scope="col" className="text-right font-bold px-2 py-1.5">
+                      حالة
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

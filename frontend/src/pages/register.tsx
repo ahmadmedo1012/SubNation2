@@ -114,9 +114,8 @@ export default function RegisterPage() {
                   NOT 5 د.ل. Unified with referrals.tsx / loyalty.tsx
                   (نقاط قابلة للتحويل إلى رصيد). */}
               <span>
-                ادعُ صديقاً واحصل على{" "}
-                <span className="font-bold">50 نقطة ولاء</span> عند أول شحن له — قابلة للتحويل
-                إلى رصيد
+                ادعُ صديقاً واحصل على <span className="font-bold">50 نقطة ولاء</span> عند أول شحن له
+                — قابلة للتحويل إلى رصيد
               </span>
             </div>
           )}

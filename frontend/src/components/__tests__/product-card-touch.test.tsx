@@ -108,9 +108,7 @@ describe("ProductCard — add-to-cart double-tap lock (96-F4 / R96 A2 P1-7)", ()
     expect(addItemMock).toHaveBeenCalledWith(
       expect.objectContaining({ productId: 5, name: "Netflix شهر" }),
     );
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "أُضيف إلى السلة" }),
-    );
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "أُضيف إلى السلة" }));
   });
 });
 

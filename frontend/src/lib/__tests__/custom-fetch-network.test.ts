@@ -109,11 +109,7 @@ function installAnyStub() {
       // A real merge: aborts when ANY input aborts.
       const controller = new AbortController();
       for (const signal of signals) {
-        signal.addEventListener(
-          "abort",
-          () => controller.abort(signal.reason),
-          { once: true },
-        );
+        signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
       }
       return controller.signal;
     },
@@ -136,10 +132,7 @@ function hangingSignalAwareFetch() {
         signal.addEventListener(
           "abort",
           () => {
-            reject(
-              signal.reason ??
-                Object.assign(new Error("aborted"), { name: "AbortError" }),
-            );
+            reject(signal.reason ?? Object.assign(new Error("aborted"), { name: "AbortError" }));
           },
           { once: true },
         );
@@ -360,7 +353,9 @@ describe("customFetch — 401 observer dispatch: additive registry + single slot
     const unsubscribe = addUnauthorizedHandler(additive);
     setUnauthorizedHandler(single);
 
-    fetchMock.mockResolvedValue(jsonResponse({ error: "unauthorized" }, { status: 401, statusText: "Unauthorized" }));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ error: "unauthorized" }, { status: 401, statusText: "Unauthorized" }),
+    );
 
     await expect(customFetch("/api/orders")).rejects.toMatchObject({
       name: "ApiError",

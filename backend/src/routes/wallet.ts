@@ -134,227 +134,232 @@ router.post(
   riskSoftBlockGuardMiddleware(),
   idempotency({ routeKey: "wallet.topups.create" }),
   async (req, res) => {
-  const { userId } = req as AuthenticatedRequest;
+    const { userId } = req as AuthenticatedRequest;
 
-  const parse = CreateTopupBody.safeParse(req.body);
-  if (!parse.success)
-    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
-  const {
-    amount,
-    payment_method,
-    payment_network,
-    sender_phone,
-    sender_account,
-    payment_reference,
-  } = parse.data;
+    const parse = CreateTopupBody.safeParse(req.body);
+    if (!parse.success)
+      return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    const {
+      amount,
+      payment_method,
+      payment_network,
+      sender_phone,
+      sender_account,
+      payment_reference,
+    } = parse.data;
 
-  // F-03 (round-93 A2 §"Duplicate-transfer double-credit"): normalize the
-  // transfer receipt/reference HERE so every downstream dedup layer
-  // (V1-M9 partial unique index, the B2-02 in-tx exact check, the advisory
-  // lock, the composite soft-dedup) compares canonical values — a raw
-  // "  REF-1  " would dodge every exact-match guard while still being the
-  // same transfer. Handler-enforced semantic bound (the same pattern the
-  // CreateTopupBody openapi description documents for the other conditional
-  // rules): trimmed + ≤ 100 chars; the generated zod schema remains the
-  // looser 255-char outer perimeter. Blank-after-trim → null (the partial
-  // index exempts blank refs as the legacy class).
-  const paymentReference =
-    typeof payment_reference === "string" && payment_reference.trim().length > 0
-      ? payment_reference.trim()
-      : null;
-  if (paymentReference !== null && paymentReference.length > 100) {
-    return res
-      .status(400)
-      .json(
-        createErrorResponse("مرجع الدفع طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
-      );
-  }
-
-  if (amount <= 0 || amount > 10000) {
-    return res
-      .status(400)
-      .json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
-  }
-
-  const method = payment_method ?? "mobile_transfer";
-
-  if (method === "mobile_transfer" && !payment_network) {
-    return res.status(400).json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
-  }
-  if (method === "lypay" && !sender_account) {
-    return res
-      .status(400)
-      .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
-  }
-
-  if (method === "mobile_transfer" && sender_phone) {
-    if (!normalizeLibyanPhone(sender_phone)) {
+    // F-03 (round-93 A2 §"Duplicate-transfer double-credit"): normalize the
+    // transfer receipt/reference HERE so every downstream dedup layer
+    // (V1-M9 partial unique index, the B2-02 in-tx exact check, the advisory
+    // lock, the composite soft-dedup) compares canonical values — a raw
+    // "  REF-1  " would dodge every exact-match guard while still being the
+    // same transfer. Handler-enforced semantic bound (the same pattern the
+    // CreateTopupBody openapi description documents for the other conditional
+    // rules): trimmed + ≤ 100 chars; the generated zod schema remains the
+    // looser 255-char outer perimeter. Blank-after-trim → null (the partial
+    // index exempts blank refs as the legacy class).
+    const paymentReference =
+      typeof payment_reference === "string" && payment_reference.trim().length > 0
+        ? payment_reference.trim()
+        : null;
+    if (paymentReference !== null && paymentReference.length > 100) {
       return res
         .status(400)
-        .json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
-    }
-  }
-
-  // Anti-abuse: max 3 pending requests per user.
-  //
-  // B2-09 (round-92 audit): the count-then-insert pair runs inside ONE
-  // transaction guarded by a per-user advisory lock. The old
-  // check-then-insert allowed N parallel POSTs to all count 0 pending and
-  // all insert (cap bypassed — no direct money impact since each request
-  // still needs manual approval, but the anti-abuse invariant was soft).
-  // The advisory lock serializes same-user submissions; count + auto-reject
-  // heuristic + insert now see a consistent snapshot and commit atomically.
-  const MAX_PENDING = 3;
-  const submission = await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`);
-
-    const [{ pendingCount }] = await tx
-      .select({ pendingCount: count() })
-      .from(walletTopupsTable)
-      .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
-
-    if (Number(pendingCount) >= MAX_PENDING) {
-      return { kind: "limited" as const, pendingCount: Number(pendingCount) };
+        .json(
+          createErrorResponse("مرجع الدفع طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
+        );
     }
 
-    const [{ rejectedCount }] = await tx
-      .select({ rejectedCount: count() })
-      .from(walletTopupsTable)
-      .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
-
-    // (Typed to the topup_status enum — replaces the legacy `as any`.)
-    let initialStatus: "pending" | "rejected" = "pending";
-    let initialAdminNote: string | null = null;
-
-    // Recharge Verification Heuristic: Auto-reject serial abusers
-    if (Number(rejectedCount) >= 3) {
-      initialStatus = "rejected";
-      initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
+    if (amount <= 0 || amount > 10000) {
+      return res
+        .status(400)
+        .json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
     }
 
-    const [topup] = await tx
-      .insert(walletTopupsTable)
-      .values({
-        userId,
-        amount: String(amount),
-        paymentMethod: method,
-        paymentNetwork: payment_network ?? null,
-        senderPhone: sender_phone ?? null,
-        senderAccount: sender_account ?? null,
-        paymentReference,
-        status: initialStatus,
-        adminNote: initialAdminNote,
-      })
-      .returning();
+    const method = payment_method ?? "mobile_transfer";
 
-    return { kind: "ok" as const, topup, initialStatus };
-  });
+    if (method === "mobile_transfer" && !payment_network) {
+      return res
+        .status(400)
+        .json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
+    }
+    if (method === "lypay" && !sender_account) {
+      return res
+        .status(400)
+        .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
+    }
 
-  if (submission.kind === "limited") {
-    return res.status(429).json({
-      error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
-      // V4-P1: the code field is what the frontend getErrorMessage maps
-      // to the Arabic message — without it this fell to the raw string.
-      code: ErrorCode.TOPUP_LIMIT_EXCEEDED,
-      pending_count: submission.pendingCount,
-      limit: MAX_PENDING,
-    });
-  }
-
-  const { topup, initialStatus } = submission;
-
-  // ── Telegram approval request (fire-and-forget) ────────────────────────
-  // Operators approve/reject directly from the admin group via inline
-  // buttons; the webhook at /api/webhook/telegram executes the decision
-  // (allowlist-gated by TELEGRAM_ADMIN_IDS). Never blocks the user.
-  if ((initialStatus as string) === "pending") {
-    void (async () => {
-      try {
-        const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
-        const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
-        if (!botToken || !chatId) return;
-        // SEC-92-09 (round-92 audit): this message previously used the
-        // legacy "Markdown" parse_mode with UNESCAPED user-controlled
-        // fields. sender_phone is only validated for mobile_transfer (a
-        // lypay submission can carry any string), and payment_network is a
-        // free-form string — one metacharacter (*, _, `, [) made Telegram's
-        // parser reject the whole sendMessage, silently dropping the
-        // approve/reject keyboard from the operator group. HTML mode +
-        // escaping (same pattern as telegram.ts's dispatch pipeline) makes
-        // the approval card render for ANY input the user submits.
-        const text =
-          `💰 <b>طلب شحن جديد #${topup.id}</b>\n` +
-          `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
-          `• المبلغ: <b>${amount} د.ل</b>\n` +
-          `• الطريقة: ${escapeTelegramHtml(method)}` +
-          `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}\n` +
-          // F-03 (round-93 A2): the receipt reference rides the approval card
-          // so the operator can compare it against the bank statement — the
-          // duplicate guards (exact + composite) are only actionable when
-          // the human in the loop can SEE the value they dedupe on.
-          (paymentReference
-            ? `• المرجع: <code>${escapeTelegramHtml(paymentReference)}</code>\n`
-            : "");
-        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: "HTML",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: "✅ موافقة", callback_data: `topup_app:${topup.id}` },
-                  { text: "❌ رفض", callback_data: `topup_rej:${topup.id}` },
-                ],
-              ],
-            },
-          }),
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!res.ok)
-          logger.warn({ status: res.status }, "[wallet] telegram approval notify failed");
-      } catch (err) {
-        logger.warn({ err }, "[wallet] telegram approval notify threw");
+    if (method === "mobile_transfer" && sender_phone) {
+      if (!normalizeLibyanPhone(sender_phone)) {
+        return res
+          .status(400)
+          .json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
       }
-    })();
-  }
+    }
 
-  const [currentUser] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
-  if (currentUser)
-    notifyNewTopup({
-      phone: currentUser.phone,
-      amount,
-      network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
-      topupId: topup.id,
-      provider: derivePrimaryProvider(currentUser),
+    // Anti-abuse: max 3 pending requests per user.
+    //
+    // B2-09 (round-92 audit): the count-then-insert pair runs inside ONE
+    // transaction guarded by a per-user advisory lock. The old
+    // check-then-insert allowed N parallel POSTs to all count 0 pending and
+    // all insert (cap bypassed — no direct money impact since each request
+    // still needs manual approval, but the anti-abuse invariant was soft).
+    // The advisory lock serializes same-user submissions; count + auto-reject
+    // heuristic + insert now see a consistent snapshot and commit atomically.
+    const MAX_PENDING = 3;
+    const submission = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`,
+      );
+
+      const [{ pendingCount }] = await tx
+        .select({ pendingCount: count() })
+        .from(walletTopupsTable)
+        .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
+
+      if (Number(pendingCount) >= MAX_PENDING) {
+        return { kind: "limited" as const, pendingCount: Number(pendingCount) };
+      }
+
+      const [{ rejectedCount }] = await tx
+        .select({ rejectedCount: count() })
+        .from(walletTopupsTable)
+        .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
+
+      // (Typed to the topup_status enum — replaces the legacy `as any`.)
+      let initialStatus: "pending" | "rejected" = "pending";
+      let initialAdminNote: string | null = null;
+
+      // Recharge Verification Heuristic: Auto-reject serial abusers
+      if (Number(rejectedCount) >= 3) {
+        initialStatus = "rejected";
+        initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
+      }
+
+      const [topup] = await tx
+        .insert(walletTopupsTable)
+        .values({
+          userId,
+          amount: String(amount),
+          paymentMethod: method,
+          paymentNetwork: payment_network ?? null,
+          senderPhone: sender_phone ?? null,
+          senderAccount: sender_account ?? null,
+          paymentReference,
+          status: initialStatus,
+          adminNote: initialAdminNote,
+        })
+        .returning();
+
+      return { kind: "ok" as const, topup, initialStatus };
     });
 
-  // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never
-  // blocks; gated on RISK_PIPELINE_ENABLED inside scoreEvent.
-  scoreEventFireAndForget({
-    eventType: "topup_attempt",
-    userId,
-    ipAddress: req.ip ?? null,
-    userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
-    phone: currentUser?.phone ?? null,
-    ruleContext: {
-      event: {
-        eventType: "topup_attempt",
-        ipAddress: req.ip ?? null,
-        amount,
-      },
-      user: { id: userId },
-    },
-  });
+    if (submission.kind === "limited") {
+      return res.status(429).json({
+        error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
+        // V4-P1: the code field is what the frontend getErrorMessage maps
+        // to the Arabic message — without it this fell to the raw string.
+        code: ErrorCode.TOPUP_LIMIT_EXCEEDED,
+        pending_count: submission.pendingCount,
+        limit: MAX_PENDING,
+      });
+    }
 
-  return res.status(201).json(formatTopup(topup));
-});
+    const { topup, initialStatus } = submission;
+
+    // ── Telegram approval request (fire-and-forget) ────────────────────────
+    // Operators approve/reject directly from the admin group via inline
+    // buttons; the webhook at /api/webhook/telegram executes the decision
+    // (allowlist-gated by TELEGRAM_ADMIN_IDS). Never blocks the user.
+    if ((initialStatus as string) === "pending") {
+      void (async () => {
+        try {
+          const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
+          const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
+          if (!botToken || !chatId) return;
+          // SEC-92-09 (round-92 audit): this message previously used the
+          // legacy "Markdown" parse_mode with UNESCAPED user-controlled
+          // fields. sender_phone is only validated for mobile_transfer (a
+          // lypay submission can carry any string), and payment_network is a
+          // free-form string — one metacharacter (*, _, `, [) made Telegram's
+          // parser reject the whole sendMessage, silently dropping the
+          // approve/reject keyboard from the operator group. HTML mode +
+          // escaping (same pattern as telegram.ts's dispatch pipeline) makes
+          // the approval card render for ANY input the user submits.
+          const text =
+            `💰 <b>طلب شحن جديد #${topup.id}</b>\n` +
+            `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
+            `• المبلغ: <b>${amount} د.ل</b>\n` +
+            `• الطريقة: ${escapeTelegramHtml(method)}` +
+            `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}\n` +
+            // F-03 (round-93 A2): the receipt reference rides the approval card
+            // so the operator can compare it against the bank statement — the
+            // duplicate guards (exact + composite) are only actionable when
+            // the human in the loop can SEE the value they dedupe on.
+            (paymentReference
+              ? `• المرجع: <code>${escapeTelegramHtml(paymentReference)}</code>\n`
+              : "");
+          const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text,
+              parse_mode: "HTML",
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "✅ موافقة", callback_data: `topup_app:${topup.id}` },
+                    { text: "❌ رفض", callback_data: `topup_rej:${topup.id}` },
+                  ],
+                ],
+              },
+            }),
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!res.ok)
+            logger.warn({ status: res.status }, "[wallet] telegram approval notify failed");
+        } catch (err) {
+          logger.warn({ err }, "[wallet] telegram approval notify threw");
+        }
+      })();
+    }
+
+    const [currentUser] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (currentUser)
+      notifyNewTopup({
+        phone: currentUser.phone,
+        amount,
+        network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
+        topupId: topup.id,
+        provider: derivePrimaryProvider(currentUser),
+      });
+
+    // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never
+    // blocks; gated on RISK_PIPELINE_ENABLED inside scoreEvent.
+    scoreEventFireAndForget({
+      eventType: "topup_attempt",
+      userId,
+      ipAddress: req.ip ?? null,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
+      phone: currentUser?.phone ?? null,
+      ruleContext: {
+        event: {
+          eventType: "topup_attempt",
+          ipAddress: req.ip ?? null,
+          amount,
+        },
+        user: { id: userId },
+      },
+    });
+
+    return res.status(201).json(formatTopup(topup));
+  },
+);
 
 function formatTopup(topup: typeof walletTopupsTable.$inferSelect) {
   return {

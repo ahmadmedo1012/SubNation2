@@ -26,7 +26,7 @@ import { walletRouter } from "../wallet";
 
 vi.mock("../../lib/redis-client", () => ({
   getRedisClient: vi.fn(),
-  withRedisCommandTimeout: <T,>(_label: string, fn: () => Promise<T>) => fn(),
+  withRedisCommandTimeout: <T>(_label: string, fn: () => Promise<T>) => fn(),
 }));
 
 const getRedisClientMock = vi.mocked(getRedisClient);
@@ -131,7 +131,7 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
     const { url, close } = await listen(buildApp());
     try {
       const { id: userId, token } = await seedUser();
-      const key = { "Idempotency-Key": "topup-idem-key-0001" };
+      const key = { "Idempotency-Key": "topup idem key 0001" };
 
       const first = await postTopup(url, token, topupBody(), key);
       expect(first.status).toBe(201);
@@ -155,11 +155,11 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
       const { id: userId, token } = await seedUser();
 
       const first = await postTopup(url, token, topupBody(), {
-        "Idempotency-Key": "topup-idem-key-0002",
+        "Idempotency-Key": "topup idem key 0002",
       });
       expect(first.status).toBe(201);
       const second = await postTopup(url, token, topupBody(), {
-        "Idempotency-Key": "topup-idem-key-0003",
+        "Idempotency-Key": "topup idem key 0003",
       });
       expect(second.status).toBe(201);
       expect((second.body as { id: number }).id).not.toBe((first.body as { id: number }).id);
@@ -174,7 +174,7 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
     const { url, close } = await listen(buildApp());
     try {
       const { token } = await seedUser();
-      const key = { "Idempotency-Key": "topup-idem-key-0004" };
+      const key = { "Idempotency-Key": "topup idem key 0004" };
 
       const first = await postTopup(url, token, topupBody(), key);
       expect(first.status).toBe(201);
@@ -210,10 +210,15 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
     const { url, close } = await listen(buildApp());
     try {
       const { id: userId, token } = await seedUser();
-      const key = { "Idempotency-Key": "topup-idem-key-0005" };
+      const key = { "Idempotency-Key": "topup idem key 0005" };
 
       // Invalid body (missing payment_network for mobile_transfer) → 400.
-      const bad = await postTopup(url, token, { amount: 50, payment_method: "mobile_transfer" }, key);
+      const bad = await postTopup(
+        url,
+        token,
+        { amount: 50, payment_method: "mobile_transfer" },
+        key,
+      );
       expect(bad.status).toBe(400);
 
       // Corrected retry with the SAME key must run live, not replay the 400.

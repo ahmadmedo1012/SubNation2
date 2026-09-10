@@ -392,9 +392,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             role="combobox"
             aria-expanded={total > 0}
             aria-controls="global-search-results"
-            aria-activedescendant={
-              total > 0 ? `global-search-option-${safeActive}` : undefined
-            }
+            aria-activedescendant={total > 0 ? `global-search-option-${safeActive}` : undefined}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
           />
           <kbd className="text-[10px] font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
@@ -452,28 +450,28 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                 {results.users.map((u, i) => {
                   const flatIdx = results.orders.length + i;
                   return (
-                  <button
-                    key={u.id}
-                    id={`global-search-option-${flatIdx}`}
-                    role="option"
-                    aria-selected={safeActive === flatIdx}
-                    onClick={goToUsers}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                      safeActive === flatIdx
-                        ? "bg-primary/10 ring-1 ring-primary/25"
-                        : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
-                      <Users className="w-3.5 h-3.5 text-status-info" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-mono text-sm font-bold">{u.phone}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب
+                    <button
+                      key={u.id}
+                      id={`global-search-option-${flatIdx}`}
+                      role="option"
+                      aria-selected={safeActive === flatIdx}
+                      onClick={goToUsers}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                        safeActive === flatIdx
+                          ? "bg-primary/10 ring-1 ring-primary/25"
+                          : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
+                        <Users className="w-3.5 h-3.5 text-status-info" />
                       </div>
-                    </div>
-                  </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-sm font-bold">{u.phone}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب
+                        </div>
+                      </div>
+                    </button>
                   );
                 })}
               </div>
@@ -487,38 +485,38 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                 {results.products.map((p, i) => {
                   const flatIdx = results.orders.length + results.users.length + i;
                   return (
-                  <button
-                    key={p.id}
-                    id={`global-search-option-${flatIdx}`}
-                    role="option"
-                    aria-selected={safeActive === flatIdx}
-                    onClick={goToProducts}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                      safeActive === flatIdx
-                        ? "bg-primary/10 ring-1 ring-primary/25"
-                        : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
-                      {p.image_url ? (
-                        <img
-                          src={p.image_url}
-                          alt={p.name ?? ""}
-                          loading="lazy"
-                          decoding="async"
-                          className="w-full h-full object-contain p-1"
-                        />
-                      ) : (
-                        <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatCurrency(p.price)} · {p.stock_count} وحدة
+                    <button
+                      key={p.id}
+                      id={`global-search-option-${flatIdx}`}
+                      role="option"
+                      aria-selected={safeActive === flatIdx}
+                      onClick={goToProducts}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                        safeActive === flatIdx
+                          ? "bg-primary/10 ring-1 ring-primary/25"
+                          : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
+                        {p.image_url ? (
+                          <img
+                            src={p.image_url}
+                            alt={p.name ?? ""}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-contain p-1"
+                          />
+                        ) : (
+                          <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
                       </div>
-                    </div>
-                  </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{p.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(p.price)} · {p.stock_count} وحدة
+                        </div>
+                      </div>
+                    </button>
                   );
                 })}
               </div>

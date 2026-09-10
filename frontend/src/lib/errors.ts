@@ -106,8 +106,7 @@ const errorMessages: Record<ErrorCode, string> = {
   // added to the shared enum so this Record stays exhaustive
   // (Record<ErrorCode, string> breaks typecheck otherwise).
   [ErrorCode.COPILOT_PHASE_DISABLED]: "هذه المرحلة من المساعد معطّلة حالياً",
-  [ErrorCode.COPILOT_SECRET_LEAK]:
-    "تم إيقاف الرد لأنه تضمّن معلومات حساسة. سُجِّل الحدث للمراجعة",
+  [ErrorCode.COPILOT_SECRET_LEAK]: "تم إيقاف الرد لأنه تضمّن معلومات حساسة. سُجِّل الحدث للمراجعة",
 };
 
 type ErrorLike = {

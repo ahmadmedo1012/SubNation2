@@ -316,9 +316,7 @@ export default function SupportPage() {
   useEffect(() => {
     if (!refParam || !token) return;
     setShowCreate(true);
-    setForm((f) =>
-      f.title ? f : { ...f, title: `بخصوص الطلب ${refParam}`, category: "order" },
-    );
+    setForm((f) => (f.title ? f : { ...f, title: `بخصوص الطلب ${refParam}`, category: "order" }));
   }, [refParam, token]);
 
   // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD

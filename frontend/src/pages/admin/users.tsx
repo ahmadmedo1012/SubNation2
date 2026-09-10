@@ -231,8 +231,7 @@ export default function AdminUsersPage() {
   const users: AdminUser[] = (usersPages?.pages ?? []).flat();
   // 94-C2 (A2 P1-1): the directory size is only provably known when a
   // single short page arrived — «عرض N» otherwise.
-  const knownTotal =
-    (usersPages?.pages.length ?? 0) <= 1 && users.length < USERS_PAGE_SIZE;
+  const knownTotal = (usersPages?.pages.length ?? 0) <= 1 && users.length < USERS_PAGE_SIZE;
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
@@ -470,9 +469,7 @@ export default function AdminUsersPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-wrap gap-6">
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground mb-2">
-                  مستوى الولاء
-                </div>
+                <div className="text-[10px] font-bold text-muted-foreground mb-2">مستوى الولاء</div>
                 <div className="flex gap-1 flex-wrap">
                   {TIER_FILTERS.map((t) => (
                     <button
@@ -490,9 +487,7 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground mb-2">
-                  الترتيب
-                </div>
+                <div className="text-[10px] font-bold text-muted-foreground mb-2">الترتيب</div>
                 <div className="flex gap-1 flex-wrap">
                   {SORT_OPTIONS.map((s) => (
                     <button
@@ -627,117 +622,117 @@ export default function AdminUsersPage() {
           <AppDialogBody className="space-y-4">
             {editingUser && (
               <>
-              {/* Current snapshot */}
-              <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
-                {[
-                  {
-                    label: "الرصيد",
-                    value: formatCurrency(editingUser.wallet_balance),
-                    cls: "text-primary",
-                  },
-                  { label: "النقاط", value: editingUser.loyalty_points, cls: "text-foreground" },
-                  {
-                    label: "المستوى",
-                    value: tierLabel(editingUser.loyalty_tier),
-                    cls: tierColor(editingUser.loyalty_tier),
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="text-center">
-                    <div className="text-[10px] text-muted-foreground mb-0.5">{item.label}</div>
-                    <div className={`font-black text-sm tabular-nums ${item.cls}`}>
-                      {item.value}
+                {/* Current snapshot */}
+                <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
+                  {[
+                    {
+                      label: "الرصيد",
+                      value: formatCurrency(editingUser.wallet_balance),
+                      cls: "text-primary",
+                    },
+                    { label: "النقاط", value: editingUser.loyalty_points, cls: "text-foreground" },
+                    {
+                      label: "المستوى",
+                      value: tierLabel(editingUser.loyalty_tier),
+                      cls: tierColor(editingUser.loyalty_tier),
+                    },
+                  ].map((item) => (
+                    <div key={item.label} className="text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">{item.label}</div>
+                      <div className={`font-black text-sm tabular-nums ${item.cls}`}>
+                        {item.value}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              {/* Extra quick info */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
-                <span>
-                  الطلبات: <strong className="text-foreground">{editingUser.order_count}</strong>
-                </span>
-                <span>
-                  الإنفاق:{" "}
-                  <strong className="text-emerald-400">
-                    {formatCurrency(editingUser.lifetime_spend)}
-                  </strong>
-                </span>
-                {editingUser.created_at && (
+                {/* Extra quick info */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
                   <span>
-                    التسجيل:{" "}
-                    <strong className="text-foreground">
-                      {formatDate(editingUser.created_at)}
+                    الطلبات: <strong className="text-foreground">{editingUser.order_count}</strong>
+                  </span>
+                  <span>
+                    الإنفاق:{" "}
+                    <strong className="text-emerald-400">
+                      {formatCurrency(editingUser.lifetime_spend)}
                     </strong>
                   </span>
-                )}
-              </div>
-
-              <form id="user-edit-form" onSubmit={handleSave} className="space-y-4">
-                <div>
-                  <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
-                  <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
-                    {WALLET_MODES.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() =>
-                          setForm((f) => ({
-                            ...f,
-                            wallet_mode: opt.value as EditUserForm["wallet_mode"],
-                          }))
-                        }
-                        className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {opt.icon && <opt.icon className="w-3 h-3" />}
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder={
-                      form.wallet_mode === "set"
-                        ? "الرصيد الجديد"
-                        : form.wallet_mode === "add"
-                          ? "المبلغ للإضافة"
-                          : "المبلغ للخصم"
-                    }
-                    value={form.wallet_value}
-                    onChange={(e) => setForm((f) => ({ ...f, wallet_value: e.target.value }))}
-                    dir="ltr"
-                    className="h-10"
-                  />
+                  {editingUser.created_at && (
+                    <span>
+                      التسجيل:{" "}
+                      <strong className="text-foreground">
+                        {formatDate(editingUser.created_at)}
+                      </strong>
+                    </span>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+
+                <form id="user-edit-form" onSubmit={handleSave} className="space-y-4">
                   <div>
-                    <Label className="mb-1.5 block text-sm font-semibold">نقاط الولاء</Label>
+                    <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
+                    <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
+                      {WALLET_MODES.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              wallet_mode: opt.value as EditUserForm["wallet_mode"],
+                            }))
+                          }
+                          className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          {opt.icon && <opt.icon className="w-3 h-3" />}
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                     <Input
                       type="number"
                       min="0"
-                      value={form.loyalty_points}
-                      onChange={(e) => setForm((f) => ({ ...f, loyalty_points: e.target.value }))}
+                      step="0.5"
+                      placeholder={
+                        form.wallet_mode === "set"
+                          ? "الرصيد الجديد"
+                          : form.wallet_mode === "add"
+                            ? "المبلغ للإضافة"
+                            : "المبلغ للخصم"
+                      }
+                      value={form.wallet_value}
+                      onChange={(e) => setForm((f) => ({ ...f, wallet_value: e.target.value }))}
                       dir="ltr"
                       className="h-10"
                     />
                   </div>
-                  <div>
-                    <Label className="mb-1.5 block text-sm font-semibold">المستوى</Label>
-                    <select
-                      value={form.loyalty_tier}
-                      onChange={(e) => setForm((f) => ({ ...f, loyalty_tier: e.target.value }))}
-                      className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                    >
-                      {TIERS.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="mb-1.5 block text-sm font-semibold">نقاط الولاء</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={form.loyalty_points}
+                        onChange={(e) => setForm((f) => ({ ...f, loyalty_points: e.target.value }))}
+                        dir="ltr"
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <Label className="mb-1.5 block text-sm font-semibold">المستوى</Label>
+                      <select
+                        value={form.loyalty_tier}
+                        onChange={(e) => setForm((f) => ({ ...f, loyalty_tier: e.target.value }))}
+                        className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                      >
+                        {TIERS.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
-              </form>
+                </form>
               </>
             )}
           </AppDialogBody>
@@ -820,28 +815,52 @@ export default function AdminUsersPage() {
                       {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
                           announce the header↔cell relation on vertical
                           sweeps instead of a bare "خلية". */}
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المستخدم
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المصدر
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         الرصيد
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المستوى
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         النقاط
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         الإجمالي المنفق
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         الطلبات
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         التسجيل
                       </th>
                       <th scope="col" className="px-4 py-3 w-10" />

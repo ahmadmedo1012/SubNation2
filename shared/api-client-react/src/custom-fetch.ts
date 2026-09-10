@@ -523,10 +523,7 @@ export async function customFetch<T = unknown>(
   // 96-F3 (R96 M3): default 20 s timeout merged with the caller's
   // signal. `timeoutSignal` is retained so the catch boundary can
   // distinguish OUR timeout from a caller cancellation.
-  const { signal: effectiveSignal, timeoutSignal } = resolveRequestSignal(
-    init.signal,
-    timeoutMs,
-  );
+  const { signal: effectiveSignal, timeoutSignal } = resolveRequestSignal(init.signal, timeoutMs);
 
   try {
     const response = await fetch(input, { ...init, signal: effectiveSignal, method, headers });

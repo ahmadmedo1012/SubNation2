@@ -271,7 +271,7 @@ describe("F1 — risk soft-block guard on POST /api/orders", () => {
       const { id: userId, token } = await seedUser();
       const productId = await seedProductWithStock();
       await tagSoftBlock(userId);
-      const key = { "Idempotency-Key": "guard-key-12345678" };
+      const key = { "Idempotency-Key": "guard key 12345678" };
 
       const refused = await post(url, "/api/orders", token, { product_id: productId }, key);
       expect(refused.status).toBe(423);

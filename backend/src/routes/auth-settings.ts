@@ -39,7 +39,10 @@ import {
 } from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
-import { getWhatsAppGatewayReadiness, isWhatsAppGatewayConfigured } from "../services/openwa.service";
+import {
+  getWhatsAppGatewayReadiness,
+  isWhatsAppGatewayConfigured,
+} from "../services/openwa.service";
 import { insertReferralSignupLedger } from "../lib/ledger";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 
@@ -287,11 +290,7 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
     // Boolean only — never exposes the API key. Clients gate the
     // <WhatsAppPhoneSignIn /> render on this flag.
     whatsapp_enabled: isWhatsAppGatewayConfigured(),
-    whatsapp_status: readiness.ready
-      ? "ready"
-      : readiness.settling
-        ? "settling"
-        : readiness.status,
+    whatsapp_status: readiness.ready ? "ready" : readiness.settling ? "settling" : readiness.status,
   });
 });
 

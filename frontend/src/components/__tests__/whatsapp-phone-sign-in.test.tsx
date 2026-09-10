@@ -31,10 +31,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  normalizePhoneInput,
-  WhatsAppPhoneSignIn,
-} from "@/components/WhatsAppPhoneSignIn";
+import { normalizePhoneInput, WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ setToken: vi.fn() }),
@@ -156,7 +153,7 @@ describe("normalizePhoneInput — international prefixes mirror the backend (96-
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
-  it("wraps the Latin brand name in lang=\"en\" on the pristine button (A6 #16)", () => {
+  it('wraps the Latin brand name in lang="en" on the pristine button (A6 #16)', () => {
     renderSignIn();
     const badge = screen.getByText("WhatsApp");
     expect(badge.getAttribute("lang")).toBe("en");
@@ -170,9 +167,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
   });
 
   it("OTP input: 16px + enterKeyHint=done + unified «رمز التحقق» + Latin-digit aria-label (A6 #17)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
     fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
@@ -185,9 +180,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
   });
 
   it("micro-links «تراجع» / «تغيير الرقم» are 44px touch targets (A2 P2-9)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     const back = screen.getByRole("button", { name: "المتابعة عبر WhatsApp" });
     expect(back.className).toContain("h-11");
@@ -222,7 +215,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("honest provider hints under the pristine button (96-F2 §1.3E)", () => {
-  it("shows the settling hint when whatsapp_status === \"settling\"", () => {
+  it('shows the settling hint when whatsapp_status === "settling"', () => {
     renderSignIn({ channelStatus: "settling" });
     expect(screen.getByText(/تُهيَّأ الآن وتصبح جاهزة خلال أقل من دقيقة/)).toBeInTheDocument();
   });
@@ -261,9 +254,7 @@ describe("resend affordance on the code step (96-F2 §4.1)", () => {
     const free = screen.getByRole("button", { name: "لم يصلك الرمز؟ إعادة الإرسال" });
     expect(free).toBeEnabled();
 
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     fireEvent.click(free);
     await flushAsync();
 
@@ -289,9 +280,7 @@ describe("resend affordance on the code step (96-F2 §4.1)", () => {
     await flushAsync();
 
     advanceSeconds(60);
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     fireEvent.click(screen.getByRole("button", { name: "لم يصلك الرمز؟ إعادة الإرسال" }));
     await flushAsync();
 
@@ -311,9 +300,7 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
   it("is informational (role=status, never alert), burns no cooldown, auto-retries and proceeds", async () => {
     fetchMock
       .mockResolvedValueOnce(settlingResponse(5))
-      .mockResolvedValueOnce(
-        jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-      );
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
     fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
@@ -441,9 +428,7 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
   });
 
   it("verify errors keep the precise OTP copy over the UNAUTHORIZED code map", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { success: true, expires_at: isoIn(300) }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
     fireEvent.click(screen.getByRole("button", { name: "إرسال" }));

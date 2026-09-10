@@ -185,7 +185,14 @@ regexes = [
   '''subnation-2571e''',
   # Firebase app ID (public)
   '''1:\d+:web:[a-f0-9]+''',
-  # Firebase Web API key — public-by-design per Firebase security policy.
+  # 96-main: backend/src/test/env.ts canonical throwaway ENCRYPTION_KEY —
+  # the classic sequence hex 00112233..ddeeff doubled. Required to be
+  # EXACTLY 64 hex chars by encryption.ts's length validation (a spaced or
+  # otherwise-distinct value cannot satisfy it), committed since round-1,
+  # obviously-not-random, never a secret. Allowlisted so any future edit
+  # to env.ts does not false-fail CI's gitleaks gate.
+  '''00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff''',
+
   # Gated by the Authorized Domains allow-list and reCAPTCHA challenges,
   # NOT by key secrecy. Embedded in the client SPA bundle.
   # https://firebase.google.com/docs/projects/api-keys

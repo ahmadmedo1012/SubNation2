@@ -869,18 +869,18 @@ if (frontendDist) {
           isActive: productsTable.isActive,
         })
         .from(productsTable)
-        .where(
-          numeric !== null
-            ? eq(productsTable.id, numeric)
-            : eq(productsTable.slug, slugOrId),
-        )
+        .where(numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId))
         .limit(1);
       if (!product || !product.isActive) {
         next();
         return;
       }
       const esc = (s: string) =>
-        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
       const origin = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
       const canonical = `${origin}/product/${slugOrId}`;
       const desc =

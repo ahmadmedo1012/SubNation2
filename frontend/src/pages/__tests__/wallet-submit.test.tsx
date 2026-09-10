@@ -305,9 +305,7 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
   it("configures the mutation with a UUID Idempotency-Key + the auth header", () => {
     renderPage();
 
-    expect(lastKey()).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    );
+    expect(lastKey()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(lastHookConfig()?.request?.headers?.["Authorization"]).toBe("Bearer test-token");
   });
 

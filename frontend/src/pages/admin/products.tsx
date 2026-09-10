@@ -390,14 +390,15 @@ export default function AdminProductsPage() {
   // success toast only fires when something actually succeeded — the
   // old unconditional «تمت أرشفة 0 منتج» right after the failure toast
   // was a success-toned lie (same class as the topups B5-01 fix).
-  const summarizeBulk = (verb: string, total: number, failures: Array<{ id: number; reason: string }>) => {
+  const summarizeBulk = (
+    verb: string,
+    total: number,
+    failures: Array<{ id: number; reason: string }>,
+  ) => {
     const successCount = total - failures.length;
     if (failures.length > 0) {
       toast({
-        title:
-          successCount > 0
-            ? `${verb} — ${successCount} من ${total}`
-            : "خطأ",
+        title: successCount > 0 ? `${verb} — ${successCount} من ${total}` : "خطأ",
         description: `فشلت ${failures.length} من ${total} — ${failures
           .map((f) => `#${f.id}: ${f.reason}`)
           .join("، ")}`,

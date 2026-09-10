@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("usePublicAuthProviders — whatsappSettling (96-F2 §1.3E)", () => {
-  it("derives whatsappSettling=true when the probe reports \"settling\"", async () => {
+  it('derives whatsappSettling=true when the probe reports "settling"', async () => {
     fetchMock.mockResolvedValueOnce(
       providersResponse({ whatsapp_enabled: true, whatsapp_status: "settling" }),
     );

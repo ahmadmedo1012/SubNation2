@@ -29,10 +29,7 @@ vi.mock("@/hooks/use-toast", () => ({
 beforeEach(() => {
   // Mobile branch: vw state initializes from window.innerWidth at mount.
   window.innerWidth = 375;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response),
-  );
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response));
 });
 
 afterEach(() => {
@@ -46,7 +43,7 @@ afterEach(() => {
 function mountFakeHeader(bottom: number): HTMLElement {
   const header = document.createElement("header");
   header.setAttribute("data-navbar-header", "1");
-  header.getBoundingClientRect = () => ({ bottom } as DOMRect);
+  header.getBoundingClientRect = () => ({ bottom }) as DOMRect;
   document.body.appendChild(header);
   return header;
 }

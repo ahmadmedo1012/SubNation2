@@ -58,7 +58,13 @@ async function listen(app: Express): Promise<{ url: string; close: () => void }>
 interface StartResponse {
   status: number;
   headers: Headers;
-  body: { error?: string; code?: string; details?: Record<string, unknown>; success?: boolean; expires_at?: string };
+  body: {
+    error?: string;
+    code?: string;
+    details?: Record<string, unknown>;
+    success?: boolean;
+    expires_at?: string;
+  };
 }
 
 async function postStart(url: string, body: unknown): Promise<StartResponse> {
@@ -67,7 +73,11 @@ async function postStart(url: string, body: unknown): Promise<StartResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return { status: res.status, headers: res.headers, body: (await res.json()) as StartResponse["body"] };
+  return {
+    status: res.status,
+    headers: res.headers,
+    body: (await res.json()) as StartResponse["body"],
+  };
 }
 
 beforeEach(() => {

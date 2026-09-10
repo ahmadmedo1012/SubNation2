@@ -50,10 +50,7 @@ const CART_ITEM: LocalCartItem = {
 };
 
 function seedCart(quantity: number) {
-  localStorage.setItem(
-    "subnation_cart_v1",
-    JSON.stringify([{ ...CART_ITEM, quantity }]),
-  );
+  localStorage.setItem("subnation_cart_v1", JSON.stringify([{ ...CART_ITEM, quantity }]));
 }
 
 function readCart(): LocalCartItem[] {
@@ -201,9 +198,7 @@ describe("CartPage — destructive clear goes through useConfirm (96-F4 / R96 A2
     fireEvent.click(confirmBtn);
 
     await waitFor(() => expect(readCart()).toHaveLength(0));
-    expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "تم إفراغ السلة" }),
-    );
+    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: "تم إفراغ السلة" }));
     // The empty state replaces the item list.
     expect(await screen.findByText("سلتك فارغة")).toBeInTheDocument();
   });
@@ -217,9 +212,7 @@ describe("CartPage — destructive clear goes through useConfirm (96-F4 / R96 A2
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "إلغاء" }));
 
-    await waitFor(() =>
-      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(readCart()[0]?.quantity).toBe(2);
     expect(toastSpy).not.toHaveBeenCalled();
     expect(await screen.findByText("Netflix شهر")).toBeInTheDocument();

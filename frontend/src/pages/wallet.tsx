@@ -1038,12 +1038,7 @@ export default function WalletPage() {
                 {/* Step 4: Phone */}
                 <div>
                   {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
-                  <StepDot
-                    n={4}
-                    label="رقم هاتف المُرسل"
-                    active
-                    htmlFor="topup-sender-phone"
-                  />
+                  <StepDot n={4} label="رقم هاتف المُرسل" active htmlFor="topup-sender-phone" />
                   <p className="text-xs text-muted-foreground mt-2 mb-3">
                     أدخل رقمك الذي حوّلت منه الرصيد لتأكيد العملية.
                   </p>
@@ -1133,10 +1128,7 @@ export default function WalletPage() {
                   {senderPhoneTouched && senderPhoneErr && (
                     /* 96-F6 (R96 A6 #13): id the input points at via
                        aria-describedby above. */
-                    <p
-                      id="topup-sender-phone-error"
-                      className="text-xs text-destructive mt-1.5"
-                    >
+                    <p id="topup-sender-phone-error" className="text-xs text-destructive mt-1.5">
                       {senderPhoneErr}
                     </p>
                   )}

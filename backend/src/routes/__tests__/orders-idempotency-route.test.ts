@@ -130,7 +130,7 @@ describe("POST /api/orders — durable idempotency wiring (F10)", () => {
     try {
       const { id: userId, token } = await seedUser();
       const productId = await seedProductWithStock();
-      const key = { "Idempotency-Key": "route-idem-key-0001" };
+      const key = { "Idempotency-Key": "route idem key 0001" };
 
       const res = await post(url, token, { product_id: productId }, key);
       expect(res.status).toBe(201);
@@ -147,7 +147,7 @@ describe("POST /api/orders — durable idempotency wiring (F10)", () => {
     try {
       const { id: userId, token } = await seedUser();
       const productId = await seedProductWithStock();
-      const key = { "Idempotency-Key": "route-idem-key-0002" };
+      const key = { "Idempotency-Key": "route idem key 0002" };
 
       const first = await post(url, token, { product_id: productId }, key);
       expect(first.status).toBe(201);
@@ -224,9 +224,9 @@ describe("POST /api/orders — PRODUCT_STALE mapping (F4)", () => {
         reason: "PRODUCT_NOT_FOUND",
       });
 
-      await post(url, token, { product_id: productId }, { "Idempotency-Key": "header-fwd-123456" });
+      await post(url, token, { product_id: productId }, { "Idempotency-Key": "header fwd 123456" });
       expect(spy).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: "header-fwd-123456" }),
+        expect.objectContaining({ idempotencyKey: "header fwd 123456" }),
       );
     } finally {
       close();

@@ -50,9 +50,10 @@ export function usePublicAuthProviders(): PublicAuthProviders {
       try {
         const res = await fetch("/api/auth/providers");
         if (!res.ok) return;
-        const data = (await res.json().catch(() => null)) as
-          | { whatsapp_enabled?: boolean; whatsapp_status?: string | null }
-          | null;
+        const data = (await res.json().catch(() => null)) as {
+          whatsapp_enabled?: boolean;
+          whatsapp_status?: string | null;
+        } | null;
         if (cancelled) return;
         setWhatsappEnabled(!!data?.whatsapp_enabled);
         // Absent field (older backend) → null → the UI shows no hint.
@@ -70,5 +71,10 @@ export function usePublicAuthProviders(): PublicAuthProviders {
     };
   }, []);
 
-  return { whatsappEnabled, whatsappStatus, whatsappSettling: whatsappStatus === "settling", fetched };
+  return {
+    whatsappEnabled,
+    whatsappStatus,
+    whatsappSettling: whatsappStatus === "settling",
+    fetched,
+  };
 }

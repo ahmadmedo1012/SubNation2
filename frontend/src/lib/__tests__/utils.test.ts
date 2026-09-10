@@ -188,7 +188,13 @@ describe("formatCount (Arabic pluralization, round-3)", () => {
       formatCount(11, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
     ).toBe("11 منتجاً");
     expect(
-      formatCount(100, { one: "منتج", two: "منتجان", few: "منتجات", many: "منتجاً", other: "منتج" }),
+      formatCount(100, {
+        one: "منتج",
+        two: "منتجان",
+        few: "منتجات",
+        many: "منتجاً",
+        other: "منتج",
+      }),
     ).toBe("100 منتج");
   });
 

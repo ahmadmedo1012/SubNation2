@@ -36,7 +36,7 @@ import {
 import { CheckoutService } from "../checkout.service";
 import { interleaveWriterAfterSelect } from "./helpers/tx-interleave";
 
-const IDEM_KEY = "f8-race-key-00000001";
+const IDEM_KEY = "f8 race key 00000001";
 
 beforeAll(async () => {
   await initTestDb();
@@ -191,7 +191,7 @@ describe("F8: coupon_maxed side effects live on the post-commit side", () => {
       userId: user.id,
       productId: product.id,
       couponCode: "LASTSLOT",
-      idempotencyKey: "f8-fresh-key-0000002",
+      idempotencyKey: "f8 fresh key 0000002",
     });
     expect(real.ok).toBe(true);
     expect(await couponMaxedAlerts()).toHaveLength(1);

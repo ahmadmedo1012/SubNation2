@@ -407,7 +407,8 @@ export function WhatsAppPhoneSignIn({
           and is inside the settle window. Never blocks the attempt. */}
       {step === "pristine" && channelStatus === "settling" && (
         <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-          قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من دقيقة
+          قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من
+          دقيقة
         </p>
       )}
       {/* r95 honest hint — only when the live probe says the channel is
@@ -419,174 +420,180 @@ export function WhatsAppPhoneSignIn({
         channelStatus !== "ready" &&
         channelStatus !== "settling" && (
           <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-            قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم Google / Telegram
-            الآن
+            قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم Google
+            / Telegram الآن
           </p>
         )}
       {step !== "pristine" && (
         <>
-        {step === "phone" ? (
-        <>
-          <div className="flex gap-2">
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(normalizePhoneInput(e.target.value))}
-              placeholder="09XXXXXXXX"
-              aria-label="رقم الهاتف"
-              disabled={loading || settlingAuto}
-              dir="ltr"
-              enterKeyHint="done"
-              className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-base outline-none focus:border-primary/50 disabled:opacity-50"
-            />
-            {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
+          {step === "phone" ? (
+            <>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(normalizePhoneInput(e.target.value))}
+                  placeholder="09XXXXXXXX"
+                  aria-label="رقم الهاتف"
+                  disabled={loading || settlingAuto}
+                  dir="ltr"
+                  enterKeyHint="done"
+                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-base outline-none focus:border-primary/50 disabled:opacity-50"
+                />
+                {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
                 bg keeps the WhatsApp brand green; the label rides the
                 --brand-whatsapp-ink token (#054339, ~5.7:1 on the same
                 green) so the OTP send action stays readable. */}
-            <button
-              type="button"
-              onClick={sendCode}
-              disabled={loading || settlingAuto || phone.length < 9 || cooldown > 0}
-              className="h-11 px-4 rounded-xl bg-brand-whatsapp text-brand-whatsapp-ink font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
-            >
-              {loading || settlingAuto ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {/* 96-F2 (R96-A4 §1.3E): the settling wait — spinner +
+                <button
+                  type="button"
+                  onClick={sendCode}
+                  disabled={loading || settlingAuto || phone.length < 9 || cooldown > 0}
+                  className="h-11 px-4 rounded-xl bg-brand-whatsapp text-brand-whatsapp-ink font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
+                >
+                  {loading || settlingAuto ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {/* 96-F2 (R96-A4 §1.3E): the settling wait — spinner +
                       honest label so the button never looks stuck. */}
-                  {settlingAuto && <span className="text-xs whitespace-nowrap">جارٍ التهيئة…</span>}
-                </>
-              ) : cooldown > 0 ? (
-                // Keep the "إعادة الإرسال" label visible while counting
-                // down — the previous bare "Xs" hid context and made the
-                // button look stuck rather than rate-limited.
-                // 96-F2 (A6 #17): Arabic ث + Latin digits (was «(60s)»).
-                <span className="text-xs whitespace-nowrap">إعادة الإرسال ({cooldown} ث)</span>
-              ) : (
-                <>
-                  <MessageCircle className="w-4 h-4" />
-                  إرسال
-                </>
-              )}
-            </button>
-          </div>
-          <p className="text-[11px] text-muted-foreground text-center">
-            تُقبل أرقام ليبيانا ومدار التي تبدأ بـ 091 / 092 / 093 / 094.
-          </p>
-          {/* Allow the user to collapse the OTP UI back to the single
+                      {settlingAuto && (
+                        <span className="text-xs whitespace-nowrap">جارٍ التهيئة…</span>
+                      )}
+                    </>
+                  ) : cooldown > 0 ? (
+                    // Keep the "إعادة الإرسال" label visible while counting
+                    // down — the previous bare "Xs" hid context and made the
+                    // button look stuck rather than rate-limited.
+                    // 96-F2 (A6 #17): Arabic ث + Latin digits (was «(60s)»).
+                    <span className="text-xs whitespace-nowrap">إعادة الإرسال ({cooldown} ث)</span>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-4 h-4" />
+                      إرسال
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground text-center">
+                تُقبل أرقام ليبيانا ومدار التي تبدأ بـ 091 / 092 / 093 / 094.
+              </p>
+              {/* Allow the user to collapse the OTP UI back to the single
             "Continue with WhatsApp" button — useful if they opened it
             by accident or want to switch providers.
             96-F2 (A2 P2-9): 44px touch target (was an ~18px micro-link). */}
-          <button
-            type="button"
-            onClick={resetFlow}
-            disabled={loading}
-            className="min-h-11 py-2 px-3 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors disabled:opacity-50"
-          >
-            <RotateCcw className="w-3 h-3" />
-            تراجع
-          </button>
-        </>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <input
-              ref={codeInputRef}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={code}
-              onChange={(e) => setCode(extractOtpDigits(e.target.value))}
-              onPaste={(e) => {
-                // Smart paste: extract first 6 digits from anything the
-                // user pastes — even the entire WhatsApp message. Without
-                // this, pasting "```123456```" leaves backticks in the
-                // input which then fail validation.
-                const pasted = e.clipboardData.getData("text");
-                const digits = extractOtpDigits(pasted);
-                if (digits) {
-                  e.preventDefault();
-                  setCode(digits);
-                }
-              }}
-              placeholder="رمز التحقق"
-              aria-label="رمز التحقق المكوّن من 6 أرقام"
-              disabled={loading}
-              dir="ltr"
-              enterKeyHint="done"
-              className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 disabled:opacity-50"
-              autoFocus
-            />
-            {typeof navigator !== "undefined" &&
-              "clipboard" in navigator &&
-              typeof navigator.clipboard?.readText === "function" && (
+              <button
+                type="button"
+                onClick={resetFlow}
+                disabled={loading}
+                className="min-h-11 py-2 px-3 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors disabled:opacity-50"
+              >
+                <RotateCcw className="w-3 h-3" />
+                تراجع
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  ref={codeInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(extractOtpDigits(e.target.value))}
+                  onPaste={(e) => {
+                    // Smart paste: extract first 6 digits from anything the
+                    // user pastes — even the entire WhatsApp message. Without
+                    // this, pasting "```123456```" leaves backticks in the
+                    // input which then fail validation.
+                    const pasted = e.clipboardData.getData("text");
+                    const digits = extractOtpDigits(pasted);
+                    if (digits) {
+                      e.preventDefault();
+                      setCode(digits);
+                    }
+                  }}
+                  placeholder="رمز التحقق"
+                  aria-label="رمز التحقق المكوّن من 6 أرقام"
+                  disabled={loading}
+                  dir="ltr"
+                  enterKeyHint="done"
+                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 disabled:opacity-50"
+                  autoFocus
+                />
+                {typeof navigator !== "undefined" &&
+                  "clipboard" in navigator &&
+                  typeof navigator.clipboard?.readText === "function" && (
+                    <button
+                      type="button"
+                      onClick={tryPasteFromClipboard}
+                      disabled={loading}
+                      title="لصق الرمز من الحافظة"
+                      aria-label="لصق الرمز من الحافظة"
+                      className="h-11 w-11 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <ClipboardPaste className="w-4 h-4" />
+                    </button>
+                  )}
                 <button
                   type="button"
-                  onClick={tryPasteFromClipboard}
-                  disabled={loading}
-                  title="لصق الرمز من الحافظة"
-                  aria-label="لصق الرمز من الحافظة"
-                  className="h-11 w-11 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                  onClick={verifyCode}
+                  disabled={loading || code.length < 6}
+                  className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
                 >
-                  <ClipboardPaste className="w-4 h-4" />
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  تحقق
                 </button>
-              )}
-            <button
-              type="button"
-              onClick={verifyCode}
-              disabled={loading || code.length < 6}
-              className="h-11 px-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 flex items-center gap-2 transition-all active:scale-95"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              تحقق
-            </button>
-          </div>
-          {/* 96-F2 (R96-A4 §4.1): OTP TTL from expires_at — subtle
+              </div>
+              {/* 96-F2 (R96-A4 §4.1): OTP TTL from expires_at — subtle
               Latin-digit M:SS countdown (never the code itself). */}
-          {expiresAt !== null &&
-            (expiryLeft > 0 ? (
-              <p className="text-[11px] text-muted-foreground text-center">
-                ينتهي خلال <span dir="ltr" className="tabular-nums">{formatMSS(expiryLeft)}</span>
-              </p>
-            ) : (
-              <p className="text-[11px] text-muted-foreground text-center">
-                انتهت صلاحية الرمز — استخدم «إعادة الإرسال» للحصول على رمز جديد
-              </p>
-            ))}
-          {/* 96-F2 (R96-A4 §4.1): the missing recovery path — the
+              {expiresAt !== null &&
+                (expiryLeft > 0 ? (
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    ينتهي خلال{" "}
+                    <span dir="ltr" className="tabular-nums">
+                      {formatMSS(expiryLeft)}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    انتهت صلاحية الرمز — استخدم «إعادة الإرسال» للحصول على رمز جديد
+                  </p>
+                ))}
+              {/* 96-F2 (R96-A4 §4.1): the missing recovery path — the
               production "Waiting for this message" bug left users on
               this step with no escape but the destructive «تغيير
               الرقم». This secondary affordance calls the SAME sendCode()
               with the STORED phone (never resets it) and naturally
               honors the 60 s cooldown. 44px touch target (A2 P2-9). */}
-          <button
-            type="button"
-            onClick={sendCode}
-            disabled={loading || cooldown > 0 || settlingAuto}
-            className="min-h-11 py-2 px-3 mx-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
-          >
-            {(loading || settlingAuto) && <Loader2 className="w-4 h-4 animate-spin" />}
-            {/* 96-F2 (A6 #17): Arabic ث + Latin digits in the countdown. */}
-            {cooldown > 0
-              ? `لم يصلك الرمز؟ إعادة الإرسال (${cooldown} ث)`
-              : "لم يصلك الرمز؟ إعادة الإرسال"}
-          </button>
-          {/* 94-C3 (A3 P3-9): type="button" — this reset control can live
+              <button
+                type="button"
+                onClick={sendCode}
+                disabled={loading || cooldown > 0 || settlingAuto}
+                className="min-h-11 py-2 px-3 mx-auto flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+              >
+                {(loading || settlingAuto) && <Loader2 className="w-4 h-4 animate-spin" />}
+                {/* 96-F2 (A6 #17): Arabic ث + Latin digits in the countdown. */}
+                {cooldown > 0
+                  ? `لم يصلك الرمز؟ إعادة الإرسال (${cooldown} ث)`
+                  : "لم يصلك الرمز؟ إعادة الإرسال"}
+              </button>
+              {/* 94-C3 (A3 P3-9): type="button" — this reset control can live
               inside a <form>; without it, tapping "تغيير الرقم" would
               submit the host form instead of resetting the flow.
               96-F2 (A2 P2-9): 44px touch target (was an ~18px micro-link). */}
-          <button
-            type="button"
-            onClick={resetFlow}
-            disabled={loading}
-            className="min-h-11 py-2 px-3 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors disabled:opacity-50"
-          >
-            <RotateCcw className="w-3 h-3" />
-            تغيير الرقم
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={resetFlow}
+                disabled={loading}
+                className="min-h-11 py-2 px-3 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto transition-colors disabled:opacity-50"
+              >
+                <RotateCcw className="w-3 h-3" />
+                تغيير الرقم
+              </button>
+            </div>
+          )}
+        </>
       )}
-      </>)}
       {/* 96-F2 (R96-A4 §1.3E): settling banner — informational
           (role=status, muted palette), never the destructive error
           style. Auto-pending: honest wait copy. Manual: retry CTA. */}
@@ -597,9 +604,15 @@ export function WhatsAppPhoneSignIn({
         >
           <p className="text-xs text-muted-foreground text-center leading-relaxed">
             {settling.autoPending ? (
-              <>قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وستُرسل الرمز تلقائيًا خلال أقل من دقيقة</>
+              <>
+                قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وستُرسل الرمز تلقائيًا
+                خلال أقل من دقيقة
+              </>
             ) : (
-              <>ما زالت قناة <span lang="en">WhatsApp</span> قيد التهيئة — أعد المحاولة أو استخدم Google / Telegram</>
+              <>
+                ما زالت قناة <span lang="en">WhatsApp</span> قيد التهيئة — أعد المحاولة أو استخدم
+                Google / Telegram
+              </>
             )}
           </p>
         </div>

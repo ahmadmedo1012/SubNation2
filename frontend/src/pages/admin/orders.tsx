@@ -142,7 +142,10 @@ function TableSkeleton() {
 function MaskedCredential({ label, value }: { label: string; value: string }) {
   const [revealed, setRevealed] = useState(false);
   return (
-    <div className="flex items-center gap-2 min-w-0 flex-wrap text-xs" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="flex items-center gap-2 min-w-0 flex-wrap text-xs"
+      onClick={(e) => e.stopPropagation()}
+    >
       <span className="text-muted-foreground shrink-0">{label}: </span>
       <span dir="ltr" className="font-mono font-bold min-w-0 break-all text-left">
         {revealed ? value : "••••••"}
@@ -717,8 +720,9 @@ export default function AdminOrdersPage() {
                     KPI reads /admin/stats — the server-side truth. */}
                 {!knownTotal && (
                   <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-1">
-                    الإحصاءات تعكس الطلبات المعروضة ({formatCount(allOrders.length, ORDER_COUNT_FORMS)}) —
-                    الإجماليات الكاملة في لوحة التحكم
+                    الإحصاءات تعكس الطلبات المعروضة (
+                    {formatCount(allOrders.length, ORDER_COUNT_FORMS)}) — الإجماليات الكاملة في لوحة
+                    التحكم
                   </p>
                 )}
               </div>
@@ -942,22 +946,40 @@ export default function AdminOrdersPage() {
                           )}
                         </button>
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         رقم الطلب
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المستخدم
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المنتج
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         المبلغ
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         الحالة
                       </th>
-                      <th scope="col" className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]">
+                      <th
+                        scope="col"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                      >
                         التاريخ
                       </th>
                       <th scope="col" className="w-8 px-4 py-3" />

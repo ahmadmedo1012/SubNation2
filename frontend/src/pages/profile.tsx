@@ -230,7 +230,10 @@ export default function ProfilePage() {
                 {user.display_name && (
                   <div className="text-sm font-bold mb-1.5 truncate">{user.display_name}</div>
                 )}
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3" dir="ltr">
+                <div
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3"
+                  dir="ltr"
+                >
                   {user.phone?.startsWith("tg_") ? (
                     <>
                       <Smartphone className="w-3 h-3" />

@@ -33,7 +33,7 @@ vi.mock("../../lib/redis-client", () => ({
   getRedisClient: vi.fn(),
   // Passthrough — the raced wrapper's timeout behavior is covered by
   // redis-client-resilience.test.ts; here we only care about the values.
-  withRedisCommandTimeout: <T,>(_label: string, fn: () => Promise<T>) => fn(),
+  withRedisCommandTimeout: <T>(_label: string, fn: () => Promise<T>) => fn(),
 }));
 
 const getRedisClientMock = vi.mocked(getRedisClient);
@@ -72,7 +72,11 @@ function installFetchMock(opts: MockGatewayOptions = {}) {
     calls.push(call);
     if (url.endsWith(SESSION_URL)) {
       if (opts.sessionStatus === null) return new Response("nf", { status: 404 });
-      return jsonResponse({ id: SESSION_ID, name: "subnation-otp", status: opts.sessionStatus ?? "ready" });
+      return jsonResponse({
+        id: SESSION_ID,
+        name: "subnation-otp",
+        status: opts.sessionStatus ?? "ready",
+      });
     }
     if (url.endsWith("/messages/send-text")) {
       sendCount += 1;
@@ -255,7 +259,12 @@ describe("readiness probe — settling honesty (96-F1 §1.3C)", () => {
     installFetchMock({ sessionStatus: "qr_ready" });
     const mod = await importOpenwa();
     const r = await mod.getWhatsAppGatewayReadiness();
-    expect(r).toMatchObject({ ready: false, status: "qr_ready", settling: false, readyInSec: null });
+    expect(r).toMatchObject({
+      ready: false,
+      status: "qr_ready",
+      settling: false,
+      readyInSec: null,
+    });
   });
 });
 
@@ -368,7 +377,9 @@ describe("send retries — network/5xx only, never 4xx (96-F1 §1.3D)", () => {
     installFetchMock({
       onSendText: () => {
         sends += 1;
-        return sends === 1 ? new Response("boom", { status: 502 }) : jsonResponse({ success: true });
+        return sends === 1
+          ? new Response("boom", { status: 502 })
+          : jsonResponse({ success: true });
       },
     });
     const mod = await importOpenwa();

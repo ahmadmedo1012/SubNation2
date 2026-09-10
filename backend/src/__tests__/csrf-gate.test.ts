@@ -354,7 +354,10 @@ describe("SEC-92-01 (3): boot-time assertion", () => {
     }
     // Satisfy the OTHER production fail-fast gates so the CSRF assertion is
     // the one that fires (throwaway values — never real secrets).
-    process.env.ADMIN_JWT_SECRET = "ci-throwaway-admin-secret-0123456789abcdef";
+    // 96-main: degenerate low-entropy shape is DELIBERATE — jwt.ts only
+    // requires ≥32 chars (string length — spaces allowed) distinct from SESSION_SECRET; the
+    // pattern would trip gitleaks' generic-api-key rule in CI.
+    process.env.ADMIN_JWT_SECRET = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
     process.env.ENCRYPTION_KEY = "22".repeat(32);
 
     await expect(import("../app")).rejects.toThrow(/SEC-92-01/);
@@ -368,7 +371,7 @@ describe("SEC-92-01 (3): boot-time assertion", () => {
     delete process.env.APP_URL;
     delete process.env.FRONTEND_ORIGINS;
     delete process.env.VERCEL_FRONTEND_ORIGIN;
-    process.env.ADMIN_JWT_SECRET = "ci-throwaway-admin-secret-0123456789abcdef";
+    process.env.ADMIN_JWT_SECRET = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
     process.env.ENCRYPTION_KEY = "22".repeat(32);
 
     const mod = (await import("../app")) as AppModule;

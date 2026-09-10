@@ -62,8 +62,7 @@ function httpApiError(error: string) {
   });
 }
 
-const KEY_SLOT = (productId: number, unit: number) =>
-  `subnation_checkout_key:${productId}:${unit}`;
+const KEY_SLOT = (productId: number, unit: number) => `subnation_checkout_key:${productId}:${unit}`;
 
 function seedCart(quantity: number) {
   localStorage.setItem(
@@ -116,10 +115,13 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     sessionStorage.clear();
     // The page's balance probe (/api/auth/me) must resolve a solvent
     // balance so the confirm CTA stays enabled.
-    vi.stubGlobal("fetch", vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ wallet_balance: 1_000_000 }),
-    })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ wallet_balance: 1_000_000 }),
+      })),
+    );
   });
 
   afterEach(() => {

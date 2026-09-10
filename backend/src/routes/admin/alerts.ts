@@ -14,10 +14,7 @@ import {
 } from "../../jobs/alertLogger";
 import { intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
-import {
-  dispatchTestAlert,
-  type ChannelDeliveryResult,
-} from "../../services/alerting.service";
+import { dispatchTestAlert, type ChannelDeliveryResult } from "../../services/alerting.service";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
@@ -50,8 +47,10 @@ router.post("/test", requireAdmin, async (req, res) => {
     const { alert, delivery } = await dispatchTestAlert(
       typeof rule === "string" ? rule : undefined,
     );
-    const channelDelivery: Record<string, { ok: boolean; outcome: string; attempts: number; error_message?: string }> =
-      {};
+    const channelDelivery: Record<
+      string,
+      { ok: boolean; outcome: string; attempts: number; error_message?: string }
+    > = {};
     for (const r of delivery as ChannelDeliveryResult[]) {
       channelDelivery[r.channel] = {
         ok: r.outcome === "delivered",
@@ -76,7 +75,9 @@ router.post("/test", requireAdmin, async (req, res) => {
     // Fall back to the module logger instead.
     const log = (req.log ?? logger) as typeof req.log;
     log.error({ err }, "Failed to dispatch test alert");
-    return res.status(500).json(createErrorResponse("خطأ في إرسال التنبيه", ErrorCode.INTERNAL_ERROR));
+    return res
+      .status(500)
+      .json(createErrorResponse("خطأ في إرسال التنبيه", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -137,7 +138,9 @@ router.get("/", requireAdmin, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch admin alerts");
-    return res.status(500).json(createErrorResponse("خطأ في جلب التنبيهات", ErrorCode.INTERNAL_ERROR));
+    return res
+      .status(500)
+      .json(createErrorResponse("خطأ في جلب التنبيهات", ErrorCode.INTERNAL_ERROR));
   }
 });
 
@@ -153,7 +156,8 @@ router.patch("/read-all", requireAdmin, async (req, res) => {
 
 router.patch("/:id/read", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
   try {
     await markAlertRead(id);
     return res.json({ success: true });
@@ -175,7 +179,8 @@ router.delete("/read", requireAdmin, async (req, res) => {
 
 router.delete("/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
   try {
     // Silent no-op → 404 (audit §5): deleting a non-existent alert used
     // to return `{success:true}`.

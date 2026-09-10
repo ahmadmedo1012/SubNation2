@@ -36,8 +36,8 @@ import { CheckoutService } from "../checkout.service";
 import { __resetIdempotencyTableProbeForTests } from "../../lib/idempotency";
 import { interleaveWriterAfterSelect } from "./helpers/tx-interleave";
 
-const KEY = "test-idem-key-0001";
-const KEY_B = "test-idem-key-0002";
+const KEY = "test idem key 0001";
+const KEY_B = "test idem key 0002";
 
 beforeAll(async () => {
   await initTestDb();
