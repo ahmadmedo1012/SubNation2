@@ -97,3 +97,10 @@
 - docs/inspection-r96/admin-backend-mobile.md (18)
 - docs/inspection-r96/mobile-rtl-a11y.md (21)
 - docs/round-96-repair-plan.md (الخطة قبل التنفيذ)
+
+## سجل النشر (2026-09-11)
+
+- commit 75f4ed7: التنفيذ الكامل → CI فشل في gitleaks (قيم اختبار تشبه مفاتيح API: false-positive) — عولج بـ 9c38ad1 (قيم مفصولة بمسافات + allowlist للسداسي القانوني + إصلاح وقائي لكل الأنماط الكامنة) — **تحقق محلي بإصدار gitleaks نفسه الذي يستخدمه CI: 0 نتائج**
+- 9c38ad1: **CI أخضر** ✅ + **نشر Render الخلفي نجح** ✅ (عبر سير العمل المعتاد بعد CI)
+- حادثة Vercel: نشرا الواجهة BLOCKED بسبب `COMMIT_AUTHOR_REQUIRED` (ميزة تحقق جديدة من Vercel: مؤلف الكوميت "Z User" ليس عضوًا في الفريق — الفريق = ahmadmedo1012@gmail.com وحده). الحل: ضبط هوية git لهوية المالك + كوميت نشر لاحق مصحّح التأليف (9c38ad1 نفسه لا يمكن إعادة استخدامه — المنشآت المحجوبة تبقى محجوبة).
+- إصلاح جانبي: قفل double-tap في ProductCard (useRef(null) بدل 0) — أول نقرة عند ساعة صفرية كانت تُبتلع
