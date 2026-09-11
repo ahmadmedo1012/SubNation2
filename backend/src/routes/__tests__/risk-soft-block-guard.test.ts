@@ -2,7 +2,18 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { db, execTestSql, initTestDb, inventoryTable, ordersTable, productsTable, resetTestDb, sessionsTable, usersTable, walletTopupsTable } from "../../test/db";
+import {
+  db,
+  execTestSql,
+  initTestDb,
+  inventoryTable,
+  ordersTable,
+  productsTable,
+  resetTestDb,
+  sessionsTable,
+  usersTable,
+  walletTopupsTable,
+} from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { ordersRouter } from "../orders";
 import { walletRouter } from "../wallet";
@@ -100,7 +111,10 @@ async function seedUser(balance = "50.00"): Promise<{ id: number; token: string 
 }
 
 async function seedProductWithStock(): Promise<number> {
-  const [p] = await db.insert(productsTable).values({ name: "Guarded Product", price: "10.00" }).returning();
+  const [p] = await db
+    .insert(productsTable)
+    .values({ name: "Guarded Product", price: "10.00" })
+    .returning();
   await db.insert(inventoryTable).values({
     productId: p.id,
     accountEmail: "guard@test.local",
@@ -121,7 +135,13 @@ async function tagSoftBlock(userId: number): Promise<void> {
   });
 }
 
-async function post(url: string, path: string, token: string, body: unknown, headers: Record<string, string> = {}) {
+async function post(
+  url: string,
+  path: string,
+  token: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   const res = await fetch(`${url}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: `auth_token=${token}`, ...headers },
@@ -132,7 +152,10 @@ async function post(url: string, path: string, token: string, body: unknown, hea
 }
 
 async function countOrders(userId: number): Promise<number> {
-  const rows = await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.userId, userId));
+  const rows = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(eq(ordersTable.userId, userId));
   return rows.length;
 }
 
@@ -191,7 +214,9 @@ describe("F1 — risk soft-block guard on POST /api/orders", () => {
         .select({ id: riskEventsTable.id, ruleFired: riskEventsTable.ruleFired })
         .from(riskEventsTable)
         .where(eq(riskEventsTable.userId, userId));
-      expect(sentinels.some((s) => (s.ruleFired ?? []).includes("soft_block_discharged"))).toBe(true);
+      expect(sentinels.some((s) => (s.ruleFired ?? []).includes("soft_block_discharged"))).toBe(
+        true,
+      );
     } finally {
       close();
     }

@@ -48,6 +48,21 @@
  *      breadcrumb tagged "socket-auth". No captureMessage spam from
  *      probe traffic.
  *
+ *   6. Connection caps (R97-06, round-97 F2). /socket.io sits OUTSIDE
+ *      apiLimiter/userLimiter (mounted on /api only), and every
+ *      accepted socket costs a DB liveness probe at handshake + a
+ *      5-minute re-verify timer + room membership. A holder of a
+ *      VALID token could open thousands of concurrent connections
+ *      (memory/FD/DB exhaustion). Every connection is now counted in
+ *      a per-client-IP tracker (max 5 concurrent per IP) plus a total
+ *      sanity cap (2000); a breaching socket is emitted a polite
+ *      `connection_limited` event and hard-disconnected a beat later,
+ *      and the rejection lands in the same Prometheus counter as the
+ *      auth rejections (reason=ip_connection_cap / total_connection_cap).
+ *      A periodic sweep drops stale ids so the tracker can never grow
+ *      unboundedly. Single-instance by design (documented limitation —
+ *      same posture as the in-memory rate-limit fallback).
+ *
  * THE PURE-FUNCTION SHAPE:
  *
  *   parseCookieHeader, authenticateSocketHandshake,
@@ -73,6 +88,7 @@ import { Server as HttpServer } from "http";
 import { Counter } from "prom-client";
 import { createClient } from "redis";
 import { Server as SocketServer, type Socket } from "socket.io";
+import { __testables as cloudflareIpTestables } from "../middlewares/cloudflareClientIp";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
 import { logger } from "./logger";
 import { isSessionRowLive } from "./session-liveness";
@@ -93,6 +109,25 @@ let io: SocketServer | null = null;
  * DB (sessions row / admin is_active). 93-A1 S1 recommended "e.g. every 5
  * min" — cheap indexed lookups (session probe is additionally 60 s-cached). */
 export const SOCKET_REVERIFY_INTERVAL_MS = 5 * 60_000;
+
+// ── R97-06 (round-97 F2): connection caps ────────────────────────────────
+
+/** Max CONCURRENT authenticated sockets per client IP. 5 covers every
+ * legitimate shape (main tab + admin tab + a refresh overlap + a mobile
+ * PWA) while making thousands-of-connections-per-attacker structurally
+ * impossible. CGNAT note: Libyan mobile carriers NAT many users behind
+ * one address; a shared 5-slot ceiling there degrades to reconnect
+ * churn, not lockout — acceptable for the exhaustion attack this caps. */
+export const MAX_SOCKET_CONNECTIONS_PER_IP = 5;
+
+/** Total concurrent sockets this instance will serve before refusing.
+ * Sanity bound against FD/memory exhaustion; 2000 is ~10× the observed
+ * peak for this deployment. */
+export const MAX_TOTAL_SOCKET_CONNECTIONS = 2_000;
+
+/** How often the tracker drops ids whose socket is no longer connected
+ * (missed disconnects, bookkeeping drift) — keeps the Map bounded. */
+export const SOCKET_CAP_SWEEP_INTERVAL_MS = 60_000;
 
 /** Verified identity attached to every authenticated socket. */
 export interface SocketIdentity {
@@ -412,7 +447,10 @@ type RejectionReason =
   | "session_revoked"
   | "admin_missing"
   | "admin_inactive"
-  | "admin_session_revoked"; // A8-01: admin_sessions row revoked
+  | "admin_session_revoked" // A8-01: admin_sessions row revoked
+  // R97-06 (round-97 F2): connection-cap rejections
+  | "ip_connection_cap"
+  | "total_connection_cap";
 
 /**
  * Record a rejection with all the defensive observability layers:
@@ -475,6 +513,116 @@ function getRemoteAddr(socket: Socket): string {
     if (entries.length > 0) return entries[entries.length - 1];
   }
   return socket.handshake.address || "unknown";
+}
+
+// ── R97-06 (round-97 F2): connection caps ────────────────────────────────
+
+/** Verdict of SocketConnectionTracker.admit — the connection handler
+ * disconnects anything that is not "ok". */
+export type SocketCapVerdict = "ok" | "per_ip_cap" | "total_cap";
+
+/**
+ * In-memory concurrent-connection accounting: per-client-IP socket-id
+ * sets plus a total counter. Deliberately dependency-free and pure so
+ * the exhaustion math is unit-testable without a socket.io server
+ * (same shape as the exported auth helpers above).
+ *
+ * One tracker per initSocket() call (per process in production).
+ */
+export class SocketConnectionTracker {
+  private readonly perIp = new Map<string, Set<string>>();
+  private total = 0;
+
+  constructor(
+    private readonly maxPerIp: number = MAX_SOCKET_CONNECTIONS_PER_IP,
+    private readonly maxTotal: number = MAX_TOTAL_SOCKET_CONNECTIONS,
+  ) {}
+
+  /** Register a connection. Returns the verdict; only "ok" connections
+   * are tracked (a capped socket must not occupy a slot). */
+  admit(ip: string, socketId: string): SocketCapVerdict {
+    if (this.total >= this.maxTotal) return "total_cap";
+    let ids = this.perIp.get(ip);
+    if (!ids) {
+      ids = new Set<string>();
+      this.perIp.set(ip, ids);
+    }
+    if (ids.has(socketId)) return "ok"; // idempotent re-admit
+    if (ids.size >= this.maxPerIp) return "per_ip_cap";
+    ids.add(socketId);
+    this.total += 1;
+    return "ok";
+  }
+
+  /** Free the slot a disconnecting socket occupied. No-op for ids that
+   * were never admitted (capped sockets have no slot to free). */
+  release(ip: string, socketId: string): void {
+    const ids = this.perIp.get(ip);
+    if (!ids || !ids.delete(socketId)) return;
+    this.total -= 1;
+    if (ids.size === 0) this.perIp.delete(ip);
+  }
+
+  /** Drop tracked ids the caller reports as dead — bounds drift from any
+   * missed disconnect path and keeps the Map size = live IP count. */
+  sweep(isLive: (socketId: string) => boolean): void {
+    for (const [ip, ids] of this.perIp) {
+      for (const id of ids) {
+        if (!isLive(id)) {
+          ids.delete(id);
+          this.total -= 1;
+        }
+      }
+      if (ids.size === 0) this.perIp.delete(ip);
+    }
+  }
+
+  /** Observability for tests + logs. */
+  stats(): { ips: number; sockets: number } {
+    return { ips: this.perIp.size, sockets: this.total };
+  }
+}
+
+/**
+ * Client IP for the per-IP connection cap. Mirrors cloudflareClientIp
+ * (H11) semantics on the WS surface: the rightmost XFF entry is the peer
+ * that actually connected to Render — when THAT peer is a Cloudflare
+ * edge, the CF-Connecting-IP header is Cloudflare's own (trustworthy)
+ * client value; otherwise (direct-to-Render connection) the rightmost
+ * XFF entry IS the client. Keying the cap on the raw rightmost XFF alone
+ * would lump every Cloudflare-routed user onto a handful of CF edge IPs
+ * and over-block; keying it on the unvalidated CF header would let a
+ * direct attacker rotate keys freely — this resolution is neither.
+ *
+ * Reuses the middleware's exported CF range tables (single source of
+ * truth — a local copy would drift when Cloudflare announces new ranges).
+ */
+export function resolveSocketClientIp(socket: {
+  handshake: { headers: Record<string, unknown>; address?: string };
+}): string {
+  const headers = socket.handshake.headers;
+  const cfIp = headers["cf-connecting-ip"];
+  const xff = headers["x-forwarded-for"];
+
+  let peer: string | null = null;
+  if (typeof xff === "string" && xff.length > 0) {
+    const entries = xff
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (entries.length > 0) peer = entries[entries.length - 1]!;
+  }
+
+  if (
+    peer &&
+    typeof cfIp === "string" &&
+    cfIp.length > 0 &&
+    cloudflareIpTestables.isCloudflareIp(peer)
+  ) {
+    return cfIp;
+  }
+
+  return peer ?? socket.handshake.address ?? "unknown";
 }
 
 // ── Mid-session re-verification wiring (93-A1 S1) ────────────────────
@@ -593,6 +741,16 @@ export function initSocket(server: HttpServer) {
       .catch((err) => logger.error({ err }, "Redis adapter connection failed"));
   }
 
+  // ── R97-06 (round-97 F2): connection caps ───────────────────────────
+  const connectionTracker = new SocketConnectionTracker();
+  const capSweepTimer = setInterval(() => {
+    // Drop ids whose socket is no longer connected on THIS instance —
+    // bounds the tracker's memory to the live connection set and heals
+    // any bookkeeping drift. Never keeps the process alive on its own.
+    connectionTracker.sweep((id) => io?.sockets.sockets.has(id) ?? false);
+  }, SOCKET_CAP_SWEEP_INTERVAL_MS);
+  capSweepTimer.unref();
+
   // ── Auth gate ────────────────────────────────────────────────────────
   io.use(async (socket, next) => {
     // Layer 1: origin allowlist (cheapest fail-fast).
@@ -656,8 +814,37 @@ export function initSocket(server: HttpServer) {
 
   io.on("connection", (socket: Socket) => {
     const identity = socket.data.identity as SocketIdentity | undefined;
-    safeGaugeInc(socketConnectedClients);
     safeInc(socketEventsTotal, { event: "connection", direction: "inbound" });
+
+    // ── R97-06: per-IP + total concurrent connection caps ─────────────
+    //
+    // Checked BEFORE the connected-clients gauge, room joins and the
+    // re-verify timer: a capped socket gets the polite event + a hard
+    // disconnect and must not cost any further server resources. Only
+    // "ok" verdicts occupy a slot AND the gauge (no disconnect handler
+    // is registered for a capped socket — its transport-level close is
+    // accounted by socket.io itself, not our gauge); releasing a
+    // never-admitted id is a no-op.
+    const capIp = resolveSocketClientIp(socket);
+    const capVerdict = connectionTracker.admit(capIp, socket.id);
+    if (capVerdict !== "ok") {
+      recordRejection(capVerdict === "per_ip_cap" ? "ip_connection_cap" : "total_connection_cap", {
+        socketId: socket.id,
+        capIp,
+        verdict: capVerdict,
+        tracker: connectionTracker.stats(),
+      });
+      // Polite reason first — a short grace beat so the client actually
+      // receives the event before the transport closes underneath it.
+      socket.emit("connection_limited", {
+        reason: capVerdict,
+        message: "تم تجاوز حد الاتصالات المتزامنة — أغلق التبويبات الأخرى وحاول مجدداً",
+      });
+      const grace = setTimeout(() => socket.disconnect(true), 250);
+      grace.unref?.();
+      return;
+    }
+    safeGaugeInc(socketConnectedClients);
 
     // ── Server-driven auto-join (P0-2) ─────────────────────────────────
     //
@@ -754,6 +941,7 @@ export function initSocket(server: HttpServer) {
 
     socket.on("disconnect", (reason: string) => {
       stopIdentityReverification(socket);
+      connectionTracker.release(capIp, socket.id);
       safeGaugeDec(socketConnectedClients);
       safeInc(socketEventsTotal, { event: "disconnect", direction: "inbound" });
       logger.info(

@@ -1,10 +1,14 @@
 /**
- * 96-F2 (R96-A4 §4.1 + §1.3E + §3.2, A6 #16/#17, A2 P2-9, A1 P1-4) —
- * WhatsApp OTP sign-in hardening tests.
+ * 96-F2 (R96-A4 §4.1 + §1.3E + §3.2, A6 #16/#17, A2 P2-9, A1 P1-4) +
+ * 97-F5 (R97-A4 §8 / F-05 + J-1) — WhatsApp OTP sign-in hardening tests.
  *
  * Pins:
  *   1. Phone normalization (+218 / 00218 / +2180…) — mirrors the
  *      backend normalizeLibyanPhone contract (96-F2 §3.2).
+ *   1b. 97-F5 (F-05): Arabic-Indic (٠-٩) and Persian (۰-۹) digits are
+ *      CONVERTED to Latin — in the phone field AND the OTP extractor —
+ *      instead of being deleted (the old `\D` strip emptied the field
+ *      and locked the primary sign-in path for Arabic-locale users).
  *   2. Resend affordance on the code step: visible immediately,
  *      cooldown-aware «(N ث)» label with Latin digits, reuses the
  *      STORED phone, never resets the flow (96-F2 §4.1).
@@ -12,6 +16,10 @@
  *      retry_after_sec): informational banner (role=status, never
  *      role=alert), auto-retry after retry_after_sec, max 2
  *      auto-retries then a manual button (96-F2 §1.3E).
+ *   3b. 97-F5 (J-1): channelStatus "failed" renders the HONEST dead-
+ *      channel copy (muted info style) — NOT the misleading «قيد الربط
+ *      مؤقتاً» generic hint; qr_ready/settling/ready keep their own
+ *      existing hints.
  *   4. Terminology/format: «رمز التحقق» unified, Latin digits in the
  *      aria-label and countdowns («(60 ث)», M:SS), lang="en" on the
  *      WhatsApp brand badge, 16px inputs (iOS zoom), 44px micro-links,
@@ -31,7 +39,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { normalizePhoneInput, WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
+import {
+  normalizePhoneInput,
+  toLatinDigits,
+  WhatsAppPhoneSignIn,
+} from "@/components/WhatsAppPhoneSignIn";
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ setToken: vi.fn() }),
@@ -135,9 +147,26 @@ describe("normalizePhoneInput — international prefixes mirror the backend (96-
     ["0913456789012", "0913456789"],
     ["abc0913456789def", "0913456789"],
     ["+218", ""],
-    ["٩١٣٤٥٦٧٨٩", ""],
+    // 97-F5 (F-05): Arabic-Indic / Persian digits CONVERT (the old
+    // behavior — pinned by the previous revision of this very table —
+    // deleted every digit and returned "").
+    ["٩١٣٤٥٦٧٨٩", "913456789"],
+    ["+٢١٨٩١٠٠٨٩٩٧٥", "910089975"],
+    ["+٢١٨ ٩١ ٣٤٥ ٦٧٨٩", "913456789"],
+    ["٠٩١٣٤٥٦٧٨٩", "0913456789"],
+    ["۰۹۱۳۴۵۶۷۸۹", "0913456789"],
+    ["+۲۱۸۹۱۰۰۸۹۹۷۵", "910089975"],
+    // Mixed scripts survive the conversion too.
+    ["+218٩١٣٤٥٦٧٨٩", "913456789"],
   ])("%j → %j", (raw, expected) => {
     expect(normalizePhoneInput(raw)).toBe(expected);
+  });
+
+  it("97-F5 (F-05): toLatinDigits converts both Arabic-Indic and Persian glyphs", () => {
+    expect(toLatinDigits("٠١٢٣٤٥٦٧٨٩")).toBe("0123456789");
+    expect(toLatinDigits("۰۱۲۳۴۵۶۷۸۹")).toBe("0123456789");
+    expect(toLatinDigits("abc123")).toBe("abc123"); // Latin passes through
+    expect(toLatinDigits("")).toBe("");
   });
 
   it("normalizes on change: pasting the international form lands as the local form", () => {
@@ -145,6 +174,13 @@ describe("normalizePhoneInput — international prefixes mirror the backend (96-
     const input = openPhoneStep();
     fireEvent.change(input, { target: { value: "+218 91 345 6789" } });
     expect(input).toHaveValue("913456789");
+  });
+
+  it("97-F5 (F-05): pasting an Arabic-Indic number into the phone field normalizes correctly", () => {
+    renderSignIn();
+    const input = openPhoneStep();
+    fireEvent.change(input, { target: { value: "+٢١٨٩١٠٠٨٩٩٧٥" } });
+    expect(input).toHaveValue("910089975");
   });
 });
 
@@ -214,21 +250,35 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
 // 3. Honest provider hints (r95 pattern + 96-F2 settling)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("honest provider hints under the pristine button (96-F2 §1.3E)", () => {
+describe("honest provider hints under the pristine button (96-F2 §1.3E + 97-F5 J-1)", () => {
   it('shows the settling hint when whatsapp_status === "settling"', () => {
     renderSignIn({ channelStatus: "settling" });
     expect(screen.getByText(/تُهيَّأ الآن وتصبح جاهزة خلال أقل من دقيقة/)).toBeInTheDocument();
   });
 
-  it("keeps the r95 not-paired hint for other non-ready statuses (settling excluded)", () => {
+  it("keeps the r95 not-paired hint for other non-ready statuses (settling/failed excluded)", () => {
     renderSignIn({ channelStatus: "qr_ready" });
     expect(screen.getByText(/قيد الربط مؤقتاً/)).toBeInTheDocument();
     expect(screen.queryByText(/تُهيَّأ الآن/)).not.toBeInTheDocument();
   });
 
+  it('97-F5 (J-1): "failed" renders the honest dead-channel copy — muted info, NOT «قيد الربط»', () => {
+    renderSignIn({ channelStatus: "failed" });
+
+    const hint = screen.getByText(/غير مرتبطة حاليًا/);
+    expect(hint).toBeInTheDocument();
+    expect(hint.textContent).toContain("جارٍ إصلاحها من فريق التشغيل");
+    expect(hint.textContent).toContain("استخدم Google أو Telegram");
+    // Muted info styling (NOT the destructive error style) + never an alert.
+    expect(hint.className).toContain("text-muted-foreground");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // The misleading «قيد الربط مؤقتاً» copy must NOT co-render for failed.
+    expect(screen.queryByText(/قيد الربط مؤقتاً/)).not.toBeInTheDocument();
+  });
+
   it("shows no hint when the channel is ready", () => {
     renderSignIn({ channelStatus: "ready" });
-    expect(screen.queryByText(/قيد الربط|تُهيَّأ/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/قيد الربط|تُهيَّأ|غير مرتبطة/)).not.toBeInTheDocument();
   });
 });
 
@@ -446,5 +496,35 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("الرمز غير صحيح");
     expect(alert.textContent).not.toContain("غير مصرح");
+  });
+
+  it("97-F5 (F-05): typing an Arabic-Indic OTP CONVERTS to Latin digits and verifies the converted code", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
+    renderSignIn();
+    typePhone(openPhoneStep(), PHONE);
+    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    const otp = await screen.findByPlaceholderText("رمز التحقق");
+
+    // The user's keyboard delivered ١٢٣٤٥٦ — the old extractor deleted
+    // every glyph (empty code, «الرمز يجب أن يكون 6 أرقام").
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { error: "الرمز غير صحيح", code: "UNAUTHORIZED" }),
+    );
+    fireEvent.change(otp, { target: { value: "١٢٣٤٥٦" } });
+
+    // The input itself holds the CONVERTED Latin digits…
+    expect(otp).toHaveValue("123456");
+    // …and the auto-submit fired the verify request WITH them (not with
+    // an empty string, not with the Arabic glyphs).
+    const verifyCall = fetchMock.mock.calls.find(
+      (c) => String(c[0]) === "/api/auth/whatsapp/verify",
+    );
+    expect(verifyCall).toBeTruthy();
+    expect(JSON.parse((verifyCall![1] as RequestInit).body as string)).toMatchObject({
+      phone: PHONE,
+      code: "123456",
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("الرمز غير صحيح");
   });
 });

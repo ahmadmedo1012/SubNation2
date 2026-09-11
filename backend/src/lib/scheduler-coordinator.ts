@@ -51,12 +51,37 @@
  * single warn, and the existing acquisition retry loop polls
  * getRedisClient() so the process takes the REAL lock (onAcquired fires,
  * schedulers start) the moment Redis comes back.
+ *
+ * 97-F1 (round-97): F2's fail-closed policy had a structural blind spot —
+ * with REDIS_URL missing from the environment NO Redis client object is
+ * ever created (redis-client.ts resolves to null forever), so the
+ * "self-healing" retry loop polled a client that could never appear:
+ * leadership was never granted and every cron, watcher and the alerting
+ * evaluator stayed dead for the whole process lifetime while the app
+ * kept serving traffic and passing health checks (silent production
+ * outage 2026-09-08..11 — see docs/inspection-r97/backend-services-infra.md).
+ * Postgres is already the money-path dependency in every environment, so
+ * when the Redis client resolves to null the coordinator now falls back
+ * to the PG-backed leader lease (lib/pg-leader-lease.ts, same
+ * acquire/refresh/release semantics) INSTEAD of returning "no_client"
+ * — the exact same state machine drives it (first attempt →
+ * acquired/busy/error, retry timer, becomeLeader → refresher, demotion
+ * on an unverified/lost lease, release). Redis REMAINS the primary
+ * backend whenever a client exists; the PG lease only serves the
+ * no-Redis shape, and a PG leader that notices Redis has come back hands
+ * leadership over (releases the lease, demotes, re-competes for the real
+ * Redis lock) so the two backends can never elect parallel leaders for
+ * longer than one refresh interval.
  */
 
 import { randomUUID } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { logger } from "./logger";
 import { getRedisClient, noteRedisDegradedMode, withRedisCommandTimeout } from "./redis-client";
+import {
+  getSchedulerLeaderLeaseBackend,
+  type SchedulerLeaderLeaseBackend,
+} from "./pg-leader-lease";
 
 const SCHEDULER_LEADER_KEY = "scheduler:leader";
 const LEADER_TTL_SEC = 60;
@@ -111,6 +136,13 @@ export interface LeadershipAcquireOptions {
    * the first argument and never set this.
    */
   redisProvider?: () => RedisClientType | null;
+  /**
+   * 97-F1 test seam: the PG leader-lease backend used when Redis is
+   * unavailable (null client). Defaults to the shared backend from
+   * lib/pg-leader-lease.ts. Production callers never set this — the
+   * default resolves the existing shared db pool lazily.
+   */
+  pgLeaseBackend?: SchedulerLeaderLeaseBackend;
 }
 
 /**
@@ -137,15 +169,22 @@ export async function acquireSchedulerLeadership(
   // is only ever granted against a REAL lock — never unguarded.
   const resolveClient = options.redisProvider ?? (redis ? () => redis : getRedisClient);
   let client: RedisClientType | null = redis;
-  // F2: one warn for the whole null-client episode — NOT one per retry
-  // tick (the loop polls silently; Redis returning is the normal fix).
-  let noRedisWarned = false;
-  const warnNoRedisOnce = () => {
-    if (noRedisWarned) return;
-    noRedisWarned = true;
+  // 97-F1: lock backend used when the Redis client resolves to null.
+  const pgLease = options.pgLeaseBackend ?? getSchedulerLeaderLeaseBackend();
+  // True while the CURRENT leadership attempt/hold rides the PG lease
+  // backend — refresh() and release() must talk to the backend that
+  // actually granted us the lease, not to whichever is preferred now.
+  let usingPgLease = false;
+  // 97-F1: one clear line for the whole no-Redis episode — NOT one per
+  // retry tick (the loop polls silently; Redis returning is the normal
+  // upgrade path back to the primary backend).
+  let pgFallbackLogged = false;
+  const logPgFallbackOnce = () => {
+    if (pgFallbackLogged) return;
+    pgFallbackLogged = true;
     logger.warn(
       { category: "monitoring", instanceId },
-      "[scheduler] Redis unavailable at boot — NOT granting leadership (fail-closed, F2). Schedulers stay stopped; the acquisition loop will take the real lock once Redis returns. Dev without Redis: set REDIS_URL to run schedulers.",
+      "[scheduler] Redis unavailable — using PostgreSQL leader lease (single-db fallback)",
     );
   };
 
@@ -204,7 +243,56 @@ export async function acquireSchedulerLeadership(
     // protects against a clock skew or split-brain situation where another
     // instance has already taken over.
     refresher = setInterval(async () => {
-      if (released || !leader || !client) return;
+      if (released || !leader) return;
+      if (usingPgLease) {
+        // 97-F1: Redis is the PRIMARY backend — if a client has (re)appeared
+        // since we took the PG lease (degraded boot that healed, or a
+        // REDIS_URL re-add), hand leadership over CLEANLY instead of running
+        // on the fallback forever: release our lease row, demote (the caller
+        // stops its schedulers), and let the retry loop compete for the real
+        // Redis lock like everyone else. Without this, a PG leader + a
+        // Redis leader could double-run every cron/watcher indefinitely.
+        // (With REDIS_URL truly absent this check never fires — no client
+        // object is ever created — so the fallback leadership is stable.)
+        const redisNow = client ?? resolveClient();
+        if (redisNow) {
+          client = redisNow;
+          usingPgLease = false;
+          try {
+            await pgLease.release(instanceId);
+          } catch {
+            // ignore — the 60 s lease TTL is the backstop.
+          }
+          demote("redis_returned");
+          return;
+        }
+        // 97-F1: PG refresher — the lease outcome VERIFIES the holder (the
+        // UPDATE's WHERE clause only returns a row for the current holder
+        // of an unexpired lease). A lost lease after expiry must demote
+        // IMMEDIATELY — another instance may have taken over and may be
+        // running the schedulers already.
+        //
+        // "error" (DB hiccup) ALSO demotes: holdership could not be
+        // verified, and an unverified lease must never keep firing
+        // schedulers (fail-closed). The demotion is cheap to recover from —
+        // the retry loop re-acquires, and a same-holder re-acquire is
+        // idempotent in the lease SQL (no waiting for TTL expiry).
+        try {
+          const outcome = await pgLease.refresh(instanceId, LEADER_TTL_SEC);
+          if (outcome === "renewed") return;
+          // "lost" or "error": the current holder is not verifiably us.
+          demote(outcome);
+        } catch (err) {
+          // The lease backend contract is never-throw; belt-and-suspenders.
+          logger.warn(
+            { err, category: "monitoring" },
+            "[scheduler] PG leader lease refresh threw — demoting",
+          );
+          demote("refresh_threw");
+        }
+        return;
+      }
+      if (!client) return;
       try {
         // R5: bounded — during a Redis outage the raw get queued forever
         // (offline queue) and the 20 s iterations hang-stacked.
@@ -241,34 +329,52 @@ export async function acquireSchedulerLeadership(
     startRefresher();
   };
 
-  const attemptAcquisition = async (): Promise<
-    "acquired" | "busy" | "error" | "no_client"
-  > => {
+  const attemptAcquisition = async (): Promise<"acquired" | "busy" | "error"> => {
     if (released || leader) return "busy";
     // F2: re-resolve the client each attempt — a null boot-time client
     // (degraded boot) upgrades to the live one the moment Redis returns.
+    // 97-F1: Redis stays the PRIMARY backend whenever a client exists.
     const target = client ?? resolveClient();
-    if (!target) return "no_client";
-    client = target;
+    if (target) {
+      client = target;
+      usingPgLease = false;
+      try {
+        const result = await withRedisCommandTimeout(
+          "leader_acquire_set",
+          () =>
+            target.set(SCHEDULER_LEADER_KEY, instanceId, {
+              NX: true,
+              EX: LEADER_TTL_SEC,
+            }),
+          LEADERSHIP_OP_TIMEOUT_MS,
+        );
+        return result === "OK" ? "acquired" : "busy";
+      } catch (err) {
+        // Redis hiccup — fall closed for THIS attempt (don't run schedulers
+        // from this process; other instances might) but keep retrying:
+        // erroring forever on a boot-time blip lost schedulers for whole
+        // days before B7-P1-1.
+        logger.warn(
+          { err, category: "monitoring" },
+          "[scheduler] Leadership lock evaluation failed — will retry",
+        );
+        return "error";
+      }
+    }
+    // 97-F1: no Redis client (no REDIS_URL — no client object is EVER
+    // created, so unlike a connection blip this state cannot heal itself).
+    // Fall back to the PG-backed leader lease instead of returning
+    // "no_client" and staying dark for the whole process lifetime. Same
+    // acquire semantics, same retry loop, same guarded leadership.
+    logPgFallbackOnce();
+    usingPgLease = true;
     try {
-      const result = await withRedisCommandTimeout(
-        "leader_acquire_set",
-        () =>
-          target.set(SCHEDULER_LEADER_KEY, instanceId, {
-            NX: true,
-            EX: LEADER_TTL_SEC,
-          }),
-        LEADERSHIP_OP_TIMEOUT_MS,
-      );
-      return result === "OK" ? "acquired" : "busy";
+      return await pgLease.acquire(instanceId, LEADER_TTL_SEC);
     } catch (err) {
-      // Redis hiccup — fall closed for THIS attempt (don't run schedulers
-      // from this process; other instances might) but keep retrying:
-      // erroring forever on a boot-time blip lost schedulers for whole
-      // days before B7-P1-1.
+      // The lease backend contract is never-throw; belt-and-suspenders.
       logger.warn(
         { err, category: "monitoring" },
-        "[scheduler] Leadership lock evaluation failed — will retry",
+        "[scheduler] PG leader lease evaluation failed — will retry",
       );
       return "error";
     }
@@ -310,16 +416,13 @@ export async function acquireSchedulerLeadership(
         "[scheduler] Another instance currently holds leadership — retrying every 20s until it frees up (blue-green deploy window)",
       );
     }
-    if (first === "no_client") {
-      // F2: fail-closed — no unguarded leadership. Warn ONCE here; the
-      // silent retry loop below upgrades to a real client when Redis
-      // returns, then competes for the actual lock like everyone else.
-      warnNoRedisOnce();
-    }
     // B7-P1-1: keep re-attempting in the background. The old instance's
     // SIGTERM release (or a 60 s TTL expiry after SIGKILL) hands the lock
     // over; when that happens we become leader and notify the caller.
     // F2: also the recovery path for a degraded (Redis-less) boot.
+    // 97-F1: with no Redis client the loop now races the PG lease instead —
+    // the moment the lease frees up (release or TTL expiry elsewhere)
+    // onAcquired fires and the schedulers start here.
     startRetryTimer();
   }
 
@@ -334,6 +437,18 @@ export async function acquireSchedulerLeadership(
       stopRefresher();
       if (!leader) return;
       leader = false;
+      if (usingPgLease) {
+        // 97-F1: release OUR lease row on the PG backend that granted it.
+        // A failure is swallowed — the 60 s lease TTL hands leadership
+        // over anyway (same backstop philosophy as the Redis path below,
+        // and SIGTERM drain must never stall on a DB hiccup).
+        try {
+          await pgLease.release(instanceId);
+        } catch {
+          // ignore — the lease TTL (60 s) is the backstop.
+        }
+        return;
+      }
       try {
         // Release only if we still own it (a different instance may have
         // taken over after a TTL expiry).

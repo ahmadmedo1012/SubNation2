@@ -237,3 +237,67 @@ curl -X POST -H "Content-Type: application/json" \
   https://subnation.ly/api/cwv
 # Expected: 204
 ```
+
+## 9. Dual-Deployment Architecture — «معمارية النشر المزدوج»
+
+97-F6 (R97 J-4): two live deployments run in parallel from this same repo.
+This section is the source of truth for which one is canonical and what
+on-call must keep green.
+
+|          | PRIMARY (canonical)                                                        | SECONDARY (parallel/preview)                                                                                |
+| -------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| URL      | `https://subnation.ly`                                                     | `https://subnation-seven.vercel.app`                                                                        |
+| Pipeline | Cloudflare proxy → Render (`subnation2.onrender.com`)                      | Vercel build from the same repo                                                                             |
+| Serves   | Backend Docker image: API + built frontend static (`frontend/dist/public`) | Static frontend build; `/api/*`, `/robots.txt`, `/sitemap.xml` proxied to Render via `vercel.json` rewrites |
+| DNS      | `subnation.ly` / `www` on Cloudflare (proxied, Always-Use-HTTPS)           | `*.vercel.app`                                                                                              |
+
+**Confirmed by live evidence (R97-A1):** `subnation.ly` responses carry
+`server: cloudflare` + `x-render-origin-server: Render` headers and the
+backend's helmet CSP — the domain is NOT served by Vercel.
+
+**Operational rules:**
+
+1. **Keep both deployments green.** A red Render deploy is a production
+   incident (rollback §4). A red Vercel deploy is a preview regression —
+   fix before the next release, but it does not page on-call.
+2. **robots.txt / sitemap.xml must work on BOTH.** The backend generates
+   them dynamically (`backend/src/routes/seo.ts`); they are not build
+   artifacts. On Render they are served directly; on Vercel,
+   `vercel.json` rewrites `/robots.txt` and `/sitemap.xml` to the Render
+   origin so crawlers get real files (never SPA HTML — R97 J-4). Verify
+   both after any routing/SEO change:
+   ```
+   curl -sI https://subnation.ly/robots.txt      | head -1   # 200 text/plain
+   curl -sI https://subnation.ly/sitemap.xml     | head -1   # 200 application/xml
+   curl -sI https://subnation-seven.vercel.app/robots.txt | head -1
+   ```
+   Missing `/assets/*` files (e.g. any `.js.map`) must 404 on Vercel, not
+   soft-404 with SPA HTML (R97 J-7).
+3. **`VITE_*` env differences per platform.** Render sets build env on the
+   web service (via `render.yaml` / dashboard); Vercel sets them in the
+   project's Environment Variables. Keys that MUST match on both:
+   `VITE_SENTRY_DSN`, `VITE_GSC_VERIFICATION`, `VITE_API_BASE_URL` /
+   `VITE_SOCKET_URL` (empty on Render same-origin; on Vercel point at the
+   Render origin or rely on the `/api` proxy), `VITE_GA_TRACKING_ID`.
+   `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` are build-time
+   only (source-map upload) — currently unset on both.
+   Note (97-F6): a build without `VITE_SENTRY_DSN` now ships NO Sentry
+   vendor chunk at all — the DSN-less SDK used to cost ~151 KB brotli on
+   the boot path. Setting the DSN on either platform re-enables it
+   automatically; no code change needed.
+4. **Decision pointer (owner).** The dual pipeline is accepted for now as
+   belt-and-suspenders, but it is a divergence risk (different chunk
+   hashes per platform) and the Vercel API path adds a proxy hop
+   (~0.72 s vs ~0.29 s p50 to `/api/products`, R97-A1 §3.5). When the
+   owner decides to consolidate: either promote Vercel (custom domain →
+   Vercel, demote Render to API-only) or demote Vercel (delete the
+   project / keep as branch previews only). Until then: treat
+   `subnation.ly` as the canonical URL in sitemap, canonical tags, GSC,
+   and any external links. Do not advertise the `*.vercel.app` URL.
+
+**خلاصة عربية:** النطاق القانوني `subnation.ly` يُقدَّم من Cloudflare → Render
+(الأساسي — صورة Docker الواحدة تقدّم API والواجهة معًا)، ونشر Vercel موازٍ
+للمعاينة من المستودع نفسه. يجب بقاء النشرين أخضرين، وrobots/sitemap يعملان على
+كليهما (عبر rewrite إلى Render على Vercel)، ومتغيرات `VITE_*` متطابقة بين
+المنصتين، والقرار النهائي بدمج أو إزالة نشر Vercel يعود للمالك — حتى ذلك
+الحين يُعامَل `subnation.ly` كالرابط القانوني في كل مكان.

@@ -50,7 +50,13 @@ export const ordersTable = pgTable(
     deliveredUsageTerms: text("delivered_usage_terms"),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     couponCode: varchar("coupon_code", { length: 50 }),
-    discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0.00"),
+    // R97-DB-03 (D3 closure, round-97 F7): the live DB column is
+    // NOT NULL DEFAULT 0.00 (created that way by migrate.ts boot SQL);
+    // the schema TS was the lenient twin — drizzle-kit generate would
+    // have proposed a weakening DROP NOT NULL. Aligned to the DB.
+    discountAmount: numeric("discount_amount", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0.00"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

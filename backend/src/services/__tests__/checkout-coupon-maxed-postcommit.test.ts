@@ -94,9 +94,7 @@ async function seedMaxedOutCoupon(maxUses: number) {
 }
 
 async function couponMaxedAlerts(): Promise<Array<{ type: string }>> {
-  const res = await db.execute(
-    sql`SELECT type FROM admin_alerts WHERE type = ${"coupon_maxed"}`,
-  );
+  const res = await db.execute(sql`SELECT type FROM admin_alerts WHERE type = ${"coupon_maxed"}`);
   return (res as unknown as { rows?: Array<{ type: string }> }).rows ?? [];
 }
 

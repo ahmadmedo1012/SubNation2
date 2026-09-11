@@ -4,6 +4,21 @@ import { getSocketUrl } from "./api-config";
 let socket: Socket | null = null;
 
 /**
+ * 97-F5 (R97-A4 §7 / F-03): dispose generation — a monotonic counter
+ * bumped by every disconnectSocket(). getSocket() captures it BEFORE
+ * awaiting the socket.io-client dynamic import and re-checks AFTER:
+ * a teardown that raced the import must WIN (return null, never
+ * construct the socket), otherwise a connectSocket() started just
+ * before logout/identity-switch would connect a zombie socket AFTER
+ * the switch — authenticated under a stale/dead cookie, spinning in
+ * connect_error forever (reconnectionAttempts: Infinity) while
+ * reviveSocket() keeps resurrecting it. This hardens the F-12 race
+ * the R97 inspection flagged, which the added setToken() disconnects
+ * in auth.tsx would otherwise make easier to hit.
+ */
+let disposeGeneration = 0;
+
+/**
  * 96-F3 (R96 M5 + A4 §2.1): window CustomEvent fired exactly ONCE per
  * documented disconnect → reconnect cycle. SocketInitializer listens
  * for it and invalidates the transactional query families (orders /
@@ -15,11 +30,16 @@ let socket: Socket | null = null;
  */
 export const SOCKET_RESYNC_EVENT = "subnation:socket-resync";
 
-// The CURRENT authenticated user at connect time. The shared "connect"
-// handler below reads this when the event fires (initial connect AND
-// every auto-reconnect), so after an account switch the room re-join
-// always uses the new identity — never a stale closure over an old
-// userId.
+// The user identity the socket was last bound to. NOTE (97-F5 / F-03):
+// this is ONLY used to DETECT identity switches in connectSocket() —
+// the room membership itself is decided SERVER-SIDE at handshake from
+// the auth_token cookie (backend/src/lib/socket.ts "SERVER-DRIVEN room
+// joining on connect"; the client-emitted "join-user" below is treated
+// by the server as a defensive idempotent NO-OP). A still-connected
+// socket therefore stays in the PREVIOUS user's room until it is
+// reconnected with the fresh cookie — connectSocket() tears it down on
+// a userId change, and auth.tsx's setToken() disconnects it outright on
+// every identity switch.
 let currentUserId: number | string | undefined;
 
 /**
@@ -34,9 +54,9 @@ let wasDisconnected = false;
 const handleUserConnect = () => {
   const s = socket;
   if (!s || currentUserId === undefined) return;
-  // Server-side authorizeJoinUser strictly verifies that this
-  // userId matches the verified identity from the auth_token
-  // cookie. Forged values are silently dropped.
+  // Defensive NO-OP server-side: authorizeJoinUser re-validates this
+  // userId against the verified cookie identity and forged values are
+  // silently dropped. The REAL room join happened at handshake.
   s.emit("join-user", currentUserId);
 };
 
@@ -79,8 +99,13 @@ const handleResyncOnConnect = () => {
 
 export async function getSocket() {
   if (!socket) {
+    // Captured BEFORE the await — see disposeGeneration above.
+    const generationAtStart = disposeGeneration;
     try {
       const { io } = await import("socket.io-client");
+      // A disconnectSocket() that fired while the import was in flight
+      // invalidated this creation — never construct the zombie socket.
+      if (generationAtStart !== disposeGeneration) return null;
       const socketUrl = getSocketUrl();
       socket = io(socketUrl || undefined, {
         autoConnect: false,
@@ -126,21 +151,38 @@ export async function connectSocket(userId?: number | string) {
   const s = await getSocket();
   if (!s) return null;
 
+  // 97-F5 (R97-A4 §7 / F-03 — P2): the socket's room membership is
+  // bound at HANDSHAKE from the cookie, so a userId change on a live
+  // connection cannot be fixed by emitting join-user (server no-op).
+  // Tear the connection down and reconnect: the fresh handshake
+  // carries the NEW cookie and the server immediately joins the new
+  // user's room. "io client disconnect" below deliberately does not
+  // arm the resync flag — nothing was missed; the identity switch in
+  // auth.tsx already cleared + invalidated the user-scoped caches.
+  const identitySwitch =
+    s.connected && currentUserId !== undefined && userId !== undefined && currentUserId !== userId;
+
   currentUserId = userId;
 
   // Dedup: named module-level handlers make `.off()` before `.on()` a
   // no-op on repeat calls, so repeated connectSocket() invocations
-  // (remounts, account switches) never stack duplicate "connect"
-  // listeners that would each emit join-user under stale ids.
+  // (remounts) never stack duplicate "connect" listeners that would
+  // each emit join-user under stale ids.
   s.off("connect", handleUserConnect);
   s.on("connect", handleUserConnect);
+
+  if (identitySwitch) {
+    // Fresh handshake → server auto-joins the new user's room.
+    s.disconnect();
+    s.connect();
+    return s;
+  }
 
   if (!s.connected) {
     s.connect();
   } else {
-    // Already connected (e.g. switching accounts mid-session): join
-    // under the current userId right away instead of waiting for a
-    // reconnect to fire the handler.
+    // Already connected under the SAME identity: re-assert the (no-op)
+    // join defensively instead of waiting for a reconnect.
     handleUserConnect();
   }
 
@@ -177,6 +219,9 @@ export function reviveSocket(): void {
 }
 
 export function disconnectSocket() {
+  // Invalidate any getSocket() creation still racing the dynamic
+  // import (see disposeGeneration above) BEFORE the teardown below.
+  disposeGeneration += 1;
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -193,4 +238,5 @@ export function __resetSocketStateForTests(): void {
   socket = null;
   currentUserId = undefined;
   wasDisconnected = false;
+  disposeGeneration = 0;
 }

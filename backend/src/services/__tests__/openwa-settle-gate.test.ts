@@ -21,6 +21,12 @@
  *   E. readySince mirror — in-memory Map + Redis adoption (SETNX with a
  *      7-day TTL when fresh, GET-adoption on cold start).
  *   F. POST_LINK_SETTLE_MS env parsing + clamping.
+ *   G. 97-F3 (R97-WA-01) settle-gate RE-ARM on re-pair — the gate key is
+ *      composite (sessionId + lastReadyAt epoch token): a re-pair under
+ *      the SAME session id (the live production incident) re-arms the
+ *      full window, drops dispatchReady, re-schedules the warm-up, and
+ *      reads a FRESH Redis mirror key. WA-03 partial: the warm-up
+ *      verdict is epoch-scoped.
  *
  * Fetch is mocked at the module boundary; the Redis singleton is mocked
  * (default: null — the no-Redis production shape) with an optional
@@ -59,6 +65,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 interface MockGatewayOptions {
   /** Return value for GET /api/sessions/{id} (session record). */
   sessionStatus?: string | null;
+  /**
+   * 97-F3 (WA-01): the gateway session's `lastReadyAt` pairing-epoch
+   * token — a fixed value, or a getter so a test can flip it mid-flight
+   * to simulate a re-pair under the same session id. Omitted → legacy
+   * gateway shape (no field on the wire; the gate keys on the bare id).
+   */
+  lastReadyAt?: string | (() => string | undefined);
   /** Handler for POST send-text — defaults to 200 success. */
   onSendText?: (call: FetchCall, sendCount: number) => Response | Promise<Response>;
 }
@@ -72,10 +85,12 @@ function installFetchMock(opts: MockGatewayOptions = {}) {
     calls.push(call);
     if (url.endsWith(SESSION_URL)) {
       if (opts.sessionStatus === null) return new Response("nf", { status: 404 });
+      const epoch = typeof opts.lastReadyAt === "function" ? opts.lastReadyAt() : opts.lastReadyAt;
       return jsonResponse({
         id: SESSION_ID,
         name: "subnation-otp",
         status: opts.sessionStatus ?? "ready",
+        ...(epoch ? { lastReadyAt: epoch } : {}),
       });
     }
     if (url.endsWith("/messages/send-text")) {
@@ -469,5 +484,202 @@ describe("readySince Redis mirror — adoption + SETNX claim (96-F1 §1.3A)", ()
     const mod = await importOpenwa();
     const result = await mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
     expect(result).toEqual({ ok: true });
+  });
+});
+
+// ─── G. 97-F3 (R97-WA-01): settle-gate re-arm on re-pair ────────────────────
+
+describe("settle gate — pairing-epoch re-arm (97-F3 / R97-WA-01)", () => {
+  const EPOCH_A = "2026-09-10T17:24:40.000Z"; // the dead pairing's lastReadyAt
+  const EPOCH_B = "2026-09-11T09:02:11.000Z"; // the re-pair's fresh lastReadyAt
+
+  it("a NEW lastReadyAt under the same session id re-arms the FULL settle window", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "45000";
+    let epoch = EPOCH_A;
+    installFetchMock({ lastReadyAt: () => epoch });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    // First ready observation under epoch A → 45 s window.
+    const r1 = await mod.getWhatsAppGatewayReadiness();
+    expect(r1).toMatchObject({ status: "ready", ready: false, settling: true });
+    expect(r1.readyInSec).toBeGreaterThan(0);
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_A)).toBeDefined();
+
+    // Window elapses + probe cache expires → ready.
+    await vi.advanceTimersByTimeAsync(46_000);
+    const r2 = await mod.getWhatsAppGatewayReadiness();
+    expect(r2).toMatchObject({ ready: true, settling: false, readyInSec: null });
+
+    // The operator re-pairs: SAME session id, gateway stamps a NEW lastReadyAt.
+    epoch = EPOCH_B;
+    await vi.advanceTimersByTimeAsync(31_000); // probe cache expiry
+    const r3 = await mod.getWhatsAppGatewayReadiness();
+    // The gate re-armed: ready collapses back to false with a FULL window.
+    expect(r3).toMatchObject({ status: "ready", ready: false, settling: true });
+    expect(r3.readyInSec).toBeGreaterThan(44);
+    expect(r3.readyInSec).toBeLessThanOrEqual(45);
+    // Old epoch's ready-since is wiped; the new epoch records fresh; the
+    // observed-epoch memory follows the wire.
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_A)).toBeUndefined();
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_B)).toBeDefined();
+    expect(mod.__whatsappSettleGateTest.getObservedEpoch(SESSION_ID)).toBe(EPOCH_B);
+  });
+
+  it("the SAME lastReadyAt keeps the steady state — no re-arm", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "45000";
+    installFetchMock({ lastReadyAt: EPOCH_A });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    await mod.getWhatsAppGatewayReadiness(); // window opens under epoch A
+    const readySinceA = mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_A);
+    expect(readySinceA).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(46_000);
+    expect(await mod.getWhatsAppGatewayReadiness()).toMatchObject({
+      ready: true,
+      settling: false,
+    });
+
+    // Much later, SAME epoch token → still settled, SAME timestamp.
+    await vi.advanceTimersByTimeAsync(31_000);
+    const r3 = await mod.getWhatsAppGatewayReadiness();
+    expect(r3).toMatchObject({ ready: true, settling: false, readyInSec: null });
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_A)).toBe(readySinceA);
+  });
+
+  it("the epoch token is compared OPAQUELY — an out-of-order (earlier) new lastReadyAt still re-arms", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "45000";
+    // Gateway clock skew: the NEW pairing stamps an EARLIER timestamp. A
+    // time-diff comparison would call it "not newer" and miss the re-pair;
+    // a string comparison cannot.
+    let epoch = "2026-09-12T00:00:00.000Z";
+    installFetchMock({ lastReadyAt: () => epoch });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    await mod.getWhatsAppGatewayReadiness();
+    await vi.advanceTimersByTimeAsync(46_000);
+    expect(await mod.getWhatsAppGatewayReadiness()).toMatchObject({ ready: true });
+
+    epoch = "2026-09-11T23:00:00.000Z"; // EARLIER than the previous token
+    await vi.advanceTimersByTimeAsync(31_000);
+    const r = await mod.getWhatsAppGatewayReadiness();
+    expect(r).toMatchObject({ ready: false, settling: true });
+    expect(r.readyInSec).toBeGreaterThan(44);
+  });
+
+  it("re-pair drops dispatchReady — a fresh epoch-scoped self-check must deliver before dispatch re-enables (WA-03 partial)", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "0";
+    process.env.WHATSAPP_OTP_OPERATOR_E164 = OPERATOR_E164;
+    let epoch = EPOCH_A;
+    const mock = installFetchMock({ lastReadyAt: () => epoch });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+    // Distinct from the operator number so the self-check texts are
+    // unambiguously separable from the OTP dispatches below.
+    const RECIPIENT = "218914460503@c.us";
+
+    // Old pairing: warm-up delivered → dispatch enabled → OTP flows.
+    await mod.__whatsappSettleGateTest.runWarmupCycle();
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_A)).toBe(true);
+    expect(await mod.sendWhatsAppMessage(RECIPIENT, "otp-1")).toEqual({ ok: true });
+
+    // Let the send-path ready cache (30 s) lapse so the re-pair is observed.
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    // Re-pair under the SAME session id: the readiness verdict collapses…
+    epoch = EPOCH_B;
+    mod.__resetWhatsAppReadinessCacheForTests();
+    const probe = await mod.getWhatsAppGatewayReadiness();
+    expect(probe).toMatchObject({ status: "ready", ready: false, settling: true });
+    // …and the epoch-scoped warm flag is gone — for BOTH keys (the old
+    // pairing's flag was dropped by the re-arm, not just overshadowed).
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_B)).toBe(false);
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_A)).toBe(false);
+
+    // A send right after the re-pair is gated, then bounded-waits (~10 s
+    // warm-up estimate) — during which the RE-SCHEDULED one-shot
+    // self-check delivers for the NEW epoch and un-gates dispatch within
+    // the SAME request (the 96-F1 bounded-wait contract, re-armed).
+    const sendPromise = mod.sendWhatsAppMessage(RECIPIENT, "otp-2");
+    await vi.advanceTimersByTimeAsync(21_000);
+    await expect(sendPromise).resolves.toEqual({ ok: true });
+
+    // Exactly TWO self-check texts total: one per pairing epoch.
+    const warmupCalls = mock.sendTextCalls.filter((c) => {
+      const body = JSON.parse(String(c.init?.body ?? "{}")) as { text?: string };
+      return body.text === WARMUP_TEXT;
+    });
+    expect(warmupCalls).toHaveLength(2);
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_B)).toBe(true);
+    expect(await mod.sendWhatsAppMessage(RECIPIENT, "otp-3")).toEqual({ ok: true });
+  });
+
+  it("the initial warm-up one-shot re-schedules for the new epoch after a re-arm", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "5000";
+    process.env.WHATSAPP_OTP_OPERATOR_E164 = OPERATOR_E164;
+    let epoch = EPOCH_A;
+    const mock = installFetchMock({ lastReadyAt: () => epoch });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    // Probe opens the epoch-A window and schedules its one-shot warm-up.
+    await mod.getWhatsAppGatewayReadiness();
+
+    // Re-pair happens INSIDE the window — the one-shot's cycle then
+    // observes the new epoch, re-arms, and re-schedules for epoch B.
+    epoch = EPOCH_B;
+    await vi.advanceTimersByTimeAsync(31_000);
+    await vi.advanceTimersByTimeAsync(40_000);
+
+    // Exactly ONE self-check was sent — for the NEW epoch — and it armed
+    // the NEW epoch's dispatch gate (the old epoch's is gone).
+    expect(mock.sendTextCalls).toHaveLength(1);
+    const body = JSON.parse(String(mock.sendTextCalls[0]!.init?.body ?? "{}")) as {
+      chatId?: string;
+      text?: string;
+    };
+    expect(body.chatId).toBe(`${OPERATOR_E164}@c.us`);
+    expect(body.text).toBe(WARMUP_TEXT);
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_B)).toBe(true);
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID, EPOCH_A)).toBe(false);
+  });
+
+  it("the Redis mirror is keyed per-epoch — a re-pair claims a FRESH key (never adopts the dead pairing's timestamp)", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "0";
+    let epoch = EPOCH_A;
+    const { setCalls } = installCaptureRedis({ getReturns: null });
+    installFetchMock({ lastReadyAt: () => epoch });
+    const mod = await importOpenwa();
+
+    await mod.getWhatsAppGatewayReadiness(); // claims gk(EPOCH_A)
+    epoch = EPOCH_B;
+    mod.__resetWhatsAppReadinessCacheForTests();
+    await mod.getWhatsAppGatewayReadiness(); // re-pair → claims gk(EPOCH_B)
+
+    expect(setCalls).toHaveLength(2);
+    expect(setCalls[0]!.key).toBe(`openwa:ready-since:${SESSION_ID}::${EPOCH_A}`);
+    expect(setCalls[1]!.key).toBe(`openwa:ready-since:${SESSION_ID}::${EPOCH_B}`);
+    for (const call of setCalls) {
+      expect(call.opts).toMatchObject({ NX: true, EX: 7 * 24 * 60 * 60 });
+    }
+    // Old epoch bookkeeping wiped on the re-arm; new epoch present.
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_A)).toBeUndefined();
+    expect(mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, EPOCH_B)).toBeDefined();
+  });
+
+  it("legacy gateway shape (no lastReadyAt on the wire) — gate keys on the bare session id, exactly the pre-97-F3 behavior", async () => {
+    process.env.WHATSAPP_OTP_SETTLE_MS = "0";
+    const { setCalls } = installCaptureRedis({ getReturns: null });
+    installFetchMock(); // no lastReadyAt
+    const mod = await importOpenwa();
+
+    await mod.getWhatsAppGatewayReadiness();
+
+    expect(setCalls).toHaveLength(1);
+    expect(setCalls[0]!.key).toBe(`openwa:ready-since:${SESSION_ID}`);
+    expect(mod.__whatsappSettleGateTest.getObservedEpoch(SESSION_ID)).toBe("");
   });
 });

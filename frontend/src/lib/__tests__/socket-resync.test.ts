@@ -245,3 +245,103 @@ describe("lib/socket — reviveSocket (96-F3 M1 revival hook)", () => {
     expect(fake.connectCalls).toBe(1); // nothing revived — singleton gone
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 97-F5 (R97-A4 §7 / F-03 + F-12) — identity-switch room re-binding +
+// teardown/import race
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("lib/socket — identity-switch room re-binding (97-F5 F-03)", () => {
+  beforeEach(() => {
+    ioMock.mockReset();
+    __resetSocketStateForTests();
+  });
+
+  afterEach(() => {
+    __resetSocketStateForTests();
+  });
+
+  it("tears down + reconnects (fresh handshake) when connectSocket() sees a DIFFERENT userId", async () => {
+    const fake = createFakeSocket();
+    const events = captureResyncEvents();
+
+    await connectSocket(42);
+    expect(fake.connected).toBe(true);
+    expect(fake.connectCalls).toBe(1);
+
+    // User B's useSocket(userId) re-run after setToken(B) switched the
+    // identity: the live connection is bound to user A's room (handshake
+    // cookie), and emitting join-user is a server-side no-op — the ONLY
+    // correct move is disconnect + connect so the fresh handshake carries
+    // B's cookie and the server auto-joins user:B.
+    await connectSocket(99);
+
+    expect(fake.connected).toBe(true); // reconnected…
+    expect(fake.connectCalls).toBe(2); // …via a brand-new handshake
+    // Our own teardown ("io client disconnect") arms no resync event —
+    // nothing was missed; the identity switch already purged the caches.
+    expect(events).toHaveLength(0);
+  });
+
+  it("does NOT cycle the connection when the identity is unchanged (remounts)", async () => {
+    const fake = createFakeSocket();
+
+    await connectSocket(42);
+    await connectSocket(42); // e.g. SocketInitializer remount
+
+    expect(fake.connectCalls).toBe(1);
+    // Same-identity re-call re-asserts the (no-op) join defensively.
+    const joins = fake.emitCalls.filter((c) => c.event === "join-user");
+    expect(joins).toHaveLength(1);
+    expect(joins[0].args).toEqual([42]);
+  });
+
+  it("the next mount after disconnectSocket() mints a brand-new socket (fresh cookie → fresh room)", async () => {
+    createFakeSocket();
+    await connectSocket(42);
+    // setToken(B) tore the singleton down (auth.tsx F-03 fix).
+    disconnectSocket();
+
+    await connectSocket(99);
+
+    // A NEW io() — the old connection (and its A-room membership) is gone.
+    expect(ioMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("lib/socket — teardown racing the lazy import (97-F5, hardens F-12)", () => {
+  beforeEach(() => {
+    ioMock.mockReset();
+    __resetSocketStateForTests();
+  });
+
+  afterEach(() => {
+    __resetSocketStateForTests();
+  });
+
+  it("a disconnectSocket() fired while the socket.io-client import is pending WINS (no zombie socket)", async () => {
+    createFakeSocket();
+
+    // Start the lazy import, then tear down BEFORE it resolves — the
+    // logout/identity-switch that raced the first-ever connect.
+    const pending = getSocket();
+    disconnectSocket();
+
+    expect(await pending).toBeNull();
+    // The socket was never constructed — nothing to connect later.
+    expect(ioMock).not.toHaveBeenCalled();
+  });
+
+  it("a later connectSocket() still creates a healthy socket after the race", async () => {
+    createFakeSocket();
+    const pending = getSocket();
+    disconnectSocket();
+    expect(await pending).toBeNull();
+
+    // New identity, new attempt: creation succeeds and connects.
+    const s = await connectSocket(7);
+    expect(s).not.toBeNull();
+    expect(ioMock).toHaveBeenCalledTimes(1);
+    expect((s as unknown as FakeSocket).connected).toBe(true);
+  });
+});

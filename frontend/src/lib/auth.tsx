@@ -61,8 +61,15 @@ const AuthContext = createContext<AuthContextType | null>(null);
  *   - On real sign-in (Telegram, Google, Phone OTP), `setToken(realJwt)`
  *     replaces the sentinel with the actual JWT so subsequent requests
  *     send a valid Authorization header.
+ *
+ * 97-F5 (R97-02 coordination): also exported for pages/admin/login —
+ * the admin login/verify-2a responses no longer carry a body `token`
+ * (the httpOnly cookie is the sole transport), so the login page
+ * establishes the in-memory session with this sentinel exactly like
+ * the boot probe below does, after verifying the cookie round-trips
+ * via /api/admin/probe.
  */
-const COOKIE_AUTH_SENTINEL = "__cookie_session__";
+export const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
@@ -80,13 +87,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   /**
-   * Sign-in / sign-out path. Invalidates the user-profile query so the
-   * SPA picks up the new identity (or absence of one) immediately.
+   * Sign-in / sign-out path — the IDENTITY-SWITCH choke point. Every
+   * caller is a real identity event (login pages, logout, the 401
+   * session-expiry handler in lib/user-session); silent JWT rotation
+   * deliberately uses setTokenSilently below so a rotating token never
+   * pays this teardown.
+   *
+   * 97-F5 (R97-A4 §2 / F-01 — P1): on an identity switch this now clears
+   * the ENTIRE TanStack cache — exactly what logout() has always done —
+   * instead of invalidating only /api/auth/me. On a shared device the
+   * 401-then-new-sign-in flow used to serve the PREVIOUS user's still
+   * fresh (<60 s staleTime) wallet/topups/orders cache to the next user
+   * with no refetch ever firing (TanStack keeps last-good data on error,
+   * and refetchOnWindowFocus/Reconnect are disabled app-wide).
+   * Call order mirrors logout()'s proven sequence (state → invalidate me
+   * → clear): the invalidate arms any still-mounted observer, clear()
+   * removes every cached family (wallet, topups, orders, admin lists,
+   * catalog), and the post-render observers rebuild their queries empty
+   * under the new identity and refetch.
+   *
+   * 97-F5 (R97-A4 §7 / F-03 — P2): the user socket's room membership is
+   * bound at handshake from the auth_token cookie (server-driven join;
+   * client `join-user` is a defensive no-op), so an identity switch
+   * MUST tear the socket down — leaving it connected would keep it in
+   * the PREVIOUS user's room (their money events toasting on the next
+   * user's screen). The next useSocket(userId) mount lazily reconnects
+   * with the fresh cookie and the server auto-joins the new room.
+   * logout() and the 401 handler already did this; setToken closing the
+   * same gap also covers the login-without-logout path (login.tsx has
+   * no guard for already-signed-in visitors).
    */
   const setToken = useCallback(
     (t: string | null) => {
       setTokenState(t);
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      queryClient.clear();
+      // Leave the (previous user's) socket room immediately.
+      disconnectSocket();
     },
     [queryClient],
   );
@@ -107,9 +144,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokenState(t);
   }, []);
 
-  const setAdminToken = useCallback((t: string | null) => {
-    setAdminTokenState(t);
-  }, []);
+  /**
+   * Admin sign-in / sign-out path — the ADMIN identity-switch choke
+   * point (login page, adminLogout, the 401 redirect handler via
+   * useAdminHeaders' mirror callback, App.tsx's session guard).
+   *
+   * 97-F5 (R97-A4 §6 / F-04 — P2): on any admin identity switch the
+   * admin-scoped query cache is REMOVED (not invalidated — removal
+   * guarantees the next admin never even flashes the previous admin's
+   * data while a refetch is in flight). Admin lists carry PII
+   * (/api/admin/users phone numbers, orders buyer data); on a shared
+   * machine an admin-B login used to see admin-A's fresh dashboard for
+   * up to 60 s (staleTime) — or 300 s (the dashboard's poll fallback).
+   * Storefront queries are deliberately untouched: a user session can
+   * legitimately survive an admin switch in the same tab.
+   */
+  const setAdminToken = useCallback(
+    (t: string | null) => {
+      setAdminTokenState(t);
+      queryClient.removeQueries({
+        predicate: (query) => {
+          const first = query.queryKey[0];
+          return (
+            typeof first === "string" &&
+            (first.startsWith("/api/admin") || first.startsWith("admin-alerts"))
+          );
+        },
+      });
+    },
+    [queryClient],
+  );
 
   const setAdminPermissions = useCallback((perms: string[]) => {
     setAdminPermissionsState(Array.isArray(perms) ? perms : []);
@@ -141,13 +205,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       // Best-effort — Sentry's network instrumentation captures the error.
     });
-    // Leave the user's socket room immediately instead of waiting for the
-    // server's mid-session liveness re-verify (round-93 C2/F-02) to notice
-    // the deleted session row (up to its 5-minute interval).
-    disconnectSocket();
+    // 97-F5 (F-01 + F-03): setToken(null) now performs the full identity
+    // teardown — socket disconnect + ENTIRE query-cache clear (the exact
+    // inline steps logout() used to run itself; one code path, identical
+    // net behavior: leave the user's socket room immediately instead of
+    // waiting for the server's 5-minute liveness sweep, and drop every
+    // cached user-scoped family).
     setToken(null);
-    queryClient.clear();
-  }, [queryClient, setToken]);
+  }, [setToken]);
 
   const adminLogout = useCallback(async () => {
     try {

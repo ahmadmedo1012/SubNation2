@@ -627,6 +627,12 @@ export default function WalletPage() {
     e.preventDefault();
     setError("");
 
+    // 97-F5 deferred one-liner (main agent): Enter must not submit while the
+    // button is disabled (in-flight request / pending topup window) — same
+    // predicate as the disabled button, so a stray Enter during the waiting
+    // modal can't fire a 409 over the open window.
+    if (submitting || topupMutation.isPending) return;
+
     if (pendingBlocked) {
       setError("لديك طلبات قيد المراجعة، يرجى الانتظار حتى تُعتمد");
       return;

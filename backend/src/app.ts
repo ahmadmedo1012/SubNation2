@@ -326,27 +326,58 @@ app.use((req, res, next) => {
 app.use(compression());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
+// Round-97 F2 (A1 finding J-x — "CORS rejection returns 500"): a
+// disallowed Origin used to hit the `cors` origin-callback ERROR path
+// (`cb(new Error("CORS: origin not allowed"))`) → next(err) → the global
+// error handler → 500 + error-level log + a Sentry capture on every
+// scanner/probe request. The gate below rejects disallowed origins
+// EARLY with a clean 403 (warn-level log only, never the error
+// pipeline), mirroring createCsrfGate's exact-origin posture. The
+// `cors` middleware after it then only ever sees approved traffic and
+// can use its plain array form — no error branch left to reach next(err).
+export function createCorsOriginGate(allowedOrigins: string[], production: boolean) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const origin = req.headers.origin;
+    // Same-origin SPA calls and server-to-server clients (Render health
+    // probes, gateway callbacks) carry no Origin header — pass through,
+    // exactly the old `cb(null, true)` semantics.
+    if (typeof origin !== "string" || origin.length === 0) {
+      next();
+      return;
+    }
+    if (allowedOrigins.length === 0) {
+      // V3-C2: an empty allow-list means REFLECT ANY ORIGIN with
+      // credentials — fine in dev, a credential-leaking
+      // misconfiguration in production. Fail closed with the same
+      // clean 403 (the SEC-92-01 boot assertion already aborts on this
+      // misconfiguration; this runtime gate is defense-in-depth).
+      if (production) {
+        logger.warn(
+          { origin, path: req.path, category: "security" },
+          "CORS allow-list empty in production — rejecting cross-origin request with 403",
+        );
+        res.status(403).json(createErrorResponse("الأصل غير مسموح به", ErrorCode.FORBIDDEN));
+        return;
+      }
+      next(); // dev: allow all
+      return;
+    }
+    if (allowedOrigins.includes(origin)) {
+      next();
+      return;
+    }
+    logger.warn({ origin, path: req.path }, "CORS: origin not allowed — 403");
+    res.status(403).json(createErrorResponse("الأصل غير مسموح به", ErrorCode.FORBIDDEN));
+  };
+}
+app.use(createCorsOriginGate(allowedOrigins, isProduction));
 app.use(
   cors({
-    origin: (origin, cb) => {
-      // Allow same-origin (no origin header) and server-to-server calls
-      if (!origin) return cb(null, true);
-      // V3-C2: an empty allow-list means REFLECT ANY ORIGIN with
-      // credentials — fine in dev, a credential-leaking misconfiguration
-      // in production (one missing APP_ORIGINS env var silently opened
-      // the API to every site). Fail closed in prod.
-      if (allowedOrigins.length === 0) {
-        if (process.env.NODE_ENV === "production") {
-          logger.error(
-            "CORS allow-list empty in production (APP_ORIGINS unset) — rejecting cross-origin request",
-          );
-          return cb(new Error("CORS: origin not allowed"));
-        }
-        return cb(null, true); // dev: allow all
-      }
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      cb(new Error("CORS: origin not allowed"));
-    },
+    // Plain list form — disallowed origins never reach this middleware
+    // (the gate above 403'd them), and an absent Origin header never
+    // triggers CORS headers (server-to-server/same-origin pass-through).
+    // Empty list in dev reflects any origin (previous behaviour).
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
   }),
 );

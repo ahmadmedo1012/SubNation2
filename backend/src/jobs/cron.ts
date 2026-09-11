@@ -9,6 +9,7 @@ import { runEnrichmentRetention } from "./enrichment-retention";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { pruneExpiredSessions } from "./session-prune";
 import { pruneStaleAdminSessions } from "../lib/admin-session";
+import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -53,23 +54,61 @@ export function initCronJobs(): CronJobsHandle {
   //      - read older than 30 days → deleted (admin_alerts is an
   //        operations surface, not the immutable audit trail — that
   //        is audit_logs' job)
-  schedule("0 0 * * *", async () => {
-    logger.info({ category: "alerts.retention" }, "Admin-alert retention job started");
-    try {
-      const staled = await markStaleUnreadAlertsRead(14);
-      const pruned = await pruneReadAlerts(30);
-      if (staled + pruned > 0)
-        logger.info(
-          { category: "alerts.retention", staled, pruned },
-          "Admin-alert retention complete",
+  schedule(
+    "0 0 * * *",
+    async () => {
+      logger.info({ category: "alerts.retention" }, "Admin-alert retention job started");
+      try {
+        const staled = await markStaleUnreadAlertsRead(14);
+        const pruned = await pruneReadAlerts(30);
+        if (staled + pruned > 0)
+          logger.info(
+            { category: "alerts.retention", staled, pruned },
+            "Admin-alert retention complete",
+          );
+      } catch (err) {
+        logger.error({ err, category: "alerts.retention" }, "Admin-alert retention failed");
+        captureSchedulerFailure("admin_alert_retention", err, {
+          cron_expression: "0 0 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
+
+  // 1c. Daily at 00:00 UTC: idempotency_keys retention (97-F7, R97-A3
+  //     retention audit). The durable purchase-dedup table had NO retention
+  //     of any kind — rows only ever left via the order/user CASCADE
+  //     deletes, so every guarded purchase grew the table by one row
+  //     forever. 48h retention: the HTTP-layer dedup cache already expires
+  //     keys after 24h, so 48h doubles that horizon as a clock-skew/
+  //     cache-flush margin while deleting zero financial records (the
+  //     money trail lives in orders + wallet_ledger). Own schedule in the
+  //     round-5 00:00 retention policy slot (same slot as the admin-alert
+  //     retention; the DELETE is a tiny bounded-batch job); own try/catch
+  //     so a failure here can never skip the alert retention above.
+  schedule(
+    "0 0 * * *",
+    async () => {
+      try {
+        const removed = await pruneOldIdempotencyKeys();
+        if (removed > 0)
+          logger.info(
+            { category: "idempotency.retention", removed },
+            `Pruned ${removed} idempotency key row(s) older than 48h`,
+          );
+      } catch (err) {
+        logger.error(
+          { err, category: "idempotency.retention" },
+          "idempotency_keys retention failed",
         );
-    } catch (err) {
-      logger.error({ err, category: "alerts.retention" }, "Admin-alert retention failed");
-      captureSchedulerFailure("admin_alert_retention", err, {
-        cron_expression: "0 0 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+        captureSchedulerFailure("idempotency_keys_retention", err, {
+          cron_expression: "0 0 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 1a. Daily at 00:05 UTC: TOTP security advisory (A6 P3#14, round-93).
   //      checkAdminTotpAdvisory used to be a boot one-shot ONLY — its
@@ -81,16 +120,20 @@ export function initCronJobs(): CronJobsHandle {
   //      off the 00:00 retention slot's first minute. When every ["all"]
   //      admin has TOTP enabled the same pass AUTO-RESOLVES the lingering
   //      unread advisory rows.
-  schedule("5 0 * * *", async () => {
-    try {
-      await checkAdminTotpAdvisory();
-    } catch (err) {
-      logger.error({ err, category: "security" }, "TOTP advisory cron failed");
-      captureSchedulerFailure("totp_advisory", err, {
-        cron_expression: "5 0 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "5 0 * * *",
+    async () => {
+      try {
+        await checkAdminTotpAdvisory();
+      } catch (err) {
+        logger.error({ err, category: "security" }, "TOTP advisory cron failed");
+        captureSchedulerFailure("totp_advisory", err, {
+          cron_expression: "5 0 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 1b. Daily at 05:00 UTC: expired-session prune (Round-5). Sessions
   //     whose expires_at passed are already rejected by requireUser,
@@ -98,29 +141,33 @@ export function initCronJobs(): CronJobsHandle {
   //     with every login forever. Deleting expired rows is safe (the
   //     JWT is dead regardless) and keeps the session-validity lookup
   //     fast. 05:00 UTC = 07:00 Libya, before the daily traffic peak.
-  schedule("0 5 * * *", async () => {
-    try {
-      const removed = await pruneExpiredSessions();
-      if (removed > 0)
-        logger.info(
-          { category: "sessions.retention", removed },
-          `Pruned ${removed} expired session row(s)`,
-        );
-      // V1-M13 (round-94 A8): same retention window for the admin
-      // session rows — expired > 24h or revoked > 30 days.
-      const adminRemoved = await pruneStaleAdminSessions();
-      if (adminRemoved > 0)
-        logger.info(
-          { category: "sessions.retention", removed: adminRemoved },
-          `Pruned ${adminRemoved} stale admin session row(s)`,
-        );
-    } catch (err) {
-      logger.error({ err, category: "sessions.retention" }, "Session prune failed");
-      captureSchedulerFailure("session_prune", err, {
-        cron_expression: "0 5 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "0 5 * * *",
+    async () => {
+      try {
+        const removed = await pruneExpiredSessions();
+        if (removed > 0)
+          logger.info(
+            { category: "sessions.retention", removed },
+            `Pruned ${removed} expired session row(s)`,
+          );
+        // V1-M13 (round-94 A8): same retention window for the admin
+        // session rows — expired > 24h or revoked > 30 days.
+        const adminRemoved = await pruneStaleAdminSessions();
+        if (adminRemoved > 0)
+          logger.info(
+            { category: "sessions.retention", removed: adminRemoved },
+            `Pruned ${adminRemoved} stale admin session row(s)`,
+          );
+      } catch (err) {
+        logger.error({ err, category: "sessions.retention" }, "Session prune failed");
+        captureSchedulerFailure("session_prune", err, {
+          cron_expression: "0 5 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 2. Every hour: Health Check / Cleanup (Example)
   //    (Round-5 note: still a no-op heartbeat — kept for log cadence.)
@@ -206,26 +253,30 @@ export function initCronJobs(): CronJobsHandle {
   // 5. Daily at 03:30 UTC: risk_events 90-day retention (003-anomaly-detection).
   //    Unlabeled events older than 90 days are deleted. Labeled events get
   //    a 97-day grace so retroactive review still resolves the label join.
-  schedule("30 3 * * *", async () => {
-    try {
-      const result = await reapExpiredRiskEvents();
-      if (result.unlabeledDeleted + result.labeledExpiredDeleted > 0) {
-        logger.info(
-          {
-            category: "risk.retention",
-            unlabeled: result.unlabeledDeleted,
-            labeled: result.labeledExpiredDeleted,
-          },
-          "risk-events retention purge complete",
-        );
+  schedule(
+    "30 3 * * *",
+    async () => {
+      try {
+        const result = await reapExpiredRiskEvents();
+        if (result.unlabeledDeleted + result.labeledExpiredDeleted > 0) {
+          logger.info(
+            {
+              category: "risk.retention",
+              unlabeled: result.unlabeledDeleted,
+              labeled: result.labeledExpiredDeleted,
+            },
+            "risk-events retention purge complete",
+          );
+        }
+      } catch (err) {
+        logger.error({ err, category: "risk.retention" }, "risk-events retention failed");
+        captureSchedulerFailure("risk_retention", err, {
+          cron_expression: "30 3 * * *",
+        });
       }
-    } catch (err) {
-      logger.error({ err, category: "risk.retention" }, "risk-events retention failed");
-      captureSchedulerFailure("risk_retention", err, {
-        cron_expression: "30 3 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+    },
+    { timezone: "UTC" },
+  );
 
   // 6. Daily at 02:15 UTC: inventory demand forecast (011-inventory-demand-
   //    forecast). Refuses to run unless WORKER_TIER=true AND
@@ -233,16 +284,20 @@ export function initCronJobs(): CronJobsHandle {
   //    02:15 lands outside the existing low_stock (00:00), OTP cleanup
   //    (every :15), and copilot-reaper (every 5 min) windows so no two
   //    heavy jobs compete for DB resources.
-  schedule("15 2 * * *", async () => {
-    try {
-      await runForecastIfPermitted();
-    } catch (err) {
-      logger.error({ err, category: "forecast.cron" }, "forecast cron failed");
-      captureSchedulerFailure("forecast_runner", err, {
-        cron_expression: "15 2 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "15 2 * * *",
+    async () => {
+      try {
+        await runForecastIfPermitted();
+      } catch (err) {
+        logger.error({ err, category: "forecast.cron" }, "forecast cron failed");
+        captureSchedulerFailure("forecast_runner", err, {
+          cron_expression: "15 2 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 7. Daily at 03:35 UTC: forecast retention + capture-rate measurement
   //    (011-inventory-demand-forecast). Purges forecasts > 90 days, reaps
@@ -250,17 +305,21 @@ export function initCronJobs(): CronJobsHandle {
   //    and pauses alerts when SC-008's kill criterion trips. Staggered five
   //    minutes after the risk retention so two heavy DELETE+aggregate jobs
   //    don't compete for the same connection slot at the same instant.
-  schedule("35 3 * * *", async () => {
-    if (process.env.WORKER_TIER !== "true") return;
-    try {
-      await runForecastRetention();
-    } catch (err) {
-      logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
-      captureSchedulerFailure("forecast_retention", err, {
-        cron_expression: "35 3 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "35 3 * * *",
+    async () => {
+      if (process.env.WORKER_TIER !== "true") return;
+      try {
+        await runForecastRetention();
+      } catch (err) {
+        logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
+        captureSchedulerFailure("forecast_retention", err, {
+          cron_expression: "35 3 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 8. Daily at 03:50 UTC: catalog enrichment runner
   //    (012-arabic-catalog-enrichment). Refuses to run unless
@@ -269,30 +328,38 @@ export function initCronJobs(): CronJobsHandle {
   //    reaper, so the daily enrichment LLM run no longer shares its first
   //    minute with another DB writer. Still lands cleanly between the
   //    retention sweep at 03:30 and morning admin activity.
-  schedule("50 3 * * *", async () => {
-    try {
-      await runEnrichmentIfPermitted();
-    } catch (err) {
-      logger.error({ err, category: "enrichment.cron" }, "enrichment cron failed");
-      captureSchedulerFailure("enrichment_runner", err, {
-        cron_expression: "50 3 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "50 3 * * *",
+    async () => {
+      try {
+        await runEnrichmentIfPermitted();
+      } catch (err) {
+        logger.error({ err, category: "enrichment.cron" }, "enrichment cron failed");
+        captureSchedulerFailure("enrichment_runner", err, {
+          cron_expression: "50 3 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 9. Daily at 04:00 UTC: enrichment retention (90-day purge of
   //    terminal-state drafts; reap orphaned in_flight runs).
-  schedule("0 4 * * *", async () => {
-    if (process.env.WORKER_TIER !== "true") return;
-    try {
-      await runEnrichmentRetention();
-    } catch (err) {
-      logger.error({ err, category: "enrichment.retention" }, "enrichment retention failed");
-      captureSchedulerFailure("enrichment_retention", err, {
-        cron_expression: "0 4 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+  schedule(
+    "0 4 * * *",
+    async () => {
+      if (process.env.WORKER_TIER !== "true") return;
+      try {
+        await runEnrichmentRetention();
+      } catch (err) {
+        logger.error({ err, category: "enrichment.retention" }, "enrichment retention failed");
+        captureSchedulerFailure("enrichment_retention", err, {
+          cron_expression: "0 4 * * *",
+        });
+      }
+    },
+    { timezone: "UTC" },
+  );
 
   // 10. Daily at 04:30 UTC: auth-activity retention (B7-P1-2, round-92).
   //     auth_activity grows with EVERY login/OTP event (success and failure)
@@ -301,22 +368,26 @@ export function initCronJobs(): CronJobsHandle {
   //     the enrichment retention (04:00) and the session prune (05:00) so
   //     the three DELETE-heavy retention jobs never share a minute. Also
   //     runs as a boot one-shot in web-scheduler.ts (idempotent, batched).
-  schedule("30 4 * * *", async () => {
-    try {
-      const removed = await cleanupOldAuthActivity();
-      if (removed > 0) {
-        logger.info(
-          { category: "auth.retention", removed },
-          `auth-activity retention removed ${removed} row(s) older than 90 days`,
-        );
+  schedule(
+    "30 4 * * *",
+    async () => {
+      try {
+        const removed = await cleanupOldAuthActivity();
+        if (removed > 0) {
+          logger.info(
+            { category: "auth.retention", removed },
+            `auth-activity retention removed ${removed} row(s) older than 90 days`,
+          );
+        }
+      } catch (err) {
+        logger.error({ err, category: "auth.retention" }, "auth-activity retention failed");
+        captureSchedulerFailure("auth_activity_retention", err, {
+          cron_expression: "30 4 * * *",
+        });
       }
-    } catch (err) {
-      logger.error({ err, category: "auth.retention" }, "auth-activity retention failed");
-      captureSchedulerFailure("auth_activity_retention", err, {
-        cron_expression: "30 4 * * *",
-      });
-    }
-  }, { timezone: "UTC" });
+    },
+    { timezone: "UTC" },
+  );
 
   logger.info("Cron jobs initialized");
   return {

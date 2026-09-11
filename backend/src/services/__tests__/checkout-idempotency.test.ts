@@ -105,7 +105,8 @@ describe("F10: durable idempotency — replay semantics", () => {
 
     // The claim row: user-scoped key → this order.
     const keys = await db.execute(sql`SELECT key, order_id FROM idempotency_keys`);
-    const rows = (keys as unknown as { rows?: Array<{ key: string; order_id: number }> }).rows ?? [];
+    const rows =
+      (keys as unknown as { rows?: Array<{ key: string; order_id: number }> }).rows ?? [];
     expect(rows).toHaveLength(1);
     expect(rows[0].key).toBe(`u${user.id}:${KEY}`);
     expect(rows[0].order_id).toBe(result.order.id);

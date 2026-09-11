@@ -30,11 +30,33 @@
  *
  * Storage
  * -------
- * Redis is the only source of truth for consent tokens. There is NO
- * in-memory fallback: this is a security control, and the production
- * boot path already fail-closes when Redis is configured but
- * unavailable. A dev environment without Redis simply cannot use the
- * link flow until a Redis instance is provided.
+ * Redis is the primary store for consent tokens: one-shot via
+ * SET NX + GETDEL with a 5-minute TTL.
+ *
+ * PostgreSQL fallback (round-97 F2, R97-DB-01/A6): the production
+ * Redis service is not always present (the round-97 incident had
+ * REDIS_URL missing entirely), and the old behaviour — throwing
+ * 503 REDIS_UNAVAILABLE at the user mid-link — turned a storage
+ * detail into a user-facing outage on the Firebase link flow. When
+ * getRedisClient() returns null we now fall back to a small
+ * `account_link_consents` table (created lazily, idempotent):
+ *
+ *   - issue  = INSERT (token, candidate_user_id, firebase_uid_hash,
+ *                       now() + 300s)  — token PK, 256-bit random hex.
+ *   - consume = DELETE ... WHERE token = $1 AND expires_at > now()
+ *               RETURNING candidate_user_id, firebase_uid_hash —
+ *               a single atomic statement, so the one-shot property
+ *               is exactly as strong as Redis GETDEL: a concurrent
+ *               double-consume races on the row delete, and the loser
+ *               sees zero rows.
+ *   - Expired rows are NOT deleted by consume (they fail the
+ *     expires_at predicate); a bounded best-effort sweep runs on ~10%
+ *     of consume calls.
+ *
+ * The comparison after the fetch (candidateUserId + firebaseUidHash)
+ * is identical to the Redis path — the fallback only swaps the store.
+ * An info line is logged ONCE per process when the fallback first
+ * engages (observability without per-request noise).
  *
  * Token shape
  * -----------
@@ -65,12 +87,52 @@
  */
 
 import { createHash, randomBytes } from "crypto";
+import { sql } from "drizzle-orm";
+import { db } from "@workspace/db";
 import { getRedisClient } from "./redis-client";
 import { logger } from "./logger";
 
 const REDIS_PREFIX = "account-link-consent:";
 const TTL_SECONDS = 5 * 60; // 5 minutes
 const TOKEN_BYTES = 32; // 256 bits
+
+/** Fraction of consume calls that run the expired-row sweep (R97 F2).
+ * Best-effort + bounded: keeps the table from growing forever without
+ * adding a deterministic per-request DELETE. */
+const PG_SWEEP_PROBABILITY = 0.1;
+
+/** Set once the first PG-fallback call has created the table — avoids
+ * re-running idempotent DDL on every issue/consume. */
+let pgConsentTableReady = false;
+
+/** Logged exactly once per process when the fallback first engages. */
+let pgFallbackLogged = false;
+
+async function ensurePgConsentTable(): Promise<void> {
+  if (pgConsentTableReady) return;
+  // Single-statement DDL (drizzle's execute uses the prepared-query
+  // path which rejects multi-statement strings). IF NOT EXISTS makes
+  // concurrent first-calls and re-boots harmless. The official schema
+  // registration happens in db/migrate.ts (wave 97-F7).
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS account_link_consents (
+      token text PRIMARY KEY,
+      candidate_user_id integer NOT NULL,
+      firebase_uid_hash text NOT NULL,
+      expires_at timestamptz NOT NULL
+    )
+  `);
+  pgConsentTableReady = true;
+}
+
+function logPgFallbackOnce(): void {
+  if (pgFallbackLogged) return;
+  pgFallbackLogged = true;
+  logger.info(
+    { category: "storage", table: "account_link_consents" },
+    "account-link-consent: Redis unavailable — engaging PostgreSQL fallback",
+  );
+}
 
 export class ConsentTokenError extends Error {
   constructor(
@@ -105,10 +167,9 @@ function hashFirebaseUid(uid: string): string {
  * Issue a fresh consent token bound to (candidateUserId, firebaseUid).
  * Returns the raw token to embed in the 409 response body.
  *
- * Throws ConsentTokenError(REDIS_UNAVAILABLE) when Redis is missing.
- * Production fail-closes at boot, so this branch is dev/test only —
- * but a dev that hits it sees a clear message instead of a silent
- * fallback to insecure auto-linking.
+ * Redis is the primary store; when no Redis client exists the token is
+ * persisted in the `account_link_consents` PostgreSQL table instead
+ * (round-97 F2 — previously a 503 REDIS_UNAVAILABLE reached the user).
  */
 export async function issueConsentToken(opts: {
   candidateUserId: number;
@@ -116,11 +177,7 @@ export async function issueConsentToken(opts: {
 }): Promise<string> {
   const redis = getRedisClient();
   if (!redis) {
-    throw new ConsentTokenError(
-      503,
-      "REDIS_UNAVAILABLE",
-      "خدمة ربط الحسابات غير متاحة حالياً (Redis غير مهيأ). حاول لاحقاً.",
-    );
+    return issueConsentTokenViaPg(opts);
   }
 
   const token = randomBytes(TOKEN_BYTES).toString("hex");
@@ -154,6 +211,48 @@ export async function issueConsentToken(opts: {
 }
 
 /**
+ * PostgreSQL-backed issuance (Redis absent). INSERT on the token PK —
+ * a 23505 unique violation maps to the same cryptographically-
+ * impossible 500 branch as the Redis NX miss above.
+ */
+async function issueConsentTokenViaPg(opts: {
+  candidateUserId: number;
+  firebaseUid: string;
+}): Promise<string> {
+  logPgFallbackOnce();
+  await ensurePgConsentTable();
+
+  const token = randomBytes(TOKEN_BYTES).toString("hex");
+  const expiresAt = new Date(Date.now() + TTL_SECONDS * 1000);
+
+  try {
+    await db.execute(sql`
+      INSERT INTO account_link_consents (token, candidate_user_id, firebase_uid_hash, expires_at)
+      VALUES (${token}, ${opts.candidateUserId}, ${hashFirebaseUid(opts.firebaseUid)}, ${expiresAt})
+    `);
+  } catch (err) {
+    const pgCode =
+      err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
+    if (pgCode === "23505") {
+      // 256-bit random hex colliding is not a real branch — treat as a
+      // server error, exactly like the Redis NX collision.
+      logger.error(
+        { candidateUserId: opts.candidateUserId, pgCode },
+        "account-link consent token PK collision — INSERT rejected",
+      );
+      throw new ConsentTokenError(
+        500,
+        "REDIS_UNAVAILABLE",
+        "تعذّر إصدار رمز التأكيد — حاول مرة أخرى.",
+      );
+    }
+    throw err;
+  }
+
+  return token;
+}
+
+/**
  * Atomically consume a consent token (GET + DEL in one call). Returns
  * the verified candidate user id when:
  *   - the token exists and has not expired,
@@ -177,11 +276,7 @@ export async function consumeConsentToken(
 
   const redis = getRedisClient();
   if (!redis) {
-    throw new ConsentTokenError(
-      503,
-      "REDIS_UNAVAILABLE",
-      "خدمة ربط الحسابات غير متاحة حالياً (Redis غير مهيأ). حاول لاحقاً.",
-    );
+    return consumeConsentTokenViaPg(token, expected);
   }
 
   const key = `${REDIS_PREFIX}${token}`;
@@ -220,6 +315,76 @@ export async function consumeConsentToken(
   }
 
   // All checks passed and the key has been deleted. Consent committed.
+}
+
+/**
+ * PostgreSQL-backed consume (Redis absent). The DELETE ... RETURNING
+ * statement is a single atomic operation: the row disappears on the
+ * first consume regardless of the subsequent field comparisons, so a
+ * failed-validation token is just as dead as a consumed one (same
+ * anti-retry property as Redis GETDEL). No row → expired/invalid/
+ * already-consumed, indistinguishable by design.
+ */
+async function consumeConsentTokenViaPg(
+  token: string,
+  expected: {
+    candidateUserId: number;
+    firebaseUid: string;
+  },
+): Promise<void> {
+  logPgFallbackOnce();
+  await ensurePgConsentTable();
+
+  const result = await db.execute(sql`
+    DELETE FROM account_link_consents
+    WHERE token = ${token} AND expires_at > now()
+    RETURNING candidate_user_id, firebase_uid_hash
+  `);
+  // node-pg and pglite both hand back a QueryResult-shaped object; the
+  // double cast keeps drizzle's generic row type from fighting the
+  // narrow shape we selected.
+  const rows =
+    (
+      result as unknown as {
+        rows?: Array<{ candidate_user_id: number; firebase_uid_hash: string }>;
+      }
+    ).rows ?? [];
+
+  // Bounded best-effort sweep of expired rows — runs on ~10% of calls
+  // (Math.random), never awaited inline, never throws.
+  if (Math.random() < PG_SWEEP_PROBABILITY) {
+    void db.execute(sql`DELETE FROM account_link_consents WHERE expires_at <= now()`).catch(() => {
+      // best-effort only
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new ConsentTokenError(
+      400,
+      "EXPIRED",
+      "انتهت صلاحية رمز التأكيد أو تم استخدامه. أعد المحاولة من البداية.",
+    );
+  }
+
+  const record = rows[0]!;
+
+  if (Number(record.candidate_user_id) !== expected.candidateUserId) {
+    throw new ConsentTokenError(
+      409,
+      "CANDIDATE_MISMATCH",
+      "تغيّر الحساب المرشّح للربط. أعد المحاولة من البداية.",
+    );
+  }
+
+  if (record.firebase_uid_hash !== hashFirebaseUid(expected.firebaseUid)) {
+    throw new ConsentTokenError(
+      409,
+      "FIREBASE_UID_MISMATCH",
+      "هوية Firebase لا تطابق رمز التأكيد. أعد المحاولة من البداية.",
+    );
+  }
+
+  // All checks passed and the row is already deleted. Consent committed.
 }
 
 /**

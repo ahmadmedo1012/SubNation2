@@ -58,20 +58,43 @@ const SETTLING_MAX_AUTO_RETRIES = 2;
 const SETTLING_FALLBACK_WAIT_SEC = 30;
 
 /**
+ * 97-F5 (R97-A4 §8 / F-05 — P2): Arabic-Indic (٠-٩) and Persian (۰-۹)
+ * digit CONVERTER — the exact pattern the wallet's amount sanitizer
+ * has used since 96-F6 (wallet.tsx sanitizeAmountInput). An
+ * Arabic-locale keyboard, or a phone number copied from an Arabic
+ * contact card / OTP written in Arabic-Indic digits, delivers these
+ * glyphs; the old `raw.replace(/\D/g, "")` DELETED them (JS `\D` is
+ * [^0-9] — the Arabic digits are non-digit to it), so pasting
+ * «+٢١٨٩١٠٠٨٩٩٧٥» emptied the field and showed «رقم الهاتف غير صالح» —
+ * the PRIMARY sign-in path silently locked for Libyan users. Both
+ * the phone normalizer and the OTP extractor below now CONVERT first.
+ */
+const ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+
+export function toLatinDigits(input: string): string {
+  return input
+    .replace(/[٠-٩]/g, (d) => String(ARABIC_INDIC_DIGITS.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String(PERSIAN_DIGITS.indexOf(d)));
+}
+
+/**
  * 96-F2 (R96-A4 §3.2): client-side phone normalization mirroring the
- * backend normalizeLibyanPhone contract. After stripping non-digits (a
+ * backend normalizeLibyanPhone contract. After converting Arabic-Indic
+ * / Persian digits to Latin (97-F5 / F-05) and stripping non-digits (a
  * pasted "+" disappears here), international prefixes are removed so
  * the stored value is always the LOCAL form:
- *   "+218 91 345 6789" → "913456789"
- *   "00218913456789"   → "913456789"
- *   "+2180913456789"   → "0913456789"
- *   "0913456789"       → "0913456789" (local form untouched)
+ *   "+218 91 345 6789"   → "913456789"
+ *   "00218913456789"     → "913456789"
+ *   "+2180913456789"    → "0913456789"
+ *   "0913456789"         → "0913456789" (local form untouched)
+ *   "+٢١٨٩١٠٠٨٩٩٧٥"     → "910089975"  (Arabic-Indic paste, 97-F5)
  * "00218" is checked BEFORE "218" ("00218" starts with "00", not
  * "218"). The digit cap stays 10 — the 9-digit local part plus the
  * optional leading 0.
  */
 export function normalizePhoneInput(raw: string): string {
-  let digits = raw.replace(/\D/g, "");
+  let digits = toLatinDigits(raw).replace(/\D/g, "");
   if (digits.startsWith("00218")) digits = digits.slice(5);
   else if (digits.startsWith("218")) digits = digits.slice(3);
   return digits.slice(0, 10);
@@ -315,12 +338,16 @@ export function WhatsAppPhoneSignIn({
   }
 
   /**
-   * Extract the OTP from any pasted text. Strips non-digits, takes the
-   * first 6 digits — so pasting the whole WhatsApp message works:
+   * Extract the OTP from any pasted text. Converts Arabic-Indic /
+   * Persian digits first (97-F5 / F-05 — an OTP copied from a
+   * notification written in Arabic numerals must CONVERT, not vanish),
+   * strips non-digits, takes the first 6 — so pasting the whole
+   * WhatsApp message works:
    *   "SubNation — رمز التحقق\n\n123456\n\nصالح لمدة 5 دقائق…"  →  "123456"
+   *   "رمزك هو ١٢٣٤٥٦"  →  "123456"
    */
   function extractOtpDigits(input: string): string {
-    return input.replace(/\D/g, "").slice(0, 6);
+    return toLatinDigits(input).replace(/\D/g, "").slice(0, 6);
   }
 
   /**
@@ -411,14 +438,29 @@ export function WhatsAppPhoneSignIn({
           دقيقة
         </p>
       )}
+      {/* 97-F5 (J-1 / R97-A5 §P3): "failed" is the gateway's HONEST dead
+          state (backend 97-F3 passes it verbatim) — the channel is NOT
+          mid-pairing and will not become ready "soon". The old generic
+          hint («قيد الربط مؤقتاً — يمكنك المحاولة») was a lie for this
+          state and burned users' attempts. Muted info copy (NOT the
+          destructive error style): name the real situation, hand the
+          user working alternatives, keep the entry mounted (the
+          operator can complete re-pairing at any moment). */}
+      {step === "pristine" && channelStatus === "failed" && (
+        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+          قناة <span lang="en">WhatsApp</span> غير مرتبطة حاليًا — جارٍ إصلاحها من فريق التشغيل؛
+          استخدم Google أو Telegram مؤقتًا
+        </p>
+      )}
       {/* r95 honest hint — only when the live probe says the channel is
-          configured but not currently paired (settling excluded — it
-          has its own copy above). Never blocks the attempt: pairing can
-          complete at any moment. */}
+          configured but not currently paired (settling and failed excluded —
+          each has its own honest copy above). Never blocks the attempt:
+          pairing can complete at any moment. */}
       {step === "pristine" &&
         channelStatus &&
         channelStatus !== "ready" &&
-        channelStatus !== "settling" && (
+        channelStatus !== "settling" &&
+        channelStatus !== "failed" && (
           <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
             قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم Google
             / Telegram الآن

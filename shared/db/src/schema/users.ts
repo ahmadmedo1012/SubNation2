@@ -57,11 +57,23 @@ export const usersTable = pgTable(
   (t) => ({
     referralCodeIdx: index("idx_users_referral_code").on(t.referralCode),
     referredByIdx: index("idx_users_referred_by").on(t.referredBy),
-    firebaseUidIdx: index("idx_users_firebase_uid").on(t.firebaseUid),
+    // R97-DB-04 (D4 closure, round-97 F7): idx_users_firebase_uid (plain)
+    // and idx_users_firebase_uid_unique (partial UNIQUE) were dropped from
+    // the live DB and from the boot SQL — both were structural duplicates
+    // of the column UNIQUE constraint backing index users_firebase_uid_key
+    // (declared by `.unique()` on firebaseUid above), which stays the sole
+    // firebase_uid index. Every INSERT previously maintained three btrees
+    // on the same column for zero query benefit.
     emailIdx: index("idx_users_email").on(t.email),
     // Round-3 (8-c §4.1): admin users list sorts by createdAt DESC LIMIT 100
     // with no index — sequential scan on every dashboard visit.
     createdIdx: index("idx_users_created").on(t.createdAt),
+    // D6 closure (round-97 F7): trigram GIN index over the phone — mirrors
+    // the live boot SQL (migrate.ts, created when pg_trgm is available).
+    // Powers the admin user-search LIKE '%x%' path. Previously live-only:
+    // a drizzle push would have dropped it (same trap idx_products_name_trgm
+    // closed earlier — see products.ts for the idiom).
+    phoneTrgmIdx: index("idx_users_phone_trgm").using("gin", t.phone.op("gin_trgm_ops")),
   }),
 );
 

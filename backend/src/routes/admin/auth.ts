@@ -51,10 +51,19 @@ router.post("/login", async (req, res) => {
   // barely noticed. Keying on IP + username keeps per-IP brute force
   // inside the same 5-attempt envelope while making remote lockout
   // of the legitimate admin (different IP) structurally impossible.
-  const clientIp =
-    (typeof req.headers["cf-connecting-ip"] === "string" && req.headers["cf-connecting-ip"]) ||
-    req.ip ||
-    "unknown";
+  //
+  // R97-01 (round-97 F2): this key used to read the CF-Connecting-IP
+  // header RAW — bypassing the H11 validation in cloudflareClientIp,
+  // which honours that header ONLY when the rightmost XFF peer is a
+  // Cloudflare edge and then rewrites req.ip. A direct connection to
+  // the always-reachable subnation2.onrender.com origin could forge a
+  // fresh CF-Connecting-IP per request, minting a NEW lockout key
+  // every time — the 5-attempts/15-min lockout never engaged, and
+  // distributed brute force had no ceiling (only authLimiter's
+  // IP-rotation-beatable 10/15min). req.ip is the CF-validated value
+  // (cloudflareClientIp is composed in app.ts BEFORE all routes) and
+  // is exactly what express-rate-limit already keys on.
+  const clientIp = req.ip || "unknown";
   const lockoutKey = `admin:${username}:${clientIp}`;
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
@@ -110,11 +119,17 @@ router.post("/login", async (req, res) => {
     // around is now 10 minutes — plenty for a human to open the
     // authenticator, worthless for offline brute force (the per-admin
     // lockout below is the real gate; this just shrinks the target).
-    const tempToken = signAdminToken({ adminId: admin.id, role: admin.role, isTemp: true }, { expiresIn: "10m" });
+    const tempToken = signAdminToken(
+      { adminId: admin.id, role: admin.role, isTemp: true },
+      { expiresIn: "10m" },
+    );
     return res.json({ requires_2fa: true, temp_token: tempToken });
   }
 
   // A8-01 (round-94): durable, revocable session row + sid-bound token.
+  // R97-01: clientIp above is the CF-validated req.ip — the session
+  // row's forensically-relevant ipAddress can no longer be polluted
+  // with attacker-chosen raw-header values.
   const { token } = await createAdminSession({
     adminId: admin.id,
     role: admin.role,
@@ -122,8 +137,13 @@ router.post("/login", async (req, res) => {
     ipAddress: clientIp,
   });
   res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
+  // R97-02 (round-97 F2): the raw admin JWT is no longer returned in
+  // the response body — the httpOnly cookie above is the sole session
+  // transport (requireAdmin reads the cookie first; the row-backed sid
+  // keeps it revocable). Keeping the token in JSON kept a full-session
+  // credential readable from JS memory (XSS / malicious extension /
+  // DevTools-on-a-shared-machine surface).
   return res.json({
-    token,
     display_name: admin.displayName,
     role: admin.role,
     permissions: admin.permissions ?? [],
@@ -206,8 +226,11 @@ router.post("/login/verify-2fa", async (req, res) => {
       ipAddress: req.ip,
     });
     res.cookie(ADMIN_COOKIE_NAME, token, ADMIN_COOKIE_OPTIONS);
+    // R97-02 (round-97 F2): no `token` in the body here either — the
+    // httpOnly cookie above is the only session transport. (The
+    // 10-minute `temp_token` returned by /login is a challenge
+    // credential, not a session, and stays.)
     return res.json({
-      token,
       display_name: admin.displayName,
       role: admin.role,
       permissions: admin.permissions ?? [],

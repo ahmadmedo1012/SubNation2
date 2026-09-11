@@ -26,6 +26,18 @@
  * and Sentry boot are captured and replayed, NOT lost. Source-map
  * fidelity is preserved (Sentry resolves stack frames at ingest time
  * using the bundle hash, not at capture time).
+ *
+ * 97-F6 (R97 J-3) — DSN dead-weight guard: R97-A1 observed the live
+ * production site fetching the vendor-sentry chunk (~151 KB brotli) at
+ * boot even though VITE_SENTRY_DSN is unset — an SDK initialized with
+ * no DSN reports nothing, so the bytes were pure cost. The dynamic
+ * import of ../instrument below now lives INSIDE the DSN-present
+ * branch only: Vite statically replaces import.meta.env.VITE_SENTRY_DSN
+ * at build time (with `void 0` when unset), so on a DSN-less build the
+ * branch never executes. Companion guard in vite.config.ts
+ * (sentryDsnGuardPlugin) additionally stubs @sentry/react for such
+ * builds so the vendor-sentry chunk is not emitted at all. When the
+ * DSN IS set, behavior is identical to before.
  */
 
 type ReactErrorInfo = unknown;
@@ -42,6 +54,21 @@ const buffer: BufferedEvent[] = [];
 const MAX_BUFFER = 32; // hard cap so a runaway error loop can't bloat memory
 
 let sentryReady: typeof import("@sentry/react") | null = null;
+
+/**
+ * 97-F6 (R97 J-3): build-time DSN presence. Vite statically replaces
+ * import.meta.env.VITE_SENTRY_DSN during `vite build` (`void 0` when
+ * unset — verified against the emitted instrument chunk), so this is a
+ * compile-time constant in production bundles. Reading it ONCE at module
+ * evaluation keeps boot-sentry, vite.config.ts's sentryDsnGuardPlugin and
+ * instrument.ts's own check all agreeing on whether this build ships the
+ * SDK. Exported for tests and for any future call site that needs to know
+ * without re-deriving the env read.
+ */
+const SENTRY_DSN: string | undefined =
+  (import.meta.env.VITE_SENTRY_DSN as string | undefined)?.trim() || undefined;
+
+export const SENTRY_DSN_SET: boolean = !!SENTRY_DSN;
 
 function push(event: BufferedEvent): void {
   if (sentryReady) {
@@ -132,9 +159,44 @@ export function bufferedReactErrorHandler(): ReactErrorHandler {
  * Schedule the Sentry chunk to load on idle. Once loaded, the
  * buffered queue is flushed and subsequent push() calls go directly
  * to Sentry.
+ *
+ * 97-F6 (R97 J-3): when the build carries no VITE_SENTRY_DSN this is a
+ * no-op — the dynamic import below is only reachable from the
+ * DSN-present path, so a DSN-less build never requests the Sentry
+ * chunk(s). The operator-facing console messages (and the
+ * window.__sentryStatus debug handle, normally installed by
+ * instrument.ts) are preserved here so a misconfigured deployment is
+ * still loudly visible and debuggable.
  */
 export function scheduleSentryBoot(): void {
   if (typeof window === "undefined") return;
+
+  if (!SENTRY_DSN_SET) {
+    if (import.meta.env.MODE === "production") {
+      // Production builds without the env are misconfigured — log loudly
+      // so it's caught before traffic exposes the gap (same contract
+      // instrument.ts used to provide, now emitted without loading the
+      // dead-weight SDK chunk).
+      console.error(
+        "[sentry] VITE_SENTRY_DSN is not set in production. Frontend errors will not be reported. Sentry SDK chunk skipped (97-F6).",
+      );
+    } else {
+      console.info("[sentry] VITE_SENTRY_DSN not set — Sentry disabled in dev.");
+    }
+    // instrument.ts never loads in this build, so it can't install its
+    // debug surface. Provide the __sentryStatus contract here instead so
+    // operators probing a live tab get a truthful answer rather than a
+    // TypeError from `window.__sentryStatus()` being undefined.
+    if (typeof window.__sentryStatus !== "function") {
+      window.__sentryStatus = () => ({
+        initialized: false,
+        environment: import.meta.env.MODE,
+        release: "sentry-not-shipped",
+        dsn: null,
+      });
+    }
+    return;
+  }
 
   type IdleWindow = Window & {
     requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;

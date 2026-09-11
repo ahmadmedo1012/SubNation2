@@ -6,7 +6,9 @@ interface PublicAuthProviders {
   /**
    * Live pairing status of the WhatsApp session (r95): "ready" when
    * OTPs can flow right now, "settling" while the just-linked session
-   * is inside the settle window (96-F2), any other OpenWA lifecycle
+   * is inside the settle window (96-F2), "failed" when the gateway
+   * reports the channel dead (97-F5 / J-1 — backend 97-F3 now passes
+   * this verbatim instead of masking it), any other OpenWA lifecycle
    * value (qr_ready / initializing / disconnected / …) or null (probe
    * failed) otherwise. Used for an honest hint under the button —
    * never to hard-hide the entry (the operator can complete pairing
@@ -23,6 +25,15 @@ interface PublicAuthProviders {
    * short by design.
    */
   whatsappSettling: boolean;
+  /**
+   * 97-F5 (J-1): derived from whatsappStatus — true when the gateway
+   * reports "failed": the channel is NOT mid-pairing and there is no
+   * point suggesting a retry. Consumers render the honest
+   * operator-fix copy («غير مرتبطة حاليًا — استخدم Google أو Telegram
+   * مؤقتًا») in a muted info style instead of the misleading
+   * «قيد الربط مؤقتاً» generic hint.
+   */
+  whatsappFailed: boolean;
   /** True once the providers endpoint has been queried (success or fail). */
   fetched: boolean;
 }
@@ -75,6 +86,7 @@ export function usePublicAuthProviders(): PublicAuthProviders {
     whatsappEnabled,
     whatsappStatus,
     whatsappSettling: whatsappStatus === "settling",
+    whatsappFailed: whatsappStatus === "failed",
     fetched,
   };
 }

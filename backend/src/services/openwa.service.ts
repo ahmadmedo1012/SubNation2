@@ -173,9 +173,21 @@ let readySessionCache: { id: string; expiresAt: number } | null = null;
 //
 //   A. Settle gate: the first time a session is observed `ready`, record
 //      the timestamp (in-memory Map + Redis mirror
-//      `openwa:ready-since:{sessionId}` so restarts and sibling
+//      `openwa:ready-since:{gateKey}` so restarts and sibling
 //      instances share the observation). No dispatch until
 //      POST_LINK_SETTLE_MS has elapsed since that first observation.
+//      97-F3 (R97-WA-01): the gate key is COMPOSITE — (sessionId +
+//      pairing-epoch token). The gateway keeps the SAME session id
+//      across a loggedOut + re-pair cycle (the live production
+//      incident), so a session-id-keyed gate NEVER re-arms and the
+//      whole 3-layer defense is bypassed unless the backend restarts.
+//      The gateway exposes `lastReadyAt` (fallback `connectedAt`) on
+//      the wire; a `ready` observation whose token DIFFERS from the
+//      last observed one means a new pairing happened → the window
+//      fully re-arms, dispatchReady drops, warm-up re-schedules, and
+//      both caches bust. Tokens are compared as OPAQUE STRINGS (never
+//      a time-diff) so gateway/backend clock skew can neither mask
+//      nor fabricate a re-pair.
 //
 //   B. Warm-up self-check: after the settle window, send a benign Arabic
 //      message to the operator's own linked number
@@ -235,12 +247,21 @@ function readOperatorNumber(): string | null {
   return OPERATOR_E164_RE.test(raw) ? raw : null;
 }
 
-/** First-observation timestamps per session id (epoch ms). */
+/** First-observation timestamps per settle-gate key (epoch ms).
+ * 97-F3 (WA-01): keyed by the composite (sessionId + pairing epoch),
+ * NOT the bare session id — a re-pair with the same id gets a fresh
+ * entry (and the old one is deleted) instead of adopting the dead
+ * pairing's timestamp. */
 const sessionReadySince = new Map<string, number>();
-/** Warm-up-ok flag per session id — only meaningful when the operator env is set. */
+/** Warm-up-ok flag per settle-gate key — only meaningful when the
+ * operator env is set. 97-F3 (WA-03 partial): epoch-scoped — the flag
+ * from a previous pairing never survives a re-pair. */
 const dispatchReady = new Map<string, boolean>();
-/** Session ids with a pending one-shot initial warm-up scheduled. */
+/** Settle-gate keys with a pending one-shot initial warm-up scheduled. */
 const pendingInitialWarmups = new Set<string>();
+/** 97-F3 (WA-01): last pairing-epoch token observed `ready` per session
+ * id — the memory that lets a new epoch be recognized as a re-pair. */
+const sessionObservedEpoch = new Map<string, string>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -251,14 +272,95 @@ function settleRemainingMs(readySince: number): number {
   return Math.max(0, readySince + POST_LINK_SETTLE_MS - Date.now());
 }
 
-/** Warm-up gate — applies ONLY when the operator number is configured. */
-function isWarmupOk(sessionId: string): boolean {
-  if (!readOperatorNumber()) return true;
-  return dispatchReady.get(sessionId) === true;
+// ─────────────────────────────────────────────────────────────────────────────
+// 97-F3 (R97-WA-01): pairing-epoch gate keys + re-arm on re-pair
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The pairing-epoch token for a session — the gateway's `lastReadyAt`
+ * (ISO string), falling back to `connectedAt`, falling back to "" when
+ * the gateway deployment predates both fields (legacy shape: the gate
+ * then keys on the bare session id exactly as before — no regression).
+ *
+ * IMPORTANT: the token is treated as an OPAQUE STRING. It is compared
+ * with `!==`, never parsed into a time — clock skew between the gateway
+ * and this backend therefore cannot mask a re-pair (or invent one).
+ */
+function sessionPairingEpoch(session: SessionRecord): string {
+  return (session.lastReadyAt ?? session.connectedAt ?? "").trim();
 }
 
 /**
- * Record (or adopt) the first `ready` observation for a session.
+ * The composite settle-gate key: (sessionId + pairing-epoch token).
+ * `sess_…` ids match `^[A-Za-z0-9_-]+$` (see assertSessionId) so the
+ * `::` separator can never appear inside the id — the key parses back
+ * unambiguously. Empty epoch (legacy gateway / unit fixtures without
+ * the field) degrades to the bare session id: the exact pre-97-F3 key,
+ * which also keeps the Redis mirror key backward compatible.
+ */
+function sessionGateKey(session: SessionRecord): string {
+  const epoch = sessionPairingEpoch(session);
+  return epoch ? `${session.id}::${epoch}` : session.id;
+}
+
+/** Test-seam twin of {@link sessionGateKey} for callers holding the
+ * pieces separately (the seams accept an optional epoch token). */
+function settleGateKey(sessionId: string, epochToken?: string): string {
+  const epoch = (epochToken ?? "").trim();
+  return epoch ? `${sessionId}::${epoch}` : sessionId;
+}
+
+/**
+ * 97-F3 (R97-WA-01) — the re-arm core. Called on every FIRST
+ * observation of a settle-gate key for a session: when the session id
+ * already has a DIFFERENT epoch recorded, a re-pair happened under the
+ * same id. The previous epoch's bookkeeping is wiped (ready-since,
+ * dispatchReady, pending warm-up) and both caches bust, so the caller
+ * then records a FRESH ready-since → the full settle window re-arms and
+ * the warm-up self-check must deliver again before dispatch is enabled.
+ *
+ * Returns true when a re-pair was detected (epoch changed). Purely
+ * in-memory side effects — safe to call on every gate miss.
+ */
+function rearmGateOnEpochChange(session: SessionRecord): boolean {
+  const epoch = sessionPairingEpoch(session);
+  const previousEpoch = sessionObservedEpoch.get(session.id);
+  sessionObservedEpoch.set(session.id, epoch);
+  if (previousEpoch === undefined || previousEpoch === epoch) return false;
+
+  const previousGateKey = settleGateKey(session.id, previousEpoch);
+  sessionReadySince.delete(previousGateKey);
+  dispatchReady.delete(previousGateKey);
+  pendingInitialWarmups.delete(previousGateKey);
+  // A new pairing invalidates any cached verdict — both the readiness
+  // probe cache (public status surface) and the send-path ready cache.
+  readinessCache = null;
+  readySessionCache = null;
+  logger.info(
+    {
+      category: "whatsapp.gateway",
+      sessionId: session.id,
+      previousEpoch,
+      epoch,
+      settleMs: POST_LINK_SETTLE_MS,
+    },
+    "[whatsapp-otp] pairing epoch changed under the same session id (re-pair detected) — settle window re-armed, dispatch gate dropped",
+  );
+  return true;
+}
+
+/** Warm-up gate — applies ONLY when the operator number is configured.
+ * 97-F3 (WA-03 partial): epoch-scoped via the composite gate key — the
+ * warm-up verdict is only valid within the pairing epoch that produced
+ * it; a re-pair (new epoch) starts from a clean slate. */
+function isWarmupOk(session: SessionRecord): boolean {
+  if (!readOperatorNumber()) return true;
+  return dispatchReady.get(sessionGateKey(session)) === true;
+}
+
+/**
+ * Record (or adopt) the first `ready` observation for a session's
+ * CURRENT pairing epoch.
  *
  * In-memory first; on a miss, the Redis mirror is checked so a cold
  * start / sibling instance ADOPTS the shared timestamp instead of
@@ -266,21 +368,33 @@ function isWarmupOk(sessionId: string): boolean {
  * AND via SETNX in Redis (TTL 7 d). Any freshly-recorded observation
  * also busts the readiness cache — a session must never be cached as
  * `ready` from a probe that predates its pairing.
+ *
+ * 97-F3 (R97-WA-01): the mirror key is the composite gate key
+ * (session id + epoch token), NOT the bare session id. A re-pair with
+ * the same id therefore reads a FRESH key: the dead pairing's mirror
+ * value can no longer be adopted across a backend restart (the exact
+ * bypass the live incident exposed — previously the re-pair survived
+ * even a redeploy when Redis was present). Before the Redis lookup,
+ * {@link rearmGateOnEpochChange} wipes the previous epoch's
+ * bookkeeping so the settle window and the warm-up gate fully re-arm.
  */
 async function recordReadySince(session: SessionRecord): Promise<number> {
-  const known = sessionReadySince.get(session.id);
-  if (known !== undefined) return known;
+  const gateKey = sessionGateKey(session);
+  const known = sessionReadySince.get(gateKey);
+  if (known !== undefined) return known; // steady state within this epoch
+
+  rearmGateOnEpochChange(session);
 
   const redis = getRedisClient();
   if (redis) {
     try {
-      const key = `openwa:ready-since:${session.id}`;
+      const key = `openwa:ready-since:${gateKey}`;
       const raw = await withRedisCommandTimeout("openwa_ready_since_get", () => redis.get(key));
       if (raw) {
         const ts = Number(raw);
         if (Number.isFinite(ts) && ts > 0) {
-          sessionReadySince.set(session.id, ts);
-          scheduleInitialWarmup(session.id, ts);
+          sessionReadySince.set(gateKey, ts);
+          scheduleInitialWarmup(gateKey, ts);
           return ts;
         }
       }
@@ -295,31 +409,32 @@ async function recordReadySince(session: SessionRecord): Promise<number> {
   }
 
   const now = Date.now();
-  sessionReadySince.set(session.id, now);
+  sessionReadySince.set(gateKey, now);
   readinessCache = null; // never cache a pre-gate `ready` verdict
   logger.info(
-    { category: "whatsapp.gateway", sessionId: session.id, settleMs: POST_LINK_SETTLE_MS },
+    { category: "whatsapp.gateway", sessionId: session.id, gateKey, settleMs: POST_LINK_SETTLE_MS },
     "[whatsapp-otp] session observed ready — post-link settle window started",
   );
-  scheduleInitialWarmup(session.id, now);
+  scheduleInitialWarmup(gateKey, now);
   return now;
 }
 
 /**
  * One-shot initial warm-up: the FIRST observation of a ready session
- * schedules the self-check for right after the settle window elapses
- * (delay 0 when the window already passed — e.g. a cold start adopting
- * an old Redis timestamp) instead of waiting for the 6 h loop tick.
+ * (per pairing epoch — 97-F3/WA-01) schedules the self-check for right
+ * after the settle window elapses (delay 0 when the window already
+ * passed — e.g. a cold start adopting an old Redis timestamp) instead
+ * of waiting for the 6 h loop tick.
  */
-function scheduleInitialWarmup(sessionId: string, readySince: number): void {
+function scheduleInitialWarmup(gateKey: string, readySince: number): void {
   const operator = readOperatorNumber();
   if (!operator) return; // warm-up disabled — skip silently (§1.3B)
-  if (dispatchReady.get(sessionId)) return;
-  if (pendingInitialWarmups.has(sessionId)) return;
-  pendingInitialWarmups.add(sessionId);
+  if (dispatchReady.get(gateKey)) return;
+  if (pendingInitialWarmups.has(gateKey)) return;
+  pendingInitialWarmups.add(gateKey);
   const delay = Math.max(0, readySince + POST_LINK_SETTLE_MS - Date.now());
   const timer = setTimeout(() => {
-    pendingInitialWarmups.delete(sessionId);
+    pendingInitialWarmups.delete(gateKey);
     void runWarmupCycle().catch((err) =>
       logger.warn(
         { category: "whatsapp.gateway", err: err instanceof Error ? err.message : String(err) },
@@ -334,9 +449,20 @@ function scheduleInitialWarmup(sessionId: string, readySince: number): void {
  * The warm-up cycle (shared by the one-shot initial warm-up and the 6 h
  * loop): resolve the session, and when it is ready + settled + not yet
  * warm, send the benign self-check to the operator's own number and —
- * only on a delivered send — flip dispatchReady for this process.
+ * only on a successful send — flip dispatchReady for this process.
  * Never throws (scheduler contract); every failure is logged and
  * retried by the next tick.
+ *
+ * 97-F3 (WA-03 partial — documented strictness): "successful send"
+ * here means the gateway answered HTTP 200 to POST send-text, i.e. the
+ * engine ACCEPTED + encrypted + handed the message to WhatsApp's
+ * server — it is NOT a delivery ack to the handset. The gateway's
+ * /delivery-log endpoint (WAProto statuses: 2=SERVER_ACK, 3=DELIVERY_ACK)
+ * could strengthen this to an end-to-end proof, but it is not consumed
+ * by this backend yet (R97-WA-03 full fix — follow-up). What 97-F3 DOES
+ * guarantee: the flag is epoch-scoped (sessionGateKey), so the verdict
+ * only counts within the pairing epoch whose self-check produced it —
+ * a re-pair forces a fresh self-check before dispatch re-enables.
  */
 async function runWarmupCycle(): Promise<void> {
   const config = readGatewayConfig();
@@ -356,9 +482,10 @@ async function runWarmupCycle(): Promise<void> {
   }
   if (!session || session.status !== "ready") return;
 
+  const gateKey = sessionGateKey(session);
   const readySince = await recordReadySince(session);
   if (settleRemainingMs(readySince) > 0) return; // still settling — the one-shot will fire
-  if (dispatchReady.get(session.id)) return; // already warm
+  if (dispatchReady.get(gateKey)) return; // already warm (this epoch)
 
   // The self-check intentionally bypasses the warm-up gate (chicken-and-
   // egg) and the OTP preflight (the operator's own number is on the
@@ -367,9 +494,9 @@ async function runWarmupCycle(): Promise<void> {
     skipWarmupGate: true,
   });
   if (result.ok) {
-    dispatchReady.set(session.id, true);
+    dispatchReady.set(gateKey, true);
     logger.info(
-      { category: "whatsapp.gateway", sessionId: session.id },
+      { category: "whatsapp.gateway", sessionId: session.id, gateKey },
       "[whatsapp-otp] warm-up self-check delivered — OTP dispatch enabled for this session",
     );
   } else {
@@ -449,6 +576,17 @@ interface SessionRecord {
   id: string;
   name: string;
   status: SessionStatus;
+  /**
+   * 97-F3 (R97-WA-01): pairing-epoch token — the timestamp of the
+   * CURRENT ready (gateway `publicView.lastReadyAt`). The gateway
+   * rewrites it on every new connection open, so the SAME session id
+   * (which survives loggedOut + re-pair) carries a NEW token after a
+   * re-pair. Treated as an opaque string — see sessionPairingEpoch().
+   */
+  lastReadyAt?: string;
+  /** 97-F3 fallback epoch token when the gateway omits lastReadyAt
+   * ("Timestamp of the CURRENT open" in publicView). */
+  connectedAt?: string;
 }
 
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -635,7 +773,7 @@ async function ensureSession(
   const readySince = await recordReadySince(session);
   const remainingMs = settleRemainingMs(readySince);
   const settled = remainingMs === 0;
-  const warmed = opts.skipWarmupGate === true || isWarmupOk(session.id);
+  const warmed = opts.skipWarmupGate === true || isWarmupOk(session);
   if (!settled || !warmed) {
     return {
       ok: false,
@@ -951,7 +1089,7 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
       const remainingMs = settleRemainingMs(readySince);
       settled = remainingMs === 0;
       readyInSec = settled ? null : Math.max(1, Math.ceil(remainingMs / 1000));
-      warmed = isWarmupOk(session.id);
+      warmed = isWarmupOk(session);
     }
     const result: WhatsAppGatewayReadiness = {
       configured: true,
@@ -1172,26 +1310,37 @@ export function __resetWhatsAppGatewayCacheForTests(): void {
   sessionReadySince.clear();
   dispatchReady.clear();
   pendingInitialWarmups.clear();
+  sessionObservedEpoch.clear();
 }
 
 /**
  * Test seams for the 96-F1 settle gate / warm-up self-check. Not part
  * of the public contract.
  *
+ * 97-F3 (WA-01): the read/write seams take an OPTIONAL epoch token —
+ * omitting it targets the legacy bare-session-id key (the shape every
+ * pre-97-F3 test uses); passing the gateway's lastReadyAt targets the
+ * composite (sessionId + epoch) key the gate now books under.
+ *
  * @internal
  */
 export const __whatsappSettleGateTest = {
   /** First-observation timestamp recorded for a session (undefined = none). */
-  getReadySince(sessionId: string): number | undefined {
-    return sessionReadySince.get(sessionId);
+  getReadySince(sessionId: string, epoch?: string): number | undefined {
+    return sessionReadySince.get(settleGateKey(sessionId, epoch));
   },
-  /** Warm-up-ok flag for a session. */
-  isDispatchReady(sessionId: string): boolean {
-    return dispatchReady.get(sessionId) === true;
+  /** Warm-up-ok flag for a session's (optionally epoch-scoped) gate key. */
+  isDispatchReady(sessionId: string, epoch?: string): boolean {
+    return dispatchReady.get(settleGateKey(sessionId, epoch)) === true;
   },
   /** Force-mark a session warm (simulates a delivered self-check). */
-  markDispatchReady(sessionId: string): void {
-    dispatchReady.set(sessionId, true);
+  markDispatchReady(sessionId: string, epoch?: string): void {
+    dispatchReady.set(settleGateKey(sessionId, epoch), true);
+  },
+  /** Last pairing-epoch token observed ready for a session (undefined
+   * until the first ready observation of the process). */
+  getObservedEpoch(sessionId: string): string | undefined {
+    return sessionObservedEpoch.get(sessionId);
   },
   /** Run one warm-up cycle on demand (the 6 h loop body). */
   runWarmupCycle(): Promise<void> {

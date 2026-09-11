@@ -1,12 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/lib/auth";
+import { COOKIE_AUTH_SENTINEL, useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useAdminLogin } from "@workspace/api-client-react";
-import { AlertCircle, Eye, EyeOff, KeyRound, Shield } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, Shield } from "lucide-react";
+import { useRef, useState } from "react";
 import { useLocation } from "wouter";
+
+/** Arabic copy for the (rare) cookie-could-not-be-established failure. */
+const SESSION_BOOTSTRAP_FAILED = "تعذّر تثبيت جلسة الإدارة — تحقق من اتصالك ثم أعد المحاولة";
 
 export default function AdminLoginPage() {
   const [, navigate] = useLocation();
@@ -20,6 +23,54 @@ export default function AdminLoginPage() {
   const [tempToken, setTempToken] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  /**
+   * 97-F5 (F-08 pattern — Enter guard): synchronous twin of
+   * `isVerifying`. A rapid double-Enter (key auto-repeat / impatient
+   * operator) can land BOTH submit events inside the same tick — before
+   * the state update re-renders the disabled button — so the onSubmit
+   * predicate alone would still let the second verify through. The ref
+   * closes that sub-tick window.
+   */
+  const verifyingRef = useRef(false);
+
+  /**
+   * 97-F5 (R97-02 coordination — backend 97-F2): /api/admin/login and
+   * /api/admin/login/verify-2fa no longer return a `token` in the JSON
+   * body. The httpOnly `admin_token` cookie they Set-Cookie is the SOLE
+   * session transport (requireAdmin reads the cookie first; the body
+   * used to leak a full-session JWT readable from JS memory). This page
+   * therefore establishes the in-memory session EXACTLY the way the
+   * boot path does (AuthProvider's admin probe): a /api/admin/probe
+   * round-trip verifies the cookie actually landed and returns the live
+   * admin shape — only then do we set the cookie-session sentinel +
+   * permissions and navigate. A cookie that did not round-trip
+   * (third-party-cookie blocking, exotic embedding) surfaces an honest
+   * inline error instead of navigating into a dead admin gate that
+   * would bounce straight back.
+   */
+  async function establishAdminSession(): Promise<boolean> {
+    try {
+      const res = await fetch("/api/admin/probe", {
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return false;
+      const body = (await res.json().catch(() => null)) as {
+        authenticated?: boolean;
+        admin?: { permissions?: unknown } | null;
+      } | null;
+      if (!body?.authenticated || !body?.admin) return false;
+      setAdminToken(COOKIE_AUTH_SENTINEL);
+      setAdminPermissions(
+        Array.isArray(body.admin.permissions) ? (body.admin.permissions as string[]) : [],
+      );
+      return true;
+    } catch {
+      // Network failure — the operator gets the honest retry copy; the
+      // cookie (if it landed) still works on a fresh page load.
+      return false;
+    }
+  }
 
   const loginMutation = useAdminLogin({
     mutation: {
@@ -29,10 +80,16 @@ export default function AdminLoginPage() {
           setTempToken(data.temp_token!);
           return;
         }
-        setAdminToken(data.token ?? null);
-        const perms = (data as unknown as { permissions?: unknown }).permissions;
-        setAdminPermissions(Array.isArray(perms) ? (perms as string[]) : []);
-        navigate("/admin");
+        // 97-F5 (R97-02): no body token to store — the cookie is the
+        // session. Bootstrap the in-memory state from the probe
+        // round-trip; navigate only once the cookie is confirmed live.
+        void (async () => {
+          if (await establishAdminSession()) {
+            navigate("/admin");
+          } else {
+            setError(SESSION_BOOTSTRAP_FAILED);
+          }
+        })();
       },
       onError(err: unknown) {
         setError(err instanceof Error ? err.message : "حدث خطأ");
@@ -42,6 +99,14 @@ export default function AdminLoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 97-F5 (R97-A4 §8 / F-08 — the only <form> in this wave's
+    // ownership): Enter inside any text field submits the form
+    // REGARDLESS of the submit button's disabled state (implicit
+    // submission ignores it), so a double-Enter while the login
+    // mutation or the 2FA verify is in flight would re-fire it and layer
+    // a 401/timeout error banner over the already-pending attempt. Guard
+    // with the EXACT predicate the submit button uses.
+    if (loginMutation.isPending || isVerifying) return;
     setError("");
     if (needs2FA) {
       verify2FA();
@@ -51,6 +116,10 @@ export default function AdminLoginPage() {
   };
 
   const verify2FA = async () => {
+    // 97-F5 (F-08): same-tick re-entry guard (see verifyingRef above) —
+    // the onSubmit predicate only covers post-render Enters.
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
     setIsVerifying(true);
     // 96-F7 (R96 M18): 2FA verify errors now render INLINE with the
     // exact same visual treatment as the password errors (the #error
@@ -67,25 +136,33 @@ export default function AdminLoginPage() {
       // 96-F7 (R96 M18): parse AFTER the ok guard — a non-JSON error
       // body (proxy HTML on a 502) used to throw an opaque English
       // SyntaxError into the error surface.
+      // 97-F5 (R97-02): the body no longer carries a `token` — a 2xx
+      // alone means the httpOnly cookie was Set-Cookied; the session
+      // state comes from establishAdminSession()'s probe below.
       const data = (await res.json().catch(() => null)) as {
         error?: string;
         code?: string;
-        token?: string;
         permissions?: string[];
       } | null;
-      if (!res.ok || !data?.token) {
+      if (!res.ok) {
         // Round-4 (org §6a) pattern: map the backend `code`/`error` to
         // Arabic via getErrorMessage; raw English never reaches the
         // operator.
         throw new Error(getErrorMessage(data) || "رمز التحقق غير صحيح أو منتهي الصلاحية");
       }
 
-      setAdminToken(data.token);
-      setAdminPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+      // Cookie confirmed via the probe round-trip (see R97-02 note
+      // above) — the sentinel + permissions replace the old body-token
+      // storage, then the operator lands in the panel.
+      const established = await establishAdminSession();
+      if (!established) {
+        throw new Error(SESSION_BOOTSTRAP_FAILED);
+      }
       navigate("/admin");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "فشلت العملية");
     } finally {
+      verifyingRef.current = false;
       setIsVerifying(false);
     }
   };
@@ -197,11 +274,16 @@ export default function AdminLoginPage() {
               className="w-full h-11 bg-primary hover:bg-primary/90 font-bold text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
               disabled={loginMutation.isPending || isVerifying}
             >
-              {loginMutation.isPending || isVerifying
-                ? "جارٍ التحقق..."
-                : needs2FA
-                  ? "تأكيد الدخول"
-                  : "دخول الإدارة"}
+              {loginMutation.isPending || isVerifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  جارٍ التحقق...
+                </>
+              ) : needs2FA ? (
+                "تأكيد الدخول"
+              ) : (
+                "دخول الإدارة"
+              )}
             </Button>
 
             {needs2FA && (

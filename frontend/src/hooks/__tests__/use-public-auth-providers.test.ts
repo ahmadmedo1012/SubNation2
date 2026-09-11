@@ -1,10 +1,12 @@
 /**
- * 96-F2 (R96-A4 §1.3E) — usePublicAuthProviders settling exposure.
+ * 96-F2 (R96-A4 §1.3E) — usePublicAuthProviders settling exposure +
+ * 97-F5 (J-1) whatsappFailed derivation.
  *
- * The hook now derives `whatsappSettling` from the live
- * whatsapp_status probe so the login/register pages can render an
- * honest "just linked, preparing" hint before the user types a number.
- * These tests pin: the derivation, the absent-field legacy behavior
+ * The hook derives `whatsappSettling` (96-F2) and `whatsappFailed`
+ * (97-F5 / J-1 — backend 97-F3 passes the gateway's honest dead state
+ * verbatim) from the live whatsapp_status probe so the login/register
+ * pages can render honest hints before the user types a number.
+ * These tests pin: the derivations, the absent-field legacy behavior
  * (older backends → null → no hint), and the soft-fail network path.
  */
 
@@ -53,6 +55,37 @@ describe("usePublicAuthProviders — whatsappSettling (96-F2 §1.3E)", () => {
     expect(result.current.whatsappSettling).toBe(false);
   });
 
+  it('97-F5 (J-1): derives whatsappFailed=true when the probe reports "failed"', async () => {
+    fetchMock.mockResolvedValueOnce(
+      providersResponse({ whatsapp_enabled: true, whatsapp_status: "failed" }),
+    );
+    const { result } = renderHook(() => usePublicAuthProviders());
+
+    await waitFor(() => expect(result.current.fetched).toBe(true));
+
+    expect(result.current.whatsappStatus).toBe("failed");
+    expect(result.current.whatsappFailed).toBe(true);
+    // Orthogonal flag: a dead channel is not "settling".
+    expect(result.current.whatsappSettling).toBe(false);
+  });
+
+  it("97-F5 (J-1): whatsappFailed=false for ready / settling / qr_ready / absent statuses", async () => {
+    for (const status of ["ready", "settling", "qr_ready", undefined]) {
+      fetchMock.mockResolvedValueOnce(
+        providersResponse(
+          status === undefined
+            ? { whatsapp_enabled: true }
+            : { whatsapp_enabled: true, whatsapp_status: status },
+        ),
+      );
+      const { result } = renderHook(() => usePublicAuthProviders());
+
+      await waitFor(() => expect(result.current.fetched).toBe(true));
+
+      expect(result.current.whatsappFailed).toBe(false);
+    }
+  });
+
   it("absent whatsapp_status (older backend) stays null and never settles", async () => {
     fetchMock.mockResolvedValueOnce(providersResponse({ whatsapp_enabled: true }));
     const { result } = renderHook(() => usePublicAuthProviders());
@@ -72,5 +105,6 @@ describe("usePublicAuthProviders — whatsappSettling (96-F2 §1.3E)", () => {
     expect(result.current.whatsappEnabled).toBe(false);
     expect(result.current.whatsappStatus).toBeNull();
     expect(result.current.whatsappSettling).toBe(false);
+    expect(result.current.whatsappFailed).toBe(false);
   });
 });

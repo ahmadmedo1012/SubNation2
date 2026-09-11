@@ -36,10 +36,18 @@
  *      parallel queries fail together on expiry; one toast, not six),
  *   2. clears the in-memory token via the auth-context callback
  *      (mounted pages with `enabled: !!token` stop refetching → no
- *      401 storm; the catalog cache is kept so the storefront stays
- *      browsable as a guest),
+ *      401 storm). 97-F5 (R97-A4 §2 / F-01 — P1): that callback is
+ *      AuthProvider's `setToken(null)`, which now ALSO clears the
+ *      ENTIRE TanStack cache (exactly like logout()) — the previous
+ *      user's wallet/topups/orders data must not survive into the
+ *      next sign-in on this same tab (shared-device money leak: a
+ *      still-fresh <60 s cache entry is served with NO refetch at
+ *      all). The catalog refetch that follows is the accepted cost
+ *      of that guarantee (it used to be kept for guest browsing),
  *   3. disconnects the user socket (leave the room immediately
- *      instead of waiting for the server's 5-minute liveness sweep),
+ *      instead of waiting for the server's 5-minute liveness sweep —
+ *      setToken now performs this teardown itself; the explicit call
+ *      below stays as belt-and-braces),
  *   4. soft-navigates to /login?redirect=<current> — the wouter v3
  *      SPA path (history.pushState + popstate), so the Sonner toast
  *      survives the navigation and the cart/checkout form state in
@@ -182,7 +190,10 @@ export function UserSessionWatcher(): null {
   const { token, setToken } = useAuth();
 
   // Mirror the session state + install the clear callback (stable —
-  // setToken is a useCallback inside AuthProvider).
+  // setToken is a useCallback inside AuthProvider). 97-F5 (F-01): the
+  // clear callback is the full identity-switch teardown — token null +
+  // ENTIRE query-cache clear + socket disconnect — so the 401 path
+  // inherits the cache purge automatically.
   useEffect(() => {
     setUserSessionMirror(!!token, token ? () => setToken(null) : null);
   }, [token, setToken]);

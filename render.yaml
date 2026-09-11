@@ -134,6 +134,17 @@ services:
         value: "subnation-otp"
       - key: WHATSAPP_OTP_AUTO_CREATE_SESSION
         value: "true"
+      # 97 (round-97, operator-activated 2026-09-11): the operator's own
+      # linked WhatsApp number in E.164 digits (no '+'). When set, the
+      # 96-F1 warm-up loop sends a benign Arabic self-check to this number
+      # every 6h so sender-key distribution / LID resolution / app-state
+      # sync stay warm before any OTP flows. Also the number the pairing
+      # code is issued for when re-linking is needed. Not a secret (it is
+      # the OTP sender identity anyway). Set live on Render 2026-09-11
+      # alongside the settle-gate re-arm (97-F3).
+      - key: WHATSAPP_OTP_OPERATOR_E164
+        value: "218910089975"
+        sync: true
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID

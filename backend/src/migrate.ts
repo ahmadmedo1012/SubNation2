@@ -502,6 +502,152 @@ export async function applyAdminSessionsStage(
   `);
 }
 
+// ── V1-M14 (round-97 F7, R97-DB-01/A6): official registration of the two ────
+// lazily-created round-97 tables.
+//
+// 97-F1 (pg-leader-lease.ts) and 97-F2 (account-link-consent.ts) both
+// CREATE their backing table lazily with `CREATE TABLE IF NOT EXISTS` at
+// first use — self-sufficient on every deploy ordering. This stage makes
+// the registration OFFICIAL (the audit's rule: every live table must be
+// owned by migrate.ts) with the exact same column shapes, pinned VERBATIM
+// to the lazy DDL sources (backend/src/lib/pg-leader-lease.ts
+// CREATE_LEASE_TABLE_SQL + backend/src/lib/account-link-consent.ts
+// ensurePgConsentTable) and mirrored in shared/db/src/schema/
+// scheduler-leader-lease.ts + account-link-consents.ts.
+//
+// Same DO-block existence probe as V1-M12/M13: idempotent re-runs, no
+// bare CREATE TABLE against an already-migrated (or already lazily
+// bootstrapped) database, pglite-harness compatible.
+//
+// NOTE on numbering: the round-97 repair plan called these stages
+// "V1-M9/M10", but those labels were already taken by the round-92/93
+// money-constraint stages — reusing them would put two different
+// migrations under one label. This wave therefore registers as V1-M14 /
+// V1-M15 (the next free numbers after V1-M12/M13).
+export async function applySchedulerLeaseAndConsentTablesStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'scheduler_leader_lease'
+      ) THEN
+        CREATE TABLE scheduler_leader_lease (
+          id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          holder text NOT NULL,
+          expires_at timestamptz NOT NULL
+        );
+      END IF;
+    END $$;
+  `);
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'account_link_consents'
+      ) THEN
+        CREATE TABLE account_link_consents (
+          token text PRIMARY KEY,
+          candidate_user_id integer NOT NULL,
+          firebase_uid_hash text NOT NULL,
+          expires_at timestamptz NOT NULL
+        );
+      END IF;
+    END $$;
+  `);
+}
+
+// ── V1-M15 (round-97 F7, R97-DB-02 + R97-DB-04): ticket_replies drift ───────
+// closure + duplicate users.firebase_uid index cleanup.
+//
+// R97-DB-02 (D1/D2): shared/db/src/schema/ticket_replies.ts has ALWAYS
+// declared `ticket_id → support_tickets(id) ON DELETE CASCADE` +
+// `idx_replies_ticket (ticket_id, created_at)`, but the boot SQL here never
+// created either (the CREATE TABLE at the top has no inline FK and the
+// fkStatements list below ignored the table). Result on the live DB: pkey
+// only, Seq Scan on every ticket-replies lookup, and 2 orphaned reply rows
+// (round-94 simulation replies whose tickets #2/#3 were later deleted —
+// exactly the fate awaiting any future ticket/user delete). Closure:
+//   1. count-probe orphans → DELETE + log (data fix BEFORE the constraint
+//      so the ALTER's validation scan passes);
+//   2. ADD CONSTRAINT fk_replies_ticket via the same DO-block
+//      duplicate_object-swallow pattern as the other fkStatements;
+//   3. CREATE INDEX IF NOT EXISTS idx_replies_ticket (same statement shape
+//      the index block below uses for every other table).
+//
+// R97-DB-04 (D4): `users` carries THREE firebase_uid indexes — the column
+// UNIQUE constraint backing index `users_firebase_uid_key` (kept — it
+// enforces the uniqueness the auth layer relies on) plus two structural
+// duplicates `idx_users_firebase_uid` (plain) and
+// `idx_users_firebase_uid_unique` (partial UNIQUE) that predate the column
+// constraint and only add INSERT-time maintenance cost. The duplicate
+// CREATEs were removed from the users index block inside runMigrations;
+// this stage drops the leftovers on already-migrated databases,
+// probe-gated so steady-state boots issue ZERO DDL (same rationale as
+// applyUsersColumnReconcileStage).
+export async function applyTicketRepliesDriftClosureStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // 1. Orphaned replies — replies whose ticket no longer exists. The
+  //    count-probe keeps steady-state boots read-only; the DELETE only
+  //    fires when the pre-FK drift actually left rows behind.
+  const orphanCount = extractCount(
+    await execute(sql`
+      SELECT count(*) AS c FROM ticket_replies r
+      WHERE NOT EXISTS (SELECT 1 FROM support_tickets t WHERE t.id = r.ticket_id)
+    `),
+  );
+  if (orphanCount > 0) {
+    const deletedRows = extractRows(
+      await execute(sql`
+        DELETE FROM ticket_replies AS r
+        WHERE NOT EXISTS (SELECT 1 FROM support_tickets t WHERE t.id = r.ticket_id)
+        RETURNING r.id AS id
+      `),
+    );
+    logger.info(
+      { category: "storage", deleted: deletedRows.length },
+      "V1-M15: deleted orphaned ticket_replies rows before adding fk_replies_ticket",
+    );
+  }
+
+  // 2. FK — identical guard shape to the fkStatements loop below.
+  await execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE ticket_replies
+        ADD CONSTRAINT fk_replies_ticket
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+
+  // 3. Serving index — mirrors schema TS ticket_replies.ts:19-21 (and the
+  //    test harness DDL) exactly: (ticket_id, created_at).
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_replies_ticket
+      ON ticket_replies(ticket_id, created_at);
+  `);
+
+  // 4. R97-DB-04 duplicate firebase_uid index cleanup (probe-gated —
+  //    steady-state boots send no DROP statements at all).
+  const duplicateIdxRows = extractRows(
+    await execute(sql`
+      SELECT indexname AS indexname FROM pg_indexes
+      WHERE tablename = 'users'
+        AND indexname IN ('idx_users_firebase_uid', 'idx_users_firebase_uid_unique')
+    `),
+  );
+  if (duplicateIdxRows.length > 0) {
+    await execute(sql`DROP INDEX IF EXISTS idx_users_firebase_uid`);
+    await execute(sql`DROP INDEX IF EXISTS idx_users_firebase_uid_unique`);
+    logger.info(
+      { category: "storage", dropped: duplicateIdxRows.map((r) => String(r.indexname)) },
+      "V1-M15: dropped duplicate users.firebase_uid indexes (users_firebase_uid_key stays)",
+    );
+  }
+}
+
 export async function runMigrations() {
   try {
     // ── Extensions ─────────────────────────────────────────────────────────
@@ -1116,10 +1262,15 @@ export async function runMigrations() {
     // Stage C's drops churned 8 ALTER TABLEs on every cold start).
     await applyUsersColumnReconcileStage();
 
+    // R97-DB-04 (round-97 F7): idx_users_firebase_uid +
+    // idx_users_firebase_uid_unique used to be (re-)created here. Both are
+    // structural duplicates of the column UNIQUE constraint backing index
+    // users_firebase_uid_key (CREATE TABLE users … firebase_uid VARCHAR(255)
+    // UNIQUE above) — three btree indexes on the same column tripled the
+    // INSERT-time maintenance for zero query benefit. They are no longer
+    // created on fresh databases, and applyTicketRepliesDriftClosureStage
+    // (V1-M15) drops them on already-migrated ones.
     await db.execute(sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid_unique
-        ON users(firebase_uid) WHERE firebase_uid IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid);
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
 
@@ -2128,6 +2279,21 @@ export async function runMigrations() {
     // applyAdminSessionsStage for the column pinning against
     // shared/db/src/schema/admin-sessions.ts + lib/admin-session.ts.
     await applyAdminSessionsStage();
+
+    // ── V1-M14 (round-97 F7): official registration of scheduler_leader_lease ──
+    // + account_link_consents. Both tables were introduced with lazy
+    // CREATE IF NOT EXISTS bootstrap by 97-F1/97-F2 (deploy-order-proof);
+    // this registers them in the canonical schema chain so every live
+    // table is owned by migrate.ts. DO-block probes → re-runs are no-ops.
+    await applySchedulerLeaseAndConsentTablesStage();
+
+    // ── V1-M15 (round-97 F7): ticket_replies drift closure (R97-DB-02) + ──
+    // duplicate users.firebase_uid index cleanup (R97-DB-04). Orphan
+    // replies are counted + deleted + logged BEFORE the FK lands; the FK
+    // and idx_replies_ticket bring the live DB up to what the schema TS
+    // has always declared. All branches probe-gated / IF NOT EXISTS →
+    // steady-state boots are no-ops.
+    await applyTicketRepliesDriftClosureStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

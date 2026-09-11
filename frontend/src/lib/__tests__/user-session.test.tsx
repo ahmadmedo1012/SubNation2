@@ -280,4 +280,50 @@ describe("UserSessionWatcher — AuthProvider wiring (96-F3 §3.1)", () => {
       title: USER_SESSION_EXPIRED_MESSAGE,
     });
   });
+
+  it("97-F5 (F-01): the 401 clear callback purges the ENTIRE query cache (no cross-user leak)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <UserSessionWatcher />
+          <Harness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدخول" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("token-state")).toHaveTextContent("jwt-test-token");
+    });
+
+    // The still-fresh money caches the (about-to-expire) user holds —
+    // TanStack keeps last-good data on error, so these would otherwise
+    // survive straight into the next user's login on this shared tab.
+    client.setQueryData(["/api/wallet"], { balance: 750 });
+    client.setQueryData(["/api/wallet/topups"], [{ id: 11 }]);
+    client.setQueryData(["/api/orders"], [{ id: 4 }]);
+    expect(client.getQueryCache().getAll().length).toBeGreaterThanOrEqual(3);
+
+    // Mid-journey expiry: the handler's clear callback is AuthProvider's
+    // setToken(null) — which must clear the whole cache, exactly like
+    // the explicit logout() path.
+    await act(async () => {
+      handleUserUnauthorized("/api/wallet");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("token-state")).toHaveTextContent("signed-out");
+    });
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    expect(client.getQueryData(["/api/wallet"])).toBeUndefined();
+    // The socket teardown fires via the handler's own explicit call AND
+    // setToken's — one toast, one redirect, zero surviving user data.
+    expect(disconnectMock).toHaveBeenCalled();
+  });
 });

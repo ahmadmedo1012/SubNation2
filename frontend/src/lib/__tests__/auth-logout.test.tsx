@@ -11,6 +11,14 @@
  * AND clears the local token, and a network failure of that call still
  * signs the user out locally (fire-and-forget, like adminLogout).
  *
+ * 97-F5 (R97-A4 §2/§6/§7 — F-01/F-03/F-04): setToken is now the
+ * identity-switch teardown choke point — every setToken call must clear
+ * the ENTIRE TanStack cache (the 401-then-new-login flow on a shared
+ * device must never serve the previous user's fresh wallet/orders
+ * cache) and disconnect the user socket; setAdminToken must REMOVE the
+ * admin-scoped queries (PII isolation between operators) while leaving
+ * storefront queries alone.
+ *
  * The harness renders the REAL AuthProvider (not a mock) — the fix
  * lives in the provider itself.
  */
@@ -19,6 +27,20 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/lib/auth";
+
+const { disconnectMock } = vi.hoisted(() => ({ disconnectMock: vi.fn() }));
+
+vi.mock("@/lib/socket", () => ({
+  // auth.tsx consumes disconnectSocket only; the rest are stubs for
+  // other importers of the mocked module in this graph.
+  disconnectSocket: disconnectMock,
+  reviveSocket: vi.fn(),
+  connectSocket: vi.fn(async () => null),
+  connectAdminSocket: vi.fn(async () => null),
+  getSocket: vi.fn(async () => null),
+  SOCKET_RESYNC_EVENT: "subnation:socket-resync",
+  __resetSocketStateForTests: vi.fn(),
+}));
 
 function Harness() {
   const { token, setToken, logout } = useAuth();
@@ -39,18 +61,22 @@ const fetchMock = vi.fn();
 
 function renderAuth() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <AuthProvider>
-        <Harness />
-      </AuthProvider>
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("AuthProvider.logout — the server session must be revoked (93-C5 F-05)", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    disconnectMock.mockClear();
     // Boot probes (/api/auth/probe + /api/admin/probe) — unauthenticated
     // Response-likes (ok:false short-circuits the .json() path).
     fetchMock.mockResolvedValue({ ok: false } as unknown as Response);
@@ -111,3 +137,127 @@ describe("AuthProvider.logout — the server session must be revoked (93-C5 F-05
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 97-F5 (R97-A4 §2/§6/§7) — identity-switch teardown on the auth context
+// ─────────────────────────────────────────────────────────────────────────────
+
+function IdentityHarness() {
+  const { token, adminToken, setToken, setAdminToken } = useAuth();
+  return (
+    <div>
+      <span data-testid="token-state">{token ?? "signed-out"}</span>
+      <span data-testid="admin-token-state">{adminToken ?? "admin-signed-out"}</span>
+      <button type="button" onClick={() => setToken("jwt-user-B")}>
+        دخول مستخدم ب
+      </button>
+      <button type="button" onClick={() => setAdminToken("jwt-admin-B")}>
+        دخول أدمن ب
+      </button>
+    </div>
+  );
+}
+
+describe("AuthProvider.setToken — identity-switch teardown (97-F5 F-01 + F-03)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    disconnectMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: false } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("clears the ENTIRE query cache on a sign-in (previous user's data must not survive)", async () => {
+    const { client } = renderAuthIdentity();
+
+    // Seed the previous user's (still-fresh) money + identity caches —
+    // exactly what /wallet, /orders and the navbar hold mid-session.
+    client.setQueryData(["/api/auth/me"], { id: 1, wallet_balance: 500 });
+    client.setQueryData(["/api/wallet"], { balance: 500 });
+    client.setQueryData(["/api/wallet/topups"], [{ id: 9 }]);
+    client.setQueryData(["/api/orders"], [{ id: 3 }]);
+    client.setQueryData(["/api/products", {}], [{ id: 5 }]);
+    expect(client.getQueryCache().getAll()).toHaveLength(5);
+
+    // User B signs in on the same tab (login page — no logout happened).
+    fireEvent.click(screen.getByRole("button", { name: "دخول مستخدم ب" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("token-state")).toHaveTextContent("jwt-user-B");
+    });
+
+    // F-01: the whole cache is gone — B can never be served A's fresh
+    // wallet/orders entries (staleTime 60 s + refetchOnWindowFocus off
+    // meant no refetch would ever fire for them).
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    expect(client.getQueryData(["/api/wallet"])).toBeUndefined();
+  });
+
+  it("disconnects the user socket on every identity switch (F-03 — room binding follows the cookie)", async () => {
+    renderAuthIdentity();
+
+    fireEvent.click(screen.getByRole("button", { name: "دخول مستخدم ب" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("token-state")).toHaveTextContent("jwt-user-B");
+    });
+
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AuthProvider.setAdminToken — admin PII isolation (97-F5 F-04)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    disconnectMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: false } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("REMOVES /api/admin* + admin-alerts* queries and keeps storefront queries", async () => {
+    const { client } = renderAuthIdentity();
+
+    // Admin A's cached lists (PII: user phone numbers, order buyers) +
+    // the alert drawer keys + a live storefront user session.
+    client.setQueryData(["/api/admin/orders", { page: 1 }], [{ id: 1 }]);
+    client.setQueryData(["/api/admin/users", { search: "" }], [{ id: 2, phone: "091…" }]);
+    client.setQueryData(["admin-alerts", { limit: 20 }], [{ id: 4 }]);
+    client.setQueryData(["admin-alerts-unread-count"], 3);
+    client.setQueryData(["/api/wallet"], { balance: 500 });
+    client.setQueryData(["/api/products", {}], [{ id: 5 }]);
+
+    // Admin B logs in on the same browser (also covers adminLogout + the
+    // admin 401 redirect — both route through this same setter).
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن ب" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("jwt-admin-B");
+    });
+
+    // Admin-scoped families REMOVED (not invalidated — no flash of A's data).
+    expect(client.getQueryData(["/api/admin/orders", { page: 1 }])).toBeUndefined();
+    expect(client.getQueryData(["/api/admin/users", { search: "" }])).toBeUndefined();
+    expect(client.getQueryData(["admin-alerts", { limit: 20 }])).toBeUndefined();
+    expect(client.getQueryData(["admin-alerts-unread-count"])).toBeUndefined();
+    // Storefront queries survive — a user session is independent of the
+    // admin identity in the same tab.
+    expect(client.getQueryData(["/api/wallet"])).toEqual({ balance: 500 });
+    expect(client.getQueryData(["/api/products", {}])).toEqual([{ id: 5 }]);
+  });
+});
+
+function renderAuthIdentity() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <IdentityHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    ),
+  };
+}

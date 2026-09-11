@@ -283,6 +283,17 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
   // incident) now reports the dedicated "settling" value so the login
   // hint can tell the truth during the window. Additive — older clients
   // treat it as just another not-"ready" status.
+  //
+  // 97-F3 (R97-WA-08 contract, verified — NO server-side softening):
+  // "failed" (pairing revoked — permanent until an operator re-pairs)
+  // and "qr_ready" (pairing pending a scan) are passed through VERBATIM
+  // below. The only values this route ever synthesizes are "ready"
+  // (settled + warm) and "settling" (inside the gate window); everything
+  // else is the raw gateway lifecycle status (or null when the gateway
+  // is unreachable). The FRONTEND owns honest per-status copy (agent
+  // 97-F5): failed renders «القناة غير مرتبطة حاليًا — استخدم
+  // Google/Telegram» instead of the misleading "قيد الربط مؤقتاً" hint —
+  // the backend must never hide a dead channel behind "temporary" wording.
   const readiness = await getWhatsAppGatewayReadiness();
 
   return res.json({

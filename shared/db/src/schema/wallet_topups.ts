@@ -7,8 +7,10 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -41,6 +43,18 @@ export const walletTopupsTable = pgTable(
     userIdx: index("idx_topups_user").on(t.userId),
     statusIdx: index("idx_topups_status").on(t.status),
     statusCreatedIdx: index("idx_topups_status_created").on(t.status, t.createdAt),
+    // D8 closure (round-97 F7): mirrors the live partial unique index
+    // created by applyMoneyConstraintStage (V1-M9, B8-01) — one APPROVED
+    // topup per non-blank payment_reference, the authoritative duplicate-
+    // transfer guard the topup approve path catches as 23505→409.
+    // Previously live-only: a drizzle push would have dropped a money-path
+    // safety invariant. Predicate pinned to the production indexdef
+    // (NULL/blank refs and non-approved rows are the exempt legacy class).
+    paymentRefUniqueIdx: uniqueIndex("uniq_wallet_topups_payment_reference")
+      .on(t.paymentReference)
+      .where(
+        sql`payment_reference IS NOT NULL AND btrim(payment_reference) <> '' AND status = 'approved'`,
+      ),
   }),
 );
 

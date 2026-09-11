@@ -15,6 +15,7 @@ import {
   getGetMeQueryKey,
   getGetProductQueryKey,
   getGetProductRecommendationsQueryKey,
+  getGetWalletQueryKey,
   getListOrdersQueryKey,
   getMe,
   type CreateOrderBody,
@@ -83,6 +84,106 @@ const TRUST_SIGNALS = [
   { icon: ShieldCheck, label: "دفع آمن", desc: "من محفظتك المشحونة" },
   { icon: Headphones, label: "دعم متاح", desc: "تواصل معنا أي وقت" },
 ];
+
+// ── 97-F5 (R97-A4 §2 / F-02 — money P2): stable single-purchase intent key ──
+//
+// The buy-intent Idempotency-Key used to live in a useRef — it died with
+// the component, so a refresh / back-navigation / PWA cold-resume after
+// a NETWORK-level failure (response lost, wallet already charged) minted
+// a FRESH key on the re-tap → a second order and a second deduction (the
+// exact window 96-F4 closed for checkout, which stores its keys in
+// sessionStorage — this page now mirrors that pattern exactly).
+//
+// Lifecycle (lazy — minted on the intent's first attempt):
+//   • read:   a stored key is REUSED verbatim when still valid → the retry
+//             of an unresolved intent replays the server's cached response
+//             instead of charging again (this is the double-charge fix).
+//   • write:  BEFORE the request, under subnation_buykey:{productId},
+//             stamped with the mint time + the intent fingerprint
+//             (productId × effective price × coupon code).
+//   • delete: ONLY at a definitive resolution —
+//       - 2xx success (the order was created and shown);
+//       - an HTTP-level ApiError rejection (the server definitively
+//         refused — a re-tap is a NEW intent and must not be answered
+//         forever by the cached rejection).
+//     A network-level failure (server state unknown) deliberately KEEPS
+//     the stored key — the retry must replay, not re-charge.
+//   • staleness guards (F-07's lesson, applied here at birth):
+//       - TTL: a key older than 10 minutes no longer represents the
+//         user's live intent and is ignored (minted fresh instead) — a
+//         stale key must not swallow a NEW purchase hours later via the
+//         server's 24 h replay window;
+//       - fingerprint: a price/coupon change invalidates the stored key
+//         so a stale intent is never replayed onto changed data (and the
+//         backend's same-key-different-body 409 branch stays unreachable).
+//
+// sessionStorage (per-tab) rather than localStorage: these are retry
+// tokens for THIS browsing session, not durable state. Every access is
+// try/catch-guarded: a private-mode / quota failure degrades to the old
+// unstable-key behavior and never blocks the money path.
+const BUY_KEY_PREFIX = "subnation_buykey:";
+/** 97-F5 (F-02): retry-token TTL — mirrors the inspection's 10 min guidance. */
+const BUY_KEY_TTL_MS = 10 * 60 * 1000;
+
+interface StoredBuyIntent {
+  /** The Idempotency-Key header value. */
+  k: string;
+  /** Date.now() at mint time — the TTL stamp. */
+  t: number;
+  /** Intent fingerprint — productId | effective price | coupon code. */
+  f: string;
+}
+
+function buyIntentKeyId(productId: number): string {
+  return `${BUY_KEY_PREFIX}${productId}`;
+}
+
+/** Binds the stored key to WHAT the user is buying right now — a replay
+ * must only answer the intent it was minted for. */
+function buyIntentFingerprint(
+  productId: number,
+  effectivePrice: number | null | undefined,
+  couponCode?: string | null,
+): string {
+  return `${productId}|${effectivePrice ?? ""}|${(couponCode ?? "").trim().toUpperCase()}`;
+}
+
+function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(buyIntentKeyId(productId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredBuyIntent>;
+    if (typeof parsed.k !== "string" || !parsed.k) return null;
+    // TTL — a key minted >10 min ago is a stale intent, not this retry.
+    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
+    if (Date.now() - parsed.t > BUY_KEY_TTL_MS) return null;
+    // Intent binding — the product's price (or the coupon) changed since
+    // the key was minted: replaying it onto the new data would either
+    // swallow a genuinely new purchase or trip the 409 body-mismatch.
+    if (parsed.f !== fingerprint) return null;
+    return parsed.k;
+  } catch {
+    // Corrupted entry / storage failure — degrade to a fresh key.
+    return null;
+  }
+}
+
+function persistBuyIntentKey(productId: number, fingerprint: string, key: string): void {
+  try {
+    const entry: StoredBuyIntent = { k: key, t: Date.now(), f: fingerprint };
+    sessionStorage.setItem(buyIntentKeyId(productId), JSON.stringify(entry));
+  } catch {
+    // degraded: unstable keys (pre-fix behavior) — never throw on money path
+  }
+}
+
+function clearBuyIntentKey(productId: number): void {
+  try {
+    sessionStorage.removeItem(buyIntentKeyId(productId));
+  } catch {
+    // ignore
+  }
+}
 
 function CopyField({
   label,
@@ -235,38 +336,38 @@ export default function ProductPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  // 96-F4 (R96 A4 §2.3 — money P1): one Idempotency-Key per buy-intent.
-  // This page used to send NO key at all on POST /api/orders (the
-  // middleware passes through when the header is absent), so a jittery
-  // tap whose response was lost + an impatient re-tap created two
-  // orders and two wallet deductions. The key is minted once per
-  // intent (useRef — survives the async attempt), sent via
-  // createOrder's second argument (exactly the shape checkout.tsx's
-  // per-unit loop uses), and reset ONLY on a definitive resolution:
-  //  - 2xx success, or
-  //  - an HTTP-level ApiError rejection (the server definitively
-  //    refused — a re-tap is a NEW intent and must not be answered by
-  //    the cached rejection).
-  // A network-level failure (server state unknown) deliberately KEEPS
-  // the key — the retry of the same intent must replay the server's
-  // cached response instead of charging again.
-  const buyIntentKeyRef = useRef<string | null>(null);
+  // 96-F4 (R96 A4 §2.3 — money P1) + 97-F5 (R97-A4 §2 / F-02): one
+  // Idempotency-Key per buy-intent, stable across refresh / back-nav /
+  // PWA resume via sessionStorage (see the helpers' docblock above for
+  // the full lifecycle: TTL + price/coupon fingerprint + terminal-only
+  // deletion). Sent via createOrder's second argument — the exact shape
+  // checkout.tsx's per-unit loop uses.
   const [buyPending, setBuyPending] = useState(false);
 
   const handleBuyIntent = async () => {
     if (!product || buyPending) return;
     const body: CreateOrderBody = { product_id: product.id };
     if (couponResult?.code) body.coupon_code = couponResult.code;
-    const intentKey = buyIntentKeyRef.current ?? generateIdempotencyKey();
-    buyIntentKeyRef.current = intentKey;
+    // 97-F5 (F-02): mint-or-reuse the intent key BEFORE the request — a
+    // stored key still inside its TTL and matching the current price /
+    // coupon fingerprint is replayed verbatim (network-failure retry →
+    // server replay instead of a second charge).
+    const fingerprint = buyIntentFingerprint(
+      product.id,
+      product.sale_price ?? product.price,
+      couponResult?.code,
+    );
+    const intentKey = loadBuyIntentKey(product.id, fingerprint) ?? generateIdempotencyKey();
+    persistBuyIntentKey(product.id, fingerprint, intentKey);
     setBuyPending(true);
     setError("");
     try {
       const order = await createOrder(body, {
         headers: { "Idempotency-Key": intentKey },
       });
-      // Success — the intent is resolved; the next buy mints a fresh key.
-      buyIntentKeyRef.current = null;
+      // Success — the intent is terminally resolved; the next buy mints
+      // a fresh key (and nothing stale can swallow it later).
+      clearBuyIntentKey(product.id);
       setOrderResult(order);
       // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
       // /api/auth/me can be answered from the browser HTTP cache
@@ -287,11 +388,19 @@ export default function ProductPage() {
       // (home's "آخر الطلبات" strip, /orders) immediately — not ≤60 s
       // later. No-arg form invalidates every list param variant.
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      // 97-F5 (R97-A4 §3 / F-06 — P2): /api/wallet is a SEPARATE data
+      // point from me.wallet_balance — /wallet renders wallet.balance,
+      // and with staleTime 60 s + refetchOnWindowFocus disabled a
+      // still-fresh pre-purchase entry showed the OLD balance right
+      // after the charge (the navbar chip contradicted the wallet
+      // page). checkout.tsx already invalidates this key after its
+      // unit loop; the single-purchase path now mirrors it.
+      queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
     } catch (err: unknown) {
-      // Definitive HTTP rejection → the intent is resolved; reset the
-      // key. Network-level failure keeps it for the retry's replay.
+      // Definitive HTTP rejection → the intent is resolved; clear the
+      // stored key. Network-level failure keeps it for the retry's replay.
       if (err instanceof Error && err.name === "ApiError") {
-        buyIntentKeyRef.current = null;
+        clearBuyIntentKey(product.id);
       }
       setError(getErrorMessage(err));
     } finally {

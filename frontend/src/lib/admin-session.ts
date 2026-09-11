@@ -24,7 +24,13 @@
  *      parallel queries fail together on expiry; one toast, not six),
  *   2. clears the in-memory admin token via the callback
  *      useAdminHeaders installs (pages with `enabled: !!adminToken`
- *      stop refetching → no 401 storm),
+ *      stop refetching → no 401 storm). 97-F5 (R97-A4 §6 / F-04 — P2):
+ *      that callback is AuthProvider's `setAdminToken(null)`, which now
+ *      ALSO REMOVES every /api/admin* + admin-alerts* query from the
+ *      TanStack cache — the expired admin's PII (user phone numbers,
+ *      order buyer data) must not survive into the next admin's login
+ *      on the same browser (removal, not invalidation, so the next
+ *      admin never even flashes it while a refetch is in flight),
  *   3. soft-navigates to /admin/login?redirect=<current> — the wouter
  *      v3 SPA path (history.pushState + the router's own event), so
  *      Sonner's toast survives the navigation and unsaved form state
