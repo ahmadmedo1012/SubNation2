@@ -57,6 +57,13 @@
       "when": 1788873102775,
       "tag": "0007_tranquil_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789096298769,
+      "tag": "0008_polite_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }
