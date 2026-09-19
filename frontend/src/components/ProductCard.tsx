@@ -199,16 +199,18 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       name: product.name ?? "",
       imageUrl: product.image_url ?? null,
       priceLYD: cheapestVariant ? cheapestVariant.price : product.price,
-      salePriceLYD: cheapestVariant ? cheapestVariant.sale_price ?? null : product.sale_price ?? null,
+      salePriceLYD: cheapestVariant
+        ? (cheapestVariant.sale_price ?? null)
+        : (product.sale_price ?? null),
       discountPercent: cheapestVariant
-        ? cheapestVariant.discount_percent ?? null
-        : product.discount_percent ?? null,
+        ? (cheapestVariant.discount_percent ?? null)
+        : (product.discount_percent ?? null),
     });
     toast({
       title: "أُضيف إلى السلة",
       description: cheapestVariant
         ? `${product.name} — ${cheapestVariant.label}`
-        : product.name ?? undefined,
+        : (product.name ?? undefined),
     });
   };
 
@@ -221,9 +223,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     product.name,
     categoryLabel(product.category),
     `${product.price_from ? "تبدأ من " : ""}${formatCurrency(displayPrice)}`,
-    product.variants && product.variants.length > 1
-      ? `${product.variants.length} باقات`
-      : null,
+    product.variants && product.variants.length > 1 ? `${product.variants.length} باقات` : null,
     unavailable ? "نفد المخزون" : null,
     // 93-C8 (A11 §1): «آخر 2 متوفرة» is a broken dual; «متبقٍ N
     // فقط» is agreement-safe for every count 1..3.

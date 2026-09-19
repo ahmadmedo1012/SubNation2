@@ -154,7 +154,9 @@ router.post("/items", requireUser, async (req, res) => {
   if (!product_id || typeof product_id !== "number")
     return res.status(400).json(createErrorResponse("معرف المنتج مطلوب", ErrorCode.INVALID_DATA));
   if (variant_id !== undefined && variant_id !== null && typeof variant_id !== "number")
-    return res.status(400).json(createErrorResponse("معرف الباقة غير صالح", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("معرف الباقة غير صالح", ErrorCode.INVALID_DATA));
   if (typeof quantity !== "number" || quantity < 1 || !Number.isInteger(quantity))
     return res
       .status(400)
@@ -289,11 +291,7 @@ router.patch("/items/:id", requireUser, async (req, res) => {
     .where(eq(productsTable.id, item.productId))
     .limit(1);
 
-  const response = await buildCartItemResponse(
-    item,
-    product,
-    await getFlashSaleStageCached(),
-  );
+  const response = await buildCartItemResponse(item, product, await getFlashSaleStageCached());
   return res.json(response);
 });
 

@@ -758,7 +758,10 @@ export default function CheckoutPage() {
                   {items.map((it) => {
                     const price = it.salePriceLYD ?? it.priceLYD;
                     return (
-                      <li key={`${it.productId}:${it.variantId ?? 0}`} className="flex items-center gap-2.5 text-sm">
+                      <li
+                        key={`${it.productId}:${it.variantId ?? 0}`}
+                        className="flex items-center gap-2.5 text-sm"
+                      >
                         <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
                           {it.imageUrl ? (
                             <img

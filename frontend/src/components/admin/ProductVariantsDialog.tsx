@@ -73,9 +73,7 @@ function fmtFactor(n: number): string {
 
 /** «plan — duration» display title for a variant row. */
 function variantTitle(v: { plan_label?: string | null; duration_label?: string | null }): string {
-  const parts = [v.plan_label?.trim(), v.duration_label?.trim()].filter(
-    (p): p is string => !!p,
-  );
+  const parts = [v.plan_label?.trim(), v.duration_label?.trim()].filter((p): p is string => !!p);
   return parts.length > 0 ? parts.join(" — ") : "باقة";
 }
 
@@ -192,8 +190,7 @@ export function ProductVariantsDialog({
     },
   });
 
-  const busy =
-    createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const busy = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   const activeCount = variants.filter((v) => v.is_active).length;
 
@@ -349,7 +346,12 @@ export function ProductVariantsDialog({
         dismissable={!busy}
         size="wide"
         footer={
-          <Button variant="outline" onClick={onClose} disabled={busy} className="flex-1 sm:flex-none">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+            className="flex-1 sm:flex-none"
+          >
             إغلاق
           </Button>
         }
@@ -359,7 +361,13 @@ export function ProductVariantsDialog({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-muted-foreground flex items-center gap-2 min-w-0">
               <span className="shrink-0">
-                {formatCount(variants.length, { one: "باقة", two: "باقتان", few: "باقات", many: "باقة", other: "باقة" })}
+                {formatCount(variants.length, {
+                  one: "باقة",
+                  two: "باقتان",
+                  few: "باقات",
+                  many: "باقة",
+                  other: "باقة",
+                })}
               </span>
               <span className="w-1 h-1 rounded-full bg-muted-foreground/30" aria-hidden="true" />
               <span className="shrink-0">{activeCount} نشطة</span>
@@ -505,8 +513,8 @@ export function ProductVariantsDialog({
                       السعر المتوقع (يُحسب تلقائيًا)
                     </span>
                     <span className="text-xs font-black text-primary tabular-nums">
-                      {fmtUsd(Number.isFinite(previewCost) ? previewCost : 0)} ×{" "}
-                      {fmtFactor(factor)} × {fmtFactor(rate)} = {formatCurrency(expectedPrice)}
+                      {fmtUsd(Number.isFinite(previewCost) ? previewCost : 0)} × {fmtFactor(factor)}{" "}
+                      × {fmtFactor(rate)} = {formatCurrency(expectedPrice)}
                     </span>
                   </div>
                 )}
@@ -711,7 +719,11 @@ export function ProductVariantsDialog({
                               type="button"
                               onClick={() => toggleActive(v)}
                               disabled={busy}
-                              aria-label={v.is_active ? `تعطيل باقة ${variantTitle(v)}` : `تفعيل باقة ${variantTitle(v)}`}
+                              aria-label={
+                                v.is_active
+                                  ? `تعطيل باقة ${variantTitle(v)}`
+                                  : `تفعيل باقة ${variantTitle(v)}`
+                              }
                               title={v.is_active ? "تعطيل الباقة" : "تفعيل الباقة"}
                               className="h-8 min-w-8 px-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
                             >

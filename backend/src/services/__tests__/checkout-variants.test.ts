@@ -88,7 +88,9 @@ describe("explicit variant selection", () => {
   it("charges the selected variant's price and records variant_id + label", async () => {
     const user = await seedUserWithBalance("1000.00");
     const { product, year } = await seedVariantProduct();
-    await db.insert(inventoryTable).values([unit(product.id, "a@test.local"), unit(product.id, "b@test.local")]);
+    await db
+      .insert(inventoryTable)
+      .values([unit(product.id, "a@test.local"), unit(product.id, "b@test.local")]);
 
     const result = await CheckoutService.purchase({
       userId: user.id,
@@ -108,7 +110,10 @@ describe("explicit variant selection", () => {
     // Wallet debited the variant price; ledger mirrors it.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(400.2);
-    const ledger = await db.select().from(walletLedgerTable).where(eq(walletLedgerTable.userId, user.id));
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
     expect(ledger).toHaveLength(1);
     expect(parseFloat(String(ledger[0].amount))).toBe(599.8);
   });
@@ -157,10 +162,9 @@ describe("invalid variant handling", () => {
       .insert(productsTable)
       .values({ name: "Other", price: "10.00", isActive: true })
       .returning();
-    await db.insert(inventoryTable).values([
-      unit(product.id, "a@test.local"),
-      unit(other.id, "b@test.local"),
-    ]);
+    await db
+      .insert(inventoryTable)
+      .values([unit(product.id, "a@test.local"), unit(other.id, "b@test.local")]);
 
     const result = await CheckoutService.purchase({
       userId: user.id,
@@ -180,10 +184,12 @@ describe("inventory claim preference", () => {
     const { product, month } = await seedVariantProduct();
     // Generic (variant_id NULL) FIRST by id — the claim must SKIP it when a
     // variant-scoped unit exists.
-    await db.insert(inventoryTable).values([
-      unit(product.id, "generic@test.local", null),
-      unit(product.id, "month-scoped@test.local", month.id),
-    ]);
+    await db
+      .insert(inventoryTable)
+      .values([
+        unit(product.id, "generic@test.local", null),
+        unit(product.id, "month-scoped@test.local", month.id),
+      ]);
 
     const result = await CheckoutService.purchase({
       userId: user.id,
@@ -192,7 +198,10 @@ describe("inventory claim preference", () => {
     });
 
     expect(result.ok).toBe(true);
-    const rows = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const rows = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     const sold = rows.find((r) => r.isSold);
     const unsold = rows.find((r) => !r.isSold);
     expect(sold?.accountEmail).toBe("month-scoped@test.local");
@@ -211,7 +220,10 @@ describe("inventory claim preference", () => {
     });
 
     expect(result.ok).toBe(true);
-    const [row] = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const [row] = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(row.isSold).toBe(true);
     expect(row.accountEmail).toBe("generic@test.local");
   });

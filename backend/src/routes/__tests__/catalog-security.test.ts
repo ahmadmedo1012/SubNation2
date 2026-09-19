@@ -37,7 +37,10 @@ function buildApp() {
   return app;
 }
 
-async function call<T = unknown>(app: express.Express, path: string): Promise<{ status: number; body: T; text: string }> {
+async function call<T = unknown>(
+  app: express.Express,
+  path: string,
+): Promise<{ status: number; body: T; text: string }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();
@@ -253,7 +256,7 @@ describe("B. catalog integrity invariants", () => {
     expect(names).not.toContain("Archived Product");
   });
 
-  it("list price = cheapest active variant price (the \"تبدأ من\" number)", async () => {
+  it('list price = cheapest active variant price (the "تبدأ من" number)', async () => {
     await seedCatalog();
     const app = buildApp();
     const { body } = await call<Record<string, unknown>[]>(app, "/api/products");

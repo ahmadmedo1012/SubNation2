@@ -502,7 +502,8 @@ export default function AdminPricingPage() {
             <p className="text-[11px] leading-relaxed">
               <span className="font-bold">السعر = التكلفة × (1 + الهامش٪) × سعر الصرف</span>
               <span className="text-muted-foreground">
-                {" "}— مثال: $5 × {fmtFactor(exampleFactor)} × {fmtFactor(exampleRate)} ={" "}
+                {" "}
+                — مثال: $5 × {fmtFactor(exampleFactor)} × {fmtFactor(exampleRate)} ={" "}
                 {formatCurrency(examplePrice)}
               </span>
             </p>
@@ -535,8 +536,8 @@ export default function AdminPricingPage() {
               {recomputeMutation.isPending ? "جارٍ الاحتساب…" : "إعادة احتساب أسعار الكتالوج"}
             </Button>
             <p className="basis-full text-[10px] text-muted-foreground">
-              حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «إعادة احتساب أسعار الكتالوج» هي التي
-              تعيد تسعير كل الباقات من تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
+              حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «إعادة احتساب أسعار الكتالوج» هي التي تعيد
+              تسعير كل الباقات من تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
             </p>
           </div>
         </div>

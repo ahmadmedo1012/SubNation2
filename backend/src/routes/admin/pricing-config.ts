@@ -46,9 +46,7 @@ router.put("/pricing/config", async (req, res) => {
   if (body.markup_percent !== undefined) patch.markupPercent = round2(Number(body.markup_percent));
 
   if (Object.keys(patch).length === 0)
-    return res
-      .status(400)
-      .json(createErrorResponse("لا توجد تغييرات", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("لا توجد تغييرات", ErrorCode.INVALID_DATA));
 
   try {
     const config = await savePricingConfig(patch);
@@ -96,7 +94,12 @@ router.post("/pricing/recompute", async (req, res) => {
   const changes = allVariants
     .map((v) => {
       const computed = computeRetailLYD(parseFloat(String(v.costPrice)), config);
-      return { id: v.id, productId: v.productId, computed, current: parseFloat(String(v.priceLyd)) };
+      return {
+        id: v.id,
+        productId: v.productId,
+        computed,
+        current: parseFloat(String(v.priceLyd)),
+      };
     })
     .filter((c) => c.computed !== c.current);
 

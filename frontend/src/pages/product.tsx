@@ -403,8 +403,8 @@ export default function ProductPage() {
     const fingerprint = buyIntentFingerprint(
       product.id,
       selectedVariant
-        ? selectedVariant.sale_price ?? selectedVariant.price
-        : product.sale_price ?? product.price,
+        ? (selectedVariant.sale_price ?? selectedVariant.price)
+        : (product.sale_price ?? product.price),
       couponResult?.code,
       selectedVariant?.id ?? undefined,
     );
@@ -468,8 +468,8 @@ export default function ProductPage() {
       // Coupon math applies to the SELECTED variant's price (the charge
       // the server will actually compute at checkout).
       const basePrice = selectedVariant
-        ? selectedVariant.sale_price ?? selectedVariant.price
-        : product.sale_price ?? product.price;
+        ? (selectedVariant.sale_price ?? selectedVariant.price)
+        : (product.sale_price ?? product.price);
       const r = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -532,17 +532,17 @@ export default function ProductPage() {
       imageUrl: product.image_url ?? null,
       priceLYD: selectedVariant ? selectedVariant.price : product.price,
       salePriceLYD: selectedVariant
-        ? selectedVariant.sale_price ?? null
-        : product.sale_price ?? null,
+        ? (selectedVariant.sale_price ?? null)
+        : (product.sale_price ?? null),
       discountPercent: selectedVariant
-        ? selectedVariant.discount_percent ?? null
-        : product.discount_percent ?? null,
+        ? (selectedVariant.discount_percent ?? null)
+        : (product.discount_percent ?? null),
     });
     toast({
       title: "أُضيف إلى السلة",
       description: selectedVariant
         ? `${product.name} — ${selectedVariant.label}`
-        : product.name ?? undefined,
+        : (product.name ?? undefined),
     });
   };
 
@@ -553,7 +553,7 @@ export default function ProductPage() {
   // overrides (from the import) take precedence; the fallback stays
   // price-aware off the selected variant.
   const seoPrice = selectedVariant
-    ? selectedVariant.sale_price ?? selectedVariant.price
+    ? (selectedVariant.sale_price ?? selectedVariant.price)
     : product
       ? (product.sale_price ?? product.price)
       : 0;
@@ -687,7 +687,7 @@ export default function ProductPage() {
   // product-level price for variant-less products). This is the number
   // the CTA block, coupon math, and buy-intent all key off — one source.
   const displayPrice = selectedVariant
-    ? selectedVariant.sale_price ?? selectedVariant.price
+    ? (selectedVariant.sale_price ?? selectedVariant.price)
     : (product.sale_price ?? product.price);
   const gradientClass =
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??

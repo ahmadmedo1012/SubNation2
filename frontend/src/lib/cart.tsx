@@ -74,8 +74,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // v1 → v2 migration: legacy lines (no variant fields) are re-shaped
       // with variantId=null so the rest of the app can assume the field
       // exists. Content is otherwise preserved.
-      const raw =
-        localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Array<Partial<LocalCartItem>>;
         if (Array.isArray(parsed)) {
@@ -184,9 +183,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // a user whose balance was EXACTLY 49.98 with a nonsensical "الناقص 0.00
   // د.ل" banner. cart.tsx:56 already rounded its own copy (toFixed(2));
   // every consumer of the context now gets the same cent-accurate value.
-  const totalLYD = roundToCents(
-    items.reduce((sum, i) => sum + effectivePrice(i) * i.quantity, 0),
-  );
+  const totalLYD = roundToCents(items.reduce((sum, i) => sum + effectivePrice(i) * i.quantity, 0));
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (

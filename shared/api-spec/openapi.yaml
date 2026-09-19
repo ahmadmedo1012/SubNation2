@@ -3585,8 +3585,9 @@ components:
             Internal fields (cost_price, sku, supplier identity) are
             never serialized here.
           items:
-            $ref: '#/components/schemas/ProductVariant'
-      required: [id, name, price, price_from, is_active, stock_count, is_available, order_count, variants]
+            $ref: "#/components/schemas/ProductVariant"
+      required:
+        [id, name, price, price_from, is_active, stock_count, is_available, order_count, variants]
 
     ProductVariant:
       type: object
@@ -4491,7 +4492,8 @@ components:
           description: ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs.
           items:
             $ref: "#/components/schemas/AdminProductVariant"
-      required: [id, name, price, is_active, is_archived, stock_count, order_count, created_at, variants]
+      required:
+        [id, name, price, is_active, is_archived, stock_count, order_count, created_at, variants]
 
     AdminProductVariant:
       type: object
@@ -5344,10 +5346,8 @@ components:
                 description: First ≤20 broken unit ids (re-upload worklist).
                 items:
                   type: integer
-            required:
-              [product_id, product_name, unsold, undeliverable, broken_unit_ids]
+            required: [product_id, product_name, unsold, undeliverable, broken_unit_ids]
         checked_at:
           type: string
           format: date-time
-      required:
-        [scanned_unsold, scanned_cap, products_with_undeliverable_units, items, checked_at]
+      required: [scanned_unsold, scanned_cap, products_with_undeliverable_units, items, checked_at]

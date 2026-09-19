@@ -1,11 +1,7 @@
 import { db, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { Router } from "express";
-import {
-  computeRetailLYD,
-  getPricingConfig,
-  round2,
-} from "../../lib/pricing-config";
+import { computeRetailLYD, getPricingConfig, round2 } from "../../lib/pricing-config";
 import { intParam } from "../../lib/http";
 import { writeAuditLog } from "../../lib/audit";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -87,8 +83,7 @@ function normalizeLabels(body: VariantBody): {
   durationLabel: string | null;
 } {
   const plan = typeof body.plan_label === "string" ? body.plan_label.trim() : "";
-  const duration =
-    typeof body.duration_label === "string" ? body.duration_label.trim() : "";
+  const duration = typeof body.duration_label === "string" ? body.duration_label.trim() : "";
   return {
     planLabel: plan.length > 0 ? plan.slice(0, 120) : null,
     durationLabel: duration.length > 0 ? duration.slice(0, 120) : null,
@@ -137,18 +132,15 @@ router.post("/products/:id/variants", async (req, res) => {
   if (costUsd === null || costUsd < 0.01 || costUsd > 100_000)
     return res
       .status(400)
-      .json(createErrorResponse("التكلفة بالدولار مطلوبة (0.01 - 100,000)", ErrorCode.INVALID_DATA));
+      .json(
+        createErrorResponse("التكلفة بالدولار مطلوبة (0.01 - 100,000)", ErrorCode.INVALID_DATA),
+      );
 
   const { planLabel, durationLabel } = normalizeLabels(body);
   if (!planLabel && !durationLabel)
     return res
       .status(400)
-      .json(
-        createErrorResponse(
-          "يجب تحديد اسم الباقة أو المدة على الأقل",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
+      .json(createErrorResponse("يجب تحديد اسم الباقة أو المدة على الأقل", ErrorCode.INVALID_DATA));
 
   // The pricing engine is the single source of truth: price always derives
   // from cost via the current rule unless an explicit override is provided
@@ -241,10 +233,7 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
       return res
         .status(400)
         .json(
-          createErrorResponse(
-            "يجب تحديد اسم الباقة أو المدة على الأقل",
-            ErrorCode.INVALID_DATA,
-          ),
+          createErrorResponse("يجب تحديد اسم الباقة أو المدة على الأقل", ErrorCode.INVALID_DATA),
         );
     updates.planLabel = merged.planLabel;
     updates.durationLabel = merged.durationLabel;
@@ -359,7 +348,9 @@ router.delete("/products/:id/variants/:variantId", async (req, res) => {
 
   await db.delete(productVariantsTable).where(eq(productVariantsTable.id, variantId));
   await refreshProductDisplayPrice(id);
-  await writeAuditLog(req, "product.variant.delete", "product_variant", variantId, { productId: id });
+  await writeAuditLog(req, "product.variant.delete", "product_variant", variantId, {
+    productId: id,
+  });
 
   return res.json({ success: true, message: "تم حذف الباقة" });
 });

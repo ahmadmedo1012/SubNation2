@@ -184,10 +184,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     .select()
     .from(productVariantsTable)
     .where(
-      and(
-        eq(productVariantsTable.productId, productId),
-        eq(productVariantsTable.isActive, true),
-      ),
+      and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.isActive, true)),
     )
     .orderBy(productVariantsTable.priceLyd)
     .limit(500);
@@ -254,10 +251,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     ? and(
         eq(inventoryTable.productId, productId),
         eq(inventoryTable.isSold, false),
-        or(
-          eq(inventoryTable.variantId, variant.id),
-          isNull(inventoryTable.variantId),
-        ),
+        or(eq(inventoryTable.variantId, variant.id), isNull(inventoryTable.variantId)),
       )
     : and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false));
   const [inventoryFastCheck] = await db
@@ -696,7 +690,8 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         ok: false,
         reason: "CONCURRENCY_ERROR",
         code: "PRODUCT_STALE",
-        message: "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+        message:
+          "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
       };
     }
     if (order.failure === "VARIANT_STALE") {
@@ -705,8 +700,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         ok: false,
         reason: "CONCURRENCY_ERROR",
         code: "VARIANT_STALE",
-        message:
-          "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+        message: "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
       };
     }
     if (order.failure === "IDEMPOTENT_CLAIM_CONFLICT") {

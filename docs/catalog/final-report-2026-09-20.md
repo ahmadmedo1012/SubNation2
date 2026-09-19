@@ -8,20 +8,20 @@
 
 ## 1. Catalog Audit
 
-| المقياس | قبل | بعد |
-|---|---|---|
-| المنتجات (إجمالي) | 20 | 59 صفًا (45 نشطًا + 14 مؤرشفًا) |
-| المنتجات النشطة (المتجر) | 18 | **45** |
-| منتجات محدّثة ببيانات حقيقية | 0 | 6 (Netflix, Spotify, Disney+, YouTube Premium, Apple TV+, Prime Video) |
-| منتجات جديدة مضافة | — | **39** |
-| منتجات مؤرشفة (غير قابلة للتوريد) | 2 | 14 (12 إضافي: PS Plus×3, Xbox, Canva, MS365×2, NordVPN, Adobe, Shahid, Disney-dup, Crunchyroll) |
-| التصنيفات | 5 غامضة | **7** موثقة (streaming 17 · music 11 · software 7 · vpn 4 · ai-tools 2 · education 2 · seo-tools 2) |
-| الـ variants (الباقات) | 0 (لا بنية) | **263** (Product → Plan → Duration → Price) |
-| المنتجات بلا باقة | 18/18 | **0/45** |
-| تكرارات | 3 أزواج مكررة (Disney×2, MS365×2, PSPlus×3) | **0** |
-| صور المنتجات | 0/18 | **45/45** (أصول محلية `/products/*.png`) |
-| وصف عربي كامل (قصير+مطول+مميزات+شروط) | 0 | **45/45** |
-| SEO (title + description لكل منتج) | 0 | **45/45** |
+| المقياس                               | قبل                                         | بعد                                                                                                 |
+| ------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| المنتجات (إجمالي)                     | 20                                          | 59 صفًا (45 نشطًا + 14 مؤرشفًا)                                                                     |
+| المنتجات النشطة (المتجر)              | 18                                          | **45**                                                                                              |
+| منتجات محدّثة ببيانات حقيقية          | 0                                           | 6 (Netflix, Spotify, Disney+, YouTube Premium, Apple TV+, Prime Video)                              |
+| منتجات جديدة مضافة                    | —                                           | **39**                                                                                              |
+| منتجات مؤرشفة (غير قابلة للتوريد)     | 2                                           | 14 (12 إضافي: PS Plus×3, Xbox, Canva, MS365×2, NordVPN, Adobe, Shahid, Disney-dup, Crunchyroll)     |
+| التصنيفات                             | 5 غامضة                                     | **7** موثقة (streaming 17 · music 11 · software 7 · vpn 4 · ai-tools 2 · education 2 · seo-tools 2) |
+| الـ variants (الباقات)                | 0 (لا بنية)                                 | **263** (Product → Plan → Duration → Price)                                                         |
+| المنتجات بلا باقة                     | 18/18                                       | **0/45**                                                                                            |
+| تكرارات                               | 3 أزواج مكررة (Disney×2, MS365×2, PSPlus×3) | **0**                                                                                               |
+| صور المنتجات                          | 0/18                                        | **45/45** (أصول محلية `/products/*.png`)                                                            |
+| وصف عربي كامل (قصير+مطول+مميزات+شروط) | 0                                           | **45/45**                                                                                           |
+| SEO (title + description لكل منتج)    | 0                                           | **45/45**                                                                                           |
 
 ## 2. Pricing
 
@@ -30,28 +30,28 @@
 - **القاعدة**: `السعر بالدينار = التكلفة$ × (1 + الهامش%) × الصرف` — مصدر واحد: `backend/src/lib/pricing-config.ts` مدعوم بـ `system_settings` (`pricing.usd_to_lyd` = 10، `pricing.markup_percent` = 100)
 - **أمثلة فعلية من قاعدة البيانات** (كل الأسعار = التكلفة × 20 بالضبط — 0 انتهاكات من 263):
 
-| الباقة | التكلفة | سعر العميل |
-|---|---|---|
-| Netflix — شهر واحد | $3.99 | **79.80 د.ل** |
-| Netflix — سنة كاملة | $29.99 | **599.80 د.ل** |
-| ChatGPT Plus — شهر | $4.99 | **99.80 د.ل** |
-| ChatGPT Plus — سنة | $44.99 | **899.80 د.ل** |
-| ExpressVPN — شهر | $3.99 | **79.80 د.ل** |
-| Disney+ Premium — سنة | $49.99 | **999.80 د.ل** |
-| $1 → 20 د.ل · $5 → 100 د.ل · $10 → 200 د.ل · $20 → 400 د.ل | | مثبتة بالاختبار |
+| الباقة                                                     | التكلفة | سعر العميل      |
+| ---------------------------------------------------------- | ------- | --------------- |
+| Netflix — شهر واحد                                         | $3.99   | **79.80 د.ل**   |
+| Netflix — سنة كاملة                                        | $29.99  | **599.80 د.ل**  |
+| ChatGPT Plus — شهر                                         | $4.99   | **99.80 د.ل**   |
+| ChatGPT Plus — سنة                                         | $44.99  | **899.80 د.ل**  |
+| ExpressVPN — شهر                                           | $3.99   | **79.80 د.ل**   |
+| Disney+ Premium — سنة                                      | $49.99  | **999.80 د.ل**  |
+| $1 → 20 د.ل · $5 → 100 د.ل · $10 → 200 د.ل · $20 → 400 د.ل |         | مثبتة بالاختبار |
 
 - الأدمن يستطيع: تعديل الصرف/الهامش (PUT `/api/admin/pricing/config`) ثم **إعادة احتساب جماعي** (POST `/api/admin/pricing/recompute`) — بلا أسعار hardcoded في أي ملف.
 - لا Embronic API integration في هذه المرحلة (كما طُلب) — بنية الاستعداد فقط (variants + DTO layer).
 
 ## 3. Filtering — ما استُبعد ولماذا
 
-| المستبعد | السبب |
-|---|---|
-| 10 منتجات RESELLER (YouTube Premium Reseller, Spotify Reseller, Shahid VIP Reseller, Reseller Kit, Reseller Credit, Prime Video Reseller, Netflix Reseller, NBA League Pass Reseller, Hulu Reseller, Disney+ Reseller) | مصنفة RESELLER صراحة — أسعار $149–$4,990 موجّهة للموزعين وليس المستهلك النهائي |
-| Unlimited Gmail Account Creator ($499–$1,499) | أداة إنشاء حسابات بالجملة (Automation/B2B) — ليست منتج Retail |
-| ADULT / Sports / Uncategorized | تصنيفات فارغة على Embronic (0 منتجات) |
-| 12 منتجًا قديمًا في SubNation بلا مصدر توريد Retail من Embronic (PS Plus, Xbox Game Pass, Canva, MS365, Adobe, Shahid, NordVPN, Crunchyroll…) | لا يمكن الوفاء بها من المورد — أُرشفت (الطلبات التاريخية سليمة: بيانات delivered_* منسوخة في الطلب) |
-| 59 وحدة مخزون ديمو غير قابلة للتسليم (مشفرة بمفتاح قديم — سبب علة INVENTORY_CORRUPT) | كانت تعرض «متوفر» كاذبًا للعميل وتفشل عند الشراء — حُذفت آمنة (الوحدات المباعة محفوظة للسجل) |
+| المستبعد                                                                                                                                                                                                               | السبب                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 10 منتجات RESELLER (YouTube Premium Reseller, Spotify Reseller, Shahid VIP Reseller, Reseller Kit, Reseller Credit, Prime Video Reseller, Netflix Reseller, NBA League Pass Reseller, Hulu Reseller, Disney+ Reseller) | مصنفة RESELLER صراحة — أسعار $149–$4,990 موجّهة للموزعين وليس المستهلك النهائي                        |
+| Unlimited Gmail Account Creator ($499–$1,499)                                                                                                                                                                          | أداة إنشاء حسابات بالجملة (Automation/B2B) — ليست منتج Retail                                         |
+| ADULT / Sports / Uncategorized                                                                                                                                                                                         | تصنيفات فارغة على Embronic (0 منتجات)                                                                 |
+| 12 منتجًا قديمًا في SubNation بلا مصدر توريد Retail من Embronic (PS Plus, Xbox Game Pass, Canva, MS365, Adobe, Shahid, NordVPN, Crunchyroll…)                                                                          | لا يمكن الوفاء بها من المورد — أُرشفت (الطلبات التاريخية سليمة: بيانات delivered\_\* منسوخة في الطلب) |
+| 59 وحدة مخزون ديمو غير قابلة للتسليم (مشفرة بمفتاح قديم — سبب علة INVENTORY_CORRUPT)                                                                                                                                   | كانت تعرض «متوفر» كاذبًا للعميل وتفشل عند الشراء — حُذفت آمنة (الوحدات المباعة محفوظة للسجل)          |
 
 **مصطلحات محجوبة عن العميل نهائيًا** (ممنوعة في Public API/HTML/JS): `cost_price, originalCost, providerCost, supplierPrice, wholesalePrice, margin, markup, provider, supplier, sku` — مثبتة باختبار `catalog-security.test.ts` يفحص الـ JSON الخام للـ DTO بأكمله.
 
@@ -64,11 +64,13 @@
 ## 5. Technical Changes
 
 **قاعدة البيانات (Neon — مكتملة وحية):**
+
 - جدول `product_variants` (id, product_id, plan_label, duration_label, duration_days, cost_price USD, price_lyd, sku, is_active, sort_order) + UNIQUE(product, plan, duration)
 - أعمدة إضافية: `products.seo_title/seo_description/features` · `orders.variant_id/variant_label` (نسخة تاريخية) · `inventory.variant_id` · `cart_items.variant_id/variant_label`
 - ترحيلات: drizzle `0009` + `0010` + boot V1-M16 (additive, idempotent — مطبقة على الإنتاج)
 
 **Backend:**
+
 - `lib/pricing-config.ts` (جديد) — مصدر الحقيقة الوحيد للتسعير
 - `routes/products.ts` — DTO عام بـ variants (بلا تكلفة) + price_from «تبدأ من» + seo/features في التفاصيل
 - `services/checkout.service.ts` — شراء variant-aware: تسعير من الباقة، حارسا `VARIANT_NOT_FOUND`/`VARIANT_STALE` داخل الـ tx، أولوية مطالبة المخزون (variant-scoped ثم عام)، فشل مغلق لأي باقة غير صالحة
@@ -80,6 +82,7 @@
 **OpenAPI + codegen:** 56 مسارًا/83 schemas (ProductVariant، AdminProductVariant، PricingConfig، CreateVariantBody…) — orval أعاد توليد api-zod + api-client-react.
 
 **Frontend:**
+
 - صفحة المنتج: محدد باقات (نوع الباقة + المدة) بأهداف لمس 44px + قائمة المميزات + SEO overrides
 - ProductCard: «تبدأ من» + شارة «N باقات» + إضافة سريعة بأرخص باقة
 - السلة المحلية v2: أسطر لكل باقة + ترقية تلقائية من v1 + تسمية الباقة في السطر
@@ -90,16 +93,16 @@
 
 ## 6. Testing (نتائج فعلية مشغَّلة)
 
-| الفحص | النتيجة |
-|---|---|
-| Backend tests (vitest) | **1081/1081 ✓** (119 ملفًا — منها 28 اختبارًا جديدًا: تسعير 14 + أمان 7 + شراء variants 7) |
-| Frontend tests (vitest) | **482/482 ✓** (66 ملفًا) |
-| Typecheck (libs+backend+frontend) | **0 أخطاء** ✓ |
-| ESLint (الملفات المعدلة) | **0 أخطاء** (4 تحذيرات مسبقة الوجود لم تتغير) |
-| Build (backend + frontend + PWA) | **نجح** — 45 صورة في dist ✓ |
-| gitleaks على commit هذا العمل | **0 تسريبات** ✓ (v8.24.3 محليًا) |
-| pnpm audit --prod (critical) | **0 critical** محليًا ✓ |
-| drizzle drift (generate) | **نظيف** ✓ |
+| الفحص                             | النتيجة                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| Backend tests (vitest)            | **1081/1081 ✓** (119 ملفًا — منها 28 اختبارًا جديدًا: تسعير 14 + أمان 7 + شراء variants 7) |
+| Frontend tests (vitest)           | **482/482 ✓** (66 ملفًا)                                                                   |
+| Typecheck (libs+backend+frontend) | **0 أخطاء** ✓                                                                              |
+| ESLint (الملفات المعدلة)          | **0 أخطاء** (4 تحذيرات مسبقة الوجود لم تتغير)                                              |
+| Build (backend + frontend + PWA)  | **نجح** — 45 صورة في dist ✓                                                                |
+| gitleaks على commit هذا العمل     | **0 تسريبات** ✓ (v8.24.3 محليًا)                                                           |
+| pnpm audit --prod (critical)      | **0 critical** محليًا ✓                                                                    |
+| drizzle drift (generate)          | **نظيف** ✓                                                                                 |
 
 ## 7. Needs Verification / إجراءات مطلوبة من المشغّل
 
