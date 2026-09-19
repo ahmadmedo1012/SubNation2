@@ -84,6 +84,9 @@ CREATE TABLE products (
   description text,
   description_long text,
   faq jsonb,
+  seo_title varchar(200),
+  seo_description varchar(320),
+  features jsonb,
   image_url varchar(1000),
   price numeric(10,2) NOT NULL,
   cost_price numeric(10,2),
@@ -95,9 +98,25 @@ CREATE TABLE products (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE product_variants (
+  id serial PRIMARY KEY,
+  product_id integer NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  plan_label varchar(120),
+  duration_label varchar(120),
+  duration_days integer,
+  cost_price numeric(10,2) NOT NULL,
+  price_lyd numeric(10,2) NOT NULL,
+  sku varchar(160),
+  is_active boolean NOT NULL DEFAULT true,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE inventory (
   id serial PRIMARY KEY,
   product_id integer NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  variant_id integer REFERENCES product_variants(id) ON DELETE SET NULL,
   account_email varchar(255),
   account_password varchar(512),
   extra_details text,
@@ -112,6 +131,8 @@ CREATE TABLE orders (
   order_code varchar(50) NOT NULL UNIQUE,
   user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   product_id integer NOT NULL REFERENCES products(id),
+  variant_id integer REFERENCES product_variants(id) ON DELETE SET NULL,
+  variant_label varchar(240),
   inventory_id integer REFERENCES inventory(id),
   amount numeric(10,2) NOT NULL,
   wallet_balance_before numeric(10,2) NOT NULL DEFAULT '0.00',
@@ -209,6 +230,8 @@ CREATE TABLE cart_items (
   id serial PRIMARY KEY,
   user_id integer NOT NULL,
   product_id integer NOT NULL,
+  variant_id integer REFERENCES product_variants(id) ON DELETE CASCADE,
+  variant_label varchar(240),
   quantity integer NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -305,6 +328,7 @@ const TABLES = [
   "coupons",
   "flash_sales",
   "cart_items",
+  "product_variants",
   "products",
   "users",
   "ticket_replies",

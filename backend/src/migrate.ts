@@ -648,6 +648,121 @@ export async function applyTicketRepliesDriftClosureStage(
   }
 }
 
+// ── V1-M16 (catalog reconstruction 2026-09-20): product_variants + ──────────
+// additive variant wiring across orders/inventory/cart_items + products SEO
+// columns. This is the structural backbone of the Retail catalog rebuild:
+// the supplier (Embronic) structures every product as
+// Product → Plan → Validity → Price, and mirroring that structure in
+// SubNation is the only way to avoid duplicate brand rows (the pre-2026-09-20
+// Disney×2 / MS365×2 / PS Plus×3 problem).
+//
+// Everything here is ADDITIVE and idempotent:
+//   1. product_variants table (+ indexes + UNIQUE(product, plan, duration));
+//   2. products.seo_title / products.seo_description (nullable overrides);
+//   3. orders.variant_id (FK SET NULL) + orders.variant_label — the label is
+//      an immutable historical copy, mirroring the delivered_* contract;
+//   4. inventory.variant_id (FK SET NULL) — nullable for legacy
+//      undifferentiated stock;
+//   5. cart_items.variant_id + variant_label (the 2-column UNIQUE
+//      (user_id, product_id) is deliberately KEPT — replace-variant
+//      semantics in the cart route, no index surgery);
+//   6. No backfill: variant-less products keep working through the legacy
+//      product-level price path (checkout falls back when variant_id is
+//      absent) — zero impact on existing orders/stock.
+export async function applyProductVariantsStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // 1. The variants table itself.
+  await execute(sql`
+    CREATE TABLE IF NOT EXISTS product_variants (
+      id             SERIAL PRIMARY KEY,
+      product_id     INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      plan_label     VARCHAR(120),
+      duration_label VARCHAR(120),
+      duration_days  INTEGER,
+      cost_price     NUMERIC(10,2) NOT NULL,
+      price_lyd      NUMERIC(10,2) NOT NULL,
+      sku            VARCHAR(160),
+      is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_product_variants_product
+      ON product_variants (product_id);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_product_variants_product_active
+      ON product_variants (product_id, is_active);
+  `);
+  await execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_product_variants_plan_duration
+      ON product_variants (product_id, plan_label, duration_label);
+  `);
+
+  // 2. products SEO overrides + features checklist (nullable — fallback contract unchanged).
+  await execute(sql`
+    ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS seo_title VARCHAR(200),
+      ADD COLUMN IF NOT EXISTS seo_description VARCHAR(320),
+      ADD COLUMN IF NOT EXISTS features JSONB;
+  `);
+
+  // 3. orders: variant reference + immutable historical label.
+  await execute(sql`
+    ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS variant_id INTEGER,
+      ADD COLUMN IF NOT EXISTS variant_label VARCHAR(240);
+  `);
+  await execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE orders
+        ADD CONSTRAINT fk_orders_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_orders_variant ON orders (variant_id);
+  `);
+
+  // 4. inventory: variant-scoped stock (nullable for legacy units).
+  await execute(sql`
+    ALTER TABLE inventory
+      ADD COLUMN IF NOT EXISTS variant_id INTEGER;
+  `);
+  await execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE inventory
+        ADD CONSTRAINT fk_inventory_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE SET NULL;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_inventory_variant ON inventory (variant_id);
+  `);
+
+  // 5. cart_items: variant columns; the existing 2-column UNIQUE stays
+  //    (see schema/cart.ts for the replace-variant rationale).
+  await execute(sql`
+    ALTER TABLE cart_items
+      ADD COLUMN IF NOT EXISTS variant_id INTEGER,
+      ADD COLUMN IF NOT EXISTS variant_label VARCHAR(240);
+  `);
+  await execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE cart_items
+        ADD CONSTRAINT fk_cart_items_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+}
+
 export async function runMigrations() {
   try {
     // ── Extensions ─────────────────────────────────────────────────────────
@@ -755,6 +870,28 @@ export async function runMigrations() {
         usage_terms  TEXT,
         created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // product_variants — created early because later boot tables
+    // (cart_items, orders, inventory) carry variant FKs. V1-M16's
+    // applyProductVariantsStage (tail of runMigrations) adds the
+    // indexes + additive columns on already-running databases; this
+    // early CREATE keeps fresh-database FK ordering valid. Idempotent.
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS product_variants (
+        id             SERIAL PRIMARY KEY,
+        product_id     INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        plan_label     VARCHAR(120),
+        duration_label VARCHAR(120),
+        duration_days  INTEGER,
+        cost_price     NUMERIC(10,2) NOT NULL,
+        price_lyd      NUMERIC(10,2) NOT NULL,
+        sku            VARCHAR(160),
+        is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order     INTEGER NOT NULL DEFAULT 0,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
 
@@ -993,14 +1130,17 @@ export async function runMigrations() {
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS cart_items (
-        id         SERIAL PRIMARY KEY,
-        user_id    INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
-        quantity   INTEGER NOT NULL DEFAULT 1,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        id            SERIAL PRIMARY KEY,
+        user_id       INTEGER NOT NULL,
+        product_id    INTEGER NOT NULL,
+        variant_id    INTEGER,
+        variant_label VARCHAR(240),
+        quantity      INTEGER NOT NULL DEFAULT 1,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+        CONSTRAINT fk_cart_items_variant FOREIGN KEY (variant_id) REFERENCES product_variants(id) ON DELETE CASCADE
       );
     `);
 
@@ -2294,6 +2434,12 @@ export async function runMigrations() {
     // has always declared. All branches probe-gated / IF NOT EXISTS →
     // steady-state boots are no-ops.
     await applyTicketRepliesDriftClosureStage();
+
+    // ── V1-M16 (catalog reconstruction 2026-09-20): product_variants + ──
+    // variant wiring (orders / inventory / cart_items) + products SEO
+    // columns. Fully additive + idempotent — steady-state boots are
+    // no-ops after the first run. See applyProductVariantsStage docs.
+    await applyProductVariantsStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

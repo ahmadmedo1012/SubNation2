@@ -1,8 +1,9 @@
 import { CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
-import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
+import { db, inventoryTable, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
+import { computeRetailLYD, getPricingConfig } from "../../lib/pricing-config";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
@@ -59,7 +60,7 @@ router.get("/products", requireAdmin, async (req, res) => {
 
   const productIds = products.map((p) => p.id);
 
-  const [stockCounts, orderCounts] =
+  const [stockCounts, orderCounts, variantRows] =
     productIds.length > 0
       ? await Promise.all([
           db
@@ -72,11 +73,40 @@ router.get("/products", requireAdmin, async (req, res) => {
             .from(ordersTable)
             .where(and(eq(ordersTable.status, "completed"), inArray(ordersTable.productId, productIds)))
             .groupBy(ordersTable.productId),
+          // Catalog-2026-09-20: variants ride ONE inArray query for the
+          // whole page — ADMIN context, so internal fields (cost, sku) are
+          // included by design. The pricing-config read is cached (60s).
+          db
+            .select()
+            .from(productVariantsTable)
+            .where(inArray(productVariantsTable.productId, productIds))
+            .orderBy(productVariantsTable.sortOrder, productVariantsTable.priceLyd),
         ])
-      : [[], []];
+      : [[], [], []];
 
   const stockMap = new Map(stockCounts.map((r) => [r.productId, Number(r.count)]));
   const orderMap = new Map(orderCounts.map((r) => [r.productId, Number(r.count)]));
+
+  const pricingConfig = await getPricingConfig();
+  const variantsByProduct = new Map<number, unknown[]>();
+  for (const v of variantRows) {
+    const list = variantsByProduct.get(v.productId) ?? [];
+    list.push({
+      id: v.id,
+      product_id: v.productId,
+      plan_label: v.planLabel?.trim() || null,
+      duration_label: v.durationLabel?.trim() || null,
+      duration_days: v.durationDays ?? null,
+      cost_price: parseFloat(String(v.costPrice)),
+      price_lyd: parseFloat(String(v.priceLyd)),
+      computed_price_lyd: computeRetailLYD(parseFloat(String(v.costPrice)), pricingConfig),
+      sku: v.sku ?? null,
+      is_active: v.isActive,
+      sort_order: v.sortOrder,
+      created_at: v.createdAt?.toISOString(),
+    });
+    variantsByProduct.set(v.productId, list);
+  }
 
   return res.json(
     products.map((p) => ({
@@ -94,6 +124,7 @@ router.get("/products", requireAdmin, async (req, res) => {
       order_count: orderMap.get(p.id) ?? 0,
       usage_terms: p.usageTerms,
       created_at: p.createdAt?.toISOString(),
+      variants: variantsByProduct.get(p.id) ?? [],
     })),
   );
 });

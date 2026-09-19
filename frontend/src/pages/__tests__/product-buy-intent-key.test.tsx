@@ -149,7 +149,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     const stored = readStoredIntent(PRODUCT.id);
     expect(stored).not.toBeNull();
     expect(stored!.k).toBe(key1);
-    expect(stored!.f).toBe(`${PRODUCT.id}|${PRODUCT.price}|`);
+    expect(stored!.f).toBe(`${PRODUCT.id}|${PRODUCT.price}||`);
     expect(typeof stored!.t).toBe("number");
 
     // Refresh-survival simulation: the retry reads the key back from
@@ -221,7 +221,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
       JSON.stringify({
         k: "stale-key-uuid",
         t: Date.now() - 11 * 60 * 1000,
-        f: `${PRODUCT.id}|${PRODUCT.price}|`,
+        f: `${PRODUCT.id}|${PRODUCT.price}||`,
       }),
     );
 
@@ -252,6 +252,6 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
 
     const usedKey = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
     expect(usedKey).not.toBe("other-price-key");
-    expect(readStoredIntent(PRODUCT.id)?.f).toBe(`${PRODUCT.id}|${PRODUCT.price}|`);
+    expect(readStoredIntent(PRODUCT.id)?.f).toBe(`${PRODUCT.id}|${PRODUCT.price}||`);
   });
 });

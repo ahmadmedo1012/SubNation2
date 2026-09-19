@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, cartItemsTable, productsTable } from "@workspace/db";
+import { db, cartItemsTable, productVariantsTable, productsTable } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -42,6 +42,8 @@ async function getFlashSaleStageCached(): Promise<FlashSaleStage> {
 interface CartItemResponse {
   id: number;
   product_id: number;
+  variant_id: number | null;
+  variant_label: string | null;
   product_name: string;
   product_slug: string | null;
   product_image_url: string | null;
@@ -57,13 +59,23 @@ async function buildCartItemResponse(
   row: {
     id: number;
     productId: number;
+    variantId: number | null;
+    variantLabel: string | null;
     quantity: number;
     createdAt: Date;
   },
   product: typeof productsTable.$inferSelect | undefined,
   flashSaleStage: FlashSaleStage,
+  variant?: typeof productVariantsTable.$inferSelect | undefined,
 ): Promise<CartItemResponse> {
-  const basePrice = product ? parseFloat(String(product.price)) : 0;
+  // Catalog-2026-09-20: the line prices off its VARIANT when one is set
+  // (variant-aware cart); the product-level price is the legacy fallback
+  // for variant-less lines.
+  const basePrice = variant
+    ? parseFloat(String(variant.priceLyd))
+    : product
+      ? parseFloat(String(product.price))
+      : 0;
   const discountPercent = flashSaleStage.flashSale
     ? parseFloat(String(flashSaleStage.flashSale.discountPercent))
     : 0;
@@ -74,6 +86,8 @@ async function buildCartItemResponse(
   return {
     id: row.id,
     product_id: row.productId,
+    variant_id: row.variantId ?? null,
+    variant_label: row.variantLabel ?? null,
     product_name: product?.name ?? "منتج محذوف",
     product_slug: product?.slug ?? null,
     product_image_url: product?.imageUrl ?? null,
@@ -103,16 +117,27 @@ router.get("/", requireUser, async (req, res) => {
   }
 
   const productIds = items.map((i) => i.productId);
-  const products = await db
-    .select()
-    .from(productsTable)
-    .where(inArray(productsTable.id, productIds));
+  const [products, variants] = await Promise.all([
+    db.select().from(productsTable).where(inArray(productsTable.id, productIds)),
+    db
+      .select()
+      .from(productVariantsTable)
+      .where(inArray(productVariantsTable.productId, productIds)),
+  ]);
   const productById = new Map(products.map((p) => [p.id, p]));
+  const variantById = new Map(variants.map((v) => [v.id, v]));
 
   const flashSaleStage = await getFlashSaleStageCached();
 
   const itemsWithDetails = await Promise.all(
-    items.map((row) => buildCartItemResponse(row, productById.get(row.productId), flashSaleStage)),
+    items.map((row) =>
+      buildCartItemResponse(
+        row,
+        productById.get(row.productId),
+        flashSaleStage,
+        row.variantId ? variantById.get(row.variantId) : undefined,
+      ),
+    ),
   );
 
   return res.json({
@@ -124,10 +149,12 @@ router.get("/", requireUser, async (req, res) => {
 // POST /api/cart/items — add item
 router.post("/items", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
-  const { product_id, quantity = 1 } = req.body ?? {};
+  const { product_id, variant_id, quantity = 1 } = req.body ?? {};
 
   if (!product_id || typeof product_id !== "number")
     return res.status(400).json(createErrorResponse("معرف المنتج مطلوب", ErrorCode.INVALID_DATA));
+  if (variant_id !== undefined && variant_id !== null && typeof variant_id !== "number")
+    return res.status(400).json(createErrorResponse("معرف الباقة غير صالح", ErrorCode.INVALID_DATA));
   if (typeof quantity !== "number" || quantity < 1 || !Number.isInteger(quantity))
     return res
       .status(400)
@@ -148,6 +175,37 @@ router.post("/items", requireUser, async (req, res) => {
   if (!product)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
+  // Catalog-2026-09-20: optional variant — must belong to THIS product and
+  // be active. The label is copied onto the line so the cart renders the
+  // chosen option without a join.
+  let variant: typeof productVariantsTable.$inferSelect | null = null;
+  if (variant_id != null) {
+    [variant] = await db
+      .select()
+      .from(productVariantsTable)
+      .where(
+        and(
+          eq(productVariantsTable.id, variant_id),
+          eq(productVariantsTable.productId, product_id),
+          eq(productVariantsTable.isActive, true),
+        ),
+      )
+      .limit(1);
+    if (!variant)
+      return res
+        .status(400)
+        .json(
+          createErrorResponse("الباقة المختارة غير متاحة. اختر باقة أخرى.", ErrorCode.INVALID_DATA),
+        );
+  }
+  const variantLabel = variant
+    ? [variant.planLabel?.trim(), variant.durationLabel?.trim()].filter(Boolean).join(" — ") || null
+    : null;
+
+  // One row per (user, product) — the 2-column UNIQUE. Selecting a
+  // DIFFERENT variant of a product already in the cart REPLACES the
+  // line's variant (documented in schema/cart.ts); the local cart is
+  // the multi-variant surface the storefront actually checks out with.
   const [existing] = await db
     .select()
     .from(cartItemsTable)
@@ -160,13 +218,24 @@ router.post("/items", requireUser, async (req, res) => {
     const newQty = Math.min(existing.quantity + quantity, MAX_QUANTITY);
     [item] = await db
       .update(cartItemsTable)
-      .set({ quantity: newQty, updatedAt: new Date() })
+      .set({
+        quantity: newQty,
+        variantId: variant ? variant.id : null,
+        variantLabel,
+        updatedAt: new Date(),
+      })
       .where(eq(cartItemsTable.id, existing.id))
       .returning();
   } else {
     [item] = await db
       .insert(cartItemsTable)
-      .values({ userId, productId: product_id, quantity })
+      .values({
+        userId,
+        productId: product_id,
+        variantId: variant ? variant.id : null,
+        variantLabel,
+        quantity,
+      })
       .returning();
   }
 
@@ -174,6 +243,7 @@ router.post("/items", requireUser, async (req, res) => {
     item,
     product,
     await getFlashSaleStageCached(),
+    variant ?? undefined,
   );
   return res.status(201).json(response);
 });

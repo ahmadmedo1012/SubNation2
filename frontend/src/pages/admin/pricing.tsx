@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -9,31 +10,46 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetAdminPricingConfigQueryKey,
+  getListAdminProductsQueryKey,
+  useGetAdminPricingConfig,
+  useListAdminProducts,
+  useRecomputeCatalogPrices,
+  useUpdateAdminPricingConfig,
+} from "@workspace/api-client-react";
 import {
   Calculator,
   AlertTriangle,
+  Loader2,
+  RefreshCw,
+  Save,
+  SlidersHorizontal,
   TrendingDown,
   TrendingUp,
   Tag,
   Sparkles,
   Info,
 } from "lucide-react";
-import { useListAdminProducts, getListAdminProductsQueryKey } from "@workspace/api-client-react";
 import { AdminLayout } from "./layout";
 
 /**
- * Admin Pricing Calculator
+ * Admin Pricing Calculator + global pricing rule
  *
- * Read-only profit/margin simulator. Talks to POST /api/admin/pricing/calculate
- * which mirrors the live order pipeline (flash sale → coupon → final price).
- * NEVER mutates anything; safe to run anywhere.
+ * catalog-recon (2026-09-20): the page gained a WRITABLE section on top —
+ * «إعدادات التسعير العامة» (GET/PUT /api/admin/pricing/config + POST
+ * /api/admin/pricing/recompute). Everything below it stays the read-only
+ * profit/margin simulator. Talks to POST /api/admin/pricing/calculate
+ * which mirrors the live order pipeline (flash sale → coupon → final
+ * price) — that part NEVER mutates anything.
  *
- * Inputs:
+ * Inputs (calculator):
  *   - Existing product (picker) OR custom price + cost
  *   - Optional coupon code
  *   - "Simulate referred buyer" toggle (subtracts welcome bonus + referrer points)
  *
- * Outputs:
+ * Outputs (calculator):
  *   - Pricing waterfall (list → flash sale → coupon → final)
  *   - Three margin tiers: gross / net (after loyalty) / referral-adjusted
  *   - Loss + low-margin warnings
@@ -93,6 +109,27 @@ function fmt(n: number | null | undefined, decimals = 2): string {
   return n.toFixed(decimals);
 }
 
+/** Same cent-rounding the backend pricing engine applies (round2). */
+const round2 = (v: number): number => Math.round(v * 100) / 100;
+
+/** Trim trailing zeros for the formula's factor/rate (2, not 2.00). */
+function fmtFactor(n: number): string {
+  return String(Number(n.toFixed(2)));
+}
+
+// catalog-recon: orval/customFetch rejections carry ApiError { data: { error,
+// code } }. getErrorMessage() resolves the shared CODE map first (INVALID_DATA
+// → generic), which would bury the route's own Arabic wording (e.g. the
+// out-of-range PUT message). Prefer the backend's message, then fall back.
+const ARABIC_SCRIPT_RE = /[\u0600-\u06FF]/;
+
+function describeError(err: unknown): string {
+  const data = (err as { data?: { error?: string; message?: string } | null }).data;
+  const raw = data?.error ?? data?.message;
+  if (typeof raw === "string" && raw.trim() && ARABIC_SCRIPT_RE.test(raw)) return raw;
+  return getErrorMessage(err);
+}
+
 function MarginRow({
   label,
   lyd,
@@ -146,6 +183,126 @@ export default function AdminPricingPage() {
   const [loading, setLoading] = useState(false);
 
   const headers = useAdminHeaders();
+
+  // ── catalog-recon: global pricing rule (rate + markup) — READ + WRITE ──
+  const queryClient = useQueryClient();
+  const { confirm, ConfirmDialog } = useConfirm();
+
+  const {
+    data: pricingConfig,
+    isLoading: configLoading,
+    isError: configLoadError,
+    refetch: refetchConfig,
+  } = useGetAdminPricingConfig({
+    query: { queryKey: getGetAdminPricingConfigQueryKey(), enabled: !!adminToken },
+    request: { headers },
+  });
+
+  const [rateInput, setRateInput] = useState("");
+  const [markupInput, setMarkupInput] = useState("");
+
+  // Seed the inputs once from the effective rule (later refetches keep the
+  // same data identity via structural sharing, so operator edits survive).
+  const configSeededRef = useRef(false);
+  useEffect(() => {
+    if (configSeededRef.current || !pricingConfig) return;
+    configSeededRef.current = true;
+    setRateInput(String(pricingConfig.usd_to_lyd));
+    setMarkupInput(String(pricingConfig.markup_percent));
+  }, [pricingConfig]);
+
+  const rateNum = parseFloat(rateInput);
+  const markupNum = parseFloat(markupInput);
+  const rateValid = Number.isFinite(rateNum) && rateNum >= 0.1 && rateNum <= 1000;
+  const markupValid = Number.isFinite(markupNum) && markupNum >= 0 && markupNum <= 10_000;
+  const configDirty =
+    pricingConfig != null &&
+    (rateNum !== pricingConfig.usd_to_lyd || markupNum !== pricingConfig.markup_percent);
+  const canSaveConfig = configDirty && rateValid && markupValid;
+
+  // Live formula example — falls back to the loaded rule while a field is
+  // empty/invalid so the explainer never shows nonsense numbers.
+  const exampleFactor = markupValid
+    ? 1 + markupNum / 100
+    : pricingConfig
+      ? 1 + pricingConfig.markup_percent / 100
+      : 2;
+  const exampleRate = rateValid ? rateNum : (pricingConfig?.usd_to_lyd ?? 10);
+  const examplePrice = round2(5 * exampleFactor * exampleRate);
+
+  const saveConfigMutation = useUpdateAdminPricingConfig({
+    request: { headers },
+    mutation: {
+      onSuccess(config) {
+        // Re-seed to the SERVER-rounded values (e.g. 10.999 → 11) and
+        // refresh the rule for every other consumer (products page,
+        // variant dialog previews) — the config is cached in TanStack.
+        setRateInput(String(config.usd_to_lyd));
+        setMarkupInput(String(config.markup_percent));
+        void queryClient.invalidateQueries({ queryKey: getGetAdminPricingConfigQueryKey() });
+        toast({ title: "تم حفظ إعدادات التسعير", variant: "success" });
+      },
+      onError(err: unknown) {
+        toast({
+          title: "تعذّر حفظ الإعدادات",
+          description: describeError(err),
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const recomputeMutation = useRecomputeCatalogPrices({
+    request: { headers },
+    mutation: {
+      onSuccess(result) {
+        // Display prices (MIN of active variants) moved on the server —
+        // refresh the admin products list this page already holds.
+        void queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
+        if (result.variants_updated > 0) {
+          toast({
+            title: "أُعيد احتساب أسعار الكتالوج",
+            description: `حُدّثت أسعار ${result.variants_updated} باقة عبر ${result.products_updated} ${
+              result.products_updated === 1 ? "منتج" : "منتجات"
+            }`,
+            variant: "success",
+          });
+        } else {
+          toast({
+            title: "لا تغييرات",
+            description: "كل الأسعار مطابقة للقاعدة الحالية",
+            variant: "info",
+          });
+        }
+      },
+      onError(err: unknown) {
+        toast({
+          title: "تعذّر إعادة الاحتساب",
+          description: describeError(err),
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const saveConfig = () => {
+    if (!canSaveConfig) return;
+    saveConfigMutation.mutate({
+      data: { usd_to_lyd: round2(rateNum), markup_percent: round2(markupNum) },
+    });
+  };
+
+  const recomputeCatalog = async () => {
+    const confirmed = await confirm({
+      title: "إعادة احتساب أسعار الكتالوج؟",
+      description:
+        "سيُعاد حساب سعر كل باقة نشطة من تكلفتها بالقاعدة الحالية — بما فيها الأسعار المخصّصة يدويًا — وتُحدّث أسعار العرض تلقائيًا.",
+      confirmLabel: "إعادة الاحتساب",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    recomputeMutation.mutate(undefined);
+  };
 
   const { data: products = [] } = useListAdminProducts(undefined, {
     query: {
@@ -229,7 +386,12 @@ export default function AdminPricingPage() {
   if (!adminToken) return null;
 
   return (
-    <AdminLayout onRefresh={canCalculate ? calculate : undefined}>
+    <AdminLayout
+      onRefresh={() => {
+        void refetchConfig();
+        if (canCalculate) void calculate();
+      }}
+    >
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Page-section header (kept narrow — global admin chrome
             comes from AdminLayout above). */}
@@ -238,9 +400,143 @@ export default function AdminPricingPage() {
             <Calculator className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-black text-lg">حاسبة الأسعار والأرباح</h1>
+            <h1 className="font-black text-lg">التسعير</h1>
             <p className="text-xs text-muted-foreground">
-              للقراءة فقط — لا يُغيّر أي سعر أو كوبون. يحاكي منطق نظام الطلبات الفعلي.
+              إعدادات القاعدة العامة + حاسبة أرباح للقراءة فقط تحاكي نظام الطلبات الفعلي.
+            </p>
+          </div>
+        </div>
+
+        {/* ── إعدادات التسعير العامة (WRITES — unlike the calculator) ──
+            catalog-recon: the single source of truth for variant pricing:
+            cost × (1 + markup%) × rate. Saving the rule does NOT touch
+            stored prices — the explicit recompute action below does. */}
+        <div className="bg-card border border-primary/25 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                <SlidersHorizontal className="w-4 h-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-black text-sm">إعدادات التسعير العامة</h2>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  القاعدة الموحّدة التي تُشتق منها أسعار الباقات من تكلفتها.
+                </p>
+              </div>
+            </div>
+            {configLoading ? (
+              <Loader2
+                className="w-4 h-4 animate-spin text-muted-foreground shrink-0"
+                aria-label="جارٍ تحميل الإعدادات"
+              />
+            ) : configLoadError ? (
+              <button
+                type="button"
+                onClick={() => void refetchConfig()}
+                className="text-xs text-destructive underline underline-offset-2 shrink-0"
+              >
+                إعادة المحاولة
+              </button>
+            ) : null}
+          </div>
+
+          {configLoadError && (
+            <div
+              role="alert"
+              className="p-3 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-xs font-bold flex items-center gap-2"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              تعذّر تحميل إعدادات التسعير الحالية
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                سعر الصرف — دينار لكل دولار ($1 =)
+              </Label>
+              <Input
+                type="number"
+                min="0.1"
+                max="1000"
+                step="0.01"
+                value={rateInput}
+                onChange={(e) => setRateInput(e.target.value)}
+                dir="ltr"
+                placeholder="10"
+                disabled={configLoading}
+              />
+              {rateInput !== "" && !rateValid && (
+                <p className="text-[10px] text-destructive font-bold mt-1" role="alert">
+                  سعر الصرف يجب أن يكون بين 0.1 و 1000
+                </p>
+              )}
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                الهامش على التكلفة (%)
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max="10000"
+                step="1"
+                value={markupInput}
+                onChange={(e) => setMarkupInput(e.target.value)}
+                dir="ltr"
+                placeholder="100"
+                disabled={configLoading}
+              />
+              {markupInput !== "" && !markupValid && (
+                <p className="text-[10px] text-destructive font-bold mt-1" role="alert">
+                  الهامش يجب أن يكون بين 0 و 10000
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Formula explainer — live numbers so the operator sees the
+              effect BEFORE saving (defaults: $5 × 2 × 10 = 100 د.ل). */}
+          <div className="flex items-start gap-2.5 p-3 bg-muted/20 border border-border/40 rounded-xl">
+            <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed">
+              <span className="font-bold">السعر = التكلفة × (1 + الهامش٪) × سعر الصرف</span>
+              <span className="text-muted-foreground">
+                {" "}— مثال: $5 × {fmtFactor(exampleFactor)} × {fmtFactor(exampleRate)} ={" "}
+                {formatCurrency(examplePrice)}
+              </span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={saveConfig}
+              disabled={!canSaveConfig || saveConfigMutation.isPending}
+              className="bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+            >
+              {saveConfigMutation.isPending ? (
+                <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 ml-1.5" />
+              )}
+              {saveConfigMutation.isPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void recomputeCatalog()}
+              disabled={recomputeMutation.isPending}
+              className="text-primary border-primary/25 hover:bg-primary/10 active:scale-[0.97] transition-transform"
+            >
+              {recomputeMutation.isPending ? (
+                <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 ml-1.5" />
+              )}
+              {recomputeMutation.isPending ? "جارٍ الاحتساب…" : "إعادة احتساب أسعار الكتالوج"}
+            </Button>
+            <p className="basis-full text-[10px] text-muted-foreground">
+              حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «إعادة احتساب أسعار الكتالوج» هي التي
+              تعيد تسعير كل الباقات من تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
             </p>
           </div>
         </div>
@@ -454,6 +750,9 @@ export default function AdminPricingPage() {
           النظام الفعلي يجب أن ينعكس هنا.
         </div>
       </div>
+
+      {/* catalog-recon: styled confirm for the bulk recompute action */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

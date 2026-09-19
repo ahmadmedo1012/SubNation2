@@ -2192,6 +2192,286 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/products/{id}/variants:
+    get:
+      operationId: listAdminProductVariants
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: List a product's variants incl. internal cost (requireAdmin + inventory scope)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Variant list (sorted by sort_order, price)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminProductVariant"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createProductVariant
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Create a variant (requireAdmin + inventory scope; price via pricing engine)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVariantBody"
+      responses:
+        "201":
+          description: Variant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProductVariant"
+        "400":
+          description: Validation error (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Duplicate (plan, duration) pair for this product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/products/{id}/variants/{variantId}:
+    patch:
+      operationId: updateProductVariant
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Update a variant (requireAdmin + inventory scope)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVariantBody"
+      responses:
+        "200":
+          description: Variant updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProductVariant"
+        "400":
+          description: Validation error (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product or variant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProductVariant
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Delete a variant (requireAdmin + inventory scope; blocked while orders reference it)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: variantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Variant deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteVariantResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product or variant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Variant referenced by orders — deactivate instead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/pricing/config:
+    get:
+      operationId: getAdminPricingConfig
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
+      responses:
+        "200":
+          description: Effective pricing configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingConfig"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateAdminPricingConfig
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Override the pricing rule (requireAdmin + inventory scope)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePricingConfigBody"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricingConfig"
+        "400":
+          description: Out-of-bounds values (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/pricing/recompute:
+    post:
+      operationId: recomputeCatalogPrices
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Recompute every variant's price_lyd from cost via the current rule (requireAdmin + inventory scope)
+      responses:
+        "200":
+          description: Recompute summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecomputeResult"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/users:
     get:
       operationId: listAdminUsers
@@ -3264,10 +3544,23 @@ components:
               answer:
                 type: string
             required: [question, answer]
+        seo_title:
+          type: ["string", "null"]
+          description: Operator override for the product page <title>.
+        seo_description:
+          type: ["string", "null"]
+          description: Operator override for the meta description.
         image_url:
           type: ["string", "null"]
         price:
           type: number
+          description: >
+            Cheapest active variant's LYD price when variants exist
+            (MIN(variants.price) — the storefront "تبدأ من" number),
+            otherwise the product-level LYD price.
+        price_from:
+          type: boolean
+          description: True when multiple active variants exist (card renders "تبدأ من").
         category:
           type: ["string", "null"]
         is_active:
@@ -3284,7 +3577,45 @@ components:
           type: ["number", "null"]
         order_count:
           type: integer
-      required: [id, name, price, is_active, stock_count, is_available, order_count]
+        variants:
+          type: array
+          description: >
+            Catalog sellable options (Plan × Duration). PUBLIC DTO by
+            design — carries labels, LYD price and availability ONLY.
+            Internal fields (cost_price, sku, supplier identity) are
+            never serialized here.
+          items:
+            $ref: '#/components/schemas/ProductVariant'
+      required: [id, name, price, price_from, is_active, stock_count, is_available, order_count, variants]
+
+    ProductVariant:
+      type: object
+      description: >
+        Public catalog variant DTO. Deliberately excludes every internal
+        field (cost_price, sku, provider identity) — those exist in the
+        database and admin APIs only.
+      properties:
+        id:
+          type: integer
+        plan_label:
+          type: ["string", "null"]
+          description: Tier axis label (e.g. "فردي", "عائلي", "أساسي") — null when the product only varies by duration.
+        duration_label:
+          type: ["string", "null"]
+          description: Validity axis label (e.g. "1 شهر", "سنة", "مدى الحياة").
+        label:
+          type: string
+          description: 'Joined display label "plan — duration" (single axis: the axis itself).'
+        price:
+          type: number
+          description: Retail price in LYD.
+        sale_price:
+          type: ["number", "null"]
+        discount_percent:
+          type: ["number", "null"]
+        is_available:
+          type: boolean
+      required: [id, label, price, is_available]
 
     ProductRecommendation:
       type: object
@@ -3337,6 +3668,12 @@ components:
       properties:
         product_id:
           type: integer
+        variant_id:
+          type: ["integer", "null"]
+          description: >
+            The selected catalog variant (product_variants.id). Optional:
+            when omitted and the product has active variants, the cheapest
+            active one is charged (matching the storefront display price).
         coupon_code:
           type: ["string", "null"]
       required: [product_id]
@@ -3358,6 +3695,12 @@ components:
           type: string
         product_id:
           type: integer
+        variant_id:
+          type: ["integer", "null"]
+          description: The purchased catalog variant (null for legacy pre-2026-09-20 orders).
+        variant_label:
+          type: ["string", "null"]
+          description: Immutable historical copy of the purchased option's display label.
         product_name:
           type: string
         product_image_url:
@@ -3504,6 +3847,11 @@ components:
           type: integer
         product_id:
           type: integer
+        variant_id:
+          type: ["integer", "null"]
+          description: Selected catalog variant for this line (null = legacy/variant-less).
+        variant_label:
+          type: ["string", "null"]
         product_name:
           type: string
         product_slug:
@@ -3512,7 +3860,7 @@ components:
           type: ["string", "null"]
         price:
           type: number
-          description: Base price.
+          description: Base price (variant price when a variant is selected).
         sale_price:
           type: ["number", "null"]
           description: Flash-sale price (2dp) — null when no active sale.
@@ -3534,10 +3882,14 @@ components:
       description: |
         NOTE: the field is snake_case `product_id` — the frontend local
         cart store uses camelCase productId and does not call this
-        endpoint today.
+        endpoint today. variant_id is optional: when the product has
+        variants, the line's variant is set (replace semantics if the
+        product is already in the cart).
       properties:
         product_id:
           type: integer
+        variant_id:
+          type: ["integer", "null"]
         quantity:
           type: integer
           minimum: 1
@@ -4134,7 +4486,165 @@ components:
           type: ["string", "null"]
         created_at:
           type: string
-      required: [id, name, price, is_active, is_archived, stock_count, order_count, created_at]
+        variants:
+          type: array
+          description: ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs.
+          items:
+            $ref: "#/components/schemas/AdminProductVariant"
+      required: [id, name, price, is_active, is_archived, stock_count, order_count, created_at, variants]
+
+    AdminProductVariant:
+      type: object
+      description: |
+        ADMIN-ONLY variant projection — includes internal fields
+        (cost_price USD, sku). This schema must never be referenced by a
+        public (non-/admin) path.
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        plan_label:
+          type: ["string", "null"]
+        duration_label:
+          type: ["string", "null"]
+        duration_days:
+          type: ["integer", "null"]
+        cost_price:
+          type: number
+          description: Supplier USD cost — internal, admin-only.
+        price_lyd:
+          type: number
+          description: Retail LYD price (pricing-engine output).
+        computed_price_lyd:
+          type: number
+          description: What the pricing engine WOULD price now (current config) — shows drift without recompute.
+        sku:
+          type: ["string", "null"]
+          description: Internal stock-keeping label (admin-only).
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+      required: [id, product_id, cost_price, price_lyd, is_active, sort_order]
+
+    CreateVariantBody:
+      type: object
+      description: |
+        At least one of plan_label / duration_label must be non-empty.
+        Provide EITHER cost_price (price computed via the pricing engine)
+        OR price_lyd directly (cost stored as 0 — discouraged).
+      properties:
+        plan_label:
+          type: ["string", "null"]
+          maxLength: 120
+        duration_label:
+          type: ["string", "null"]
+          maxLength: 120
+        duration_days:
+          type: ["integer", "null"]
+        cost_price:
+          type: number
+          minimum: 0.01
+          maximum: 100000
+          description: Supplier USD cost — retail price computed from it.
+        price_lyd:
+          type: ["number", "null"]
+          minimum: 0.01
+          maximum: 1000000
+          description: Optional explicit retail override (LYD).
+        sku:
+          type: ["string", "null"]
+          maxLength: 160
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        is_active:
+          type: boolean
+      required: [cost_price]
+
+    UpdateVariantBody:
+      type: object
+      properties:
+        plan_label:
+          type: ["string", "null"]
+          maxLength: 120
+        duration_label:
+          type: ["string", "null"]
+          maxLength: 120
+        duration_days:
+          type: ["integer", "null"]
+        cost_price:
+          type: number
+          minimum: 0.01
+          maximum: 100000
+          description: New USD cost — retail price recomputed from it via the engine.
+        price_lyd:
+          type: ["number", "null"]
+          minimum: 0.01
+          maximum: 1000000
+          description: Explicit retail override (LYD).
+        sku:
+          type: ["string", "null"]
+          maxLength: 160
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        is_active:
+          type: boolean
+
+    DeleteVariantResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required: [success]
+
+    PricingConfig:
+      type: object
+      properties:
+        usd_to_lyd:
+          type: number
+          description: Exchange rate — LYD per 1 USD (default 10).
+        markup_percent:
+          type: number
+          description: Gross margin percent on cost (default 100 = cost × 2).
+        updated_at:
+          type: string
+      required: [usd_to_lyd, markup_percent]
+
+    UpdatePricingConfigBody:
+      type: object
+      properties:
+        usd_to_lyd:
+          type: number
+          minimum: 0.1
+          maximum: 1000
+        markup_percent:
+          type: number
+          minimum: 0
+          maximum: 10000
+
+    RecomputeResult:
+      type: object
+      properties:
+        variants_updated:
+          type: integer
+          description: Number of variant rows whose price_lyd changed.
+        products_updated:
+          type: integer
+          description: Number of product display prices refreshed (MIN of variants).
+        usd_to_lyd:
+          type: number
+        markup_percent:
+          type: number
+      required: [variants_updated, products_updated, usd_to_lyd, markup_percent]
 
     CreateProductBody:
       type: object

@@ -45,7 +45,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 
 // Category-tinted hero gradients on the product page. Ride the shared
@@ -144,8 +144,9 @@ function buyIntentFingerprint(
   productId: number,
   effectivePrice: number | null | undefined,
   couponCode?: string | null,
+  variantId?: number | null,
 ): string {
-  return `${productId}|${effectivePrice ?? ""}|${(couponCode ?? "").trim().toUpperCase()}`;
+  return `${productId}|${effectivePrice ?? ""}|${(couponCode ?? "").trim().toUpperCase()}|${variantId ?? ""}`;
 }
 
 function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
@@ -344,18 +345,68 @@ export default function ProductPage() {
   // checkout.tsx's per-unit loop uses.
   const [buyPending, setBuyPending] = useState(false);
 
+  // ── Catalog variants (2026-09-20) ──────────────────────────────────
+  // The product's sellable options arrive on the /api/products DTO as
+  // `variants` (labels + LYD price only). The selector defaults to the
+  // CHEAPEST option — the same rule the checkout + product cards use —
+  // so the displayed price is always the chargeable price.
+  const productVariants = (
+    product as
+      | {
+          variants?: {
+            id: number;
+            plan_label?: string | null;
+            duration_label?: string | null;
+            label: string;
+            price: number;
+            sale_price?: number | null;
+            discount_percent?: number | null;
+            is_available: boolean;
+          }[];
+        }
+      | undefined
+  )?.variants;
+  const sortedVariants = useMemo(
+    () => (productVariants ? [...productVariants].sort((a, b) => a.price - b.price) : []),
+    [productVariants],
+  );
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  // Keep the selection valid across refetches (a selected option may have
+  // been deactivated or removed): fall back to the cheapest active one.
+  const selectedVariant = useMemo(() => {
+    if (sortedVariants.length === 0) return null;
+    const chosen =
+      (selectedVariantId != null
+        ? sortedVariants.find((v) => v.id === selectedVariantId)
+        : undefined) ??
+      sortedVariants.find((v) => v.is_available) ??
+      sortedVariants[0];
+    return chosen;
+  }, [sortedVariants, selectedVariantId]);
+
+  // Reset the explicit selection whenever the product changes (slug/id
+  // navigation reuses this component without unmounting).
+  useEffect(() => {
+    setSelectedVariantId(null);
+  }, [product?.id]);
+
   const handleBuyIntent = async () => {
     if (!product || buyPending) return;
     const body: CreateOrderBody = { product_id: product.id };
+    if (selectedVariant) body.variant_id = selectedVariant.id;
     if (couponResult?.code) body.coupon_code = couponResult.code;
     // 97-F5 (F-02): mint-or-reuse the intent key BEFORE the request — a
     // stored key still inside its TTL and matching the current price /
     // coupon fingerprint is replayed verbatim (network-failure retry →
-    // server replay instead of a second charge).
+    // server replay instead of a second charge). The variant id rides
+    // the fingerprint so switching options mints a fresh intent.
     const fingerprint = buyIntentFingerprint(
       product.id,
-      product.sale_price ?? product.price,
+      selectedVariant
+        ? selectedVariant.sale_price ?? selectedVariant.price
+        : product.sale_price ?? product.price,
       couponResult?.code,
+      selectedVariant?.id ?? undefined,
     );
     const intentKey = loadBuyIntentKey(product.id, fingerprint) ?? generateIdempotencyKey();
     persistBuyIntentKey(product.id, fingerprint, intentKey);
@@ -414,7 +465,11 @@ export default function ProductPage() {
     setCouponError("");
     setCouponResult(null);
     try {
-      const basePrice = product.sale_price ?? product.price;
+      // Coupon math applies to the SELECTED variant's price (the charge
+      // the server will actually compute at checkout).
+      const basePrice = selectedVariant
+        ? selectedVariant.sale_price ?? selectedVariant.price
+        : product.sale_price ?? product.price;
       const r = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -466,25 +521,42 @@ export default function ProductPage() {
     const now = Date.now();
     if (now - lastAddTapRef.current < 500) return;
     lastAddTapRef.current = now;
+    // Variant-aware line: the selected option's price + label ride the
+    // cart line so checkout charges exactly what the product page showed.
     addItem({
       productId: product.id,
+      variantId: selectedVariant ? selectedVariant.id : null,
+      variantLabel: selectedVariant ? selectedVariant.label : null,
       slug: product.slug ?? null,
       name: product.name ?? "",
       imageUrl: product.image_url ?? null,
-      priceLYD: product.price,
-      salePriceLYD: product.sale_price ?? null,
-      discountPercent: product.discount_percent ?? null,
+      priceLYD: selectedVariant ? selectedVariant.price : product.price,
+      salePriceLYD: selectedVariant
+        ? selectedVariant.sale_price ?? null
+        : product.sale_price ?? null,
+      discountPercent: selectedVariant
+        ? selectedVariant.discount_percent ?? null
+        : product.discount_percent ?? null,
     });
     toast({
       title: "أُضيف إلى السلة",
-      description: product.name ?? undefined,
+      description: selectedVariant
+        ? `${product.name} — ${selectedVariant.label}`
+        : product.name ?? undefined,
     });
   };
 
   // SEO — called unconditionally (before the loading/not-found early
   // returns below) so hook order is stable across renders (rules-of-hooks).
   // Falls back to neutral metadata while the product is still loading.
-  const seoPrice = product ? (product.sale_price ?? product.price) : 0;
+  // Catalog-2026-09-20: operator-provided seo_title / seo_description
+  // overrides (from the import) take precedence; the fallback stays
+  // price-aware off the selected variant.
+  const seoPrice = selectedVariant
+    ? selectedVariant.sale_price ?? selectedVariant.price
+    : product
+      ? (product.sale_price ?? product.price)
+      : 0;
   // Only emit FAQPage JSON-LD when there's a non-empty curated FAQ list
   // on the product. Empty arrays are treated by Google as a thin
   // structured-data block.
@@ -492,6 +564,9 @@ export default function ProductPage() {
     | (typeof product & {
         description_long?: string | null;
         faq?: { question: string; answer: string }[] | null;
+        seo_title?: string | null;
+        seo_description?: string | null;
+        features?: string[] | null;
       })
     | undefined;
   const productFaqs =
@@ -499,9 +574,12 @@ export default function ProductPage() {
   const seoBlock = useSeo(
     product
       ? {
-          title: `${product.name} — ${formatCurrency(seoPrice)}`,
+          title: productAny?.seo_title?.trim()
+            ? productAny.seo_title
+            : `${product.name} — ${formatCurrency(seoPrice)}`,
           description: (
-            product.description ??
+            productAny?.seo_description?.trim() ||
+            product.description ||
             `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
           ).slice(0, 160),
           image: product.image_url ?? undefined,
@@ -605,7 +683,12 @@ export default function ProductPage() {
       </div>
     );
 
-  const displayPrice = product.sale_price ?? product.price;
+  // Variant-aware display price — the SELECTED option's price (or the
+  // product-level price for variant-less products). This is the number
+  // the CTA block, coupon math, and buy-intent all key off — one source.
+  const displayPrice = selectedVariant
+    ? selectedVariant.sale_price ?? selectedVariant.price
+    : (product.sale_price ?? product.price);
   const gradientClass =
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
     "from-primary/20 via-primary/8 to-transparent";
@@ -834,6 +917,40 @@ export default function ProductPage() {
             <div className="rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
               {productAny.description_long}
             </div>
+          )}
+
+          {/* Feature checklist (catalog 2026-09-20) — the imported Arabic
+              bullets. Rendered as a real list (a11y: listitem semantics) with
+              check icons; Google reads the same text into the product's
+              content signals. */}
+          {Array.isArray(productAny?.features) && productAny.features.length > 0 && (
+            <ul className="grid sm:grid-cols-2 gap-2 list-none">
+              {productAny.features.map((feature: string) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2 rounded-xl border border-border/40 bg-muted/10 px-3.5 py-2.5 text-sm text-foreground/85 leading-relaxed"
+                >
+                  <CheckCircle
+                    className="w-4 h-4 mt-0.5 shrink-0 text-status-success"
+                    aria-hidden="true"
+                  />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
+              Plan × Duration matrix rendered as grouped pills. Shown only
+              when the product carries >1 active option — single-option
+              products skip the selector entirely (their price block IS the
+              variant). Touch targets ≥ 44px, high-contrast selected state. */}
+          {sortedVariants.length > 1 && (
+            <VariantSelector
+              variants={sortedVariants}
+              selectedId={selectedVariant?.id ?? null}
+              onSelect={setSelectedVariantId}
+            />
           )}
 
           {/* Price + stock */}
@@ -1499,6 +1616,137 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                 </div>
               </a>
             ))}
+      </div>
+    </div>
+  );
+}
+
+// ── VariantSelector (catalog 2026-09-20) ────────────────────────────────────
+// Plan × Duration matrix rendered as two stacked pill rows:
+//   1. Plan row (فردي/ثنائي/عائلي…) — only when the product varies by plan.
+//   2. Duration row (شهر واحد/3 أشهر…) with the per-option price — always
+//      visible so the price comparison is inline (Libyan shoppers compare
+//      monthly-equivalent value per option, not just the total).
+//
+// Mobile-first: pills wrap, min-height 44px (thumb rule), the selected state
+// carries the accent ring + bold price, unavailable options dim out. The
+// label text uses the Arabic labels imported with the catalog.
+interface SelectableVariant {
+  id: number;
+  plan_label?: string | null;
+  duration_label?: string | null;
+  label: string;
+  price: number;
+  sale_price?: number | null;
+  discount_percent?: number | null;
+  is_available: boolean;
+}
+
+function VariantSelector({
+  variants,
+  selectedId,
+  onSelect,
+}: {
+  variants: SelectableVariant[];
+  selectedId: number | null;
+  onSelect: (variantId: number) => void;
+}) {
+  const plans = Array.from(new Set(variants.map((v) => v.plan_label ?? null)));
+  const hasPlanAxis = plans.length > 1;
+  const selected = variants.find((v) => v.id === selectedId) ?? variants[0];
+
+  // The duration row always shows the SELECTED plan's options (or all
+  // options when the product has no plan axis).
+  const visibleDurations = hasPlanAxis
+    ? variants.filter((v) => (v.plan_label ?? null) === (selected?.plan_label ?? null))
+    : variants;
+
+  return (
+    <div
+      className="rounded-xl border border-border/45 bg-muted/10 p-3.5 space-y-3"
+      role="radiogroup"
+      aria-label="اختر الباقة"
+    >
+      {hasPlanAxis && (
+        <div>
+          <p className="text-xs font-bold text-muted-foreground mb-2">نوع الباقة</p>
+          <div className="flex flex-wrap gap-2">
+            {plans.map((plan) => {
+              // A plan pill is enabled when ANY of its options is available;
+              // it carries no price (the duration row prices the option).
+              const planVariants = variants.filter((v) => (v.plan_label ?? null) === plan);
+              const planAvailable = planVariants.some((v) => v.is_available);
+              const isPlanSelected = (selected?.plan_label ?? null) === plan;
+              return (
+                <button
+                  key={plan ?? "default"}
+                  type="button"
+                  role="radio"
+                  aria-checked={isPlanSelected}
+                  aria-disabled={!planAvailable || undefined}
+                  disabled={!planAvailable}
+                  onClick={() => {
+                    // Switching plan selects that plan's cheapest option.
+                    const cheapest = [...planVariants]
+                      .filter((v) => v.is_available)
+                      .sort((a, b) => a.price - b.price)[0];
+                    if (cheapest) onSelect(cheapest.id);
+                  }}
+                  className={`min-h-11 px-4 rounded-xl border text-sm font-bold transition-all press-spring ${
+                    isPlanSelected
+                      ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/25"
+                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary"
+                  } ${!planAvailable ? "opacity-40 pointer-events-none" : ""}`}
+                >
+                  {plan}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-bold text-muted-foreground mb-2">المدة</p>
+        <div className="grid grid-cols-2 gap-2">
+          {visibleDurations.map((v) => {
+            const isSelected = v.id === selectedId;
+            const eff = v.sale_price ?? v.price;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={`${v.label} — ${formatCurrency(eff)}`}
+                aria-disabled={!v.is_available || undefined}
+                disabled={!v.is_available}
+                onClick={() => onSelect(v.id)}
+                className={`min-h-11 flex flex-col items-start justify-center gap-0.5 px-3 py-2 rounded-xl border text-start transition-all press-spring ${
+                  isSelected
+                    ? "bg-primary/12 border-primary text-primary shadow-md shadow-primary/15"
+                    : "bg-card border-border/50 hover:border-primary/40"
+                } ${!v.is_available ? "opacity-40 pointer-events-none" : ""}`}
+              >
+                <span className="text-sm font-bold text-foreground leading-tight">
+                  {v.duration_label ?? v.plan_label ?? v.label}
+                </span>
+                <span
+                  className={`text-[13px] font-black tabular-nums leading-none ${
+                    isSelected ? "text-primary" : "text-foreground/75"
+                  }`}
+                >
+                  {formatCurrency(eff)}
+                  {v.sale_price != null && (
+                    <span className="ms-1.5 text-[10px] font-normal text-muted-foreground line-through">
+                      {formatCurrency(v.price)}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

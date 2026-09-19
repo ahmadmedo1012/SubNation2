@@ -26,12 +26,27 @@ interface Product {
   description?: string | null;
   image_url?: string | null;
   price: number;
+  price_from?: boolean;
   category?: string | null;
   is_available: boolean;
   stock_count: number;
   sale_price?: number | null;
   discount_percent?: number | null;
   order_count?: number;
+  variants?: CatalogVariant[];
+}
+
+/** Public catalog variant (mirrors the /api/products DTO — price only,
+ * never internal cost/sku fields). */
+export interface CatalogVariant {
+  id: number;
+  plan_label?: string | null;
+  duration_label?: string | null;
+  label: string;
+  price: number;
+  sale_price?: number | null;
+  discount_percent?: number | null;
+  is_available: boolean;
 }
 
 // Category accent palette. Each entry rides the shared --cat-*
@@ -164,6 +179,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   // (a 0-init ref would swallow taps at epoch-0 test clocks and is
   // semantically "never tapped" — model it explicitly).
   const lastAddTapRef = useRef<number | null>(null);
+  // Catalog-2026-09-20: quick-add uses the cheapest ACTIVE variant when the
+  // product has options (matches the card's displayed "تبدأ من" price and
+  // the checkout's default-variant rule — no price mismatch is possible).
+  const cheapestVariant =
+    product.variants && product.variants.length > 0
+      ? product.variants.reduce((a, b) => (a.price <= b.price ? a : b))
+      : null;
   const handleAddToCart = () => {
     if (unavailable) return;
     const now = Date.now();
@@ -171,16 +193,22 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     lastAddTapRef.current = now;
     addItem({
       productId: product.id,
+      variantId: cheapestVariant ? cheapestVariant.id : null,
+      variantLabel: cheapestVariant ? cheapestVariant.label : null,
       slug: product.slug ?? null,
       name: product.name ?? "",
       imageUrl: product.image_url ?? null,
-      priceLYD: product.price,
-      salePriceLYD: product.sale_price ?? null,
-      discountPercent: product.discount_percent ?? null,
+      priceLYD: cheapestVariant ? cheapestVariant.price : product.price,
+      salePriceLYD: cheapestVariant ? cheapestVariant.sale_price ?? null : product.sale_price ?? null,
+      discountPercent: cheapestVariant
+        ? cheapestVariant.discount_percent ?? null
+        : product.discount_percent ?? null,
     });
     toast({
       title: "أُضيف إلى السلة",
-      description: product.name ?? undefined,
+      description: cheapestVariant
+        ? `${product.name} — ${cheapestVariant.label}`
+        : product.name ?? undefined,
     });
   };
 
@@ -192,7 +220,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const ariaLabelParts = [
     product.name,
     categoryLabel(product.category),
-    `السعر ${formatCurrency(displayPrice)}`,
+    `${product.price_from ? "تبدأ من " : ""}${formatCurrency(displayPrice)}`,
+    product.variants && product.variants.length > 1
+      ? `${product.variants.length} باقات`
+      : null,
     unavailable ? "نفد المخزون" : null,
     // 93-C8 (A11 §1): «آخر 2 متوفرة» is a broken dual; «متبقٍ N
     // فقط» is agreement-safe for every count 1..3.
@@ -330,7 +361,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           )}
 
           <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto">
-            <div className="flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              {product.price_from && (
+                <span className="text-[10px] font-semibold text-muted-foreground">تبدأ من</span>
+              )}
               <span className="font-black text-foreground text-[17px] leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </span>
@@ -342,7 +376,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             </div>
 
             {product.is_available ? (
-              isLowStock ? (
+              product.variants && product.variants.length > 1 ? (
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
+                >
+                  {product.variants.length} باقات
+                </span>
+              ) : isLowStock ? (
                 <StatusBadge
                   variant="low-stock"
                   size="xs"

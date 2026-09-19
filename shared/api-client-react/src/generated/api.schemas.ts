@@ -222,6 +222,33 @@ export type ProductFaqItem = {
   answer: string;
 };
 
+/**
+ * Public catalog variant DTO. Deliberately excludes every internal field (cost_price, sku, provider identity) — those exist in the database and admin APIs only.
+
+ */
+export interface ProductVariant {
+  id: number;
+  /**
+   * Tier axis label (e.g. "فردي", "عائلي", "أساسي") — null when the product only varies by duration.
+   * @nullable
+   */
+  plan_label?: string | null;
+  /**
+   * Validity axis label (e.g. "1 شهر", "سنة", "مدى الحياة").
+   * @nullable
+   */
+  duration_label?: string | null;
+  /** Joined display label "plan — duration" (single axis: the axis itself). */
+  label: string;
+  /** Retail price in LYD. */
+  price: number;
+  /** @nullable */
+  sale_price?: number | null;
+  /** @nullable */
+  discount_percent?: number | null;
+  is_available: boolean;
+}
+
 export interface Product {
   id: number;
   /** @nullable */
@@ -233,9 +260,23 @@ export interface Product {
   description_long?: string | null;
   /** @nullable */
   faq?: ProductFaqItem[] | null;
+  /**
+   * Operator override for the product page <title>.
+   * @nullable
+   */
+  seo_title?: string | null;
+  /**
+   * Operator override for the meta description.
+   * @nullable
+   */
+  seo_description?: string | null;
   /** @nullable */
   image_url?: string | null;
+  /** Cheapest active variant's LYD price when variants exist (MIN(variants.price) — the storefront "تبدأ من" number), otherwise the product-level LYD price.
+   */
   price: number;
+  /** True when multiple active variants exist (card renders "تبدأ من"). */
+  price_from: boolean;
   /** @nullable */
   category?: string | null;
   is_active: boolean;
@@ -248,6 +289,9 @@ export interface Product {
   /** @nullable */
   discount_percent?: number | null;
   order_count: number;
+  /** Catalog sellable options (Plan × Duration). PUBLIC DTO by design — carries labels, LYD price and availability ONLY. Internal fields (cost_price, sku, supplier identity) are never serialized here.
+   */
+  variants: ProductVariant[];
 }
 
 export interface ProductRecommendation {
@@ -284,6 +328,12 @@ export interface FlashSaleResponse {
 
 export interface CreateOrderBody {
   product_id: number;
+  /**
+   * The selected catalog variant (product_variants.id). Optional: when omitted and the product has active variants, the cheapest active one is charged (matching the storefront display price).
+
+   * @nullable
+   */
+  variant_id?: number | null;
   /** @nullable */
   coupon_code?: string | null;
 }
@@ -311,6 +361,16 @@ export interface Order {
   id: number;
   order_code: string;
   product_id: number;
+  /**
+   * The purchased catalog variant (null for legacy pre-2026-09-20 orders).
+   * @nullable
+   */
+  variant_id?: number | null;
+  /**
+   * Immutable historical copy of the purchased option's display label.
+   * @nullable
+   */
+  variant_label?: string | null;
   product_name: string;
   /** @nullable */
   product_image_url?: string | null;
@@ -440,12 +500,19 @@ outlives its product.
 export interface CartItem {
   id: number;
   product_id: number;
+  /**
+   * Selected catalog variant for this line (null = legacy/variant-less).
+   * @nullable
+   */
+  variant_id?: number | null;
+  /** @nullable */
+  variant_label?: string | null;
   product_name: string;
   /** @nullable */
   product_slug?: string | null;
   /** @nullable */
   product_image_url?: string | null;
-  /** Base price. */
+  /** Base price (variant price when a variant is selected). */
   price: number;
   /**
    * Flash-sale price (2dp) — null when no active sale.
@@ -469,11 +536,15 @@ export interface CartItem {
 /**
  * NOTE: the field is snake_case `product_id` — the frontend local
 cart store uses camelCase productId and does not call this
-endpoint today.
+endpoint today. variant_id is optional: when the product has
+variants, the line's variant is set (replace semantics if the
+product is already in the cart).
 
  */
 export interface AddCartItemBody {
   product_id: number;
+  /** @nullable */
+  variant_id?: number | null;
   /**
    * Defaults to 1 when omitted (MAX_QUANTITY cap is 99).
    * @minimum 1
@@ -989,6 +1060,37 @@ export interface AdminTopupActionBody {
   admin_note?: string | null;
 }
 
+/**
+ * ADMIN-ONLY variant projection — includes internal fields
+(cost_price USD, sku). This schema must never be referenced by a
+public (non-/admin) path.
+
+ */
+export interface AdminProductVariant {
+  id: number;
+  product_id: number;
+  /** @nullable */
+  plan_label?: string | null;
+  /** @nullable */
+  duration_label?: string | null;
+  /** @nullable */
+  duration_days?: number | null;
+  /** Supplier USD cost — internal, admin-only. */
+  cost_price: number;
+  /** Retail LYD price (pricing-engine output). */
+  price_lyd: number;
+  /** What the pricing engine WOULD price now (current config) — shows drift without recompute. */
+  computed_price_lyd?: number;
+  /**
+   * Internal stock-keeping label (admin-only).
+   * @nullable
+   */
+  sku?: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+}
+
 export interface AdminProduct {
   id: number;
   /** @nullable */
@@ -1016,6 +1118,127 @@ created before this field existed.
   /** @nullable */
   usage_terms?: string | null;
   created_at: string;
+  /** ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs. */
+  variants: AdminProductVariant[];
+}
+
+/**
+ * At least one of plan_label / duration_label must be non-empty.
+Provide EITHER cost_price (price computed via the pricing engine)
+OR price_lyd directly (cost stored as 0 — discouraged).
+
+ */
+export interface CreateVariantBody {
+  /**
+   * @maxLength 120
+   * @nullable
+   */
+  plan_label?: string | null;
+  /**
+   * @maxLength 120
+   * @nullable
+   */
+  duration_label?: string | null;
+  /** @nullable */
+  duration_days?: number | null;
+  /**
+   * Supplier USD cost — retail price computed from it.
+   * @minimum 0.01
+   * @maximum 100000
+   */
+  cost_price: number;
+  /**
+   * Optional explicit retail override (LYD).
+   * @minimum 0.01
+   * @maximum 1000000
+   * @nullable
+   */
+  price_lyd?: number | null;
+  /**
+   * @maxLength 160
+   * @nullable
+   */
+  sku?: string | null;
+  /**
+   * @minimum 0
+   * @maximum 10000
+   */
+  sort_order?: number;
+  is_active?: boolean;
+}
+
+export interface UpdateVariantBody {
+  /**
+   * @maxLength 120
+   * @nullable
+   */
+  plan_label?: string | null;
+  /**
+   * @maxLength 120
+   * @nullable
+   */
+  duration_label?: string | null;
+  /** @nullable */
+  duration_days?: number | null;
+  /**
+   * New USD cost — retail price recomputed from it via the engine.
+   * @minimum 0.01
+   * @maximum 100000
+   */
+  cost_price?: number;
+  /**
+   * Explicit retail override (LYD).
+   * @minimum 0.01
+   * @maximum 1000000
+   * @nullable
+   */
+  price_lyd?: number | null;
+  /**
+   * @maxLength 160
+   * @nullable
+   */
+  sku?: string | null;
+  /**
+   * @minimum 0
+   * @maximum 10000
+   */
+  sort_order?: number;
+  is_active?: boolean;
+}
+
+export interface DeleteVariantResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface PricingConfig {
+  /** Exchange rate — LYD per 1 USD (default 10). */
+  usd_to_lyd: number;
+  /** Gross margin percent on cost (default 100 = cost × 2). */
+  markup_percent: number;
+  updated_at?: string;
+}
+
+export interface UpdatePricingConfigBody {
+  /**
+   * @minimum 0.1
+   * @maximum 1000
+   */
+  usd_to_lyd?: number;
+  /**
+   * @minimum 0
+   * @maximum 10000
+   */
+  markup_percent?: number;
+}
+
+export interface RecomputeResult {
+  /** Number of variant rows whose price_lyd changed. */
+  variants_updated: number;
+  /** Number of product display prices refreshed (MIN of variants). */
+  products_updated: number;
+  usd_to_lyd: number;
+  markup_percent: number;
 }
 
 export interface CreateProductBody {

@@ -11,6 +11,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { productsTable } from "./products";
+import { productVariantsTable } from "./product-variants";
 
 export const inventoryTable = pgTable(
   "inventory",
@@ -19,6 +20,16 @@ export const inventoryTable = pgTable(
     productId: integer("product_id")
       .notNull()
       .references(() => productsTable.id, { onDelete: "cascade" }),
+    /**
+     * Variant-scoped stock: when set, this unit only fulfills orders for
+     * that specific catalog variant (product_variants.id). Nullable —
+     * legacy/undifferentiated units fulfill any variant of the product
+     * (the checkout claims variant-scoped units first, then falls back
+     * to product-level units).
+     */
+    variantId: integer("variant_id").references(() => productVariantsTable.id, {
+      onDelete: "set null",
+    }),
     accountEmail: varchar("account_email", { length: 255 }),
     accountPassword: varchar("account_password", { length: 512 }),
     extraDetails: text("extra_details"),

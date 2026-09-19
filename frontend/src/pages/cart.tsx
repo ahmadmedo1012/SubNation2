@@ -69,9 +69,9 @@ export default function CartPage() {
   // sonner's action API, and an undo affordance needs a real button — the
   // same mounted <Toaster/> renders it either way.
   const removeWithUndo = (item: LocalCartItem) => {
-    removeItem(item.productId);
+    removeItem(item.productId, item.variantId);
     sonnerToast("تمت إزالة المنتج", {
-      description: item.name,
+      description: item.variantLabel ? `${item.name} — ${item.variantLabel}` : item.name,
       action: {
         label: "تراجع",
         onClick: () => addItem({ ...item }),
@@ -89,7 +89,7 @@ export default function CartPage() {
       removeWithUndo(item);
       return;
     }
-    updateQuantity(item.productId, qty);
+    updateQuantity(item.productId, qty, item.variantId);
   };
 
   const handleClear = async () => {
@@ -196,7 +196,7 @@ export default function CartPage() {
               const price = effectivePrice(it);
               return (
                 <div
-                  key={it.productId}
+                  key={`${it.productId}:${it.variantId ?? 0}`}
                   className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 hover:border-border transition-all duration-200 group`}
                 >
                   {/* 96-F4 (R96 A1 M13 + A2 P1-1): flex-wrap row — on wide
@@ -232,6 +232,14 @@ export default function CartPage() {
                           {it.name}
                         </div>
                       </Link>
+                      {/* Catalog-2026-09-20: the chosen option ("فردي — 3 أشهر")
+                          under the product name — the shopper's mental model of
+                          WHAT is in the line, not just which brand. */}
+                      {it.variantLabel && (
+                        <div className="text-[11px] font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
+                          {it.variantLabel}
+                        </div>
+                      )}
                       {/* 96-F4 (M13): price cluster on its own line — flex-wrap
                           keeps the trio (price / strikethrough / discount) on
                           one clean row now that the column is wide enough. */}

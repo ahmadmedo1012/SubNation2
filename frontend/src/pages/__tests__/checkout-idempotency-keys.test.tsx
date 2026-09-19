@@ -66,10 +66,12 @@ const KEY_SLOT = (productId: number, unit: number) => `subnation_checkout_key:${
 
 function seedCart(quantity: number) {
   localStorage.setItem(
-    "subnation_cart_v1",
+    "subnation_cart_v2",
     JSON.stringify([
       {
         productId: 5,
+        variantId: 101,
+        variantLabel: "شهر واحد",
         slug: "netflix-1m",
         name: "Netflix شهر",
         imageUrl: null,
@@ -83,7 +85,7 @@ function seedCart(quantity: number) {
 }
 
 function readCart(): Array<{ productId: number; quantity: number }> {
-  const raw = localStorage.getItem("subnation_cart_v1");
+  const raw = localStorage.getItem("subnation_cart_v2");
   return raw ? (JSON.parse(raw) as Array<{ productId: number; quantity: number }>) : [];
 }
 

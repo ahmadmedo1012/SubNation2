@@ -4,6 +4,7 @@ import {
   flashSalesTable,
   inventoryTable,
   ordersTable,
+  productVariantsTable,
   productsTable,
   usersTable,
 } from "@workspace/db";
@@ -69,7 +70,11 @@ export type CheckoutFailureReason =
   // admin alert names the product + unit so the operator can re-upload
   // stock. (Live evidence: 59/59 units of products 1-12 are
   // undecryptable — seeded 2026-08-25 with a different key.)
-  | "INVENTORY_CORRUPT";
+  | "INVENTORY_CORRUPT"
+  // Catalog-2026-09-20: the request named a variant that does not exist,
+  // is inactive, or belongs to a different product. Distinct from
+  // PRODUCT_NOT_FOUND so clients can re-read the product's variant list.
+  | "VARIANT_NOT_FOUND";
 
 // F4 (round-94 A4): product-stale (price / isActive / isArchived changed
 // between computePricing and the purchase tx) is deliberately NOT a new
@@ -106,6 +111,14 @@ export type CheckoutResult =
 export interface CheckoutInput {
   userId: number;
   productId: number;
+  /**
+   * Catalog variant (product_variants.id) the buyer selected. Optional:
+   * legacy callers omit it. When the product HAS active variants the
+   * checkout resolves one — the exact requested variant, or the cheapest
+   * active one as the default — so a variant-aware price is always
+   * charged. Variant-less products price off products.price as before.
+   */
+  variantId?: number | null;
   couponCode?: string;
   /**
    * F10 (round-94 A4): optional durable idempotency key — the raw
@@ -158,9 +171,47 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     .limit(1);
   if (!product) return { ok: false, reason: "PRODUCT_NOT_FOUND" };
 
+  // ── Variant resolution (catalog 2026-09-20) ─────────────────────────────
+  // The buyer's selected option rides the request as variantId. Legacy
+  // callers that omit it still get a variant-aware price when the product
+  // has variants: the cheapest ACTIVE one (identical to the storefront's
+  // "تبدأ من" display price, so no mismatch is chargeable). The resolved
+  // row is the pricing authority — products.price is NOT consulted when
+  // a variant is resolved (the import maintains products.price =
+  // MIN(variants.price_lyd) as a display denormalization only).
+  let variant: typeof productVariantsTable.$inferSelect | null = null;
+  const productVariants = await db
+    .select()
+    .from(productVariantsTable)
+    .where(
+      and(
+        eq(productVariantsTable.productId, productId),
+        eq(productVariantsTable.isActive, true),
+      ),
+    )
+    .orderBy(productVariantsTable.priceLyd)
+    .limit(500);
+  if (input.variantId != null) {
+    // EXPLICIT selection: must resolve to THIS product's active variant —
+    // a foreign, inactive, or deleted id fails closed (never silently
+    // ignored: the client would be charged a price it never displayed).
+    variant = productVariants.find((v) => v.id === input.variantId) ?? null;
+    if (!variant) return { ok: false, reason: "VARIANT_NOT_FOUND" };
+  } else if (productVariants.length > 0) {
+    // Legacy callers that omit variantId still get a variant-aware price:
+    // the cheapest ACTIVE one (identical to the storefront's "تبدأ من"
+    // display price, so no mismatch is chargeable).
+    variant = productVariants[0];
+  }
+
+  /** Customer-facing purchase label, copied immutably onto the order. */
+  const variantLabel = variant
+    ? [variant.planLabel?.trim(), variant.durationLabel?.trim()].filter(Boolean).join(" — ") || null
+    : null;
+
   // ── Discount stack (flash sale → coupon → final) — single source: lib/pricing.ts
   const pricing = await computePricing({
-    listPrice: toNumber(product.price),
+    listPrice: variant ? toNumber(variant.priceLyd) : toNumber(product.price),
     couponCode,
   });
   if (pricing.coupon && isInvalidCoupon(pricing.coupon)) {
@@ -197,11 +248,22 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
 
   // Cheap lock-free OUT_OF_STOCK fast-fail — the authoritative,
   // race-free selection happens INSIDE the transaction with
-  // FOR UPDATE SKIP LOCKED (H4).
+  // FOR UPDATE SKIP LOCKED (H4). Variant-scoped units are preferred;
+  // legacy product-level units (variant_id IS NULL) fulfill any variant.
+  const inventoryScope = variant
+    ? and(
+        eq(inventoryTable.productId, productId),
+        eq(inventoryTable.isSold, false),
+        or(
+          eq(inventoryTable.variantId, variant.id),
+          isNull(inventoryTable.variantId),
+        ),
+      )
+    : and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false));
   const [inventoryFastCheck] = await db
     .select({ id: inventoryTable.id })
     .from(inventoryTable)
-    .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
+    .where(inventoryScope)
     .limit(1);
   if (!inventoryFastCheck) return { ok: false, reason: "OUT_OF_STOCK" };
 
@@ -273,6 +335,29 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         if (productStale) throw new Error("PRODUCT_STALE");
       }
 
+      // Catalog-2026-09-20: variant freshness re-check — the same F4
+      // guard the product just got, for the VARIANT the price was built
+      // from (variant price / isActive / product membership). An admin
+      // editing the variant between computePricing and commit otherwise
+      // debits a stale per-option price.
+      if (variant) {
+        const [variantRow] = await tx
+          .select({
+            priceLyd: productVariantsTable.priceLyd,
+            isActive: productVariantsTable.isActive,
+            productId: productVariantsTable.productId,
+          })
+          .from(productVariantsTable)
+          .where(eq(productVariantsTable.id, variant.id))
+          .limit(1);
+        const variantStale =
+          !variantRow ||
+          !variantRow.isActive ||
+          variantRow.productId !== productId ||
+          parseFloat(String(variantRow.priceLyd)) !== toNumber(variant.priceLyd);
+        if (variantStale) throw new Error("VARIANT_STALE");
+      }
+
       // B2-06 (round-92 audit): flash-sale freshness re-check INSIDE the
       // purchase transaction. `pricing.flashSale` was resolved by
       // computePricing BEFORE this tx opened — a sale crossing ends_at (or
@@ -308,15 +393,44 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // two concurrent buyers grabbed the SAME row, one won the claim,
       // and the loser saw a false 409 "claimed" while identical units
       // sat unsold. FOR UPDATE SKIP LOCKED inside the transaction makes
-      // each buyer take a DIFFERENT row (locked rows are skipped), and
-      // ORDER BY id keeps the pick deterministic.
-      const [lockedInventory] = await tx
-        .select()
-        .from(inventoryTable)
-        .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
-        .orderBy(inventoryTable.id)
-        .limit(1)
-        .for("update", { skipLocked: true });
+      // each buyer take a DIFFERENT row (locked rows are skipped).
+      //
+      // Claim preference (catalog 2026-09-20): variant-scoped units
+      // FIRST (exact option match), then legacy product-level units
+      // (variant_id IS NULL) — two ordered selects, so a variant-scoped
+      // unit is never burned on another variant's order while generic
+      // stock remains. ORDER BY id keeps each pool deterministic.
+      let lockedInventory: typeof inventoryTable.$inferSelect | undefined;
+      if (variant) {
+        [lockedInventory] = await tx
+          .select()
+          .from(inventoryTable)
+          .where(
+            and(
+              eq(inventoryTable.productId, productId),
+              eq(inventoryTable.isSold, false),
+              eq(inventoryTable.variantId, variant.id),
+            ),
+          )
+          .orderBy(inventoryTable.id)
+          .limit(1)
+          .for("update", { skipLocked: true });
+      }
+      if (!lockedInventory) {
+        [lockedInventory] = await tx
+          .select()
+          .from(inventoryTable)
+          .where(
+            and(
+              eq(inventoryTable.productId, productId),
+              eq(inventoryTable.isSold, false),
+              isNull(inventoryTable.variantId),
+            ),
+          )
+          .orderBy(inventoryTable.id)
+          .limit(1)
+          .for("update", { skipLocked: true });
+      }
       if (!lockedInventory) throw new Error("OUT_OF_STOCK");
 
       const inventoryItem = lockedInventory;
@@ -446,6 +560,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           orderCode: generateOrderCode(),
           userId,
           productId,
+          // Catalog-2026-09-20: the purchased option, plus its label as an
+          // immutable historical copy (delivered_* contract — order history
+          // must never rewrite itself even if the variant is later edited
+          // or deleted; FK is ON DELETE SET NULL for that reason).
+          variantId: variant?.id ?? null,
+          variantLabel,
           inventoryId: inventoryItem.id,
           amount: String(finalPrice),
           walletBalanceBefore: String(currentBalance),
@@ -480,7 +600,9 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           balanceAfter: String(newBalance),
           referenceId: o.id,
           referenceType: "order",
-          description: `Purchase: ${product.name}`,
+          description: variantLabel
+            ? `Purchase: ${product.name} — ${variantLabel}`
+            : `Purchase: ${product.name}`,
         },
         tx as unknown as typeof db,
       );
@@ -532,6 +654,13 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // CheckoutFailureReason comment above for why not a new member).
         return { failure: "PRODUCT_STALE" as const };
       }
+      if (err.message === "VARIANT_STALE") {
+        // Catalog-2026-09-20 — the variant's price / isActive changed
+        // between computePricing and the tx. Same envelope as PRODUCT_STALE
+        // (retryable, re-price) with its own stable code so clients can
+        // refresh the variant list specifically.
+        return { failure: "VARIANT_STALE" as const };
+      }
       if (isIdempotencyKeyViolation(err)) {
         // F10 — the key claim collided with a concurrent same-key purchase
         // that committed first. This tx (charge + order + ledger) fully
@@ -568,6 +697,16 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         reason: "CONCURRENCY_ERROR",
         code: "PRODUCT_STALE",
         message: "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+      };
+    }
+    if (order.failure === "VARIANT_STALE") {
+      // Catalog-2026-09-20 — same retryable envelope for the variant.
+      return {
+        ok: false,
+        reason: "CONCURRENCY_ERROR",
+        code: "VARIANT_STALE",
+        message:
+          "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
       };
     }
     if (order.failure === "IDEMPOTENT_CLAIM_CONFLICT") {

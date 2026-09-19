@@ -1,6 +1,6 @@
-import { db, inventoryTable, ordersTable, productsTable } from "@workspace/db";
+import { db, inventoryTable, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
 import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
-import { and, count, eq, min, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -33,6 +33,82 @@ function cacheable(maxSec: number, swrSec: number) {
 
 export const catalogCache = cacheable(60, 300);
 export const flashSaleCache = cacheable(30, 60);
+
+// ── Variant projection (public DTO contract) ─────────────────────────────
+/**
+ * Public shape of a catalog variant — deliberately EXCLUDES every
+ * internal field (cost_price, sku, supplier identity). The customer
+ * sees: which option it is (labels), what it costs (LYD), whether the
+ * flash sale discounts it. `is_available` mirrors the PRODUCT's stock
+ * state: the fulfillment pool is per-product (variant-scoped units are
+ * claimed first, then product-level units), so a variant is sellable
+ * exactly when the product has stock.
+ */
+interface PublicVariantDto {
+  id: number;
+  plan_label: string | null;
+  duration_label: string | null;
+  /** Joined display label: "Individual — 3 Months" (single axis: "3 Months"). */
+  label: string;
+  price: number;
+  sale_price: number | null;
+  discount_percent: number | null;
+  is_available: boolean;
+}
+
+/**
+ * Load the active variants for a set of products in ONE query, grouped
+ * in JS by product_id. Ordered by (sort_order, price) so the selector
+ * renders cheapest-first deterministically.
+ */
+async function loadPublicVariants(
+  productIds: number[],
+  discountPercent: number,
+  productAvailable: (productId: number) => boolean,
+): Promise<Map<number, PublicVariantDto[]>> {
+  const map = new Map<number, PublicVariantDto[]>();
+  if (productIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      id: productVariantsTable.id,
+      productId: productVariantsTable.productId,
+      planLabel: productVariantsTable.planLabel,
+      durationLabel: productVariantsTable.durationLabel,
+      priceLyd: productVariantsTable.priceLyd,
+      sortOrder: productVariantsTable.sortOrder,
+      isActive: productVariantsTable.isActive,
+    })
+    .from(productVariantsTable)
+    .where(
+      and(
+        inArray(productVariantsTable.productId, productIds),
+        eq(productVariantsTable.isActive, true),
+      ),
+    )
+    .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd));
+
+  for (const v of rows) {
+    const price = parseFloat(String(v.priceLyd));
+    const available = productAvailable(v.productId);
+    const plan = v.planLabel?.trim() || null;
+    const duration = v.durationLabel?.trim() || null;
+    const label = [plan, duration].filter(Boolean).join(" — ") || "الخيار الافتراضي";
+    const list = map.get(v.productId) ?? [];
+    list.push({
+      id: v.id,
+      plan_label: plan,
+      duration_label: duration,
+      label,
+      price,
+      sale_price: discountPercent > 0 ? computeFlashSalePrice(price, discountPercent) : null,
+      discount_percent: discountPercent > 0 ? discountPercent : null,
+      is_available: available,
+    });
+    map.set(v.productId, list);
+  }
+  return map;
+}
 
 /**
  * Public-facing flash-sale shape used by /api/products,
@@ -128,25 +204,57 @@ router.get("/", catalogCache, async (req, res) => {
   const [rows, flashSale] = await Promise.all([query, getActiveFlashSale()]);
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
 
+  // Variants ride a single follow-up query for the whole page of
+  // products (see loadPublicVariants) — kept OUT of the main join so
+  // the limit(500) product ceiling stays exact and the hot list query
+  // shape is unchanged for variant-less catalogs.
+  const stockByProduct = new Map(rows.map((p) => [p.id, Number(p.stockCount ?? 0)]));
+  const variantsByProduct = await loadPublicVariants(
+    rows.map((p) => p.id),
+    discountPercent,
+    (pid) => (stockByProduct.get(pid) ?? 0) > 0,
+  );
+
   const result = rows.map((p) => {
     const basePrice = parseFloat(String(p.price));
-    const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
     const stockCount = Number(p.stockCount ?? 0);
+    const variants = variantsByProduct.get(p.id) ?? [];
+    // "تبدأ من" semantics: when variants exist, the card price is the
+    // cheapest active variant's LYD price — the import maintains
+    // products.price = MIN(variants.price_lyd) so both agree. The flash
+    // sale is applied exactly ONCE on that base (per-variant sale prices
+    // are already computed by loadPublicVariants and stay authoritative
+    // for the detail page selector).
+    const displayBase =
+      variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+    const displayPrice =
+      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : displayBase;
     return {
       id: p.id,
       slug: p.slug,
       name: p.name,
       description: p.description,
       image_url: p.imageUrl,
-      price: basePrice,
+      price: displayBase,
+      price_from: variants.length > 1,
       category: p.category,
       is_active: p.isActive,
       usage_terms: p.usageTerms,
       stock_count: stockCount,
       is_available: stockCount > 0,
-      sale_price: salePrice,
+      sale_price: discountPercent > 0 ? displayPrice : null,
       discount_percent: discountPercent > 0 ? discountPercent : null,
       order_count: Number(p.orderCount ?? 0),
+      variants: variants.map((v) => ({
+        id: v.id,
+        plan_label: v.plan_label,
+        duration_label: v.duration_label,
+        label: v.label,
+        price: v.price,
+        sale_price: v.sale_price,
+        discount_percent: v.discount_percent,
+        is_available: v.is_available,
+      })),
     };
   });
 
@@ -247,8 +355,14 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
 
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
   const stockCount = Number(stockResult?.count ?? 0);
+  const variants = (
+    await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)
+  ).get(product.id) ?? [];
+  const displayBase =
+    variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const salePrice =
+    discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
   return res.json({
     id: product.id,
@@ -257,8 +371,12 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
     description: product.description,
     description_long: product.descriptionLong ?? null,
     faq: product.faq ?? null,
+    seo_title: product.seoTitle ?? null,
+    features: product.features ?? null,
+    seo_description: product.seoDescription ?? null,
     image_url: product.imageUrl,
-    price: basePrice,
+    price: displayBase,
+    price_from: variants.length > 1,
     category: product.category,
     is_active: product.isActive,
     usage_terms: product.usageTerms,
@@ -267,6 +385,16 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
     sale_price: salePrice,
     discount_percent: discountPercent > 0 ? discountPercent : null,
     order_count: Number(orderResult?.count ?? 0),
+    variants: variants.map((v) => ({
+      id: v.id,
+      plan_label: v.plan_label,
+      duration_label: v.duration_label,
+      label: v.label,
+      price: v.price,
+      sale_price: v.sale_price,
+      discount_percent: v.discount_percent,
+      is_available: v.is_available,
+    })),
   });
 });
 
@@ -301,8 +429,14 @@ router.get("/:id", catalogCache, async (req, res) => {
 
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
   const stockCount = Number(stockResult?.count ?? 0);
+  const variants = (
+    await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)
+  ).get(product.id) ?? [];
+  const displayBase =
+    variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const salePrice =
+    discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
   return res.json({
     id: product.id,
@@ -311,8 +445,12 @@ router.get("/:id", catalogCache, async (req, res) => {
     description: product.description,
     description_long: product.descriptionLong ?? null,
     faq: product.faq ?? null,
+    seo_title: product.seoTitle ?? null,
+    features: product.features ?? null,
+    seo_description: product.seoDescription ?? null,
     image_url: product.imageUrl,
-    price: basePrice,
+    price: displayBase,
+    price_from: variants.length > 1,
     category: product.category,
     is_active: product.isActive,
     usage_terms: product.usageTerms,
@@ -321,6 +459,16 @@ router.get("/:id", catalogCache, async (req, res) => {
     sale_price: salePrice,
     discount_percent: discountPercent > 0 ? discountPercent : null,
     order_count: Number(orderResult?.count ?? 0),
+    variants: variants.map((v) => ({
+      id: v.id,
+      plan_label: v.plan_label,
+      duration_label: v.duration_label,
+      label: v.label,
+      price: v.price,
+      sale_price: v.sale_price,
+      discount_percent: v.discount_percent,
+      is_available: v.is_available,
+    })),
   });
 });
 

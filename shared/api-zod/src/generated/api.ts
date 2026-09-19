@@ -123,8 +123,17 @@ export const ListProductsResponseItem = zod.object({
       }),
     )
     .nullish(),
+  seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
+  seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
-  price: zod.number(),
+  price: zod
+    .number()
+    .describe(
+      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront \"تبدأ من\" number), otherwise the product-level LYD price.\n',
+    ),
+  price_from: zod
+    .boolean()
+    .describe('True when multiple active variants exist (card renders \"تبدأ من\").'),
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   usage_terms: zod.string().nullish(),
@@ -133,6 +142,36 @@ export const ListProductsResponseItem = zod.object({
   sale_price: zod.number().nullish(),
   discount_percent: zod.number().nullish(),
   order_count: zod.number(),
+  variants: zod
+    .array(
+      zod
+        .object({
+          id: zod.number(),
+          plan_label: zod
+            .string()
+            .nullish()
+            .describe(
+              'Tier axis label (e.g. \"فردي\", \"عائلي\", \"أساسي\") — null when the product only varies by duration.',
+            ),
+          duration_label: zod
+            .string()
+            .nullish()
+            .describe('Validity axis label (e.g. \"1 شهر\", \"سنة\", \"مدى الحياة\").'),
+          label: zod
+            .string()
+            .describe('Joined display label \"plan — duration\" (single axis: the axis itself).'),
+          price: zod.number().describe("Retail price in LYD."),
+          sale_price: zod.number().nullish(),
+          discount_percent: zod.number().nullish(),
+          is_available: zod.boolean(),
+        })
+        .describe(
+          "Public catalog variant DTO. Deliberately excludes every internal field (cost_price, sku, provider identity) — those exist in the database and admin APIs only.\n",
+        ),
+    )
+    .describe(
+      "Catalog sellable options (Plan × Duration). PUBLIC DTO by design — carries labels, LYD price and availability ONLY. Internal fields (cost_price, sku, supplier identity) are never serialized here.\n",
+    ),
 });
 export const ListProductsResponse = zod.array(ListProductsResponseItem);
 
@@ -157,8 +196,17 @@ export const GetProductResponse = zod.object({
       }),
     )
     .nullish(),
+  seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
+  seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
-  price: zod.number(),
+  price: zod
+    .number()
+    .describe(
+      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront \"تبدأ من\" number), otherwise the product-level LYD price.\n',
+    ),
+  price_from: zod
+    .boolean()
+    .describe('True when multiple active variants exist (card renders \"تبدأ من\").'),
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   usage_terms: zod.string().nullish(),
@@ -167,6 +215,36 @@ export const GetProductResponse = zod.object({
   sale_price: zod.number().nullish(),
   discount_percent: zod.number().nullish(),
   order_count: zod.number(),
+  variants: zod
+    .array(
+      zod
+        .object({
+          id: zod.number(),
+          plan_label: zod
+            .string()
+            .nullish()
+            .describe(
+              'Tier axis label (e.g. \"فردي\", \"عائلي\", \"أساسي\") — null when the product only varies by duration.',
+            ),
+          duration_label: zod
+            .string()
+            .nullish()
+            .describe('Validity axis label (e.g. \"1 شهر\", \"سنة\", \"مدى الحياة\").'),
+          label: zod
+            .string()
+            .describe('Joined display label \"plan — duration\" (single axis: the axis itself).'),
+          price: zod.number().describe("Retail price in LYD."),
+          sale_price: zod.number().nullish(),
+          discount_percent: zod.number().nullish(),
+          is_available: zod.boolean(),
+        })
+        .describe(
+          "Public catalog variant DTO. Deliberately excludes every internal field (cost_price, sku, provider identity) — those exist in the database and admin APIs only.\n",
+        ),
+    )
+    .describe(
+      "Catalog sellable options (Plan × Duration). PUBLIC DTO by design — carries labels, LYD price and availability ONLY. Internal fields (cost_price, sku, supplier identity) are never serialized here.\n",
+    ),
 });
 
 /**
@@ -230,8 +308,17 @@ export const GetProductBySlugResponse = zod.object({
       }),
     )
     .nullish(),
+  seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
+  seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
-  price: zod.number(),
+  price: zod
+    .number()
+    .describe(
+      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront \"تبدأ من\" number), otherwise the product-level LYD price.\n',
+    ),
+  price_from: zod
+    .boolean()
+    .describe('True when multiple active variants exist (card renders \"تبدأ من\").'),
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   usage_terms: zod.string().nullish(),
@@ -240,6 +327,36 @@ export const GetProductBySlugResponse = zod.object({
   sale_price: zod.number().nullish(),
   discount_percent: zod.number().nullish(),
   order_count: zod.number(),
+  variants: zod
+    .array(
+      zod
+        .object({
+          id: zod.number(),
+          plan_label: zod
+            .string()
+            .nullish()
+            .describe(
+              'Tier axis label (e.g. \"فردي\", \"عائلي\", \"أساسي\") — null when the product only varies by duration.',
+            ),
+          duration_label: zod
+            .string()
+            .nullish()
+            .describe('Validity axis label (e.g. \"1 شهر\", \"سنة\", \"مدى الحياة\").'),
+          label: zod
+            .string()
+            .describe('Joined display label \"plan — duration\" (single axis: the axis itself).'),
+          price: zod.number().describe("Retail price in LYD."),
+          sale_price: zod.number().nullish(),
+          discount_percent: zod.number().nullish(),
+          is_available: zod.boolean(),
+        })
+        .describe(
+          "Public catalog variant DTO. Deliberately excludes every internal field (cost_price, sku, provider identity) — those exist in the database and admin APIs only.\n",
+        ),
+    )
+    .describe(
+      "Catalog sellable options (Plan × Duration). PUBLIC DTO by design — carries labels, LYD price and availability ONLY. Internal fields (cost_price, sku, supplier identity) are never serialized here.\n",
+    ),
 });
 
 /**
@@ -264,6 +381,14 @@ export const ListOrdersResponseItem = zod
     id: zod.number(),
     order_code: zod.string(),
     product_id: zod.number(),
+    variant_id: zod
+      .number()
+      .nullish()
+      .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
+    variant_label: zod
+      .string()
+      .nullish()
+      .describe("Immutable historical copy of the purchased option's display label."),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -313,6 +438,12 @@ export const CreateOrderHeader = zod.object({
 
 export const CreateOrderBody = zod.object({
   product_id: zod.number(),
+  variant_id: zod
+    .number()
+    .nullish()
+    .describe(
+      "The selected catalog variant (product_variants.id). Optional: when omitted and the product has active variants, the cheapest active one is charged (matching the storefront display price).\n",
+    ),
   coupon_code: zod.string().nullish(),
 });
 
@@ -321,6 +452,14 @@ export const CreateOrderResponse = zod
     id: zod.number(),
     order_code: zod.string(),
     product_id: zod.number(),
+    variant_id: zod
+      .number()
+      .nullish()
+      .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
+    variant_label: zod
+      .string()
+      .nullish()
+      .describe("Immutable historical copy of the purchased option's display label."),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -352,6 +491,14 @@ export const GetOrderResponse = zod
     id: zod.number(),
     order_code: zod.string(),
     product_id: zod.number(),
+    variant_id: zod
+      .number()
+      .nullish()
+      .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
+    variant_label: zod
+      .string()
+      .nullish()
+      .describe("Immutable historical copy of the purchased option's display label."),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -385,6 +532,14 @@ export const GetWalletResponse = zod.object({
         id: zod.number(),
         order_code: zod.string(),
         product_id: zod.number(),
+        variant_id: zod
+          .number()
+          .nullish()
+          .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
+        variant_label: zod
+          .string()
+          .nullish()
+          .describe("Immutable historical copy of the purchased option's display label."),
         product_name: zod.string(),
         product_image_url: zod.string().nullish(),
         amount: zod.number(),
@@ -470,10 +625,15 @@ export const GetCartResponse = zod.object({
       .object({
         id: zod.number(),
         product_id: zod.number(),
+        variant_id: zod
+          .number()
+          .nullish()
+          .describe("Selected catalog variant for this line (null = legacy\/variant-less)."),
+        variant_label: zod.string().nullish(),
         product_name: zod.string(),
         product_slug: zod.string().nullish(),
         product_image_url: zod.string().nullish(),
-        price: zod.number().describe("Base price."),
+        price: zod.number().describe("Base price (variant price when a variant is selected)."),
         sale_price: zod
           .number()
           .nullish()
@@ -511,6 +671,7 @@ export const addCartItemBodyQuantityMax = 99;
 export const AddCartItemBody = zod
   .object({
     product_id: zod.number(),
+    variant_id: zod.number().nullish(),
     quantity: zod
       .number()
       .min(1)
@@ -519,7 +680,7 @@ export const AddCartItemBody = zod
       .describe("Defaults to 1 when omitted (MAX_QUANTITY cap is 99)."),
   })
   .describe(
-    "NOTE: the field is snake_case `product_id` — the frontend local\ncart store uses camelCase productId and does not call this\nendpoint today.\n",
+    "NOTE: the field is snake_case `product_id` — the frontend local\ncart store uses camelCase productId and does not call this\nendpoint today. variant_id is optional: when the product has\nvariants, the line's variant is set (replace semantics if the\nproduct is already in the cart).\n",
   );
 
 /**
@@ -544,10 +705,15 @@ export const UpdateCartItemResponse = zod
   .object({
     id: zod.number(),
     product_id: zod.number(),
+    variant_id: zod
+      .number()
+      .nullish()
+      .describe("Selected catalog variant for this line (null = legacy\/variant-less)."),
+    variant_label: zod.string().nullish(),
     product_name: zod.string(),
     product_slug: zod.string().nullish(),
     product_image_url: zod.string().nullish(),
-    price: zod.number().describe("Base price."),
+    price: zod.number().describe("Base price (variant price when a variant is selected)."),
     sale_price: zod
       .number()
       .nullish()
@@ -1349,6 +1515,33 @@ export const ListAdminProductsResponseItem = zod.object({
   order_count: zod.number(),
   usage_terms: zod.string().nullish(),
   created_at: zod.string(),
+  variants: zod
+    .array(
+      zod
+        .object({
+          id: zod.number(),
+          product_id: zod.number(),
+          plan_label: zod.string().nullish(),
+          duration_label: zod.string().nullish(),
+          duration_days: zod.number().nullish(),
+          cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
+          price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
+          computed_price_lyd: zod
+            .number()
+            .optional()
+            .describe(
+              "What the pricing engine WOULD price now (current config) — shows drift without recompute.",
+            ),
+          sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
+          is_active: zod.boolean(),
+          sort_order: zod.number(),
+          created_at: zod.string().optional(),
+        })
+        .describe(
+          "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-\/admin) path.\n",
+        ),
+    )
+    .describe("ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs."),
 });
 export const ListAdminProductsResponse = zod.array(ListAdminProductsResponseItem);
 
@@ -1424,6 +1617,33 @@ export const UpdateProductResponse = zod.object({
   order_count: zod.number(),
   usage_terms: zod.string().nullish(),
   created_at: zod.string(),
+  variants: zod
+    .array(
+      zod
+        .object({
+          id: zod.number(),
+          product_id: zod.number(),
+          plan_label: zod.string().nullish(),
+          duration_label: zod.string().nullish(),
+          duration_days: zod.number().nullish(),
+          cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
+          price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
+          computed_price_lyd: zod
+            .number()
+            .optional()
+            .describe(
+              "What the pricing engine WOULD price now (current config) — shows drift without recompute.",
+            ),
+          sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
+          is_active: zod.boolean(),
+          sort_order: zod.number(),
+          created_at: zod.string().optional(),
+        })
+        .describe(
+          "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-\/admin) path.\n",
+        ),
+    )
+    .describe("ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs."),
 });
 
 /**
@@ -1436,6 +1656,222 @@ export const DeleteProductParams = zod.object({
 export const DeleteProductResponse = zod.object({
   success: zod.boolean(),
   message: zod.string().optional(),
+});
+
+/**
+ * @summary List a product's variants incl. internal cost (requireAdmin + inventory scope)
+ */
+export const ListAdminProductVariantsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListAdminProductVariantsResponseItem = zod
+  .object({
+    id: zod.number(),
+    product_id: zod.number(),
+    plan_label: zod.string().nullish(),
+    duration_label: zod.string().nullish(),
+    duration_days: zod.number().nullish(),
+    cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
+    price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
+    computed_price_lyd: zod
+      .number()
+      .optional()
+      .describe(
+        "What the pricing engine WOULD price now (current config) — shows drift without recompute.",
+      ),
+    sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
+    is_active: zod.boolean(),
+    sort_order: zod.number(),
+    created_at: zod.string().optional(),
+  })
+  .describe(
+    "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-\/admin) path.\n",
+  );
+export const ListAdminProductVariantsResponse = zod.array(ListAdminProductVariantsResponseItem);
+
+/**
+ * @summary Create a variant (requireAdmin + inventory scope; price via pricing engine)
+ */
+export const CreateProductVariantParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const createProductVariantBodyPlanLabelMax = 120;
+
+export const createProductVariantBodyDurationLabelMax = 120;
+
+export const createProductVariantBodyCostPriceMin = 0.01;
+export const createProductVariantBodyCostPriceMax = 100000;
+
+export const createProductVariantBodyPriceLydMin = 0.01;
+export const createProductVariantBodyPriceLydMax = 1000000;
+
+export const createProductVariantBodySkuMax = 160;
+
+export const createProductVariantBodySortOrderMin = 0;
+export const createProductVariantBodySortOrderMax = 10000;
+
+export const CreateProductVariantBody = zod
+  .object({
+    plan_label: zod.string().max(createProductVariantBodyPlanLabelMax).nullish(),
+    duration_label: zod.string().max(createProductVariantBodyDurationLabelMax).nullish(),
+    duration_days: zod.number().nullish(),
+    cost_price: zod
+      .number()
+      .min(createProductVariantBodyCostPriceMin)
+      .max(createProductVariantBodyCostPriceMax)
+      .describe("Supplier USD cost — retail price computed from it."),
+    price_lyd: zod
+      .number()
+      .min(createProductVariantBodyPriceLydMin)
+      .max(createProductVariantBodyPriceLydMax)
+      .nullish()
+      .describe("Optional explicit retail override (LYD)."),
+    sku: zod.string().max(createProductVariantBodySkuMax).nullish(),
+    sort_order: zod
+      .number()
+      .min(createProductVariantBodySortOrderMin)
+      .max(createProductVariantBodySortOrderMax)
+      .optional(),
+    is_active: zod.boolean().optional(),
+  })
+  .describe(
+    "At least one of plan_label \/ duration_label must be non-empty.\nProvide EITHER cost_price (price computed via the pricing engine)\nOR price_lyd directly (cost stored as 0 — discouraged).\n",
+  );
+
+/**
+ * @summary Update a variant (requireAdmin + inventory scope)
+ */
+export const UpdateProductVariantParams = zod.object({
+  id: zod.coerce.number(),
+  variantId: zod.coerce.number(),
+});
+
+export const updateProductVariantBodyPlanLabelMax = 120;
+
+export const updateProductVariantBodyDurationLabelMax = 120;
+
+export const updateProductVariantBodyCostPriceMin = 0.01;
+export const updateProductVariantBodyCostPriceMax = 100000;
+
+export const updateProductVariantBodyPriceLydMin = 0.01;
+export const updateProductVariantBodyPriceLydMax = 1000000;
+
+export const updateProductVariantBodySkuMax = 160;
+
+export const updateProductVariantBodySortOrderMin = 0;
+export const updateProductVariantBodySortOrderMax = 10000;
+
+export const UpdateProductVariantBody = zod.object({
+  plan_label: zod.string().max(updateProductVariantBodyPlanLabelMax).nullish(),
+  duration_label: zod.string().max(updateProductVariantBodyDurationLabelMax).nullish(),
+  duration_days: zod.number().nullish(),
+  cost_price: zod
+    .number()
+    .min(updateProductVariantBodyCostPriceMin)
+    .max(updateProductVariantBodyCostPriceMax)
+    .optional()
+    .describe("New USD cost — retail price recomputed from it via the engine."),
+  price_lyd: zod
+    .number()
+    .min(updateProductVariantBodyPriceLydMin)
+    .max(updateProductVariantBodyPriceLydMax)
+    .nullish()
+    .describe("Explicit retail override (LYD)."),
+  sku: zod.string().max(updateProductVariantBodySkuMax).nullish(),
+  sort_order: zod
+    .number()
+    .min(updateProductVariantBodySortOrderMin)
+    .max(updateProductVariantBodySortOrderMax)
+    .optional(),
+  is_active: zod.boolean().optional(),
+});
+
+export const UpdateProductVariantResponse = zod
+  .object({
+    id: zod.number(),
+    product_id: zod.number(),
+    plan_label: zod.string().nullish(),
+    duration_label: zod.string().nullish(),
+    duration_days: zod.number().nullish(),
+    cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
+    price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
+    computed_price_lyd: zod
+      .number()
+      .optional()
+      .describe(
+        "What the pricing engine WOULD price now (current config) — shows drift without recompute.",
+      ),
+    sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
+    is_active: zod.boolean(),
+    sort_order: zod.number(),
+    created_at: zod.string().optional(),
+  })
+  .describe(
+    "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-\/admin) path.\n",
+  );
+
+/**
+ * @summary Delete a variant (requireAdmin + inventory scope; blocked while orders reference it)
+ */
+export const DeleteProductVariantParams = zod.object({
+  id: zod.coerce.number(),
+  variantId: zod.coerce.number(),
+});
+
+export const DeleteProductVariantResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
+ */
+export const GetAdminPricingConfigResponse = zod.object({
+  usd_to_lyd: zod.number().describe("Exchange rate — LYD per 1 USD (default 10)."),
+  markup_percent: zod.number().describe("Gross margin percent on cost (default 100 = cost × 2)."),
+  updated_at: zod.string().optional(),
+});
+
+/**
+ * @summary Override the pricing rule (requireAdmin + inventory scope)
+ */
+export const updateAdminPricingConfigBodyUsdToLydMin = 0.1;
+export const updateAdminPricingConfigBodyUsdToLydMax = 1000;
+
+export const updateAdminPricingConfigBodyMarkupPercentMin = 0;
+export const updateAdminPricingConfigBodyMarkupPercentMax = 10000;
+
+export const UpdateAdminPricingConfigBody = zod.object({
+  usd_to_lyd: zod
+    .number()
+    .min(updateAdminPricingConfigBodyUsdToLydMin)
+    .max(updateAdminPricingConfigBodyUsdToLydMax)
+    .optional(),
+  markup_percent: zod
+    .number()
+    .min(updateAdminPricingConfigBodyMarkupPercentMin)
+    .max(updateAdminPricingConfigBodyMarkupPercentMax)
+    .optional(),
+});
+
+export const UpdateAdminPricingConfigResponse = zod.object({
+  usd_to_lyd: zod.number().describe("Exchange rate — LYD per 1 USD (default 10)."),
+  markup_percent: zod.number().describe("Gross margin percent on cost (default 100 = cost × 2)."),
+  updated_at: zod.string().optional(),
+});
+
+/**
+ * @summary Recompute every variant's price_lyd from cost via the current rule (requireAdmin + inventory scope)
+ */
+export const RecomputeCatalogPricesResponse = zod.object({
+  variants_updated: zod.number().describe("Number of variant rows whose price_lyd changed."),
+  products_updated: zod
+    .number()
+    .describe("Number of product display prices refreshed (MIN of variants)."),
+  usd_to_lyd: zod.number(),
+  markup_percent: zod.number(),
 });
 
 /**

@@ -40,6 +40,8 @@ vi.mock("@/hooks/use-toast", () => ({
 
 const CART_ITEM: LocalCartItem = {
   productId: 5,
+  variantId: 101,
+  variantLabel: "شهر واحد",
   slug: "netflix-1m",
   name: "Netflix شهر",
   imageUrl: null,
@@ -50,11 +52,11 @@ const CART_ITEM: LocalCartItem = {
 };
 
 function seedCart(quantity: number) {
-  localStorage.setItem("subnation_cart_v1", JSON.stringify([{ ...CART_ITEM, quantity }]));
+  localStorage.setItem("subnation_cart_v2", JSON.stringify([{ ...CART_ITEM, quantity }]));
 }
 
 function readCart(): LocalCartItem[] {
-  const raw = localStorage.getItem("subnation_cart_v1");
+  const raw = localStorage.getItem("subnation_cart_v2");
   return raw ? (JSON.parse(raw) as LocalCartItem[]) : [];
 }
 

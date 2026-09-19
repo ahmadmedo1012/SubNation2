@@ -20,6 +20,7 @@ export * from "./login_attempts";
 export * from "./notifications";
 export * from "./orders";
 export * from "./products";
+export * from "./product-variants";
 export * from "./referral_events";
 export * from "./risk";
 export * from "./scheduler-leader-lease";

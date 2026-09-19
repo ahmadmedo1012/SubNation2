@@ -62,6 +62,23 @@ export const productsTable = pgTable(
      *   - Migration cost: zero — additive ALTER TABLE ADD COLUMN.
      */
     faq: jsonb("faq").$type<ProductFaqEntry[]>(),
+    /**
+     * Operator override for the product page's <title>. Nullable —
+     * seo-builders falls back to the name-based default when absent,
+     * so existing rows are unaffected (additive column, migration-safe).
+     */
+    seoTitle: varchar("seo_title", { length: 200 }),
+    /**
+     * Operator override for the meta description. Nullable with the
+     * same fallback contract as seoTitle.
+     */
+    seoDescription: varchar("seo_description", { length: 320 }),
+    /**
+     * Marketing feature bullets (Arabic) — rendered as the product page's
+     * checklist. JSONB array of strings, editorial order. Nullable —
+     * products without curated features simply omit the checklist.
+     */
+    features: jsonb("features").$type<string[]>(),
     imageUrl: varchar("image_url", { length: 1000 }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
     /**

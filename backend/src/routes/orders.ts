@@ -53,6 +53,11 @@ function formatOrder(
     id: order.id,
     order_code: order.orderCode,
     product_id: order.productId,
+    variant_id: order.variantId ?? null,
+    // Catalog-2026-09-20: immutable copy of the purchased option's label
+    // ("فردي — 3 أشهر") — safe to expose verbatim; it was written FOR the
+    // customer at purchase time and never rewrites itself.
+    variant_label: order.variantLabel ?? null,
     product_name: productName,
     product_image_url: productImageUrl ?? null,
     amount: toNumber(order.amount),
@@ -116,7 +121,7 @@ router.post(
     const parse = CreateOrderBody.safeParse(req.body);
     if (!parse.success)
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
-    const { product_id } = parse.data;
+    const { product_id, variant_id } = parse.data;
     const couponCode: string | undefined =
       typeof req.body.coupon_code === "string"
         ? req.body.coupon_code.trim().toUpperCase()
@@ -125,6 +130,7 @@ router.post(
     const result = await CheckoutService.purchase({
       userId,
       productId: product_id,
+      variantId: variant_id ?? null,
       couponCode,
       // F10 (round-94 C4→C5 wiring): pass the raw Idempotency-Key header
       // through to the service — the durable in-tx guard (lib/idempotency.ts)
@@ -140,6 +146,18 @@ router.post(
       switch (result.reason) {
         case "PRODUCT_NOT_FOUND":
           return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+        case "VARIANT_NOT_FOUND":
+          // Catalog-2026-09-20: the named variant is missing/inactive or
+          // belongs to another product — the client re-reads the variant
+          // list and retries with a valid option.
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                "الباقة المختارة غير متاحة حالياً. اختر باقة أخرى.",
+                ErrorCode.INVALID_DATA,
+              ),
+            );
         case "INVALID_COUPON":
           return res
             .status(400)

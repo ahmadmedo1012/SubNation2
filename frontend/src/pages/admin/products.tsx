@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
+// catalog-recon (2026-09-20): per-product variant manager dialog (plan /
+// duration / cost rows + engine pricing preview).
+import { ProductVariantsDialog } from "@/components/admin/ProductVariantsDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 // 93-C7 / C-UX2 (A12 B9): product inactive/out-of-stock pills migrate
@@ -16,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { categoryLabel, formatCurrency } from "@/lib/utils";
+import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminProductsQueryKey,
@@ -34,6 +37,7 @@ import {
   Edit2,
   Eye,
   EyeOff,
+  Layers,
   Package,
   Plus,
   RefreshCw,
@@ -183,6 +187,11 @@ export default function AdminProductsPage() {
     id: number;
     name: string;
     inventoryCount: number;
+  } | null>(null);
+  // catalog-recon: which product's variants dialog is open («الباقات»).
+  const [variantsDialogProduct, setVariantsDialogProduct] = useState<{
+    id: number;
+    name: string;
   } | null>(null);
   // 94-C2 (A2 P2-3): the GlobalSearch palette deep-links here with
   // ?search= — prefill the box so the operator's query survives the
@@ -990,11 +999,40 @@ export default function AdminProductsPage() {
                     </div>
 
                     {/* Stats bar — inline stock edit */}
-                    <div className="flex items-center justify-between px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
                         <span className="font-black text-primary tabular-nums">
                           {formatCurrency(product.price)}
                         </span>
+                        {/* catalog-recon: variant-count badge — the display
+                            price is MIN(active variants); zero variants =
+                            unbuyable product (actionable catalog signal). */}
+                        {(() => {
+                          const count = product.variants?.length ?? 0;
+                          if (count === 0)
+                            return (
+                              <span
+                                title="لا باقات — اضغط «الباقات» لإضافة باقة"
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
+                              >
+                                بلا باقات
+                              </span>
+                            );
+                          return (
+                            <span
+                              title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
+                            >
+                              {formatCount(count, {
+                                one: "باقة",
+                                two: "باقتان",
+                                few: "باقات",
+                                many: "باقة",
+                                other: "باقة",
+                              })}
+                            </span>
+                          );
+                        })()}
                         {(() => {
                           const cp = (product as { cost_price?: number | null }).cost_price;
                           if (cp == null) return null;
@@ -1052,11 +1090,11 @@ export default function AdminProductsPage() {
                         «رفع مخزون» button, and now opens the shared
                         confirm dialog instead of swapping into the inline
                         Archive/X icon pair. */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1 h-8 text-xs active:scale-[0.97] transition-transform"
+                        className="flex-1 min-w-[88px] h-8 text-xs active:scale-[0.97] transition-transform"
                         onClick={() => startEdit(product)}
                       >
                         <Edit2 className="w-3 h-3 ml-1" /> تعديل
@@ -1064,7 +1102,7 @@ export default function AdminProductsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1 h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
+                        className="flex-1 min-w-[88px] h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
                         onClick={() =>
                           setInventoryDialogProduct({
                             id: product.id,
@@ -1074,6 +1112,19 @@ export default function AdminProductsPage() {
                         }
                       >
                         <Upload className="w-3 h-3 ml-1" /> رفع مخزون
+                      </Button>
+                      {/* catalog-recon: variant manager entry (plan/duration/
+                          cost + engine pricing). */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`إدارة باقات ${product.name}`}
+                        className="flex-1 min-w-[88px] h-8 text-xs text-primary active:scale-[0.97] transition-transform"
+                        onClick={() =>
+                          setVariantsDialogProduct({ id: product.id, name: product.name })
+                        }
+                      >
+                        <Layers className="w-3 h-3 ml-1" /> الباقات
                       </Button>
                       <Button
                         size="sm"
@@ -1110,6 +1161,18 @@ export default function AdminProductsPage() {
             setInventoryDialogProduct(null);
             invalidate();
           }}
+        />
+      )}
+
+      {/* Variant manager dialog (catalog-recon) — opened per-product from
+          «الباقات»; every mutation refetches this list (display price +
+          variant badges) via onChanged. */}
+      {variantsDialogProduct && (
+        <ProductVariantsDialog
+          productId={variantsDialogProduct.id}
+          productName={variantsDialogProduct.name}
+          onClose={() => setVariantsDialogProduct(null)}
+          onChanged={invalidate}
         />
       )}
       <ConfirmDialog />

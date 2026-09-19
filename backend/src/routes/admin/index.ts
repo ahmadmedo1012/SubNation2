@@ -10,6 +10,8 @@ import { adminFlashSalesRouter } from "./flash-sales";
 import { adminObservabilityRouter } from "./observability";
 import { adminOrdersRouter } from "./orders";
 import { adminPricingCalculatorRouter } from "./pricing-calculator";
+import { adminPricingConfigRouter } from "./pricing-config";
+import { adminProductVariantsRouter } from "./product-variants";
 import { adminProductsRouter } from "./products";
 import { adminReferralsRouter } from "./referrals";
 import { adminRiskRouter } from "./risk";
@@ -66,11 +68,13 @@ protectedRouter.use(
   "/",
   requirePermission("inventory"),
   adminProductsRouter, // /products/*
+  adminProductVariantsRouter, // /products/:id/variants/* (catalog 2026-09-20)
 );
 protectedRouter.use(
   "/",
   requirePermission("inventory"),
   adminPricingCalculatorRouter, // /pricing/calculate
+  adminPricingConfigRouter, // /pricing/config, /pricing/recompute (catalog 2026-09-20)
 );
 protectedRouter.use(
   "/",

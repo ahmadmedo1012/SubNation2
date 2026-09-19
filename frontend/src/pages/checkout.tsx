@@ -351,7 +351,10 @@ export default function CheckoutPage() {
     // 3 more units = 4 charges for 3 products. The cart must mirror
     // exactly what was charged: fully-ordered lines are removed,
     // partially-ordered lines keep only the unordered remainder.
-    const orderedUnitsByProduct = new Map<number, number>();
+    const orderedUnitsByLine = new Map<
+      string,
+      { productId: number; variantId: number | null; units: number }
+    >();
     const couponCode = coupon.trim().toUpperCase();
 
     try {
@@ -406,6 +409,11 @@ export default function CheckoutPage() {
         // per order — a qty>1 cart line becomes N unit orders.
         for (let unit = 0; unit < unitsWanted; unit++) {
           const body: CreateOrderBody = { product_id: it.productId };
+          // Catalog-2026-09-20: the line's SELECTED variant rides every unit
+          // order — the checkout charges exactly the option the shopper
+          // chose on the product page (server falls back to the cheapest
+          // variant when absent, but we always send it explicitly).
+          if (it.variantId != null) body.variant_id = it.variantId;
           if (couponCode) body.coupon_code = couponCode;
           // 96-F4 (R96 A4 §2.2): one STABLE Idempotency-Key per unit order —
           // minted lazily on the unit's first attempt, persisted in
@@ -456,7 +464,12 @@ export default function CheckoutPage() {
             break;
           }
         }
-        if (unitsOrdered > 0) orderedUnitsByProduct.set(it.productId, unitsOrdered);
+        if (unitsOrdered > 0)
+          orderedUnitsByLine.set(`${it.productId}:${it.variantId ?? 0}`, {
+            productId: it.productId,
+            variantId: it.variantId ?? null,
+            units: unitsOrdered,
+          });
         if (failureMessage) break;
       }
 
@@ -478,18 +491,23 @@ export default function CheckoutPage() {
       }
 
       // Sync the cart to exactly what was charged — remove full lines,
-      // shrink partial lines to the un-bought remainder.
-      orderedUnitsByProduct.forEach((unitsOrdered, productId) => {
-        const line = items.find((i) => i.productId === productId);
+      // shrink partial lines to the un-bought remainder — keyed per LINE
+      // (productId + variantId): a cart may hold two variants of the same
+      // product as separate lines, and the old productId-only lookup
+      // shrunk only the first one.
+      orderedUnitsByLine.forEach(({ productId, variantId, units }) => {
+        const line = items.find(
+          (i) => i.productId === productId && (i.variantId ?? null) === variantId,
+        );
         if (!line) return;
-        if (unitsOrdered >= line.quantity) removeItem(productId);
-        else updateQuantity(productId, line.quantity - unitsOrdered);
+        if (units >= line.quantity) removeItem(productId, variantId);
+        else updateQuantity(productId, line.quantity - units, variantId);
         // 96-F4 (R96 A4 §2.2): the charged units are now ACCOUNTED in the
         // cart (line removed / shrunk to the remainder) — their retry keys
         // are resolved and can be cleared. This is the ONLY success-side
         // deletion point: the network-failure path above skips the sync
         // precisely so a retry replays those units instead of re-charging.
-        for (let unit = 0; unit < unitsOrdered; unit++) {
+        for (let unit = 0; unit < units; unit++) {
           clearCheckoutUnitKey(productId, unit);
         }
       });
@@ -740,7 +758,7 @@ export default function CheckoutPage() {
                   {items.map((it) => {
                     const price = it.salePriceLYD ?? it.priceLYD;
                     return (
-                      <li key={it.productId} className="flex items-center gap-2.5 text-sm">
+                      <li key={`${it.productId}:${it.variantId ?? 0}`} className="flex items-center gap-2.5 text-sm">
                         <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
                           {it.imageUrl ? (
                             <img
@@ -757,6 +775,11 @@ export default function CheckoutPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-bold truncate">{it.name}</div>
+                          {it.variantLabel && (
+                            <div className="text-[10px] font-semibold text-muted-foreground/85 truncate">
+                              {it.variantLabel}
+                            </div>
+                          )}
                           <div className="text-[11px] text-muted-foreground">
                             {it.quantity} × {formatCurrency(price)}
                           </div>

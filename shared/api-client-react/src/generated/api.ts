@@ -60,6 +60,7 @@ import type {
   AdminLoginBody,
   AdminOrder,
   AdminProduct,
+  AdminProductVariant,
   AdminStats,
   AdminTopup,
   AdminTopupActionBody,
@@ -88,7 +89,9 @@ import type {
   CreateProductBody,
   CreateSupportTicketBody,
   CreateTopupBody,
+  CreateVariantBody,
   CreditReferral200,
+  DeleteVariantResponse,
   ErrorResponse,
   FlashSaleResponse,
   GetCart200,
@@ -106,8 +109,10 @@ import type {
   NotificationItem,
   Order,
   PatchCouponBody,
+  PricingConfig,
   Product,
   ProductRecommendation,
+  RecomputeResult,
   ReferralEventItem,
   ReplySupportTicketBody,
   SuccessResponse,
@@ -122,7 +127,9 @@ import type {
   UpdateAdminUserBody,
   UpdateCartItemBody,
   UpdateFlashSaleBody,
+  UpdatePricingConfigBody,
   UpdateProductBody,
+  UpdateVariantBody,
   User,
   ValidateCouponBody,
   ValidatedCoupon,
@@ -3916,6 +3923,555 @@ export const useDeleteProduct = <TError = ErrorType<ErrorResponse>, TContext = u
   TContext
 > => {
   return useMutation(getDeleteProductMutationOptions(options));
+};
+
+/**
+ * @summary List a product's variants incl. internal cost (requireAdmin + inventory scope)
+ */
+export const getListAdminProductVariantsUrl = (id: number) => {
+  return `/api/admin/products/${id}/variants`;
+};
+
+export const listAdminProductVariants = async (
+  id: number,
+  options?: RequestInit,
+): Promise<AdminProductVariant[]> => {
+  return customFetch<AdminProductVariant[]>(getListAdminProductVariantsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminProductVariantsQueryKey = (id: number) => {
+  return [`/api/admin/products/${id}/variants`] as const;
+};
+
+export const getListAdminProductVariantsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminProductVariants>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listAdminProductVariants>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminProductVariantsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminProductVariants>>> = ({
+    signal,
+  }) => listAdminProductVariants(id, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminProductVariants>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAdminProductVariantsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminProductVariants>>
+>;
+export type ListAdminProductVariantsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List a product's variants incl. internal cost (requireAdmin + inventory scope)
+ */
+
+export function useListAdminProductVariants<
+  TData = Awaited<ReturnType<typeof listAdminProductVariants>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof listAdminProductVariants>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAdminProductVariantsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a variant (requireAdmin + inventory scope; price via pricing engine)
+ */
+export const getCreateProductVariantUrl = (id: number) => {
+  return `/api/admin/products/${id}/variants`;
+};
+
+export const createProductVariant = async (
+  id: number,
+  createVariantBody: CreateVariantBody,
+  options?: RequestInit,
+): Promise<AdminProductVariant> => {
+  return customFetch<AdminProductVariant>(getCreateProductVariantUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createVariantBody),
+  });
+};
+
+export const getCreateProductVariantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProductVariant>>,
+    TError,
+    { id: number; data: BodyType<CreateVariantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createProductVariant>>,
+  TError,
+  { id: number; data: BodyType<CreateVariantBody> },
+  TContext
+> => {
+  const mutationKey = ["createProductVariant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createProductVariant>>,
+    { id: number; data: BodyType<CreateVariantBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createProductVariant(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateProductVariantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createProductVariant>>
+>;
+export type CreateProductVariantMutationBody = BodyType<CreateVariantBody>;
+export type CreateProductVariantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a variant (requireAdmin + inventory scope; price via pricing engine)
+ */
+export const useCreateProductVariant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProductVariant>>,
+    TError,
+    { id: number; data: BodyType<CreateVariantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createProductVariant>>,
+  TError,
+  { id: number; data: BodyType<CreateVariantBody> },
+  TContext
+> => {
+  return useMutation(getCreateProductVariantMutationOptions(options));
+};
+
+/**
+ * @summary Update a variant (requireAdmin + inventory scope)
+ */
+export const getUpdateProductVariantUrl = (id: number, variantId: number) => {
+  return `/api/admin/products/${id}/variants/${variantId}`;
+};
+
+export const updateProductVariant = async (
+  id: number,
+  variantId: number,
+  updateVariantBody: UpdateVariantBody,
+  options?: RequestInit,
+): Promise<AdminProductVariant> => {
+  return customFetch<AdminProductVariant>(getUpdateProductVariantUrl(id, variantId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateVariantBody),
+  });
+};
+
+export const getUpdateProductVariantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductVariant>>,
+    TError,
+    { id: number; variantId: number; data: BodyType<UpdateVariantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProductVariant>>,
+  TError,
+  { id: number; variantId: number; data: BodyType<UpdateVariantBody> },
+  TContext
+> => {
+  const mutationKey = ["updateProductVariant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProductVariant>>,
+    { id: number; variantId: number; data: BodyType<UpdateVariantBody> }
+  > = (props) => {
+    const { id, variantId, data } = props ?? {};
+
+    return updateProductVariant(id, variantId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProductVariantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProductVariant>>
+>;
+export type UpdateProductVariantMutationBody = BodyType<UpdateVariantBody>;
+export type UpdateProductVariantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update a variant (requireAdmin + inventory scope)
+ */
+export const useUpdateProductVariant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProductVariant>>,
+    TError,
+    { id: number; variantId: number; data: BodyType<UpdateVariantBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProductVariant>>,
+  TError,
+  { id: number; variantId: number; data: BodyType<UpdateVariantBody> },
+  TContext
+> => {
+  return useMutation(getUpdateProductVariantMutationOptions(options));
+};
+
+/**
+ * @summary Delete a variant (requireAdmin + inventory scope; blocked while orders reference it)
+ */
+export const getDeleteProductVariantUrl = (id: number, variantId: number) => {
+  return `/api/admin/products/${id}/variants/${variantId}`;
+};
+
+export const deleteProductVariant = async (
+  id: number,
+  variantId: number,
+  options?: RequestInit,
+): Promise<DeleteVariantResponse> => {
+  return customFetch<DeleteVariantResponse>(getDeleteProductVariantUrl(id, variantId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProductVariantMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProductVariant>>,
+    TError,
+    { id: number; variantId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProductVariant>>,
+  TError,
+  { id: number; variantId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteProductVariant"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProductVariant>>,
+    { id: number; variantId: number }
+  > = (props) => {
+    const { id, variantId } = props ?? {};
+
+    return deleteProductVariant(id, variantId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProductVariantMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProductVariant>>
+>;
+
+export type DeleteProductVariantMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a variant (requireAdmin + inventory scope; blocked while orders reference it)
+ */
+export const useDeleteProductVariant = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProductVariant>>,
+    TError,
+    { id: number; variantId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProductVariant>>,
+  TError,
+  { id: number; variantId: number },
+  TContext
+> => {
+  return useMutation(getDeleteProductVariantMutationOptions(options));
+};
+
+/**
+ * @summary Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
+ */
+export const getGetAdminPricingConfigUrl = () => {
+  return `/api/admin/pricing/config`;
+};
+
+export const getAdminPricingConfig = async (options?: RequestInit): Promise<PricingConfig> => {
+  return customFetch<PricingConfig>(getGetAdminPricingConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminPricingConfigQueryKey = () => {
+  return [`/api/admin/pricing/config`] as const;
+};
+
+export const getGetAdminPricingConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminPricingConfig>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminPricingConfig>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminPricingConfigQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminPricingConfig>>> = ({ signal }) =>
+    getAdminPricingConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminPricingConfig>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminPricingConfigQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminPricingConfig>>
+>;
+export type GetAdminPricingConfigQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
+ */
+
+export function useGetAdminPricingConfig<
+  TData = Awaited<ReturnType<typeof getAdminPricingConfig>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminPricingConfig>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminPricingConfigQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Override the pricing rule (requireAdmin + inventory scope)
+ */
+export const getUpdateAdminPricingConfigUrl = () => {
+  return `/api/admin/pricing/config`;
+};
+
+export const updateAdminPricingConfig = async (
+  updatePricingConfigBody: UpdatePricingConfigBody,
+  options?: RequestInit,
+): Promise<PricingConfig> => {
+  return customFetch<PricingConfig>(getUpdateAdminPricingConfigUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updatePricingConfigBody),
+  });
+};
+
+export const getUpdateAdminPricingConfigMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminPricingConfig>>,
+    TError,
+    { data: BodyType<UpdatePricingConfigBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminPricingConfig>>,
+  TError,
+  { data: BodyType<UpdatePricingConfigBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAdminPricingConfig"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminPricingConfig>>,
+    { data: BodyType<UpdatePricingConfigBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateAdminPricingConfig(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminPricingConfigMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminPricingConfig>>
+>;
+export type UpdateAdminPricingConfigMutationBody = BodyType<UpdatePricingConfigBody>;
+export type UpdateAdminPricingConfigMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Override the pricing rule (requireAdmin + inventory scope)
+ */
+export const useUpdateAdminPricingConfig = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminPricingConfig>>,
+    TError,
+    { data: BodyType<UpdatePricingConfigBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminPricingConfig>>,
+  TError,
+  { data: BodyType<UpdatePricingConfigBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAdminPricingConfigMutationOptions(options));
+};
+
+/**
+ * @summary Recompute every variant's price_lyd from cost via the current rule (requireAdmin + inventory scope)
+ */
+export const getRecomputeCatalogPricesUrl = () => {
+  return `/api/admin/pricing/recompute`;
+};
+
+export const recomputeCatalogPrices = async (options?: RequestInit): Promise<RecomputeResult> => {
+  return customFetch<RecomputeResult>(getRecomputeCatalogPricesUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRecomputeCatalogPricesMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recomputeCatalogPrices>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recomputeCatalogPrices>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["recomputeCatalogPrices"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recomputeCatalogPrices>>,
+    void
+  > = () => {
+    return recomputeCatalogPrices(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecomputeCatalogPricesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recomputeCatalogPrices>>
+>;
+
+export type RecomputeCatalogPricesMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Recompute every variant's price_lyd from cost via the current rule (requireAdmin + inventory scope)
+ */
+export const useRecomputeCatalogPrices = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recomputeCatalogPrices>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recomputeCatalogPrices>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRecomputeCatalogPricesMutationOptions(options));
 };
 
 /**

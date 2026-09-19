@@ -13,6 +13,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { inventoryTable } from "./inventory";
 import { productsTable } from "./products";
+import { productVariantsTable } from "./product-variants";
 import { usersTable } from "./users";
 
 export const orderStatusEnum = pgEnum("order_status", [
@@ -33,6 +34,22 @@ export const ordersTable = pgTable(
     productId: integer("product_id")
       .notNull()
       .references(() => productsTable.id, { onDelete: "restrict" }),
+    /**
+     * The purchased catalog variant (product_variants.id). Nullable for
+     * legacy orders placed before variants existed (2026-09-20) — the
+     * product-level price applied then. New orders always carry a
+     * variant_id when the product has variants.
+     */
+    variantId: integer("variant_id").references(() => productVariantsTable.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Immutable historical copy of the purchased variant's display label
+     * (e.g. "Individual — 3 Months") captured at purchase time. Survives
+     * variant edits/deletion the same way delivered_* fields survive
+     * product edits — order history must never rewrite itself.
+     */
+    variantLabel: varchar("variant_label", { length: 240 }),
     inventoryId: integer("inventory_id").references(() => inventoryTable.id, {
       onDelete: "set null",
     }),

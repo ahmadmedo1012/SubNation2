@@ -31,6 +31,8 @@ function LocalCartConsumer() {
         onClick={() =>
           addItem({
             productId: 1,
+            variantId: null,
+            variantLabel: null,
             name: "P1",
             slug: null,
             imageUrl: null,
@@ -45,6 +47,8 @@ function LocalCartConsumer() {
         onClick={() =>
           addItem({
             productId: 2,
+            variantId: null,
+            variantLabel: null,
             name: "P2",
             slug: null,
             imageUrl: null,
@@ -61,7 +65,7 @@ function LocalCartConsumer() {
   );
 }
 
-const STORAGE_KEY = "subnation_cart_v1";
+const STORAGE_KEY = "subnation_cart_v2";
 
 describe("CartProvider", () => {
   beforeEach(() => {
