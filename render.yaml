@@ -1,8 +1,17 @@
 services:
+  # 2026-09-20 (free-infrastructure round): plan pinned to FREE.
+  # Render Free spins the web service down after ~15 min without
+  # inbound traffic — this is ACCEPTED by design (no keep-alive, no
+  # self-ping, no external pingers; the early-bind gate answers 503
+  # "starting" during cold-start bootstrap and the frontend retries).
+  # NOTE: switching an EXISTING Render service from a paid plan to free
+  # is a dashboard action (Settings → Instance Type → Free); this
+  # blueprint entry keeps `Apply Blueprint` from ever re-creating a
+  # paid instance.
   - type: web
     name: subnation
     env: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/healthz
     # Deploys are gated on green CI via .github/workflows/deploy.yml
@@ -16,7 +25,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: DB_POOL_MAX
-        value: "15"
+        # 2026-09-20: 15 → 8. Neon Free compute is 0.25 CU — a 15-connection
+        # burst on a freshly-woken compute queues behind a fraction of that
+        # capacity. 8 covers peak request concurrency comfortably while
+        # halving the cold-start connection storm.
+        value: "8"
       - key: DB_IDLE_TIMEOUT_MS
         value: "10000"
       - key: DB_CONNECTION_TIMEOUT_MS
@@ -123,9 +136,15 @@ services:
       # credentials are persisted in Neon when PERSISTENCE_URL is configured
       # on that separate gateway service (use the same Neon URL as DATABASE_URL)
       # and OPENWA_API_KEY is set. Verify those two settings before relying on
-      # redeploy recovery. A keep-alive workflow in the
-      # public github.com/ahmadmedo1012/keep-alive repo pings both services
-      # every 10 minutes so free-tier instances never idle-spin-down.
+      # redeploy recovery.
+      #
+      # 2026-09-20 (free-infrastructure round): the gateway self-ping and
+      # ALL external keep-alive pings (GitHub Actions / in-process cron)
+      # are REMOVED everywhere. The gateway sleeps when idle — the first
+      # user-driven WhatsApp request wakes it (session auto-restore from
+      # persistence runs at boot inside the gateway; the OTP path retries
+      # within its bounded budget and the frontend surfaces an honest
+      # «جاري تجهيز الاتصال…» state with retry).
       - key: WHATSAPP_OTP_BASE_URL
         sync: false
       - key: WHATSAPP_OTP_API_KEY
@@ -135,13 +154,13 @@ services:
       - key: WHATSAPP_OTP_AUTO_CREATE_SESSION
         value: "true"
       # 97 (round-97, operator-activated 2026-09-11): the operator's own
-      # linked WhatsApp number in E.164 digits (no '+'). When set, the
-      # 96-F1 warm-up loop sends a benign Arabic self-check to this number
-      # every 6h so sender-key distribution / LID resolution / app-state
-      # sync stay warm before any OTP flows. Also the number the pairing
-      # code is issued for when re-linking is needed. Not a secret (it is
-      # the OTP sender identity anyway). Set live on Render 2026-09-11
-      # alongside the settle-gate re-arm (97-F3).
+      # linked WhatsApp number in E.164 digits (no '+'). 2026-09-20 note:
+      # the 6-hourly warm-up self-message loop was REMOVED — the warm-up
+      # self-check now runs ONE-SHOT per pairing epoch, triggered by the
+      # first REAL ready observation (a user's readiness probe or OTP
+      # attempt). Still the number the pairing code is issued for when
+      # re-linking is needed. Not a secret (it is the OTP sender
+      # identity anyway).
       - key: WHATSAPP_OTP_OPERATOR_E164
         value: "218910089975"
         sync: true
@@ -231,12 +250,15 @@ services:
       # Inventory demand forecast cron (011). Same tier rule as enrichment.
       - key: FORECAST_RUNNER_ENABLED
         value: "false"
-      # Migration switch for the worker tier. Today the web process runs
-      # the heartbeat + alerting evaluator + cron under a Redis-backed
-      # leader lock. To split tiers you must do BOTH of these together:
-      #   1. Provision `subnation-worker` below (Render Dashboard →
-      #      Apply Blueprint / create from yaml), then set on the WEB
-      #      service: DISABLE_WEB_SCHEDULERS=true.
+      # Migration switch kept for a FUTURE dedicated worker tier (if one
+      # is ever provisioned MANUALLY on a paid plan — the 2026-09-20
+      # free-infrastructure round REMOVED the `subnation-worker` service
+      # from this blueprint so `Apply Blueprint` can never create a paid
+      # worker). Today the web process runs the heartbeat + alerting
+      # evaluator + daily retention cron under the leader lock. To split
+      # tiers you must do BOTH of these together:
+      #   1. Create the worker service manually in the Render Dashboard,
+      #      then set on the WEB service: DISABLE_WEB_SCHEDULERS=true.
       #   2. Set on the WORKER service: WORKER_TIER=true (+ its own
       #      SENTRY_DSN / TELEGRAM_* / DISCORD_WEBHOOK_URL so alerting
       #      works from the worker tier too).
@@ -266,43 +288,12 @@ services:
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
 
-  - type: worker
-    name: subnation-worker
-    env: docker
-    plan: starter
-    dockerfilePath: ./Dockerfile
-    dockerCommand: "pnpm --filter @workspace/api-server start:worker"
-    autoDeploy: false
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # DORMANT BY DESIGN: this service only takes over cron + alerting when
-      # BOTH of the following are true (see the DISABLE_WEB_SCHEDULERS comment
-      # on the web service for the full flip procedure):
-      #   - here: WORKER_TIER=true (+ WORKER_TIER_ID=worker for run records)
-      #   - web:  DISABLE_WEB_SCHEDULERS=true
-      # While the worker is not provisioned, the web tier owns all schedulers.
-      #
-      # F-08 / A6 P2#4 (round-93): WORKER_TIER was previously documented in
-      # the comment above but MISSING from envVars — a provisioned worker
-      # silently ran with forecast/enrichment cron gates closed.
-      # ⚠ DOUBLE-SCHEDULER RISK ON BLUEPRINT APPLY (A6 P2#4 / A3 R15):
-      # provisioning this worker via the blueprint starts it IMMEDIATELY,
-      # while the web service still has DISABLE_WEB_SCHEDULERS=false. The
-      # worker runs heartbeat + alerting + cron WITHOUT the leader lock, so
-      # both tiers double-run them until the operator completes step 2 of
-      # the flip (DISABLE_WEB_SCHEDULERS=true on the web service). Alerts
-      # and retention jobs are dedupe/idempotent-guarded, so the damage is
-      # bounded, but do the flip in the same maintenance window — do not
-      # leave the blueprint half-applied.
-      - key: WORKER_TIER
-        value: "true"
-      - key: WORKER_TIER_ID
-        value: "worker"
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: subnation-redis
-          property: connectionString
+  # 2026-09-20 (free-infrastructure round): the `subnation-worker`
+  # service (plan: starter — a PAID worker Render would auto-create on
+  # every Apply Blueprint) is REMOVED. The web tier owns the daily
+  # retention cron + heartbeat + alerting under the leader lock; the
+  # interval watchers are gone (event-driven sweeps instead — see
+  # backend/src/lib/opportunistic.ts). The system must run WITHOUT any
+  # dedicated worker on the free tier — no essential function may
+  # depend on a separate worker existing. A paid worker tier can be
+  # re-added manually later if the operator ever chooses to.

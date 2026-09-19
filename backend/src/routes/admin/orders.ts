@@ -9,6 +9,8 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
 import { RefundError, RefundService } from "../../services/refund.service";
+import { fireThrottledMaintenance } from "../../lib/opportunistic";
+import { runStockSweep } from "../../jobs/stockWatcher";
 
 const router = Router();
 
@@ -245,6 +247,13 @@ router.patch(
         count_succeeded: successes.length,
         count_failed: failures.length,
       });
+
+      // 2026-09-20 (free-infrastructure round): a refund RETURNS inventory
+      // — one of the only events that changes stock. Trigger the
+      // low/zero-stock sweep (throttled 10 min; was a 30-minute timer).
+      if (successes.length > 0) {
+        fireThrottledMaintenance("stock-sweep", 10 * 60 * 1000, runStockSweep);
+      }
 
       // Honour the legacy success shape when the entire batch refunds:
       // existing admin UI calls expect `{ success: true, updated: <n> }`.

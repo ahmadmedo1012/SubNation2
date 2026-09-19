@@ -1,38 +1,30 @@
 /**
- * WhatsApp channel-death watch (97-F3 / R97-WA-06).
+ * WhatsApp channel-death watch (97-F3 / R97-WA-06) — OBSERVATION-DRIVEN
+ * since the 2026-09-20 free-infrastructure round (was: a 60 s interval
+ * timer probing the OpenWA gateway).
  *
- * WHY: the 3am production incident — the WhatsApp OTP pairing was revoked
- * (loggedOut) and the session sat in `failed` for HOURS with nobody
- * noticing. Users saw the soft "قيد الربط مؤقتاً" hint and got 503s; the
- * alerting layer (ALERT_RULES) had no WhatsApp rule at all, and
- * `getWhatsAppGatewayReadiness` was only ever consulted when a user
- * happened to load /api/auth/providers. This watcher closes that gap: a
- * periodic ticker that reads the SAME readiness probe and escalates a
- * channel that stays outside {ready, settling} for more than 15 minutes.
+ * WHY: the 3am production incident — the WhatsApp OTP pairing was
+ * revoked (loggedOut) and the session sat in `failed` for HOURS with
+ * nobody noticing. Users saw the soft "قيد الربط مؤقتاً" hint and got
+ * 503s; the alerting layer (ALERT_RULES) had no WhatsApp rule at all,
+ * and `getWhatsAppGatewayReadiness` was only ever consulted when a user
+ * happened to load /api/auth/providers. The watch closes that gap: real
+ * readiness observations escalate a channel that stays outside
+ * {ready, settling} for more than 15 minutes.
  *
- * ── WIRING POINT (main agent — do not miss at integration) ────────────────
- * This module deliberately wires NOTHING into the scheduler on its own
- * (web-scheduler.ts is owned by the main agent this round). Integration
- * is one import + one call inside the LEADER-STARTED branch of
- * backend/src/lib/web-scheduler.ts, right next to the other watchers
- * (see the `startCouponWatcher(), startStockWatcher(), …` push):
+ * WHERE OBSERVATIONS COME FROM (no timer, no artificial traffic):
+ *   - `getWhatsAppGatewayReadiness()` — every real probe (login page
+ *     providers surface, admin WhatsApp panel) feeds the watch;
+ *   - the OTP send path (`sendWhatsAppMessage`) — an attempt against a
+ *     dead/unreachable channel is the strongest possible signal that
+ *     the operator needs to know.
+ * The old 60 s ticker additionally kept the OpenWA gateway Render
+ * service awake 24/7 (each probe reset its 15-minute idle timer) —
+ * exactly the artificial drain this round removes. When there is no
+ * traffic there are no observations and nothing to alert about; the
+ * first REAL user intent wakes the chain and feeds the state machine.
  *
- *   import { startWhatsAppChannelWatch } from "../services/whatsapp-watch";
- *   …
- *   watchers.push(startWhatsAppChannelWatch());
- *
- * (server.ts — next to startWhatsAppWarmupLoop() — is an equally valid
- * wiring spot if the main agent prefers keeping both WhatsApp loops
- * together; web-scheduler leadership is the canonical one because it
- * guarantees a single runner under the PG/Redis leader lease.)
- * ─────────────────────────────────────────────────────────────────────────
- *
- * Semantics:
- *   - Tick every 60 s (unref'd interval — never keeps the process alive),
- *     calling getWhatsAppGatewayReadiness(). The probe's own 30 s cache
- *     is ACCEPTED (60 s tick > 30 s TTL → every tick is effectively
- *     fresh, and an occasional cache hit just means one coalesced
- *     observation — the 15-minute escalation budget dwarfs it).
+ * Semantics (unchanged from the ticker era):
  *   - "Healthy" = status ∈ {"ready", "settling"} (settling is the
  *     post-link settle/warm-up window — a WORKING channel). Everything
  *     else — failed, disconnected, qr_ready, created, initializing,
@@ -60,54 +52,56 @@
  *     an unconfigured deployment must not page anyone.
  *   - Status transitions are logged at info level with category
  *     "whatsapp.gateway" (the existing category for this surface).
- *   - NEVER throws across the timer: every tick is try/catch'd and a
- *     failure is a warn + carry on (scheduler contract, same as the
- *     warm-up loop). Re-entry guard: a hung probe cannot stack
- *     concurrent ticks (same pattern as stockWatcher).
+ *   - NEVER throws across the caller: every observation is try/catch'd
+ *     and a failure is a warn + carry on (scheduler contract, same as
+ *     the warm-up cycle). Re-entry guard: a hung tick cannot stack
+ *     concurrent observations (same pattern as the old ticker).
  *
  * NOTE (import shape): logAdminAlert is imported LAZILY inside the emit
  * helpers — same defensive pattern as web-scheduler.ts. A static named
  * import would break link-time for any test that mocks
- * jobs/alertLogger with a partial surface (web-scheduler-demotion.test.ts
- * exports only the two retention helpers); the type-only `AlertType`
+ * jobs/alertLogger with a partial surface; the type-only `AlertType`
  * import is erased at runtime and carries no such risk.
  */
 
 import { logger } from "../lib/logger";
 import type { AlertType } from "../jobs/alertLogger";
-import { getWhatsAppGatewayReadiness } from "./openwa.service";
 
-/** Handle returned by startWhatsAppChannelWatch (stoppable + idempotent). */
-export interface WhatsAppChannelWatchHandle {
-  /** Idempotent: stops the interval; an in-flight tick finishes. */
-  stop: () => void;
+/** Minimal observation shape — a subset of WhatsAppGatewayReadiness. */
+export interface WhatsAppChannelObservation {
+  /** Env config present (BASE_URL + API_KEY + SESSION). */
+  configured: boolean;
+  /**
+   * Current session lifecycle status ("ready" | "settling" | OpenWA
+   * lifecycle value), null when the gateway is unreachable.
+   */
+  status: string | null;
 }
 
-const WATCH_INTERVAL_MS = 60_000;
 const UNHEALTHY_ALERT_AFTER_MS = 15 * 60_000;
 
 /** States in which the channel can serve OTP traffic (now or within the
- * bounded settle window). Everything else is unhealthy. */
+ *  bounded settle window). Everything else is unhealthy. */
 function isHealthyStatus(status: string | null): status is "ready" | "settling" {
   return status === "ready" || status === "settling";
 }
 
 /** Dedupe token for an unhealthy status — `null` (gateway unreachable)
- * renders as "unreachable" so the key stays readable + stable. */
+ *  renders as "unreachable" so the key stays readable + stable. */
 function statusToken(status: string | null): string {
   return status ?? "unreachable";
 }
 
-// Re-entry guard — a hung probe must not stack concurrent ticks.
-let checkInFlight = false;
+// Re-entry guard — a hung emission must not stack concurrent ticks.
+let observeInFlight = false;
 
 // ── Episode state (module-scoped: one watched channel by design — the
 // OTP routing itself is single-session, R97-WA-11) ──────────────────────────
 /** Timestamp of the first observation of the CURRENT unhealthy streak
- * (null = currently healthy). */
+ *  (null = currently healthy). */
 let unhealthySince: number | null = null;
 /** Tokens already alerted for the CURRENT episode (one alert per token —
- * a mid-episode degradation is a new fact, a repeat is not). */
+ *  a mid-episode degradation is a new fact, a repeat is not). */
 const alertedTokens = new Set<string>();
 /** Last status seen (any) — for transition logging. */
 let lastSeenStatus: string | null | undefined;
@@ -115,6 +109,12 @@ let lastSeenStatus: string | null | undefined;
 function resetEpisode(): void {
   unhealthySince = null;
   alertedTokens.clear();
+}
+
+/** Test seam — wipe the episode state to simulate a cold process. */
+export function resetWhatsAppWatchForTests(): void {
+  resetEpisode();
+  lastSeenStatus = undefined;
 }
 
 async function emitChannelAlert(status: string | null, sinceMs: number): Promise<void> {
@@ -132,9 +132,7 @@ async function emitChannelAlert(status: string | null, sinceMs: number): Promise
   const outcome = await logAdminAlert(
     // AlertType is a closed TS union over a free varchar(30) column; the
     // alerts drawer falls back to the "system" badge for unknown types,
-    // so a new type string is safe without touching jobs/alertLogger.ts
-    // (owned by another agent this round — same cast pattern as
-    // refund.service's "refunded_live_credentials").
+    // so a new type string is safe without touching jobs/alertLogger.ts.
     "whatsapp_channel" as unknown as AlertType,
     title,
     message,
@@ -164,27 +162,25 @@ async function emitRecoveryAlert(status: string): Promise<void> {
   );
 }
 
-async function tick(): Promise<void> {
-  if (checkInFlight) {
+async function observe(observation: WhatsAppChannelObservation): Promise<void> {
+  if (observeInFlight) {
     logger.warn(
       { category: "whatsapp.gateway" },
-      "[whatsapp-watch] previous check still in flight — skipping tick",
+      "[whatsapp-watch] previous observation still being processed — skipping",
     );
     return;
   }
-  checkInFlight = true;
+  observeInFlight = true;
   try {
-    const readiness = await getWhatsAppGatewayReadiness();
-
     // Unconfigured deployment — no channel to watch, nothing to page on.
     // Reset any stale episode so a later configuration starts clean.
-    if (!readiness.configured) {
+    if (!observation.configured) {
       resetEpisode();
       lastSeenStatus = undefined;
       return;
     }
 
-    const status = readiness.status;
+    const status = observation.status;
     if (status !== lastSeenStatus) {
       logger.info(
         { category: "whatsapp.gateway", from: lastSeenStatus ?? null, to: status },
@@ -231,65 +227,31 @@ async function tick(): Promise<void> {
       await emitChannelAlert(status, unhealthySince);
     }
   } catch (err) {
-    // Never throw across the timer — log and carry on (probe failures
-    // already surface as status:null through the readiness contract, so
-    // this is a true unexpected-failure backstop only).
+    // Never throw across the caller — log and carry on.
     logger.warn(
       {
         category: "whatsapp.gateway",
         err: err instanceof Error ? err.message : String(err),
       },
-      "[whatsapp-watch] tick failed (non-fatal)",
+      "[whatsapp-watch] observation processing failed (non-fatal)",
     );
   } finally {
-    checkInFlight = false;
+    observeInFlight = false;
   }
 }
 
 /**
- * Test seam — run one watch tick on demand (the interval body), so the
- * state machine is pinnable without timers. Errors are swallowed
- * internally exactly like the scheduled path.
+ * Feed one REAL readiness observation into the channel-death watch.
+ * Synchronous + fire-and-forget: safe to call from any request path
+ * (readiness probe, OTP send) with zero latency or failure coupling.
  */
-export const runWhatsAppChannelWatchTickForTests = (): Promise<void> => tick();
-
-let watchRunning = false;
-let stopCurrent: (() => void) | null = null;
-
-export function startWhatsAppChannelWatch(): WhatsAppChannelWatchHandle {
-  if (watchRunning) {
-    logger.warn(
-      { category: "whatsapp.gateway" },
-      "[whatsapp-watch] already running — ignoring re-start",
-    );
-    return { stop: () => stopCurrent?.() };
-  }
-  watchRunning = true;
-  resetEpisode();
-  lastSeenStatus = undefined;
-
-  const interval = setInterval(() => void tick(), WATCH_INTERVAL_MS);
-  interval.unref?.();
-  // Establish the baseline state immediately instead of waiting a full
-  // tick — a channel that is ALREADY dead when the watcher boots starts
-  // its 15-minute clock right away.
-  void tick();
-
-  stopCurrent = () => {
-    clearInterval(interval);
-    watchRunning = false;
-    stopCurrent = null;
-    resetEpisode();
-    logger.info({ category: "whatsapp.gateway" }, "[whatsapp-watch] stopped");
-  };
-  const stop = stopCurrent;
-  logger.info(
-    {
-      category: "whatsapp.gateway",
-      intervalMs: WATCH_INTERVAL_MS,
-      alertAfterMs: UNHEALTHY_ALERT_AFTER_MS,
-    },
-    "[whatsapp-watch] WhatsApp channel watch started (60s interval, alerts after 15 unhealthy minutes)",
-  );
-  return { stop: () => stop() };
+export function observeWhatsAppChannel(observation: WhatsAppChannelObservation): void {
+  void observe(observation);
 }
+
+/**
+ * Test seam — feed one observation and AWAIT the internal processing so
+ * the state machine is pinnable without timers. Errors are swallowed
+ * internally exactly like the fire-and-forget path.
+ */
+export const observeWhatsAppChannelForTests = observe;

@@ -42,32 +42,44 @@
  * (daily 05:00) and the flash-sale expiry catch-up (5-min watcher) — all
  * idempotent, all safe to fire at every leader start.
  *
- * Migration to a dedicated worker (when ready):
- *   1. Provision the `subnation-worker` Render service.
+ * Migration to a dedicated worker (when ready — NOTE: the 2026-09-20
+ * free-infrastructure round removed the paid `subnation-worker`
+ * service from render.yaml; this code path is dormant documentation):
+ *   1. Provision a dedicated worker service on a PAID plan you choose
+ *      to add later (not from this blueprint).
  *   2. Render MCP `update_environment_variables` to set
  *      `DISABLE_WEB_SCHEDULERS=true` on the web service.
  *   3. Web tier stops running these. The worker tier owns them by
  *      default (workerEntry calls `alertingService.start` / `startHeartbeat`
  *      directly, no leader gate — it's the only node running them).
+ *
+ * 2026-09-20 (free-infrastructure round): NO interval timers start here
+ * anymore. The coupon / stock / flash-sale watchers became
+ * traffic-triggered opportunistic sweeps (lib/opportunistic.ts) + boot
+ * one-shots; the WhatsApp channel watch is fed by real readiness
+ * observations (services/whatsapp-watch.ts); the WhatsApp warm-up
+ * self-check is intent-driven (services/openwa.service.ts). Only the
+ * daily retention crons + the Redis heartbeat / alerting evaluator
+ * (in-memory, no DB, no outbound) remain on schedules.
  */
 
 import type { RedisClientType } from "redis";
-import { and, eq, lt } from "drizzle-orm";
-import { db, flashSalesTable } from "@workspace/db";
 import { logger } from "./logger";
 import { pruneStaleAdminSessions } from "./admin-session";
-import { startCouponWatcher } from "../jobs/couponWatcher";
+// 2026-09-20 (free-infrastructure round): couponWatcher / stockWatcher /
+// flashSaleWatcher lost their interval timers — their sweeps now run
+// (a) at leader boot (one-shots below) and (b) opportunistically off
+// real traffic via lib/opportunistic.ts (route-level triggers).
+import { checkExpiringCoupons } from "../jobs/couponWatcher";
 import { initCronJobs } from "../jobs/cron";
 import { cleanupOldAuthActivity } from "../jobs/cleanup-auth-activity";
 import { checkAdminTotpAdvisory } from "../jobs/security-advisories";
 import { pruneExpiredSessions } from "../jobs/session-prune";
 import { reapExpiredRiskEvents } from "../jobs/risk-retention";
 import { markStaleUnreadAlertsRead, pruneReadAlerts } from "../jobs/alertLogger";
-import { startFlashSaleWatcher } from "../jobs/flashSaleWatcher";
-import { startStockWatcher } from "../jobs/stockWatcher";
-// 97-F3 (R97-A5 WA-06): channel-death watch — alerts when the WhatsApp
-// OTP gateway session is not ready/settling for > 15 minutes.
-import { startWhatsAppChannelWatch } from "../services/whatsapp-watch";
+import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
+import { runStockSweep } from "../jobs/stockWatcher";
+import { reapExpiredCopilotPreviews } from "../jobs/copilot-reaper";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
@@ -87,70 +99,44 @@ export interface WebSchedulerHandle {
 }
 
 /**
- * Fire a boot one-shot WITHOUT swallowing errors silently (B7-P2-4): a
- * failing one-shot logs a warn + is visible in Render logs; a silent
- * `.catch(() => {})` is indistinguishable from success.
+ * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at leader
+ * start via the now-exported jobs/flashSaleWatcher.ts sweep (the mirrored
+ * copy this file used to carry was deleted with the interval timer —
+ * same predicate, same alert, same per-sale 7-day dedupe key, so the
+ * boot catch-up and the route-triggered sweeps collapse to one alert
+ * per sale). Idempotent by construction.
  */
-function fireOneShot(name: string, fn: () => Promise<unknown>): void {
-  void fn().catch((err) =>
-    logger.warn(
-      { err, category: "monitoring" },
-      `[scheduler] ${name} boot one-shot failed (will run again at its cron slot)`,
-    ),
-  );
+async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: number }> {
+  // The sweep logs its own outcome; the return shape only feeds the
+  // fireOneShot logger on failure.
+  await deactivateExpiredFlashSales();
+  return { deactivated: -1 };
 }
 
 /**
- * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at leader
- * start. Mirrors jobs/flashSaleWatcher.ts#deactivateExpiredFlashSales — that
- * function is module-private and this file cannot re-export it, so the
- * semantics are mirrored EXACTLY (same expired-active predicate, same alert
- * type/message, same per-sale 7-day dedupe key) so concurrent runs (this
- * one-shot racing the watcher's own 30 s initial pass) collapse to one alert
- * per sale instead of double-alerting. Idempotent by construction: only
- * rows that are both is_active=true AND ends_at<now() are flipped.
- *
- * logAdminAlert is imported LAZILY on purpose: this module's static import
- * surface feeds the existing demotion test's alertLogger mock (which exports
- * only the two retention helpers) — a static named import of logAdminAlert
- * would crash that suite at module-link time. Inside a one-shot the lazy
- * resolution failure is just a logged warn, never a scheduler crash.
+ * Cold-start query-storm guard (2026-09-20 free-infrastructure round):
+ * the boot one-shots used to fire CONCURRENTLY — eight retention jobs
+ * hitting a freshly-woken Neon compute (0.25 CU free tier) in the same
+ * tick, exactly the "storm" §25 of the optimization brief forbids.
+ * They now run strictly sequentially: each job waits for the previous
+ * one to settle. Total wall-clock is a few seconds; the first user
+ * requests stop competing with retention DELETEs for pool slots.
+ * fireOneShot semantics are unchanged (fire-and-forget from the
+ * caller's perspective — the chain is self-driving).
  */
-async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: number }> {
-  const now = new Date();
-  const expired = await db
-    .select({
-      id: flashSalesTable.id,
-      title: flashSalesTable.title,
-      endsAt: flashSalesTable.endsAt,
-    })
-    .from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), lt(flashSalesTable.endsAt, now)));
-
-  if (expired.length === 0) return { deactivated: 0 };
-
-  await db
-    .update(flashSalesTable)
-    .set({ isActive: false })
-    .where(and(eq(flashSalesTable.isActive, true), lt(flashSalesTable.endsAt, now)));
-
-  const { logAdminAlert } = await import("../jobs/alertLogger");
-  for (const row of expired) {
-    await logAdminAlert(
-      "flash_sale_expired",
-      `انتهت تخفيضات: ${row.title}`,
-      `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toISOString()}).`,
-      // Same per-sale dedupe key + 7-day window as the watcher (F5,
-      // round-94 A6): an expired sale can never expire again, so one alert
-      // per sale is the truth — a late/duplicate catch-up collapses.
-      {
-        dedupeKey: `flash_sale_expired:${row.id}`,
-        dedupeWindowMs: 7 * 24 * 60 * 60 * 1000,
-      },
-    );
-  }
-
-  return { deactivated: expired.length };
+function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<unknown>]>): void {
+  void (async () => {
+    for (const [name, fn] of jobs) {
+      try {
+        await fn();
+      } catch (err) {
+        logger.warn(
+          { err, category: "monitoring" },
+          `[scheduler] ${name} boot one-shot failed (will run again at its cron slot)`,
+        );
+      }
+    }
+  })();
 }
 
 export async function startWebSchedulers(
@@ -177,7 +163,6 @@ export async function startWebSchedulers(
   let started = false;
   let heartbeatCleanup: { stop: () => void } | null = null;
   let cronJobs: CronJobsHandle | null = null;
-  const watchers: Array<{ stop: () => void }> = [];
 
   /**
    * Stop the leader-only jobs (R6). Used BOTH for shutdown (drain) and
@@ -192,10 +177,9 @@ export async function startWebSchedulers(
     heartbeatCleanup?.stop();
     heartbeatCleanup = null;
     alertingService.stop();
-    // B7-P2-11: watchers expose stop handles — actually stop the
-    // intervals instead of relying on process exit.
-    for (const watcher of watchers) watcher.stop();
-    watchers.length = 0;
+    // 2026-09-20: no watcher handles to stop anymore — the coupon/stock/
+    // flash-sale sweeps and the WhatsApp channel watch are event-driven
+    // (see lib/opportunistic.ts + services/whatsapp-watch.ts).
     // R8 (round-93 A3): node-cron tasks have real stop handles now — the
     // old "auto cleanup on process exit" claim left a window where the
     // drain released the lock while this instance's crons still ticked,
@@ -246,48 +230,53 @@ export async function startWebSchedulers(
       "[scheduler] alerting evaluator started (60s interval)",
     );
 
-    // Cron + watchers — same code path used by worker.ts when a worker exists.
-    watchers.push(
-      startCouponWatcher(),
-      startStockWatcher(),
-      startFlashSaleWatcher(),
-      // 97-F3: 60s channel-health probe with 15-min budget + dedupe-keyed
-      // admin alerts (qr_ready that nobody scans, failed, disconnected…).
-      startWhatsAppChannelWatch(),
-    );
+    // Cron — same code path used by worker.ts when a worker exists.
+    // (2026-09-20: the coupon/stock/flash-sale watchers + the WhatsApp
+    // channel watch no longer start here — they were interval timers
+    // that kept Neon/OpenWA awake; see the module header.)
     cronJobs = initCronJobs();
 
-    // Boot one-shots (fire-and-forget: scheduler startup must not block):
+    // Boot one-shots — SEQUENTIAL (cold-start storm guard), fire-and-
+    // forget from the caller's perspective (scheduler startup must not
+    // block):
     //   - session prune: sessions that expired while the process was down;
     //   - TOTP advisory: weekly admin-TOTP nudge;
     //   - retention catch-up (B7-P2-12): alert + risk-events retention
     //     would otherwise be skipped entirely if the instance was down at
     //     the 00:00/03:30 slots;
     //   - auth-activity retention (B7-P1-2): the job was previously wired
-    //     to nothing — 90-day retention was never enforced.
-    fireOneShot("session-prune", pruneExpiredSessions);
-    fireOneShot("security-advisories", checkAdminTotpAdvisory);
-    fireOneShot("alert-retention", async () => {
-      const staled = await markStaleUnreadAlertsRead(14);
-      const pruned = await pruneReadAlerts(30);
-      return { staled, pruned };
-    });
-    fireOneShot("risk-retention", reapExpiredRiskEvents);
-    fireOneShot("auth-activity-retention", cleanupOldAuthActivity);
-    // 97-F1 (round-97 A6/D + R97-DB-03): the two prunes the silent outage
-    // proved were cron-only — 5 expired whatsapp_otps (>24 h) and 5 stale
-    // admin_sessions (>48 h) accumulated precisely because neither had a
-    // boot one-shot to catch the restart gap. Both are idempotent deletes.
-    fireOneShot("whatsapp-otp-prune", pruneExpiredOtps);
-    fireOneShot("admin-session-prune", pruneStaleAdminSessions);
-    // 97-F1: expired flash sales otherwise stay is_active=true in the admin
-    // list (and block the active-sale singleton unique index) until the
-    // first watcher tick — flip them immediately at leader start.
-    fireOneShot("flash-sale-catchup", deactivateExpiredFlashSalesCatchUp);
+    //     to nothing — 90-day retention was never enforced;
+    //   - coupon + stock sweeps: the old 30 s / 60 s watcher initial
+    //     passes, now the only boot-time trigger (route-triggered
+    //     opportunistic sweeps carry the rest);
+    //   - copilot reaper: the old hourly :45 cron slot, now boot +
+    //     admin-surface-triggered;
+    //   - whatsapp OTP prune + admin-session prune + flash-sale catch-up:
+    //     unchanged from 97-F1 (the silent-outage restart-gap fix).
+    fireOneShotsSequentially([
+      ["session-prune", pruneExpiredSessions],
+      ["security-advisories", checkAdminTotpAdvisory],
+      [
+        "alert-retention",
+        async () => {
+          const staled = await markStaleUnreadAlertsRead(14);
+          const pruned = await pruneReadAlerts(30);
+          return { staled, pruned };
+        },
+      ],
+      ["risk-retention", reapExpiredRiskEvents],
+      ["auth-activity-retention", cleanupOldAuthActivity],
+      ["coupon-sweep", checkExpiringCoupons],
+      ["stock-sweep", runStockSweep],
+      ["copilot-reaper", reapExpiredCopilotPreviews],
+      ["whatsapp-otp-prune", pruneExpiredOtps],
+      ["admin-session-prune", pruneStaleAdminSessions],
+      ["flash-sale-catchup", deactivateExpiredFlashSalesCatchUp],
+    ]);
 
     logger.info(
       { category: "monitoring", instanceId: leadership.instanceId },
-      "[scheduler] cron + watchers + boot one-shots started (couponWatcher, stockWatcher, flashSaleWatcher, whatsappChannelWatch, cron, sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
+      "[scheduler] cron + sequential boot one-shots started (cron, sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, couponSweep, stockSweep, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
     );
 
     setSchedulerState({

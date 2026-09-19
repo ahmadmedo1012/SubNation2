@@ -1,5 +1,13 @@
-import { db, inventoryTable, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
+import {
+  db,
+  inventoryTable,
+  ordersTable,
+  productVariantsTable,
+  productsTable,
+} from "@workspace/db";
 import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
+import { fireThrottledMaintenance } from "../lib/opportunistic";
+import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
 import { and, asc, count, eq, inArray, min, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
@@ -225,8 +233,7 @@ router.get("/", catalogCache, async (req, res) => {
     // sale is applied exactly ONCE on that base (per-variant sale prices
     // are already computed by loadPublicVariants and stay authoritative
     // for the detail page selector).
-    const displayBase =
-      variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
     const displayPrice =
       discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : displayBase;
     return {
@@ -300,6 +307,14 @@ export async function getProductStatsHandler(_req: Request, res: Response) {
 }
 
 export async function getFlashSaleHandler(_req: Request, res: Response) {
+  // 2026-09-20 (free-infrastructure round): the flash-sale surface is
+  // one of the two REAL-traffic triggers for the expired-sale sweep
+  // (was a 5-minute interval timer). Throttled to 10 min in-process;
+  // fire-and-forget so the read never waits on the UPDATE. The read
+  // itself already reflects expiry via getActiveFlashSale's
+  // `is_active AND ends_at > now()` predicate — the sweep only keeps
+  // is_active honest for the admin list + the singleton index.
+  fireThrottledMaintenance("flash-sale-sweep", 10 * 60 * 1000, deactivateExpiredFlashSales);
   const flashSale = await getActiveFlashSale();
   return res.json({ flash_sale: flashSale });
 }
@@ -356,11 +371,11 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
-  const variants = (
-    await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)
-  ).get(product.id) ?? [];
-  const displayBase =
-    variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const variants =
+    (await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)).get(
+      product.id,
+    ) ?? [];
+  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
@@ -430,11 +445,11 @@ router.get("/:id", catalogCache, async (req, res) => {
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
-  const variants = (
-    await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)
-  ).get(product.id) ?? [];
-  const displayBase =
-    variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const variants =
+    (await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)).get(
+      product.id,
+    ) ?? [];
+  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 

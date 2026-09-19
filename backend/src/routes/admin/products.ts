@@ -1,5 +1,11 @@
 import { CreateProductBody, UpdateProductBody } from "@workspace/api-zod";
-import { db, inventoryTable, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
+import {
+  db,
+  inventoryTable,
+  ordersTable,
+  productVariantsTable,
+  productsTable,
+} from "@workspace/db";
 import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
@@ -10,6 +16,9 @@ import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+
+import { fireThrottledMaintenance } from "../../lib/opportunistic";
+import { runStockSweep } from "../../jobs/stockWatcher";
 
 const router = Router();
 
@@ -66,12 +75,16 @@ router.get("/products", requireAdmin, async (req, res) => {
           db
             .select({ productId: inventoryTable.productId, count: count() })
             .from(inventoryTable)
-            .where(and(eq(inventoryTable.isSold, false), inArray(inventoryTable.productId, productIds)))
+            .where(
+              and(eq(inventoryTable.isSold, false), inArray(inventoryTable.productId, productIds)),
+            )
             .groupBy(inventoryTable.productId),
           db
             .select({ productId: ordersTable.productId, count: count() })
             .from(ordersTable)
-            .where(and(eq(ordersTable.status, "completed"), inArray(ordersTable.productId, productIds)))
+            .where(
+              and(eq(ordersTable.status, "completed"), inArray(ordersTable.productId, productIds)),
+            )
             .groupBy(ordersTable.productId),
           // Catalog-2026-09-20: variants ride ONE inArray query for the
           // whole page — ADMIN context, so internal fields (cost, sku) are
@@ -131,7 +144,8 @@ router.get("/products", requireAdmin, async (req, res) => {
 
 router.post("/products", requireAdmin, async (req, res) => {
   const parse = CreateProductBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
 
   // Two-step insert + slug derivation. We need the id to be assigned by the
@@ -209,10 +223,12 @@ router.post("/products", requireAdmin, async (req, res) => {
 
 router.patch("/products/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const parse = UpdateProductBody.safeParse(req.body);
-  if (!parse.success) return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  if (!parse.success)
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
 
   const updateData: Record<string, any> = {};
@@ -233,7 +249,8 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     .set(updateData)
     .where(eq(productsTable.id, id))
     .returning();
-  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+  if (!product)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   bumpSitemapCache();
 
@@ -272,7 +289,8 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
 
 router.delete("/products/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   // Silent no-op → 404 (audit §5): archiving a non-existent product used
   // to return success — now the admin gets a truthful signal that the
@@ -292,9 +310,7 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
 router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
   if (productId === null)
-    return res
-      .status(400)
-      .json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   // Confirm the product exists so the frontend can distinguish a 404
   // from "exists but has 0 inventory rows".
@@ -304,9 +320,7 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
     .where(eq(productsTable.id, productId))
     .limit(1);
   if (!product)
-    return res
-      .status(404)
-      .json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   // Only fields needed for the dedup-preview in the inventory dialog.
   // accountPassword is intentionally NOT returned — it's not needed
@@ -361,16 +375,14 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const { count: target } = (req.body ?? {}) as { count?: unknown };
-  if (
-    typeof target !== "number" ||
-    !Number.isInteger(target) ||
-    target < 0 ||
-    target > 100_000
-  ) {
+  if (typeof target !== "number" || !Number.isInteger(target) || target < 0 || target > 100_000) {
     return res
       .status(400)
       .json(
-        createErrorResponse("عدد الوحدات يجب أن يكون رقماً صحيحاً بين 0 و100000", ErrorCode.INVALID_DATA),
+        createErrorResponse(
+          "عدد الوحدات يجب أن يكون رقماً صحيحاً بين 0 و100000",
+          ErrorCode.INVALID_DATA,
+        ),
       );
   }
 
@@ -389,12 +401,14 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
   const unsold = Number(unsoldResult?.unsold ?? 0);
 
   if (target > unsold) {
-    return res.status(400).json(
-      createErrorResponse(
-        "لا يمكن زيادة المخزون بإدخال رقم فقط — كل وحدة تحتاج بيانات حساب فعلية. استخدم «رفع مخزون» لإضافة الوحدات",
-        ErrorCode.INVALID_DATA,
-      ),
-    );
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "لا يمكن زيادة المخزون بإدخال رقم فقط — كل وحدة تحتاج بيانات حساب فعلية. استخدم «رفع مخزون» لإضافة الوحدات",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
 
   const surplus = unsold - target;
@@ -421,19 +435,26 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
     removed: surplus,
   });
 
+  // 2026-09-20 (free-infrastructure round): admin inventory write —
+  // trigger the low/zero-stock sweep (throttled 10 min; was a
+  // 30-minute interval timer).
+  fireThrottledMaintenance("stock-sweep", 10 * 60 * 1000, runStockSweep);
+
   return res.json({ success: true, product_id: productId, stock_count: target });
 });
 
 router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
-  if (productId === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (productId === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [product] = await db
     .select()
     .from(productsTable)
     .where(eq(productsTable.id, productId))
     .limit(1);
-  if (!product) return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+  if (!product)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   const { entries, bulk_text } = req.body ?? {};
 
@@ -470,14 +491,10 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
           return res
             .status(400)
             .json(
-              createErrorResponse(
-                `السطر ${i + 1}: بيانات الحساب ناقصة`,
-                ErrorCode.INVALID_DATA,
-              ),
+              createErrorResponse(`السطر ${i + 1}: بيانات الحساب ناقصة`, ErrorCode.INVALID_DATA),
             );
         }
-        const extra =
-          typeof e.extra === "string" && e.extra.trim() ? e.extra.trim() : null;
+        const extra = typeof e.extra === "string" && e.extra.trim() ? e.extra.trim() : null;
         items.push({
           accountEmail: email,
           accountPassword: encrypt(password),
@@ -493,12 +510,7 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
         if (!code) {
           return res
             .status(400)
-            .json(
-              createErrorResponse(
-                `السطر ${i + 1}: كود فارغ`,
-                ErrorCode.INVALID_DATA,
-              ),
-            );
+            .json(createErrorResponse(`السطر ${i + 1}: كود فارغ`, ErrorCode.INVALID_DATA));
         }
         items.push({
           accountEmail: null,
@@ -512,12 +524,7 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       } else {
         return res
           .status(400)
-          .json(
-            createErrorResponse(
-              `السطر ${i + 1}: نوع غير معروف`,
-              ErrorCode.INVALID_DATA,
-            ),
-          );
+          .json(createErrorResponse(`السطر ${i + 1}: نوع غير معروف`, ErrorCode.INVALID_DATA));
       }
     }
   } else if (bulk_text && typeof bulk_text === "string") {
@@ -550,8 +557,14 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
     }
   }
 
-  if (items.length === 0) return res.status(400).json(createErrorResponse("لا توجد بيانات صالحة للإضافة", ErrorCode.INVALID_DATA));
-  if (items.length > 500) return res.status(400).json(createErrorResponse("الحد الأقصى 500 عنصر دفعة واحدة", ErrorCode.INVALID_DATA));
+  if (items.length === 0)
+    return res
+      .status(400)
+      .json(createErrorResponse("لا توجد بيانات صالحة للإضافة", ErrorCode.INVALID_DATA));
+  if (items.length > 500)
+    return res
+      .status(400)
+      .json(createErrorResponse("الحد الأقصى 500 عنصر دفعة واحدة", ErrorCode.INVALID_DATA));
 
   // Server-side dedup against existing inventory for THIS product. Even
   // though the frontend flags duplicates in the preview, an operator can
@@ -572,7 +585,8 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   const existingKeys = new Set<string>();
   for (const r of existing) {
     if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
-    else if (r.extraDetails) existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
+    else if (r.extraDetails)
+      existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
   }
 
   const seenInBatch = new Set<string>();
@@ -597,13 +611,15 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   }
 
   if (filtered.length === 0) {
-    return res.status(400).json(
-      createErrorResponse(
-        `كل العناصر (${skippedDuplicates}) موجودة مسبقاً في المخزون`,
-        ErrorCode.INVALID_DATA,
-        { skipped_duplicates: skippedDuplicates },
-      ),
-    );
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          `كل العناصر (${skippedDuplicates}) موجودة مسبقاً في المخزون`,
+          ErrorCode.INVALID_DATA,
+          { skipped_duplicates: skippedDuplicates },
+        ),
+      );
   }
 
   const inserted = await db
@@ -628,6 +644,12 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
     added: inserted.length,
     skipped_duplicates: skippedDuplicates,
   });
+
+  // 2026-09-20 (free-infrastructure round): admin inventory write —
+  // trigger the low/zero-stock sweep (throttled 10 min; was a
+  // 30-minute interval timer). Stock may have CROSSED a threshold in
+  // either direction; the sweep is idempotent + DB-level deduped.
+  fireThrottledMaintenance("stock-sweep", 10 * 60 * 1000, runStockSweep);
 
   return res.status(201).json({
     success: true,

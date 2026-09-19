@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db, couponsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
+import { fireThrottledMaintenance } from "../lib/opportunistic";
+import { checkExpiringCoupons } from "../jobs/couponWatcher";
 import { computeCouponDiscount, type CouponType } from "../lib/pricing";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -89,6 +91,12 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 // ── User: validate a coupon ───────────────────────────────────────────────────
 
 router.post("/validate", requireUser, async (req, res) => {
+  // 2026-09-20 (free-infrastructure round): real user intent (applying a
+  // coupon at checkout) is one of the triggers for the expiry sweep
+  // (was an hourly interval timer). Throttled 15 min, fire-and-forget —
+  // never blocks or fails this validation. The validation itself has
+  // always reflected expiry (line below: expiresAt < now() → 400).
+  fireThrottledMaintenance("coupon-sweep", 15 * 60 * 1000, checkExpiringCoupons);
   // A5-04: schema gate — non-string code / non-number order_amount are
   // 400s now (previously the raw reads crashed .trim() → 500).
   const parse = ValidateCouponBody.safeParse(req.body ?? {});
@@ -176,6 +184,10 @@ router.post("/validate", requireUser, async (req, res) => {
 // ── Admin: list ───────────────────────────────────────────────────────────────
 
 router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, res) => {
+  // 2026-09-20: operator intent — the panel view triggers the expiry
+  // sweep (throttled 1 min; was an hourly interval timer) so the list
+  // it renders is already clean of expired-but-active rows.
+  fireThrottledMaintenance("coupon-sweep", 60_000, checkExpiringCoupons);
   const coupons = await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt));
   return res.json(coupons.map(formatCoupon));
 });

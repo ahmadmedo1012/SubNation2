@@ -2,10 +2,7 @@
 import "./instrument";
 
 import { fileURLToPath } from "node:url";
-import { startCouponWatcher } from "./jobs/couponWatcher";
 import { initCronJobs } from "./jobs/cron";
-import { startFlashSaleWatcher } from "./jobs/flashSaleWatcher";
-import { startStockWatcher } from "./jobs/stockWatcher";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { alertingService } from "./services/alerting.service";
@@ -125,17 +122,11 @@ async function startWorker() {
   // scaled web tier never produces duplicate alerts.
   alertingService.start();
 
-  const watchers = [
-    startCouponWatcher(),
-    startStockWatcher(),
-    // Round-3 (8-c §8.1): the dedicated worker previously started only
-    // coupon + stock watchers + cron — flashSaleWatcher ran ONLY in the
-    // web scheduler. In worker-only mode (DISABLE_WEB_SCHEDULERS=true),
-    // expired flash sales stayed is_active forever and the active-
-    // singleton partial unique index BLOCKED creating the next sale.
-    // Worker/web parity: whichever process is scheduled runs it.
-    startFlashSaleWatcher(),
-  ];
+  // 2026-09-20 (free-infrastructure round): the coupon / stock /
+  // flash-sale watcher INTERVALS are gone everywhere (worker included —
+  // this entry is dormant since the paid worker service left
+  // render.yaml). Their sweeps run opportunistically off real traffic
+  // (lib/opportunistic.ts) + as leader boot one-shots (web-scheduler).
   // R8 (round-93 A3): capture the cron stop handle so SIGTERM actually
   // stops the tasks (previously the schedule() results were discarded
   // everywhere and nothing could stop them).
@@ -147,7 +138,6 @@ async function startWorker() {
     stopSchedulers: () => {
       for (const stop of stopFns) stop();
       alertingService.stop();
-      for (const watcher of watchers) watcher.stop();
       cronJobs.stop();
     },
     drain: async () => {

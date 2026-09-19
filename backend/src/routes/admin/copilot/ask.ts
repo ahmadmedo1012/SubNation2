@@ -28,6 +28,8 @@ import { ErrorCode } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { getRegistry } from "../../../lib/metrics";
+import { fireThrottledMaintenance } from "../../../lib/opportunistic";
+import { reapExpiredCopilotPreviews } from "../../../jobs/copilot-reaper";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
 import {
@@ -375,5 +377,13 @@ adminCopilotRouter.post(
   requireAdmin,
   requireCopilotPhase("phase1_enabled"),
   copilotRateLimit,
+  // 2026-09-20 (free-infrastructure round): the admin copilot surface is
+  // the on-demand trigger for the expired-preview reaper (was an hourly
+  // :45 cron slot). Throttled 60 min, fire-and-forget — an LLM query
+  // never waits on a retention DELETE.
+  (req, res, next) => {
+    fireThrottledMaintenance("copilot-reaper", 60 * 60 * 1000, reapExpiredCopilotPreviews);
+    next();
+  },
   handleAsk,
 );

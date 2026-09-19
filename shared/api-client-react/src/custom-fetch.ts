@@ -366,6 +366,55 @@ function inferResponseType(response: Response): "json" | "text" | "blob" {
 // client) while bounding the pathological case.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
+// ── 2026-09-20 (free-infrastructure round): cold-start aware retry ────────
+//
+// Render Free is ALLOWED to sleep now (all keep-alive removed). The
+// backend binds its port FIRST and answers 503 with a recognizable
+// "starting" payload while migrations/bootstrap run — see server.ts's
+// early-bind readiness gate:
+//
+//     /api/healthz*  → 503 {"status":"starting"}
+//     every /api/*   → 503 {"error":"الخدمة قيد التشغيل، أعد المحاولة بعد لحظات", …}
+//
+// The gate rejects requests BEFORE routing (nothing executed — a retry
+// is side-effect-free even for POST), so this client transparently
+// retries a gated 503 up to 3 times with 1.5 s / 3 s / 5 s backoff
+// instead of surfacing an error card to a user who just woke the
+// service. The caller's timeout budget (timeoutMs, default 20 s)
+// remains the TOTAL budget across attempts — a cold start that
+// outlasts it still fails honestly with the existing Arabic
+// network-error mapping. Business 503s (inventory maintenance, rate
+// limits…) do NOT match the marker and are never retried.
+const BOOT_GATE_RETRY_DELAYS_MS: readonly number[] = [1_500, 3_000, 5_000];
+
+/**
+ * Dedicated budget once the boot-gate marker is SEEN. The marker is
+ * definitive proof the request was never routed (nothing executed),
+ * so waiting for the gate to open is strictly safe — and a cold
+ * Render+Neon wake can legitimately take ~30 s. Without this, the
+ * general 20 s budget would surface an error to a user whose request
+ * would have succeeded a few seconds later.
+ */
+const BOOT_GATE_TOTAL_BUDGET_MS = 45_000;
+
+/** The gate's exact Arabic marker — a needle only the boot gate emits. */
+const BOOT_GATE_MARKER_TEXT = "قيد التشغيل";
+
+function isBootGateResponse(status: number, data: unknown): boolean {
+  if (status !== 503) return false;
+  if (!data || typeof data !== "object") return false;
+  const record = data as Record<string, unknown>;
+  if (record["status"] === "starting") return true;
+  return (
+    typeof record["error"] === "string" &&
+    (record["error"] as string).includes(BOOT_GATE_MARKER_TEXT)
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type AbortSignalStatics = {
   timeout?: (ms: number) => AbortSignal;
   any?: (signals: AbortSignal[]) => AbortSignal;
@@ -520,48 +569,105 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  // 96-F3 (R96 M3): default 20 s timeout merged with the caller's
-  // signal. `timeoutSignal` is retained so the catch boundary can
-  // distinguish OUR timeout from a caller cancellation.
-  const { signal: effectiveSignal, timeoutSignal } = resolveRequestSignal(init.signal, timeoutMs);
+  // 2026-09-20: the caller timeout is the TOTAL budget across attempts
+  // (backoffs included) — UPGRADED exactly ONCE, at the first boot-gate
+  // sighting, to the dedicated gate budget (see BOOT_GATE_TOTAL_BUDGET_MS).
+  // Re-upgrading per retry would push the deadline forever and retry
+  // without end — the activation flag is the guard.
+  let deadlineAt = timeoutMs > 0 ? Date.now() + timeoutMs : null;
+  let gateBudgetActivated = false;
+  let gateResponseRef: ApiError | null = null;
 
-  try {
-    const response = await fetch(input, { ...init, signal: effectiveSignal, method, headers });
+  for (let attempt = 0; ; attempt++) {
+    // Remaining budget for THIS attempt. When a retry exhausted the
+    // deadline, fail with the last gate response (honest 503 ApiError)
+    // instead of issuing an untimed request — resolveRequestSignal
+    // installs NO timeout when timeoutMs <= 0.
+    const remainingMs = deadlineAt !== null ? deadlineAt - Date.now() : 0;
+    if (attempt > 0 && deadlineAt !== null && remainingMs <= 0) {
+      throw (
+        gateResponseRef ??
+        new TypeError("Failed to fetch", {
+          cause: new Error("request budget exhausted during cold-start retry"),
+        })
+      );
+    }
+    const effectiveTimeoutMs = deadlineAt !== null ? Math.max(1, remainingMs) : 0;
 
-    if (!response.ok) {
-      // 93-C6 / F-07 + 96-F3: notify the host app BEFORE building/
-      // throwing the ApiError — the error itself still propagates
-      // unchanged so query error states (isError → error cards) keep
-      // working. The additive list (96-F3) fires first, then the
-      // single-slot handler; both are individually guarded.
-      if (response.status === 401) {
-        for (const handler of [..._unauthorizedHandlers]) {
-          try {
-            handler({ url: requestInfo.url, method });
-          } catch {
-            // An observer must never break the request pipeline.
+    // 96-F3 (R96 M3): timeout merged with the caller's signal.
+    // `timeoutSignal` is retained so the catch boundary can distinguish
+    // OUR timeout from a caller cancellation.
+    const { signal: effectiveSignal, timeoutSignal } = resolveRequestSignal(
+      init.signal,
+      effectiveTimeoutMs,
+    );
+
+    try {
+      const response = await fetch(input, { ...init, signal: effectiveSignal, method, headers });
+
+      if (!response.ok) {
+        // 93-C6 / F-07 + 96-F3: notify the host app BEFORE building/
+        // throwing the ApiError — the error itself still propagates
+        // unchanged so query error states (isError → error cards) keep
+        // working. The additive list (96-F3) fires first, then the
+        // single-slot handler; both are individually guarded.
+        if (response.status === 401) {
+          for (const handler of [..._unauthorizedHandlers]) {
+            try {
+              handler({ url: requestInfo.url, method });
+            } catch {
+              // An observer must never break the request pipeline.
+            }
+          }
+          if (_unauthorizedHandler) {
+            try {
+              _unauthorizedHandler({ url: requestInfo.url, method });
+            } catch {
+              // An observer must never break the request pipeline.
+            }
           }
         }
-        if (_unauthorizedHandler) {
-          try {
-            _unauthorizedHandler({ url: requestInfo.url, method });
-          } catch {
-            // An observer must never break the request pipeline.
+        const errorData = await parseErrorBody(response, method);
+
+        // 2026-09-20 cold-start aware retry: the backend's boot gate
+        // answered — nothing executed server-side (the gate middleware
+        // rejects BEFORE routing), so a retry is side-effect-free even
+        // for POST. Backoff (escalating 1.5 s / 3 s, then steady 5 s)
+        // and re-issue while budget remains — the loop-top deadline
+        // check is the sole terminator, so a 30 s cold boot rides out
+        // inside the dedicated 45 s gate budget instead of erroring.
+        if (isBootGateResponse(response.status, errorData)) {
+          gateResponseRef = new ApiError(response, errorData, requestInfo);
+          // First gate sighting ONLY: the waiting game is provably safe —
+          // extend the budget to the dedicated gate window (once; a
+          // per-retry upgrade would push the deadline forever).
+          if (!gateBudgetActivated) {
+            gateBudgetActivated = true;
+            const gateDeadline = Date.now() + BOOT_GATE_TOTAL_BUDGET_MS;
+            if (deadlineAt === null || gateDeadline > deadlineAt) deadlineAt = gateDeadline;
           }
+          const delay =
+            BOOT_GATE_RETRY_DELAYS_MS[
+              Math.min(attempt, BOOT_GATE_RETRY_DELAYS_MS.length - 1)
+            ];
+          await sleep(delay);
+          continue;
         }
+
+        throw new ApiError(response, errorData, requestInfo);
       }
-      const errorData = await parseErrorBody(response, method);
-      throw new ApiError(response, errorData, requestInfo);
-    }
 
-    // Body reads are inside the try on purpose: the timeout signal
-    // aborts in-flight body streaming too, and that rejection must
-    // land in the same Arabic network-error mapping.
-    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
-  } catch (error) {
-    if (isOurTimeoutAbort(init.signal, timeoutSignal)) {
-      throw toNetworkErrorShape(error);
+      // Body reads are inside the try on purpose: the timeout signal
+      // aborts in-flight body streaming too, and that rejection must
+      // land in the same Arabic network-error mapping.
+      return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    } catch (error) {
+      // A retry `continue` never lands here (no throw) — only real
+      // fetch / timeout / caller-cancel errors do.
+      if (isOurTimeoutAbort(init.signal, timeoutSignal)) {
+        throw toNetworkErrorShape(error);
+      }
+      throw error;
     }
-    throw error;
   }
 }

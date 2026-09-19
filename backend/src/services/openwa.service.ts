@@ -76,6 +76,11 @@ import { logger } from "../lib/logger";
 // observation across restarts and sibling instances. Reuses the same
 // resilient singleton + bounded-command helpers as idempotency.ts.
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
+// 2026-09-20 free-infrastructure round: the channel-death watch is fed
+// by REAL observations (readiness probes + OTP send attempts) instead
+// of a 60 s interval timer. One-way dependency — whatsapp-watch imports
+// nothing from this module, so no cycle.
+import { observeWhatsAppChannel } from "./whatsapp-watch";
 
 interface GatewayAuthConfig {
   baseUrl: string;
@@ -189,12 +194,16 @@ let readySessionCache: { id: string; expiresAt: number } | null = null;
 //      a time-diff) so gateway/backend clock skew can neither mask
 //      nor fabricate a re-pair.
 //
-//   B. Warm-up self-check: after the settle window, send a benign Arabic
-//      message to the operator's own linked number
+//   B. Warm-up self-check (INTENT-DRIVEN since the 2026-09-20
+//      free-infrastructure round — the 6-hour periodic loop was
+//      removed): after the settle window, a benign Arabic message is
+//      sent to the operator's own linked number
 //      (WHATSAPP_OTP_OPERATOR_E164). A successful self-chat send forces
 //      LID resolution + sender-key distribution on a harmless chat
-//      BEFORE any OTP flows, and repeats every 6 h to keep keys fresh
-//      (and the free-tier gateway warm). When the env is unset the
+//      BEFORE any OTP flows. It is scheduled ONE-SHOT per pairing
+//      epoch (scheduleInitialWarmup) from the first `ready`
+//      observation — which only ever happens on real traffic (a
+//      readiness probe or an OTP attempt). When the env is unset the
 //      warm-up is skipped silently and dispatch relies on the settle
 //      gate alone; when set, dispatch additionally requires warmup-ok.
 
@@ -219,8 +228,11 @@ export const POST_LINK_SETTLE_MS = readPostLinkSettleMs();
  *  window. */
 const SETTLE_WAIT_CAP_MS = 20_000;
 
-/** Warm-up cadence (§1.3B). */
-const WARMUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Warm-up cadence note (§1.3B): the periodic 6 h loop was REMOVED in
+ *  the 2026-09-20 free-infrastructure round — periodic self-messages
+ *  were artificial keep-alive traffic. The warm-up survives as a
+ *  one-shot per pairing epoch, scheduled by the first `ready`
+ *  observation (real traffic), via scheduleInitialWarmup(). */
 
 /** Conservative "channel becomes ready" estimate while the warm-up
  *  self-check send is still in flight (used as readyInMs so the route
@@ -423,8 +435,10 @@ async function recordReadySince(session: SessionRecord): Promise<number> {
  * One-shot initial warm-up: the FIRST observation of a ready session
  * (per pairing epoch — 97-F3/WA-01) schedules the self-check for right
  * after the settle window elapses (delay 0 when the window already
- * passed — e.g. a cold start adopting an old Redis timestamp) instead
- * of waiting for the 6 h loop tick.
+ * passed — e.g. a cold start adopting an old Redis timestamp). This is
+ * the INTENT-DRIVEN warmup trigger: the observation that arms it is
+ * always a real request (readiness probe or OTP attempt), never a
+ * timer.
  */
 function scheduleInitialWarmup(gateKey: string, readySince: number): void {
   const operator = readOperatorNumber();
@@ -446,12 +460,12 @@ function scheduleInitialWarmup(gateKey: string, readySince: number): void {
 }
 
 /**
- * The warm-up cycle (shared by the one-shot initial warm-up and the 6 h
- * loop): resolve the session, and when it is ready + settled + not yet
- * warm, send the benign self-check to the operator's own number and —
- * only on a successful send — flip dispatchReady for this process.
- * Never throws (scheduler contract); every failure is logged and
- * retried by the next tick.
+ * The warm-up cycle (scheduled by the one-shot initial warm-up): resolve
+ * the session, and when it is ready + settled + not yet warm, send the
+ * benign self-check to the operator's own number and — only on a
+ * successful send — flip dispatchReady for this process. Never throws
+ * (scheduler contract); every failure is logged and retried by the next
+ * intent-driven observation.
  *
  * 97-F3 (WA-03 partial — documented strictness): "successful send"
  * here means the gateway answered HTTP 200 to POST send-text, i.e. the
@@ -505,61 +519,6 @@ async function runWarmupCycle(): Promise<void> {
       "[whatsapp-otp] warm-up self-check failed — dispatch stays gated until the next cycle",
     );
   }
-}
-
-/**
- * 96-F1 (R96-A4 §1.3B): start the periodic warm-up self-check loop.
- *
- * Every 6 h, when the configured session is ready + settled, send the
- * benign Arabic self-check to WHATSAPP_OTP_OPERATOR_E164 so sender-key
- * distribution / LID resolution / app-state sync stay warm before any
- * OTP flows. Silently no-ops when the operator number is unset. Errors
- * are swallowed with logging — nothing ever throws across the scheduler.
- */
-export function startWhatsAppWarmupLoop(): { stop: () => void } {
-  const operator = readOperatorNumber();
-  if (!operator) {
-    logger.info(
-      { category: "whatsapp.gateway" },
-      "[whatsapp-otp] WHATSAPP_OTP_OPERATOR_E164 unset — warm-up self-check disabled (settle gate remains active)",
-    );
-    return { stop: () => {} };
-  }
-
-  let stopped = false;
-  let timer: NodeJS.Timeout | null = null;
-
-  const tick = async (): Promise<void> => {
-    if (stopped) return;
-    try {
-      await runWarmupCycle();
-    } catch (err) {
-      // Never throw across the loop — log and carry on to the next tick.
-      logger.warn(
-        { category: "whatsapp.gateway", err: err instanceof Error ? err.message : String(err) },
-        "[whatsapp-otp] warm-up cycle failed (non-fatal)",
-      );
-    }
-    if (stopped) return;
-    timer = setTimeout(() => void tick(), WARMUP_INTERVAL_MS);
-    timer.unref?.();
-  };
-
-  timer = setTimeout(() => void tick(), WARMUP_INTERVAL_MS);
-  timer.unref?.();
-
-  logger.info(
-    { category: "whatsapp.gateway", intervalMs: WARMUP_INTERVAL_MS },
-    "[whatsapp-otp] warm-up self-check loop scheduled (every 6h)",
-  );
-
-  return {
-    stop: () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      timer = null;
-    },
-  };
 }
 
 /** OpenWA session lifecycle states (from Swagger SessionResponseDto). */
@@ -992,7 +951,24 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
       session = await ensureSession(config);
     }
   }
-  if (!session.ok) return session;
+  if (!session.ok) {
+    // 2026-09-20: a user's REAL OTP attempt against a
+    // dead/unreachable channel is the strongest channel-health
+    // observation there is — feed the death watch (this replaces the
+    // old 60 s watcher timer). session_settling is healthy (a WORKING
+    // channel inside its post-link window); session_not_ready carries
+    // the raw lifecycle status; everything else is "unreachable".
+    const failureStatus =
+      session.reason === "session_settling"
+        ? "settling"
+        : session.reason === "session_not_ready"
+          ? (session.sessionStatus ?? null)
+          : session.reason === "session_not_found"
+            ? "not_found"
+            : null;
+    observeWhatsAppChannel({ configured: true, status: failureStatus });
+    return session;
+  }
 
   // Preflight: resolves the recipient's LID in the engine cache (the
   // actual fix for "No LID for user") and gives us a fail-fast signal
@@ -1063,7 +1039,7 @@ let readinessCache: WhatsAppGatewayReadiness | null = null;
 export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayReadiness> {
   const config = readGatewayConfig();
   if (!config) {
-    return {
+    const unconfigured: WhatsAppGatewayReadiness = {
       configured: false,
       ready: false,
       status: null,
@@ -1071,6 +1047,10 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
       readyInSec: null,
       probedAt: Date.now(),
     };
+    // Feeds the (resetting) observation-driven channel watch — a real
+    // probe, not a timer tick (2026-09-20).
+    observeWhatsAppChannel({ configured: false, status: null });
+    return unconfigured;
   }
   const now = Date.now();
   if (readinessCache && now - readinessCache.probedAt < READINESS_CACHE_TTL_MS) {
@@ -1100,6 +1080,9 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
       probedAt: now,
     };
     readinessCache = result;
+    // 2026-09-20: every REAL probe feeds the channel-death watch (this
+    // replaces the old 60 s watcher timer — no artificial traffic).
+    observeWhatsAppChannel({ configured: true, status: result.status });
     return result;
   } catch {
     // Network error / 5xx — report unknown, cache briefly to avoid a
@@ -1113,6 +1096,7 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
       probedAt: now,
     };
     readinessCache = result;
+    observeWhatsAppChannel({ configured: true, status: null });
     return result;
   }
 }

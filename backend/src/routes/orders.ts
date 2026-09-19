@@ -11,6 +11,8 @@ import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUs
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
 import { CheckoutService } from "../services/checkout.service";
+import { fireThrottledMaintenance } from "../lib/opportunistic";
+import { runStockSweep } from "../jobs/stockWatcher";
 import { toNumber } from "../lib/numeric";
 
 const router = Router();
@@ -289,6 +291,12 @@ router.post(
       orderCode: order.orderCode ?? null,
       provider: derivePrimaryProvider(user),
     });
+
+    // 2026-09-20 (free-infrastructure round): a purchase is one of the
+    // ONLY events that changes inventory — trigger the low/zero-stock
+    // sweep (was a 30-minute interval timer). Throttled 10 min,
+    // fire-and-forget: never blocks the 201 response, never fails it.
+    fireThrottledMaintenance("stock-sweep", 10 * 60 * 1000, runStockSweep);
 
     return res.status(201).json(formatOrder(order, product.name, product.imageUrl));
   },

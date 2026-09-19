@@ -5,12 +5,6 @@ import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
-/** Handle returned by startStockWatcher (B7-P2-11: stoppable + re-entry safe). */
-export interface StockWatcherHandle {
-  /** Idempotent: stops the interval + initial timeout. */
-  stop: () => void;
-}
-
 const LOW_STOCK_THRESHOLD = 3;
 
 // Track which products we already alerted about this session
@@ -28,23 +22,15 @@ export function resetStockWatcherMemoryForTests(): void {
   alertedZero.clear();
 }
 
-// B7-P2-11: re-entry guard — a hung query must not stack concurrent runs;
-// the next tick is skipped while one is still in flight.
-let checkInFlight = false;
-
-async function runCheckLowStock(): Promise<void> {
-  if (checkInFlight) {
-    logger.warn("[stockWatcher] previous check still in flight — skipping tick");
-    return;
-  }
-  checkInFlight = true;
-  try {
-    await checkLowStock();
-  } finally {
-    checkInFlight = false;
-  }
-}
-
+/**
+ * Low/zero-stock alert sweep — OPPORTUNISTIC since the 2026-09-20
+ * free-infrastructure round (was: a 30-minute interval timer).
+ *
+ * Inventory only ever changes through: a purchase (checkout), a
+ * refund, or an admin inventory write. Those are exactly the events
+ * that trigger this sweep now (throttled 10 min), plus the leader
+ * boot one-shot (web-scheduler.ts) as catch-up. No timer.
+ */
 async function checkLowStock(): Promise<void> {
   try {
     const products = await db
@@ -123,30 +109,10 @@ async function checkLowStock(): Promise<void> {
  */
 export const checkLowStockForTests = checkLowStock;
 
-let running = false;
-let stopCurrent: (() => void) | null = null;
-
-export function startStockWatcher(): StockWatcherHandle {
-  if (running) {
-    logger.warn("[stockWatcher] already running — ignoring re-start");
-    return { stop: () => stopCurrent?.() };
-  }
-  running = true;
-  // Run after a short delay to let DB settle, then every 30 minutes
-  const initial = setTimeout(() => void runCheckLowStock(), 60_000);
-  const interval = setInterval(() => void runCheckLowStock(), 30 * 60 * 1000);
-  // B7-P2-11: timers must not keep the process alive on their own.
-  initial.unref?.();
-  interval.unref?.();
-
-  stopCurrent = () => {
-    clearTimeout(initial);
-    clearInterval(interval);
-    running = false;
-    stopCurrent = null;
-    logger.info("[stockWatcher] stopped");
-  };
-  const stop = stopCurrent;
-  logger.info("Stock watcher started");
-  return { stop: () => stop() };
-}
+/**
+ * Event-driven entry point (2026-09-20): fire the stock sweep after a
+ * real inventory-changing event. Callers route this through
+ * lib/opportunistic.ts's throttle ("stock-sweep", 10 min) so bursts
+ * of checkouts / refunds / admin writes collapse to one sweep.
+ */
+export const runStockSweep = checkLowStock;

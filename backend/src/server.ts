@@ -15,9 +15,6 @@ import { instrumentDbPool } from "./lib/db-instrumentation";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { getIO, initSocket } from "./lib/socket";
-// 96-F1 (R96-A4 §1.3B): WhatsApp warm-up self-check loop — started in
-// bootstrap() alongside the other schedulers.
-import { startWhatsAppWarmupLoop } from "./services/openwa.service";
 import { startWebSchedulers, type WebSchedulerHandle } from "./lib/web-scheduler";
 import { logTelegramBootStatus } from "./telegram";
 
@@ -34,10 +31,6 @@ const DEFAULT_FALLBACK_ATTEMPTS = 25;
 // B7-P1-6: hard ceiling for graceful drain — a hung connection must not
 // wedge the deploy; Render SIGTERMs into SIGKILL anyway if we overstay.
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
-
-// 96-F1 (R96-A5 M17): WhatsApp warm-up loop handle — stopped during the
-// graceful drain alongside the schedulers.
-let whatsappWarmupLoop: { stop: () => void } | null = null;
 
 // ── B7-P1-8: early-bind readiness gate ───────────────────────────────────
 //
@@ -175,16 +168,14 @@ async function bootstrap(): Promise<WebSchedulerHandle> {
   // worker service is provisioned. Gated by DISABLE_WEB_SCHEDULERS=true
   // (operator flips this once a real worker exists) plus a Redis-backed
   // leader lock that only one instance can hold at a time.
+  //
+  // 2026-09-20 (free-infrastructure round): the WhatsApp warm-up loop
+  // that used to start here is GONE — the warm-up self-check is now
+  // intent-driven (scheduled one-shot per pairing epoch from the first
+  // REAL ready observation: a readiness probe or an OTP attempt — see
+  // services/openwa.service.ts). Nothing periodic starts at boot
+  // anymore; nothing keeps Render/Neon/OpenWA awake on its own.
   const schedulers = await startWebSchedulers(getRedisClient());
-
-  // 96-F1 (R96-A4 §1.3B): WhatsApp warm-up self-check loop, wired next to
-  // the other schedulers. Intentionally NOT leader-gated and NOT disabled
-  // with DISABLE_WEB_SCHEDULERS: dispatchReady is per-instance in-memory
-  // state feeding THIS process's OTP send path — every instance that may
-  // dispatch OTPs must run its own warm-up, worker tier or not. Silently
-  // no-ops when WHATSAPP_OTP_OPERATOR_E164 is unset (the loop logs that
-  // once at startup); errors are swallowed with logging inside the loop.
-  whatsappWarmupLoop = startWhatsAppWarmupLoop();
 
   // Surface Telegram readiness in the boot logs so the operator can
   // confirm notifications will deliver without opening the admin panel.
@@ -231,14 +222,6 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
         await schedulers.stop();
       } catch (err) {
         logger.error({ err }, "[server] scheduler stop error during shutdown");
-      }
-
-      // 1a. 96-F1: WhatsApp warm-up loop timers.
-      try {
-        whatsappWarmupLoop?.stop();
-        whatsappWarmupLoop = null;
-      } catch {
-        // best-effort — the loop's stop() is itself defensive
       }
 
       // 2. Socket.IO transports.

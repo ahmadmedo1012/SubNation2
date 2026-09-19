@@ -1,7 +1,6 @@
 import cron from "node-cron";
 import { markStaleUnreadAlertsRead, pruneReadAlerts } from "./alertLogger";
 import { cleanupOldAuthActivity } from "./cleanup-auth-activity";
-import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { runForecastIfPermitted } from "./forecast-runner";
 import { runForecastRetention } from "./forecast-retention";
 import { runEnrichmentIfPermitted } from "./enrichment-runner";
@@ -13,7 +12,6 @@ import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
-import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 
 /** Stop handle for everything initCronJobs() started (R6/R8). */
 export interface CronJobsHandle {
@@ -112,10 +110,9 @@ export function initCronJobs(): CronJobsHandle {
 
   // 1a. Daily at 00:05 UTC: TOTP security advisory (A6 P3#14, round-93).
   //      checkAdminTotpAdvisory used to be a boot one-shot ONLY — its
-  //      "weekly" cadence actually meant "on restart", and the keep-alive
-  //      pings (see job 8 below) keep this process alive for weeks, so a
-  //      no-deploy month meant zero nudges. Daily cadence is safe because
-  //      the advisory carries the admin:no-totp dedupe key with a 7-day
+  //      "weekly" cadence actually meant "on restart", so a no-deploy
+  //      month meant zero nudges. Daily cadence is safe because the
+  //      advisory carries the admin:no-totp dedupe key with a 7-day
   //      window — the cron re-creates it at most weekly. 00:05 keeps it
   //      off the 00:00 retention slot's first minute. When every ["all"]
   //      admin has TOTP enabled the same pass AUTO-RESOLVES the lingering
@@ -169,86 +166,32 @@ export function initCronJobs(): CronJobsHandle {
     { timezone: "UTC" },
   );
 
-  // 2. Every hour: Health Check / Cleanup (Example)
-  //    (Round-5 note: still a no-op heartbeat — kept for log cadence.)
-  schedule("0 * * * *", () => {
-    logger.debug("Hourly cron heartbeat");
-  });
-
-  // 3. Every hour at minute 15: prune expired WhatsApp OTP rows.
+  // 2/3/4/8 — REMOVED (2026-09-20 free-infrastructure round):
   //
-  // Idempotent. Safe to run repeatedly. The pruneExpiredOtps()
-  // helper deletes rows whose created_at is older than 24h — at
-  // that age the row is long past its 5-minute TTL AND any user
-  // retrying with such a code would already have received an
-  // "expired" or "consumed" verify error, so no active session
-  // is ever at risk.
+  //   job 2  "0 * * * *"   hourly no-op log heartbeat — served no
+  //                          function; deleted.
+  //   job 3  "15 * * * *"   hourly whatsapp_otps prune — now
+  //                          OPPORTUNISTIC: throttled 60-min fire from
+  //                          startOtp()/verifyOtp() (services/whatsapp-
+  //                          otp.service.ts) + the leader boot one-shot
+  //                          (web-scheduler.ts). A sleeping service has
+  //                          no OTP rows accumulating.
+  //   job 4  "45 * * * *"   hourly copilot-previews reaper — now
+  //                          OPPORTUNISTIC: throttled 60-min fire from
+  //                          the admin copilot surface (routes/admin/
+  //                          copilot/ask.ts) + leader boot one-shot.
+  //   job 8  "*/10 * * * *" keep-alive self-ping of /api/healthz + the
+  //                          OpenWA gateway — pure artificial traffic;
+  //                          the whole point of this round. Render Free
+  //                          is ALLOWED to sleep; cold starts are handled
+  //                          honestly (503 "starting" gate + frontend
+  //                          retry) instead of with fake requests.
   //
-  // Minute 15 (vs the heartbeat at :00) introduces natural jitter
-  // so the two jobs never compete for DB resources at the same
-  // instant if the heartbeat ever does real work. Logging is
-  // count-only — no OTP codes, no phone numbers, no PII.
-  schedule("15 * * * *", async () => {
-    logger.info({ category: "whatsapp.otp.cleanup" }, "OTP cleanup started");
-    try {
-      const removed = await pruneExpiredOtps();
-      logger.info(
-        { category: "whatsapp.otp.cleanup", removed },
-        `OTP cleanup completed — ${removed} expired record(s) removed`,
-      );
-    } catch (err) {
-      logger.error({ err, category: "whatsapp.otp.cleanup" }, "OTP cleanup failed");
-      captureSchedulerFailure("whatsapp_otp_cleanup", err, {
-        cron_expression: "15 * * * *",
-      });
-    }
-  });
-
-  // 4. Hourly at :45: copilot preview reaper (010-ai-admin-copilot).
-  //    Deletes copilot_previews rows older than 24h past their expiry. The
-  //    audit chain stays intact because copilot_actions.preview_id is
-  //    `ON DELETE SET NULL`.
-  //
-  //    Hourly, not every-5-minutes: previews expire on hour-scale windows,
-  //    so a 5-minute reap cadence bought nothing except keeping the Neon
-  //    compute from ever idling (each wake resets autosuspend — the direct
-  //    cause of the Aug 2026 free-tier quota exhaustion).
-  schedule("45 * * * *", async () => {
-    try {
-      const removed = await reapExpiredCopilotPreviews();
-      if (removed > 0) {
-        logger.info(
-          { category: "copilot.reaper", removed },
-          `copilot reaper removed ${removed} expired preview row(s)`,
-        );
-      }
-    } catch (err) {
-      logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
-      captureSchedulerFailure("copilot_reaper", err, {
-        cron_expression: "45 * * * *",
-      });
-    }
-  });
-
-  // 8. Every 10 minutes: deterministic keep-alive self-ping + gateway ping.
-  //    GitHub-cron external pings jitter 30-55 min under load, breaching
-  //    Render's ~15-min idle window. In-process schedule has no jitter: this
-  //    keeps THIS service warm and the openwa gateway's WhatsApp session
-  //    alive (a spun-down gateway loses its paired session registry).
-  const keepAliveTargets = [
-    process.env.APP_URL ? `${process.env.APP_URL.replace(/\/+$/, "")}/api/healthz` : null,
-    "https://openwa-gateway-7aaa.onrender.com/healthz",
-  ].filter(Boolean) as string[];
-  schedule("*/10 * * * *", async () => {
-    for (const target of keepAliveTargets) {
-      try {
-        const res = await fetch(target, { signal: AbortSignal.timeout(15_000) });
-        logger.debug({ target, status: res.status }, "[keep-alive] pinged");
-      } catch (err) {
-        logger.warn({ err, target }, "[keep-alive] ping failed");
-      }
-    }
-  });
+  // Rationale: every sub-hourly DB touch reset Neon's 5-minute
+  // autosuspend while the process was awake, and the self-pings reset
+  // Render's 15-minute idle timer outright — together they produced a
+  // 24/7 "always-on" free-tier footprint that the quotas cannot carry.
+  // Daily retention slots below survive (idempotent, boot catch-up'd).
 
   // 5. Daily at 03:30 UTC: risk_events 90-day retention (003-anomaly-detection).
   //    Unlabeled events older than 90 days are deleted. Labeled events get

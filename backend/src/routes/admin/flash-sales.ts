@@ -19,6 +19,8 @@ import { db, flashSalesTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { writeAuditLog } from "../../lib/audit";
+import { fireThrottledMaintenance } from "../../lib/opportunistic";
+import { deactivateExpiredFlashSales } from "../../jobs/flashSaleWatcher";
 import { logger } from "../../lib/logger";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -143,8 +145,14 @@ function toResponse(row: typeof flashSalesTable.$inferSelect): FlashSaleResponse
 
 /**
  * GET /api/admin/flash-sales — list all (active + historical), newest first.
+ *
+ * 2026-09-20: operator intent — the panel view triggers the expired-
+ * sale sweep (throttled 1 min; was a 5-minute interval timer), so the
+ * list it renders is already clean of stale is_active rows and the
+ * singleton index cannot block the next creation.
  */
 router.get("/flash-sales", requireAdmin, async (_req, res) => {
+  fireThrottledMaintenance("flash-sale-sweep", 60_000, deactivateExpiredFlashSales);
   const rows = await db
     .select()
     .from(flashSalesTable)

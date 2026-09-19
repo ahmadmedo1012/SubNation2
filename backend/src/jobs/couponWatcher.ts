@@ -5,12 +5,6 @@ import { logAdminAlert } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
-/** Handle returned by startCouponWatcher (B7-P2-11: stoppable + re-entry safe). */
-export interface CouponWatcherHandle {
-  /** Idempotent: stops the interval + initial timeout. */
-  stop: () => void;
-}
-
 // Track which coupons we already alerted about (per server session)
 const alertedExpiring = new Set<number>();
 
@@ -24,27 +18,16 @@ export function resetCouponWatcherMemoryForTests(): void {
   alertedExpiring.clear();
 }
 
-// B7-P2-11: re-entry guard — a hung query must not stack concurrent runs;
-// the next tick is skipped while one is still in flight.
-let checkInFlight = false;
-
-async function runCheckExpiringCoupons(): Promise<void> {
-  if (checkInFlight) {
-    logger.warn("[couponWatcher] previous check still in flight — skipping tick");
-    return;
-  }
-  checkInFlight = true;
-  try {
-    await checkExpiringCoupons();
-  } finally {
-    checkInFlight = false;
-  }
-}
-
 /**
- * One watcher pass. Exported for tests (the interval scheduler itself is
- * not triggerable in the harness) — pins the B7-P2-1 dedupeKey contract
- * and the A6-P2-1 notify-gating contract.
+ * Coupon expiry sweep — OPPORTUNISTIC since the 2026-09-20
+ * free-infrastructure round (was: an hourly interval timer).
+ *
+ * TRIGGERS now (no timer): POST /api/coupons/validate (the checkout
+ * apply-coupon moment, throttled 15 min), the admin coupons list
+ * (throttled 1 min), and the leader boot one-shot (web-scheduler.ts).
+ * Redemption was already expiry-guarded in-tx at checkout — this
+ * sweep only keeps is_active honest for admin lists + emits the
+ * expiring-soon operator nudge.
  */
 export async function checkExpiringCoupons(): Promise<void> {
   const now = new Date();
@@ -143,33 +126,4 @@ export async function checkExpiringCoupons(): Promise<void> {
     logger.error({ err }, "Coupon watcher error");
     captureSchedulerFailure("coupon_watcher", err);
   }
-}
-
-let running = false;
-let stopCurrent: (() => void) | null = null;
-
-export function startCouponWatcher(): CouponWatcherHandle {
-  if (running) {
-    logger.warn("[couponWatcher] already running — ignoring re-start");
-    return { stop: () => stopCurrent?.() };
-  }
-  running = true;
-  // Run immediately on startup (after a short delay to let DB settle)
-  const initial = setTimeout(() => void runCheckExpiringCoupons(), 30_000);
-  // Then run every hour
-  const interval = setInterval(() => void runCheckExpiringCoupons(), 60 * 60 * 1000);
-  // B7-P2-11: timers must not keep the process alive on their own.
-  initial.unref?.();
-  interval.unref?.();
-
-  stopCurrent = () => {
-    clearTimeout(initial);
-    clearInterval(interval);
-    running = false;
-    stopCurrent = null;
-    logger.info("[couponWatcher] stopped");
-  };
-  const stop = stopCurrent;
-  logger.info("Coupon expiry watcher started");
-  return { stop: () => stop() };
 }
