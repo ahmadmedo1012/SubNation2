@@ -179,13 +179,11 @@ router.get("/flash-sales", requireAdmin, async (_req, res) => {
 router.post("/flash-sales", requireAdmin, async (req, res) => {
   const validation = validateCreate(req.body ?? {});
   if (!validation.ok) {
-    return res
-      .status(400)
-      .json(
-        createErrorResponse(validation.error.message, ErrorCode.INVALID_DATA, {
-          field: validation.error.field,
-        }),
-      );
+    return res.status(400).json(
+      createErrorResponse(validation.error.message, ErrorCode.INVALID_DATA, {
+        field: validation.error.field,
+      }),
+    );
   }
 
   try {
