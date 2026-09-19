@@ -299,7 +299,11 @@ router.patch(
       .update(ordersTable)
       .set({ status: status as any })
       .where(guard)
-      .returning({ id: ordersTable.id, userId: ordersTable.userId, orderCode: ordersTable.orderCode });
+      .returning({
+        id: ordersTable.id,
+        userId: ordersTable.userId,
+        orderCode: ordersTable.orderCode,
+      });
     const updatedCount = flippedRows.length;
 
     // Distinguish WHY each missed id was skipped so the admin sees an
@@ -365,7 +369,10 @@ router.patch(
         ? { skipped_refunded: skippedRefunded, reason: "REFUNDED_IS_TERMINAL" }
         : {}),
       ...(skippedBlockedCompletion > 0
-        ? { skipped_blocked_completion: skippedBlockedCompletion, reason: "COMPLETED_IS_PURCHASE_ONLY" }
+        ? {
+            skipped_blocked_completion: skippedBlockedCompletion,
+            reason: "COMPLETED_IS_PURCHASE_ONLY",
+          }
         : {}),
       ...(skippedMissing > 0 ? { skipped_missing: skippedMissing } : {}),
     });

@@ -29,12 +29,7 @@ const CreateCouponBody = z.object({
   type: z.enum(["percentage", "fixed"]),
   value: z.number().finite().positive().max(MAX_FIXED_COUPON_VALUE),
   min_order_amount: z.number().finite().min(0).max(1_000_000).optional().default(0),
-  max_uses: z
-    .number()
-    .int()
-    .min(1)
-    .max(1_000_000)
-    .nullish(),
+  max_uses: z.number().int().min(1).max(1_000_000).nullish(),
   expires_at: z
     .string()
     .regex(ISO_DATE, "ISO date")

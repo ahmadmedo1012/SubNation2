@@ -189,7 +189,9 @@ describe("customFetch — cold-start boot-gate retry (2026-09-20)", () => {
   });
 
   it("401 keeps single-shot behavior (no retry) even though it is not 200", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: "unauthorized" }, { status: 401 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ error: "unauthorized" }, { status: 401 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const pending = customFetch("/api/auth/me").catch((err: unknown) => err);

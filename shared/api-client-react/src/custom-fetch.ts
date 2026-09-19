@@ -647,9 +647,7 @@ export async function customFetch<T = unknown>(
             if (deadlineAt === null || gateDeadline > deadlineAt) deadlineAt = gateDeadline;
           }
           const delay =
-            BOOT_GATE_RETRY_DELAYS_MS[
-              Math.min(attempt, BOOT_GATE_RETRY_DELAYS_MS.length - 1)
-            ];
+            BOOT_GATE_RETRY_DELAYS_MS[Math.min(attempt, BOOT_GATE_RETRY_DELAYS_MS.length - 1)];
           await sleep(delay);
           continue;
         }

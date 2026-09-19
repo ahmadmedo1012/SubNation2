@@ -130,12 +130,10 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   const body = (req.body ?? {}) as Partial<AskBody>;
   const intentText = typeof body.intent_text === "string" ? body.intent_text.trim() : "";
   if (!intentText || intentText.length > 4000) {
-    res
-      .status(400)
-      .json({
-        error: "intent_text required (1–4000 chars)",
-        code: ErrorCode.COPILOT_INVALID_INPUT,
-      });
+    res.status(400).json({
+      error: "intent_text required (1–4000 chars)",
+      code: ErrorCode.COPILOT_INVALID_INPUT,
+    });
     return;
   }
   const history = sanitizeHistory(body.history);
