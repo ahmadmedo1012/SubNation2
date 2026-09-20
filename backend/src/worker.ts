@@ -3,6 +3,7 @@ import "./instrument";
 
 import { fileURLToPath } from "node:url";
 import { initCronJobs } from "./jobs/cron";
+import { runBootOneShots } from "./jobs/boot-one-shots";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { alertingService } from "./services/alerting.service";
@@ -126,11 +127,21 @@ async function startWorker() {
   // flash-sale watcher INTERVALS are gone everywhere (worker included —
   // this entry is dormant since the paid worker service left
   // render.yaml). Their sweeps run opportunistically off real traffic
-  // (lib/opportunistic.ts) + as leader boot one-shots (web-scheduler).
+  // (lib/opportunistic.ts) + as boot one-shots (web-scheduler leader and
+  // this process — R101).
   // R8 (round-93 A3): capture the cron stop handle so SIGTERM actually
   // stops the tasks (previously the schedule() results were discarded
   // everywhere and nothing could stop them).
   const cronJobs = initCronJobs();
+
+  // R101: fire the SAME leader-start one-shot chain the embedded web
+  // leader runs (jobs/boot-one-shots.ts). Before R101 this process ran
+  // cron + alerting + heartbeat but NONE of the retention catch-ups —
+  // so flipping DISABLE_WEB_SCHEDULERS=true on the web tier silently
+  // dropped the B7-P2-12 restart-gap protection (retention would again
+  // be cron-only: down-at-slot = skipped). Every one-shot is idempotent,
+  // so the topology flip cannot double-run anything materially.
+  runBootOneShots();
 
   logger.info("Background worker started");
 

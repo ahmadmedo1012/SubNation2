@@ -186,6 +186,9 @@ export function initCronJobs(): CronJobsHandle {
   //                          is ALLOWED to sleep; cold starts are handled
   //                          honestly (503 "starting" gate + frontend
   //                          retry) instead of with fake requests.
+  //                          ("8" is the HISTORICAL number of this long-
+  //                          dead job — unrelated to the current #8
+  //                          enrichment slot below.)
   //
   // Rationale: every sub-hourly DB touch reset Neon's 5-minute
   // autosuspend while the process was awake, and the self-pings reset
@@ -224,9 +227,12 @@ export function initCronJobs(): CronJobsHandle {
   // 6. Daily at 02:15 UTC: inventory demand forecast (011-inventory-demand-
   //    forecast). Refuses to run unless WORKER_TIER=true AND
   //    FORECAST_RUNNER_ENABLED=true (the runner enforces the gate).
-  //    02:15 lands outside the existing low_stock (00:00), OTP cleanup
-  //    (every :15), and copilot-reaper (every 5 min) windows so no two
-  //    heavy jobs compete for DB resources.
+  //    R101 (comment truth): the old justification cited the :15 OTP
+  //    cleanup and the :45 copilot reaper — both became opportunistic in
+  //    the 2026-09-20 free-infrastructure round, so the slot rationale
+  //    is now purely the daily retention ladder: 00:00/00:05 retention
+  //    pair → 02:15 forecast → 03:30+ retention block. No two heavy
+  //    jobs share a minute.
   schedule(
     "15 2 * * *",
     async () => {
@@ -267,10 +273,11 @@ export function initCronJobs(): CronJobsHandle {
   // 8. Daily at 03:50 UTC: catalog enrichment runner
   //    (012-arabic-catalog-enrichment). Refuses to run unless
   //    WORKER_TIER=true AND ENRICHMENT_RUNNER_ENABLED=true. 03:50 — B7-P2-3
-  //    (round-92): moved off the :45 collision with the HOURLY copilot
-  //    reaper, so the daily enrichment LLM run no longer shares its first
-  //    minute with another DB writer. Still lands cleanly between the
-  //    retention sweep at 03:30 and morning admin activity.
+  //    (round-92): originally moved off a :45 collision with the then-
+  //    hourly copilot reaper (that reaper is opportunistic since the
+  //    2026-09-20 round — boot one-shot + admin-surface trigger). The
+  //    slot now simply sits cleanly between the forecast retention
+  //    (03:35) and the enrichment retention (04:00) in the daily ladder.
   schedule(
     "50 3 * * *",
     async () => {

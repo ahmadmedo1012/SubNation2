@@ -15,7 +15,7 @@ import { productsTable } from "./products";
 /**
  * Catalog variants — the Retail catalog's sellable unit.
  *
- * Embronic (the sourcing supplier) structures every retail product as
+ * The sourcing supplier structures every retail product as
  * **Product → Plan → Validity → Price (USD cost)**, e.g.:
  *   Netflix      → (no plan) × {1 Month, 3 Months, 6 Months, 1 Year}
  *   Spotify      → {Individual, Duo, Family} × {1 Month, …, 1 Year}

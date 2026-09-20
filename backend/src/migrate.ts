@@ -651,7 +651,7 @@ export async function applyTicketRepliesDriftClosureStage(
 // ── V1-M16 (catalog reconstruction 2026-09-20): product_variants + ──────────
 // additive variant wiring across orders/inventory/cart_items + products SEO
 // columns. This is the structural backbone of the Retail catalog rebuild:
-// the supplier (Embronic) structures every product as
+// the sourcing supplier structures every product as
 // Product → Plan → Validity → Price, and mirroring that structure in
 // SubNation is the only way to avoid duplicate brand rows (the pre-2026-09-20
 // Disney×2 / MS365×2 / PS Plus×3 problem).

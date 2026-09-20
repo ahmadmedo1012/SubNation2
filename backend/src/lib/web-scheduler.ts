@@ -65,22 +65,12 @@
 
 import type { RedisClientType } from "redis";
 import { logger } from "./logger";
-import { pruneStaleAdminSessions } from "./admin-session";
 // 2026-09-20 (free-infrastructure round): couponWatcher / stockWatcher /
 // flashSaleWatcher lost their interval timers — their sweeps now run
-// (a) at leader boot (one-shots below) and (b) opportunistically off
-// real traffic via lib/opportunistic.ts (route-level triggers).
-import { checkExpiringCoupons } from "../jobs/couponWatcher";
+// (a) at leader boot (the shared one-shots below) and (b) opportunistically
+// off real traffic via lib/opportunistic.ts (route-level triggers).
 import { initCronJobs } from "../jobs/cron";
-import { cleanupOldAuthActivity } from "../jobs/cleanup-auth-activity";
-import { checkAdminTotpAdvisory } from "../jobs/security-advisories";
-import { pruneExpiredSessions } from "../jobs/session-prune";
-import { reapExpiredRiskEvents } from "../jobs/risk-retention";
-import { markStaleUnreadAlertsRead, pruneReadAlerts } from "../jobs/alertLogger";
-import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
-import { runStockSweep } from "../jobs/stockWatcher";
-import { reapExpiredCopilotPreviews } from "../jobs/copilot-reaper";
-import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
+import { runBootOneShots } from "../jobs/boot-one-shots";
 import { alertingService } from "../services/alerting.service";
 import { startHeartbeat } from "../worker/heartbeat";
 import { acquireSchedulerLeadership, type SchedulerLeadership } from "./scheduler-coordinator";
@@ -98,46 +88,15 @@ export interface WebSchedulerHandle {
   stop: () => Promise<void>;
 }
 
-/**
- * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at leader
- * start via the now-exported jobs/flashSaleWatcher.ts sweep (the mirrored
- * copy this file used to carry was deleted with the interval timer —
- * same predicate, same alert, same per-sale 7-day dedupe key, so the
- * boot catch-up and the route-triggered sweeps collapse to one alert
- * per sale). Idempotent by construction.
- */
-async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: number }> {
-  // The sweep logs its own outcome; the return shape only feeds the
-  // fireOneShot logger on failure.
-  await deactivateExpiredFlashSales();
-  return { deactivated: -1 };
-}
+// R101: the boot one-shot chain (roster + cold-start storm guard) lives in
+// jobs/boot-one-shots.ts now — shared with worker.ts so the documented
+// DISABLE_WEB_SCHEDULERS=true migration path keeps the B7-P2-12 restart-gap
+// protection instead of silently dropping it.
 
-/**
- * Cold-start query-storm guard (2026-09-20 free-infrastructure round):
- * the boot one-shots used to fire CONCURRENTLY — eight retention jobs
- * hitting a freshly-woken Neon compute (0.25 CU free tier) in the same
- * tick, exactly the "storm" §25 of the optimization brief forbids.
- * They now run strictly sequentially: each job waits for the previous
- * one to settle. Total wall-clock is a few seconds; the first user
- * requests stop competing with retention DELETEs for pool slots.
- * fireOneShot semantics are unchanged (fire-and-forget from the
- * caller's perspective — the chain is self-driving).
- */
-function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<unknown>]>): void {
-  void (async () => {
-    for (const [name, fn] of jobs) {
-      try {
-        await fn();
-      } catch (err) {
-        logger.warn(
-          { err, category: "monitoring" },
-          `[scheduler] ${name} boot one-shot failed (will run again at its cron slot)`,
-        );
-      }
-    }
-  })();
-}
+// R101: heartbeat re-attach cadence for PG-lease leaders whose Redis client
+// arrives mid-reign (same value as worker.ts R1 — a poll this cheap can
+// afford 30 s granularity).
+const HEARTBEAT_RECOVERY_POLL_MS = 30_000;
 
 export async function startWebSchedulers(
   redis: RedisClientType | null,
@@ -162,6 +121,7 @@ export async function startWebSchedulers(
 
   let started = false;
   let heartbeatCleanup: { stop: () => void } | null = null;
+  let heartbeatRecoveryPoll: ReturnType<typeof setInterval> | null = null;
   let cronJobs: CronJobsHandle | null = null;
 
   /**
@@ -174,6 +134,12 @@ export async function startWebSchedulers(
   const stopLeaderJobs = (context: "demoted" | "shutdown") => {
     if (!started) return;
     started = false;
+    // R101: stop the heartbeat-recovery poll too — a demoted/draining
+    // leader must not attach a heartbeat after demotion.
+    if (heartbeatRecoveryPoll) {
+      clearInterval(heartbeatRecoveryPoll);
+      heartbeatRecoveryPoll = null;
+    }
     heartbeatCleanup?.stop();
     heartbeatCleanup = null;
     alertingService.stop();
@@ -220,8 +186,29 @@ export async function startWebSchedulers(
     } else {
       logger.warn(
         { category: "monitoring" },
-        "[scheduler] Redis unavailable — heartbeat skipped (no key to write)",
+        "[scheduler] Redis unavailable — heartbeat deferred (PG-lease leadership); will attach if Redis returns mid-reign",
       );
+      // R101: a PG-lease leader has no Redis client at acquisition time
+      // (that is the whole point of the 97-F1 fallback). Before R101 the
+      // heartbeat then stayed dark for the ENTIRE reign even if Redis
+      // returned five minutes later — a stale worker:heartbeat key fed
+      // false worker_heartbeat_missing alerts and healthz' worker check
+      // stayed degraded forever. worker.ts has had this recovery poll
+      // since R1 (round-93); the web leader now gets the same fix:
+      // poll the singleton every 30 s and attach the heartbeat (once)
+      // the moment a client exists. Stopped by stopLeaderJobs.
+      heartbeatRecoveryPoll = setInterval(() => {
+        const recovered = getRedisClient();
+        if (!recovered) return;
+        if (heartbeatRecoveryPoll) clearInterval(heartbeatRecoveryPoll);
+        heartbeatRecoveryPoll = null;
+        heartbeatCleanup = startHeartbeat(recovered);
+        logger.warn(
+          { category: "monitoring", instanceId: leadership.instanceId },
+          "[scheduler] Redis recovered mid-reign — heartbeat attached",
+        );
+      }, HEARTBEAT_RECOVERY_POLL_MS);
+      heartbeatRecoveryPoll.unref?.();
     }
 
     alertingService.start();
@@ -236,48 +223,11 @@ export async function startWebSchedulers(
     // that kept Neon/OpenWA awake; see the module header.)
     cronJobs = initCronJobs();
 
-    // Boot one-shots — SEQUENTIAL (cold-start storm guard), fire-and-
-    // forget from the caller's perspective (scheduler startup must not
-    // block):
-    //   - session prune: sessions that expired while the process was down;
-    //   - TOTP advisory: weekly admin-TOTP nudge;
-    //   - retention catch-up (B7-P2-12): alert + risk-events retention
-    //     would otherwise be skipped entirely if the instance was down at
-    //     the 00:00/03:30 slots;
-    //   - auth-activity retention (B7-P1-2): the job was previously wired
-    //     to nothing — 90-day retention was never enforced;
-    //   - coupon + stock sweeps: the old 30 s / 60 s watcher initial
-    //     passes, now the only boot-time trigger (route-triggered
-    //     opportunistic sweeps carry the rest);
-    //   - copilot reaper: the old hourly :45 cron slot, now boot +
-    //     admin-surface-triggered;
-    //   - whatsapp OTP prune + admin-session prune + flash-sale catch-up:
-    //     unchanged from 97-F1 (the silent-outage restart-gap fix).
-    fireOneShotsSequentially([
-      ["session-prune", pruneExpiredSessions],
-      ["security-advisories", checkAdminTotpAdvisory],
-      [
-        "alert-retention",
-        async () => {
-          const staled = await markStaleUnreadAlertsRead(14);
-          const pruned = await pruneReadAlerts(30);
-          return { staled, pruned };
-        },
-      ],
-      ["risk-retention", reapExpiredRiskEvents],
-      ["auth-activity-retention", cleanupOldAuthActivity],
-      ["coupon-sweep", checkExpiringCoupons],
-      ["stock-sweep", runStockSweep],
-      ["copilot-reaper", reapExpiredCopilotPreviews],
-      ["whatsapp-otp-prune", pruneExpiredOtps],
-      ["admin-session-prune", pruneStaleAdminSessions],
-      ["flash-sale-catchup", deactivateExpiredFlashSalesCatchUp],
-    ]);
-
-    logger.info(
-      { category: "monitoring", instanceId: leadership.instanceId },
-      "[scheduler] cron + sequential boot one-shots started (cron, sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, couponSweep, stockSweep, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
-    );
+    // Boot one-shots — sequential (cold-start storm guard), shared with
+    // the dedicated-worker path via jobs/boot-one-shots.ts (R101):
+    // retention catch-up (B7-P2-12), opportunistic-sweep boot passes,
+    // and the 97-F1 restart-gap cleanups — all idempotent.
+    runBootOneShots();
 
     setSchedulerState({
       mode: "embedded",

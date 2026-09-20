@@ -380,13 +380,55 @@ export async function acquireSchedulerLeadership(
     }
   };
 
+  // R101 (orphan-lock guard): best-effort immediate release of a lock/lease
+  // that resolved as OURS after release() already ran. Never throws — a
+  // failure simply leaves the 60 s TTL as the backstop, exactly like the
+  // release() path below.
+  const freeOrphanedLock = async (): Promise<void> => {
+    try {
+      if (usingPgLease) {
+        await pgLease.release(instanceId);
+        return;
+      }
+      if (!client) return;
+      const current = await withRedisCommandTimeout(
+        "leader_orphan_get",
+        () => client!.get(SCHEDULER_LEADER_KEY),
+        LEADERSHIP_OP_TIMEOUT_MS,
+      );
+      if (current === instanceId) {
+        await withRedisCommandTimeout(
+          "leader_orphan_del",
+          () => client!.del(SCHEDULER_LEADER_KEY),
+          LEADERSHIP_OP_TIMEOUT_MS,
+        );
+        logger.info(
+          { category: "monitoring", instanceId },
+          "[scheduler] released an acquisition that resolved post-shutdown (orphan-lock guard)",
+        );
+      }
+    } catch {
+      // TTL (60 s) is the backstop — cleanup must never stall shutdown.
+    }
+  };
+
   const startRetryTimer = () => {
     if (retryTimer) return;
     retryTimer = setInterval(() => {
       if (released || leader) return;
       void attemptAcquisition()
         .then((outcome) => {
-          if (outcome !== "acquired" || released || leader) return;
+          if (outcome !== "acquired" || leader) return;
+          // R101 (orphan-lock guard): the acquisition SET can resolve a
+          // hair's-breadth AFTER release() ran (fast SIGTERM at boot, or
+          // signal during the retry window). Before R101 the lock then sat
+          // in Redis under OUR id with nobody owning it — the new instance
+          // waited out the full 60 s TTL in blue-green deploys. Free it
+          // now instead; any failure falls back to the TTL backstop.
+          if (released) {
+            void freeOrphanedLock();
+            return;
+          }
           stopRetryTimer();
           becomeLeader();
           try {
@@ -408,7 +450,13 @@ export async function acquireSchedulerLeadership(
   const first = await attemptAcquisition();
 
   if (first === "acquired") {
-    becomeLeader();
+    // R101: same orphan-lock guard on the initial (non-retry) acquisition —
+    // release() may already have run while the SET was in flight.
+    if (released) {
+      void freeOrphanedLock();
+    } else {
+      becomeLeader();
+    }
   } else {
     if (first === "busy") {
       logger.info(

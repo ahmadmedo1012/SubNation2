@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
+import { getSchedulerState, type SchedulerStateSnapshot } from "../lib/scheduler-state";
 import { getIO } from "../lib/socket";
 import { logger } from "../lib/logger";
 import { requireAdmin } from "../middlewares/requireAdmin";
@@ -69,6 +70,17 @@ interface CheckResult {
 interface HealthCheckResponseExtended {
   status: CheckStatus;
   checks: Record<string, CheckResult>;
+  /**
+   * R101 (dark-scheduler visibility): this-process scheduler topology
+   * snapshot (mode / active / isLeader / reason) — INFORMATIONAL, never
+   * folded into `status`. /healthz used to read green while the
+   * schedulers were dark (no leader anywhere: alerting itself only runs
+   * ON the leader — the egg-and-chicken gap). Surfacing the snapshot
+   * here gives operators the full truth in one admin pane; the
+   * scheduler-state reasons line up with the admin observability
+   * endpoint and metrics-snapshot labels.
+   */
+  scheduler: SchedulerStateSnapshot;
   version: string;
   uptimeSec: number;
 }
@@ -627,6 +639,7 @@ export async function computeReadyState(): Promise<HealthCheckResponseExtended> 
     return {
       status: overallStatus as CheckStatus,
       checks,
+      scheduler: getSchedulerState(),
       version,
       uptimeSec,
     };
@@ -690,6 +703,7 @@ function degradedAggregateSnapshot(err: unknown): HealthCheckResponseExtended {
         lastCheckedAt: new Date().toISOString(),
       },
     },
+    scheduler: getSchedulerState(),
     version: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown",
     uptimeSec: Math.floor(process.uptime()),
   };
