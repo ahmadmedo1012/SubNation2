@@ -248,11 +248,7 @@ export function notifyCouponMaxedOut(code: string, maxUses: number): void {
   void dispatch("coupon_maxed", msg);
 }
 
-export function notifyCouponExpiringSoon(
-  code: string,
-  expiresAt: Date,
-  hoursLeft: number,
-): void {
+export function notifyCouponExpiringSoon(code: string, expiresAt: Date, hoursLeft: number): void {
   const timeLabel = hoursLeft <= 1 ? "أقل من ساعة" : `${Math.floor(hoursLeft)} ساعة`;
   const dateStr = expiresAt.toLocaleDateString("ar-LY", {
     day: "numeric",
@@ -281,8 +277,7 @@ export interface NotifyLowStockInput {
 
 export function notifyLowStock(input: NotifyLowStockInput): void {
   const urgency = input.stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
-  const countStr =
-    input.stockCount === 0 ? "لا توجد وحدات متبقية" : `${input.stockCount} وحدة فقط`;
+  const countStr = input.stockCount === 0 ? "لا توجد وحدات متبقية" : `${input.stockCount} وحدة فقط`;
   const msg = [
     urgency,
     ``,
@@ -331,10 +326,7 @@ export async function diagnosticPing(): Promise<{
     delivered: result.outcome === "ok",
     attempts: result.attempts,
     errorMessage: result.errorMessage,
-    hint:
-      result.outcome === "ok"
-        ? null
-        : hintForError(result.errorMessage),
+    hint: result.outcome === "ok" ? null : hintForError(result.errorMessage),
   };
 }
 
@@ -414,8 +406,7 @@ async function dispatchWithDetails(
       // Non-ok: distinguish transient (retryable) from permanent.
       const errorCode = body?.error_code ?? response.status;
       const description = body?.description ?? response.statusText ?? "unknown";
-      const transient =
-        response.status >= 500 || response.status === 429 || errorCode === 429;
+      const transient = response.status >= 500 || response.status === 429 || errorCode === 429;
 
       lastError = `Telegram ${errorCode}: ${description}`;
 
@@ -513,10 +504,7 @@ function sleep(ms: number): Promise<void> {
  * being interpreted as markup.
  */
 function escapeHtml(value: string): string {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function formatLyd(amount: number): string {
@@ -570,9 +558,7 @@ function buttonsForOrder(orderId?: number): InlineKeyboard | undefined {
 function buttonsForTopup(): InlineKeyboard | undefined {
   const origin = appUrl();
   if (!origin) return undefined;
-  return [
-    [{ text: "💰 مراجعة طلبات الشحن", url: `${origin}/admin/topups` }],
-  ];
+  return [[{ text: "💰 مراجعة طلبات الشحن", url: `${origin}/admin/topups` }]];
 }
 
 function buttonsForUser(userId?: number): InlineKeyboard | undefined {

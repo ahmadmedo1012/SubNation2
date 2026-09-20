@@ -22,19 +22,19 @@
 (بث مباشر، موسيقى، ألعاب، أدوات إنتاجية). الدفع عبر محفظة داخلية، التسليم فوري
 (بيانات حساب مشفّرة تُسلَّم بعد الدفع). يعمل على https://subnation.ly.
 
-| البُعد         | القيمة                                                              |
-| -------------- | ------------------------------------------------------------------- |
-| البنية         | pnpm monorepo                                                       |
-| الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                |
-| الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                            |
-| المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة) |
-| قاعدة البيانات | PostgreSQL (Neon) — 40 جدول (مخطط Drizzle موحّد)                              |
-| الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                     |
-| مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                        |
-| صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                   |
+| البُعد         | القيمة                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| البنية         | pnpm monorepo                                                                                    |
+| الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                                             |
+| الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                         |
+| المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                              |
+| قاعدة البيانات | PostgreSQL (Neon) — 40 جدول (مخطط Drizzle موحّد)                                                 |
+| الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                                                  |
+| مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                     |
+| صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                |
 | الاختبارات     | ~1800+ اختبار (backend+frontend+openwa — الأعداد المتغيرة راجع `docs/final-audit-2026-09-20.md`) |
-| النشر          | Render (Docker): web + worker + redis                               |
-| المراقبة       | Sentry + Prometheus (prom-client) + pino                            |
+| النشر          | Render (Docker): web + worker + redis                                                            |
+| المراقبة       | Sentry + Prometheus (prom-client) + pino                                                         |
 
 ---
 
@@ -79,9 +79,9 @@ config/      env.example (مرجع مُعلّق كامل)
 ## 4) قاعدة البيانات (40 جدولاً)
 
 **(أُحدّث في الجولة 99 — كان العدد المعلن 21 ثم 33؛ العدد الفعلي اليوم 40 تعريف pgTable
-في shared/db/src/schema/، منها: product_variants (إعمار الكتالوج r98)،
+في shared/db/src/schema/، منها: product*variants (إعمار الكتالوج r98)،
 scheduler_leader_lease + account_link_consents (r97)، idempotency_keys (r94)،
-admin_alerts، whatsapp_otps، risk_events، forecast_*/enrichment_* …)**
+admin_alerts، whatsapp_otps، risk_events، forecast*\_/enrichment\_\_ …)**
 
 **الأساسية:** `users`, `products`, `product_variants`, `inventory`, `orders`,
 `wallet_ledger`, `wallet_topups`, `sessions`, `user_auth_identities`, `admin_users`.

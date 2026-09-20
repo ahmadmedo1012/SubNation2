@@ -124,9 +124,7 @@ export async function logAdminAlert(
       const windowMs = opts.dedupeWindowMs ?? 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - windowMs);
       const outcome = await db.transaction(async (tx) => {
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${opts.dedupeKey}, 0))`,
-        );
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${opts.dedupeKey}, 0))`);
         const existing = await tx
           .select({ id: adminAlertsTable.id })
           .from(adminAlertsTable)

@@ -58,12 +58,12 @@ Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch prote
 ### 5. Secrets
 
 Owner-managed. Rotation procedure: rotate from the source of truth for each secret
-(e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
+(e.g. BotFather for TELEGRAM*BOT_TOKEN, Neon console for DATABASE_URL,
 Sentry dashboard for DSNs) then update the matching Render env var and
 redeploy. The list of `sync: false` keys on the Render service *(r99 —
 regenerated verbatim from render.yaml; the previous list predated rounds
 93–98 and was missing over half the keys — dangerous in the rotation
-scenario below, where this list IS the runbook)*:
+scenario below, where this list IS the runbook)\_:
 
 - **Core secrets**: `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_JWT_SECRET`, `ENCRYPTION_KEY`, `METRICS_ADMIN_TOKEN`
 - **Origins**: `FRONTEND_ORIGINS`, `VITE_SENTRY_DSN`, `VITE_GSC_VERIFICATION`, `VITE_GA_TRACKING_ID`

@@ -455,21 +455,22 @@ export default function LoyaltyPage() {
                     dir="ltr"
                     className="text-left h-11"
                   />
-                  {convertPoints && (() => {
-                    /* R94-A1 #14 (P3): the preview hardcoded /100 AND showed
-                     * for non-multiple values the server rejects (150 →
-                     * «1.50 د.ل» then 400 «يجب أن تكون النقاط من مضاعفات
-                     * 100»). Use the live rate (same field as line 384) and
-                     * only preview server-acceptable multiples. */
-                    const rate = data.points_rate.points_per_lyd;
-                    const points = parseInt(convertPoints) || 0;
-                    if (!rate || points < rate || points % rate !== 0) return null;
-                    return (
-                      <p className="text-xs text-status-success mt-1.5 px-1 font-bold">
-                        ستحصل على {formatCurrency(points / rate)}
-                      </p>
-                    );
-                  })()}
+                  {convertPoints &&
+                    (() => {
+                      /* R94-A1 #14 (P3): the preview hardcoded /100 AND showed
+                       * for non-multiple values the server rejects (150 →
+                       * «1.50 د.ل» then 400 «يجب أن تكون النقاط من مضاعفات
+                       * 100»). Use the live rate (same field as line 384) and
+                       * only preview server-acceptable multiples. */
+                      const rate = data.points_rate.points_per_lyd;
+                      const points = parseInt(convertPoints) || 0;
+                      if (!rate || points < rate || points % rate !== 0) return null;
+                      return (
+                        <p className="text-xs text-status-success mt-1.5 px-1 font-bold">
+                          ستحصل على {formatCurrency(points / rate)}
+                        </p>
+                      );
+                    })()}
                 </div>
                 <Button
                   type="submit"

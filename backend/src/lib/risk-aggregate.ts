@@ -46,9 +46,7 @@ export async function getUserAggregatedRiskScore(userId: number): Promise<number
       // ready, socket dead) suspended login/OTP/wallet requests until the
       // 60 s HTTP timeout; the R2 standard is a sub-second fallback to the
       // DB path below (mirrors cache.ts / rate-limit-store).
-      const raw = await withRedisCommandTimeout("risk_agg_get", () =>
-        redis.get(cacheKey(userId)),
-      );
+      const raw = await withRedisCommandTimeout("risk_agg_get", () => redis.get(cacheKey(userId)));
       if (raw) {
         const parsed = Number.parseFloat(raw);
         if (Number.isFinite(parsed)) return parsed;
