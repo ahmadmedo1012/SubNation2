@@ -60,6 +60,44 @@ function getAdminTelegramIds(): number[] {
     .filter((n) => Number.isFinite(n) && n > 0);
 }
 
+/**
+ * F2 (R98-A6, 98-F5): the /start bootstrap reply is the ONE awaited Telegram
+ * call in this route — every sibling call goes through telegram-gateway's
+ * 10 s AbortController, but this raw fetch had no timeout, so a slow
+ * Telegram held the webhook handler open until httpServer.requestTimeout
+ * (60 s) destroyed the socket; Telegram then registered a failed delivery
+ * and re-posted the same update onto the endpoint that must stay cheap.
+ *
+ * Same 10 s AbortController + clearTimeout idiom as lib/telegram-gateway.ts
+ * apiCall. The .catch stays — the reply is best-effort and must never
+ * 5xx the webhook ack. Exported for tests (parseTopupCallback precedent).
+ */
+export async function replyWithStartIds(
+  botToken: string,
+  chatId: number,
+  fromId?: number,
+): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text:
+          `مرحباً! 👋\n\nمعرّف المحادثة: \`${chatId}\`\n` +
+          (fromId ? `معرّفك الشخصي: \`${fromId}\`\n` : "") +
+          `\nأضف المعرّف الشخصي إلى متغير TELEGRAM_ADMIN_IDS للسماح بالموافقة/الرفض من هنا.`,
+        parse_mode: "Markdown",
+      }),
+      signal: controller.signal,
+    }).catch(() => undefined);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /** Pure parser (exported for tests): returns action+topupId or null. */
 export function parseTopupCallback(
   data: string | undefined,
@@ -193,24 +231,15 @@ router.post("/telegram", async (req, res) => {
     }
 
     // Plain messages: reply to /start with the sender's IDs (bootstrap for
-    // building the TELEGRAM_ADMIN_IDS allowlist).
+    // building the TELEGRAM_ADMIN_IDS allowlist). F2: routed through the
+    // timeout-guarded helper so a slow Telegram can no longer pin this
+    // handler for the full 60 s requestTimeout.
     const chatId = update.message?.chat?.id;
     const fromId = update.message?.from?.id;
     if (chatId && update.message?.text === "/start") {
       const botToken = getBotToken();
       if (botToken) {
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text:
-              `مرحباً! 👋\n\nمعرّف المحادثة: \`${chatId}\`\n` +
-              (fromId ? `معرّفك الشخصي: \`${fromId}\`\n` : "") +
-              `\nأضف المعرّف الشخصي إلى متغير TELEGRAM_ADMIN_IDS للسماح بالموافقة/الرفض من هنا.`,
-            parse_mode: "Markdown",
-          }),
-        }).catch(() => undefined);
+        await replyWithStartIds(botToken, chatId, fromId);
       }
     }
 

@@ -38,22 +38,23 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 - 🛠️ **Rich admin panel** — products, orders, users, top-ups, pricing, security, alerts, observability.
 - 🌍 **Arabic RTL** UI with a unified dark/light theme.
 - 📈 Production-grade **observability** — Sentry, Prometheus metrics, structured logs, public `/status`.
-- 🔒 Hardened security — Helmet/CSP, CORS allow-list, CSRF checks, multi-tier Redis rate-limiting, admin 2FA.
+- 🔒 Hardened security — Helmet/CSP, CORS allow-list, CSRF checks, multi-tier rate-limiting
+  (Redis-backed when provisioned; in-process fallback in the current no-Redis production), admin 2FA.
 
 ---
 
 ## Tech stack
 
-| Layer            | Technology                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Frontend         | React 19, Vite, Tailwind CSS, wouter, TanStack Query (RTL, Arabic)                    |
-| Backend          | Express 5, TypeScript, Socket.IO                                                      |
-| Database         | PostgreSQL (Neon) via Drizzle ORM                                                     |
-| Cache / realtime | Redis (rate-limit, leader-lock, socket adapter)                                       |
-| Auth             | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies |
-| Validation       | Zod (shared contracts)                                                                |
-| Observability    | Sentry, Prometheus (`prom-client`), Pino                                              |
-| Deploy           | Render (Docker): web + worker + Redis                                                 |
+| Layer            | Technology                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend         | React 19, Vite, Tailwind CSS, wouter, TanStack Query (RTL, Arabic)                                                              |
+| Backend          | Express 5, TypeScript, Socket.IO                                                                                                |
+| Database         | PostgreSQL (Neon) via Drizzle ORM                                                                                               |
+| Cache / realtime | Redis — **optional, not provisioned today** (in-process rate-limit/cache/idempotency fallbacks; PG-lease scheduler leader lock) |
+| Auth             | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies                                           |
+| Validation       | Zod (shared contracts)                                                                                                          |
+| Observability    | Sentry, Prometheus (`prom-client`), Pino                                                                                        |
+| Deploy           | Render (Docker, free): single web service + Neon — no worker, no Redis (optional tiers in `OPERATIONS_RUNBOOK.md`)              |
 
 It is a **pnpm monorepo**:
 
@@ -112,15 +113,22 @@ docker run -p 8080:8080 --env-file .env subnation
 
 ### Render (production)
 
-Services: **web** (`subnation`, serves API + SPA) + **Redis** + a separate
-**openwa-gateway** web service (WhatsApp OTP relay, built from the
-`ahmadmedo1012/openwa` repo). Deploys to production happen ONLY after green
+Services: a **single free-tier web service** (`subnation`, serves API + SPA) + a
+separate **openwa-gateway** web service (WhatsApp OTP relay, built from the
+`ahmadmedo1012/openwa` repo) + Neon Postgres. No worker and no Redis are
+provisioned — both are optional documented tiers (`OPERATIONS_RUNBOOK.md` §5,
+`render.yaml` header). Deploys to production happen ONLY after green
 CI — `.github/workflows/deploy.yml` triggers the Render deploy hook via
 `workflow_run` gated on the CI conclusion (`autoDeploy: false` on the
 service). Secrets live in the Render dashboard (`sync: false`).
 
-A public keep-alive repo (`ahmadmedo1012/keep-alive`) pings both health
-endpoints every 10 minutes so free-tier instances never idle-spin-down.
+The free tier **sleeps by design** (removed 2026-09-20 — see
+`docs/free-tier-optimization-2026-09-20.md`): no keep-alive, no self-ping, no
+external pingers. A cold start surfaces as the backend's early-bind 503
+"starting" answer, which the frontend `customFetch` retries transparently
+(3 attempts, 1.5/3/5 s backoff, 45 s budget). The archived
+`ahmadmedo1012/keep-alive` repo documents its own retirement and pings
+nothing.
 
 ---
 
@@ -130,16 +138,16 @@ All runtime config flows through a single `.env` file — copy `config/env.examp
 and edit. You should never need to change code to switch host, port, or domain.
 Most important keys:
 
-| Key                              | Purpose                                                                      |
-| -------------------------------- | ---------------------------------------------------------------------------- |
-| `DATABASE_URL`                   | Postgres connection string (**required**)                                    |
-| `SESSION_SECRET`                 | JWT signing secret (**required in prod**, ≥ 32 chars)                        |
-| `ENCRYPTION_KEY`                 | AES-256-GCM key (64 hex chars) for inventory credentials                     |
-| `REDIS_URL`                      | Redis connection (required in prod; in-memory fallback in dev)               |
-| `APP_URL` / `APP_ORIGINS`        | Public origin and CORS allow-list                                            |
-| `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In                                                        |
-| `TELEGRAM_BOT_TOKEN`             | Operational notifications (Telegram **login** is configured in the admin UI) |
-| `WHATSAPP_OTP_*`                 | OpenWA gateway for WhatsApp OTP                                              |
+| Key                              | Purpose                                                                                                                                |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                   | Postgres connection string (**required**)                                                                                              |
+| `SESSION_SECRET`                 | JWT signing secret (**required in prod**, ≥ 32 chars)                                                                                  |
+| `ENCRYPTION_KEY`                 | AES-256-GCM key (64 hex chars) for inventory credentials                                                                               |
+| `REDIS_URL`                      | Redis connection (**optional** — unset in current production; rate-limit/cache/idempotency degrade to in-process + PG-lease fallbacks) |
+| `APP_URL` / `APP_ORIGINS`        | Public origin and CORS allow-list                                                                                                      |
+| `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In                                                                                                                  |
+| `TELEGRAM_BOT_TOKEN`             | Operational notifications (Telegram **login** is configured in the admin UI)                                                           |
+| `WHATSAPP_OTP_*`                 | OpenWA gateway for WhatsApp OTP                                                                                                        |
 
 See `config/env.example` for the full annotated reference.
 
@@ -165,13 +173,13 @@ schemas live in `shared/api-zod`.
 
 ## Documentation
 
-| Document                                                   | What it covers                                                                                                       |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **[`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)**         | 📌 Full project reference — architecture, features, defects, and add/remove/improve recommendations. **Start here.** |
-| [`PLATFORM.md`](./PLATFORM.md)                             | Authoritative platform state, production-readiness scoring, and roadmap                                              |
-| [`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)         | On-call playbook: alert triage, dashboards, rollback, scaling                                                        |
-| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                                 |
-| [`docs/API.md`](./docs/API.md)                             | API reference                                                                                                        |
+| Document                                                   | What it covers                                                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)**     | 📌 **Start here** — on-call playbook: alert triage, dashboards, rollback, scaling, free-tier posture, env knobs |
+| [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)             | Historical archive — 2026-08-25 architecture/feature snapshot (predates the free-tier + no-Redis rounds)        |
+| [`PLATFORM.md`](./PLATFORM.md)                             | 2026-09-02 platform snapshot (superseded by the runbook for current state)                                      |
+| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                            |
+| [`docs/API.md`](./docs/API.md)                             | API reference                                                                                                   |
 
 ---
 

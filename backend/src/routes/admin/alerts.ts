@@ -19,6 +19,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// admin alert bodies are operational telemetry; an intermediary must
+// never serve them from cache (the polling /new endpoint included).
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 

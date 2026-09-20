@@ -24,12 +24,13 @@ import { ordersTable } from "./orders";
  * removes the order), the key row goes with it — the dedup never
  * outlives the money it guards.
  *
- * Registration note (round-94 C4): this module is intentionally NOT
- * re-exported from schema/index.ts yet to avoid a mid-round conflict
- * with co-editing agents; consumers import it directly. It should be
- * added to schema/index.ts and created by migration V1-M12 (DB agent).
- * The service tolerates the table's absence (SQLSTATE 42P01 → legacy
- * pass-through behavior) so deploys never depend on migration ordering.
+ * Registration note (round-94 C4, updated round-98 F4): this module IS
+ * re-exported from schema/index.ts (line 15 of the barrel) and the table
+ * is created by migration V1-M12 (both landed with the round-94 DB fix).
+ * Consumers may import it from the barrel or directly — both resolve to
+ * the same pgTable object. The service tolerates the table's absence
+ * (SQLSTATE 42P01 → legacy pass-through behavior) so deploys never
+ * depend on migration ordering.
  */
 export const idempotencyKeysTable = pgTable(
   "idempotency_keys",
@@ -46,5 +47,3 @@ export const idempotencyKeysTable = pgTable(
     orderIdx: index("idx_idempotency_keys_order").on(t.orderId),
   }),
 );
-
-export type IdempotencyKey = typeof idempotencyKeysTable.$inferSelect;

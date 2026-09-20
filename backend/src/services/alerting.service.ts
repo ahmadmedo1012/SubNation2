@@ -4,12 +4,31 @@
  * Replaces the placeholder dispatch logic with:
  *   - Telegram Bot API (primary), Discord webhook (secondary), generic webhook.
  *   - 10 s per-channel timeout via AbortSignal.timeout, retry once after 5 s.
+ *   - Telegram delivery requires body.ok:true — HTTP 200 with ok:false
+ *     ("message is too long", blocked bot, …) is a FAILURE that feeds the
+ *     retry path (F5, round-98) — same contract as src/telegram.ts.
  *   - Redis-backed dedup keyed `alert:dedup:${rule}:${stableHash(labels)}`
  *     with EX 300 (5-minute sliding window).
  *   - Redis-backed global rate limit `alert:global:${minute}` with windowed
  *     INCR + EXPIRE 70 s (≤ 30 dispatches per rolling 60 s).
  *   - Dark-launch gate: ALERTING_ENABLED=false logs `outcome:"would-dispatch"`
  *     and returns without making outbound calls.
+ *
+ * No-Redis production shape (REDIS_URL unset — the current Render deployment;
+ * F1, round-98 98-F5):
+ *   - Dedup falls back to a BOUNDED in-process store (128 keys, same 300 s
+ *     TTL, FIFO eviction — mirrors lib/telegram-replay.ts's capped-store
+ *     pattern) so the single-instance shape keeps the 5-minute dedup
+ *     contract instead of the old unconditional "not deduped".
+ *   - The global rate limit stays fail-open (no Redis counter) — bounded by
+ *     the re-entrancy guard below and the 10-rule registry size.
+ *   - The evaluator carries a re-entrancy guard (evalInFlight): a fired
+ *     rule's dispatch can legally take 25 s (10 s timeout × 2 attempts +
+ *     5 s retry delay), so 3+ co-firing rules overrun the 60 s interval;
+ *     the old shape let setInterval stack concurrent dispatch cycles that
+ *     double-paged the operator for the whole incident. An overrunning tick
+ *     is now SKIPPED (mirrors whatsapp-watch.ts's in-flight guard), not
+ *     queued.
  *
  * The 60-second evaluator interval and rule registry are unchanged from the
  * earlier scaffold. checkRuleCondition() is still pluggable — production
@@ -146,6 +165,56 @@ const GLOBAL_WINDOW_TTL_SEC = 70; // outlasts the 60 s window so we never lose s
 const HTTP_TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 5_000;
 
+// ── F1 (round-98, 98-F5): bounded in-memory dedup fallback ───────────────────
+//
+// The Redis path above is unchanged and preferred; this store only answers
+// when getRedisClient() returns null (REDIS_URL unset → the current production
+// shape, or a mid-run outage). Mirrors lib/telegram-replay.ts's capped-store
+// pattern: exact-key claims, TTL'd entries, size-capped with FIFO eviction
+// (Map preserves insertion order), opportunistic prune — no timers, so the
+// unref discipline of the evaluator interval is preserved.
+const DEDUP_MEMORY_MAX_ENTRIES = 128;
+/** Mutable only for tests via __test.setDedupMemoryStoreLimit. */
+let dedupMemoryStoreLimit = DEDUP_MEMORY_MAX_ENTRIES;
+/** Prune expired entries every N claims (opportunistic — no timer). */
+const DEDUP_MEMORY_PRUNE_EVERY = 16;
+
+const dedupMemoryStore = new Map<string, number>(); // dedupKey → expiry epoch ms
+let dedupPruneCounter = 0;
+
+function pruneExpiredDedupEntries(now: number): void {
+  for (const [key, expiry] of dedupMemoryStore) {
+    if (expiry <= now) dedupMemoryStore.delete(key);
+  }
+}
+
+/**
+ * Bounded in-memory claim used when Redis is unavailable. Same semantics as
+ * the Redis SET NX EX: returns true when the key was already claimed and is
+ * still live (deduped); claims (or re-claims an expired entry) otherwise.
+ */
+function claimDedupInMemory(dedupKey: string): boolean {
+  const now = Date.now();
+  if (++dedupPruneCounter % DEDUP_MEMORY_PRUNE_EVERY === 0) {
+    pruneExpiredDedupEntries(now);
+  }
+
+  const existing = dedupMemoryStore.get(dedupKey);
+  if (existing !== undefined) {
+    if (existing > now) return true; // already claimed + still live → deduped
+    dedupMemoryStore.delete(dedupKey); // expired entry — re-claimable
+  }
+
+  if (dedupMemoryStore.size >= dedupMemoryStoreLimit) {
+    // FIFO eviction: drop the OLDEST claim. Under an eviction storm the only
+    // keys that can be replayed are ones the incident itself displaced.
+    const oldest = dedupMemoryStore.keys().next().value;
+    if (oldest !== undefined) dedupMemoryStore.delete(oldest);
+  }
+  dedupMemoryStore.set(dedupKey, now + DEDUP_TTL_SEC * 1000);
+  return false;
+}
+
 /** Parse a prom-client histogram `le` label ("0.25", "10", "+Inf") to a number. */
 function numericLe(le: string): number {
   if (le === "+Inf" || le === "Inf" || le === "inf") return Infinity;
@@ -165,6 +234,17 @@ export class AlertingService {
   ) as import("prom-client").Counter<string> | undefined;
 
   private evaluatorInterval: NodeJS.Timeout | null = null;
+
+  /**
+   * F1 (round-98, 98-F5): re-entrancy guard — an evaluation cycle that is
+   * still running (slow rule check or, mostly, a 25 s-per-fired-rule channel
+   * dispatch) makes the NEXT 60 s tick a SKIP, not a concurrent cycle.
+   * Mirrors whatsapp-watch.ts's `observeInFlight` guard. setInterval would
+   * otherwise happily stack overlapping evaluateRules() passes; without
+   * Redis the dedup fallback used to be inert too, so every overlap
+   * re-paged the operator for the whole incident.
+   */
+  private evalInFlight = false;
 
   /** Start the 60 s evaluator loop. Idempotent. */
   public start(): void {
@@ -188,15 +268,30 @@ export class AlertingService {
   }
 
   private async evaluateRules(): Promise<void> {
-    for (const rule of ALERT_RULES) {
-      try {
-        if (await this.checkRuleCondition(rule)) {
-          await this.dispatchAlert(this.buildAlertEvent(rule));
+    // F1: skip overlapping ticks — see evalInFlight. A warn (not an error):
+    // it is the expected self-protective behavior during a multi-rule
+    // incident, but the operator should see that dispatch is overrunning
+    // the 60 s cadence.
+    if (this.evalInFlight) {
+      alertingLogger().warn(
+        "Evaluator tick skipped — previous evaluation cycle still in flight (channel dispatch overrunning the 60 s interval)",
+      );
+      return;
+    }
+    this.evalInFlight = true;
+    try {
+      for (const rule of ALERT_RULES) {
+        try {
+          if (await this.checkRuleCondition(rule)) {
+            await this.dispatchAlert(this.buildAlertEvent(rule));
+          }
+        } catch (err) {
+          this.incrementMonitoringError("alerting");
+          alertingLogger().error({ err, rule: rule.name }, "Alert rule evaluation failed");
         }
-      } catch (err) {
-        this.incrementMonitoringError("alerting");
-        alertingLogger().error({ err, rule: rule.name }, "Alert rule evaluation failed");
       }
+    } finally {
+      this.evalInFlight = false;
     }
   }
 
@@ -652,6 +747,25 @@ export class AlertingService {
         const body = await response.text().catch(() => "");
         throw new Error(`Telegram API ${response.status}: ${body.slice(0, 200)}`);
       }
+      // F5 (round-98, 98-F5): Telegram answers HTTP 200 with body.ok:false
+      // for application-level rejections ("message is too long", blocked
+      // bot, wrong chat) — src/telegram.ts:18-25 documents the contract.
+      // Checking response.ok alone marked those "delivered" while no page
+      // was sent and the counter showed green. Parse the body (same idiom
+      // as telegram.ts:403-420) and throw so dispatchToChannel's retry +
+      // failure accounting engage.
+      const body = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        description?: string;
+        error_code?: number;
+      } | null;
+      if (!body?.ok) {
+        throw new Error(
+          `Telegram API 200 ok:false (error_code ${body?.error_code ?? "unknown"}): ${(
+            body?.description ?? "unparseable body"
+          ).slice(0, 200)}`,
+        );
+      }
       return;
     }
 
@@ -697,18 +811,29 @@ export class AlertingService {
   /**
    * Redis-backed deduplication with 5-minute sliding window.
    * Returns true if this dedup key was set within the past 5 minutes.
-   * Falls back to "not deduped" if Redis is unavailable (better to over-alert
-   * than to silently drop events).
+   *
+   * F1 (round-98, 98-F5): when Redis is unavailable (REDIS_URL unset — the
+   * current production shape — or a mid-run outage) the claim falls back to
+   * the bounded in-memory store above instead of the old unconditional
+   * "not deduped": the 5-minute dedup contract now holds for the
+   * single-instance deployment too. A Redis ERROR still fails open (better
+   * to over-alert than to silently drop events) — the memory store is only
+   * for "no Redis at all".
    */
   private async isDeduped(dedupKey: string): Promise<boolean> {
     const redis = getRedisClient();
-    if (!redis) return false;
+    if (!redis) return claimDedupInMemory(dedupKey);
 
     try {
       const fullKey = `alert:dedup:${dedupKey}`;
       // SET NX EX — atomically set if not exists with TTL
       // Returns "OK" if newly set (not deduped), null if already exists (deduped)
-      const result = await redis.set(fullKey, "1", { NX: true, EX: DEDUP_TTL_SEC });
+      // F3 (round-98, 98-F5): bounded like every other Redis op here — a
+      // ready-but-black-holed socket used to queue this command forever and
+      // hang the whole dispatch tick (compounding the F1 overlap).
+      const result = await withRedisCommandTimeout("alert_dedup_set", () =>
+        redis.set(fullKey, "1", { NX: true, EX: DEDUP_TTL_SEC }),
+      );
       return result === null;
     } catch (err) {
       this.incrementMonitoringError("alerting");
@@ -720,6 +845,10 @@ export class AlertingService {
   /**
    * Redis-backed global rate limit (≤ 30 dispatches per rolling 60 s).
    * Uses a per-minute counter that auto-expires.
+   *
+   * No-Redis shape: fail-open (returns false) — bounded in practice by the
+   * F1 re-entrancy guard and the closed 10-rule registry; there is no
+   * meaningful single-instance in-memory port of a global rate limit.
    */
   private async isRateLimited(): Promise<boolean> {
     const redis = getRedisClient();
@@ -728,10 +857,15 @@ export class AlertingService {
     try {
       const minute = Math.floor(Date.now() / 60_000);
       const key = `alert:global:${minute}`;
-      const count = await redis.incr(key);
+      // F3 (round-98, 98-F5): INCR + EXPIRE bounded with the same command
+      // timeout as the dedup claim above (dormant until REDIS_URL returns,
+      // but the R2 rule is repo-wide for a reason).
+      const count = await withRedisCommandTimeout("alert_rate_limit_incr", () => redis.incr(key));
       if (count === 1) {
         // First increment in this minute — set expiry slightly past the window
-        await redis.expire(key, GLOBAL_WINDOW_TTL_SEC);
+        await withRedisCommandTimeout("alert_rate_limit_expire", () =>
+          redis.expire(key, GLOBAL_WINDOW_TTL_SEC),
+        );
       }
       return count > GLOBAL_RATE_LIMIT;
     } catch (err) {
@@ -868,6 +1002,22 @@ export function formatDiscordPayload(event: AlertEvent): unknown {
 // ── Singleton + admin test entry-point ───────────────────────────────────────
 
 export const alertingService = new AlertingService();
+
+/** Test-only hooks: isolate + shrink the F1 in-memory dedup store between cases. */
+export const __test = {
+  resetDedupMemoryStore(): void {
+    dedupMemoryStore.clear();
+    dedupPruneCounter = 0;
+  },
+  setDedupMemoryStoreLimit(limit: number): number {
+    const previous = dedupMemoryStoreLimit;
+    dedupMemoryStoreLimit = limit;
+    return previous;
+  },
+  dedupMemoryStoreSize(): number {
+    return dedupMemoryStore.size;
+  },
+};
 
 /**
  * Dispatch a synthetic alert for the named rule (or the first rule if none

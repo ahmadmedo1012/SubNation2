@@ -106,6 +106,77 @@ const LYPAY_INFO = {
   branch: "طرابلس - القبة",
 };
 
+// ── 98-F2 (R98-09 / r98 frontend-deep §2 — P3): durable topup intent key ─────
+//
+// The topup Idempotency-Key used to live in a useRef ONLY — it died with
+// the component, so a refresh / back-navigation after a NETWORK-level
+// failure (response lost, topup possibly created server-side) minted a
+// FRESH key on the re-submit: the header became useless exactly when it
+// was needed (the backend still holds the second line of defense — the
+// uniq_wallet_topups_payment_reference constraint + composite dedup —
+// so this is defense-in-depth parity with the buy-key/checkout-key
+// patterns from 96-F4 / 97-F5).
+//
+// Storage contract (mirrors product.tsx's subnation_buykey, 97-F5):
+//   • slot:   sessionStorage "subnation_topupkey" — per-tab retry token,
+//     never durable state; every access try/catch-guarded (quota/
+//     private-mode degrades to the in-memory 96-F6 behavior);
+//   • TTL:    a key older than 10 minutes is a stale intent → ignored;
+//   • fingerprint: amount | method | phone — binds the key to WHAT is
+//     being topped up so a stale intent is never replayed onto changed
+//     data (the full body also carries network/account/reference — those
+//     still ROTATE the key via the 96-F6 field-change points below,
+//     which keeps the backend's 409 same-key-different-body branch
+//     unreachable);
+//   • restore: on mount, AFTER the saved preferences are applied — a
+//     stored entry still inside its TTL whose fingerprint matches the
+//     restored state (prefs amount/method + empty phone) is reused so
+//     the re-submit replays the server's cached response instead of
+//     creating a second pending topup. An intent whose phone was typed
+//     (never restored from prefs by design) simply re-mints — the
+//     payment_reference dedup covers that residual.
+const TOPUP_KEY_SLOT = "subnation_topupkey";
+/** 98-F2 (R98-09): retry-token TTL — mirrors the buy-key guidance. */
+const TOPUP_KEY_TTL_MS = 10 * 60 * 1000;
+
+interface StoredTopupIntent {
+  /** The Idempotency-Key header value. */
+  k: string;
+  /** Date.now() at mint time — the TTL stamp. */
+  t: number;
+  /** Intent fingerprint — amount | method | phone. */
+  f: string;
+}
+
+function topupIntentFingerprint(amount: string, method: string, phone: string): string {
+  return `${amount}|${method}|${phone.trim()}`;
+}
+
+function loadTopupIntentKey(fingerprint: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(TOPUP_KEY_SLOT);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredTopupIntent>;
+    if (typeof parsed.k !== "string" || !parsed.k) return null;
+    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
+    if (Date.now() - parsed.t > TOPUP_KEY_TTL_MS) return null;
+    if (parsed.f !== fingerprint) return null;
+    return parsed.k;
+  } catch {
+    // corrupt entry / storage unavailable — degrade to a fresh key
+    return null;
+  }
+}
+
+function persistTopupIntentKey(fingerprint: string, key: string): void {
+  try {
+    const entry: StoredTopupIntent = { k: key, t: Date.now(), f: fingerprint };
+    sessionStorage.setItem(TOPUP_KEY_SLOT, JSON.stringify(entry));
+  } catch {
+    // degraded: in-memory-only key (96-F6 behavior) — never throw on the money path
+  }
+}
+
 const NETWORK_PRESETS: Record<string, number[]> = {
   libyana: [1, 5, 10, 20, 50, 100],
   madar: [1, 5, 10, 20, 50, 100],
@@ -474,28 +545,51 @@ export default function WalletPage() {
   // Rotations are guarded by an actual value change: a no-op keystroke
   // (sanitized value unchanged) bails out of setState with NO re-render,
   // which would desync the ref from the headers the mutation captured.
+  //
+  // 98-F2 (R98-09): the current key ALSO lives in sessionStorage under
+  // subnation_topupkey ({k, t, f} — TTL 10 min + amount|method|phone
+  // fingerprint, see the helpers' docblock above) so a refresh after a
+  // network-level failure re-submits with the SAME header (replay)
+  // instead of a freshly minted one. Every rotation re-persists under
+  // the intent's NEW fingerprint (rotations are always captured AFTER
+  // the field change they correspond to — see the explicit arguments
+  // at each call site; the closure state at rotation time is stale by
+  // one setState).
   const topupKeyRef = useRef<string | null>(null);
   // Lazy init — idempotent null-guard (StrictMode double-render safe).
+  // In-memory only: the mount restore below decides what the DURABLE
+  // key for this visit is.
   if (topupKeyRef.current === null) {
     topupKeyRef.current = generateIdempotencyKey();
   }
-  const resetTopupKey = () => {
+  const resetTopupKey = (nextFingerprint: string) => {
     topupKeyRef.current = generateIdempotencyKey();
+    persistTopupIntentKey(nextFingerprint, topupKeyRef.current);
   };
   // 96-F6 (R96 A2 P1-6): shared amount-field onChange — sanitizer +
   // key rotation. Used by BOTH topup flows' amount inputs.
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = sanitizeAmountInput(e.target.value);
-    if (next !== amount) resetTopupKey();
+    if (next !== amount) {
+      // 98-F2: persist under the POST-edit fingerprint (the new amount).
+      resetTopupKey(topupIntentFingerprint(next, method, senderPhone));
+    }
     setAmount(next);
   };
   const applyAmountPreset = (p: number) => {
-    if (String(p) !== amount) resetTopupKey();
+    if (String(p) !== amount) {
+      resetTopupKey(topupIntentFingerprint(String(p), method, senderPhone));
+    }
     setAmount(String(p));
   };
   // 96-F6 (R96 §5.1): PaymentReferenceField's onChange for both flows.
+  // The reference is payload-relevant (rotation) but NOT part of the
+  // task's fingerprint contract (amount|method|phone) — the rotation
+  // alone already prevents the 409 same-key-different-body branch.
   const handlePaymentReferenceChange = (v: string) => {
-    if (v !== paymentReference) resetTopupKey();
+    if (v !== paymentReference) {
+      resetTopupKey(topupIntentFingerprint(amount, method, senderPhone));
+    }
     setPaymentReference(v);
   };
 
@@ -508,6 +602,26 @@ export default function WalletPage() {
       setMethod(prefs.method);
     }
     setSavedPhones(getSavedSenderPhones());
+    // 98-F2 (R98-09): restore the topup intent key across refresh — a
+    // stored entry still inside its TTL whose fingerprint matches the
+    // RESTORED state (prefs amount/method + the blank phone field —
+    // sender phones are never auto-restored into the form) is reused
+    // verbatim; otherwise the lazy-init key above becomes the durable
+    // one (persisted so the NEXT refresh can match it). Idempotent for
+    // StrictMode's double effect-run: the second run re-reads the entry
+    // the first run wrote and lands on the same key.
+    const restoredMethod =
+      prefs.method === "mobile_transfer" || prefs.method === "lypay"
+        ? (prefs.method as Method)
+        : "mobile_transfer";
+    const fingerprint = topupIntentFingerprint(prefs.amount, restoredMethod, "");
+    const restored = loadTopupIntentKey(fingerprint);
+    if (restored) {
+      topupKeyRef.current = restored;
+    } else if (topupKeyRef.current) {
+      // Non-null by the lazy init above (render ran before this effect).
+      persistTopupIntentKey(fingerprint, topupKeyRef.current);
+    }
   }, []);
 
   // Save preferences when they change
@@ -593,7 +707,11 @@ export default function WalletPage() {
       onSuccess(created) {
         // 96-F6 (R96 §5.1): the intent was successfully submitted —
         // rotate the key so the next topup (fresh form) gets a new one.
-        resetTopupKey();
+        // 98-F2 (R98-09): the rotation is persisted under the POST-RESET
+        // fingerprint (amount/phone cleared by this handler — method is
+        // untouched), so a refresh before the next submit can't replay
+        // the just-consumed key onto the emptied form.
+        resetTopupKey(topupIntentFingerprint("", method, ""));
 
         // Save sender phone if remember is checked
         if (rememberPhone && method === "mobile_transfer" && senderPhone) {
@@ -898,7 +1016,10 @@ export default function WalletPage() {
                       // 96-F6 (R96 §5.1): switching method = new intent →
                       // rotate the key (the payload carries
                       // payment_method / payment_network).
-                      if (m.id !== method) resetTopupKey();
+                      // 98-F2: persist under the post-switch fingerprint.
+                      if (m.id !== method) {
+                        resetTopupKey(topupIntentFingerprint(amount, m.id, senderPhone));
+                      }
                       setMethod(m.id);
                       setError("");
                     }}
@@ -941,7 +1062,12 @@ export default function WalletPage() {
                         type="button"
                         onClick={() => {
                           // 96-F6 (R96 §5.1): network is part of the payload.
-                          if (n.value !== network) resetTopupKey();
+                          // 98-F2: network is not part of the fingerprint
+                          // contract (amount|method|phone) — the rotation
+                          // itself still fires (new body → new key).
+                          if (n.value !== network) {
+                            resetTopupKey(topupIntentFingerprint(amount, method, senderPhone));
+                          }
                           setNetwork(n.value);
                         }}
                         className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
@@ -1061,7 +1187,11 @@ export default function WalletPage() {
                           onClick={() => {
                             // 96-F6 (R96 §5.1): picking a different saved
                             // phone changes the intent → rotate the key.
-                            if (phone !== senderPhone) resetTopupKey();
+                            // 98-F2: the picked phone IS part of the
+                            // fingerprint — persist under it.
+                            if (phone !== senderPhone) {
+                              resetTopupKey(topupIntentFingerprint(amount, method, phone));
+                            }
                             setSenderPhone(phone);
                           }}
                           className={`min-h-11 px-2.5 py-1 rounded-lg text-xs font-mono border transition-all flex items-center justify-center ${
@@ -1089,7 +1219,11 @@ export default function WalletPage() {
                         const d = e.target.value.replace(/\D/g, "").slice(0, 10);
                         // 96-F6 (R96 §5.1): a different (sanitized) phone
                         // is a different intent → rotate the key.
-                        if (d !== senderPhone) resetTopupKey();
+                        // 98-F2: the new phone is part of the fingerprint —
+                        // persist under the post-edit value.
+                        if (d !== senderPhone) {
+                          resetTopupKey(topupIntentFingerprint(amount, method, d));
+                        }
                         setSenderPhone(d);
                         // Surface validation as the user types once they
                         // start entering digits — used to wait for blur,
@@ -1291,7 +1425,11 @@ export default function WalletPage() {
                       value={senderAccount}
                       onChange={(e) => {
                         // 96-F6 (R96 §5.1): account edits change the intent.
-                        if (e.target.value !== senderAccount) resetTopupKey();
+                        // 98-F2: the account is not part of the fingerprint
+                        // contract — the rotation itself still fires.
+                        if (e.target.value !== senderAccount) {
+                          resetTopupKey(topupIntentFingerprint(amount, method, senderPhone));
+                        }
                         setSenderAccount(e.target.value);
                       }}
                       required

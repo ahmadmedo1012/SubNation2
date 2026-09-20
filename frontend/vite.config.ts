@@ -295,6 +295,22 @@ export default defineConfig({
         //      originals on image2url.com; no variants exist, so the bytes
         //      are effectively immutable). Biggest byte win on revisits:
         //      ~0.8–3 MB per product-grid page view.
+        //   3. 98-F7 (R98-08a — A5 §2): same-origin JS chunks, CacheFirst.
+        //      The precache globIgnores **/*.js (deliberate, unchanged —
+        //      see its comment below) banked the whole JS story on the
+        //      server's immutable 1y HTTP cache, but mobile browsers evict
+        //      the HTTP cache wholesale under storage pressure WITHOUT
+        //      touching SW caches — a repeat offline visit then had the
+        //      precached HTML + CSS + SWR catalog but zero JS: a white
+        //      screen whose only recovery (lazyWithRetry's one reload)
+        //      also needs JS. CacheFirst keyed by the hashed /assets/*.js
+        //      URLs is release-atomic (a deploy mints new filenames; the
+        //      precached index.html references exactly one release's set,
+        //      so the "stale entry + fresh chunks" failure mode that
+        //      motivated globIgnores cannot occur here), one successful
+        //      online visit leaves every visited route's chunks in the SW
+        //      cache, and maxEntries 40 / 30d LRU keeps the footprint
+        //      bounded (~40 × entry+vendor chunks).
         runtimeCaching: [
           {
             urlPattern: ({ url, request }) =>
@@ -324,6 +340,24 @@ export default defineConfig({
               cacheName: "images-v1",
               expiration: {
                 maxEntries: 200,
+                maxAgeSeconds: 2_592_000, // 30 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // 98-F7 (R98-08a): same-origin JS only — remote scripts
+            // (firebase, sentry, gtag…) must keep going to the network so
+            // their own cache headers/SRI govern them.
+            urlPattern: ({ url, request, sameOrigin }) =>
+              sameOrigin && request.method === "GET" && /\.js$/.test(url.pathname),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "assets-js",
+              expiration: {
+                maxEntries: 40,
                 maxAgeSeconds: 2_592_000, // 30 days
               },
               cacheableResponse: {
@@ -363,8 +397,9 @@ export default defineConfig({
         // Never precache JS: the entry HTML already links the entry
         // chunk, and a stale precached entry + freshly runtime-cached
         // chunks is the classic "partially updated PWA" failure mode.
-        // JS chunks rely on the server's immutable /assets/ caching +
-        // lazyWithRetry recovery instead.
+        // JS chunks ride the immutable /assets/ HTTP cache AND, since
+        // 98-F7 (R98-08a), the same-origin runtime CacheFirst rule
+        // above (survives HTTP-cache eviction) + lazyWithRetry recovery.
         globIgnores: ["**/*.js"],
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],

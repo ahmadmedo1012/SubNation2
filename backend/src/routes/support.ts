@@ -9,6 +9,14 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// ticket threads are user-private support PII; an intermediary must
+// never serve them from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // SEC-92-07 (round-92): cap on user-authored ticket/reply message bodies.
 // Ticket creation caps title (≤ 255) and rate (5/h) but the MESSAGE body
 // was unbounded — the only ceiling was the global 1 MB JSON limit, so a

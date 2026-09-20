@@ -33,9 +33,13 @@ send a browser-like Origin header on mutations.
 ## Deployment-conditional behavior
 
 Idempotency-Key semantics (the 409 replay/reuse conflicts and
-Idempotent-* response headers) engage only when the deployment
-provides REDIS_URL; without Redis, dedup relies on the DB-level
-status guards (93-A8 F-3). /auth/me and /auth/probe send
+Idempotent-* response headers) are backed by the DURABLE in-transaction
+`idempotency_keys` DB guard (round-94 F10) — they engage on EVERY
+deployment, with or without Redis. When REDIS_URL is additionally
+provided, the Redis claim layer (fast pre-check + cross-instance
+coordination) fronts the same durable guard; without it, dedup
+relies on the DB-level claim alone (correct, marginally slower on
+the conflict path). /auth/me and /auth/probe send
 `Cache-Control: private, max-age=30`; catalog routes send
 `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
 
@@ -66,6 +70,15 @@ import type {
   AdminTopupActionBody,
   AdminUser,
   AdminUserUpdateResult,
+  AuthFirebaseRefresh200,
+  AuthFirebaseRefreshBody,
+  AuthFirebaseSession200,
+  AuthFirebaseSessionBody,
+  AuthTelegramCallbackParams,
+  AuthTelegramWebApp200,
+  AuthTelegramWebAppBody,
+  AuthTelegramWidget200,
+  AuthTelegramWidgetBody,
   BulkUpdateOrderStatusBody,
   BulkUpdateOrderStatusPartial,
   BulkUpdateOrderStatusResult,
@@ -104,17 +117,22 @@ import type {
   ListAdminUsersParams,
   ListOrdersParams,
   ListProductsParams,
+  ListPublicAuthProviders200,
   ListSessions200,
   LoyaltySummary,
   NotificationItem,
   Order,
   PatchCouponBody,
   PricingConfig,
+  ProbeAuth200,
   Product,
   ProductRecommendation,
   RecomputeResult,
   ReferralEventItem,
   ReplySupportTicketBody,
+  StartWhatsappOtp200,
+  StartWhatsappOtp503,
+  StartWhatsappOtpBody,
   SuccessResponse,
   SupportTicketCreated,
   SupportTicketDetail,
@@ -133,6 +151,8 @@ import type {
   User,
   ValidateCouponBody,
   ValidatedCoupon,
+  VerifyWhatsappOtp200,
+  VerifyWhatsappOtpBody,
   WalletInfo,
 } from "./api.schemas";
 
@@ -368,6 +388,719 @@ export function useGetMe<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetMeQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Send a WhatsApp OTP to the given phone (registration purpose)
+ */
+export const getStartWhatsappOtpUrl = () => {
+  return `/api/auth/whatsapp/start`;
+};
+
+export const startWhatsappOtp = async (
+  startWhatsappOtpBody: StartWhatsappOtpBody,
+  options?: RequestInit,
+): Promise<StartWhatsappOtp200> => {
+  return customFetch<StartWhatsappOtp200>(getStartWhatsappOtpUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(startWhatsappOtpBody),
+  });
+};
+
+export const getStartWhatsappOtpMutationOptions = <
+  TError = ErrorType<ErrorResponse | StartWhatsappOtp503>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startWhatsappOtp>>,
+    TError,
+    { data: BodyType<StartWhatsappOtpBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof startWhatsappOtp>>,
+  TError,
+  { data: BodyType<StartWhatsappOtpBody> },
+  TContext
+> => {
+  const mutationKey = ["startWhatsappOtp"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof startWhatsappOtp>>,
+    { data: BodyType<StartWhatsappOtpBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return startWhatsappOtp(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StartWhatsappOtpMutationResult = NonNullable<
+  Awaited<ReturnType<typeof startWhatsappOtp>>
+>;
+export type StartWhatsappOtpMutationBody = BodyType<StartWhatsappOtpBody>;
+export type StartWhatsappOtpMutationError = ErrorType<ErrorResponse | StartWhatsappOtp503>;
+
+/**
+ * @summary Send a WhatsApp OTP to the given phone (registration purpose)
+ */
+export const useStartWhatsappOtp = <
+  TError = ErrorType<ErrorResponse | StartWhatsappOtp503>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof startWhatsappOtp>>,
+    TError,
+    { data: BodyType<StartWhatsappOtpBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof startWhatsappOtp>>,
+  TError,
+  { data: BodyType<StartWhatsappOtpBody> },
+  TContext
+> => {
+  return useMutation(getStartWhatsappOtpMutationOptions(options));
+};
+
+/**
+ * @summary Verify the WhatsApp OTP — mints the session (cookie) on success
+ */
+export const getVerifyWhatsappOtpUrl = () => {
+  return `/api/auth/whatsapp/verify`;
+};
+
+export const verifyWhatsappOtp = async (
+  verifyWhatsappOtpBody: VerifyWhatsappOtpBody,
+  options?: RequestInit,
+): Promise<VerifyWhatsappOtp200> => {
+  return customFetch<VerifyWhatsappOtp200>(getVerifyWhatsappOtpUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(verifyWhatsappOtpBody),
+  });
+};
+
+export const getVerifyWhatsappOtpMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyWhatsappOtp>>,
+    TError,
+    { data: BodyType<VerifyWhatsappOtpBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof verifyWhatsappOtp>>,
+  TError,
+  { data: BodyType<VerifyWhatsappOtpBody> },
+  TContext
+> => {
+  const mutationKey = ["verifyWhatsappOtp"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof verifyWhatsappOtp>>,
+    { data: BodyType<VerifyWhatsappOtpBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return verifyWhatsappOtp(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VerifyWhatsappOtpMutationResult = NonNullable<
+  Awaited<ReturnType<typeof verifyWhatsappOtp>>
+>;
+export type VerifyWhatsappOtpMutationBody = BodyType<VerifyWhatsappOtpBody>;
+export type VerifyWhatsappOtpMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Verify the WhatsApp OTP — mints the session (cookie) on success
+ */
+export const useVerifyWhatsappOtp = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof verifyWhatsappOtp>>,
+    TError,
+    { data: BodyType<VerifyWhatsappOtpBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof verifyWhatsappOtp>>,
+  TError,
+  { data: BodyType<VerifyWhatsappOtpBody> },
+  TContext
+> => {
+  return useMutation(getVerifyWhatsappOtpMutationOptions(options));
+};
+
+/**
+ * @summary Public sign-in provider catalog (enabled flags + non-secret config)
+ */
+export const getListPublicAuthProvidersUrl = () => {
+  return `/api/auth/providers`;
+};
+
+export const listPublicAuthProviders = async (
+  options?: RequestInit,
+): Promise<ListPublicAuthProviders200> => {
+  return customFetch<ListPublicAuthProviders200>(getListPublicAuthProvidersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPublicAuthProvidersQueryKey = () => {
+  return [`/api/auth/providers`] as const;
+};
+
+export const getListPublicAuthProvidersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPublicAuthProviders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listPublicAuthProviders>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPublicAuthProvidersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPublicAuthProviders>>> = ({
+    signal,
+  }) => listPublicAuthProviders({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPublicAuthProviders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPublicAuthProvidersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPublicAuthProviders>>
+>;
+export type ListPublicAuthProvidersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Public sign-in provider catalog (enabled flags + non-secret config)
+ */
+
+export function useListPublicAuthProviders<
+  TData = Awaited<ReturnType<typeof listPublicAuthProviders>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listPublicAuthProviders>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPublicAuthProvidersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Body carries the Telegram widget fields (id, first_name, auth_date, hash, …). The hash is verified against the bot token (HMAC) with auth_date freshness + a replay claim. 409 when the Telegram identity is already linked to a different account.
+ * @summary Verify Telegram Login Widget data — mints the session cookie
+ */
+export const getAuthTelegramWidgetUrl = () => {
+  return `/api/auth/telegram`;
+};
+
+export const authTelegramWidget = async (
+  authTelegramWidgetBody: AuthTelegramWidgetBody,
+  options?: RequestInit,
+): Promise<AuthTelegramWidget200> => {
+  return customFetch<AuthTelegramWidget200>(getAuthTelegramWidgetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(authTelegramWidgetBody),
+  });
+};
+
+export const getAuthTelegramWidgetMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authTelegramWidget>>,
+    TError,
+    { data: BodyType<AuthTelegramWidgetBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authTelegramWidget>>,
+  TError,
+  { data: BodyType<AuthTelegramWidgetBody> },
+  TContext
+> => {
+  const mutationKey = ["authTelegramWidget"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authTelegramWidget>>,
+    { data: BodyType<AuthTelegramWidgetBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authTelegramWidget(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthTelegramWidgetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authTelegramWidget>>
+>;
+export type AuthTelegramWidgetMutationBody = BodyType<AuthTelegramWidgetBody>;
+export type AuthTelegramWidgetMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Verify Telegram Login Widget data — mints the session cookie
+ */
+export const useAuthTelegramWidget = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authTelegramWidget>>,
+    TError,
+    { data: BodyType<AuthTelegramWidgetBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof authTelegramWidget>>,
+  TError,
+  { data: BodyType<AuthTelegramWidgetBody> },
+  TContext
+> => {
+  return useMutation(getAuthTelegramWidgetMutationOptions(options));
+};
+
+/**
+ * @summary Verify Telegram WebApp initData — mints the session cookie
+ */
+export const getAuthTelegramWebAppUrl = () => {
+  return `/api/auth/telegram/webapp`;
+};
+
+export const authTelegramWebApp = async (
+  authTelegramWebAppBody: AuthTelegramWebAppBody,
+  options?: RequestInit,
+): Promise<AuthTelegramWebApp200> => {
+  return customFetch<AuthTelegramWebApp200>(getAuthTelegramWebAppUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(authTelegramWebAppBody),
+  });
+};
+
+export const getAuthTelegramWebAppMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authTelegramWebApp>>,
+    TError,
+    { data: BodyType<AuthTelegramWebAppBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authTelegramWebApp>>,
+  TError,
+  { data: BodyType<AuthTelegramWebAppBody> },
+  TContext
+> => {
+  const mutationKey = ["authTelegramWebApp"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authTelegramWebApp>>,
+    { data: BodyType<AuthTelegramWebAppBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authTelegramWebApp(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthTelegramWebAppMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authTelegramWebApp>>
+>;
+export type AuthTelegramWebAppMutationBody = BodyType<AuthTelegramWebAppBody>;
+export type AuthTelegramWebAppMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Verify Telegram WebApp initData — mints the session cookie
+ */
+export const useAuthTelegramWebApp = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authTelegramWebApp>>,
+    TError,
+    { data: BodyType<AuthTelegramWebAppBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof authTelegramWebApp>>,
+  TError,
+  { data: BodyType<AuthTelegramWebAppBody> },
+  TContext
+> => {
+  return useMutation(getAuthTelegramWebAppMutationOptions(options));
+};
+
+/**
+ * @summary Redirect-mode Telegram login (widget verification then 302)
+ */
+export const getAuthTelegramCallbackUrl = (params: AuthTelegramCallbackParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/auth/telegram/callback?${stringifiedParams}`
+    : `/api/auth/telegram/callback`;
+};
+
+export const authTelegramCallback = async (
+  params: AuthTelegramCallbackParams,
+  options?: RequestInit,
+): Promise<unknown> => {
+  return customFetch<unknown>(getAuthTelegramCallbackUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAuthTelegramCallbackQueryKey = (params?: AuthTelegramCallbackParams) => {
+  return [`/api/auth/telegram/callback`, ...(params ? [params] : [])] as const;
+};
+
+export const getAuthTelegramCallbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof authTelegramCallback>>,
+  TError = ErrorType<void | ErrorResponse>,
+>(
+  params: AuthTelegramCallbackParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof authTelegramCallback>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAuthTelegramCallbackQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof authTelegramCallback>>> = ({ signal }) =>
+    authTelegramCallback(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof authTelegramCallback>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AuthTelegramCallbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof authTelegramCallback>>
+>;
+export type AuthTelegramCallbackQueryError = ErrorType<void | ErrorResponse>;
+
+/**
+ * @summary Redirect-mode Telegram login (widget verification then 302)
+ */
+
+export function useAuthTelegramCallback<
+  TData = Awaited<ReturnType<typeof authTelegramCallback>>,
+  TError = ErrorType<void | ErrorResponse>,
+>(
+  params: AuthTelegramCallbackParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof authTelegramCallback>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAuthTelegramCallbackQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Exchange a Firebase Google ID token for the session cookie
+ */
+export const getAuthFirebaseSessionUrl = () => {
+  return `/api/auth/firebase/session`;
+};
+
+export const authFirebaseSession = async (
+  authFirebaseSessionBody: AuthFirebaseSessionBody,
+  options?: RequestInit,
+): Promise<AuthFirebaseSession200> => {
+  return customFetch<AuthFirebaseSession200>(getAuthFirebaseSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(authFirebaseSessionBody),
+  });
+};
+
+export const getAuthFirebaseSessionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authFirebaseSession>>,
+    TError,
+    { data: BodyType<AuthFirebaseSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authFirebaseSession>>,
+  TError,
+  { data: BodyType<AuthFirebaseSessionBody> },
+  TContext
+> => {
+  const mutationKey = ["authFirebaseSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authFirebaseSession>>,
+    { data: BodyType<AuthFirebaseSessionBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authFirebaseSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthFirebaseSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authFirebaseSession>>
+>;
+export type AuthFirebaseSessionMutationBody = BodyType<AuthFirebaseSessionBody>;
+export type AuthFirebaseSessionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Exchange a Firebase Google ID token for the session cookie
+ */
+export const useAuthFirebaseSession = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authFirebaseSession>>,
+    TError,
+    { data: BodyType<AuthFirebaseSessionBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof authFirebaseSession>>,
+  TError,
+  { data: BodyType<AuthFirebaseSessionBody> },
+  TContext
+> => {
+  return useMutation(getAuthFirebaseSessionMutationOptions(options));
+};
+
+/**
+ * @summary Rotate the session from a fresh Firebase ID token (already-bound session required)
+ */
+export const getAuthFirebaseRefreshUrl = () => {
+  return `/api/auth/firebase/refresh`;
+};
+
+export const authFirebaseRefresh = async (
+  authFirebaseRefreshBody: AuthFirebaseRefreshBody,
+  options?: RequestInit,
+): Promise<AuthFirebaseRefresh200> => {
+  return customFetch<AuthFirebaseRefresh200>(getAuthFirebaseRefreshUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(authFirebaseRefreshBody),
+  });
+};
+
+export const getAuthFirebaseRefreshMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authFirebaseRefresh>>,
+    TError,
+    { data: BodyType<AuthFirebaseRefreshBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authFirebaseRefresh>>,
+  TError,
+  { data: BodyType<AuthFirebaseRefreshBody> },
+  TContext
+> => {
+  const mutationKey = ["authFirebaseRefresh"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authFirebaseRefresh>>,
+    { data: BodyType<AuthFirebaseRefreshBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authFirebaseRefresh(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthFirebaseRefreshMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authFirebaseRefresh>>
+>;
+export type AuthFirebaseRefreshMutationBody = BodyType<AuthFirebaseRefreshBody>;
+export type AuthFirebaseRefreshMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Rotate the session from a fresh Firebase ID token (already-bound session required)
+ */
+export const useAuthFirebaseRefresh = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authFirebaseRefresh>>,
+    TError,
+    { data: BodyType<AuthFirebaseRefreshBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof authFirebaseRefresh>>,
+  TError,
+  { data: BodyType<AuthFirebaseRefreshBody> },
+  TContext
+> => {
+  return useMutation(getAuthFirebaseRefreshMutationOptions(options));
+};
+
+/**
+ * @summary Boot probe — 200 always; body carries authenticated state (never 401)
+ */
+export const getProbeAuthUrl = () => {
+  return `/api/auth/probe`;
+};
+
+export const probeAuth = async (options?: RequestInit): Promise<ProbeAuth200> => {
+  return customFetch<ProbeAuth200>(getProbeAuthUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getProbeAuthQueryKey = () => {
+  return [`/api/auth/probe`] as const;
+};
+
+export const getProbeAuthQueryOptions = <
+  TData = Awaited<ReturnType<typeof probeAuth>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof probeAuth>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getProbeAuthQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof probeAuth>>> = ({ signal }) =>
+    probeAuth({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof probeAuth>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ProbeAuthQueryResult = NonNullable<Awaited<ReturnType<typeof probeAuth>>>;
+export type ProbeAuthQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Boot probe — 200 always; body carries authenticated state (never 401)
+ */
+
+export function useProbeAuth<
+  TData = Awaited<ReturnType<typeof probeAuth>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof probeAuth>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getProbeAuthQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

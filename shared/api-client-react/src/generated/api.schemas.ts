@@ -33,9 +33,13 @@ send a browser-like Origin header on mutations.
 ## Deployment-conditional behavior
 
 Idempotency-Key semantics (the 409 replay/reuse conflicts and
-Idempotent-* response headers) engage only when the deployment
-provides REDIS_URL; without Redis, dedup relies on the DB-level
-status guards (93-A8 F-3). /auth/me and /auth/probe send
+Idempotent-* response headers) are backed by the DURABLE in-transaction
+`idempotency_keys` DB guard (round-94 F10) — they engage on EVERY
+deployment, with or without Redis. When REDIS_URL is additionally
+provided, the Redis claim layer (fast pre-check + cross-instance
+coordination) fronts the same durable guard; without it, dedup
+relies on the DB-level claim alone (correct, marginally slower on
+the conflict path). /auth/me and /auth/probe send
 `Cache-Control: private, max-age=30`; catalog routes send
 `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
 
@@ -200,16 +204,50 @@ export interface LoginBody {
   password: string;
 }
 
+/**
+ * A social/provider identity linked to the account (provider-linking flows).
+ */
+export interface LinkedIdentity {
+  provider: string;
+  provider_uid: string;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  linked_at?: string | null;
+  /** @nullable */
+  last_seen_at?: string | null;
+}
+
+/**
+ * /auth/me and /auth/probe additionally return the linked_identities array (see LinkedIdentity). (Fields email…onboarding_step added round-98 to match what formatUser has serialized all along — the spec gap forced local re-declarations in profile/checkout.)
+
+ */
 export interface User {
   id: number;
   phone: string;
+  /** @nullable */
+  email?: string | null;
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  /** @nullable */
+  display_name?: string | null;
+  /** @nullable */
+  photo_url?: string | null;
+  auth_provider?: string;
   wallet_balance: number;
   loyalty_points: number;
   loyalty_tier: string;
   lifetime_spend: number;
   /** @nullable */
   referral_code?: string | null;
+  /** @nullable */
+  onboarded_at?: string | null;
+  onboarding_step?: number;
   created_at?: string;
+  /** Present on /auth/me and /auth/probe responses only. */
+  linked_identities?: LinkedIdentity[];
 }
 
 export interface AuthResponse {
@@ -260,6 +298,12 @@ export interface Product {
   description_long?: string | null;
   /** @nullable */
   faq?: ProductFaqItem[] | null;
+  /**
+   * Marketing feature bullets (Arabic). Returned on the detail endpoints (/products/:id and /products/by-slug/:slug) — the list endpoint may omit it. (Contract added round-98: the backend serialized features from the start; the spec gap forced a local `any` cast in the storefront.)
+
+   * @nullable
+   */
+  features?: string[] | null;
   /**
    * Operator override for the product page <title>.
    * @nullable
@@ -389,8 +433,6 @@ export interface Order {
   /** @nullable */
   coupon_code?: string | null;
   discount_amount?: number;
-  wallet_balance_before?: number;
-  wallet_balance_after?: number;
   created_at: string;
 }
 
@@ -1784,6 +1826,150 @@ export interface AdminInventoryHealthReport {
 
 export type ListSessions200 = {
   sessions?: UserSession[];
+};
+
+export type StartWhatsappOtpBody = {
+  /** Libyan or international phone; normalized server-side. */
+  phone: string;
+  /**
+   * Optional referral code applied on first verify.
+   * @maxLength 16
+   */
+  referral_code?: string;
+};
+
+export type StartWhatsappOtp200 = {
+  success: boolean;
+  /** ISO timestamp when the code expires (5 minutes). */
+  expires_at: string;
+};
+
+export type StartWhatsappOtp503DetailsReason =
+  (typeof StartWhatsappOtp503DetailsReason)[keyof typeof StartWhatsappOtp503DetailsReason];
+
+export const StartWhatsappOtp503DetailsReason = {
+  whatsapp_settling: "whatsapp_settling",
+  store_failed: "store_failed",
+} as const;
+
+export type StartWhatsappOtp503Details = {
+  reason?: StartWhatsappOtp503DetailsReason;
+  retry_after_sec?: number;
+};
+
+export type StartWhatsappOtp503 = ErrorResponse & {
+  details?: StartWhatsappOtp503Details;
+};
+
+export type VerifyWhatsappOtpBody = {
+  phone: string;
+  /** 6-digit code as typed (Arabic-Indic digits accepted). */
+  code: string;
+  /** @maxLength 16 */
+  referral_code?: string;
+};
+
+export type VerifyWhatsappOtp200 = {
+  /** The "__cookie_session__" sentinel — not a credential. */
+  token: string;
+  is_new_user: boolean;
+};
+
+export type ListPublicAuthProviders200ProvidersItem = {
+  id: string;
+  label: string;
+  /** @nullable */
+  color?: string | null;
+  /** @nullable */
+  icon?: string | null;
+  auth_type: string;
+  enabled: boolean;
+  has_config: boolean;
+  /** @nullable */
+  client_id?: string | null;
+  /** @nullable */
+  app_id?: string | null;
+  /** @nullable */
+  bot_username?: string | null;
+  /**
+   * Numeric Telegram bot id (parsed server-side; the token never leaves the DB).
+   * @nullable
+   */
+  bot_id?: string | null;
+};
+
+/**
+ * Live OTP channel readiness (round-96/97 settling contract).
+ */
+export type ListPublicAuthProviders200WhatsappStatus =
+  (typeof ListPublicAuthProviders200WhatsappStatus)[keyof typeof ListPublicAuthProviders200WhatsappStatus];
+
+export const ListPublicAuthProviders200WhatsappStatus = {
+  ready: "ready",
+  settling: "settling",
+  unavailable: "unavailable",
+} as const;
+
+export type ListPublicAuthProviders200 = {
+  providers: ListPublicAuthProviders200ProvidersItem[];
+  /** Live OTP channel readiness (round-96/97 settling contract). */
+  whatsapp_status: ListPublicAuthProviders200WhatsappStatus;
+};
+
+export type AuthTelegramWidgetBody = { [key: string]: unknown };
+
+export type AuthTelegramWidget200 = {
+  /** The "__cookie_session__" sentinel. */
+  token: string;
+  is_new_user: boolean;
+};
+
+export type AuthTelegramWebAppBody = {
+  /** Raw Telegram WebApp initData query string (HMAC-verified server-side, 25h replay TTL). */
+  initData: string;
+};
+
+export type AuthTelegramWebApp200 = {
+  /** The "__cookie_session__" sentinel. */
+  token: string;
+  is_new_user: boolean;
+};
+
+export type AuthTelegramCallbackParams = {
+  /**
+   * Widget fields arrive as query params; verified then redirected.
+   */
+  hash: string;
+};
+
+export type AuthFirebaseSessionBody = {
+  /** Firebase ID token (signature verified server-side). */
+  id_token: string;
+  /** @maxLength 16 */
+  referral_code?: string;
+  /** One-time consent token from a prior 409 account-link response. */
+  link_consent_token?: string;
+};
+
+export type AuthFirebaseSession200 = {
+  /** The "__cookie_session__" sentinel. */
+  token: string;
+  is_new_user: boolean;
+};
+
+export type AuthFirebaseRefreshBody = {
+  id_token: string;
+};
+
+export type AuthFirebaseRefresh200 = {
+  /** The "__cookie_session__" sentinel. */
+  token: string;
+};
+
+export type ProbeAuth200 = {
+  authenticated: boolean;
+  user?: User;
+  linked_identities?: LinkedIdentity[];
 };
 
 export type ListProductsParams = {

@@ -9,7 +9,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
 export const flashSalesTable = pgTable(
   "flash_sales",
@@ -37,5 +36,4 @@ export const insertFlashSaleSchema = createInsertSchema(flashSalesTable).omit({
   id: true,
   createdAt: true,
 });
-export type InsertFlashSale = z.infer<typeof insertFlashSaleSchema>;
 export type FlashSale = typeof flashSalesTable.$inferSelect;

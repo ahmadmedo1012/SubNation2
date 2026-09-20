@@ -24,7 +24,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -128,16 +128,35 @@ export default function AdminReferralsPage() {
 
   const headers = useAdminHeaders();
 
+  // 98-F7 (R98-02): monotonic request sequence — every fetchData call
+  // takes the next number, and only the LATEST call may write
+  // data/loadError/loading. A slow "abc" response that lands AFTER the
+  // "abcd" response used to overwrite the newer list/stat cards with
+  // results for a query nobody is looking at (the page had no AbortController
+  // and no seq guard — the r97 race audit covered home/GlobalSearch/orders/
+  // users, referrals slipped through). Belt to the AbortController below
+  // (suspenders): the seq guard also protects the non-debounced paths
+  // (refresh button, status-filter change, post-credit refetch).
+  const fetchSeqRef = useRef(0);
+
   const fetchData = useCallback(
-    async (silent = false) => {
+    async (silent = false, opts?: { signal?: AbortSignal }) => {
       if (!adminToken) return;
+      const seq = ++fetchSeqRef.current;
       if (!silent) setLoading(true);
       try {
         const params = new URLSearchParams();
         if (statusFilter) params.set("status", statusFilter);
         if (search.trim()) params.set("search", search.trim());
-        const r = await fetch(`/api/admin/referrals?${params}`, { headers });
+        const r = await fetch(`/api/admin/referrals?${params}`, {
+          headers,
+          // 98-F7 (R98-02): abort support for the debounced search path —
+          // mirrors the GlobalSearch controller pattern (admin/layout.tsx).
+          signal: opts?.signal,
+        });
         if (!r.ok) {
+          // A newer request owns the state — drop the stale error.
+          if (seq !== fetchSeqRef.current) return;
           const body = (await r.json().catch(() => null)) as {
             error?: string;
             code?: string;
@@ -147,17 +166,36 @@ export default function AdminReferralsPage() {
           setLoadError(msg);
           return;
         }
+        const payload = (await r.json()) as ReferralData;
+        // Late stale response arrives last → must NOT overwrite the newer
+        // results (the abort above usually kills it; this is the guarantee
+        // when the runtime/mock ignores the signal).
+        if (seq !== fetchSeqRef.current) return;
         setLoadError(null);
-        setData(await r.json());
+        setData(payload);
       } catch (err) {
+        // Our own debounce abort (next keystroke) — not a real failure;
+        // the newer request owns the state and the loading flag.
+        if (opts?.signal?.aborted) return;
+        if (seq !== fetchSeqRef.current) return;
         // Network-level failure (offline/DNS) — same surfacing.
         setLoadError(getErrorMessage(err));
       } finally {
-        if (!silent) setLoading(false);
+        if (!silent && seq === fetchSeqRef.current) setLoading(false);
       }
     },
     [adminToken, statusFilter, search, headers],
   );
+
+  // 98-F7 (R98-02): fetchDataRef — the debounced effect below depends on
+  // `search` ONLY (a dep on fetchData would re-arm the 300ms timer on every
+  // statusFilter/token/headers identity change and fire a redundant request
+  // next to the immediate one from the effect below); the ref keeps the
+  // latest closure without widening the effect's deps.
+  const fetchDataRef = useRef(fetchData);
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
 
   useEffect(() => {
     if (!adminToken) {
@@ -168,8 +206,18 @@ export default function AdminReferralsPage() {
   }, [adminToken, statusFilter]);
 
   useEffect(() => {
-    const t = setTimeout(() => fetchData(), 300);
-    return () => clearTimeout(t);
+    // 98-F7 (R98-02): every keystroke change aborts the previous in-flight
+    // debounced request (GlobalSearch pattern — clearTimeout alone left the
+    // request running; its response could still land and race the newer one).
+    const controller = new AbortController();
+    const t = setTimeout(
+      () => void fetchDataRef.current(false, { signal: controller.signal }),
+      300,
+    );
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
   }, [search]);
 
   const handleCredit = async (row: ReferralRow) => {

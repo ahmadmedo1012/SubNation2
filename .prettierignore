@@ -18,7 +18,7 @@ coverage/
 shared/api-client-react/src/generated/
 
 # Drizzle migrations — generated SQL, must round-trip exactly.
-shared/db/migrations/
+shared/db/drizzle/
 
 # Vendored / minified assets.
 **/*.min.js

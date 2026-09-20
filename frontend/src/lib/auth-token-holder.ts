@@ -17,6 +17,13 @@
  * The cookie-session sentinel is filtered here: when the app runs on
  * cookie auth (no in-memory JWT yet), requests must carry NO bearer
  * header — the httpOnly cookie speaks for itself.
+ *
+ * 98-F3 (R98 backend round): the session-mint routes no longer return
+ * the raw JWT in the body — they return the sentinel string, which the
+ * sign-in flows store here via setToken. The filter below therefore
+ * applies to EVERY session now (boot probe and real sign-ins alike):
+ * the holder never emits a bearer for a cookie-authenticated session.
+ * This is the exact parity the admin surface landed in R97-02.
  */
 
 let currentUserToken: string | null = null;

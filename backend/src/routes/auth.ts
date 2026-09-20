@@ -1,5 +1,5 @@
 import { db, sessionsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, ne, or } from "drizzle-orm";
 import { Router } from "express";
 import { getClientInfo, logAuthActivity } from "../lib/auth-activity";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -26,6 +26,22 @@ import { notifyNewUser } from "../telegram";
 import { getAuthCookieOptions, getAuthCookieSameSite } from "../lib/cookie-options";
 
 const router = Router();
+
+/**
+ * 98-F3 (R98-A4 P3-3 — mirror of R97-02): the raw user JWT is no longer
+ * returned in any session-mint response body. The httpOnly `auth_token`
+ * cookie is the sole session transport (requireUser reads the cookie
+ * FIRST, so the SPA needs no bearer); the body `token` field is kept as
+ * this SENTINEL so existing frontend success-checks (`if (!data.token)`)
+ * and `setToken(...)` flows keep working — the value is truthy but
+ * carries no credential, and the frontend's auth-token-holder filters it
+ * out of Authorization headers by exact string match (same value the
+ * boot probe uses). Keeping a REAL token in the body kept a full 30-day
+ * credential readable from JS memory (XSS / malicious extension /
+ * DevTools-on-a-shared-machine surface) — the exact rationale the admin
+ * surface applied in R97-02 (routes/admin/auth.ts).
+ */
+const COOKIE_SESSION_SENTINEL = "__cookie_session__";
 
 router.post("/logout", requireUser, async (req, res) => {
   const auth = getFirebaseAdminAuth();
@@ -201,7 +217,21 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
   const { provider, provider_uid } = req.body as { provider?: string; provider_uid?: string };
   const clientInfo = getClientInfo(req);
 
-  if (!provider || !provider_uid) {
+  // 98-F3 (R98-A1 P2-4): strict type/shape validation. The old
+  // truthiness-only gate let a non-string value ({"provider": 5}) flow
+  // into eq() — the driver serialized it to '5', matched no rows,
+  // deleted nothing, and the route answered {success:true}: a client bug
+  // was indistinguishable from success, and an unbounded 1 MB string
+  // flowed straight into the query. Mirror the codebase's standard
+  // bound-and-typed validation posture.
+  if (
+    typeof provider !== "string" ||
+    typeof provider_uid !== "string" ||
+    provider.trim().length === 0 ||
+    provider_uid.trim().length === 0 ||
+    provider.length > 100 ||
+    provider_uid.length > 200
+  ) {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   }
 
@@ -221,17 +251,32 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
       return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
     }
 
-    // Prevent unlinking if this is the only auth method
-    const [identity] = await db
-      .select()
+    // Prevent unlinking the LAST auth method.
+    //
+    // 98-F3 (R98-A1 P2-3): this check used to read ONE unordered identity
+    // row (limit(1), no ORDER BY) and compare it against the target —
+    // for a user with ≥2 identities the scan-order row is arbitrary, so
+    // when it happened to BE the target identity the unlink was refused
+    // even though another method existed (non-deterministic false
+    // refusal). Count instead of peek: "how many OTHER identities does
+    // this user have?" — 0 means the unlink would lock the account out.
+    const [otherCount] = await db
+      .select({ n: count() })
       .from(userAuthIdentitiesTable)
-      .where(eq(userAuthIdentitiesTable.userId, userId))
-      .limit(1);
+      .where(
+        and(
+          eq(userAuthIdentitiesTable.userId, userId),
+          // De Morgan: NOT(provider = X AND provider_uid = Y) ≡
+          // provider ≠ X OR provider_uid ≠ Y — or() is SQL|undefined-typed,
+          // which and() accepts (not() demands a definite SQLWrapper).
+          or(
+            ne(userAuthIdentitiesTable.provider, provider),
+            ne(userAuthIdentitiesTable.providerUid, provider_uid),
+          ),
+        ),
+      );
 
-    const hasOtherIdentity =
-      identity && (identity.provider !== provider || identity.providerUid !== provider_uid);
-
-    if (!hasOtherIdentity) {
+    if (Number(otherCount?.n ?? 0) === 0) {
       await logAuthActivity({
         userId,
         identifier: user.phone,
@@ -254,8 +299,11 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
       }
     }
 
-    // Delete the identity
-    await db
+    // Delete the identity — .returning() so a (provider, provider_uid)
+    // pair that is NOT actually linked answers an honest 404 instead of
+    // the silent no-op {success:true} the bare delete() produced
+    // (98-F3, same "silent no-op → 404" posture as admin/alerts.ts).
+    const deleted = await db
       .delete(userAuthIdentitiesTable)
       .where(
         and(
@@ -263,7 +311,23 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
           eq(userAuthIdentitiesTable.provider, provider),
           eq(userAuthIdentitiesTable.providerUid, provider_uid),
         ),
-      );
+      )
+      .returning({ id: userAuthIdentitiesTable.id });
+
+    if (deleted.length === 0) {
+      await logAuthActivity({
+        userId,
+        identifier: user.phone,
+        action: "provider_unlink",
+        success: false,
+        failureReason: "not_linked",
+        provider,
+        ...clientInfo,
+      });
+      return res
+        .status(404)
+        .json(createErrorResponse("مزود المصادقة غير مرتبط", ErrorCode.NOT_FOUND));
+    }
 
     await logAuthActivity({
       userId,
@@ -515,9 +579,11 @@ router.post("/firebase/session", async (req, res) => {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
+    // 98-F3 (see COOKIE_SESSION_SENTINEL above): the body token is the
+    // sentinel, not the JWT — the cookie is the sole session transport.
     return res.status(result.isNewUser ? 201 : 200).json({
       user: formatUser(result.user),
-      token,
+      token: COOKIE_SESSION_SENTINEL,
       provider: result.provider,
       is_new_user: result.isNewUser,
       needs_phone: !result.user.phoneVerified,
@@ -612,9 +678,12 @@ router.post("/firebase/refresh", async (req, res) => {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
+    // 98-F3 (see COOKIE_SESSION_SENTINEL above): sentinel, not the JWT —
+    // the silent-rotation path (setupFirebaseTokenRefresh → setTokenSilently)
+    // only needs a truthy value; the cookie carries the actual session.
     return res.json({
       user: formatUser(result.user),
-      token,
+      token: COOKIE_SESSION_SENTINEL,
     });
   } catch (err) {
     logger.error({ err, id_token_length: id_token?.length }, "Firebase session refresh failed");

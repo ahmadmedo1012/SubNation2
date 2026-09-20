@@ -5,12 +5,64 @@ const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
-function getKey(): Buffer {
+/**
+ * Parse + validate ENCRYPTION_KEY exactly the way first-use does. Kept as the
+ * single validation path for both getKey() and the boot assertion below so
+ * the two can never drift.
+ */
+function parseKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) throw new Error("ENCRYPTION_KEY must be set (32-byte hex string)");
   const buf = Buffer.from(key, "hex");
   if (buf.length !== 32) throw new Error("ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars)");
   return buf;
+}
+
+function getKey(): Buffer {
+  return parseKey();
+}
+
+/**
+ * F8 (R98-A6, 98-F5): boot-time fail-fast for ENCRYPTION_KEY.
+ *
+ * Previously the key was only validated lazily at first encrypt/decrypt
+ * (getKey() above): a wiped or typo'd key let the process boot GREEN
+ * (healthz 200) while every encrypted-field write 500'd per request and
+ * every read silently returned null via safeDecrypt — a half-healthy
+ * instance that on Render free never restarts into visibility. Env-loss
+ * is this operator's demonstrated failure mode (round-5), so the posture
+ * must match SESSION_SECRET (lib/jwt.ts): missing/invalid key = refuse to
+ * serve, in dev AND production.
+ *
+ * Called from server.ts bootstrap() (NOT at module load): migrate.ts
+ * deliberately treats the key as optional — it warns and leaves inventory
+ * passwords plaintext — and a module-load throw would break that path.
+ * Parsing rules are identical to getKey() by construction (shared helper).
+ *
+ * NOTE for rotation: a NEW key makes previously-encrypted rows
+ * undecryptable (safeDecrypt returns null); rotate only together with a
+ * re-encryption pass over the inventory-credential columns.
+ */
+export function assertEncryptionKeyConfigured(): void {
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw) {
+    throw new Error(
+      "ENCRYPTION_KEY environment variable is required (exactly 32 bytes of hex / 64 hex " +
+        "chars for AES-256-GCM). Set it in your host's environment (e.g. Render Dashboard → " +
+        "Environment → ENCRYPTION_KEY, sync:false) and generate it with `openssl rand -hex 32`. " +
+        "Without it every encrypted-field write fails with 500 and every read silently returns " +
+        "null — this must fail at boot, not at first use (F8, round-98).",
+    );
+  }
+  const bytes = Buffer.from(raw, "hex").length;
+  if (bytes !== 32) {
+    throw new Error(
+      `ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars) for AES-256-GCM; the ` +
+        `current value decodes to ${bytes} byte(s). Generate a fresh key with ` +
+        "`openssl rand -hex 32` and update it on the host. Rotation note: a changed key makes " +
+        "previously-encrypted rows undecryptable (safeDecrypt returns null).",
+    );
+  }
 }
 
 export function encrypt(plaintext: string): string {

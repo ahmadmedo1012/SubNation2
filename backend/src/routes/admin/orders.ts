@@ -1,6 +1,6 @@
 import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
 import { logger } from "../../lib/logger";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
@@ -287,6 +287,19 @@ router.patch(
     // completed (an idempotent no-op re-affirmation). Everything else
     // is skipped with an honest reason, mirroring the refunded guard.
     //
+    // (c) F2 (round-98 A3): the mirror image of (b) — the old guard for
+    // pending/failed targets was `ne(status, "refunded")`, so a bulk
+    // demotion `completed → pending/failed` was allowed. That killed the
+    // buyer's credential access (formatOrder gates every delivered_*
+    // field on status === "completed") AND made the order permanently
+    // un-refundable: RefundService requires completed, and guard (b)
+    // blocks re-entering completed — the sanctioned money-return path
+    // was dead for that order, with no side effect fired (user paid,
+    // lost access). "completed" can now only be left via RefundService
+    // (completed → refunded, terminal), so pending/failed targets accept
+    // exactly the pending/failed source states (pending ↔ failed stay
+    // mutually reachable).
+    //
     // The UPDATE is also rows-affected honest (r4 red-team F-4): the
     // response reports how many rows ACTUALLY transitioned, not
     // `numIds.length` (valid-but-nonexistent or guarded ids are
@@ -294,7 +307,7 @@ router.patch(
     const guard =
       status === "completed"
         ? and(inArray(ordersTable.id, numIds), eq(ordersTable.status, "completed"))
-        : and(inArray(ordersTable.id, numIds), ne(ordersTable.status, "refunded"));
+        : and(inArray(ordersTable.id, numIds), inArray(ordersTable.status, ["pending", "failed"]));
     const flippedRows = await db
       .update(ordersTable)
       .set({ status: status as any })
@@ -312,6 +325,7 @@ router.patch(
     const missedIds = numIds.filter((id) => !flippedIdSet.has(id));
     let skippedRefunded = 0;
     let skippedBlockedCompletion = 0;
+    let skippedCompletedSource = 0;
     if (missedIds.length > 0) {
       const missedRows = await db
         .select({ id: ordersTable.id, status: ordersTable.status })
@@ -319,10 +333,13 @@ router.patch(
         .where(inArray(ordersTable.id, missedIds));
       for (const row of missedRows) {
         if (row.status === "refunded") skippedRefunded += 1;
+        else if (row.status === "completed")
+          skippedCompletedSource += 1; // completed → pending/failed blocked (F2)
         else skippedBlockedCompletion += 1; // pending/failed → completed blocked (F3)
       }
     }
-    const skippedMissing = missedIds.length - skippedRefunded - skippedBlockedCompletion;
+    const skippedMissing =
+      missedIds.length - skippedRefunded - skippedBlockedCompletion - skippedCompletedSource;
 
     // Notify affected users
     const updatedOrders = flippedRows;
@@ -354,6 +371,7 @@ router.patch(
       skipped_invalid: skippedInvalid.length,
       skipped_refunded: skippedRefunded,
       skipped_blocked_completion: skippedBlockedCompletion,
+      skipped_completed_source: skippedCompletedSource,
       skipped_missing: skippedMissing,
     });
 
@@ -372,6 +390,12 @@ router.patch(
         ? {
             skipped_blocked_completion: skippedBlockedCompletion,
             reason: "COMPLETED_IS_PURCHASE_ONLY",
+          }
+        : {}),
+      ...(skippedCompletedSource > 0
+        ? {
+            skipped_completed_source: skippedCompletedSource,
+            reason: "COMPLETED_NOT_DEMOTABLE",
           }
         : {}),
       ...(skippedMissing > 0 ? { skipped_missing: skippedMissing } : {}),

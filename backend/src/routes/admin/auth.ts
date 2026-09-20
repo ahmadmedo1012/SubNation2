@@ -5,7 +5,7 @@ import { Router, type CookieOptions } from "express";
 import jwt from "jsonwebtoken";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import { writeAuditLog } from "../../lib/audit";
-import { hashPassword, verifyPassword } from "../../lib/crypto";
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../../lib/crypto";
 import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
 import {
   createAdminSession,
@@ -14,6 +14,7 @@ import {
   revokeAllAdminSessions,
 } from "../../lib/admin-session";
 import { checkLockout, recordFailedAttempt, resetAttempts } from "../../lib/lockout";
+import { logger } from "../../lib/logger";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { getAuthCookieOptions } from "../../lib/cookie-options";
@@ -85,6 +86,15 @@ router.post("/login", async (req, res) => {
     .where(eq(adminUsersTable.username, username))
     .limit(1);
   if (!admin) {
+    // 98-F3 (R98-A4 P3): username-existence timing oracle. The found
+    // branch pays ~100 ms of argon2 (64 MiB) before its 401; this branch
+    // used to return immediately — a remote attacker measuring wall-clock
+    // distinguished valid admin usernames from invalid ones even though
+    // the response envelopes are identical. Run the SAME argon2 verify
+    // against DUMMY_PASSWORD_HASH (pre-computed constant of a random
+    // string's hash, same params → same cost) before replying, so both
+    // branches converge. The result is intentionally discarded.
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
     await recordFailedAttempt(lockoutKey);
     return res
       .status(401)
@@ -92,13 +102,34 @@ router.post("/login", async (req, res) => {
   }
   if (!admin.isActive) {
     // Soft-disabled admin — same 401 response as a wrong password so
-    // we don't leak account-state to a brute-forcer.
+    // we don't leak account-state to a brute-forcer. Same dummy-argon2
+    // timing parity as the not-found branch above.
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
     await recordFailedAttempt(lockoutKey);
     return res
       .status(401)
       .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
-  const { valid, needsRehash } = await verifyPassword(password, admin.passwordHash);
+  const { valid, needsRehash, resetRequired } = await verifyPassword(password, admin.passwordHash);
+  if (resetRequired) {
+    // 98-F3: non-argon2 stored hash — the legacy SHA-256 fallback was
+    // removed (verified: zero such rows live), so this row can only be
+    // recovered by a password reset, never by retrying credentials.
+    // Loud security log: a row appearing here means a pre-argon2 row
+    // surfaced after all (or DB tampering) and deserves attention.
+    logger.error(
+      { category: "security", adminId: admin.id, username: admin.username },
+      "Non-argon2 password hash encountered on admin login — legacy SHA-256 fallback removed (98-F3); password reset required",
+    );
+    return res
+      .status(401)
+      .json(
+        createErrorResponse(
+          "يلزم إعادة تعيين كلمة المرور — تواصل مع مسؤول النظام",
+          ErrorCode.UNAUTHORIZED,
+        ),
+      );
+  }
   if (!valid) {
     await recordFailedAttempt(lockoutKey);
     return res
@@ -522,6 +553,22 @@ router.patch("/profile", requireAdmin, async (req, res) => {
       return res
         .status(400)
         .json(createErrorResponse("اسم المستخدم طويل جداً", ErrorCode.INVALID_DATA));
+    }
+  }
+  // 98-F3 (R98-A1 P3-8): display_name was only `.trim()`ed — an
+  // unbounded value (up to the 1 MB JSON limit) landed directly in the
+  // admin_users row and every list/probe response. Bounded like the
+  // username (generous 200 chars — display names are free-form).
+  if (display_name !== undefined) {
+    if (typeof display_name !== "string" || display_name.trim().length === 0) {
+      return res
+        .status(400)
+        .json(createErrorResponse("الاسم الظاهر غير صالح", ErrorCode.INVALID_DATA));
+    }
+    if (display_name.trim().length > 200) {
+      return res
+        .status(400)
+        .json(createErrorResponse("الاسم الظاهر طويل جداً", ErrorCode.INVALID_DATA));
     }
   }
 

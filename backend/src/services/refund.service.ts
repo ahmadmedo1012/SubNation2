@@ -29,6 +29,10 @@
  *      attempting the same refund will get rowsAffected = 0 and the
  *      whole transaction rolls back — the second admin sees
  *      ALREADY_REFUNDED, and the user is credited exactly once.
+ *   6. Return the coupon redemption slot the order consumed at checkout
+ *      (F3, round-98 A3): guarded `used_count` decrement on
+ *      `orders.coupon_code`, inside the same transaction and covered by
+ *      the same exactly-once status guard as the credit.
  *
  * The bulk endpoint maps to per-order calls so a partial-failure mode
  * is surfaced cleanly (some refunds succeeded, others failed with
@@ -39,8 +43,8 @@
  * the idempotency middleware in `middlewares/idempotency.ts`.
  */
 
-import { db, ordersTable, usersTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, couponsTable, ordersTable, usersTable } from "@workspace/db";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { logAdminAlert, type AlertType } from "../jobs/alertLogger";
 import { insertLedgerEntry } from "../lib/ledger";
 import { computeTier } from "../lib/loyalty-tiers";
@@ -94,6 +98,7 @@ export class RefundService {
           amount: ordersTable.amount,
           status: ordersTable.status,
           orderCode: ordersTable.orderCode,
+          couponCode: ordersTable.couponCode,
           deliveredPassword: ordersTable.deliveredPassword,
           deliveredEmail: ordersTable.deliveredEmail,
           deliveredExtraDetails: ordersTable.deliveredExtraDetails,
@@ -195,6 +200,28 @@ export class RefundService {
         .returning({ id: ordersTable.id });
       if (statusFlipped.length !== 1) {
         throw new RefundError(409, "ALREADY_REFUNDED", "تم استرداد هذا الطلب بواسطة عملية أخرى");
+      }
+
+      // F3 (round-98 A3): return the coupon redemption slot this order
+      // burned at checkout. The purchase tx increments used_count exactly
+      // once per order (checkout.service.ts); without a symmetric decrement
+      // every refund permanently shrank the campaign budget — a refunded
+      // sale kept consuming a slot (a maxUses=1 coupon stayed exhausted
+      // forever; refund cycles on a maxUses=10 campaign silently drained
+      // the real budget to 0 while used_count said 10).
+      //
+      // Exactly-once via the same status guard above: the guarded flip from
+      // "completed" is the single admission ticket into this branch — a
+      // concurrent or repeated refund throws at the flip and the whole tx
+      // (wallet credit included) rolls back before reaching this write.
+      // `used_count > 0` keeps the floor at zero for legacy rows whose slot
+      // was already consumed elsewhere; a deleted coupon row simply matches
+      // nothing — the budget concern dies with the row.
+      if (order.couponCode !== null) {
+        await tx
+          .update(couponsTable)
+          .set({ usedCount: sql`GREATEST(${couponsTable.usedCount} - 1, 0)` })
+          .where(and(eq(couponsTable.code, order.couponCode), gt(couponsTable.usedCount, 0)));
       }
 
       // B2-03 (round-92 audit): revoke the delivered credentials inside the

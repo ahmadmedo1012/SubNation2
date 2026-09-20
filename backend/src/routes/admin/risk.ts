@@ -29,6 +29,7 @@ import {
 } from "@workspace/db";
 import { and, desc, eq, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { Router } from "express";
+import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { parseDsl } from "../../lib/risk-dsl";
@@ -467,15 +468,73 @@ router.get("/risk/config", requireAdmin, async (_req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 // PUT /risk/config — admins tune thresholds without redeploy (T035)
 // ────────────────────────────────────────────────────────────────────────
+
+// 98-F3 (R98-A1 P2-5): the PUT body used to read nested fields with raw
+// `??` fallbacks — a STRING threshold ("30") survived the JS comparison
+// chain (coerced), then persisted into the jsonb column as a string, and
+// every downstream consumer (risk-config-cache.service → levelFor,
+// isAllowlisted) trusts the types: string thresholds silently disabled
+// level gating; object-valued or 10k-entry allowlist arrays corrupted the
+// matcher and bloated the singleton row. Same zod posture as
+// TopupActionBody / AdminReplyBody: schema-validated up front, 400 +
+// Arabic copy on mismatch. Bounds mirror the data model (scores are
+// 0-100; getRiskConfig snapshots the same shapes).
+const RiskThresholdSchema = z.number().finite().min(0).max(100);
+const RiskConfigPutBody = z.object({
+  thresholds: z
+    .object({
+      low: RiskThresholdSchema.optional(),
+      medium: RiskThresholdSchema.optional(),
+      high: RiskThresholdSchema.optional(),
+      critical: RiskThresholdSchema.optional(),
+    })
+    .optional(),
+  allowlist: z
+    .object({
+      // ip() accepts both v4 and v6 literals — what isAllowlisted
+      // compares signal.ip against.
+      ips: z.string().ip().array().max(100).optional(),
+      // Device fingerprints are opaque client strings; phones are
+      // normalized digits. Bounded length + array caps keep the jsonb
+      // row (and the matcher's includes() scan) cheap.
+      devices: z.string().trim().min(1).max(200).array().max(100).optional(),
+      phones: z.string().trim().min(1).max(20).array().max(100).optional(),
+    })
+    .optional(),
+  autoBlockEnabled: z
+    .object({
+      softBlock: z.boolean().optional(),
+      hardBlock: z.boolean().optional(),
+      alert: z.boolean().optional(),
+    })
+    .optional(),
+  modelEnabled: z.boolean().optional(),
+  requireApprovalUserIds: z
+    .number()
+    .int()
+    .positive()
+    .array()
+    .max(1000)
+    .optional(),
+});
+
 router.put("/risk/config", requireAdmin, async (req, res) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const body = (req.body ?? {}) as {
-    thresholds?: Partial<{ low: number; medium: number; high: number; critical: number }>;
-    allowlist?: Partial<{ ips: string[]; devices: string[]; phones: string[] }>;
-    autoBlockEnabled?: Partial<{ softBlock: boolean; hardBlock: boolean; alert: boolean }>;
-    modelEnabled?: boolean;
-    requireApprovalUserIds?: number[];
-  };
+  // 98-F3: strict nested-shape gate BEFORE any ?? merge — a bad shape is
+  // a 400, never a persisted jsonb corruption.
+  const parsed = RiskConfigPutBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "إعدادات المخاطر غير صالحة (الحدود أرقام 0–100، القوائم داخل الحدود المسموحة)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+    return;
+  }
+  const body = parsed.data;
 
   const [existing] = await db.select().from(riskConfigTable).limit(1);
   const current = existing ?? null;
@@ -545,9 +604,12 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
     phones: Array.isArray(body.allowlist?.phones) ? body.allowlist!.phones : currentAllow.phones,
   };
 
-  const requireApprovalUserIds = Array.isArray(body.requireApprovalUserIds)
-    ? body.requireApprovalUserIds.filter((v): v is number => typeof v === "number" && v > 0)
-    : ((current?.requireApprovalUserIds as number[] | null) ?? []);
+  // 98-F3: zod already guarantees int+positive — the old runtime filter
+  // silently DROPPED bad entries instead of rejecting the request (the
+  // corruption survived, just smaller).
+  const requireApprovalUserIds =
+    body.requireApprovalUserIds ??
+    ((current?.requireApprovalUserIds as number[] | null) ?? []);
 
   const updated = {
     thresholds,

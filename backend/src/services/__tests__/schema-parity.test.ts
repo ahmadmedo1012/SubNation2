@@ -19,18 +19,39 @@
  *     DDL-carried partial unique index at the SERVICE layer (no per-file
  *     index re-creation);
  *   - direct negative-balance / zero-amount writes are rejected.
+ *
+ * Round-98 F4 extension (R98-DB-01/02/03/04/05): the same discipline
+ * applied to the V1-M16/V1-M17 live-only objects — the two variant
+ * indexes, the cart→user FK, and the NULLS NOT DISTINCT unique index —
+ * plus compile-level getTableConfig assertions that the schema TS now
+ * DECLARES every round-98 mirror (variant indexes, forecast partial
+ * index, the six CHECKs, the cart FK, auth_activity timestamptz), so a
+ * silent schema-TS regression fails here even where the pglite harness
+ * carries no such table (inventory_forecasts / enrichment_drafts are not
+ * in the harness DDL — TS parity is the goal there).
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   db,
   initTestDb,
   resetTestDb,
+  cartItemsTable,
+  productsTable,
   usersTable,
   walletLedgerTable,
   walletTopupsTable,
 } from "../../test/db";
+import {
+  authActivityTable,
+  enrichmentDraftsTable,
+  inventoryForecastsTable,
+  inventoryTable,
+  ordersTable,
+  productVariantsTable,
+} from "@workspace/db/schema";
 import { AdjustmentService } from "../../services/adjustment.service";
 import { ServiceError, TopupService } from "../../services/topup.service";
 
@@ -78,6 +99,18 @@ async function constraintViolationName(promise: Promise<unknown>): Promise<strin
     const cause = (err as { cause?: { constraint?: string } }).cause;
     return cause?.constraint ?? (err as { constraint?: string }).constraint;
   }
+}
+
+/** Render a drizzle sql`` template (predicate / check expression) to text. */
+function sqlText(chunk: SQL | undefined): string {
+  if (!chunk) return "";
+  const chunks = (chunk as unknown as { queryChunks?: Array<{ value: unknown }> }).queryChunks;
+  return String(chunks?.map((c) => (Array.isArray(c.value) ? c.value.join("") : c.value)).join(""));
+}
+
+/** Column names an index is declared on (drizzle IndexedColumn.name). */
+function indexColumns(index: { config: { columns: unknown[] } }): string[] {
+  return index.config.columns.map((c) => String((c as { name?: string }).name));
 }
 
 describe("initTestDb carries the production money schema (V1-M9 + V1-M10)", () => {
@@ -196,5 +229,184 @@ describe("money services against the constraint-carrying harness (A10 §2 spec)"
         }),
       ),
     ).toBe("chk_ledger_amount_nonzero");
+  });
+});
+
+describe("round-98 F4: harness carries the V1-M16/M17 live-only objects", () => {
+  it("the two variant indexes exist by NAME and column", async () => {
+    expect(await indexDef("idx_orders_variant")).toContain("ON public.orders");
+    expect(await indexDef("idx_orders_variant")).toContain("(variant_id)");
+    expect(await indexDef("idx_inventory_variant")).toContain("ON public.inventory");
+    expect(await indexDef("idx_inventory_variant")).toContain("(variant_id)");
+  });
+
+  it("fk_cart_items_user exists with the boot-SQL definition and cascades", async () => {
+    expect(await constraintDef("fk_cart_items_user")).toBe(
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+    );
+
+    const user = await makeUser("10.00");
+    const [product] = await db
+      .insert(productsTable)
+      .values({ name: "cart-fk-probe", price: "10.00" })
+      .returning();
+    await db.insert(cartItemsTable).values({ userId: user.id, productId: product.id, quantity: 1 });
+
+    await db.delete(usersTable).where(eq(usersTable.id, user.id));
+
+    const remaining = await db.select().from(cartItemsTable);
+    expect(remaining).toHaveLength(0); // cascade, not orphan
+  });
+
+  it("uniq_product_variants_plan_duration is NULLS NOT DISTINCT and dedups NULL axes", async () => {
+    const def = await indexDef("uniq_product_variants_plan_duration");
+    expect(def).toContain("UNIQUE INDEX uniq_product_variants_plan_duration");
+    expect(def).toContain("ON public.product_variants");
+    expect(def).toContain("(product_id, plan_label, duration_label)");
+    // The V1-M17 form — without it, NULL axes never dedup (R98-DB-05).
+    expect(def).toContain("NULLS NOT DISTINCT");
+
+    const [product] = await db
+      .insert(productsTable)
+      .values({ name: "variant-null-axis-probe", price: "10.00" })
+      .returning();
+    await db.insert(productVariantsTable).values({
+      productId: product.id,
+      planLabel: "Family",
+      durationLabel: null,
+      costPrice: "5.00",
+      priceLyd: "100.00",
+    });
+    // Same triple incl. the NULL duration → 23505 on the index. The
+    // pre-V1-M17 plain UNIQUE would have accepted it (NULLs distinct).
+    expect(
+      await constraintViolationName(
+        db.insert(productVariantsTable).values({
+          productId: product.id,
+          planLabel: "Family",
+          durationLabel: null,
+          costPrice: "5.00",
+          priceLyd: "100.00",
+        }),
+      ),
+    ).toBe("uniq_product_variants_plan_duration");
+    // The NULL plan axis dedups too.
+    await db.insert(productVariantsTable).values({
+      productId: product.id,
+      planLabel: null,
+      durationLabel: "1 Month",
+      costPrice: "3.00",
+      priceLyd: "60.00",
+    });
+    expect(
+      await constraintViolationName(
+        db.insert(productVariantsTable).values({
+          productId: product.id,
+          planLabel: null,
+          durationLabel: "1 Month",
+          costPrice: "3.00",
+          priceLyd: "60.00",
+        }),
+      ),
+    ).toBe("uniq_product_variants_plan_duration");
+    // A genuinely distinct triple still coexists.
+    await db.insert(productVariantsTable).values({
+      productId: product.id,
+      planLabel: "Family",
+      durationLabel: "1 Month",
+      costPrice: "5.00",
+      priceLyd: "110.00",
+    });
+  });
+});
+
+describe("round-98 F4: schema TS declares the live-only objects (compile-level)", () => {
+  it("orders + inventory declare the V1-M16 variant indexes", () => {
+    const ordersIdx = getTableConfig(ordersTable).indexes.find(
+      (i) => i.config.name === "idx_orders_variant",
+    );
+    expect(ordersIdx).toBeDefined();
+    expect(indexColumns(ordersIdx!)).toEqual(["variant_id"]);
+
+    const inventoryIdx = getTableConfig(inventoryTable).indexes.find(
+      (i) => i.config.name === "idx_inventory_variant",
+    );
+    expect(inventoryIdx).toBeDefined();
+    expect(indexColumns(inventoryIdx!)).toEqual(["variant_id"]);
+  });
+
+  it("inventory_forecasts declares the partial at-risk index + both CHECKs", () => {
+    const idx = getTableConfig(inventoryForecastsTable).indexes.find(
+      (i) => i.config.name === "idx_forecasts_at_risk_runout",
+    );
+    expect(idx).toBeDefined();
+    expect(indexColumns(idx!)).toEqual(["at_risk", "predicted_runout_at"]);
+    // Partial predicate verbatim from the boot SQL (011 stage).
+    expect(sqlText(idx!.config.where)).toBe("at_risk = true");
+
+    const checks = getTableConfig(inventoryForecastsTable).checks;
+    expect(checks.map((c) => c.name)).toContain("chk_forecast_confidence");
+    expect(checks.map((c) => c.name)).toContain("chk_forecast_insufficient_consistency");
+    expect(sqlText(checks.find((c) => c.name === "chk_forecast_confidence")?.value)).toBe(
+      "confidence IN ('high','medium','low','insufficient_data')",
+    );
+    expect(
+      sqlText(checks.find((c) => c.name === "chk_forecast_insufficient_consistency")?.value),
+    ).toBe("(confidence = 'insufficient_data') = (avg_daily_sales IS NULL)");
+  });
+
+  it("enrichment_drafts declares the four state-machine CHECKs", () => {
+    const checks = getTableConfig(enrichmentDraftsTable).checks;
+    expect(checks.map((c) => c.name)).toEqual(
+      expect.arrayContaining([
+        "chk_enrichment_state",
+        "chk_enrichment_field",
+        "chk_enrichment_published_consistency",
+        "chk_enrichment_rejected_consistency",
+      ]),
+    );
+    expect(sqlText(checks.find((c) => c.name === "chk_enrichment_state")?.value)).toBe(
+      "state IN ('drafted','published','rejected','draft_invalid')",
+    );
+    expect(
+      sqlText(checks.find((c) => c.name === "chk_enrichment_rejected_consistency")?.value),
+    ).toBe("(state = 'rejected') = (rejected_at IS NOT NULL)");
+  });
+
+  it("cart_items declares the user_id → users(id) cascade FK", () => {
+    const fk = getTableConfig(cartItemsTable).foreignKeys.find((f) =>
+      f.reference().columns.some((c) => c.name === "user_id"),
+    );
+    expect(fk).toBeDefined();
+    const ref = fk!.reference();
+    const foreignTableName = String(
+      (ref.foreignTable as unknown as Record<symbol, unknown>)[Symbol.for("drizzle:Name")],
+    );
+    expect(foreignTableName).toBe("users");
+    expect(ref.foreignColumns.map((c) => c.name)).toEqual(["id"]);
+    expect(fk!.onDelete).toBe("cascade");
+  });
+
+  it("auth_activity.created_at is timestamp WITH time zone", () => {
+    const col = getTableConfig(authActivityTable).columns.find((c) => c.name === "created_at");
+    expect(col).toBeDefined();
+    expect((col as unknown as { withTimezone?: boolean }).withTimezone).toBe(true);
+    expect((col as unknown as { getSQLType?: () => string }).getSQLType?.()).toBe(
+      "timestamp with time zone",
+    );
+  });
+
+  it("product_variants unique index columns match the LIVE index", () => {
+    const idx = getTableConfig(productVariantsTable).indexes.find(
+      (i) => i.config.name === "uniq_product_variants_plan_duration",
+    );
+    expect(idx).toBeDefined();
+    expect(idx!.config.unique).toBe(true);
+    // LIVE index (verified via direct Neon query, round-98 main agent):
+    // (product_id, plan_label, duration_label) — duration_label, NOT
+    // duration_days. NULLS NOT DISTINCT itself is boot-migration-owned
+    // (V1-M17) — drizzle's uniqueIndex() cannot express it; see the
+    // mirror comment in product-variants.ts.
+    expect(indexColumns(idx!)).toEqual(["product_id", "plan_label", "duration_label"]);
   });
 });

@@ -20,7 +20,6 @@ export interface OrderHistoryDay {
 }
 
 const HISTORY_DAYS = 14;
-const DOW_LOOKBACK_DAYS = 28;
 
 /**
  * Mean daily sales over the last 14 days. Caller passes the full
@@ -169,6 +168,3 @@ export function densifyHistory(
   }
   return out;
 }
-
-export const HISTORY_WINDOW = HISTORY_DAYS;
-export const DOW_WINDOW = DOW_LOOKBACK_DAYS;

@@ -22,15 +22,17 @@ const requiresSsl =
   sslMode === "verify-full" ||
   parsedDatabaseUrl.hostname.endsWith(".neon.tech");
 // Default pool sizes:
-//   - production: 15  (matches render.yaml; sized for one starter dyno
-//                       under moderate concurrency. With Neon pooler the
-//                       upstream limit is much higher, so this is the
-//                       per-instance bound.)
-//   - dev:        10
-// The env var DB_POOL_MAX always wins. The default exists only as a
-// safety net so a missing/typo'd env doesn't silently cap us at 5
-// connections (which causes connection-starvation under ~50 concurrent
-// users — that was the symptom the May 2026 load test surfaced).
+//   - production: 15  — a SAFETY NET only, for a missing/typo'd
+//     DB_POOL_MAX. Production render.yaml pins DB_POOL_MAX=8 (2026-09-20
+//     cold-start storm tuning: Neon Free 0.25 CU can't absorb a
+//     15-connection burst on a freshly-woken compute). With the Neon
+//     pooler the upstream limit is much higher, so this is the
+//     per-instance bound.
+//   - dev: 10
+// The env var DB_POOL_MAX always wins. The default exists only so a
+// missing/typo'd env doesn't silently cap us at 5 connections (which
+// causes connection-starvation under ~50 concurrent users — that was
+// the symptom the May 2026 load test surfaced).
 const poolMax = Number(
   process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 15 : 10),
 );
@@ -99,6 +101,18 @@ export const pool = new Pool(poolConfig);
 // Exported for unit tests (R4) — the exact config handed to pg.Pool.
 export { poolConfig as dbPoolConfig };
 
+// Pool-level errors (idle client killed by a Neon suspend, socket reset,
+// DNS/TLS failure) surface here. Logged via console.error DELIBERATELY —
+// the pino logger and the neonPoolErrorsTotal counter both live in the
+// backend package (backend/src/lib/logger.ts, backend/src/lib/metrics.ts):
+// importing either from @workspace/db would invert the workspace
+// dependency direction (backend → shared) and create a module cycle
+// (backend/src/lib/db-instrumentation.ts imports this pool). The metric
+// + Sentry capture ARE wired for this exact pool: the backend's
+// instrumentDbPool() (backend/src/lib/db-instrumentation.ts:230-238,
+// called at boot in server.ts:25) registers its own "error" listener on
+// the same EventEmitter, so every error this handler logs is also
+// counted in neonPoolErrorsTotal and captured to Sentry.
 pool.on("error", (err) => {
   console.error("[db] PostgreSQL pool error", err);
 });

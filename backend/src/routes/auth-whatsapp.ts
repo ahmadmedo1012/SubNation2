@@ -20,11 +20,29 @@ import { getAuthCookieOptions } from "../lib/cookie-options";
  * accepts those purposes; only this router needs to be extended when
  * those phases ship.
  *
- * Rate limiting:  applied via `app.use("/api/auth/whatsapp", authLimiter)`
+ * Rate limiting (96-F1, R96-A4 §3.4 — app.ts:850-862): split per-path
+ *   /start  → whatsappStartAuthLimiter  (20/15 min/IP — CGNAT-friendly)
+ *   /verify → authLimiter                (10/15 min/IP — strict)
+ *   (Do NOT blanket-mount `app.use("/api/auth/whatsapp", authLimiter)`
+ *   — that re-stricts /start and re-creates the exact double-mount
+ *   class 98-F3 fixed in app.ts.)
  * Replay/abuse:   in-orchestration (per-phone cooldown + hourly cap +
  *                 per-code attempt cap + post-verify consume).
  */
 export const whatsappAuthRouter = Router();
+
+/**
+ * 98-F3 (R98-A4 P3-3 — mirror of R97-02): the raw user JWT is no longer
+ * returned in the verify response body. The httpOnly `auth_token` cookie
+ * set below is the sole session transport (requireUser reads the cookie
+ * first); the body `token` field is kept as this SENTINEL so the SPA's
+ * success-check (`if (!data.token)`) and `setToken(...)` keep working —
+ * the value is truthy but carries no credential, and the frontend's
+ * auth-token-holder filters it out of Authorization headers by exact
+ * string match. Same value the boot probe and the other mint routes use
+ * (routes/auth.ts, routes/auth-settings.ts).
+ */
+const COOKIE_SESSION_SENTINEL = "__cookie_session__";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/whatsapp/start
@@ -220,14 +238,18 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
         );
     }
 
-    // Success — set httpOnly cookie + return JWT exactly the same way
-    // the Telegram/Firebase paths do. 30-day expiry matches signUserToken.
+    // Success — set httpOnly cookie + return the cookie-session sentinel
+    // exactly the same way the Telegram/Firebase paths do. 30-day expiry
+    // matches signUserToken. 98-F3 (see COOKIE_SESSION_SENTINEL above):
+    // the body `token` is NOT the JWT — the cookie is the sole session
+    // transport; the SPA's auth-token-holder filters the sentinel out of
+    // Authorization headers.
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
 
     return res.json({
-      token: result.token,
+      token: COOKIE_SESSION_SENTINEL,
       is_new_user: result.isNewUser,
     });
   } catch (err) {

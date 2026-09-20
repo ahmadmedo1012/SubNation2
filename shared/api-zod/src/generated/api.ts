@@ -33,9 +33,13 @@ send a browser-like Origin header on mutations.
 ## Deployment-conditional behavior
 
 Idempotency-Key semantics (the 409 replay/reuse conflicts and
-Idempotent-* response headers) engage only when the deployment
-provides REDIS_URL; without Redis, dedup relies on the DB-level
-status guards (93-A8 F-3). /auth/me and /auth/probe send
+Idempotent-* response headers) are backed by the DURABLE in-transaction
+`idempotency_keys` DB guard (round-94 F10) — they engage on EVERY
+deployment, with or without Redis. When REDIS_URL is additionally
+provided, the Redis claim layer (fast pre-check + cross-instance
+coordination) fronts the same durable guard; without it, dedup
+relies on the DB-level claim alone (correct, marginally slower on
+the conflict path). /auth/me and /auth/probe send
 `Cache-Control: private, max-age=30`; catalog routes send
 `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
 
@@ -80,15 +84,231 @@ export const LogoutResponse = zod.object({
 /**
  * @summary Get current user profile
  */
-export const GetMeResponse = zod.object({
-  id: zod.number(),
+export const GetMeResponse = zod
+  .object({
+    id: zod.number(),
+    phone: zod.string(),
+    email: zod.string().nullish(),
+    email_verified: zod.boolean().optional(),
+    phone_verified: zod.boolean().optional(),
+    display_name: zod.string().nullish(),
+    photo_url: zod.string().nullish(),
+    auth_provider: zod.string().optional(),
+    wallet_balance: zod.number(),
+    loyalty_points: zod.number(),
+    loyalty_tier: zod.string(),
+    lifetime_spend: zod.number(),
+    referral_code: zod.string().nullish(),
+    onboarded_at: zod.string().nullish(),
+    onboarding_step: zod.number().optional(),
+    created_at: zod.string().optional(),
+    linked_identities: zod
+      .array(
+        zod
+          .object({
+            provider: zod.string(),
+            provider_uid: zod.string(),
+            email: zod.string().nullish(),
+            phone: zod.string().nullish(),
+            linked_at: zod.string().nullish(),
+            last_seen_at: zod.string().nullish(),
+          })
+          .describe("A social\/provider identity linked to the account (provider-linking flows)."),
+      )
+      .optional()
+      .describe("Present on \/auth\/me and \/auth\/probe responses only."),
+  })
+  .describe(
+    "\/auth\/me and \/auth\/probe additionally return the linked_identities array (see LinkedIdentity). (Fields email…onboarding_step added round-98 to match what formatUser has serialized all along — the spec gap forced local re-declarations in profile\/checkout.)\n",
+  );
+
+/**
+ * @summary Send a WhatsApp OTP to the given phone (registration purpose)
+ */
+export const startWhatsappOtpBodyReferralCodeMax = 16;
+
+export const StartWhatsappOtpBody = zod.object({
+  phone: zod.string().describe("Libyan or international phone; normalized server-side."),
+  referral_code: zod
+    .string()
+    .max(startWhatsappOtpBodyReferralCodeMax)
+    .optional()
+    .describe("Optional referral code applied on first verify."),
+});
+
+export const StartWhatsappOtpResponse = zod.object({
+  success: zod.boolean(),
+  expires_at: zod.string().describe("ISO timestamp when the code expires (5 minutes)."),
+});
+
+/**
+ * @summary Verify the WhatsApp OTP — mints the session (cookie) on success
+ */
+export const verifyWhatsappOtpBodyReferralCodeMax = 16;
+
+export const VerifyWhatsappOtpBody = zod.object({
   phone: zod.string(),
-  wallet_balance: zod.number(),
-  loyalty_points: zod.number(),
-  loyalty_tier: zod.string(),
-  lifetime_spend: zod.number(),
-  referral_code: zod.string().nullish(),
-  created_at: zod.string().optional(),
+  code: zod.string().describe("6-digit code as typed (Arabic-Indic digits accepted)."),
+  referral_code: zod.string().max(verifyWhatsappOtpBodyReferralCodeMax).optional(),
+});
+
+export const VerifyWhatsappOtpResponse = zod.object({
+  token: zod.string().describe('The \"__cookie_session__\" sentinel — not a credential.'),
+  is_new_user: zod.boolean(),
+});
+
+/**
+ * @summary Public sign-in provider catalog (enabled flags + non-secret config)
+ */
+export const ListPublicAuthProvidersResponse = zod.object({
+  providers: zod.array(
+    zod.object({
+      id: zod.string(),
+      label: zod.string(),
+      color: zod.string().nullish(),
+      icon: zod.string().nullish(),
+      auth_type: zod.string(),
+      enabled: zod.boolean(),
+      has_config: zod.boolean(),
+      client_id: zod.string().nullish(),
+      app_id: zod.string().nullish(),
+      bot_username: zod.string().nullish(),
+      bot_id: zod
+        .string()
+        .nullish()
+        .describe("Numeric Telegram bot id (parsed server-side; the token never leaves the DB)."),
+    }),
+  ),
+  whatsapp_status: zod
+    .enum(["ready", "settling", "unavailable"])
+    .describe("Live OTP channel readiness (round-96\/97 settling contract)."),
+});
+
+/**
+ * Body carries the Telegram widget fields (id, first_name, auth_date, hash, …). The hash is verified against the bot token (HMAC) with auth_date freshness + a replay claim. 409 when the Telegram identity is already linked to a different account.
+ * @summary Verify Telegram Login Widget data — mints the session cookie
+ */
+export const AuthTelegramWidgetBody = zod.object({}).passthrough();
+
+export const AuthTelegramWidgetResponse = zod.object({
+  token: zod.string().describe('The \"__cookie_session__\" sentinel.'),
+  is_new_user: zod.boolean(),
+});
+
+/**
+ * @summary Verify Telegram WebApp initData — mints the session cookie
+ */
+export const AuthTelegramWebAppBody = zod.object({
+  initData: zod
+    .string()
+    .describe(
+      "Raw Telegram WebApp initData query string (HMAC-verified server-side, 25h replay TTL).",
+    ),
+});
+
+export const AuthTelegramWebAppResponse = zod.object({
+  token: zod.string().describe('The \"__cookie_session__\" sentinel.'),
+  is_new_user: zod.boolean(),
+});
+
+/**
+ * @summary Redirect-mode Telegram login (widget verification then 302)
+ */
+export const AuthTelegramCallbackQueryParams = zod.object({
+  hash: zod.coerce
+    .string()
+    .describe("Widget fields arrive as query params; verified then redirected."),
+});
+
+/**
+ * @summary Exchange a Firebase Google ID token for the session cookie
+ */
+export const authFirebaseSessionBodyReferralCodeMax = 16;
+
+export const AuthFirebaseSessionBody = zod.object({
+  id_token: zod.string().describe("Firebase ID token (signature verified server-side)."),
+  referral_code: zod.string().max(authFirebaseSessionBodyReferralCodeMax).optional(),
+  link_consent_token: zod
+    .string()
+    .optional()
+    .describe("One-time consent token from a prior 409 account-link response."),
+});
+
+export const AuthFirebaseSessionResponse = zod.object({
+  token: zod.string().describe('The \"__cookie_session__\" sentinel.'),
+  is_new_user: zod.boolean(),
+});
+
+/**
+ * @summary Rotate the session from a fresh Firebase ID token (already-bound session required)
+ */
+export const AuthFirebaseRefreshBody = zod.object({
+  id_token: zod.string(),
+});
+
+export const AuthFirebaseRefreshResponse = zod.object({
+  token: zod.string().describe('The \"__cookie_session__\" sentinel.'),
+});
+
+/**
+ * @summary Boot probe — 200 always; body carries authenticated state (never 401)
+ */
+export const ProbeAuthResponse = zod.object({
+  authenticated: zod.boolean(),
+  user: zod
+    .object({
+      id: zod.number(),
+      phone: zod.string(),
+      email: zod.string().nullish(),
+      email_verified: zod.boolean().optional(),
+      phone_verified: zod.boolean().optional(),
+      display_name: zod.string().nullish(),
+      photo_url: zod.string().nullish(),
+      auth_provider: zod.string().optional(),
+      wallet_balance: zod.number(),
+      loyalty_points: zod.number(),
+      loyalty_tier: zod.string(),
+      lifetime_spend: zod.number(),
+      referral_code: zod.string().nullish(),
+      onboarded_at: zod.string().nullish(),
+      onboarding_step: zod.number().optional(),
+      created_at: zod.string().optional(),
+      linked_identities: zod
+        .array(
+          zod
+            .object({
+              provider: zod.string(),
+              provider_uid: zod.string(),
+              email: zod.string().nullish(),
+              phone: zod.string().nullish(),
+              linked_at: zod.string().nullish(),
+              last_seen_at: zod.string().nullish(),
+            })
+            .describe(
+              "A social\/provider identity linked to the account (provider-linking flows).",
+            ),
+        )
+        .optional()
+        .describe("Present on \/auth\/me and \/auth\/probe responses only."),
+    })
+    .optional()
+    .describe(
+      "\/auth\/me and \/auth\/probe additionally return the linked_identities array (see LinkedIdentity). (Fields email…onboarding_step added round-98 to match what formatUser has serialized all along — the spec gap forced local re-declarations in profile\/checkout.)\n",
+    ),
+  linked_identities: zod
+    .array(
+      zod
+        .object({
+          provider: zod.string(),
+          provider_uid: zod.string(),
+          email: zod.string().nullish(),
+          phone: zod.string().nullish(),
+          linked_at: zod.string().nullish(),
+          last_seen_at: zod.string().nullish(),
+        })
+        .describe("A social\/provider identity linked to the account (provider-linking flows)."),
+    )
+    .optional(),
 });
 
 /**
@@ -123,6 +343,12 @@ export const ListProductsResponseItem = zod.object({
       }),
     )
     .nullish(),
+  features: zod
+    .array(zod.string())
+    .nullish()
+    .describe(
+      "Marketing feature bullets (Arabic). Returned on the detail endpoints (\/products\/:id and \/products\/by-slug\/:slug) — the list endpoint may omit it. (Contract added round-98: the backend serialized features from the start; the spec gap forced a local `any` cast in the storefront.)\n",
+    ),
   seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
   seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
@@ -196,6 +422,12 @@ export const GetProductResponse = zod.object({
       }),
     )
     .nullish(),
+  features: zod
+    .array(zod.string())
+    .nullish()
+    .describe(
+      "Marketing feature bullets (Arabic). Returned on the detail endpoints (\/products\/:id and \/products\/by-slug\/:slug) — the list endpoint may omit it. (Contract added round-98: the backend serialized features from the start; the spec gap forced a local `any` cast in the storefront.)\n",
+    ),
   seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
   seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
@@ -308,6 +540,12 @@ export const GetProductBySlugResponse = zod.object({
       }),
     )
     .nullish(),
+  features: zod
+    .array(zod.string())
+    .nullish()
+    .describe(
+      "Marketing feature bullets (Arabic). Returned on the detail endpoints (\/products\/:id and \/products\/by-slug\/:slug) — the list endpoint may omit it. (Contract added round-98: the backend serialized features from the start; the spec gap forced a local `any` cast in the storefront.)\n",
+    ),
   seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
   seo_description: zod.string().nullish().describe("Operator override for the meta description."),
   image_url: zod.string().nullish(),
@@ -400,8 +638,6 @@ export const ListOrdersResponseItem = zod
     delivered_at: zod.string().nullish(),
     coupon_code: zod.string().nullish(),
     discount_amount: zod.number().optional(),
-    wallet_balance_before: zod.number().optional(),
-    wallet_balance_after: zod.number().optional(),
     created_at: zod.string(),
   })
   .describe(
@@ -471,8 +707,6 @@ export const CreateOrderResponse = zod
     delivered_at: zod.string().nullish(),
     coupon_code: zod.string().nullish(),
     discount_amount: zod.number().optional(),
-    wallet_balance_before: zod.number().optional(),
-    wallet_balance_after: zod.number().optional(),
     created_at: zod.string(),
   })
   .describe(
@@ -510,8 +744,6 @@ export const GetOrderResponse = zod
     delivered_at: zod.string().nullish(),
     coupon_code: zod.string().nullish(),
     discount_amount: zod.number().optional(),
-    wallet_balance_before: zod.number().optional(),
-    wallet_balance_after: zod.number().optional(),
     created_at: zod.string(),
   })
   .describe(
@@ -551,8 +783,6 @@ export const GetWalletResponse = zod.object({
         delivered_at: zod.string().nullish(),
         coupon_code: zod.string().nullish(),
         discount_amount: zod.number().optional(),
-        wallet_balance_before: zod.number().optional(),
-        wallet_balance_after: zod.number().optional(),
         created_at: zod.string(),
       })
       .describe(

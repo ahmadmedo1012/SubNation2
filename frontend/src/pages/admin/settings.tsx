@@ -2,6 +2,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/errors";
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 // 93-C7 / C-UX2 (A12 B17): configured/secret/telegram pills migrate
 // from raw emerald/yellow hues (+ a square `rounded` on the secret
 // chip) to the canonical StatusBadge on the --status-* tokens.
@@ -560,6 +561,22 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
   const [pwShowNew, setPwShowNew] = useState(false);
+
+  // 98-F7 (R98-05): dirty-state guard — the account tab hosts two long
+  // forms (profile + password). Any un-submitted edit now arms the
+  // browser beforeunload prompt, so a refresh / tab close mid-edit asks
+  // before discarding (SPA route-leave interception stays a documented
+  // residual — see use-dirty-guard.ts). Manual field compare vs the
+  // loaded session (cheap — three strings + three password fields).
+  const accountDirty =
+    (!!session &&
+      (profileUsername !== session.username ||
+        profileDisplayName !== session.display_name ||
+        profilePassword !== "")) ||
+    pwCurrent !== "" ||
+    pwNew !== "" ||
+    pwConfirm !== "";
+  useDirtyGuard(accountDirty);
 
   const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();

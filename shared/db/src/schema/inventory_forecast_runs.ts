@@ -35,7 +35,10 @@ export const inventoryForecastRunsTable = pgTable(
      * Per-reason skip counts:
      * `{insufficient_data: N, archived: M, inactive: K, error: P}`.
      */
-    productsSkipped: jsonb("products_skipped").$type<Record<string, number>>().notNull().default({}),
+    productsSkipped: jsonb("products_skipped")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
     /** Number of admin_alerts rows the run wrote (≤ 50 by FR-ALERT-005). */
     alertsEmitted: integer("alerts_emitted").notNull().default(0),
     /** True iff the run hit the per-run alert volume cap (FR-ALERT-005). */
@@ -52,6 +55,3 @@ export const inventoryForecastRunsTable = pgTable(
     outcomeIdx: index("idx_forecast_runs_outcome").on(t.outcome, t.startedAt),
   }),
 );
-
-export type InventoryForecastRun = typeof inventoryForecastRunsTable.$inferSelect;
-export type InsertInventoryForecastRun = typeof inventoryForecastRunsTable.$inferInsert;

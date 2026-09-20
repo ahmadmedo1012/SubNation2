@@ -24,5 +24,3 @@ export const adminAlertsTable = pgTable(
     dedupeIdx: index("idx_admin_alerts_dedupe_key").on(t.dedupeKey, t.createdAt),
   }),
 );
-
-export type AdminAlert = typeof adminAlertsTable.$inferSelect;

@@ -261,3 +261,97 @@ function renderAuthIdentity() {
     ),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 98-F7 (R98-07) — adminLogout clears the sn_last_alert_id toast cursor
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AdminLogoutHarness() {
+  const { adminToken, setAdminToken, adminLogout } = useAuth();
+  return (
+    <div>
+      <span data-testid="admin-token-state">{adminToken ?? "admin-signed-out"}</span>
+      <button type="button" onClick={() => setAdminToken("jwt-admin-A")}>
+        دخول أدمن أ
+      </button>
+      <button type="button" onClick={() => setAdminToken(null)}>
+        مسح الجلسة (401)
+      </button>
+      <button type="button" onClick={() => void adminLogout()}>
+        خروج الأدمن
+      </button>
+    </div>
+  );
+}
+
+describe("AuthProvider.adminLogout — alert cursor reset (98-F7 R98-07)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    disconnectMock.mockClear();
+    // Boot probes + the admin logout POST — all generic non-OK/OK bodies.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("adminLogout removes sn_last_alert_id (a shared-device admin B must not inherit A's cursor)", async () => {
+    // Admin A's session wrote the alert-cursor while working (AdminLayout's
+    // alert poller keeps it at the last-seen alert id).
+    localStorage.setItem("sn_last_alert_id", "412");
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <AdminLogoutHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن أ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("jwt-admin-A");
+    });
+    // Simulate the poller advancing the cursor mid-session.
+    localStorage.setItem("sn_last_alert_id", "417");
+
+    fireEvent.click(screen.getByRole("button", { name: "خروج الأدمن" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("admin-signed-out");
+    });
+
+    // R98-07: the cursor is GONE — the next admin's poll starts from 0 and
+    // toasts everything that fired in the gap instead of swallowing it.
+    expect(localStorage.getItem("sn_last_alert_id")).toBeNull();
+  });
+
+  it("a plain setAdminToken(null) (the 401-expiry mirror path) clears it too", async () => {
+    localStorage.setItem("sn_last_alert_id", "99");
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <AdminLogoutHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن أ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("jwt-admin-A");
+    });
+
+    // The 401-expiry path routes through useAdminHeaders' mirror →
+    // setAdminToken(null) — the same choke point, no server call.
+    fireEvent.click(screen.getByRole("button", { name: "مسح الجلسة (401)" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("admin-signed-out");
+    });
+    expect(localStorage.getItem("sn_last_alert_id")).toBeNull();
+  });
+});

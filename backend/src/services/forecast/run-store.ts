@@ -10,8 +10,6 @@
 import { db, inventoryForecastRunsTable } from "@workspace/db";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 
-export type RunOutcome = "in_flight" | "success" | "failure";
-
 export interface NewRunInput {
   workerTier?: string | null;
 }

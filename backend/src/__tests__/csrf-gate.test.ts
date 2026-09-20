@@ -246,10 +246,63 @@ describe("exempt paths stay exempt (no Origin/Referer required)", () => {
   it.each([
     "/api/webhook/telegram",
     "/api/cwv",
-    "/api/auth/firebase/session",
+    // 98-F3: /api/auth/firebase/refresh stays skipped — the COOP-isolated
+    // popup rotation edge case it was added for (rotation of an
+    // already-bound session; no fixation gain).
     "/api/auth/firebase/refresh",
   ])("%s passes with an auth cookie and no Origin/Referer", async (path) => {
     const res = await fire(GATE(), { method: "POST", path, cookie: "auth_token=some-jwt" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ reached: true });
+  });
+});
+
+// ── 98-F3: the session MINT is no longer exempt (login-CSRF closure) ────────
+
+describe("98-F3 — POST /api/auth/firebase/session is gated like every other mutating route", () => {
+  const GATE = () => buildGateApp(["https://subnation.ly"], true);
+
+  it("a form-POST shape (auth cookie, no Origin/Referer) → 403 (was: unconditional mint)", async () => {
+    // The exact login-CSRF shape: a cross-site <form method=POST> carries
+    // the attacker's Firebase ID token in the body; the gate used to skip
+    // this path entirely, so the mint Set-Cookied the ATTACKER's session
+    // onto the victim silently.
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/session",
+      cookie: "auth_token=some-jwt",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("a disallowed Origin → 403 before the handler (CSRF layer; the CORS gate 403s it even earlier in the real app)", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/session",
+      cookie: "auth_token=some-jwt",
+      origin: "https://evil.example.com",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("a disallowed Referer → 403", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/session",
+      cookie: "auth_token=some-jwt",
+      referer: "https://evil.example.com/attacker.html",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("an allowed Origin still passes (the SPA always sends Origin — the skip bought nothing for legit clients)", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/session",
+      cookie: "auth_token=some-jwt",
+      origin: "https://subnation.ly",
+    });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ reached: true });
   });
@@ -298,6 +351,28 @@ describe("real app integration (dev origins = localhost set)", () => {
       expect(res.status).toBe(401);
       const body = (await res.json()) as { code?: string };
       expect(body.code).toBe("UNAUTHORIZED");
+    } finally {
+      close();
+    }
+  });
+
+  // 98-F3: the session mint is behind the gate in the REAL composition
+  // too — a disallowed Origin dies at the CORS gate (403) long before
+  // the handler could mint + Set-Cookie anything.
+  it("POST /api/auth/firebase/session with a disallowed Origin → 403 before reaching the handler", async () => {
+    const { url, close } = await listen(realApp);
+    try {
+      const res = await fetch(`${url}/api/auth/firebase/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://evil.example.com" },
+        body: JSON.stringify({ id_token: "attacker-owned-firebase-id-token" }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("FORBIDDEN");
+      // No session cookie was minted.
+      const cookies = res.headers.getSetCookie();
+      expect(cookies.some((c) => c.startsWith("auth_token="))).toBe(false);
     } finally {
       close();
     }

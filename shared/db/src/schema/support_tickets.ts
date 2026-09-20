@@ -23,5 +23,3 @@ export const supportTicketsTable = pgTable(
     userIdx: index("idx_tickets_user").on(t.userId),
   }),
 );
-
-export type SupportTicket = typeof supportTicketsTable.$inferSelect;

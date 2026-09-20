@@ -9,7 +9,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { productsTable } from "./products";
 import { productVariantsTable } from "./product-variants";
 
@@ -58,6 +57,10 @@ export const inventoryTable = pgTable(
     productIdx: index("idx_inventory_product").on(t.productId),
     soldIdx: index("idx_inventory_sold").on(t.isSold),
     productSoldIdx: index("idx_inventory_product_sold").on(t.productId, t.isSold),
+    // R98-DB-01: V1-M16 (migrate.ts applyProductVariantsStage) creates this
+    // live for the variant-scoped stock lookups. Declared here so the
+    // drizzle chain + snapshot carry it and a future push can't drop it.
+    variantIdx: index("idx_inventory_variant").on(t.variantId),
   }),
 );
 
@@ -65,5 +68,4 @@ export const insertInventorySchema = createInsertSchema(inventoryTable).omit({
   id: true,
   createdAt: true,
 });
-export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type Inventory = typeof inventoryTable.$inferSelect;

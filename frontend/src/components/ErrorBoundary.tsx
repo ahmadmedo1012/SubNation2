@@ -3,6 +3,24 @@ import { AlertTriangle, RefreshCw, Home } from "lucide-react";
 
 interface Props {
   children: ReactNode;
+  /**
+   * 98-F7 (r97 F-14): identity that RESETS the boundary's error state
+   * when it changes — the standard didUpdate reset pattern. Usage sites
+   * pass the current route location (App.tsx renders one boundary around
+   * the whole Switch, so a crashed /wallet must reset when the user
+   * navigates to / — the boundary can't stay stuck on the error screen
+   * for every subsequent route until a manual reload).
+   *
+   * Deliberately NOT the children element: AppRoutes re-renders on ANY
+   * auth/theme state flip and mints a new Switch element each time, so
+   * the old children-identity check reset the boundary on unrelated
+   * re-renders too (error screen ↔ blank flicker while the same route
+   * kept re-throwing). The route key resets exactly on navigation.
+   *
+   * When omitted, the legacy children-identity behavior is kept as a
+   * fallback for any future mount site that renders a stable child.
+   */
+  resetKey?: string | number;
 }
 
 interface State {
@@ -42,8 +60,19 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidUpdate(prevProps: Props, _prevState: State) {
-    // Reset error state when children change
-    if (this.state.hasError && prevProps.children !== this.props.children) {
+    // Reset error state when the RESET KEY changes (route change) — see
+    // the resetKey docstring above for why children identity is only the
+    // legacy fallback. Only a boundary currently SHOWING an error cares:
+    // a healthy boundary re-rendering on a new key stays healthy.
+    if (!this.state.hasError) return;
+    if (this.props.resetKey !== undefined) {
+      if (prevProps.resetKey !== this.props.resetKey) {
+        this.setState({ hasError: false, error: undefined });
+      }
+      return;
+    }
+    // Legacy fallback (no resetKey): reset on children identity change.
+    if (prevProps.children !== this.props.children) {
       this.setState({ hasError: false, error: undefined });
     }
   }

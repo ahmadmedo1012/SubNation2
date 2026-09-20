@@ -34,6 +34,12 @@ import { getApiBaseUrl, installApiFetchBridge } from "./lib/api-config";
 // us with a stripped/mirrored direction.
 applyDocumentDirection("ar");
 
+// 98-F7 (R98-08b): successful boot — remove the static no-JS offline
+// fallback from #root (index.html) before React takes the container over.
+// Its delayed CSS reveal (2.5s) never gets a chance to fire; if this line
+// never runs, the div IS the offline message.
+document.getElementById("static-offline")?.remove();
+
 // Configure API base URL from Vite env.
 // Empty / unset => same-origin (relative /api paths). Set VITE_API_URL to an
 // absolute origin (e.g. https://api.example.com) when deploying the frontend

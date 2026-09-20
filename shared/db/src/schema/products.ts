@@ -11,7 +11,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
 /**
  * Per-product FAQ entry shape (stored in `products.faq` as a JSONB
@@ -119,5 +118,4 @@ export const insertProductSchema = createInsertSchema(productsTable).omit({
   createdAt: true,
   updatedAt: true,
 });
-export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof productsTable.$inferSelect;

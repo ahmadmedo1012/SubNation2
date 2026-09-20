@@ -40,20 +40,6 @@ function isValidUuidV4(id: string): boolean {
 }
 
 /**
- * Creates a new correlation context with a fresh request ID.
- * @param route - The Express route pattern
- * @param startTime - The request start time from performance.now()
- * @returns A new CorrelationContext instance
- */
-export function createCorrelationContext(route: string, startTime: number): CorrelationContext {
-  return {
-    requestId: randomUUID(),
-    route,
-    startTime,
-  };
-}
-
-/**
  * Creates a correlation context from an existing request ID header.
  * If the header is missing or invalid, generates a new UUID v4.
  *
@@ -107,32 +93,4 @@ export function getCorrelationContext(): CorrelationContext | undefined {
 export function getCorrelationId(): string | undefined {
   const store = correlationStore.getStore();
   return store?.requestId;
-}
-
-/**
- * Updates the user ID in the current correlation context.
- * Should be called after successful authentication.
- * Does nothing if no context exists or if userId is already set.
- *
- * @param userId - The authenticated user's ID
- */
-export function setCorrelationUserId(userId: number): void {
-  const store = correlationStore.getStore();
-  if (store && store.userId === undefined) {
-    // Mutate the object - AsyncLocalStorage maintains reference identity
-    (store as { userId?: number }).userId = userId;
-  }
-}
-
-/**
- * Updates the route in the current correlation context.
- * Should be called after route matching is complete.
- *
- * @param route - The Express route pattern (e.g., "/api/products/:id")
- */
-export function setCorrelationRoute(route: string): void {
-  const store = correlationStore.getStore();
-  if (store) {
-    (store as { route: string }).route = route;
-  }
 }

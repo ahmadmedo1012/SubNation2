@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
@@ -183,6 +184,11 @@ export default function AdminProductsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  // 98-F7 (R98-05): the pristine baseline the editor opened with — the
+  // create path seeds EMPTY_FORM, startEdit seeds the loaded product.
+  // Powers the dirty flag below (form vs baseline, cheap JSON compare —
+  // the form is flat strings + one bool).
+  const [formBaseline, setFormBaseline] = useState({ ...EMPTY_FORM });
   const [inventoryDialogProduct, setInventoryDialogProduct] = useState<{
     id: number;
     name: string;
@@ -209,6 +215,16 @@ export default function AdminProductsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
 
   const headers = useAdminHeaders();
+
+  // 98-F7 (R98-05): dirty-state guard for the product editor — a long
+  // Arabic description/usage-terms lost to an accidental refresh (zero
+  // beforeunload existed repo-wide) now prompts first. Armed ONLY while
+  // the editor is open AND its content differs from the baseline the
+  // editor opened with (a dismissed-with-changes editor is not dirty —
+  // its state was reset). SPA route-leave interception stays a
+  // documented residual (see use-dirty-guard.ts).
+  const editorDirty = showForm && JSON.stringify(form) !== JSON.stringify(formBaseline);
+  useDirtyGuard(editorDirty);
 
   const {
     data: products = [],
@@ -346,7 +362,7 @@ export default function AdminProductsPage() {
 
   const startEdit = (product: AdminProduct) => {
     setEditingId(product.id);
-    setForm({
+    const next = {
       name: product.name,
       description: product.description ?? "",
       image_url: product.image_url ?? "",
@@ -358,7 +374,10 @@ export default function AdminProductsPage() {
       category: product.category ?? "",
       usage_terms: product.usage_terms ?? "",
       is_active: product.is_active,
-    });
+    };
+    // 98-F7 (R98-05): the loaded values double as the pristine baseline.
+    setForm(next);
+    setFormBaseline(next);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -528,6 +547,8 @@ export default function AdminProductsPage() {
               setShowForm(true);
               setEditingId(null);
               setForm({ ...EMPTY_FORM });
+              // 98-F7 (R98-05): fresh create session starts pristine.
+              setFormBaseline({ ...EMPTY_FORM });
             }}
             className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 h-9 active:scale-[0.97] transition-transform"
           >

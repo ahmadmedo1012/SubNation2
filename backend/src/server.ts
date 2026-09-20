@@ -12,6 +12,7 @@ import express from "express";
 import app from "./app";
 import { bootMigrations } from "./lib/boot-migrations";
 import { instrumentDbPool } from "./lib/db-instrumentation";
+import { assertEncryptionKeyConfigured } from "./lib/encryption";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
 import { getIO, initSocket } from "./lib/socket";
@@ -92,6 +93,11 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): Se
   // comfortably under the ceiling while dead sockets release fast.
   httpServer.requestTimeout = 60_000;
   httpServer.headersTimeout = 65_000;
+  // F6 (R98-A6): Node's default keepAliveTimeout is 5 s while Render's LB
+  // holds idle keep-alive sockets ~100 s — the classic close-race (LB
+  // reuses a socket the server just closed) yields sporadic 502s. 61 s
+  // keeps reuse safe and stays under headersTimeout.
+  httpServer.keepAliveTimeout = 61_000;
   initSocket(httpServer);
 
   httpServer.listen(port, () => {
@@ -124,6 +130,15 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): Se
 }
 
 async function bootstrap(): Promise<WebSchedulerHandle> {
+  // F8 (R98-A6, 98-F5): ENCRYPTION_KEY fail-fast at boot — same posture as
+  // SESSION_SECRET (lib/jwt.ts, dev AND prod). Previously the key was only
+  // validated lazily at first encrypt/decrypt: a wiped/typo'd key booted
+  // GREEN (healthz 200) while every encrypted-field write 500'd per request
+  // and every read silently nulled through safeDecrypt. Runs FIRST so a bad
+  // key refuses to serve before any Redis/DB/scheduler work. (migrate.ts
+  // keeps the key optional by design — hence bootstrap(), not module load.)
+  assertEncryptionKeyConfigured();
+
   // Connect the Redis singleton before app.use(...) runs any code that needs it.
   // In production, failure here degrades to in-memory rate limiting (H12 policy,
   // redis-client.ts); in dev we also fall back silently.

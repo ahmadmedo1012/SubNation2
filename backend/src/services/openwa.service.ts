@@ -823,6 +823,23 @@ function chatIdToDigits(chatId: string): string {
   return at >= 0 ? chatId.slice(0, at) : chatId;
 }
 
+/**
+ * F9 (R98-A6, 98-F5): mask a phone-bearing chatId for LOG output only —
+ * `218913456789@c.us` → `21891…6789@c.us`. Render's retained log stream
+ * accumulated full user phone numbers on every gateway hiccup (the OTP
+ * path = every login attempt during channel trouble); pino's redact list
+ * has no chatId path. Prefix+suffix keeps entries correlatable across
+ * lines. The wire payload and DB writes keep the FULL value — only the
+ * log call sites change. Exported for tests (buildChatId precedent).
+ */
+export function maskChatId(chatId: string): string {
+  const at = chatId.indexOf("@");
+  const digits = at >= 0 ? chatId.slice(0, at) : chatId;
+  const domain = at >= 0 ? chatId.slice(at) : "";
+  if (digits.length <= 9) return chatId; // too short to mask meaningfully
+  return `${digits.slice(0, 5)}…${digits.slice(-4)}${domain}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public send
 // ─────────────────────────────────────────────────────────────────────────────
@@ -875,8 +892,9 @@ async function sendTextWithRetry(
         readySessionCache = null;
         // NOTE: deliberately NOT reading the body — keeps error log free
         // of any hint of the OTP if the gateway echoes it back.
+        // F9: chatId masked in the log — full value never reaches stdout.
         logger.warn(
-          { category: "whatsapp.gateway", chatId, status: res.status, attempt },
+          { category: "whatsapp.gateway", chatId: maskChatId(chatId), status: res.status, attempt },
           "[whatsapp-otp] gateway non-2xx",
         );
         result = { ok: false, reason: "non_ok_status", status: res.status };
@@ -888,7 +906,7 @@ async function sendTextWithRetry(
       logger.warn(
         {
           category: "whatsapp.gateway",
-          chatId,
+          chatId: maskChatId(chatId), // F9 — phone PII never reaches stdout
           attempt,
           err: err instanceof Error ? err.message : String(err),
         },
@@ -979,7 +997,8 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
   const preflight = await preflightCheckNumber(config, session.id, digits);
   if (preflight && !preflight.exists) {
     logger.warn(
-      { category: "whatsapp.gateway", chatId },
+      // F9: masked — the unregistered number is still PII.
+      { category: "whatsapp.gateway", chatId: maskChatId(chatId) },
       "[whatsapp-otp] recipient is not registered on WhatsApp",
     );
     return { ok: false, reason: "recipient_not_on_whatsapp" };

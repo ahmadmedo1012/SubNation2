@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { roundToCents, useCart } from "@/lib/cart";
+import { roundToCents, useCart, type LocalCartItem } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency } from "@/lib/utils";
@@ -18,7 +18,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   createOrder,
@@ -26,8 +26,11 @@ import {
   getGetWalletQueryKey,
   getListOrdersQueryKey,
   getMe,
+  getProduct,
   type CreateOrderBody,
   type Order,
+  type Product,
+  type User,
 } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
@@ -36,9 +39,8 @@ import { formatCount } from "@/lib/utils";
 // — there is no `user` wrapper. The old `data?.user?.wallet_balance` read
 // always evaluated to undefined -> balance 0 -> the confirm button was
 // permanently disabled for every authed visitor (P0-1, live-confirmed).
-interface MeResponse {
-  wallet_balance?: number | null;
-}
+// 98-F9: the local MeResponse interface is gone — the balance field is
+// typed straight off the generated User contract.
 
 function formatBalance(value: number | null | undefined): string {
   return formatCurrency(value ?? 0);
@@ -111,24 +113,82 @@ function isCouponFailureMessage(message: string | undefined): boolean {
  * for THIS checkout session, not durable state — they die with the tab.
  * Every access is try/catch-guarded: a private-mode / quota failure just
  * degrades to the old unstable-key behavior, it never blocks the money path.
+ *
+ * 98-F2 (r97 F-07, deferred queue): the raw key gained the 97-F5 buy-key's
+ * TWO staleness guards, which the checkout keys never had — a stored key
+ * lived until its terminal resolution, so a key minted hours/days earlier
+ * in a long-lived tab could swallow a genuinely NEW purchase via the
+ * server's 24 h replay window:
+ *   • TTL: a key older than 10 minutes no longer represents the user's
+ *     live intent and is ignored (minted fresh instead);
+ *   • fingerprint: the line's product / variant / coupon / unit price —
+ *     the exact body fields the backend's same-key-different-body 409
+ *     branch compares, plus the price context (a post-reconcile price
+ *     change is a NEW intent, never a replay of the old charge).
  */
 const CHECKOUT_KEY_PREFIX = "subnation_checkout_key:";
+/** 98-F2 (r97 F-07): retry-token TTL — mirrors the 97-F5 buy-key guidance. */
+const CHECKOUT_KEY_TTL_MS = 10 * 60 * 1000;
+
+interface StoredCheckoutUnitKey {
+  /** The Idempotency-Key header value. */
+  k: string;
+  /** Date.now() at mint time — the TTL stamp. */
+  t: number;
+  /** Intent fingerprint — productId | variantId | coupon | unit price. */
+  f: string;
+}
 
 function checkoutUnitKeyId(productId: number, unitIndex: number): string {
   return `${CHECKOUT_KEY_PREFIX}${productId}:${unitIndex}`;
 }
 
-function loadCheckoutUnitKey(productId: number, unitIndex: number): string | null {
+/** 98-F2 (r97 F-07): binds a stored unit key to WHAT that unit order buys
+ * — mirrors product.tsx's buyIntentFingerprint (97-F5). */
+function checkoutUnitFingerprint(
+  line: Pick<LocalCartItem, "productId" | "variantId" | "priceLYD" | "salePriceLYD">,
+  couponCode: string,
+): string {
+  const unitPrice = line.salePriceLYD ?? line.priceLYD;
+  return `${line.productId}|${line.variantId ?? ""}|${couponCode.trim().toUpperCase()}|${unitPrice}`;
+}
+
+function loadCheckoutUnitKey(
+  productId: number,
+  unitIndex: number,
+  fingerprint: string,
+): string | null {
   try {
-    return sessionStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
+    const raw = sessionStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
+    if (!raw) return null;
+    // Pre-98-F2 entries were raw uuid strings — JSON.parse throws → the
+    // entry is treated as absent and a fresh key is minted (the old
+    // un-stamped keys carry no TTL/fingerprint contract to honor).
+    const parsed = JSON.parse(raw) as Partial<StoredCheckoutUnitKey>;
+    if (typeof parsed.k !== "string" || !parsed.k) return null;
+    // TTL — a key minted >10 min ago is a stale intent, not this retry.
+    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
+    if (Date.now() - parsed.t > CHECKOUT_KEY_TTL_MS) return null;
+    // Intent binding — the unit body (product/variant/coupon) or the
+    // line's effective price changed since the key was minted: replaying
+    // it onto the new data would either swallow a genuinely new purchase
+    // or trip the backend's same-key-different-body 409.
+    if (parsed.f !== fingerprint) return null;
+    return parsed.k;
   } catch {
     return null;
   }
 }
 
-function persistCheckoutUnitKey(productId: number, unitIndex: number, key: string): void {
+function persistCheckoutUnitKey(
+  productId: number,
+  unitIndex: number,
+  fingerprint: string,
+  key: string,
+): void {
   try {
-    sessionStorage.setItem(checkoutUnitKeyId(productId, unitIndex), key);
+    const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
+    sessionStorage.setItem(checkoutUnitKeyId(productId, unitIndex), JSON.stringify(entry));
   } catch {
     // degraded: unstable keys (pre-fix behavior) — never throw on money path
   }
@@ -140,6 +200,202 @@ function clearCheckoutUnitKey(productId: number, unitIndex: number): void {
   } catch {
     // ignore
   }
+}
+
+// ── 98-F2 (R98-A3 F1 / P1): per-line coupon validation ──────────────────────
+//
+// The pre-flight used to validate the coupon ONCE against the BASKET
+// total while the backend applies it PER UNIT against each unit's
+// basePrice (pricing.ts resolveCoupon + checkout.service computePricing
+// per unit order; the unit loop below sends coupon_code on every unit):
+//
+//   • Scenario A — coupon min_order_amount between a line's unit price
+//     and the basket total (e.g. min 30, unit 25, qty 3 → basket 75):
+//     the basket-level pre-flight PASSED, then EVERY unit order failed
+//     400 below_min_order — a guaranteed full failure after the UI had
+//     just green-lit the checkout.
+//   • Scenario B — fixed coupon with qty>1 (fixed 10, unit 25, qty 3):
+//     the label showed discount 10 / total 65 while the server charged
+//     3 × (25 − 10) = 45 (and consumed 3 redemption slots); the balance
+//     gate compared the wrong number too.
+//
+// The pre-flight now validates per DISTINCT cart line, each with that
+// line's UNIT price — the exact input the backend's per-unit pricing
+// runs against — and the label/gate are computed from the per-unit
+// finals exactly as the server charges them. The per-unit order POST
+// loop semantics are untouched (the server stays authoritative and
+// re-validates on every unit regardless).
+
+interface CouponQuoteLine {
+  /** Cart line key (`productId:variantId`) — mirrors lib/cart's lineKey. */
+  lineKey: string;
+  name: string;
+  quantity: number;
+  /** Effective unit price (sale ?? list) — the exact basePrice the
+   * backend's per-unit coupon resolution runs against. */
+  unitPrice: number;
+}
+
+/** 98-F2: the cart lines as coupon-validation inputs. */
+function couponQuoteLines(items: LocalCartItem[]): CouponQuoteLine[] {
+  return items.map((it) => ({
+    lineKey: `${it.productId}:${it.variantId ?? 0}`,
+    name: it.name,
+    quantity: it.quantity,
+    unitPrice: it.salePriceLYD ?? it.priceLYD,
+  }));
+}
+
+type CouponQuoteResult =
+  | {
+      status: "valid";
+      /** Per-unit post-coupon final, keyed by cart line key. */
+      lineUnitFinals: Record<string, number>;
+      /** Σ unitFinal × qty — exactly what the per-unit loop will charge. */
+      finalAmount: number;
+      /** basketBase − finalAmount, rounded so «المجموع الفرعي − خصم =
+       * الإجمالي» stays arithmetically consistent on the label. */
+      discountAmount: number;
+    }
+  | { status: "invalid"; message: string; lineName: string }
+  | { status: "network" };
+
+/**
+ * 98-F2 (R98-A3 F1 / P1): validate a coupon against every DISTINCT cart
+ * line's UNIT price and compute the per-unit-honest basket math.
+ *
+ * Deduplication: ONE request per DISTINCT unit price — the endpoint's
+ * result is a pure function of (code, order_amount), so identical prices
+ * share the answer. /api/coupons/validate is rate-limited 10/min/user
+ * (the enumeration guard in app.ts); carts are small and same-price
+ * lines never multiply the budget.
+ *
+ * Outcome contract:
+ *   • "invalid" — at least one line fails (e.g. below_min_order): the
+ *     coupon is invalid FOR THE BASKET and the precise Arabic reason for
+ *     the first failing line (basket order) is returned. The confirm
+ *     pre-flight aborts BEFORE any charge.
+ *   • "network" — at least one request was network-level inconclusive:
+ *     applyCoupon surfaces a retryable notice; the confirm pre-flight
+ *     fails OPEN (the server re-validates the coupon on every unit
+ *     order anyway — see the pre-flight block in handleConfirm).
+ *   • "valid" — every line validated; per-unit finals are the same
+ *     expression the backend charges per unit (validate's
+ *     +(order_amount − discount).toFixed(2) === pricing.ts's
+ *     +(basePrice − discount).toFixed(2)).
+ */
+async function validateCouponForLines(
+  code: string,
+  lines: CouponQuoteLine[],
+  token: string | null,
+): Promise<CouponQuoteResult> {
+  const distinctPrices: number[] = [];
+  for (const line of lines) {
+    if (!distinctPrices.some((p) => p === line.unitPrice)) distinctPrices.push(line.unitPrice);
+  }
+  const responses = await Promise.all(
+    distinctPrices.map(async (price) => {
+      try {
+        const res = await fetch("/api/coupons/validate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+          body: JSON.stringify({ code, order_amount: price }),
+        });
+        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        return { price, res, body };
+      } catch {
+        return { price, res: null, body: null };
+      }
+    }),
+  );
+  // ANY network-level failure leaves the coupon's applicability to the
+  // basket UNKNOWN — inconclusive for the whole pre-flight.
+  if (responses.some((r) => r.res === null)) return { status: "network" };
+  // HTTP-level lookup per distinct price (res non-null after the guard;
+  // the redundant check below keeps the narrowed type without an `as`).
+  const byPrice = new Map<number, { res: Response; body: Record<string, unknown> | null }>();
+  for (const r of responses) {
+    if (!r.res) continue;
+    byPrice.set(r.price, { res: r.res, body: r.body });
+  }
+  // First INVALID line in BASKET order — the error names the first line
+  // the shopper sees, carrying the backend's precise Arabic reason.
+  for (const line of lines) {
+    const r = byPrice.get(line.unitPrice)!;
+    if (!(r.res.ok && r.body && r.body.valid === true)) {
+      const message =
+        (r.body && typeof r.body.error === "string" && r.body.error) || "الكوبون غير صالح";
+      return { status: "invalid", message, lineName: line.name };
+    }
+  }
+  // Valid on every line — compute the per-unit honest math.
+  const lineUnitFinals: Record<string, number> = {};
+  let finalAmount = 0;
+  let baseAmount = 0;
+  for (const line of lines) {
+    const r = byPrice.get(line.unitPrice)!;
+    const unitFinal = Number(r.body?.final_amount);
+    if (!Number.isFinite(unitFinal)) {
+      return {
+        status: "invalid",
+        message: "استجابة تحقق غير صالحة — أعد المحاولة",
+        lineName: line.name,
+      };
+    }
+    const roundedUnitFinal = roundToCents(unitFinal);
+    lineUnitFinals[line.lineKey] = roundedUnitFinal;
+    finalAmount += roundedUnitFinal * line.quantity;
+    baseAmount += line.unitPrice * line.quantity;
+  }
+  const total = roundToCents(finalAmount);
+  const discount = roundToCents(roundToCents(baseAmount) - total);
+  return { status: "valid", lineUnitFinals, finalAmount: total, discountAmount: discount };
+}
+
+// ── 98-F2 (R98-A3 F5 / P2): live re-quote of ONE cart line ───────────────────
+//
+// Cart price snapshots are taken at add-to-cart time (lib/cart.tsx);
+// between add and confirm a flash sale can end (or start, or an operator
+// reprices). The re-quote maps a cart line onto the /api/products/:id
+// payload's LIVE pricing for the line's selected variant (or the
+// product-level display price for variant-less lines — the server
+// charges legacy variant-less orders the CHEAPEST active variant, which
+// is exactly what the payload's product-level price carries).
+
+type LiveLineResult =
+  | {
+      status: "priced";
+      priceLYD: number;
+      salePriceLYD: number | null;
+      discountPercent: number | null;
+      effectiveUnitPrice: number;
+    }
+  | { status: "unavailable" };
+
+function quoteLineFromProduct(live: Product, line: LocalCartItem): LiveLineResult {
+  // The line's selected option must still exist as an ACTIVE variant —
+  // a foreign/inactive/deleted variant id fails CLOSED server-side
+  // (checkout.service VARIANT_NOT_FOUND: "never silently ignored: the
+  // client would be charged a price it never displayed").
+  const variant =
+    line.variantId != null ? (live.variants ?? []).find((v) => v.id === line.variantId) : undefined;
+  if (line.variantId != null && !variant) return { status: "unavailable" };
+  const priceLYD = variant ? variant.price : live.price;
+  const salePriceLYD = variant ? (variant.sale_price ?? null) : (live.sale_price ?? null);
+  const discountPercent = variant
+    ? (variant.discount_percent ?? null)
+    : (live.discount_percent ?? null);
+  return {
+    status: "priced",
+    priceLYD,
+    salePriceLYD,
+    discountPercent,
+    effectiveUnitPrice: salePriceLYD ?? priceLYD,
+  };
 }
 
 /**
@@ -163,7 +419,7 @@ export default function CheckoutPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { items, totalLYD, clear, removeItem, updateQuantity } = useCart();
+  const { items, totalLYD, clear, removeItem, updateQuantity, reconcileLine, isLoaded } = useCart();
   const [coupon, setCoupon] = useState("");
   // R94-A1 #9 (P3): the pre-validated coupon result. checkout used to
   // fetch /coupons/validate (final_amount / discount_amount for THIS
@@ -172,13 +428,28 @@ export default function CheckoutPage() {
   // 100.00. The stored result is invalidated whenever the coupon input or
   // the cart lines change (see the effect + onChange below); the server
   // re-validates on every unit order regardless.
+  //
+  // 98-F2 (R98-A3 F1 / P1): the shape now carries the PER-LINE finals —
+  // the backend applies the coupon PER UNIT (each unit order's
+  // computePricing resolves the coupon against THAT unit's basePrice),
+  // so a basket-level final/discount pair alone was a lie for qty>1
+  // lines (fixed 10 off 25 ×3 charged 45, labeled 65). final_amount /
+  // discount_amount are the Σ of the per-line math (see
+  // validateCouponForLines) — the same numbers the unit loop charges.
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
+    /** Per-unit post-coupon final, keyed by lineKey (productId:variantId). */
+    lineUnitFinals: Record<string, number>;
     final_amount: number;
     discount_amount: number;
   } | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponNotice, setCouponNotice] = useState<string | null>(null);
+  // 98-F2 (R98-A3 F5 / P2): mount-time live-price reconciliation state —
+  // see the re-quote effect below for the full contract.
+  const [pricingRecheckInFlight, setPricingRecheckInFlight] = useState(false);
+  const [pricesUpdatedNotice, setPricesUpdatedNotice] = useState<string | null>(null);
+  const [droppedLineNotices, setDroppedLineNotices] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -215,7 +486,7 @@ export default function CheckoutPage() {
         if (!res.ok) throw new Error("balance fetch failed");
         return res.json();
       })
-      .then((data: MeResponse) => {
+      .then((data: Pick<User, "wallet_balance"> | null) => {
         if (aborted) return;
         setBalance(
           typeof data?.wallet_balance === "number" && Number.isFinite(data.wallet_balance)
@@ -240,20 +511,157 @@ export default function CheckoutPage() {
     };
   }, [token]);
 
-  // Cart lines are part of the validation input (order_amount = basket
-  // total) — any line/quantity change voids the stored coupon result so
-  // the "الإجمالي بعد الكوبون" label can never go stale.
+  // Cart lines are part of the validation input (98-F2: per-line UNIT
+  // prices) — any line/quantity/PRICE change voids the stored coupon
+  // result so the "الإجمالي بعد الكوبون" label can never go stale. The
+  // generation counter also discards an in-flight validate whose lines
+  // were swapped mid-request (R98-01's async hole, mirrored here): a
+  // late response must not resurrect math computed for a dead basket.
+  const couponGenerationRef = useRef(0);
   useEffect(() => {
+    couponGenerationRef.current += 1;
     setAppliedCoupon(null);
     setCouponNotice(null);
   }, [items]);
+
+  // 98-F2 (R98-A3 F5 / P2): re-quote every cart line from the LIVE
+  // catalog before the confirm CTA unlocks. Cart snapshots are taken at
+  // add-to-cart time (lib/cart.tsx) and were NEVER refreshed here — a
+  // flash sale that ended between add and confirm had the shopper
+  // approve "80.00 د.ل" while every unit charged the live 100.00.
+  //
+  // Contract (per DISTINCT product id, at most once per checkout visit):
+  //   • price changed → reconcileLine refreshes the snapshot (quantity
+  //     untouched) and ONE subtle notice «تم تحديث الأسعار حسب الأسعار
+  //     الحالية» is shown — never a silent repricing;
+  //   • product archived (404/410) / deactivated (is_active:false) /
+  //     selected variant gone (VARIANT_NOT_FOUND server-side) → the
+  //     line is dropped with its own notice (those orders 400 anyway);
+  //   • fetch failure → fail-open (the snapshot stands; the server is
+  //     the charge authority and surfaces any mismatch);
+  //   • no change → silent.
+  // The loop's mutations are lineKey-targeted (removeItem/reconcileLine
+  // no-op on already-changed lines), so an items edit landing mid-flight
+  // degrades safely; customFetch bounds each request with a 20 s abort
+  // so the CTA gate below can never hang. New products arriving later
+  // (cross-tab storage event) are picked up by the next run — each id is
+  // quoted at most once per visit.
+  const quotedProductIdsRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!token || !isLoaded || items.length === 0) return;
+    const pending = [...new Set(items.map((i) => i.productId))].filter(
+      (id) => !quotedProductIdsRef.current.has(id),
+    );
+    if (pending.length === 0) return;
+    pending.forEach((id) => quotedProductIdsRef.current.add(id));
+    setPricingRecheckInFlight(true);
+    // try/finally + .catch: the in-flight gate MUST clear even when the
+    // re-quote dies before its first await (a synchronous throw out of
+    // the client module — e.g. a mis-mocked or broken import — rejects
+    // this promise before any fetch timeout can bound it). Without it
+    // the CTA stayed «جارٍ تحديث الأسعار…» forever: fail-open is the
+    // contract, and the server re-prices every unit order anyway.
+    void (async () => {
+      try {
+        const settled = await Promise.allSettled(pending.map((id) => getProduct(id)));
+        let anyPriceChanged = false;
+        const dropped: string[] = [];
+        const lineNotice = (line: LocalCartItem, productId: number) =>
+          `${line.name.trim() || `#${productId}`} لم يعد متاحاً للشراء — أُزيل من الطلب.`;
+        for (let i = 0; i < pending.length; i++) {
+          const productId = pending[i];
+          const result = settled[i];
+          // A 404 (archived product) arrives as a rejected ApiError — the
+          // only rejection class acted on; everything else is fail-open.
+          if (result.status === "rejected") {
+            const reason = result.reason as { name?: string; status?: number } | undefined;
+            const archived =
+              reason?.name === "ApiError" && (reason?.status === 404 || reason?.status === 410);
+            if (archived) {
+              for (const line of items) {
+                if (line.productId !== productId) continue;
+                dropped.push(lineNotice(line, productId));
+                removeItem(productId, line.variantId);
+              }
+            }
+            continue;
+          }
+          const live = result.value;
+          if (live.is_active === false) {
+            // Deactivated products are refused server-side
+            // (PRODUCT_NOT_FOUND in checkout.service) while the detail
+            // route still serves them for display — this is the honest
+            // drop point.
+            for (const line of items) {
+              if (line.productId !== productId) continue;
+              dropped.push(lineNotice(line, productId));
+              removeItem(productId, line.variantId);
+            }
+            continue;
+          }
+          for (const line of items) {
+            if (line.productId !== productId) continue;
+            const quote = quoteLineFromProduct(live, line);
+            if (quote.status === "unavailable") {
+              dropped.push(lineNotice(line, productId));
+              removeItem(productId, line.variantId);
+              continue;
+            }
+            const snapshotPrice = line.salePriceLYD ?? line.priceLYD;
+            if (roundToCents(quote.effectiveUnitPrice) !== roundToCents(snapshotPrice)) {
+              reconcileLine(
+                productId,
+                {
+                  priceLYD: quote.priceLYD,
+                  salePriceLYD: quote.salePriceLYD,
+                  discountPercent: quote.discountPercent,
+                },
+                line.variantId,
+              );
+              anyPriceChanged = true;
+            }
+          }
+        }
+        // Shown ONCE for the whole re-quote (subtle status, not an error —
+        // the totals next to it already carry the new numbers).
+        if (anyPriceChanged) setPricesUpdatedNotice("تم تحديث الأسعار حسب الأسعار الحالية");
+        if (dropped.length > 0) setDroppedLineNotices(dropped);
+      } finally {
+        setPricingRecheckInFlight(false);
+      }
+    })().catch(() => {
+      // Fail-open, silently: the snapshot stands and the CTA unlocks
+      // (the flag was already cleared by the finally block).
+    });
+    // removeItem/reconcileLine are useCallback-stable (deps []) — the
+    // effect re-runs only for real cart changes, and early-returns
+    // while every product id is already quoted.
+  }, [token, isLoaded, items, removeItem, reconcileLine]);
+
+  // r97 F-17(4) / 98-F2: the per-unit loop can take seconds (N sequential
+  // POSTs on a 3G link). If the shopper leaves the page mid-loop (nav
+  // link / browser back — wouter unmounts this component), the final
+  // navigate(/orders/:code) used to yank them out of wherever they chose
+  // to be. There is no in-page cancel affordance today (the confirm
+  // button turns into a spinner; the nav stays interactive), so the
+  // unmount cleanup IS the abandonment signal. The success toast
+  // (App-level provider, still mounted) still reports completion, and
+  // /orders lists the created orders either way.
+  const abandonedRef = useRef(false);
+  useEffect(() => {
+    abandonedRef.current = false;
+    return () => {
+      abandonedRef.current = true;
+    };
+  }, []);
 
   // A wallet-method purchase only blocks on a CONFIRMED insufficient
   // balance — an unknown balance (probe failed) must not hard-block,
   // the server remains the source of truth on submission.
   // R94-A1 #1 (P2, FP gate): the comparison uses the CENT-ROUNDED total
-  // (and the coupon-adjusted one when a pre-check succeeded). The raw
-  // sum 8.33 × 6 = 49.980000000000004 made `49.98 < total` true for a
+  // (and the coupon-adjusted one when a pre-check succeeded — 98-F2:
+  // now the per-unit-honest Σ, the number the loop actually charges). The
+  // raw sum 8.33 × 6 = 49.980000000000004 made `49.98 < total` true for a
   // user whose balance was EXACTLY the total — a blocked purchase with
   // the nonsensical "الناقص 0.00 د.ل".
   const comparisonTotal = roundToCents(appliedCoupon ? appliedCoupon.final_amount : totalLYD);
@@ -261,50 +669,59 @@ export default function CheckoutPage() {
     !balanceLoading && !balanceError && balance !== null && balance < comparisonTotal;
   const isEmpty = items.length === 0;
 
-  /** R94-A1 #9: pre-check the coupon against this basket and KEEP the
-   * result (final_amount / discount_amount) so the summary and the CTA
-   * can state the post-coupon total before submission. Mirrors
-   * product.tsx's validateCoupon contract. */
+  /** R94-A1 #9 + 98-F2 (R98-A3 F1 / P1): pre-check the coupon against
+   * EVERY line's unit price and KEEP the per-line result so the summary
+   * and the CTA can state the post-coupon total before submission —
+   * computed exactly as the backend's per-unit loop charges it. Mirrors
+   * product.tsx's validateCoupon contract (single unit). */
   const applyCoupon = async () => {
     const code = coupon.trim().toUpperCase();
     if (!code || totalLYD <= 0) return;
     setCouponChecking(true);
     setCouponNotice(null);
+    const lines = couponQuoteLines(items);
+    // R98-01's async hole, mirrored: lines swapped mid-request must not
+    // resurrect math computed for a dead basket.
+    const generation = ++couponGenerationRef.current;
     try {
-      const res = await fetch("/api/coupons/validate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        credentials: "include",
-        body: JSON.stringify({ code, order_amount: totalLYD }),
-      });
-      const body = await res.json().catch(() => null);
-      const finalAmount = Number(body?.final_amount);
-      const discountAmount = Number(body?.discount_amount);
-      if (!(res.ok && body && body.valid === true)) {
-        const message =
-          (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
-        setAppliedCoupon(null);
-        setCouponNotice(message);
-        return;
+      const result = await validateCouponForLines(code, lines, token);
+      if (generation === couponGenerationRef.current) {
+        if (result.status === "network") {
+          setAppliedCoupon(null);
+          setCouponNotice("تعذّر التحقق من الكوبون — تحقّق من شبكتك ثم أعد المحاولة");
+          return;
+        }
+        if (result.status === "invalid") {
+          setAppliedCoupon(null);
+          // 98-F2 (F1): the precise per-line Arabic reason — e.g. the
+          // min-order rejection the BASKET-level pre-flight used to
+          // green-light (min between the line's unit price and the
+          // basket total). In a mixed basket, name the failing line.
+          setCouponNotice(
+            lines.length > 1 ? `${result.lineName} — ${result.message}` : result.message,
+          );
+          return;
+        }
+        setAppliedCoupon({
+          code,
+          lineUnitFinals: result.lineUnitFinals,
+          final_amount: result.finalAmount,
+          discount_amount: result.discountAmount,
+        });
       }
-      if (!Number.isFinite(finalAmount) || !Number.isFinite(discountAmount)) {
-        setAppliedCoupon(null);
-        setCouponNotice("استجابة تحقق غير صالحة — أعد المحاولة");
-        return;
-      }
-      setAppliedCoupon({ code, final_amount: finalAmount, discount_amount: discountAmount });
     } catch {
       // Network-level failure — inconclusive; nothing is applied.
-      setCouponNotice("تعذّر التحقق من الكوبون — تحقّق من شبكتك ثم أعد المحاولة");
+      if (generation === couponGenerationRef.current) {
+        setCouponNotice("تعذّر التحقق من الكوبون — تحقّق من شبكتك ثم أعد المحاولة");
+      }
     } finally {
       setCouponChecking(false);
     }
   };
 
   const clearAppliedCoupon = () => {
+    // 98-F2: supersede any in-flight validate for the removed code.
+    couponGenerationRef.current += 1;
     setAppliedCoupon(null);
     setCouponNotice(null);
   };
@@ -312,8 +729,13 @@ export default function CheckoutPage() {
   const canSubmit = useMemo(() => {
     if (!token || isEmpty || submitting) return false;
     if (insufficient) return false;
+    // 98-F2 (R98-A3 F5): the live re-quote must land before the CTA
+    // unlocks — otherwise the first seconds of the page still sell the
+    // (possibly stale) snapshot total. customFetch's 20 s abort bounds
+    // the wait; a failed re-quote FAILS OPEN (the flag still clears).
+    if (pricingRecheckInFlight) return false;
     return true;
-  }, [token, isEmpty, submitting, insufficient]);
+  }, [token, isEmpty, submitting, insufficient, pricingRecheckInFlight]);
 
   /**
    * 93-C5 / sim P2 (navbar balance staleness after cart purchase):
@@ -358,53 +780,60 @@ export default function CheckoutPage() {
     const couponCode = coupon.trim().toUpperCase();
 
     try {
-      // 93-C5 / F-15 (A4 #9): pre-flight the coupon ONCE against the
-      // basket BEFORE the per-unit loop charges anything. Deterministic
+      // 93-C5 / F-15 (A4 #9) + 98-F2 (R98-A3 F1 / P1): pre-flight the
+      // coupon BEFORE the per-unit loop charges anything. Deterministic
       // coupon failures (invalid / inactive / expired / maxed /
       // min-order) previously surfaced mid-loop — after some units had
       // already been charged ("guaranteed partial failure" for a qty≥2
       // line: the first unit consumes a single-use coupon's only slot,
-      // every following unit fails). A network failure is inconclusive
-      // → fail-open: the server re-validates the coupon on every unit
-      // order anyway.
+      // every following unit fails). 98-F2: the pre-flight is PER LINE
+      // (each line's UNIT price — the exact input the backend's per-unit
+      // pricing runs against) so a min-order coupon sitting between a
+      // line's unit price and the basket total is rejected UP FRONT
+      // instead of green-lighting a checkout that then 400s on every
+      // unit. A network failure is inconclusive → fail-open: the server
+      // re-validates the coupon on every unit order anyway.
       if (couponCode) {
         // Skip the pre-flight when THIS exact code was already validated
         // against the current basket (applyCoupon above) — the server
         // re-validates on every unit order anyway.
         if (appliedCoupon?.code !== couponCode) {
-          try {
-            const res = await fetch("/api/coupons/validate", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              credentials: "include",
-              body: JSON.stringify({ code: couponCode, order_amount: totalLYD }),
+          const result = await validateCouponForLines(couponCode, couponQuoteLines(items), token);
+          if (result.status === "invalid") {
+            const message =
+              items.length > 1 ? `${result.lineName} — ${result.message}` : result.message;
+            setOrderError(
+              `الكوبون: ${message} — أزل الكوبون أو صحّحه ثم أعد المحاولة. لم يتم خصم أي مبلغ.`,
+            );
+            toast({
+              title: "تعذّر تطبيق الكوبون",
+              description: message,
+              variant: "destructive",
             });
-            const body = await res.json().catch(() => null);
-            if (!(res.ok && body && body.valid === true)) {
-              const message =
-                (body && typeof body.error === "string" && body.error) || "الكوبون غير صالح";
-              setOrderError(
-                `الكوبون: ${message} — أزل الكوبون أو صحّحه ثم أعد المحاولة. لم يتم خصم أي مبلغ.`,
-              );
-              toast({
-                title: "تعذّر تطبيق الكوبون",
-                description: message,
-                variant: "destructive",
-              });
-              return;
-            }
-          } catch {
-            // Network-level failure — inconclusive, fail-open (see above).
+            return;
           }
+          if (result.status === "valid") {
+            // Adopt the honest per-line math for the label + balance gate
+            // as well (the loop below still charges server-side numbers).
+            setAppliedCoupon({
+              code: couponCode,
+              lineUnitFinals: result.lineUnitFinals,
+              final_amount: result.finalAmount,
+              discount_amount: result.discountAmount,
+            });
+          }
+          // "network" — inconclusive, fail-open (see above).
         }
       }
 
       for (const it of items) {
         const unitsWanted = Math.min(it.quantity, MAX_UNITS_PER_LINE);
         let unitsOrdered = 0;
+        // 98-F2 (r97 F-07): the line-level intent fingerprint for this
+        // unit's key — product / variant / coupon / effective unit price
+        // (the body the backend's 409 branch compares + the price a
+        // reconciliation may change).
+        const lineFingerprint = checkoutUnitFingerprint(it, couponCode);
         // `CreateOrderBody` accepts a single product_id with quantity 1
         // per order — a qty>1 cart line becomes N unit orders.
         for (let unit = 0; unit < unitsWanted; unit++) {
@@ -428,8 +857,9 @@ export default function CheckoutPage() {
           // Idempotency-Key, and the typed Order response kills the local
           // CreatedOrder interface. Auth rides the shared customFetch wiring
           // (cookie session + global bearer-token getter from main.tsx).
-          const unitKey = loadCheckoutUnitKey(it.productId, unit) ?? generateIdempotencyKey();
-          persistCheckoutUnitKey(it.productId, unit, unitKey);
+          const unitKey =
+            loadCheckoutUnitKey(it.productId, unit, lineFingerprint) ?? generateIdempotencyKey();
+          persistCheckoutUnitKey(it.productId, unit, lineFingerprint, unitKey);
           try {
             const order = await createOrder(body, {
               headers: { "Idempotency-Key": unitKey },
@@ -548,7 +978,10 @@ export default function CheckoutPage() {
             other: "طلب",
           })} بنجاح`,
         });
-        if (firstOrderCode) navigate(`/orders/${firstOrderCode}`);
+        if (firstOrderCode && !abandonedRef.current) navigate(`/orders/${firstOrderCode}`);
+        // r97 F-17(4) / 98-F2: the shopper left mid-loop — the loop still
+        // finished and the toast above reported it, but the redirect is
+        // skipped (their navigation decision stands).
       }
     } catch (e) {
       // Network-level abort (rethrown from the unit loop). If any unit
@@ -664,7 +1097,10 @@ export default function CheckoutPage() {
                 onChange={(e) => {
                   setCoupon(e.target.value.toUpperCase());
                   // Any edit voids the stored pre-check result — the label
-                  // must never show a total validated for a different code.
+                  // must never show a total validated for a different code
+                  // (the generation bump also kills an in-flight validate
+                  // for the OLD code — R98-01's async hole).
+                  couponGenerationRef.current += 1;
                   setAppliedCoupon(null);
                   setCouponNotice(null);
                 }}
@@ -742,6 +1178,40 @@ export default function CheckoutPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
             <h2 className="font-black text-base mb-4">ملخص الطلب</h2>
 
+            {/* 98-F2 (R98-A3 F5 / P2): live-price reconciliation
+                notices — shown ONCE after the mount re-quote. Dropped
+                lines (product/variant no longer sellable) are a
+                warning-level alert; a price update is a subtle status
+                line (the totals right below already carry the new
+                numbers, so this explains WHY they moved).
+                Hoisted ABOVE the isEmpty branch on purpose: a drop that
+                empties the WHOLE cart (the single-line case) must still
+                explain why — inside the old non-empty-only branch the
+                notice unmounted the moment the last line left, and the
+                shopper just watched their cart silently vanish. */}
+            {droppedLineNotices.length > 0 && (
+              <div
+                role="alert"
+                className="mb-4 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                <div className="flex-1 leading-relaxed space-y-1">
+                  {droppedLineNotices.map((notice) => (
+                    <p key={notice}>{notice}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+            {pricesUpdatedNotice && (
+              <div
+                role="status"
+                className="mb-4 p-3 rounded-xl bg-status-info/10 border border-status-info/22 text-status-info text-xs font-bold flex items-start gap-2"
+              >
+                <Tag className="w-4 h-4 shrink-0 mt-px" />
+                <span>{pricesUpdatedNotice}</span>
+              </div>
+            )}
+
             {isEmpty ? (
               <div className="text-center py-8 text-muted-foreground">
                 <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />
@@ -757,6 +1227,17 @@ export default function CheckoutPage() {
                 <ul className="space-y-2 mb-4 max-h-72 overflow-y-auto">
                   {items.map((it) => {
                     const price = it.salePriceLYD ?? it.priceLYD;
+                    // 98-F2 (F1): with a coupon applied the backend charges
+                    // each unit its POST-coupon final — show that number per
+                    // line, not the pre-coupon price (the Σ row below then
+                    // reads as the sum of exactly these lines).
+                    const lineKey = `${it.productId}:${it.variantId ?? 0}`;
+                    const unitFinal = appliedCoupon
+                      ? appliedCoupon.lineUnitFinals[lineKey]
+                      : undefined;
+                    const displayUnit = unitFinal ?? price;
+                    const displayTotal =
+                      unitFinal != null ? unitFinal * it.quantity : price * it.quantity;
                     return (
                       <li
                         key={`${it.productId}:${it.variantId ?? 0}`}
@@ -784,11 +1265,11 @@ export default function CheckoutPage() {
                             </div>
                           )}
                           <div className="text-[11px] text-muted-foreground">
-                            {it.quantity} × {formatCurrency(price)}
+                            {it.quantity} × {formatCurrency(displayUnit)}
                           </div>
                         </div>
                         <div className="font-black tabular-nums text-sm shrink-0">
-                          {formatCurrency(price * it.quantity)}
+                          {formatCurrency(displayTotal)}
                         </div>
                       </li>
                     );
@@ -885,6 +1366,13 @@ export default function CheckoutPage() {
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       جارٍ المعالجة… ({formatCurrency(comparisonTotal)})
+                    </>
+                  ) : pricingRecheckInFlight ? (
+                    /* 98-F2 (R98-A3 F5): the CTA is disabled while the live
+                       re-quote runs — say WHY instead of a dead button. */
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      جارٍ تحديث الأسعار…
                     </>
                   ) : appliedCoupon ? (
                     <>تأكيد الطلب — الإجمالي بعد الكوبون ({formatCurrency(comparisonTotal)})</>

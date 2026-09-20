@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
@@ -104,6 +105,16 @@ export default function AdminCouponsPage() {
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [toggling, setToggling] = useState<number | null>(null);
+
+  // 98-F7 (R98-05): dirty-state guard — a half-filled coupon form is
+  // un-submitted work, so a refresh/tab-close mid-edit (or with a
+  // dismissed-but-surviving draft, the 93-C7/C-UX3 behavior) prompts
+  // before silently destroying it. Identity compare vs the module-level
+  // EMPTY_FORM constant is exact: useState seeds it, setForm(EMPTY_FORM)
+  // on success resets it, every user keystroke mints a new object.
+  // SPA route-leave interception stays a documented residual
+  // (see use-dirty-guard.ts).
+  useDirtyGuard(form !== EMPTY_FORM);
 
   // 93-C7 / C-UX3 (A5 A-3 header drift): the hand-built
   // `Authorization: adminToken ? Bearer : ""` map is swapped for the

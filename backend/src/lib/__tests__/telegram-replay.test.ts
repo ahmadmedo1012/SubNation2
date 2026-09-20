@@ -30,6 +30,11 @@ import { getRedisClient } from "../redis-client";
 
 vi.mock("../redis-client", () => ({
   getRedisClient: vi.fn(),
+  // F3 (98-F5): the Redis claim is now bounded by the real
+  // withRedisCommandTimeout — passthrough keeps these arg-contract tests
+  // exercising the raw command shape (the wrapper itself has its own
+  // coverage in redis-client-resilience.test.ts).
+  withRedisCommandTimeout: (_opLabel: string, fn: () => Promise<unknown>) => fn(),
 }));
 
 const getRedisClientMock = vi.mocked(getRedisClient);

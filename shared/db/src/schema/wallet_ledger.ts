@@ -45,5 +45,3 @@ export const walletLedgerTable = pgTable(
     userCreatedIdx: index("idx_wallet_ledger_user_created").on(t.userId, t.createdAt),
   }),
 );
-
-export type WalletLedgerEntry = typeof walletLedgerTable.$inferSelect;

@@ -10,6 +10,14 @@ import { AdjustmentError, AdjustmentService } from "../../services/adjustment.se
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// the admin users list carries buyer PII (phone numbers, wallet
+// balances, loyalty); an intermediary must never serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 router.get("/users", requireAdmin, async (req, res) => {
   const { search } = req.query;
 

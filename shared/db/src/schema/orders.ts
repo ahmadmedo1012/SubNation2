@@ -10,7 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { inventoryTable } from "./inventory";
 import { productsTable } from "./products";
 import { productVariantsTable } from "./product-variants";
@@ -89,6 +88,11 @@ export const ordersTable = pgTable(
     // Round-3 (8-c §4.5): the user's own orders list sorts by createdAt
     // DESC filtered by user_id — composite covers both in one index.
     userCreatedIdx: index("idx_orders_user_created").on(t.userId, t.createdAt),
+    // R98-DB-01: V1-M16 (migrate.ts applyProductVariantsStage) creates this
+    // live for the admin variant-delete order-history guard (COUNT WHERE
+    // variant_id). Declared here so the drizzle chain + snapshot carry it
+    // and a future push can't drop a live serving index.
+    variantIdx: index("idx_orders_variant").on(t.variantId),
   }),
 );
 
@@ -97,5 +101,4 @@ export const insertOrderSchema = createInsertSchema(ordersTable).omit({
   createdAt: true,
   updatedAt: true,
 });
-export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof ordersTable.$inferSelect;

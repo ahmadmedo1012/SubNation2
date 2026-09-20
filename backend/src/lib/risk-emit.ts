@@ -24,13 +24,8 @@
  * behavior until the operator flips the flag.
  */
 
-import type { Request } from "express";
 import { logger } from "./logger";
-import {
-  scoreEvent,
-  type ScoringInput,
-  type ScoringResult,
-} from "../services/risk-scoring.service";
+import { scoreEvent, type ScoringInput } from "../services/risk-scoring.service";
 
 export function scoreEventFireAndForget(input: ScoringInput): void {
   // Capture stack now so a thrown error inside the async chain still
@@ -42,21 +37,4 @@ export function scoreEventFireAndForget(input: ScoringInput): void {
       "[risk-emit] scoreEvent rejected (should never happen — service is supposed to swallow)",
     );
   });
-}
-
-/**
- * Convenience: pull `req.ip` and `user-agent` off an Express request.
- */
-export function clientFromReq(req: Request): { ipAddress: string | null; userAgent: string | null } {
-  const uaHeader = req.headers["user-agent"];
-  const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
-  return {
-    ipAddress: req.ip ?? null,
-    userAgent: ua ?? null,
-  };
-}
-
-/** Exported for tests that want to await the awaitable form. */
-export async function scoreEventAwait(input: ScoringInput): Promise<ScoringResult> {
-  return scoreEvent(input);
 }

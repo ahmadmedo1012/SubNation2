@@ -8,6 +8,9 @@ import { stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { idempotency } from "../middlewares/idempotency";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+// 98-B3 (round-98 wave B): the hard-block refusal layer — mounted before
+// the soft guard, see the mount comment at POST / below.
+import { riskHardBlockMiddleware } from "../middlewares/risk-hard-block";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
 import { CheckoutService } from "../services/checkout.service";
@@ -112,9 +115,20 @@ router.get("/", requireUser, async (req, res) => {
 // anything is charged or cached, and a refusal must not consume the
 // caller's Idempotency-Key (the retry after re-auth must be able to
 // claim it). Order matters: guard first, idempotency second.
+//
+// 98-B3 (round-98 wave B — R98 dead-code audit §1 [P2]): the hard-block
+// refusal layer mounts BEFORE the soft guard in the same sandwich.
+// Severity ordering: hard_block (critical-tier, non-dischargeable)
+// answers before the soft guard's friction, so a buyer tagged both
+// gets the honest "contact support" 423 instead of the soft guard's
+// "re-login and retry" message + session-wipe side effects. Quadruple
+// gate keeps default behavior unchanged: RISK_PIPELINE_ENABLED (unset
+// in production) + modelEnabled + autoBlockEnabled.hardBlock + 1h
+// event window.
 router.post(
   "/",
   requireUser,
+  riskHardBlockMiddleware(),
   riskSoftBlockGuardMiddleware(),
   idempotency({ routeKey: "orders.create" }),
   async (req, res) => {

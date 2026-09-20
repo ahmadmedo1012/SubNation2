@@ -19,6 +19,7 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/error-codes": "workspace:*",
     "argon2": "^0.44.0",
     "compression": "^1.7.5",
     "cookie-parser": "^1.4.7",
@@ -37,8 +38,7 @@
     "rate-limit-redis": "^5.0.0",
     "redis": "^5.12.1",
     "socket.io": "^4.8.3",
-    "zod": "catalog:",
-    "@workspace/error-codes": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.6",
@@ -49,9 +49,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
-    "@types/node-cron": "^3.0.11",
     "@vitest/ui": "^4.1.6",
-    "drizzle-zod": "0.8.3",
     "esbuild": "^0.27.3",
     "esbuild-plugin-pino": "^2.3.3",
     "pino-pretty": "^13",

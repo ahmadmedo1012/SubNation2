@@ -1,5 +1,6 @@
 import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,6 +78,15 @@ export default function AdminPromotionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+
+  // 98-F7 (R98-05): dirty-state guard — an edited flash-sale draft is
+  // un-submitted work; a refresh/tab-close mid-edit now prompts instead
+  // of silently wiping it (zero beforeunload existed repo-wide). Identity
+  // compare vs the module-level EMPTY_FORM constant: useState seeds it,
+  // setForm(EMPTY_FORM) resets it, user edits mint a new object. SPA
+  // route-leave interception stays a documented residual
+  // (see use-dirty-guard.ts).
+  useDirtyGuard(form !== EMPTY_FORM);
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");

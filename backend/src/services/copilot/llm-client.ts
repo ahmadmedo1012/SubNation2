@@ -17,6 +17,21 @@ import { getCopilotProvider, hasCopilotProvider } from "./provider-config";
 
 const MAX_TOOL_ROUNDS = 4;
 const REQUEST_TIMEOUT_MS = 60_000;
+// F7 (R98-A6, 98-F5): TOTAL budget across every LLM round + tool call of
+// ONE copilotChat invocation. 4 × 60 s LLM calls + 20 s loopback tools was
+// unbounded (~4–5 min worst case) while Render's proxy cuts the connection
+// around ~100 s — the handler and LLM tokens kept burning on a 0.5-CPU free
+// instance for a client that already saw the stream die. 90 s stays
+// comfortably under the proxy ceiling while allowing the realistic
+// 2-round + tools flow (typical: 3–6 s) full headroom.
+const TOTAL_REQUEST_BUDGET_MS = 90_000;
+
+/** F7: the timeout-style error thrown when the shared budget is exhausted. */
+function copilotBudgetError(): Error {
+  return new Error(
+    `Copilot total request budget of ${TOTAL_REQUEST_BUDGET_MS}ms exceeded — aborting remaining tool rounds`,
+  );
+}
 
 export type FunctionSchema = {
   name: string;
@@ -115,9 +130,27 @@ async function postChatCompletion(args: {
   messages: ChatMessage[];
   tools: Tool[];
   maxTokens: number;
+  /** F7: shared request-budget signal — aborts this fetch when the total deadline hits. */
+  deadlineSignal?: AbortSignal;
 }): Promise<ChatCompletionResponse> {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+  // F7 (98-F5): compose the per-request 60 s timeout with the shared 90 s
+  // budget. Manual listener composition (works on every supported Node — no
+  // AbortSignal.any dependency); the listener is removed in finally so an
+  // early return never leaks one onto the shared signal. When the deadline
+  // fires, ac aborts WITH the deadline's reason, so the fetch rejects with
+  // the same timeout-style budget error the round-boundary check throws.
+  let onDeadline: (() => void) | undefined;
+  if (args.deadlineSignal) {
+    const deadline = args.deadlineSignal;
+    if (deadline.aborted) {
+      ac.abort(deadline.reason);
+    } else {
+      onDeadline = () => ac.abort(deadline.reason);
+      deadline.addEventListener("abort", onDeadline, { once: true });
+    }
+  }
   try {
     const resp = await fetch(`${args.baseUrl}/chat/completions`, {
       method: "POST",
@@ -144,6 +177,7 @@ async function postChatCompletion(args: {
     return (await resp.json()) as ChatCompletionResponse;
   } finally {
     clearTimeout(timer);
+    if (onDeadline) args.deadlineSignal?.removeEventListener("abort", onDeadline);
   }
 }
 
@@ -174,6 +208,21 @@ export async function copilotChat(args: {
     throw new Error("LLM provider not configured");
   }
 
+  // F7 (R98-A6, 98-F5): the shared deadline. Each fetch keeps its own 60 s
+  // AbortController; this 90 s controller COMPOSES with it inside
+  // postChatCompletion (aborts the in-flight request) and is checked at
+  // every round boundary (stops further rounds — a deadline hit mid-tool
+  // must not queue another LLM round behind an already-abandoned budget).
+  // unref'd + cleared in finally: a completed chat neither keeps the
+  // process alive nor leaks the timer.
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(
+    () => deadlineController.abort(copilotBudgetError()),
+    TOTAL_REQUEST_BUDGET_MS,
+  );
+  deadlineTimer.unref?.();
+  const deadlineSignal = deadlineController.signal;
+
   const messages: ChatMessage[] = [{ role: "system", content: args.systemText }];
 
   // Prior turns (cap on the route side; we just type-narrow here).
@@ -191,76 +240,88 @@ export async function copilotChat(args: {
   let lastStop: string | null = null;
   let finalText = "";
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    args.onEvent?.({ type: "round_start", round });
-    const resp = await postChatCompletion({
-      baseUrl: provider.baseUrl,
-      apiKey: provider.apiKey,
-      model: provider.model,
-      extraHeaders: provider.extraHeaders,
-      messages,
-      tools: args.tools,
-      maxTokens: args.maxTokens ?? 1024,
-    });
-
-    inputTokens += resp.usage?.prompt_tokens ?? 0;
-    outputTokens += resp.usage?.completion_tokens ?? 0;
-
-    const choice = resp.choices?.[0];
-    if (!choice) {
-      throw new Error("LLM returned no choices");
-    }
-    lastStop = choice.finish_reason;
-    const message = choice.message;
-
-    const toolCalls = message.tool_calls ?? [];
-    if (toolCalls.length === 0) {
-      finalText = (message.content ?? "").trim();
-      args.onEvent?.({ type: "round_done", round, hadToolCalls: false });
-      break;
-    }
-
-    // Append assistant turn with tool_calls, then a `tool` message per call.
-    messages.push({
-      role: "assistant",
-      content: message.content ?? null,
-      tool_calls: toolCalls,
-    });
-
-    for (const tc of toolCalls) {
-      let parsedInput: Record<string, unknown>;
-      try {
-        parsedInput =
-          typeof tc.function.arguments === "string" && tc.function.arguments.length > 0
-            ? (JSON.parse(tc.function.arguments) as Record<string, unknown>)
-            : {};
-      } catch {
-        parsedInput = {};
+  try {
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      // F7: budget exhausted (typically during a tool call — tools are not
+      // interruptible without threading the signal through every handler,
+      // and the task explicitly keeps this one wrapper)? Stop HERE with the
+      // same timeout-style error instead of starting a doomed round.
+      if (deadlineSignal.aborted) {
+        throw deadlineSignal.reason instanceof Error ? deadlineSignal.reason : copilotBudgetError();
       }
-      args.onEvent?.({
-        type: "tool_call_start",
-        round,
-        name: tc.function.name,
-        input: parsedInput,
+      args.onEvent?.({ type: "round_start", round });
+      const resp = await postChatCompletion({
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+        model: provider.model,
+        extraHeaders: provider.extraHeaders,
+        messages,
+        tools: args.tools,
+        maxTokens: args.maxTokens ?? 1024,
+        deadlineSignal,
       });
-      const result = await args.toolHandler(tc.function.name, parsedInput);
-      const { ok: callOk, summary: callSummary } = summarizeToolResult(result);
-      args.onEvent?.({
-        type: "tool_call_done",
-        round,
-        name: tc.function.name,
-        ok: callOk,
-        summary: callSummary,
-      });
-      trace.push({ name: tc.function.name, input: parsedInput, result });
+
+      inputTokens += resp.usage?.prompt_tokens ?? 0;
+      outputTokens += resp.usage?.completion_tokens ?? 0;
+
+      const choice = resp.choices?.[0];
+      if (!choice) {
+        throw new Error("LLM returned no choices");
+      }
+      lastStop = choice.finish_reason;
+      const message = choice.message;
+
+      const toolCalls = message.tool_calls ?? [];
+      if (toolCalls.length === 0) {
+        finalText = (message.content ?? "").trim();
+        args.onEvent?.({ type: "round_done", round, hadToolCalls: false });
+        break;
+      }
+
+      // Append assistant turn with tool_calls, then a `tool` message per call.
       messages.push({
-        role: "tool",
-        tool_call_id: tc.id,
-        name: tc.function.name,
-        content: typeof result === "string" ? result : JSON.stringify(result ?? null),
+        role: "assistant",
+        content: message.content ?? null,
+        tool_calls: toolCalls,
       });
+
+      for (const tc of toolCalls) {
+        let parsedInput: Record<string, unknown>;
+        try {
+          parsedInput =
+            typeof tc.function.arguments === "string" && tc.function.arguments.length > 0
+              ? (JSON.parse(tc.function.arguments) as Record<string, unknown>)
+              : {};
+        } catch {
+          parsedInput = {};
+        }
+        args.onEvent?.({
+          type: "tool_call_start",
+          round,
+          name: tc.function.name,
+          input: parsedInput,
+        });
+        const result = await args.toolHandler(tc.function.name, parsedInput);
+        const { ok: callOk, summary: callSummary } = summarizeToolResult(result);
+        args.onEvent?.({
+          type: "tool_call_done",
+          round,
+          name: tc.function.name,
+          ok: callOk,
+          summary: callSummary,
+        });
+        trace.push({ name: tc.function.name, input: parsedInput, result });
+        messages.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          content: typeof result === "string" ? result : JSON.stringify(result ?? null),
+        });
+      }
+      args.onEvent?.({ type: "round_done", round, hadToolCalls: true });
     }
-    args.onEvent?.({ type: "round_done", round, hadToolCalls: true });
+  } finally {
+    clearTimeout(deadlineTimer);
   }
 
   return {

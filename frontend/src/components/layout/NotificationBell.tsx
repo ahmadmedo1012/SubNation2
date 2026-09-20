@@ -134,16 +134,42 @@ export function NotificationBell() {
   const lastSeenMaxIdRef = useRef<number>(0);
   const initialLoadDoneRef = useRef<boolean>(false);
 
+  // 98-F7 (r97 F-10): request sequence for fetchAll — a slow 60 s poll
+  // response that lands AFTER a socket-triggered refetch used to overwrite
+  // the fresher list (last-arrival wins). Only the LATEST request may
+  // write state.
+  const fetchSeqRef = useRef(0);
+
+  // 98-F7 (r97 F-10): latest-list mirror — the mark* callbacks below need
+  // the PRE-optimistic snapshot for a failure rollback WITHOUT re-creating
+  // their identities on every poll (same rationale as lastSeenMaxIdRef —
+  // stable callbacks keep the panel prop identity stable). Synced after
+  // every commit; read synchronously at click time (pre-flip state).
+  const notifsRef = useRef<Notif[]>([]);
+  useEffect(() => {
+    notifsRef.current = notifs;
+  }, [notifs]);
+
   const unread = notifs.filter((n) => !n.is_read).length;
 
   const fetchAll = useCallback(async () => {
     if (!token) return;
+    const seq = ++fetchSeqRef.current;
     try {
       const r = await fetch("/api/notifications", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) return;
-      const data: Notif[] = await r.json();
+      // 98-F7 (r97 F-11 raw-fetch hardening): guard the parse AND the
+      // shape — a 200 with a non-JSON body (proxy error page) used to
+      // throw an uncaught rejection out of the .then chain; a 200 with
+      // a non-array body would have called setNotifs(garbage).
+      const data = (await r.json().catch(() => null)) as Notif[] | null;
+      // 98-F7 (r97 F-10): late stale response (older poll racing a
+      // socket-triggered refetch) must not overwrite the newer list —
+      // only the latest request owns the state.
+      if (seq !== fetchSeqRef.current) return;
+      if (!Array.isArray(data)) return;
       setNotifs(data);
 
       // Compute the max notification id we've now received.
@@ -178,21 +204,44 @@ export function NotificationBell() {
 
   const markAllRead = useCallback(async () => {
     if (!token) return;
-    await fetch("/api/notifications/read-all", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setNotifs((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    // 98-F7 (r97 F-10): optimistic flip with EXACT rollback — the POST had
+    // no try/catch and no r.ok check, so a network failure or 4xx/5xx left
+    // the whole list visually "read" while the server never recorded it
+    // (the badge lied until the next poll reverted it — up to 60 s).
+    const snapshot = notifsRef.current;
+    setNotifs(snapshot.map((n) => ({ ...n, is_read: true })));
+    try {
+      const r = await fetch("/api/notifications/read-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch {
+      // Roll the bell state back to the pre-click truth. Deliberately no
+      // toast: the next 60 s poll / socket event reconciles silently —
+      // the existing UX contract for this component.
+      setNotifs(snapshot);
+    }
   }, [token]);
 
   const markRead = useCallback(
     async (id: number) => {
       if (!token) return;
-      await fetch(`/api/notifications/${id}/read`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // 98-F7 (r97 F-10): same optimistic + rollback contract per row. The
+      // pre-state comes from the ref (the action chip can fire on an
+      // already-read row — handleAction is unguarded there — so "unread"
+      // cannot be assumed; the exact prior value is restored).
+      const wasRead = notifsRef.current.find((n) => n.id === id)?.is_read ?? false;
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      try {
+        const r = await fetch(`/api/notifications/${id}/read`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } catch {
+        setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: wasRead } : n)));
+      }
     },
     [token],
   );

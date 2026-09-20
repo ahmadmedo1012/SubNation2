@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import {
   adminUsersTable,
   db,
@@ -20,9 +20,19 @@ import { adminOrdersRouter } from "../admin/orders";
  * completed`, after which a refund credited the wallet with no matching
  * purchase debit (credit-without-charge via admin surface). r4 F-1
  * closed the adjacent `refunded → completed` hole; this suite pins the
- * new guard: completed is purchase-tx-only, and the response reports
- * the skipped rows honestly (skipped_blocked_completion /
+ * guard: completed is purchase-tx-only, and the response reports
+ * skipped rows honestly (skipped_blocked_completion /
  * COMPLETED_IS_PURCHASE_ONLY) like the refunded guard does.
+ *
+ * F2 (round-98 A3): the mirror hole — pending/failed targets used to
+ * accept ANY non-refunded source state, so `completed → pending/failed`
+ * silently killed the buyer's delivered-credential access (formatOrder
+ * gates delivered_* on status === "completed") and made the order
+ * permanently un-refundable (RefundService requires completed; the F3
+ * guard blocks re-entering it). Non-refund targets now accept exactly
+ * the pending/failed source states; completed can only be left via
+ * RefundService. Skips are reported as skipped_completed_source /
+ * COMPLETED_NOT_DEMOTABLE.
  */
 
 function buildApp(): Express {
@@ -188,17 +198,119 @@ describe("PATCH /api/admin/orders/bulk-status — completed-is-purchase-only gua
       close();
     }
   });
+});
 
-  it("non-completed targets keep the refunded-only guard (completed → failed stays allowed)", async () => {
+describe("PATCH /api/admin/orders/bulk-status — completed-not-demotable guard (F2, round-98)", () => {
+  it("refuses completed → pending (credential access + refundability lockup) and reports it honestly", async () => {
     const { url, close } = await listen(buildApp());
     try {
       const token = await seedAdmin();
       const completedId = await seedOrder("completed");
+
+      const res = await patch(url, token, { ids: [completedId], status: "pending" });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        success: true,
+        updated: 0,
+        skipped_completed_source: 1,
+        reason: "COMPLETED_NOT_DEMOTABLE",
+      });
+      expect((await statuses([completedId])).get(completedId)).toBe("completed");
+      expect(await db.select({ id: walletLedgerTable.id }).from(walletLedgerTable)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("refuses completed → failed the same way (the mis-picked-status scenario from the audit)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const completedId = await seedOrder("completed");
+
+      const res = await patch(url, token, { ids: [completedId], status: "failed" });
+      expect(res.body).toMatchObject({
+        updated: 0,
+        skipped_completed_source: 1,
+        reason: "COMPLETED_NOT_DEMOTABLE",
+      });
+      // The paid+delivered order keeps its completed status: the buyer
+      // keeps credential access AND the order stays refundable.
+      expect((await statuses([completedId])).get(completedId)).toBe("completed");
+    } finally {
+      close();
+    }
+  });
+
+  it("pending → failed stays allowed (pending/failed remain mutually reachable)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const pendingId = await seedOrder("pending");
+      const failedId = await seedOrder("failed");
+
+      const res = await patch(url, token, { ids: [pendingId, failedId], status: "failed" });
+      expect(res.body).toMatchObject({ success: true, updated: 2 });
+      expect((await statuses([pendingId])).get(pendingId)).toBe("failed");
+      expect((await statuses([failedId])).get(failedId)).toBe("failed");
+    } finally {
+      close();
+    }
+  });
+
+  it("failed → pending also stays allowed (the other direction of the legal pair)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const failedId = await seedOrder("failed");
+
+      const res = await patch(url, token, { ids: [failedId], status: "pending" });
+      expect(res.body).toMatchObject({ success: true, updated: 1 });
+      expect((await statuses([failedId])).get(failedId)).toBe("pending");
+    } finally {
+      close();
+    }
+  });
+
+  it("mixed batch for target failed: pending flips, completed + refunded skipped — counts are per-reason", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const pendingId = await seedOrder("pending");
+      const completedId = await seedOrder("completed");
       const refundedId = await seedOrder("refunded");
 
-      const res = await patch(url, token, { ids: [completedId, refundedId], status: "failed" });
-      expect(res.body).toMatchObject({ updated: 1, skipped_refunded: 1 });
-      expect((await statuses([completedId])).get(completedId)).toBe("failed");
+      const res = await patch(url, token, {
+        ids: [pendingId, completedId, refundedId],
+        status: "failed",
+      });
+      expect(res.body).toMatchObject({
+        success: true,
+        updated: 1,
+        skipped_completed_source: 1,
+        skipped_refunded: 1,
+        reason: "COMPLETED_NOT_DEMOTABLE",
+      });
+      expect((await statuses([pendingId])).get(pendingId)).toBe("failed");
+      expect((await statuses([completedId])).get(completedId)).toBe("completed");
+      expect((await statuses([refundedId])).get(refundedId)).toBe("refunded");
+    } finally {
+      close();
+    }
+  });
+
+  it("refunded orders stay untouched for pending/failed targets (terminal, RefundService-only)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const refundedId = await seedOrder("refunded");
+
+      const res = await patch(url, token, { ids: [refundedId], status: "pending" });
+      expect(res.body).toMatchObject({
+        updated: 0,
+        skipped_refunded: 1,
+        reason: "REFUNDED_IS_TERMINAL",
+      });
       expect((await statuses([refundedId])).get(refundedId)).toBe("refunded");
     } finally {
       close();

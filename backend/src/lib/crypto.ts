@@ -1,5 +1,5 @@
 import argon2 from "argon2";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 
 // OWASP 2024 recommended argon2id parameters:
 //   memoryCost: 65536 KiB (64 MiB) — defends against GPU/ASIC cracking
@@ -19,23 +19,53 @@ export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password, ARGON2_OPTIONS);
 }
 
-const LEGACY_PREFIX = "$argon2";
+const ARGON2_PREFIX = "$argon2";
+
+/**
+ * 98-F3 (R98-A4 P3): pre-computed argon2id hash of a RANDOM 48-byte hex
+ * preimage (same ARGON2_OPTIONS as production hashes — identical verify
+ * cost; the preimage was generated in a throwaway process and never
+ * stored anywhere). Consumers run verifyPassword(password,
+ * DUMMY_PASSWORD_HASH) on lookup-miss branches so both the hit and miss
+ * paths pay the same ~100 ms argon2 cost — closing the username-
+ * existence timing oracle on admin login (routes/admin/auth.ts).
+ */
+export const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,t=3,p=1$/uUqxCGaPHJF/dPRMwKORg$SQkBmwGn/yGmQNFndq9fMARN65VxMIPB+NODDM3i0r0";
+
+export interface VerifyPasswordResult {
+  valid: boolean;
+  needsRehash: boolean;
+  /**
+   * 98-F3: true when the stored hash is NOT an argon2 hash at all — the
+   * legacy SHA-256 fallback was removed (verified live fact: every
+   * admin_users row is $argon2id; zero legacy rows exist), so such a row
+   * can never validate. The login route surfaces «يلزم إعادة تعيين كلمة
+   * المرور» for it — the account is recoverable only via a password
+   * reset, not by retrying credentials.
+   */
+  resetRequired?: boolean;
+}
 
 export async function verifyPassword(
   password: string,
   hash: string,
-): Promise<{ valid: boolean; needsRehash: boolean }> {
+): Promise<VerifyPasswordResult> {
   // Argon2id hash — verify natively
-  if (hash.startsWith(LEGACY_PREFIX)) {
+  if (hash.startsWith(ARGON2_PREFIX)) {
     const valid = await argon2.verify(hash, password);
     const needsRehash = valid && argon2.needsRehash(hash, ARGON2_OPTIONS);
     return { valid, needsRehash };
   }
-  // Legacy SHA-256 hash — verify and flag for migration
-  const shaHash = createHash("sha256")
-    .update(password + "subnation_salt")
-    .digest("hex");
-  return { valid: shaHash === hash, needsRehash: shaHash === hash };
+  // 98-F3 (R98-A4 P3): the SHA-256 + static-salt fallback is REMOVED.
+  // It only ever covered pre-argon2 rows hashed as
+  // sha256(password + "subnation_salt") — trivially crackable offline
+  // AND compared non-constant-time. A live inspection (round 98) found
+  // ZERO such rows (every admin_users.password_hash starts with
+  // $argon2id), and the fallback had no expiry — a row that never logs
+  // in would have stayed weak forever. A non-argon2 hash now fails with
+  // resetRequired so the route can demand a password reset.
+  return { valid: false, needsRehash: false, resetRequired: true };
 }
 
 export function generateReferralCode(): string {

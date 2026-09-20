@@ -379,6 +379,15 @@ app.use(
     // Empty list in dev reflects any origin (previous behaviour).
     origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     credentials: true,
+    // 98-F3 (R98-A4 §5): preflight responses carried no
+    // Access-Control-Max-Age, so every cross-origin browser request from
+    // the Vercel SPA (credentials:"include") paid a fresh OPTIONS
+    // round-trip per browser cache window. 10 minutes is the
+    // security-neutral cap recommended by MDN (Chrome caps at 2h,
+    // Firefox 24h — 600s is the cross-browser floor that all honor);
+    // the origin list is static, so caching the preflight cannot pin a
+    // stale permission.
+    maxAge: 600,
   }),
 );
 
@@ -685,25 +694,33 @@ export function createCsrfGate(allowedOrigins: string[], production: boolean) {
 
       // Skip CSRF check ONLY for endpoints where the browser legitimately omits
       // Origin/Referer:
-      //   - /api/auth/firebase/session, /api/auth/firebase/refresh: Firebase
-      //     popup auth round-trips can land here without a valid Referer in
-      //     some COOP-isolated configurations. The ID-token signature is the
-      //     real auth; Origin is belt+suspenders.
+      //   - /api/auth/firebase/refresh: Firebase popup auth round-trips can
+      //     land here without a valid Referer in some COOP-isolated popup
+      //     configurations. The ID-token signature is the real auth; Origin
+      //     is belt+suspenders. (Refresh is a rotation of an ALREADY-bound
+      //     session, so a fixation attack gains nothing new — unlike the
+      //     session mint below.)
       //   - /api/cwv: navigator.sendBeacon does not set Origin on most browsers.
       //   - /api/webhook/*: third-party callbacks (Telegram, Stripe-style) sign
       //     their bodies; Origin from a different host is expected.
-      //   - /health: ops probes from outside the app.
+      //
+      // 98-F3 (R98-A1 P2-3): /api/auth/firebase/session is NO LONGER skipped.
+      // It is a session MINT (Set-Cookie of a fresh auth_token), so skipping
+      // the gate opened a login-CSRF window: a hostile page could POST a form
+      // (CORS-simple request, no preflight) carrying the attacker's own
+      // Firebase ID token and silently log the victim into the ATTACKER's
+      // account — the victim then tops up the wallet (correct Origin from
+      // the real SPA) and deposits real money into an account the attacker
+      // controls. The SPA itself always sends Origin on fetch, so the skip
+      // bought nothing for the legitimate client. The mint is now gated like
+      // every other mutating route (Origin/Referer allow-list + the
+      // cookie-without-headers sub-rule below, which also blocks the
+      // re-binding variant for already-logged-in victims).
       //
       // Login / register / forgot-password / reset-password / change-password /
       // toggle-password-login / sessions / logout / providers — ALL inside the
       // CSRF gate. SameSite cookies remain the second layer.
-      const skipPaths = [
-        "/api/auth/firebase/session",
-        "/api/auth/firebase/refresh",
-        "/api/cwv",
-        "/api/webhook",
-        "/health",
-      ];
+      const skipPaths = ["/api/auth/firebase/refresh", "/api/cwv", "/api/webhook"];
       if (skipPaths.some((path) => req.path.startsWith(path))) {
         next();
         return;
@@ -805,13 +822,34 @@ app.use("/api/auth/firebase/session", authLimiter);
 // refresh mints a fresh 30-day JWT from a Firebase ID token — same
 // credential-equivalence as the session mint, so it gets the same budget.
 app.use("/api/auth/firebase/refresh", authLimiter);
+// 98-F3 (R98-A1 P1-1, severity corrected after experimental verification):
+// app.use(path, mw) is a PREFIX match. This mount covers POST
+// /api/admin/login AND /api/admin/login/verify-2fa (its subpath). The
+// explicit "/api/admin/login/verify-2fa" mount that used to live here
+// mounted the SAME authLimiter INSTANCE a second time on an overlapping
+// prefix — every request to the subpath incremented the SAME key TWICE
+// (verified experimentally: 1 request → used=2), silently HALVING the
+// real login budget (10/15min acted as 5/15min). Two stronger claims
+// from the early audit were experimentally DISPROVEN against
+// express-rate-limit 8.4.1: no hard 500 (the library's validation
+// wrapper catches its own errors and never re-throws), and not even a
+// logged ERR_ERL_DOUBLE_COUNT (the middleware calls
+// validations.disable() at the end of every invocation — dist line
+// ~974 — so the second mount's wrapper runs with all validations off).
+// The double budget burn is the entire defect. The redundant mounts
+// for /api/auth/telegram/callback had the identical defect on the
+// Telegram redirect login. Prefix mounts alone cover every path below;
+// see routes/__tests__/limiter-composition.test.ts for the regression
+// guard (pins the double-burn invariant behaviorally).
 app.use("/api/admin/login", authLimiter);
-app.use("/api/admin/login/verify-2fa", authLimiter);
 // Telegram-Login is a credential-equivalent endpoint (signature-verified
 // identity assertion). Apply the same strict limit as admin login to
 // keep brute-force resistance consistent across auth surfaces.
+// (Same prefix-match rule as above: this single mount covers POST
+// /api/auth/telegram, POST /api/auth/telegram/webapp AND GET
+// /api/auth/telegram/callback — do not add per-subpath mounts of the
+// same instance.)
 app.use("/api/auth/telegram", authLimiter);
-app.use("/api/auth/telegram/callback", authLimiter);
 // 96-F1 (R96-A4 §3.4): split WhatsApp OTP endpoints onto separate
 // limiters — start takes the CGNAT-friendly whatsappStartAuthLimiter
 // (20/15min), verify keeps the strict authLimiter (10/15min). Mounted

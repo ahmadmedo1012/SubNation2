@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { usersTable } from "./users";
 
 export const topupStatusEnum = pgEnum("topup_status", ["pending", "approved", "rejected"]);
@@ -63,5 +62,3 @@ export const insertWalletTopupSchema = createInsertSchema(walletTopupsTable).omi
   createdAt: true,
   updatedAt: true,
 });
-export type InsertWalletTopup = z.infer<typeof insertWalletTopupSchema>;
-export type WalletTopup = typeof walletTopupsTable.$inferSelect;

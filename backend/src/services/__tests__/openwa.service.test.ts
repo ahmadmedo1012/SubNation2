@@ -369,3 +369,120 @@ describe("openwa transport — wire format", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+// ── F9 (R98-A6, 98-F5): phone-PII chatId masking in gateway logs ────────────
+//
+// `218913456789@c.us` used to hit stdout VERBATIM on every gateway failure
+// warn — Render's retained log stream accumulated user phone numbers (the
+// OTP path = every login attempt during channel trouble). Only the LOG
+// call sites changed: the wire payload + DB writes keep the full value.
+describe("openwa transport — F9 chatId masking in logs", () => {
+  it("maskChatId keeps prefix/suffix + domain, never the full number", async () => {
+    const mod = await import("../openwa.service");
+    expect(mod.maskChatId("218913456789@c.us")).toBe("21891…6789@c.us");
+    expect(mod.maskChatId("218913456789@c.us")).not.toContain("218913456789");
+    // Group ids keep their @g.us domain too.
+    expect(mod.maskChatId("123456789012-1234567890@g.us")).toBe("12345…7890@g.us");
+    // Too-short ids pass through untouched (nothing to protect).
+    expect(mod.maskChatId("12345@c.us")).toBe("12345@c.us");
+  });
+
+  it("non-2xx send warns with the MASKED chatId while the wire body keeps the FULL value", async () => {
+    const calls = installFetchMock(({ url }) => {
+      if (url.endsWith("/api/sessions/sess_existing-id")) {
+        return jsonResponse({ id: "sess_existing-id", name: "primary", status: "ready" });
+      }
+      // 4xx → non_ok_status, NOT retried → exactly one warn line.
+      if (url.endsWith("/messages/send-text")) {
+        return new Response("nope", { status: 400 });
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+
+    const mod = await import("../openwa.service");
+    const { logger } = await import("../../lib/logger");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    mod.__resetWhatsAppGatewayCacheForTests();
+
+    const result = await mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
+
+    expect(result).toEqual({ ok: false, reason: "non_ok_status", status: 400 });
+
+    // Wire payload unchanged — the gateway still gets the real chatId.
+    const sendCall = calls.find((c) => c.url.endsWith("/messages/send-text"));
+    expect(JSON.parse(String(sendCall!.init?.body)).chatId).toBe("218913456789@c.us");
+
+    // The warn log carries the masked form — never the full phone.
+    const non2xxWarn = warnSpy.mock.calls.find((c) => c[1] === "[whatsapp-otp] gateway non-2xx");
+    expect(non2xxWarn).toBeDefined();
+    expect(non2xxWarn![0]).toMatchObject({ chatId: "21891…6789@c.us" });
+    for (const call of warnSpy.mock.calls) {
+      expect(JSON.stringify(call[0])).not.toContain("218913456789");
+    }
+  });
+
+  it("recipient_not_on_whatsapp warns with the MASKED chatId", async () => {
+    installFetchMock(({ url }) => {
+      if (url.endsWith("/api/sessions/sess_existing-id")) {
+        return jsonResponse({ id: "sess_existing-id", name: "primary", status: "ready" });
+      }
+      if (url.endsWith("/api/sessions/sess_existing-id/contacts/check/218913456789")) {
+        return jsonResponse({ number: "218913456789", exists: false, whatsappId: null });
+      }
+      return new Response("unexpected", { status: 500 });
+    });
+
+    const mod = await import("../openwa.service");
+    const { logger } = await import("../../lib/logger");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    mod.__resetWhatsAppGatewayCacheForTests();
+
+    const result = await mod.sendWhatsAppMessage(mod.buildChatId("913456789"), "code-2");
+
+    expect(result).toEqual({ ok: false, reason: "recipient_not_on_whatsapp" });
+    const warn = warnSpy.mock.calls.find(
+      (c) => c[1] === "[whatsapp-otp] recipient is not registered on WhatsApp",
+    );
+    expect(warn).toBeDefined();
+    expect(warn![0]).toMatchObject({ chatId: "21891…6789@c.us" });
+    expect(JSON.stringify(warn![0])).not.toContain("218913456789");
+  });
+
+  it("request_failed (network) warns with the MASKED chatId", async () => {
+    installFetchMock(({ url }) => {
+      if (url.endsWith("/api/sessions/sess_existing-id")) {
+        return jsonResponse({ id: "sess_existing-id", name: "primary", status: "ready" });
+      }
+      // contacts/check + send-text both throw at the transport level.
+      throw new Error("socket hangup (simulated)");
+    });
+
+    const mod = await import("../openwa.service");
+    const { logger } = await import("../../lib/logger");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    mod.__resetWhatsAppGatewayCacheForTests();
+
+    // request_failed is retryable → 3 attempts with 1.5 s → 4 s backoff —
+    // fake timers advance the backoff without wall-clock delay (same shape
+    // as the ready-cache invalidation test above).
+    vi.useFakeTimers();
+    let result: Awaited<ReturnType<typeof mod.sendWhatsAppMessage>>;
+    try {
+      const send = mod.sendWhatsAppMessage("218913456789@c.us", "code-3");
+      await vi.advanceTimersByTimeAsync(1_500);
+      await vi.advanceTimersByTimeAsync(4_000);
+      result = await send;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // request_failed is retryable → 3 attempts, then the honest verdict.
+    expect(result).toEqual({ ok: false, reason: "request_failed" });
+    const warn = warnSpy.mock.calls.find((c) => c[1] === "[whatsapp-otp] gateway request failed");
+    expect(warn).toBeDefined();
+    expect(warn![0]).toMatchObject({ chatId: "21891…6789@c.us" });
+    for (const call of warnSpy.mock.calls) {
+      expect(JSON.stringify(call[0])).not.toContain("218913456789");
+    }
+  });
+});

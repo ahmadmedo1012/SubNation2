@@ -41,7 +41,6 @@ import { db, systemSettingsTable } from "@workspace/db";
 export const DEFAULT_USD_TO_LYD = 10;
 export const DEFAULT_MARKUP_PERCENT = 100;
 
-export const PRICING_SETTINGS_PREFIX = "pricing.";
 export const SETTING_KEY_USD_TO_LYD = "pricing.usd_to_lyd";
 export const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
 

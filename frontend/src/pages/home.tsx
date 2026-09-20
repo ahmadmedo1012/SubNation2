@@ -5,6 +5,7 @@ import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
+import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
 import { categoryLabel, formatCount, formatCurrency, statusColor, statusLabel } from "@/lib/utils";
 import {
@@ -57,6 +58,36 @@ const SORTS = [
   { value: "price_asc", label: "السعر: الأقل" },
   { value: "price_desc", label: "السعر: الأعلى" },
 ];
+
+// ── R98-04 (A5 §2): catalog filters ↔ querystring ────────────────────────
+//
+// The four catalog filters (search/category/sort/availableOnly) lived in
+// local state only — refresh, back-navigation from a product page, or a
+// shared link all landed on a zeroed catalog (admin pages got ?search=
+// syncing in 94-C2; the storefront never did). The filters now seed from
+// the URL on mount and mirror back via history.replaceState on every
+// change (replaceState, not pushState: filtering is the same logical
+// page — the Back button must leave the page, not replay every filter
+// click — and it is invisible to wouter, so no route re-resolution).
+const SORT_VALUES = new Set(SORTS.map((s) => s.value));
+const CATEGORY_VALUES = new Set(CATEGORIES.map((c) => c.value));
+
+function readInitialFiltersFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  // Whitelist category/sort values — a hand-typed ?sort=bogus must not
+  // blank the <select> (an unknown value renders no <option> selected)
+  // or arm a phantom filter chip.
+  const rawCategory = params.get("category") ?? "";
+  const rawSort = params.get("sort") ?? "";
+  const search = params.get("search") ?? "";
+  return {
+    search,
+    searchInput: search,
+    category: CATEGORY_VALUES.has(rawCategory) ? rawCategory : "",
+    sort: SORT_VALUES.has(rawSort) ? rawSort : "",
+    availableOnly: params.get("available_only") === "true",
+  };
+}
 
 /**
  * Featured brand chips on the editorial hero.
@@ -121,11 +152,15 @@ function OrderStatusIcon({ status }: { status: string }) {
 
 export default function HomePage() {
   const { token } = useAuth();
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
-  const [sort, setSort] = useState("");
-  const [availableOnly, setAvailableOnly] = useState(false);
+  // R98-04: initial values seed from the querystring (see
+  // readInitialFiltersFromUrl above) — mount-time only; every later
+  // change is user-driven and mirrors back via the effect below.
+  const [initialFilters] = useState(readInitialFiltersFromUrl);
+  const [searchInput, setSearchInput] = useState(initialFilters.searchInput);
+  const [search, setSearch] = useState(initialFilters.search);
+  const [category, setCategory] = useState(initialFilters.category);
+  const [sort, setSort] = useState(initialFilters.sort);
+  const [availableOnly, setAvailableOnly] = useState(initialFilters.availableOnly);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,9 +242,38 @@ export default function HomePage() {
   } = useListProducts(params, {
     query: {
       queryKey: getListProductsQueryKey(params),
+      // 98-F7 (r97 F-16): keep the PREVIOUS page's products as placeholder
+      // while the next filtered query loads — every filter change used to
+      // flash the 8-skeleton grid (data=[], isLoading=true on the new
+      // queryKey) even though the previous result was one render old.
+      // TanStack v5 idiom: isLoading stays true only for the very FIRST
+      // load; later key changes render isPlaceholderData (grid stays).
+      placeholderData: keepPreviousData,
       staleTime: 3 * 60 * 1000, // 3 minutes for products
     },
   });
+
+  // R98-04: mirror the committed filters into the querystring. Runs once
+  // on mount too (no-op rewrite of the identical URL) — deliberately NOT
+  // wouter's useSearch: replaceState must stay invisible to the router.
+  useEffect(() => {
+    const qs = new URLSearchParams();
+    if (search) qs.set("search", search);
+    if (category) qs.set("category", category);
+    if (sort) qs.set("sort", sort);
+    if (availableOnly) qs.set("available_only", "true");
+    const query = qs.toString();
+    try {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    } catch {
+      // Exotic embedding contexts without history API — filters still
+      // work in-memory; only the URL reflection is lost.
+    }
+  }, [search, category, sort, availableOnly]);
 
   const { data: stats } = useGetCatalogStats({
     query: {

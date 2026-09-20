@@ -10,7 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 import { productsTable } from "./products";
 
 /**
@@ -31,8 +30,10 @@ import { productsTable } from "./products";
  *
  * Both label columns are nullable — a variant is uniquely identified by
  * the (plan, duration) pair within its product and at least one of the
- * two must be non-null (enforced at the API layer; a CHECK would fight
- * the UNIQUE index on NULL semantics in older Postgres).
+ * two must be non-null (enforced at the API layer). Dedup of NULL axes:
+ * the LIVE unique index is NULLS NOT DISTINCT (V1-M17 — see the index
+ * mirror comment below), so (product, 'Family', NULL) can only exist once
+ * even when normalizeLabels keeps returning null for absent axes.
  *
  * ── Pricing contract (single source of truth) ──────────────────────────────
  * `costPrice`  — supplier USD cost (INTERNAL: admin-only, never on public
@@ -83,9 +84,17 @@ export const productVariantsTable = pgTable(
   (t) => ({
     productIdx: index("idx_product_variants_product").on(t.productId),
     productActiveIdx: index("idx_product_variants_product_active").on(t.productId, t.isActive),
-    // One row per (plan, duration) pair within a product. NULLs are
-    // distinct in Postgres UNIQUE, so the API layer normalizes absent
-    // axes to empty strings before insert to keep dedup honest.
+    // One row per (plan, duration) pair within a product. The LIVE index
+    // (replaced by migrate.ts V1-M17, round-98 F4 / R98-DB-05) is declared
+    // `NULLS NOT DISTINCT` so absent axes (NULL plan/duration labels)
+    // dedup at the DB level. drizzle-orm's uniqueIndex() cannot express
+    // nulls-distinctness (only unique() constraints can, and the live
+    // object is an INDEX) — the authoritative DDL is the boot migration;
+    // this declaration mirrors it via the products.ts idx_products_slug_unique
+    // mirror-comment idiom. normalizeLabels deliberately keeps returning
+    // null for absent axes; the admin route's IS NOT DISTINCT FROM probe
+    // stays as a friendly pre-check, while the index is the race-proof
+    // guard.
     planDurationUniqueIdx: uniqueIndex("uniq_product_variants_plan_duration").on(
       t.productId,
       t.planLabel,
@@ -99,5 +108,4 @@ export const insertProductVariantSchema = createInsertSchema(productVariantsTabl
   createdAt: true,
   updatedAt: true,
 });
-export type InsertProductVariant = z.infer<typeof insertProductVariantSchema>;
 export type ProductVariant = typeof productVariantsTable.$inferSelect;

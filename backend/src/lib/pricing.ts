@@ -39,7 +39,8 @@ export type CouponInvalidReason =
   | "inactive"
   | "expired"
   | "max_uses_reached"
-  | "below_min_order";
+  | "below_min_order"
+  | "invalid_value";
 
 export interface AppliedFlashSale {
   id: number;
@@ -177,6 +178,26 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
 
   // Valid — compute applied amount.
   const value = parseFloat(String(row.value));
+
+  // F8 (round-98 A3): legacy percentage rows with value >= 100 (created
+  // before the create-side bound at routes/coupons.ts) sailed through
+  // here into computeCouponDiscount, producing discountAmount >= basePrice
+  // → negative finalPrice → the checkout money-integrity gate 500s
+  // (INVALID_PRICE, fail-closed but operator-hostile). Reject them with
+  // the same InvalidCoupon shape below_min_order uses — a clean 400
+  // INVALID_COUPON at the route, consistent with /coupons/validate's
+  // non-positive-final rejection. Deliberately NOT clamped: silently
+  // capping a 150% coupon at ~100% changes money semantics without an
+  // operator ever noticing.
+  if (row.type === "percentage" && value >= 100) {
+    return {
+      code,
+      reason: "invalid_value",
+      reasonAr: "نسبة خصم الكوبون يجب أن تكون أقل من 100%",
+      record: row,
+    };
+  }
+
   const appliedAmount = computeCouponDiscount(row.type as CouponType, value, input.basePrice);
 
   return {

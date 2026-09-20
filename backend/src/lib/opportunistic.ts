@@ -55,11 +55,6 @@ interface ThrottleEntry {
 
 const registry = new Map<string, ThrottleEntry>();
 
-/** Test seam — wipe the throttle map to simulate a cold process. */
-export function resetOpportunisticMaintenanceForTests(): void {
-  registry.clear();
-}
-
 /**
  * Fire a throttled, fire-and-forget maintenance job.
  *

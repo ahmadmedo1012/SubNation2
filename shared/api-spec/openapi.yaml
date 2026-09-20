@@ -34,9 +34,13 @@ info:
     ## Deployment-conditional behavior
 
     Idempotency-Key semantics (the 409 replay/reuse conflicts and
-    Idempotent-* response headers) engage only when the deployment
-    provides REDIS_URL; without Redis, dedup relies on the DB-level
-    status guards (93-A8 F-3). /auth/me and /auth/probe send
+    Idempotent-* response headers) are backed by the DURABLE in-transaction
+    `idempotency_keys` DB guard (round-94 F10) — they engage on EVERY
+    deployment, with or without Redis. When REDIS_URL is additionally
+    provided, the Redis claim layer (fast pre-check + cross-instance
+    coordination) fronts the same durable guard; without it, dedup
+    relies on the DB-level claim alone (correct, marginally slower on
+    the conflict path). /auth/me and /auth/probe send
     `Cache-Control: private, max-age=30`; catalog routes send
     `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
 servers:
@@ -153,6 +157,401 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Auth mint family (round-98 contract — the primary Libyan sign-in surface) ─
+  # Shapes below are field-exact with routes/auth-whatsapp.ts, routes/auth-settings.ts
+  # and routes/auth.ts. Every mint route returns `token: "__cookie_session__"`, a
+  # truthy SENTINEL: the httpOnly auth_token cookie is the sole session transport
+  # (round-98 F3 closed the raw-JWT-in-body XSS surface); clients must NOT treat
+  # the token field as a credential.
+  /auth/whatsapp/start:
+    post:
+      operationId: startWhatsappOtp
+      tags: [auth]
+      summary: Send a WhatsApp OTP to the given phone (registration purpose)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: Libyan or international phone; normalized server-side.
+                referral_code:
+                  type: string
+                  maxLength: 16
+                  description: Optional referral code applied on first verify.
+      responses:
+        "200":
+          description: OTP queued — never the code itself, only its expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, expires_at]
+                properties:
+                  success:
+                    type: boolean
+                  expires_at:
+                    type: string
+                    description: ISO timestamp when the code expires (5 minutes).
+        "400":
+          description: Missing/invalid phone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Cooldown (60s resend) / hourly or attempt caps — retry later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: >-
+            WhatsApp channel not ready: details.reason = whatsapp_settling
+            (freshly linked channel warming up — details.retry_after_sec
+            present + Retry-After header) or store_failed (delivery store
+            failure, 30s retry hint).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      details:
+                        type: object
+                        properties:
+                          reason:
+                            type: string
+                            enum: [whatsapp_settling, store_failed]
+                          retry_after_sec:
+                            type: integer
+          headers:
+            Retry-After:
+              description: Seconds until the channel is expected to accept sends.
+              schema:
+                type: integer
+
+  /auth/whatsapp/verify:
+    post:
+      operationId: verifyWhatsappOtp
+      tags: [auth]
+      summary: Verify the WhatsApp OTP — mints the session (cookie) on success
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone:
+                  type: string
+                code:
+                  type: string
+                  description: 6-digit code as typed (Arabic-Indic digits accepted).
+                referral_code:
+                  type: string
+                  maxLength: 16
+      responses:
+        "200":
+          description: Session minted (httpOnly auth_token cookie set).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, is_new_user]
+                properties:
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel — not a credential.
+                  is_new_user:
+                    type: boolean
+        "400":
+          description: Missing fields / malformed code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Wrong code (5 attempts per code, consume-on-success)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/providers:
+    get:
+      operationId: listPublicAuthProviders
+      tags: [auth]
+      summary: Public sign-in provider catalog (enabled flags + non-secret config)
+      security: []
+      responses:
+        "200":
+          description: Provider list — only renderable providers are included.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers, whatsapp_status]
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label, enabled, has_config, auth_type]
+                      properties:
+                        id:
+                          type: string
+                        label:
+                          type: string
+                        color:
+                          type: ["string", "null"]
+                        icon:
+                          type: ["string", "null"]
+                        auth_type:
+                          type: string
+                        enabled:
+                          type: boolean
+                        has_config:
+                          type: boolean
+                        client_id:
+                          type: ["string", "null"]
+                        app_id:
+                          type: ["string", "null"]
+                        bot_username:
+                          type: ["string", "null"]
+                        bot_id:
+                          type: ["string", "null"]
+                          description: Numeric Telegram bot id (parsed server-side; the token never leaves the DB).
+                  whatsapp_status:
+                    type: string
+                    enum: [ready, settling, unavailable]
+                    description: Live OTP channel readiness (round-96/97 settling contract).
+
+  /auth/telegram:
+    post:
+      operationId: authTelegramWidget
+      tags: [auth]
+      summary: Verify Telegram Login Widget data — mints the session cookie
+      security: []
+      description: >-
+        Body carries the Telegram widget fields (id, first_name,
+        auth_date, hash, …). The hash is verified against the bot token
+        (HMAC) with auth_date freshness + a replay claim. 409 when the
+        Telegram identity is already linked to a different account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: "Session minted — returns token sentinel + is_new_user"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, is_new_user]
+                properties:
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel.
+                  is_new_user:
+                    type: boolean
+        "401":
+          description: Invalid hash / stale auth_date / replayed assertion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Identity already linked to another account (link_token in details)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/telegram/webapp:
+    post:
+      operationId: authTelegramWebApp
+      tags: [auth]
+      summary: Verify Telegram WebApp initData — mints the session cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [initData]
+              properties:
+                initData:
+                  type: string
+                  description: Raw Telegram WebApp initData query string (HMAC-verified server-side, 25h replay TTL).
+      responses:
+        "200":
+          description: "Session minted — returns token sentinel + is_new_user"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, is_new_user]
+                properties:
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel.
+                  is_new_user:
+                    type: boolean
+        "401":
+          description: Invalid signature / replay
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/telegram/callback:
+    get:
+      operationId: authTelegramCallback
+      tags: [auth]
+      summary: Redirect-mode Telegram login (widget verification then 302)
+      security: []
+      parameters:
+        - name: hash
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Widget fields arrive as query params; verified then redirected.
+      responses:
+        "302":
+          description: Verified → redirect to /auth/callback (session cookie set); failure → /auth/callback?error=...
+        "400":
+          description: Malformed widget payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/firebase/session:
+    post:
+      operationId: authFirebaseSession
+      tags: [auth]
+      summary: Exchange a Firebase Google ID token for the session cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token:
+                  type: string
+                  description: Firebase ID token (signature verified server-side).
+                referral_code:
+                  type: string
+                  maxLength: 16
+                link_consent_token:
+                  type: string
+                  description: One-time consent token from a prior 409 account-link response.
+      responses:
+        "200":
+          description: "Session minted — returns token sentinel + is_new_user"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, is_new_user]
+                properties:
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel.
+                  is_new_user:
+                    type: boolean
+        "401":
+          description: Invalid/expired ID token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Google identity already linked to another account (link_consent_token flow)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/firebase/refresh:
+    post:
+      operationId: authFirebaseRefresh
+      tags: [auth]
+      summary: Rotate the session from a fresh Firebase ID token (already-bound session required)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token:
+                  type: string
+      responses:
+        "200":
+          description: "Session rotated — returns token sentinel"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel.
+        "401":
+          description: Invalid token / no existing bound session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/probe:
+    get:
+      operationId: probeAuth
+      tags: [auth]
+      summary: Boot probe — 200 always; body carries authenticated state (never 401)
+      security: []
+      responses:
+        "200":
+          description: >-
+            {authenticated, user?, linked_identities?, csrf_token} — the
+            SPA uses this on boot to restore state; unauthenticated is
+            still 200 (never 401, so probes never trip auth error UI).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authenticated]
+                properties:
+                  authenticated:
+                    type: boolean
+                  user:
+                    $ref: "#/components/schemas/User"
+                  linked_identities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LinkedIdentity"
 
   # ── Products ────────────────────────────────────────────────────────────────
   /products:
@@ -3501,10 +3900,27 @@ components:
 
     User:
       type: object
+      description: >
+        /auth/me and /auth/probe additionally return the linked_identities
+        array (see LinkedIdentity). (Fields email…onboarding_step added
+        round-98 to match what formatUser has serialized all along — the
+        spec gap forced local re-declarations in profile/checkout.)
       properties:
         id:
           type: integer
         phone:
+          type: string
+        email:
+          type: ["string", "null"]
+        email_verified:
+          type: boolean
+        phone_verified:
+          type: boolean
+        display_name:
+          type: ["string", "null"]
+        photo_url:
+          type: ["string", "null"]
+        auth_provider:
           type: string
         wallet_balance:
           type: number
@@ -3516,9 +3932,36 @@ components:
           type: number
         referral_code:
           type: ["string", "null"]
+        onboarded_at:
+          type: ["string", "null"]
+        onboarding_step:
+          type: integer
         created_at:
           type: string
+        linked_identities:
+          type: array
+          description: Present on /auth/me and /auth/probe responses only.
+          items:
+            $ref: "#/components/schemas/LinkedIdentity"
       required: [id, phone, wallet_balance, loyalty_points, loyalty_tier, lifetime_spend]
+
+    LinkedIdentity:
+      type: object
+      description: A social/provider identity linked to the account (provider-linking flows).
+      properties:
+        provider:
+          type: string
+        provider_uid:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        linked_at:
+          type: ["string", "null"]
+        last_seen_at:
+          type: ["string", "null"]
+      required: [provider, provider_uid]
 
     # ── Products ──────────────────────────────────────────────────────────────
     Product:
@@ -3544,6 +3987,16 @@ components:
               answer:
                 type: string
             required: [question, answer]
+        features:
+          type: ["array", "null"]
+          items:
+            type: string
+          description: >
+            Marketing feature bullets (Arabic). Returned on the detail
+            endpoints (/products/:id and /products/by-slug/:slug) — the
+            list endpoint may omit it. (Contract added round-98: the
+            backend serialized features from the start; the spec gap
+            forced a local `any` cast in the storefront.)
         seo_title:
           type: ["string", "null"]
           description: Operator override for the product page <title>.
@@ -3724,10 +4177,6 @@ components:
         coupon_code:
           type: ["string", "null"]
         discount_amount:
-          type: number
-        wallet_balance_before:
-          type: number
-        wallet_balance_after:
           type: number
         created_at:
           type: string

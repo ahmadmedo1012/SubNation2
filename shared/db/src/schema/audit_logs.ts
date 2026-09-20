@@ -1,4 +1,13 @@
-import { index, pgTable, serial, integer, varchar, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import {
+  index,
+  pgTable,
+  serial,
+  integer,
+  varchar,
+  text,
+  timestamp,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 
 export const auditActorTypeEnum = pgEnum("audit_actor_type", ["user", "admin", "system"]);
 

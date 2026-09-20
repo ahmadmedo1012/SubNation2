@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -48,15 +50,13 @@ export const enrichmentDraftsTable = pgTable(
     outputTokens: integer("output_tokens").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    publishedBy: integer("published_by").references(
-      (): AnyPgColumn => adminUsersTable.id,
-      { onDelete: "set null" },
-    ),
+    publishedBy: integer("published_by").references((): AnyPgColumn => adminUsersTable.id, {
+      onDelete: "set null",
+    }),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
-    rejectedBy: integer("rejected_by").references(
-      (): AnyPgColumn => adminUsersTable.id,
-      { onDelete: "set null" },
-    ),
+    rejectedBy: integer("rejected_by").references((): AnyPgColumn => adminUsersTable.id, {
+      onDelete: "set null",
+    }),
     rejectionReason: text("rejection_reason"),
     /** Validator findings when state='draft_invalid'. */
     validationErrors: jsonb("validation_errors").$type<Record<string, unknown>>(),
@@ -70,8 +70,24 @@ export const enrichmentDraftsTable = pgTable(
       t.rejectedAt,
     ),
     runIdx: index("idx_enrichment_drafts_run").on(t.runId),
+    // R98-DB-03: the four state-machine CHECKs the boot SQL (012 stage)
+    // has always applied live; declared via check() so the drizzle chain
+    // carries them too (names + expressions pinned verbatim).
+    stateCheck: check(
+      "chk_enrichment_state",
+      sql`state IN ('drafted','published','rejected','draft_invalid')`,
+    ),
+    fieldCheck: check(
+      "chk_enrichment_field",
+      sql`field_name IN ('description','description_long','faq')`,
+    ),
+    publishedConsistencyCheck: check(
+      "chk_enrichment_published_consistency",
+      sql`(state = 'published') = (published_at IS NOT NULL)`,
+    ),
+    rejectedConsistencyCheck: check(
+      "chk_enrichment_rejected_consistency",
+      sql`(state = 'rejected') = (rejected_at IS NOT NULL)`,
+    ),
   }),
 );
-
-export type EnrichmentDraft = typeof enrichmentDraftsTable.$inferSelect;
-export type InsertEnrichmentDraft = typeof enrichmentDraftsTable.$inferInsert;

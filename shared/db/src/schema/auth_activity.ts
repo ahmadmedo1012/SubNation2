@@ -21,7 +21,10 @@ export const authActivityTable = pgTable(
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
     failureReason: varchar("failure_reason", { length: 255 }),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
+    // R98-DB-04: withTimezone mirrors the live/boot column (TIMESTAMPTZ) —
+    // the only table whose created_at lacked it; drizzle-kit generate
+    // would otherwise have proposed a type-weakening ALTER on push.
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     userIdIdx: index("idx_auth_activity_user").on(table.userId),

@@ -1,12 +1,22 @@
 # SubNation2 Platform
 
-## Production URLs (all working)
+> **Status banner (2026-09-20):** this file is a snapshot dated 2026-09-02 and
+> its "all working / LIVE" claims predate the free-infrastructure round. For
+> current state see **OPERATIONS_RUNBOOK §5 (free-tier posture)** and
+> `docs/free-tier-optimization-2026-09-20.md` / `docs/final-audit-2026-09-20.md`.
+> Deploy IDs and commit refs below are historical records, kept as-is.
 
-- Frontend (Vercel): https://subnation-seven.vercel.app
-- Frontend (custom domain, LIVE): https://subnation.ly and https://www.subnation.ly
-- Backend (Render): https://subnation2.onrender.com
-- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com
-- Neon Database: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech (project `calm-art-99771185`)
+## Production URLs (as of 2026-09-20)
+
+- Frontend (Vercel): https://subnation-seven.vercel.app — **LIVE**
+- Frontend (custom domain): https://subnation.ly and https://www.subnation.ly —
+  currently 503 while Render is suspended (Cloudflare → Render direct; see runbook)
+- Backend (Render): https://subnation2.onrender.com — **SUSPENDED** (operator
+  billing gate)
+- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — **SUSPENDED**
+  (same billing gate)
+- Neon Database: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
+  (project `calm-art-99771185`) — live
 
 ## Deployment
 
@@ -22,38 +32,42 @@
 - http://localhost:5173 (dev)
 - http://localhost:3000 (dev)
 
-## API Endpoints (all working)
+## API Endpoints (verified against routes)
 
 Public:
+
 - `GET /api/healthz` — liveness
 - `GET /api/healthz/live` — public liveness (no auth)
 - `GET /api/healthz/summary` — public status summary
 - `GET /api/products` — product catalog
 - `GET /api/flash-sale` — active flash sale
 - `GET /api/catalog/stats` — catalog statistics
-- `GET /api/orders/:orderCode` — order tracking (public via orderCode)
 
 Auth-gated (returns 401 without session):
+
 - `GET /api/cart` — user's cart
 - `POST /api/cart/items` — add to cart
 - `PATCH /api/cart/items/:id` — update quantity
 - `DELETE /api/cart/items/:id` — remove item
 - `DELETE /api/cart` — clear cart
 - `GET /api/orders` — user's orders
-- `POST /api/orders/checkout` — create order
+- `GET /api/orders/:orderCode` — order tracking (requireUser-gated, `orders.ts:305`)
+- `POST /api/orders` — create order (there is no `/api/orders/checkout` route)
 - `GET /api/wallet` — wallet balance
 - `GET /api/loyalty` — loyalty points
 
 Admin-gated (returns 401 without admin):
+
 - `GET /api/healthz/ready` — detailed readiness
 - `GET /api/healthz/firebase` — Firebase config
 - `GET /api/admin/diagnostics/whatsapp/*` — WhatsApp session management
 - `GET /api/admin/*` — admin panel
 - `GET /api/coupons/admin` — coupon management
 
-## Frontend Pages (all working)
+## Frontend Pages
 
 Public:
+
 - `/` — home
 - `/products` — product catalog
 - `/flash-sales` — flash sale page
@@ -65,6 +79,7 @@ Public:
 - `/loyalty` — loyalty program info
 
 Auth-gated (SPA route, redirects to /login if not authed):
+
 - `/cart` — shopping cart
 - `/checkout` — checkout flow
 - `/orders` — order history
@@ -76,6 +91,7 @@ Auth-gated (SPA route, redirects to /login if not authed):
 - `/onboarding` — new user onboarding
 
 Admin (requires admin role):
+
 - `/admin` — dashboard
 - `/admin/whatsapp` — WhatsApp OTP session management
 - `/admin/orders` — order management
@@ -96,15 +112,15 @@ Admin (requires admin role):
 
 ## Render Services Inventory
 
-| Service        | ID                       | Status    | Purpose                        |
-| -------------- | ------------------------ | --------- | ------------------------------ |
-| SubNation2     | srv-d7vv91tckfvc73evnccg | LIVE      | Main API + Socket.IO           |
-| openwa-gateway | srv-da6piju7bikc739anbtg | LIVE      | WhatsApp OTP gateway (Baileys) |
-| SmartBot       | srv-d94hn57aqgkc73ds0vhg | LIVE      | Unrelated (Python)             |
-| POS            | srv-d8sps3cmmk8c739eo6lg | SUSPENDED | Unrelated                      |
-| Smart-Menu     | srv-d8q9a768bjmc738hhh90 | SUSPENDED | Unrelated                      |
-| zu-connect     | srv-d8ne9tcm0tmc73e2c4b0 | SUSPENDED | Unrelated                      |
-| lyosint        | srv-d8ir0se47okc739lh3d0 | LIVE      | Unrelated                      |
+| Service        | ID                       | Status                                                     | Purpose                        |
+| -------------- | ------------------------ | ---------------------------------------------------------- | ------------------------------ |
+| SubNation2     | srv-d7vv91tckfvc73evnccg | SUSPENDED (operator billing gate — see OPERATIONS_RUNBOOK) | Main API + Socket.IO           |
+| openwa-gateway | srv-da6piju7bikc739anbtg | SUSPENDED (same billing gate)                              | WhatsApp OTP gateway (Baileys) |
+| SmartBot       | srv-d94hn57aqgkc73ds0vhg | LIVE                                                       | Unrelated (Python)             |
+| POS            | srv-d8sps3cmmk8c739eo6lg | SUSPENDED                                                  | Unrelated                      |
+| Smart-Menu     | srv-d8q9a768bjmc738hhh90 | SUSPENDED                                                  | Unrelated                      |
+| zu-connect     | srv-d8ne9tcm0tmc73e2c4b0 | SUSPENDED                                                  | Unrelated                      |
+| lyosint        | srv-d8ir0se47okc739lh3d0 | LIVE                                                       | Unrelated                      |
 
 ## Critical Env Vars (all set on Render)
 
@@ -117,11 +133,12 @@ Admin (requires admin role):
 - `VERCEL_FRONTEND_ORIGIN` — Vercel origin (sync:true, persisted)
 - `FRONTEND_ORIGINS` — secondary origin list
 
-## Custom Domain Status (LIVE)
+## Custom Domain Status (as of 2026-09-20: 503 while Render is suspended)
 
-- `subnation.ly` — verified, HTTPS, returning 200
-- `www.subnation.ly` — verified, HTTPS, returning 200
-- DNS resolved via Vercel nameservers
+- `subnation.ly` — verified, HTTPS — currently 503 (Cloudflare → suspended Render)
+- `www.subnation.ly` — verified, HTTPS — currently 503 (same)
+- DNS resolved via Cloudflare to Render (direct, not Vercel); an operator
+  option in the free-tier doc is repointing DNS to Vercel
 
 ## WhatsApp OTP
 
@@ -132,4 +149,5 @@ Admin (requires admin role):
 
 ## Last Updated
 
-2026-09-02 — full platform operational
+2026-09-20 — suspended-state pass (98-F8); original snapshot 2026-09-02 ("full
+platform operational"). Runbook §free-tier is the current-state source.

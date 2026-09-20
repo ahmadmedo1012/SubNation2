@@ -30,7 +30,10 @@ export const enrichmentRunsTable = pgTable(
     /** LLM outputs that failed the validator. */
     draftsInvalid: integer("drafts_invalid").notNull().default(0),
     /** Per-reason skip counts. */
-    productsSkipped: jsonb("products_skipped").$type<Record<string, number>>().notNull().default({}),
+    productsSkipped: jsonb("products_skipped")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
     /** Cumulative input + output tokens across all LLM calls in this run. */
     tokensSpent: integer("tokens_spent").notNull().default(0),
     /** The cap value at run-start; recorded for reproducible cost back-tests. */
@@ -45,6 +48,3 @@ export const enrichmentRunsTable = pgTable(
     outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, t.startedAt),
   }),
 );
-
-export type EnrichmentRun = typeof enrichmentRunsTable.$inferSelect;
-export type InsertEnrichmentRun = typeof enrichmentRunsTable.$inferInsert;

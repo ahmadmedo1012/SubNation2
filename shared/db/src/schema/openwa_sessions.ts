@@ -28,6 +28,3 @@ export const openwaSessionsTable = pgTable("openwa_sessions", {
   creds: bytea("creds").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-export type OpenwaSession = typeof openwaSessionsTable.$inferSelect;
-export type InsertOpenwaSession = typeof openwaSessionsTable.$inferInsert;

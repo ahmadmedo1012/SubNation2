@@ -118,6 +118,3 @@ export const ErrorCode = {
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
-
-/** Every code as a plain array — CI guards and tooling iterate this. */
-export const ALL_ERROR_CODES: readonly ErrorCode[] = Object.values(ErrorCode);

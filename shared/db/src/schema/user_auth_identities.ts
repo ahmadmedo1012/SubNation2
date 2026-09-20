@@ -36,5 +36,3 @@ export const userAuthIdentitiesTable = pgTable(
     firebaseUidIdx: index("idx_user_auth_identities_firebase_uid").on(t.firebaseUid),
   }),
 );
-
-export type UserAuthIdentity = typeof userAuthIdentitiesTable.$inferSelect;

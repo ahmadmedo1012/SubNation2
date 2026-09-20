@@ -12,6 +12,14 @@ import { ServiceError, TopupService } from "../../services/topup.service";
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// the admin topups queue carries sender phones / payment references;
+// an intermediary must never serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // A5-03 (round-94): `?status=` feeds a pg-enum column. Drizzle passes the
 // value as a bind parameter, so any string outside the enum reached
 // Postgres as `invalid input value for enum "topup_status"` (22P02) →

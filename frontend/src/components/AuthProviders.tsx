@@ -219,14 +219,38 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   const [linking, setLinking] = useState(false);
 
   useEffect(() => {
+    // 98-F7 (r97 F-11 raw-fetch hardening): r.ok checked BEFORE parsing
+    // and the body shape validated — an error envelope (401/503 JSON) used
+    // to parse "successfully" into an object without `providers`, which
+    // silently degraded to the Firebase-only seed; a 503 HTML page used to
+    // throw out of the .then chain. Kept raw fetch (no customFetch
+    // migration): this is a public, credential-free endpoint whose failure
+    // has a dedicated degraded path below.
+    let cancelled = false;
     fetch("/api/auth/providers")
-      .then((r) => r.json())
-      .then((d) => setProviders(includeFirebaseGoogleProvider(d.providers ?? [])))
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = (await r.json().catch(() => null)) as { providers?: unknown } | null;
+        if (cancelled) return;
+        if (!Array.isArray(d?.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
+        setProviders(includeFirebaseGoogleProvider(d.providers as Provider[]));
+      })
       .catch(() => {
+        if (cancelled) return;
+        // Offline / outage: the synchronously-seeded Firebase Google button
+        // still works as the degraded single-provider list (unchanged UX).
         if (isFirebaseAuthConfigured()) {
           setProviders([firebaseGoogleProvider()]);
+        } else {
+          // Nothing renderable at all — an honest Arabic fallback instead
+          // of a silent dead zone under the password form (the component
+          // previously returned null and the user never knew why).
+          setError("تعذّر تحميل طرق تسجيل الدخول — تحقّق من اتصالك ثم أعد المحاولة");
         }
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleSuccess = useCallback(
@@ -267,7 +291,19 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
     setPendingLink(null);
   }, [linking]);
 
-  if (providers.length === 0) return null;
+  if (providers.length === 0) {
+    // 98-F7: a failed providers load with no Firebase fallback renders the
+    // honest Arabic error instead of a silent empty fragment (the previous
+    // `return null` left a dead zone with zero explanation).
+    if (error) {
+      return (
+        <p role="alert" className="text-xs text-destructive text-center pt-1">
+          {error}
+        </p>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="space-y-2.5">
@@ -302,7 +338,9 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         );
       })}
       {error && (
-        <p role="alert" className="text-xs text-destructive text-center pt-1">{error}</p>
+        <p role="alert" className="text-xs text-destructive text-center pt-1">
+          {error}
+        </p>
       )}
       {pendingLink && (
         <LinkConsentModal

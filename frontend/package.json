@@ -18,7 +18,6 @@
     "@radix-ui/react-label": "^2.1.3",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-switch": "^1.1.4",
-    "@radix-ui/react-tooltip": "^1.2.0",
     "@sentry/vite-plugin": "^4.7.0",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
@@ -35,10 +34,8 @@
     "@workspace/api-client-react": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
-    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^27",
     "lucide-react": "catalog:",
-    "next-themes": "^0.4.6",
     "react": "catalog:",
     "react-dom": "catalog:",
     "recharts": "^2.15.2",
@@ -54,10 +51,10 @@
   "dependencies": {
     "@fontsource/readex-pro": "5.2.6",
     "@sentry/react": "^10.53.1",
+    "@workspace/error-codes": "workspace:*",
     "firebase": "^12.6.0",
     "qrcode": "^1.5.4",
     "socket.io-client": "^4.8.3",
-    "web-vitals": "^4.2.4",
-    "@workspace/error-codes": "workspace:*"
+    "web-vitals": "^4.2.4"
   }
 }

@@ -28,14 +28,9 @@
  * could have landed.
  */
 
-import { db } from "@workspace/db";
+import { db, idempotencyKeysTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
-// Direct import (NOT via schema/index.ts) — see the schema module docs:
-// the table is registered in the barrel + created by migration V1-M12
-// in a later step; drizzle queries against a pgTable object do not
-// require registry membership.
-import { idempotencyKeysTable } from "../../../shared/db/src/schema/idempotency-keys";
 
 // Drizzle transaction is structurally compatible with `db` for our
 // uses (same convention as lib/ledger.ts).

@@ -9,6 +9,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// the admin referrals list carries referrer/referee phone PII; an
+// intermediary must never serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 router.get("/referrals", requireAdmin, async (req, res) => {
   const status = queryString(req, "status");
   const search = queryString(req, "search");

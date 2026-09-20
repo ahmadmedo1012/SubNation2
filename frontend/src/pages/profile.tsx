@@ -34,11 +34,10 @@ const TIER_GRADIENTS: Record<string, string> = {
   platinum: "from-cyan-400/14 via-card to-card border-cyan-400/20",
 };
 
-type ProfileUser = MeUser & {
-  linked_identities?: Array<{ provider: string; provider_uid?: string }>;
-  firebase_uid?: string | null;
-  display_name?: string | null;
-};
+// 98-F9: the ProfileUser intersection type is GONE — the generated User
+// contract now carries linked_identities + display_name (spec round-98
+// closed the gap that forced this local re-declaration), and firebase_uid
+// was never read anywhere. Plain MeUser typing below.
 
 /**
  * 96-F6 (R96 A2 P2-8): display name for a linked provider — used by the
@@ -82,7 +81,7 @@ export default function ProfilePage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
-  const user = userData as ProfileUser | undefined;
+  const user = userData as MeUser | undefined;
 
   // Fetch linked providers. Round-3 (8-f §6): no abort + a stale-response
   // race — a slow response from a previous token could land after a

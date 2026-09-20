@@ -39,5 +39,3 @@ export const schedulerLeaderLeaseTable = pgTable(
     singleRow: check("scheduler_leader_lease_id_check", sql`id = 1`),
   }),
 );
-
-export type SchedulerLeaderLease = typeof schedulerLeaderLeaseTable.$inferSelect;

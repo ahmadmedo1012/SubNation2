@@ -35,13 +35,6 @@ export function clampDate(date: IsoDate, lo: IsoDate, hi: IsoDate): IsoDate {
   return date;
 }
 
-/** Calendar-day delta as integer (b - a). */
-export function daysBetween(a: IsoDate, b: IsoDate): number {
-  const da = new Date(`${a}T00:00:00Z`).getTime();
-  const db = new Date(`${b}T00:00:00Z`).getTime();
-  return Math.round((db - da) / 86_400_000);
-}
-
 /** Day-of-week 0 (Sunday) … 6 (Saturday) for an IsoDate. */
 export function dayOfWeek(date: IsoDate): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();

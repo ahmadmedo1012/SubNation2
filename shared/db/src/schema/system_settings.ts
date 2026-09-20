@@ -19,6 +19,3 @@ export const systemSettingsTable = pgTable("system_settings", {
   value: text("value").notNull().default("{}"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
-export type SystemSetting = typeof systemSettingsTable.$inferSelect;
-export type InsertSystemSetting = typeof systemSettingsTable.$inferInsert;

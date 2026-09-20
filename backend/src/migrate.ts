@@ -763,6 +763,52 @@ export async function applyProductVariantsStage(
   `);
 }
 
+// ── V1-M17 (round-98 F4, R98-DB-05): uniq_product_variants_plan_duration ────
+// NULLS NOT DISTINCT rebuild.
+//
+// V1-M16 created the unique index WITHOUT nulls-distinctness, and PG
+// btree UNIQUE treats NULLs as distinct — two concurrent admin creates
+// of (product, 'Family', NULL) both passed the route's pre-tx dupe probe
+// (IS NOT DISTINCT FROM, product-variants.ts) and both inserted; the
+// schema docstring even claimed an ''-normalization the code never did.
+// The live invariant is now owned by the INDEX, not the probe.
+//
+// Data safety (main-agent verified live, round-98): ZERO exact duplicate
+// rows on (product_id, plan_label, duration_label) including NULL-equal
+// comparisons, so the DROP + CREATE rebuild cannot fail validation.
+//
+// Guard shape mirrors V1-M15's duplicate-index cleanup: pg_indexes is
+// probed first (indexdef text), and steady-state boots — index already
+// carries NULLS NOT DISTINCT — issue ZERO DDL. The DROP/CREATE pair runs
+// exactly once per environment (first boot after this deploy). V1-M16's
+// own CREATE ... IF NOT EXISTS keeps no-op'ing afterwards: IF NOT EXISTS
+// does not compare definitions, so it never re-creates the plain form.
+export async function applyProductVariantsNullsNotDistinctStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const indexRows = extractRows(
+    await execute(sql`
+      SELECT indexdef AS indexdef FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND tablename = 'product_variants'
+        AND indexname = 'uniq_product_variants_plan_duration'
+    `),
+  );
+  const indexdef = String(indexRows[0]?.indexdef ?? "");
+  if (indexdef.includes("NULLS NOT DISTINCT")) return; // steady state
+
+  await execute(sql`DROP INDEX IF EXISTS uniq_product_variants_plan_duration`);
+  await execute(sql`
+    CREATE UNIQUE INDEX uniq_product_variants_plan_duration
+      ON product_variants (product_id, plan_label, duration_label)
+      NULLS NOT DISTINCT;
+  `);
+  logger.info(
+    { category: "storage" },
+    "V1-M17: rebuilt uniq_product_variants_plan_duration with NULLS NOT DISTINCT",
+  );
+}
+
 export async function runMigrations() {
   try {
     // ── Extensions ─────────────────────────────────────────────────────────
@@ -2474,6 +2520,12 @@ export async function runMigrations() {
     // columns. Fully additive + idempotent — steady-state boots are
     // no-ops after the first run. See applyProductVariantsStage docs.
     await applyProductVariantsStage();
+
+    // ── V1-M17 (round-98 F4, R98-DB-05): NULLS NOT DISTINCT rebuild of ──
+    // uniq_product_variants_plan_duration. Runs AFTER V1-M16 (which owns
+    // the table + base index); probe-gated → steady-state boots are
+    // no-ops. See applyProductVariantsNullsNotDistinctStage docs.
+    await applyProductVariantsNullsNotDistinctStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

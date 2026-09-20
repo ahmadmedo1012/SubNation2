@@ -9,6 +9,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern —
+// admin ticket threads are user support PII; an intermediary must
+// never serve them from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // A5-03 (round-94): `?status=` feeds the ticket_status pg-enum column —
 // an out-of-enum value reached Postgres as 22P02 → 500. Values mirror
 // ticketStatusEnum (shared/db/src/schema/support_tickets.ts).

@@ -165,10 +165,13 @@ describe("F-16 — referral signup bonus gate on the Mini App flow", () => {
         initData,
         referralCode: referrer.code,
       });
-      // The signup flow itself is NOT broken — token issued, new user.
+      // The signup flow itself is NOT broken — session minted (98-F3:
+      // the body `token` is the cookie-session SENTINEL, not a raw JWT —
+      // the httpOnly cookie is the sole session transport now, mirroring
+      // the admin R97-02 posture).
       expect(status).toBe(200);
       expect(body.is_new_user).toBe(true);
-      expect(typeof body.token).toBe("string");
+      expect(body.token).toBe("__cookie_session__");
 
       const user = await getUserByTelegramId(tgId);
       expect(user).toBeDefined();

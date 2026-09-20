@@ -32,7 +32,7 @@
  */
 
 import { logger } from "./logger";
-import { getRedisClient } from "./redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "./redis-client";
 import { TELEGRAM_AUTH_FRESHNESS_SEC, TELEGRAM_WEBAPP_FRESHNESS_SEC } from "./telegram-auth";
 
 /**
@@ -105,10 +105,14 @@ export async function claimTelegramReplayHash(hash: string, ttlSec: number): Pro
   const redis = getRedisClient();
   if (redis) {
     try {
-      const result = await redis.set(`tg-login:hash:${hash}`, "1", {
-        NX: true,
-        EX: ttlSec,
-      });
+      // F3 (round-98, 98-F5): bounded per the repo-wide R2 rule — a hung
+      // claim used to stall /api/auth/telegram login forever (dormant
+      // until REDIS_URL returns, but the discipline is repo-wide).
+      const result = await withRedisCommandTimeout(
+        "tg_replay_set",
+        () => redis.set(`tg-login:hash:${hash}`, "1", { NX: true, EX: ttlSec }),
+        1_000,
+      );
       return result === "OK";
     } catch (err) {
       // 93-A1 S3: a transient Redis error used to fail OPEN

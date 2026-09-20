@@ -125,7 +125,10 @@ export function verifyUserTokenDetailed(
   token: string,
 ): VerifyResult<{ userId: number; sessionId?: string }> {
   try {
-    const payload = jwt.verify(token, JWT_SECRET, VERIFY_OPTS) as { userId: number; sessionId?: string };
+    const payload = jwt.verify(token, JWT_SECRET, VERIFY_OPTS) as {
+      userId: number;
+      sessionId?: string;
+    };
     return { ok: true, payload };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) return { ok: false, reason: "expired" };
@@ -143,14 +146,6 @@ export function signAdminToken(
   options: SignAdminTokenOptions = {},
 ): string {
   return jwt.sign(payload, ADMIN_JWT_SECRET, { expiresIn: options.expiresIn ?? "8h" });
-}
-
-export function verifyAdminToken(token: string): { adminId: number; role: string } | null {
-  try {
-    return jwt.verify(token, ADMIN_JWT_SECRET, VERIFY_OPTS) as { adminId: number; role: string };
-  } catch {
-    return null;
-  }
 }
 
 export function verifyAdminTokenDetailed(

@@ -138,9 +138,3 @@ export function hasCopilotProvider(): boolean {
   if (cached === undefined) cached = resolveProvider();
   return cached !== null && cached.apiKey.length > 0;
 }
-
-/** Test-only reset. */
-export function __resetCopilotProviderForTests(): void {
-  cached = undefined;
-  warned = false;
-}

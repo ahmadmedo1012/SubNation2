@@ -31,5 +31,3 @@ export const accountLinkConsentsTable = pgTable("account_link_consents", {
   /** Expiry (issue time + 5 min); enforced inside the consume DELETE. */
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
-
-export type AccountLinkConsent = typeof accountLinkConsentsTable.$inferSelect;

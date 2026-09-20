@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { productVariantsTable } from "./product-variants";
 import { productsTable } from "./products";
+import { usersTable } from "./users";
 
 /**
  * Persistent cart — one row per (user, product). Adding the same
@@ -21,7 +22,13 @@ export const cartItemsTable = pgTable(
   "cart_items",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").notNull(),
+    // R98-DB-02: FK mirrored from the boot SQL (migrate.ts CREATE TABLE
+    // cart_items constraint fk_cart_items_user) — same shape as the
+    // product FK below; user deletion cascades cart rows away instead of
+    // orphaning them under a future drizzle push.
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
     productId: integer("product_id")
       .notNull()
       .references(() => productsTable.id, { onDelete: "cascade" }),
@@ -57,4 +64,3 @@ export const cartItemsTable = pgTable(
 );
 
 export type CartItem = typeof cartItemsTable.$inferSelect;
-export type InsertCartItem = typeof cartItemsTable.$inferInsert;

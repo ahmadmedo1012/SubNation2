@@ -197,6 +197,21 @@ function buildMaskedConfig(
 
 export const authProviderPublicRouter = Router();
 
+/**
+ * 98-F3 (R98-A4 P3-3 — mirror of R97-02): the raw user JWT is no longer
+ * returned in the Telegram mint response bodies (POST /telegram,
+ * POST /telegram/webapp). The httpOnly `auth_token` cookie each sets is
+ * the sole session transport (requireUser reads the cookie first); the
+ * body `token` field is kept as this SENTINEL so the SPA's success-check
+ * (`if (!json.token)`) and `setToken(...)` keep working — the value is
+ * truthy but carries no credential, and the frontend's auth-token-holder
+ * filters it out of Authorization headers by exact string match. Same
+ * value the boot probe and the other mint routes use (routes/auth.ts,
+ * routes/auth-whatsapp.ts). The redirect-mode GET /telegram/callback
+ * already ships no token at all (F-010).
+ */
+const COOKIE_SESSION_SENTINEL = "__cookie_session__";
+
 // GET /api/auth/providers
 authProviderPublicRouter.get("/providers", async (_req, res) => {
   const settingsMap = await getAllAuthSettings();
@@ -864,7 +879,9 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
-    return res.json({ token: result.token, is_new_user: result.isNewUser });
+    // 98-F3 (see COOKIE_SESSION_SENTINEL above): sentinel, not the JWT —
+    // the httpOnly cookie is the sole session transport.
+    return res.json({ token: COOKIE_SESSION_SENTINEL, is_new_user: result.isNewUser });
   } catch (err) {
     Sentry.captureException(err);
     logger.error(
@@ -906,7 +923,9 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
-    return res.json({ token: result.token, is_new_user: result.isNewUser });
+    // 98-F3 (see COOKIE_SESSION_SENTINEL above): sentinel, not the JWT —
+    // the httpOnly cookie is the sole session transport.
+    return res.json({ token: COOKIE_SESSION_SENTINEL, is_new_user: result.isNewUser });
   } catch (err) {
     Sentry.captureException(err);
     logger.error(

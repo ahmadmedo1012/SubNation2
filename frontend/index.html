@@ -79,7 +79,54 @@
     <script src="/init.js"></script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- 98-F7 (R98-08b — R98-08 offline gap): static offline fallback.
+           A repeat offline visit after the browser evicts the HTTP cache
+           (mobile storage pressure — SW caches survive, the HTTP cache
+           does not) previously rendered this precached HTML with zero JS:
+           a white screen with no Arabic message, and the only recovery
+           (lazyWithRetry's one reload) also needs JS. This inline-styled
+           div is the no-JS message. It is HIDDEN by default (opacity:0 +
+           a delayed CSS reveal below) so a normal online boot — main.tsx
+           removes it synchronously on module evaluation, long before the
+           reveal — never flashes it; only a boot whose JS truly never
+           arrives lets the reveal fire and the user sees
+           «لا يوجد اتصال بالإنترنت» instead of nothing. Inline styles +
+           the tiny <style> below: self-contained — no dependency on the
+           CSS chunk or any JS loading. -->
+      <style>
+        #static-offline {
+          min-height: 100dvh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          text-align: center;
+          font-family:
+            system-ui,
+            -apple-system,
+            "Segoe UI",
+            sans-serif;
+          font-size: 16px;
+          font-weight: 700;
+          line-height: 1.8;
+          /* System keyword colors + color-scheme: follow the OS light/dark
+             preference (sn_theme lives in localStorage — unreachable
+             without JS). */
+          color: canvastext;
+          background: canvas;
+          color-scheme: light dark;
+          opacity: 0;
+          animation: sn-offline-reveal 0.4s ease 2.5s forwards;
+        }
+        @keyframes sn-offline-reveal {
+          to {
+            opacity: 1;
+          }
+        }
+      </style>
+      <div id="static-offline" dir="rtl" role="status">لا يوجد اتصال بالإنترنت</div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

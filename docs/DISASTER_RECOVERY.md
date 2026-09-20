@@ -1,16 +1,19 @@
 # Disaster Recovery Runbook — SubNation
 
-**Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres (project calm-art-99771185, us-east-1) + a Render Redis service. This runbook is platform-specific.
+**Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned in the current free-tier deployment (an optional Redis tier exists only on paper — see `OPERATIONS_RUNBOOK.md` §5). This runbook is platform-specific.
 
 ## RTO / RPO targets
 
-| System                                 | RTO                                             | RPO                                                                                                                 |
-| -------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR)                                     |
-| Application code                       | < 5 min                                         | 0 — git is source of truth                                                                                          |
-| Render service config                  | < 15 min                                        | 0 — `render.yaml` is checked in                                                                                     |
-| Render Redis                           | < 15 min                                        | **30 min** (durable state is rate-limit windows + alerting dedup; loss = transient blip, no recovery action needed) |
-| Sentry / observability                 | n/a                                             | n/a — best-effort capture; loss of error events does not affect product behaviour                                   |
+| System                                 | RTO                                             | RPO                                                                               |
+| -------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR)   |
+| Application code                       | < 5 min                                         | 0 — git is source of truth                                                        |
+| Render service config                  | < 15 min                                        | 0 — `render.yaml` is checked in                                                   |
+| Sentry / observability                 | n/a                                             | n/a — best-effort capture; loss of error events does not affect product behaviour |
+
+> No Redis RTO row: no Redis service is provisioned (2026-09-20 free-tier
+> round). If an optional Redis is ever attached, its loss would only reset
+> rate-limit windows + alerting dedup — transient, no recovery action.
 
 ## Backup inventory
 

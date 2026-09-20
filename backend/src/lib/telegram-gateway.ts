@@ -7,11 +7,6 @@
  */
 import { logger } from "./logger";
 
-interface TelegramMessage {
-  message_id: number;
-  chat: { id: number };
-}
-
 async function apiCall(
   botToken: string,
   method: string,
@@ -31,44 +26,6 @@ async function apiCall(
     return null;
   } finally {
     clearTimeout(timeout);
-  }
-}
-
-/** Coerce numeric-looking strings to numbers (Telegram expects numeric IDs). */
-function normalizeChatId(chatId: number | string): number | string {
-  return typeof chatId === "string" && /^-?\d+$/.test(chatId) ? Number(chatId) : chatId;
-}
-
-export interface InlineButton {
-  text: string;
-  callbackData: string;
-}
-
-export async function sendMessageWithKeyboard(
-  botToken: string,
-  chatId: number | string,
-  text: string,
-  buttons: InlineButton[][],
-): Promise<TelegramMessage | null> {
-  try {
-    const res = await apiCall(botToken, "sendMessage", {
-      chat_id: normalizeChatId(chatId),
-      text,
-      reply_markup: {
-        inline_keyboard: buttons.map((row) =>
-          row.map((b) => ({ text: b.text, callback_data: b.callbackData })),
-        ),
-      },
-    });
-    if (!res || !res.ok) {
-      const err = res ? await res.text().catch(() => "") : "aborted";
-      logger.warn({ chatId, err: err.slice(0, 300) }, "[telegram-gateway] sendMessage failed");
-      return null;
-    }
-    return (await res.json()) as TelegramMessage;
-  } catch (err) {
-    logger.warn({ err }, "[telegram-gateway] sendMessage threw");
-    return null;
   }
 }
 

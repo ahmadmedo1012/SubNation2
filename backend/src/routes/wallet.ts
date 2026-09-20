@@ -8,6 +8,9 @@ import { safeDecrypt } from "../lib/encryption";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+// 98-B3 (round-98 wave B): the hard-block refusal layer — mounted before
+// the soft guard, see the mount comment at POST /topups below.
+import { riskHardBlockMiddleware } from "../middlewares/risk-hard-block";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 // 96-F1 (R96-A5 M2): POST /topups is the last unprotected money path —
 // same Redis-backed replay guard checkout already mounts.
@@ -118,19 +121,27 @@ router.get("/topups", requireUser, async (req, res) => {
 
 // F1 (round-94 A4): soft-block guard on the topup-submission money
 // path — a risk-tagged user's transfer requests are refused until they
-// re-authenticate (friction, not lockout; the hard_block family stays
-// off money paths per its own Constitution Principle I contract).
+// re-authenticate (friction, not lockout; the hard_block refusal layer
+// now mounts immediately BEFORE this guard — 98-B3 round-98 wave B:
+// severity ordering, the non-dischargeable critical-tier verdict answers
+// first so a both-tagged user gets the honest "contact support" 423
+// instead of friction side effects re-auth cannot discharge).
 //
 // 96-F1 (R96-A5 M2): idempotency now mounted after requireUser — the
 // exact orders.ts:~112 pattern. A slow-network retry or impatient
 // double-tap replays the cached 2xx instead of inserting a SECOND
 // identical pending row (the approval-time reference dedup only helps
 // when a payment_reference was entered — the field is optional). The
-// risk guard stays BEFORE idempotency (a refusal must not consume the
+// risk guards stay BEFORE idempotency (a refusal must not consume the
 // caller's Idempotency-Key; same ordering rationale as orders.ts).
+//
+// Quadruple gate keeps the default shape unchanged: RISK_PIPELINE_ENABLED
+// (unset in production) + modelEnabled + autoBlockEnabled.hardBlock +
+// the 1h event window.
 router.post(
   "/topups",
   requireUser,
+  riskHardBlockMiddleware(),
   riskSoftBlockGuardMiddleware(),
   idempotency({ routeKey: "wallet.topups.create" }),
   async (req, res) => {

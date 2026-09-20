@@ -31,6 +31,3 @@ export const copilotActionItemsTable = pgTable(
     entityIdx: index("idx_copilot_action_items_entity").on(t.entityType, t.entityId),
   }),
 );
-
-export type CopilotActionItem = typeof copilotActionItemsTable.$inferSelect;
-export type InsertCopilotActionItem = typeof copilotActionItemsTable.$inferInsert;

@@ -93,6 +93,3 @@ export const copilotPreviewsTable = pgTable(
     actionClassIdx: index("idx_copilot_previews_action_class").on(t.actionClass),
   }),
 );
-
-export type CopilotPreview = typeof copilotPreviewsTable.$inferSelect;
-export type InsertCopilotPreview = typeof copilotPreviewsTable.$inferInsert;

@@ -263,6 +263,13 @@ export default function ProductPage() {
     description: string | null;
   }>(null);
   const [couponError, setCouponError] = useState("");
+  // R98-01 (r98 frontend-deep §2 — P1): validation-generation counter.
+  // validateCoupon() stamps the generation it started in; the
+  // variant-void effect below (and every NEW validation) bumps the
+  // counter — a response that lands after its generation was superseded
+  // is discarded instead of resurrecting a coupon result computed
+  // against a price the user is no longer looking at.
+  const couponGenerationRef = useRef(0);
 
   // ── Slug-or-id routing ─────────────────────────────────────────────
   // The route `/product/:slug` accepts both:
@@ -390,6 +397,24 @@ export default function ProductPage() {
     setSelectedVariantId(null);
   }, [product?.id]);
 
+  // R98-01 (r98 frontend-deep §2 / R98-A3 §9 — P1): the validated coupon
+  // result is voided whenever the EFFECTIVE selected variant changes —
+  // mirroring checkout.tsx's [items] void for the same defect class.
+  // validateCoupon() computes its math against the selected variant's
+  // base price; without this reset a shopper who validated on a 50 د.ل
+  // option and then switched to a 100 د.ل option kept seeing the stale
+  // «final_amount» (زر «شراء الآن (40.00)» يعرض مبلغًا لن يُحصَّد — the
+  // server re-computes the coupon against the NEW variant's price and
+  // charges 90). Keyed on selectedVariant?.id (not the raw state) so a
+  // FALLBACK selection change (cheapest option removed/added on
+  // refetch, product navigation) voids too. couponInput is kept so
+  // re-validating on the new variant is one tap on «تحقق».
+  useEffect(() => {
+    couponGenerationRef.current += 1;
+    setCouponResult(null);
+    setCouponError("");
+  }, [selectedVariant?.id]);
+
   const handleBuyIntent = async () => {
     if (!product || buyPending) return;
     const body: CreateOrderBody = { product_id: product.id };
@@ -464,6 +489,9 @@ export default function ProductPage() {
     setCouponValidating(true);
     setCouponError("");
     setCouponResult(null);
+    // R98-01: claim this validation's generation — a variant switch (or a
+    // newer validation) while the request is in flight supersedes it.
+    const generation = ++couponGenerationRef.current;
     try {
       // Coupon math applies to the SELECTED variant's price (the charge
       // the server will actually compute at checkout).
@@ -477,8 +505,13 @@ export default function ProductPage() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
+      // R98-01: the variant changed under the in-flight request — the
+      // response describes a price the user is no longer buying. Drop
+      // it; the void effect already reset the chip/error state.
+      if (generation !== couponGenerationRef.current) return;
       setCouponResult(data);
     } catch (err: unknown) {
+      if (generation !== couponGenerationRef.current) return;
       // Persist the error inline (visible until the user types a new
       // code) AND fire a toast for the immediate "something happened"
       // cue. Inline-only would be invisible if the user looked away;
@@ -491,6 +524,10 @@ export default function ProductPage() {
         variant: "destructive",
       });
     } finally {
+      // Always clear the in-flight flag: the only superseder is the
+      // variant-void effect (the validate button is disabled while a
+      // request is in flight, so no second validation can race this
+      // finally) — a superseded response must not leave the spinner on.
       setCouponValidating(false);
     }
   };
@@ -560,15 +597,12 @@ export default function ProductPage() {
   // Only emit FAQPage JSON-LD when there's a non-empty curated FAQ list
   // on the product. Empty arrays are treated by Google as a thin
   // structured-data block.
-  const productAny = product as
-    | (typeof product & {
-        description_long?: string | null;
-        faq?: { question: string; answer: string }[] | null;
-        seo_title?: string | null;
-        seo_description?: string | null;
-        features?: string[] | null;
-      })
-    | undefined;
+  // 98-F9: every field below (description_long, faq, seo_title,
+  // seo_description, features) now lives in the generated Product
+  // contract — the spec gap (features missing) that forced this local
+  // `any`-shaped cast is closed; plain property access on the typed
+  // query data. Name kept to minimize the diff.
+  const productAny = product;
   const productFaqs =
     Array.isArray(productAny?.faq) && productAny!.faq!.length > 0 ? productAny!.faq! : null;
   const seoBlock = useSeo(

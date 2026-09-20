@@ -216,10 +216,6 @@ export function alertingLogger(): pino.Logger {
   return childLogger({ category: "alerting" });
 }
 
-export function monitoringLogger(): pino.Logger {
-  return childLogger({ category: "monitoring" });
-}
-
 export function cwvLogger(): pino.Logger {
   return childLogger({ category: "cwv" });
 }

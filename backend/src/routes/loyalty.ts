@@ -11,6 +11,15 @@ class ConflictError extends Error {}
 
 const router = Router();
 
+// 98-F3 (R98-A4 P3): no-store parity with the A7/round-94 pattern
+// (orders.ts / wallet.ts / cart.ts / notifications.ts) — loyalty
+// balances, tiers and referral rows are per-user money state; an
+// intermediary must never serve them from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // Single source of truth moved to lib/loyalty-tiers (services import from
 // there; this route re-exports for backward compatibility).
 import { computeTier as _computeTier } from "../lib/loyalty-tiers";

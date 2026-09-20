@@ -102,7 +102,6 @@ export const riskEventsTable = pgTable(
   }),
 );
 
-export type RiskEvent = typeof riskEventsTable.$inferSelect;
 export type NewRiskEvent = typeof riskEventsTable.$inferInsert;
 
 // ---------- risk_rules -----------------------------------------------------
@@ -138,7 +137,6 @@ export const riskRulesTable = pgTable(
 );
 
 export type RiskRule = typeof riskRulesTable.$inferSelect;
-export type NewRiskRule = typeof riskRulesTable.$inferInsert;
 
 // ---------- risk_config (singleton) ---------------------------------------
 
@@ -169,7 +167,6 @@ export const riskConfigTable = pgTable("risk_config", {
 });
 
 export type RiskConfig = typeof riskConfigTable.$inferSelect;
-export type NewRiskConfig = typeof riskConfigTable.$inferInsert;
 
 // ---------- risk_labels ----------------------------------------------------
 
@@ -195,4 +192,3 @@ export const riskLabelsTable = pgTable(
 );
 
 export type RiskLabel = typeof riskLabelsTable.$inferSelect;
-export type NewRiskLabel = typeof riskLabelsTable.$inferInsert;

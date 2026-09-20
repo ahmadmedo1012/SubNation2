@@ -112,6 +112,13 @@ CREATE TABLE product_variants (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- V1-M16/V1-M17 (migrate.ts applyProductVariantsStage +
+-- applyProductVariantsNullsNotDistinctStage): one (plan, duration) pair per
+-- product, NULL axes included — NULLS NOT DISTINCT is what makes
+-- (product, 'Family', NULL) dedup at the DB level (R98-DB-05).
+CREATE UNIQUE INDEX uniq_product_variants_plan_duration
+  ON product_variants (product_id, plan_label, duration_label)
+  NULLS NOT DISTINCT;
 
 CREATE TABLE inventory (
   id serial PRIMARY KEY,
@@ -125,6 +132,9 @@ CREATE TABLE inventory (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- V1-M16 (R98-DB-01): live-only in boot SQL until round-98 — mirrored so
+-- the harness matches production's post-boot shape.
+CREATE INDEX idx_inventory_variant ON inventory (variant_id);
 
 CREATE TABLE orders (
   id serial PRIMARY KEY,
@@ -148,6 +158,9 @@ CREATE TABLE orders (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- V1-M16 (R98-DB-01): live-only in boot SQL until round-98 — mirrored so
+-- the harness matches production's post-boot shape.
+CREATE INDEX idx_orders_variant ON orders (variant_id);
 
 CREATE TABLE wallet_ledger (
   id serial PRIMARY KEY,
@@ -234,7 +247,10 @@ CREATE TABLE cart_items (
   variant_label varchar(240),
   quantity integer NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- migrate.ts cart_items CREATE TABLE ships this FK live (R98-DB-02
+  -- mirror); named like the boot SQL so parity tests can pin it.
+  CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE sessions (

@@ -22,6 +22,12 @@ list_logs resource=srv-d7vv91tckfvc73evnccg startTime=-1h
 explain ANALYZE SELECT …  (via query_render_postgres or psql)
 ```
 
+The four dashboard deep links in `/admin/observability` and alert footers are
+env-gated: `SENTRY_DASHBOARD_URL`, `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`,
+`ALERTING_RUNBOOK_URL` (render.yaml `sync: false`). Unset = the panel hides
+the link — see `config/env.example` (observability section) for the annotated
+rows.
+
 ## 2. Per-rule triage
 
 ### #api-5xx — `api_5xx_rate_high`
@@ -332,3 +338,11 @@ backend's helmet CSP — the domain is NOT served by Vercel.
 كليهما (عبر rewrite إلى Render على Vercel)، ومتغيرات `VITE_*` متطابقة بين
 المنصتين، والقرار النهائي بدمج أو إزالة نشر Vercel يعود للمالك — حتى ذلك
 الحين يُعامَل `subnation.ly` كالرابط القانوني في كل مكان.
+
+## 10. WhatsApp OTP — operator knob
+
+`WHATSAPP_OTP_SETTLE_MS` (default 45 000 ms, clamped 0–300 000; `render.yaml`
+`sync: false`) tunes the round-96 settle gate: how long a freshly-paired
+OpenWA session must wait after linking before it may dispatch OTPs (pair-code
+key propagation takes 10–30 s; a QR device-list rebuild can take longer).
+Full annotated reference: `config/env.example` (WhatsApp OTP section).

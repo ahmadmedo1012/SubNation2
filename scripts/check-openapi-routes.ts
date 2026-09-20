@@ -91,7 +91,11 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "get", path: "/robots.txt", category: "internal" },
   { method: "get", path: "/sitemap.xml", category: "internal" },
   // internal — 200-always session probes (auth.ts:347, admin/auth.ts:188)
-  { method: "get", path: "/api/auth/probe", category: "internal" },
+  // (98-F9: /api/auth/probe moved OUT of this list — it is now fully
+  // documented in openapi.yaml together with the rest of the auth mint
+  // family: whatsapp/start+verify, providers, telegram ×3, firebase
+  // session+refresh. Removed per the "remove from KNOWN_UNDOCUMENTED"
+  // rule once documented.)
   { method: "get", path: "/api/admin/probe", category: "internal" },
 
   // alias — canonical twins of documented alias routes (B3 F-15)
@@ -99,15 +103,13 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "get", path: "/api/products/flash-sale", category: "alias" },
 
   // auth-gap — credential-issuing surface, docs/API.md prose only (B3 F-09)
-  { method: "post", path: "/api/auth/firebase/session", category: "auth-gap" },
-  { method: "post", path: "/api/auth/firebase/refresh", category: "auth-gap" },
-  { method: "post", path: "/api/auth/telegram", category: "auth-gap" },
-  { method: "post", path: "/api/auth/telegram/webapp", category: "auth-gap" },
-  { method: "get", path: "/api/auth/telegram/callback", category: "auth-gap" },
-  { method: "post", path: "/api/auth/whatsapp/start", category: "auth-gap" },
-  { method: "post", path: "/api/auth/whatsapp/verify", category: "auth-gap" },
+  // (98-F9: the nine primary mint/provider paths below — firebase/session,
+  // firebase/refresh, telegram, telegram/webapp, telegram/callback,
+  // whatsapp/start, whatsapp/verify, providers, probe — were DOCUMENTED in
+  // openapi.yaml this round (the highest-leverage contract gap: WhatsApp is
+  // the primary Libyan sign-in) and therefore removed from this list. The
+  // remaining entries are secondary session-management surface.)
   { method: "post", path: "/api/auth/logout-all-devices", category: "auth-gap" },
-  { method: "get", path: "/api/auth/providers", category: "auth-gap" },
   { method: "get", path: "/api/auth/providers/linked", category: "auth-gap" },
   { method: "post", path: "/api/auth/providers/unlink", category: "auth-gap" },
   { method: "post", path: "/api/auth/onboarding/complete", category: "auth-gap" },
@@ -324,6 +326,40 @@ function splitTopLevelArgs(argSrc: string): string[] {
   let depth = 0;
   let current = "";
   let inString: string | null = null;
+  // 98-F9: line comments between args (the admin/index.ts multi-router
+  // mounts annotate EVERY router — `adminProductsRouter, // /products/*`)
+  // used to glue onto the NEXT argument, so `adminProductVariantsRouter`
+  // failed the bare-identifier match downstream and its routes silently
+  // vanished from the implemented set (the pre-existing "documented but
+  // NOT implemented" false positives). Strip comments BEFORE splitting.
+  let sanitized = "";
+  for (let i = 0; i < argSrc.length; i++) {
+    const ch = argSrc[i];
+    if (inString) {
+      sanitized += ch;
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      inString = ch;
+      sanitized += ch;
+      continue;
+    }
+    if (ch === "/" && argSrc[i + 1] === "/") {
+      // skip until end-of-line
+      while (i < argSrc.length && argSrc[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && argSrc[i + 1] === "*") {
+      i += 2;
+      while (i < argSrc.length && !(argSrc[i] === "*" && argSrc[i + 1] === "/")) i++;
+      i++; // past the closing /
+      continue;
+    }
+    sanitized += ch;
+  }
+  argSrc = sanitized;
+  inString = null;
   for (const ch of argSrc) {
     if (inString) {
       current += ch;

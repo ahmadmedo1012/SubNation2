@@ -81,10 +81,6 @@ services:
         value: "https://subnation2.onrender.com"
       - key: VITE_APP_ORIGIN
         value: "https://subnation.ly"
-      - key: BASE_PATH
-        value: /
-      - key: VITE_APP_NAME
-        value: SubNation
       # Google Search Console site-verification token (HTML tag method).
       # Operator-set in Render Dashboard: Settings → Environment → Add
       # Environment Variable → VITE_GSC_VERIFICATION = <token from
@@ -116,10 +112,6 @@ services:
       - key: VITE_FIREBASE_STORAGE_BUCKET
         sync: false
       - key: VITE_FIREBASE_MESSAGING_SENDER_ID
-        sync: false
-      - key: VITE_FIREBASE_MEASUREMENT_ID
-        sync: false
-      - key: VITE_FIREBASE_DATABASE_URL
         sync: false
       # Google Analytics 4 Measurement ID. Public value (G-XXXXXXXXXX),
       # safe to commit, but kept sync:false so each environment (preview
@@ -153,6 +145,14 @@ services:
         value: "subnation-otp"
       - key: WHATSAPP_OTP_AUTO_CREATE_SESSION
         value: "true"
+      # WhatsApp OTP settle-gate knob (round-96 96-F1). Post-link settle
+      # window in ms before a freshly-paired session may dispatch OTPs.
+      # Default 45000 (45 s), clamped to 0–300000. Pair-code linking usually
+      # completes key propagation in 10–30 s; QR (device-list rebuild) can
+      # take longer. Set only to tune; unset = default. Read by the backend
+      # (services/openwa.service.ts), so it lives on THIS service.
+      - key: WHATSAPP_OTP_SETTLE_MS
+        sync: false
       # 97 (round-97, operator-activated 2026-09-11): the operator's own
       # linked WhatsApp number in E.164 digits (no '+'). 2026-09-20 note:
       # the 6-hourly warm-up self-message loop was REMOVED — the warm-up
@@ -208,6 +208,22 @@ services:
       - key: SENTRY_ORG
         sync: false
       - key: SENTRY_PROJECT
+        sync: false
+      # Deep links surfaced in the admin observability panel
+      # (/api/admin/observability/summary) and in alert footers. All four
+      # are OPTIONAL dashboard/bookmark URLs (not secrets, but operator-
+      # specific — sync:false so they live in the dashboard only). Unset =
+      # the panel hides the link; nothing else changes.
+      - key: SENTRY_DASHBOARD_URL
+        sync: false
+      - key: RENDER_DASHBOARD_URL
+        sync: false
+      - key: NEON_DASHBOARD_URL
+        sync: false
+      # Base URL for the alert "runbook" deep links (alerting.service
+      # appends the #rule anchor). Unset defaults to
+      # <APP_URL>/OPERATIONS_RUNBOOK.md.
+      - key: ALERTING_RUNBOOK_URL
         sync: false
       - key: METRICS_ADMIN_TOKEN
         sync: false

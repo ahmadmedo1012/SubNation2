@@ -58,16 +58,17 @@ const AuthContext = createContext<AuthContextType | null>(null);
  *     but the backend's `requireUser` middleware reads `req.cookies.
  *     auth_token` FIRST and ignores invalid Authorization headers, so
  *     this is harmless. (verified in middlewares/requireUser.ts)
- *   - On real sign-in (Telegram, Google, Phone OTP), `setToken(realJwt)`
- *     replaces the sentinel with the actual JWT so subsequent requests
- *     send a valid Authorization header.
- *
- * 97-F5 (R97-02 coordination): also exported for pages/admin/login —
- * the admin login/verify-2a responses no longer carry a body `token`
- * (the httpOnly cookie is the sole transport), so the login page
- * establishes the in-memory session with this sentinel exactly like
- * the boot probe below does, after verifying the cookie round-trips
- * via /api/admin/probe.
+ *   - 98-F3 (R98 backend round — mirror of R97-02): the session-mint
+ *     routes (POST /api/auth/firebase/session, /firebase/refresh,
+ *     /whatsapp/verify, /telegram, /telegram/webapp) no longer return
+ *     the raw JWT in the body — they return THIS sentinel string in the
+ *     `token` field (the httpOnly cookie is the sole session
+ *     transport). Every real sign-in therefore ALSO lands here:
+ *     WhatsAppPhoneSignIn / AuthProviders / telegram-callback /
+ *     use-telegram-webapp-auto-login call `setToken(data.token)` and
+ *     store the sentinel, exactly like the boot probe below. No raw
+ *     user JWT is reachable from JS memory anymore (the admin surface
+ *     closed the same gap in R97-02).
  */
 export const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 
@@ -162,6 +163,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setAdminToken = useCallback(
     (t: string | null) => {
       setAdminTokenState(t);
+      // 98-F7 (R98-07): clearing the admin session ALSO clears the admin
+      // alert toast cursor (sn_last_alert_id, written by AdminLayout's
+      // alert poller). It used to survive every logout path forever: on a
+      // shared machine, admin B logging in hours later inherited admin
+      // A's cursor — every alert that fired during B's absence was
+      // silently swallowed (poll uses ?since=<stale cursor>). Placed here
+      // (the admin identity-switch choke point) rather than in
+      // adminLogout alone so the 401-expiry path (useAdminHeaders'
+      // clearAdminSession mirror) and App.tsx's session guard get the
+      // same reset for free — every "admin session ends" route goes
+      // through setAdminToken(null).
+      if (t === null) {
+        try {
+          localStorage.removeItem("sn_last_alert_id");
+        } catch {
+          // Storage unavailable (private-mode edge) — nothing to clear.
+        }
+      }
       queryClient.removeQueries({
         predicate: (query) => {
           const first = query.queryKey[0];

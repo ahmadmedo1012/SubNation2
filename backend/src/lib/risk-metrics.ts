@@ -75,20 +75,6 @@ export const riskAlertDeliverySeconds = new Histogram({
   registers: [getRegistry()],
 });
 
-/**
- * SC-005 admin-to-action time: histogram seconds from
- * critical-alert send → first admin label/action on that event
- * (T055b). Bucket choice covers 1m..2h to match the SLO of
- * ≤15min median, ≤60min p95.
- */
-export const riskAdminToActionSeconds = new Histogram({
-  name: "risk_admin_to_action_seconds",
-  help: "Time from critical-alert dispatch to first admin label/action",
-  labelNames: ["level"] as const,
-  buckets: [60, 180, 300, 600, 900, 1800, 3600, 7200],
-  registers: [getRegistry()],
-});
-
 // ---------- Helpers --------------------------------------------------------
 
 export function recordEventScored(eventType: string, level: string): void {
@@ -117,10 +103,6 @@ export function recordScoringDuration(eventType: string, seconds: number): void 
 
 export function recordAlertDelivery(channel: string, seconds: number): void {
   safeObserve(riskAlertDeliverySeconds, { channel }, seconds);
-}
-
-export function recordAdminToAction(level: string, seconds: number): void {
-  safeObserve(riskAdminToActionSeconds, { level }, seconds);
 }
 
 // Suppress unused-import warning for the helper we re-export

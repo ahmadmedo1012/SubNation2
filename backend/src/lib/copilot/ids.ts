@@ -37,8 +37,3 @@ function encodeRandom(): string {
 export function newPreviewId(): string {
   return encodeTime(Date.now()) + encodeRandom();
 }
-
-const PREVIEW_ID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/;
-export function isPreviewId(s: unknown): s is string {
-  return typeof s === "string" && PREVIEW_ID_RE.test(s);
-}

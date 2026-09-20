@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -68,8 +70,23 @@ export const inventoryForecastsTable = pgTable(
     productDateIdx: index("idx_forecasts_product_date").on(t.productId, t.forecastDate),
     runIdx: index("idx_forecasts_run").on(t.runId),
     productDateUnique: uniqueIndex("uq_forecast_product_date").on(t.productId, t.forecastDate),
+    // R98-DB-02: the boot SQL (011 stage) creates this live; mirrored here
+    // so the drizzle chain + snapshot carry it and a future push can't
+    // drop the admin risk panel's hot-path partial index. Partial-index
+    // idiom per scheduler-leader-lease.ts (sql`` predicate verbatim).
+    atRiskRunoutIdx: index("idx_forecasts_at_risk_runout")
+      .on(t.atRisk, t.predictedRunoutAt)
+      .where(sql`at_risk = true`),
+    // R98-DB-03: CHECK constraints the boot SQL (011 stage) has always
+    // applied live; declared via check() so the drizzle chain carries
+    // them too (constraint names + expressions are pinned verbatim).
+    confidenceCheck: check(
+      "chk_forecast_confidence",
+      sql`confidence IN ('high','medium','low','insufficient_data')`,
+    ),
+    insufficientConsistencyCheck: check(
+      "chk_forecast_insufficient_consistency",
+      sql`(confidence = 'insufficient_data') = (avg_daily_sales IS NULL)`,
+    ),
   }),
 );
-
-export type InventoryForecast = typeof inventoryForecastsTable.$inferSelect;
-export type InsertInventoryForecast = typeof inventoryForecastsTable.$inferInsert;

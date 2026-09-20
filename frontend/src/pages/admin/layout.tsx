@@ -582,12 +582,33 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // Round-4 (perf P1-5): the admin-room socket listener invalidates this
   // query on every `admin-alert-new` push; the 5-minute interval is only
   // a socket-dropout fallback (was 30 s).
+  //
+  // 98-F7 (R98-06): the queryFn previously did `.then((r) => r.json())`
+  // with NO r.ok check AND hand-built `Authorization: adminToken ? ... :
+  // ""` — a 401/500/503 error envelope parsed "successfully" into
+  // `{error,code}` whose `.count` is undefined, and the badge silently
+  // read 0 through the `?? 0` chain while the API was down (the exact
+  // "error rendered as empty" class earlier rounds killed on every
+  // page), and the empty-string bearer was the malformed-header shape
+  // useAdminHeaders exists to prevent. Now: the page's existing
+  // useAdminHeaders value, r.ok checked BEFORE parsing, and a thrown
+  // Error on non-OK / malformed body — the query enters its error state
+  // (data undefined ⇒ badge hides / falls back to the page-passed
+  // count) instead of lying with a zero. 401/500/503 are "unknown",
+  // never "0"; the next socket event or 5-min fallback refetch recovers.
   const { data: alertCountData } = useQuery<{ count: number }>({
     queryKey: ["admin-alerts-unread-count"],
-    queryFn: () =>
-      fetch("/api/admin/alerts/unread-count", {
-        headers: { Authorization: adminToken ? `Bearer ${adminToken}` : "" },
-      }).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/admin/alerts/unread-count", { headers });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+      if (typeof body?.count !== "number") {
+        // 200 with a non-numeric count is a contract break — same honest
+        // error path as non-OK (never coerce undefined into 0).
+        throw new Error("UNREAD_COUNT_BAD_SHAPE");
+      }
+      return { count: body.count };
+    },
     refetchInterval: 300_000,
     refetchIntervalInBackground: false,
     enabled: !!adminToken,

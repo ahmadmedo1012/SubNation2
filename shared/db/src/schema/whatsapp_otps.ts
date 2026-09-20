@@ -1,11 +1,4 @@
-import {
-  index,
-  integer,
-  pgTable,
-  serial,
-  timestamp,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { index, integer, pgTable, serial, timestamp, varchar } from "drizzle-orm/pg-core";
 
 /**
  * One-time passwords delivered via WhatsApp.
@@ -58,14 +51,8 @@ export const whatsappOtpsTable = pgTable(
   },
   (t) => ({
     // Primary lookup: "find latest unconsumed OTP for this phone+purpose".
-    phonePurposeIdx: index("idx_whatsapp_otps_phone_purpose").on(
-      t.phone,
-      t.purpose,
-      t.createdAt,
-    ),
+    phonePurposeIdx: index("idx_whatsapp_otps_phone_purpose").on(t.phone, t.purpose, t.createdAt),
     // Used by the cleanup job (drop expired rows).
     expiresAtIdx: index("idx_whatsapp_otps_expires_at").on(t.expiresAt),
   }),
 );
-
-export type WhatsappOtp = typeof whatsappOtpsTable.$inferSelect;

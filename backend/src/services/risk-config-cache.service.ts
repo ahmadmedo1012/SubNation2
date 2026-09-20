@@ -16,7 +16,7 @@ import { db, riskConfigTable, type RiskConfig } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../lib/logger";
-import { getRedisClient } from "../lib/redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 
 const CACHE_KEY = "risk:config:singleton";
 const CACHE_TTL_SECONDS = 60;
@@ -69,7 +69,10 @@ export async function getRiskConfig(): Promise<RiskConfigSnapshot> {
   try {
     const redis = getRedisClient();
     if (redis) {
-      const raw = await redis.get(CACHE_KEY);
+      // F3 (round-98, 98-F5): bounded per the repo-wide R2 rule — a
+      // ready-but-black-holed socket used to queue this get forever and
+      // stall risk scoring behind it (dormant until REDIS_URL returns).
+      const raw = await withRedisCommandTimeout("risk_config_get", () => redis.get(CACHE_KEY));
       if (raw) {
         const parsed = JSON.parse(raw) as RiskConfig;
         inMemoryCache = parsed;

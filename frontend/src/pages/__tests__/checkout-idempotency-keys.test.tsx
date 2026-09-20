@@ -64,6 +64,35 @@ function httpApiError(error: string) {
 
 const KEY_SLOT = (productId: number, unit: number) => `subnation_checkout_key:${productId}:${unit}`;
 
+/** 98-F2 (r97 F-07): stored unit keys are no longer raw uuid strings —
+ * each entry is a TTL+fingerprint JSON object {k, t, f}. Read the minted
+ * key back out of the entry so the lifecycle assertions below keep
+ * testing the SAME contract the confirm loop honors. */
+function storedUnitKey(productId: number, unit: number): string | null {
+  const raw = sessionStorage.getItem(KEY_SLOT(productId, unit));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { k?: string };
+    return typeof parsed.k === "string" ? parsed.k : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Full stored entry — for the TTL/fingerprint guards the key now carries. */
+function storedUnitEntry(
+  productId: number,
+  unit: number,
+): { k?: string; t?: number; f?: string } | null {
+  const raw = sessionStorage.getItem(KEY_SLOT(productId, unit));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as { k?: string; t?: number; f?: string };
+  } catch {
+    return null;
+  }
+}
+
 function seedCart(quantity: number) {
   localStorage.setItem(
     "subnation_cart_v2",
@@ -141,7 +170,13 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     const key1 = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
     expect(typeof key1).toBe("string");
     // Persisted at generation time under subnation_checkout_key:{pid}:{unit}
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBe(key1);
+    // as a TTL+fingerprint entry whose .k is the header value, stamped NOW
+    // (98-F2: an old mint is a stale intent) and bound to this exact
+    // purchase (productId 5 | variant 101 | no coupon | unit 49).
+    expect(storedUnitKey(5, 0)).toBe(key1);
+    const entry = storedUnitEntry(5, 0);
+    expect(entry?.t).toBeGreaterThan(Date.now() - 60_000);
+    expect(entry?.f).toBe("5|101||49");
 
     // Retry — network state unknown, the key must be REUSED verbatim so the
     // backend replays the cached response instead of charging again.
@@ -152,7 +187,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     const key2 = createOrderMock.mock.calls[1][1].headers["Idempotency-Key"];
     expect(key2).toBe(key1);
     // Still unresolved → still stored for the next retry.
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBe(key1);
+    expect(storedUnitKey(5, 0)).toBe(key1);
     // The cart is deliberately untouched on the network path.
     expect(readCart()[0]?.quantity).toBe(1);
   });

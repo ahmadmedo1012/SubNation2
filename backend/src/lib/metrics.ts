@@ -224,42 +224,8 @@ export const socketEventsTotal = new Counter({
 });
 
 // ============================================================================
-// Worker Metrics
-// ============================================================================
-
-/**
- * Background job executions by job name and status.
- * job: job name (e.g., "order-expiry", "coupon-expiry", "low-stock-check")
- * status: "queued" | "running" | "succeeded" | "failed"
- */
-export const workerJobsTotal = new Counter({
-  name: "worker_jobs_total",
-  help: "Total background job executions by job name and status",
-  labelNames: ["job", "status"] as const,
-  registers: [getRegistry()],
-});
-
-// ============================================================================
 // Neon Database Metrics
 // ============================================================================
-
-/**
- * Active Neon database connections in the pool.
- */
-export const neonConnectionsActive = new Gauge({
-  name: "neon_connections_active",
-  help: "Number of active Neon database connections in the pool",
-  registers: [getRegistry()],
-});
-
-/**
- * In-flight Neon database queries.
- */
-export const neonInflightQueries = new Gauge({
-  name: "neon_inflight_queries",
-  help: "Number of in-flight Neon database queries",
-  registers: [getRegistry()],
-});
 
 /**
  * Neon pool-level errors (DNS, TLS, auth, peer reset — NOT single query
@@ -388,26 +354,6 @@ export function safeObserve<T extends string>(
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
     console.error("Histogram observation failed:", err);
-  }
-}
-
-/**
- * Safely set a gauge value, catching any errors.
- */
-export function safeSet<T extends string>(
-  gauge: Gauge<T>,
-  labels: Record<T, string | number> | undefined,
-  value: number,
-): void {
-  try {
-    if (labels) {
-      gauge.set(labels as Record<T, string | number>, value);
-    } else {
-      gauge.set(value);
-    }
-  } catch (err) {
-    monitoringErrorsTotal.inc({ component: "metrics" });
-    console.error("Gauge set failed:", err);
   }
 }
 
