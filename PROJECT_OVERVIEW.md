@@ -28,11 +28,11 @@
 | الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                |
 | الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                            |
 | المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة) |
-| قاعدة البيانات | PostgreSQL (Neon) — 21 جدول                                         |
+| قاعدة البيانات | PostgreSQL (Neon) — 40 جدول (مخطط Drizzle موحّد)                              |
 | الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                     |
-| مسارات الخلفية | 32 ملف مسار                                                         |
+| مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                        |
 | صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                   |
-| الاختبارات     | 13 ملف / 163 اختبار (تمر كلها)                                      |
+| الاختبارات     | ~1800+ اختبار (backend+frontend+openwa — الأعداد المتغيرة راجع `docs/final-audit-2026-09-20.md`) |
 | النشر          | Render (Docker): web + worker + redis                               |
 | المراقبة       | Sentry + Prometheus (prom-client) + pino                            |
 
@@ -76,10 +76,15 @@ config/      env.example (مرجع مُعلّق كامل)
 
 ---
 
-## 4) قاعدة البيانات (21 جدول)
+## 4) قاعدة البيانات (40 جدولاً)
 
-**الأساسية:** `users`, `products`, `inventory`, `orders`, `wallet_ledger`,
-`wallet_topups`, `sessions`, `user_auth_identities`, `admin_users`.
+**(أُحدّث في الجولة 99 — كان العدد المعلن 21 ثم 33؛ العدد الفعلي اليوم 40 تعريف pgTable
+في shared/db/src/schema/، منها: product_variants (إعمار الكتالوج r98)،
+scheduler_leader_lease + account_link_consents (r97)، idempotency_keys (r94)،
+admin_alerts، whatsapp_otps، risk_events، forecast_*/enrichment_* …)**
+
+**الأساسية:** `users`, `products`, `product_variants`, `inventory`, `orders`,
+`wallet_ledger`, `wallet_topups`, `sessions`, `user_auth_identities`, `admin_users`.
 **الدعم:** `coupons`, `flash_sales`, `referral_events`, `notifications`,
 `support_tickets`, `ticket_replies`, `loyalty`(عبر users), `audit_logs`,
 `auth_activity`, `login_attempts`, `admin_alerts`, `whatsapp_otps`,
@@ -90,7 +95,7 @@ config/      env.example (مرجع مُعلّق كامل)
   `idx_products_active_category`).
 - **النزاهة المالية:** المحفظة بـ `numeric(10,2)`، دفتر أستاذ (`wallet_ledger`)
   يسجّل `balanceBefore/After` لكل حركة.
-- **الهجرات:** ملف واحد `migrate.ts` (1026 سطر)، كل العبارات idempotent
+- **الهجرات:** ملف واحد `migrate.ts` (2537 سطراً كما في r99)، كل العبارات idempotent
   (`IF NOT EXISTS`)، يُشغَّل عند الإقلاع تحت قفل Redis NX (مثيل واحد فقط).
 
 ---
@@ -142,7 +147,7 @@ config/      env.example (مرجع مُعلّق كامل)
 ### أولوية متوسطة
 
 1. **توحيد الجلسات (مُنجَز جزئياً ✅):** أصبحت كل المصادقات الثلاث (Google/Telegram/WhatsApp) تُنشئ صف `sessions` موحّداً + JWT بصيغة `{userId, sessionId}` عبر أداة مركزية واحدة `lib/session.ts → createUserSession()`. سابقاً مسار Firebase فقط كان يُنشئ الصف. **يبقى مؤجّلاً** (تغيير معماري أعمق): `requireUser` لا يقرأ جدول `sessions` بعد للتحقق/الإبطال في كل طلب — لذا "تسجيل الخروج من كل الأجهزة" الكامل يتطلّب استعلام DB لكل طلب مُصادق (قرار أداء منفصل). لكن الآن البنية التحتية (الصفوف + sessionId في كل التوكنات) جاهزة لتفعيله متى لزم.
-2. **`ALERTING_ENABLED=false` في الإنتاج** (render.yaml) — التنبيهات التشغيلية معطّلة؛ التنبيهات تُسجَّل في DB فقط ولا تصل Discord/webhook.
+2. **(أُحدّث r99 — عُدّل هذا البند)** `ALERTING_ENABLED` أصبح **`"true"` في الإنتاج** منذ 2026-09-06 (render.yaml يحمل القيمة مع تعليق التوثيق: «مع التنبيهات مطفأة، موت الشيكاوت لن يوقظ أحداً») — التنبيهات التشغيلية تعمل وتصل Discord/webhook عند ضبط `DISCORD_WEBHOOK_URL`.
 3. **`subnation-worker` مُعرّف لكن `DISABLE_WEB_SCHEDULERS=false`** — أي أن web tier ما زال يشغّل الـ cron؛ الـ worker لا يملكها فعلياً بعد. تعليقات render.yaml توثّق الآن خطوات التبديل بدقة (WORKER_TIER=true على الـ worker + DISABLE_WEB_SCHEDULERS=true على الويب معاً).
 4. **أسرار AI غير مضبوطة بعد:** `COPILOT_*` و`ENRICHMENT_*` أضيفت كـ placeholders في render.yaml (sync:false) — اضبطها في Dashboard لتفعيل Copilot والإثراء. مسارات forecast/enrichment ترفض العمل إلا على worker tier (`WORKER_TIER=true`)، لذا تبقى معطلة حتى تقسيم الطبقات.
 
@@ -187,7 +192,7 @@ config/      env.example (مرجع مُعلّق كامل)
 
 ### يُضاف (Add)
 
-- **تفعيل `ALERTING_ENABLED=true`** + ضبط `DISCORD_WEBHOOK_URL` قبل الإطلاق الكامل.
+- ~~تفعيل `ALERTING_ENABLED=true`~~ (منفّذ منذ 2026-09-06 — راجع البند 2 في «العيوب»). يتبقى فقط ضبط `DISCORD_WEBHOOK_URL` في الـ Dashboard.
 - **اختبارات تكامل HTTP** لمسار الشراء (رصيد كافٍ/غير كافٍ، نفاد المخزون، كوبون، تزامن) ولمسار المحفظة.
 - **مكوّن صورة منتج مشترك** (`<ProductMedia>`) لتوحيد إطار/حشو/fallback عبر مواضع render المتعددة (اختياري — التكرار منضبط الآن).
 - **سكربت تدقيق أصول الصور** (يفحص روابط `products.image_url` للروابط المكسورة/منخفضة الدقة).

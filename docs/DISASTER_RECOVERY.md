@@ -60,16 +60,20 @@ Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch prote
 Owner-managed. Rotation procedure: rotate from the source of truth for each secret
 (e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
 Sentry dashboard for DSNs) then update the matching Render env var and
-redeploy. The list of `sync: false` keys on the Render service:
+redeploy. The list of `sync: false` keys on the Render service *(r99 —
+regenerated verbatim from render.yaml; the previous list predated rounds
+93–98 and was missing over half the keys — dangerous in the rotation
+scenario below, where this list IS the runbook)*:
 
-- `DATABASE_URL`
-- `SESSION_SECRET`
-- `ENCRYPTION_KEY`
-- `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `VITE_FIREBASE_*` (the 8 Firebase web config keys)
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-- `ADMIN_USERNAME`, `ADMIN_PASSWORD`
-- `SENTRY_AUTH_TOKEN`, `SENTRY_DSN` (the latter is `generateValue: true`)
+- **Core secrets**: `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_JWT_SECRET`, `ENCRYPTION_KEY`, `METRICS_ADMIN_TOKEN`
+- **Origins**: `FRONTEND_ORIGINS`, `VITE_SENTRY_DSN`, `VITE_GSC_VERIFICATION`, `VITE_GA_TRACKING_ID`
+- **Firebase**: `FIREBASE_SERVICE_ACCOUNT_JSON`, `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- **WhatsApp/OpenWA**: `WHATSAPP_OTP_BASE_URL`, `WHATSAPP_OTP_API_KEY`, `WHATSAPP_OTP_SETTLE_MS`
+- **Telegram**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ADMIN_IDS`
+- **Seed/admin**: `ADMIN_USERNAME`, `ADMIN_PASSWORD`
+- **Sentry**: `SENTRY_AUTH_TOKEN`, `SENTRY_DSN` (both `sync: false` — NOT `generateValue`), `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_DASHBOARD_URL`
+- **Dashboards/alerting**: `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`, `ALERTING_RUNBOOK_URL`, `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL`
+- **AI (dormant until worker tier)**: `COPILOT_PROVIDER`, `COPILOT_API_KEY`, `COPILOT_MODEL`, `COPILOT_BASE_URL`, `ENRICHMENT_DAILY_TOKEN_CAP`, `ENRICHMENT_PER_RUN_CAP`
 
 Keep these in a password manager (1Password / Bitwarden) with the service entry "SubNation Render".
 
