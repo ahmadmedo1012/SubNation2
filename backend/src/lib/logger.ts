@@ -3,7 +3,12 @@ import pino from "pino";
 const isProduction = process.env.NODE_ENV === "production";
 
 // Service/version binding - read once at process start (design §3.1.2)
-const SERVICE_NAME = process.env.RENDER_SERVICE_NAME === "worker" ? "worker" : "web";
+// 99-C3 (R99-A3 P2): RENDER_SERVICE_NAME is the FULL service name on
+// Render ("subnation2", "subnation-worker", …) — comparing it to the bare
+// string "worker" never matched, so worker processes logged service="web".
+// WORKER_TIER=true is the flag render.yaml actually sets on the worker
+// service definition (same unification as sentry.ts's subsystem tag).
+const SERVICE_NAME = process.env.WORKER_TIER === "true" ? "worker" : "web";
 const VERSION = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown";
 
 /**

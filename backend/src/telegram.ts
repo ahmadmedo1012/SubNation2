@@ -540,15 +540,23 @@ type InlineKeyboard = InlineKeyboardButton[][];
 
 /**
  * Resolve the canonical app origin for deep links. Reads APP_URL or
- * VITE_APP_ORIGIN env (operator-configured) and falls back to the
+ * APP_ORIGIN env (operator-configured) and falls back to the
  * production host. Trailing slashes stripped.
+ *
+ * 99-C5 (R99-A3 P3): the fallback used to read VITE_APP_ORIGIN — a
+ * frontend BUILD-time variable (VITE_ prefix). It happened to work on
+ * Render because render.yaml set it as a service env too, but the name
+ * is a cross-tier naming violation and would silently break in any
+ * environment that only configures backend vars. APP_ORIGIN is the
+ * documented backend origin (env.example / render.yaml) that
+ * risk-alerts + forecast alerts already read for the same purpose.
  *
  * Returns null if no origin is resolvable — callers MUST handle this
  * by skipping the inline_keyboard entirely so we never emit a broken
  * relative-URL button.
  */
 function appUrl(): string | null {
-  const raw = (process.env.APP_URL || process.env.VITE_APP_ORIGIN || "").trim();
+  const raw = (process.env.APP_URL || process.env.APP_ORIGIN || "").trim();
   if (!raw) return null;
   return raw.replace(/\/+$/, "");
 }

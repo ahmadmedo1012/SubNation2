@@ -209,9 +209,11 @@ function readProcessTags(): ProcessTags {
     region: process.env.RENDER_REGION ?? process.env.AWS_REGION ?? "unknown",
     git_commit: (process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7),
     git_branch: process.env.RENDER_GIT_BRANCH ?? "unknown",
-    // Override with WORKER_ROLE=true on a dedicated worker dyno once we
-    // split the schedulers off the web tier (P2-4 in the audit).
-    subsystem: process.env.WORKER_ROLE === "true" ? "worker" : "web",
+    // 99-C2 (R99-A2/A3 P2): WORKER_ROLE was never set anywhere (render.yaml
+    // documents WORKER_TIER=true — read by cron.ts and the runners) so the
+    // tag was permanently "web". Unify on the flag the platform actually
+    // sets so a future dedicated worker tier tags its events correctly.
+    subsystem: process.env.WORKER_TIER === "true" ? "worker" : "web",
   };
 }
 
@@ -311,7 +313,13 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
       tracesSampler: makeTracesSampler(),
       profilesSampleRate:
         process.env.NODE_ENV === "production"
-          ? Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1)
+          ? // 99-C6 (R99-A3 P3): a typo like "0.1s" made Number() → NaN and
+            // silently disabled profiling with no signal. Guard + clamp to
+            // the valid 0–1 range (same pattern as the tracer's rate below).
+            (() => {
+              const raw = Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1);
+              return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.1;
+            })()
           : 0,
       // PII sanitization. Order matters: first strip headers Sentry
       // attached automatically, then deep-walk request body / extras,

@@ -263,7 +263,9 @@ router.get("/sentry-debug", requireAdmin, (req, res, next) => {
         deploy_id: process.env.RENDER_DEPLOY_ID ?? "dev",
         region: process.env.RENDER_REGION ?? "unknown",
         git_branch: process.env.RENDER_GIT_BRANCH ?? "unknown",
-        subsystem: process.env.WORKER_ROLE === "true" ? "worker" : "web",
+        // 99-C2 (R99-A3 P2): unified with sentry.ts — WORKER_TIER is the
+        // flag render.yaml actually sets (WORKER_ROLE never existed).
+        subsystem: process.env.WORKER_TIER === "true" ? "worker" : "web",
       },
     },
     usage: {

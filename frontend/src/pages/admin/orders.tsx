@@ -275,13 +275,13 @@ export default function AdminOrdersPage() {
     setBulkStatusOpen(false);
     const requestedCount = selectedIds.size;
     try {
-      // F-008 (security audit 004): the bulk-status endpoint is a
-      // SINGLE HTTP request that processes N orders server-side, so
-      // one Idempotency-Key per logical bulk is correct here. A
-      // network retry of the same bulk replays the cached response;
-      // a fresh "Refund 5 orders" click generates a new key.
-      // (Per-order refund atomicity / idempotency lives in
-      // RefundService server-side — see security audit S-01.)
+      // F-008 (security audit 004) + 99-C8 (R99-A2 P3 — comment honesty):
+      // the key is minted per CLICK (per HTTP attempt — there is no
+      // auto-retry, so the two coincide). The middleware layer is best-
+      // effort here; the REAL double-refund protection is server-side:
+      // RefundService's per-order status-machine guard refuses any order
+      // not in a refundable state, so a same-click network replay or an
+      // accidental double-click cannot refund twice.
       const r = await fetch("/api/admin/orders/bulk-status", {
         method: "PATCH",
         headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
