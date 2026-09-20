@@ -20,7 +20,7 @@ import { db, riskEventsTable } from "@workspace/db";
 import { and, desc, eq, gte } from "drizzle-orm";
 
 import { logger } from "../lib/logger";
-import { getRedisClient } from "../lib/redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 
 const CACHE_TTL_SECONDS = 300;
 const WINDOW_DAYS = 7;
@@ -42,7 +42,13 @@ export async function getUserAggregatedRiskScore(userId: number): Promise<number
   try {
     const redis = getRedisClient();
     if (redis) {
-      const raw = await redis.get(cacheKey(userId));
+      // 99-R1 (R99-A1 P2): bounded read — the unguarded gray zone (client
+      // ready, socket dead) suspended login/OTP/wallet requests until the
+      // 60 s HTTP timeout; the R2 standard is a sub-second fallback to the
+      // DB path below (mirrors cache.ts / rate-limit-store).
+      const raw = await withRedisCommandTimeout("risk_agg_get", () =>
+        redis.get(cacheKey(userId)),
+      );
       if (raw) {
         const parsed = Number.parseFloat(raw);
         if (Number.isFinite(parsed)) return parsed;
@@ -99,7 +105,14 @@ async function cachePut(userId: number, value: number): Promise<void> {
   try {
     const redis = getRedisClient();
     if (redis) {
-      await redis.set(cacheKey(userId), String(value), { EX: CACHE_TTL_SECONDS });
+      // 99-R1 (R99-A1 P2): bound the command like cache.ts — this write
+      // rides risk-emit on auth/OTP/wallet request paths; an unbounded
+      // queued command in the gray zone (client up, socket dead) would
+      // hold the request for the full HTTP timeout instead of the R2
+      // sub-second fallback standard.
+      await withRedisCommandTimeout("risk_agg_set", () =>
+        redis.set(cacheKey(userId), String(value), { EX: CACHE_TTL_SECONDS }),
+      );
     }
   } catch {
     // best-effort

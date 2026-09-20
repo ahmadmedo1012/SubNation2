@@ -165,6 +165,20 @@ const GLOBAL_WINDOW_TTL_SEC = 70; // outlasts the 60 s window so we never lose s
 const HTTP_TIMEOUT_MS = 10_000;
 const RETRY_DELAY_MS = 5_000;
 
+/**
+ * 99-C4 (R99-A3 P2): read a numeric ALERT_* threshold with the isFinite
+ * guard every sibling already has (redis-client, health, alertLogger).
+ * A bare Number() turned a typo like ALERT_5XX_RATE_PCT=5% into NaN —
+ * and every NaN comparison is false, so the rule SILENTLY DIED (the
+ * exact failure mode the deep-audit's "dead checkout pages nobody"
+ * incident warned about). Falls back to the documented default on any
+ * non-finite value.
+ */
+function alertThresholdEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) ? raw : fallback;
+}
+
 // ── F1 (round-98, 98-F5): bounded in-memory dedup fallback ───────────────────
 //
 // The Redis path above is unchanged and preferred; this store only answers
@@ -249,6 +263,15 @@ export class AlertingService {
   /** Start the 60 s evaluator loop. Idempotent. */
   public start(): void {
     if (this.evaluatorInterval) return;
+    // 99-R2 (R99-A1 P3): baselines do NOT survive a stop/start gap. The
+    // first tick after a leadership handover (demote → re-acquire, or a
+    // worker-tier restart) measured its delta over the ENTIRE gap,
+    // violating each rule's documented windowSec (e.g. auth_failure
+    // windowSec=300 saw a 40-minute delta) — a single burst before the
+    // gap then fired a false alert on the new leader's first tick.
+    // Fresh maps make the first tick re-seed the baseline (delta 0).
+    this.counterBaseline.clear();
+    this.histogramBaseline.clear();
     alertingLogger().info("Starting alerting service evaluator (60s interval)");
     this.evaluatorInterval = setInterval(() => {
       this.evaluateRules().catch((err) => {
@@ -332,7 +355,7 @@ export class AlertingService {
           return this.evalCounterDeltaByLabel(
             "auth_outcomes_total",
             { outcome: "failure" },
-            Number(process.env.ALERT_AUTH_FAILURE_DELTA ?? 20),
+            alertThresholdEnv("ALERT_AUTH_FAILURE_DELTA", 20),
             rule,
           );
         case "abnormal_lockouts":
@@ -340,7 +363,7 @@ export class AlertingService {
           return this.evalCounterDeltaByLabel(
             "auth_outcomes_total",
             { outcome: "lockout" },
-            Number(process.env.ALERT_LOCKOUT_DELTA ?? 10),
+            alertThresholdEnv("ALERT_LOCKOUT_DELTA", 10),
             rule,
           );
         case "firebase_verifyidtoken_failures":
@@ -348,7 +371,7 @@ export class AlertingService {
           return this.evalCounterDeltaByLabel(
             "auth_outcomes_total",
             { method: "firebase", outcome: "failure" },
-            Number(process.env.ALERT_FIREBASE_FAIL_DELTA ?? 5),
+            alertThresholdEnv("ALERT_FIREBASE_FAIL_DELTA", 5),
             rule,
           );
         // Other rules are gated until their signals are concretely
@@ -509,11 +532,11 @@ export class AlertingService {
       const delta5xx = total5xx - base5xx;
       if (deltaAll <= 0) return false;
 
-      const minRequests = Number(process.env.ALERT_5XX_MIN_REQUESTS ?? 20);
+      const minRequests = alertThresholdEnv("ALERT_5XX_MIN_REQUESTS", 20);
       if (deltaAll < minRequests) return false;
 
       const ratePct = (delta5xx / deltaAll) * 100;
-      const thresholdPct = Number(process.env.ALERT_5XX_RATE_PCT ?? 5);
+      const thresholdPct = alertThresholdEnv("ALERT_5XX_RATE_PCT", 5);
       return ratePct > thresholdPct;
     } catch {
       return false;
@@ -577,7 +600,7 @@ export class AlertingService {
       const infDelta = deltas.find((d) => !Number.isFinite(d.upper)) ?? deltas[deltas.length - 1];
       const deltaCount = infDelta ? infDelta.count : 0;
 
-      const minSamples = Number(process.env.ALERT_P95_MIN_SAMPLES ?? 20);
+      const minSamples = alertThresholdEnv("ALERT_P95_MIN_SAMPLES", 20);
       if (deltaCount < minSamples) return false;
 
       // p95 from the cumulative window distribution.
@@ -586,7 +609,7 @@ export class AlertingService {
       for (const b of deltas) {
         cumulative += b.count;
         if (cumulative >= target) {
-          const thresholdMs = Number(process.env.ALERT_P95_MS ?? 1500);
+          const thresholdMs = alertThresholdEnv("ALERT_P95_MS", 1500);
           // +Inf bucket: the observation exceeded every finite bound —
           // always above threshold.
           if (!Number.isFinite(b.upper)) return true;

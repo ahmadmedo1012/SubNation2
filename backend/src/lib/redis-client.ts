@@ -387,8 +387,13 @@ export function getRedisClient(): RedisClientType | null {
 }
 
 /**
- * Throwing accessor for code paths that absolutely require Redis (alerting
- * dedup keys, etc.).
+ * Throwing accessor for code paths that absolutely require Redis.
+ *
+ * 99-R4 (R99-A1 P3 — doc drift): the old doc claimed "alerting dedup keys"
+ * use this accessor — they do not (alerting.service reads getRedisClient()
+ * and degrades gracefully). As of round-99 this export has ZERO production
+ * callers (only test mocks reference it); it stays for future hard-require
+ * paths. Do NOT cite it as a live consumer in new docs.
  */
 export function requireRedisClient(): RedisClientType {
   if (!redisClient) {

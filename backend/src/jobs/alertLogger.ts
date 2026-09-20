@@ -112,32 +112,55 @@ export async function logAdminAlert(
     // same 6 out-of-stock products re-alerted on every cold start
     // (321 unread alerts, 244 of them no_stock, in 12 days). A keyed
     // lookup against the table itself survives restarts and scale-out.
+    //
+    // 99-R3 (R99-A1 P3): the lookup used to be a bare SELECT-then-INSERT
+    // — two concurrent same-key writers (the documented dual-leader drain
+    // window, or an unguarded worker) both passed the check and inserted
+    // twin rows the non-unique index cannot merge. The advisory-xact-lock
+    // pattern from TopupService serializes same-key writers; the tx also
+    // makes the check+insert atomic for every caller.
+    let insertedId: number | null = null;
     if (opts?.dedupeKey) {
       const windowMs = opts.dedupeWindowMs ?? 24 * 60 * 60 * 1000;
       const cutoff = new Date(Date.now() - windowMs);
-      const existing = await db
-        .select({ id: adminAlertsTable.id })
-        .from(adminAlertsTable)
-        .where(
-          and(
-            eq(adminAlertsTable.dedupeKey, opts.dedupeKey),
-            gt(adminAlertsTable.createdAt, cutoff),
-          ),
-        )
-        .limit(1);
-      if (existing.length > 0) {
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${opts.dedupeKey}, 0))`,
+        );
+        const existing = await tx
+          .select({ id: adminAlertsTable.id })
+          .from(adminAlertsTable)
+          .where(
+            and(
+              eq(adminAlertsTable.dedupeKey, opts.dedupeKey),
+              gt(adminAlertsTable.createdAt, cutoff),
+            ),
+          )
+          .limit(1);
+        if (existing.length > 0) {
+          return { suppressed: true as const, id: existing[0].id };
+        }
+        const [row] = await tx
+          .insert(adminAlertsTable)
+          .values({ type, title, message, dedupeKey: opts.dedupeKey })
+          .returning({ id: adminAlertsTable.id });
+        return { suppressed: false as const, id: row?.id ?? null };
+      });
+      if (outcome.suppressed) {
         logger.debug(
-          { category: "alerts.dedupe", dedupeKey: opts.dedupeKey, existingId: existing[0].id },
+          { category: "alerts.dedupe", dedupeKey: opts.dedupeKey, existingId: outcome.id },
           "logAdminAlert: duplicate suppressed",
         );
-        return { suppressed: true, id: existing[0].id };
+        return { suppressed: true, id: outcome.id };
       }
+      insertedId = outcome.id;
+    } else {
+      const [row] = await db
+        .insert(adminAlertsTable)
+        .values({ type, title, message, dedupeKey: null })
+        .returning({ id: adminAlertsTable.id });
+      insertedId = row?.id ?? null;
     }
-
-    const [inserted] = await db
-      .insert(adminAlertsTable)
-      .values({ type, title, message, dedupeKey: opts?.dedupeKey ?? null })
-      .returning({ id: adminAlertsTable.id });
 
     // Round-4 (perf P1-5): fan the alert out to connected admins the
     // moment it's inserted so the alert drawer/badge + toast land at
@@ -148,14 +171,14 @@ export async function logAdminAlert(
     // and its import-time env reads out of the job/service test graph.
     import("../lib/socket")
       .then(({ emitToAdmins }) => {
-        emitToAdmins("admin-alert-new", { id: inserted?.id, type, title, message });
+        emitToAdmins("admin-alert-new", { id: insertedId, type, title, message });
       })
       .catch((err) =>
         logger.warn({ err, type, title }, "logAdminAlert: socket emit failed (non-fatal)"),
       );
 
     // A6-P2-1: on success the alert is fresh — side channels may fire.
-    return { suppressed: false, id: inserted?.id ?? null };
+    return { suppressed: false, id: insertedId };
   } catch (err) {
     logger.error({ err, type, title }, "Failed to log admin alert");
     // Deliberately NOT suppressed on the FIRST failure: a DB failure must
