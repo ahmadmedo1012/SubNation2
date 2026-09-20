@@ -469,9 +469,7 @@ export class AlertingService {
       if (bucketTotals.size === 0) return false;
 
       // Sort by numeric upper bound; +Inf sorts last (Infinity).
-      const sortedBounds = [...bucketTotals.keys()].sort(
-        (a, b) => numericLe(a) - numericLe(b),
-      );
+      const sortedBounds = [...bucketTotals.keys()].sort((a, b) => numericLe(a) - numericLe(b));
       const prior = this.histogramBaseline.get(rule.name);
       const deltas: Array<{ upper: number; count: number }> = sortedBounds.map((le) => ({
         upper: numericLe(le),
@@ -481,8 +479,7 @@ export class AlertingService {
 
       // Total observations in the window = the +Inf bucket delta (or the
       // last bucket if +Inf is absent).
-      const infDelta =
-        deltas.find((d) => !Number.isFinite(d.upper)) ?? deltas[deltas.length - 1];
+      const infDelta = deltas.find((d) => !Number.isFinite(d.upper)) ?? deltas[deltas.length - 1];
       const deltaCount = infDelta ? infDelta.count : 0;
 
       const minSamples = Number(process.env.ALERT_P95_MIN_SAMPLES ?? 20);

@@ -192,13 +192,13 @@ ORDER BY duration DESC;
 > rate-limit / cache / idempotency degrade to in-process). The thresholds
 > below record future operator decisions; none are active today.
 
-| Resource     | Current (free tier)           | Watch                                                     | Promote when                                                     |
-| ------------ | ----------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
-| Render web   | free (sleeps when idle)       | wake frequency hurting UX; CPU/memory on `/api/metrics`   | sustained traffic where wake latency is unacceptable              |
-| Redis        | NOT provisioned (PG-lease)    | only if a Redis is attached later                         | rate-limit/dedup consistency across multiple instances            |
-| Neon         | free (0.25 CU, sleeps ~5 min) | active connections > 8 (DB_POOL_MAX), queueing            | scale plan                                                        |
-| Sentry       | free 5K events/mo             | events > 4K/mo                                            | upgrade or sample harder                                         |
-| Telegram bot | bot API rate limit (~30/sec)  | global rate-limit > 25/min                                | already capped at 30/min in alerting service                     |
+| Resource     | Current (free tier)           | Watch                                                   | Promote when                                           |
+| ------------ | ----------------------------- | ------------------------------------------------------- | ------------------------------------------------------ |
+| Render web   | free (sleeps when idle)       | wake frequency hurting UX; CPU/memory on `/api/metrics` | sustained traffic where wake latency is unacceptable   |
+| Redis        | NOT provisioned (PG-lease)    | only if a Redis is attached later                       | rate-limit/dedup consistency across multiple instances |
+| Neon         | free (0.25 CU, sleeps ~5 min) | active connections > 8 (DB_POOL_MAX), queueing          | scale plan                                             |
+| Sentry       | free 5K events/mo             | events > 4K/mo                                          | upgrade or sample harder                               |
+| Telegram bot | bot API rate limit (~30/sec)  | global rate-limit > 25/min                              | already capped at 30/min in alerting service           |
 
 Every tier change must be recorded in
 `observability-seo-cwv-maturity:tier-decisions` Memory_MCP entry per the
