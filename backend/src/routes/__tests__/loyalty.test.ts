@@ -87,7 +87,7 @@ async function call<T = unknown>(
   app: express.Express,
   method: "GET" | "POST",
   path: string,
-  opts: { token?: string; body?: unknown } = {},
+  opts: { token?: string; body?: unknown; headers?: Record<string, string> } = {},
 ): Promise<ApiOk<T>> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -99,6 +99,7 @@ async function call<T = unknown>(
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (opts.token) headers.Cookie = `auth_token=${opts.token}`;
+        Object.assign(headers, opts.headers ?? {});
         const res = await fetch(`http://127.0.0.1:${addr.port}${path}`, {
           method,
           headers,
@@ -147,10 +148,15 @@ describe("POST /api/loyalty/convert-points — strict input validation", () => {
   it.each(invalidBodies)("rejects %s with 400 INVALID_DATA", async (_label, body) => {
     const user = await seedUser({ loyaltyPoints: 1000 });
     const token = signUserToken({ userId: user.id });
-    const res = await call<{ error: string; code: string }>(app, "POST", "/api/loyalty/convert-points", {
-      token,
-      body,
-    });
+    const res = await call<{ error: string; code: string }>(
+      app,
+      "POST",
+      "/api/loyalty/convert-points",
+      {
+        token,
+        body,
+      },
+    );
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_DATA");
   });
@@ -365,6 +371,59 @@ describe("POST /api/loyalty/convert-points — happy path", () => {
       .from(walletLedgerTable)
       .where(eq(walletLedgerTable.userId, user.id));
     expect(ledger).toHaveLength(1);
+  });
+
+  // 99-M4 (R99-A2 P2): the idempotency middleware is now mounted on
+  // convert-points. This environment has no Redis, so the middleware's
+  // documented degradation contract applies: pass-through with a warn
+  // (the durable layer remains the in-tx balance re-read + optimistic
+  // lock pinned above). These tests pin that mounting the middleware
+  // did NOT change the route's behavior for keyed requests in
+  // degraded mode — keyed or not, the request converts exactly once
+  // and the in-tx guards still refuse an over-convert.
+  it("99-M4: a request carrying an Idempotency-Key converts normally (degraded Redis-less pass-through)", async () => {
+    const user = await seedUser({ loyaltyPoints: 300, walletBalance: "0.00" });
+    const token = signUserToken({ userId: user.id });
+
+    const res = await call<{ success: boolean; new_points: number }>(
+      app,
+      "POST",
+      "/api/loyalty/convert-points",
+      {
+        token,
+        body: { points: 100 },
+        headers: { "Idempotency-Key": "r99 loyalty intent key 0001" },
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.new_points).toBe(200);
+  });
+
+  it("99-M4: a same-key retry in degraded mode still cannot over-convert (in-tx guards are the backstop)", async () => {
+    const user = await seedUser({ loyaltyPoints: 100, walletBalance: "0.00" });
+    const token = signUserToken({ userId: user.id });
+
+    const first = await call<{ success: boolean }>(app, "POST", "/api/loyalty/convert-points", {
+      token,
+      body: { points: 100 },
+      headers: { "Idempotency-Key": "r99 loyalty intent key 0002" },
+    });
+    expect(first.status).toBe(200);
+
+    // Same key, retry after the points were drained — the Redis replay
+    // layer is absent here, so the in-tx balance check must refuse the
+    // second execution (400) instead of driving points negative.
+    const retry = await call<{ code: string }>(app, "POST", "/api/loyalty/convert-points", {
+      token,
+      body: { points: 100 },
+      headers: { "Idempotency-Key": "r99 loyalty intent key 0002" },
+    });
+    expect(retry.status).toBe(400);
+
+    const [after] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(after.loyaltyPoints).toBe(0);
+    expect(parseFloat(String(after.walletBalance))).toBe(1);
   });
 });
 

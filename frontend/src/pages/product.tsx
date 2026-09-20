@@ -475,7 +475,18 @@ export default function ProductPage() {
     } catch (err: unknown) {
       // Definitive HTTP rejection → the intent is resolved; clear the
       // stored key. Network-level failure keeps it for the retry's replay.
-      if (err instanceof Error && err.name === "ApiError") {
+      // 99-M2 (R99-A2 P1 — money): 409 IDEMPOTENCY_IN_FLIGHT is NOT
+      // definitive — the same-key request is still executing server-side
+      // (this attempt merely raced it). Keeping the stored key makes the
+      // retry replay the intent instead of minting a fresh key that would
+      // DOUBLE-CHARGE once the in-flight request commits. The backend's
+      // Arabic message explicitly tells the user to retry — this guard
+      // makes that retry safe.
+      const httpCode =
+        err instanceof Error && err.name === "ApiError"
+          ? ((err as { data?: { code?: string } }).data?.code ?? null)
+          : null;
+      if (err instanceof Error && err.name === "ApiError" && httpCode !== "IDEMPOTENCY_IN_FLIGHT") {
         clearBuyIntentKey(product.id);
       }
       setError(getErrorMessage(err));

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { roundToCents, useCart, type LocalCartItem } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
+import { ErrorCode } from "@workspace/error-codes";
 import { formatCurrency } from "@/lib/utils";
 import {
   AlertCircle,
@@ -885,10 +886,21 @@ export default function CheckoutPage() {
             // 93-C5 / F-15: prefer the envelope's specific Arabic sentence
             // over the code map (coupon failures map to INVALID_DATA →
             // "بيانات غير صالحة", which reads like a money error).
-            // 96-F4 (A4 §2.2): the rejection is definitive — clear this
-            // unit's stored key so a retry isn't answered forever by the
-            // cached error response.
-            clearCheckoutUnitKey(it.productId, unit);
+            // 99-M1 (R99-A2 P1 — money): a 409 IDEMPOTENCY_IN_FLIGHT is NOT
+            // a definitive rejection — it means another request with this
+            // SAME key is still executing server-side (this attempt merely
+            // raced it, e.g. a double-tap that the client cancelled). The
+            // stored key must SURVIVE so the retry replays the same intent;
+            // clearing it here would mint a fresh key on retry and
+            // DOUBLE-CHARGE the unit once the in-flight request commits.
+            // The backend's Arabic message explicitly tells the user to
+            // retry — this guard makes that retry safe.
+            if (apiErrorData(e)?.code !== ErrorCode.IDEMPOTENCY_IN_FLIGHT) {
+              // 96-F4 (A4 §2.2): the rejection is definitive — clear this
+              // unit's stored key so a retry isn't answered forever by the
+              // cached error response.
+              clearCheckoutUnitKey(it.productId, unit);
+            }
             failureMessage = apiErrorData(e)?.error || getErrorMessage(e) || "فشل في إنشاء الطلب";
             couponFailure = isCouponFailureMessage(failureMessage ?? undefined);
             break;

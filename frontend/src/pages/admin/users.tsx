@@ -44,7 +44,7 @@ import {
   Wallet,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -168,6 +168,19 @@ export default function AdminUsersPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
+  // 99-M3 (R99-A2 P1 — money): ONE Idempotency-Key per SAVE INTENT, not per
+  // HTTP attempt. The key used to be minted inline inside the fetch call —
+  // a lost HTTP response (network drop after the server committed) followed
+  // by the admin clicking "حفظ" again minted a FRESH key, and unlike every
+  // other admin money route (topup/refund/referral — each protected by a
+  // per-record status guard), the wallet-adjustment PATCH has no record
+  // guard in AdjustmentService: the second request double-applied the delta
+  // (add → double-credit, subtract → double-debit). The ref survives across
+  // attempts of the same intent and is cleared only on a DEFINITIVE
+  // resolution (success or a non-IN_FLIGHT rejection). 409
+  // IDEMPOTENCY_IN_FLIGHT keeps it — the same-key request is still
+  // executing server-side and the retry must replay, not re-execute.
+  const saveIntentKeyRef = useRef<string | null>(null);
   const [form, setForm] = useState<EditUserForm>({
     wallet_mode: "add",
     wallet_value: "",
@@ -264,6 +277,10 @@ export default function AdminUsersPage() {
 
   function openEdit(user: AdminUser) {
     setEditingUser(user);
+    // 99-M3: a newly opened edit dialog is a NEW save intent — a stale key
+    // from a previous save of the same user would replay THAT adjustment's
+    // cached response instead of applying this edit.
+    saveIntentKeyRef.current = null;
     setForm({
       wallet_mode: "add",
       wallet_value: "",
@@ -320,6 +337,14 @@ export default function AdminUsersPage() {
       if (!ok) return;
     }
     setSaving(true);
+    // 99-M3 (R99-A2 P1 — money): mint the intent key ONCE per save intent
+    // and reuse it across every attempt of that intent (network retries,
+    // re-clicks after a lost response). A fresh key per attempt pierces the
+    // idempotency layer when the first attempt actually committed server-
+    // side — AdjustmentService has no per-record guard, so the delta would
+    // apply twice.
+    const intentKey = saveIntentKeyRef.current ?? generateIdempotencyKey();
+    saveIntentKeyRef.current = intentKey;
     const body: Record<string, number | string> = {};
     if (walletValue !== null) {
       if (form.wallet_mode === "set") body.wallet_balance = walletValue;
@@ -338,15 +363,12 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch(`/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
-        // F-008 (security audit 004): one Idempotency-Key per save
-        // click. The audit's S-01 bundle wraps wallet_adjustment /
-        // wallet_balance in AdjustmentService (transaction + ledger
-        // entry + optimistic lock); the Idempotency-Key middleware
-        // dedupes on top of that so a network retry / accidental
-        // double-click does not double-credit. The same key spans
-        // wallet + loyalty fields because they ride one PATCH — they
-        // are one logical save action from the admin's POV.
-        headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+        // F-008 (security audit 004): one Idempotency-Key per SAVE INTENT
+        // (99-M3) — stable across retries so the middleware replays the
+        // cached response instead of re-executing. The key spans wallet +
+        // loyalty fields because they ride one PATCH — one logical save
+        // action from the admin's POV.
+        headers: withIdempotencyKey(jsonHeaders, intentKey),
         body: JSON.stringify(body),
       });
       // 93-C6 / F-07 (A5 S-3): 401 mid-form = session expiry, not a
@@ -359,8 +381,18 @@ export default function AdminUsersPage() {
       // the backend `code` (INSUFFICIENT_PERMISSIONS, NEGATIVE_BALANCE,
       // CONFLICT points-race…) to Arabic instead of the bare "خطأ"
       // fallback.
-      if (!res.ok) throw new Error(getErrorMessage(data) || "خطأ");
+      if (!res.ok) {
+        // 99-M3 (R99-A2 P1 — money): keep the intent key ONLY on 409
+        // IDEMPOTENCY_IN_FLIGHT — the same-key request is still executing
+        // server-side and a retry must replay it. Any other rejection is
+        // definitive: the intent is resolved and the next save mints fresh.
+        if (data?.code !== "IDEMPOTENCY_IN_FLIGHT") saveIntentKeyRef.current = null;
+        throw new Error(getErrorMessage(data) || "خطأ");
+      }
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
+      // 99-M3: success is a terminal resolution — the intent key must not
+      // survive to answer a future save of the same user with a stale replay.
+      saveIntentKeyRef.current = null;
       // 94-C2: base key — refreshes the accumulating infinite query
       // (prefix match), not just one param-specific cache entry.
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });

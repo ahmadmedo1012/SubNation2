@@ -229,6 +229,45 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     await waitFor(() => expect(readCart()).toHaveLength(0));
   });
 
+  it("99-M1: KEEPS the unit key on a 409 IDEMPOTENCY_IN_FLIGHT rejection (transient — the retry must replay, never re-execute)", async () => {
+    seedCart(1);
+    renderPage();
+
+    // A same-key request is still executing server-side; this attempt
+    // merely raced it (double-tap, cancelled fetch). Clearing the key on
+    // this TRANSIENT 409 would mint a fresh key on the retry and
+    // double-charge the unit once the in-flight request commits.
+    const inFlight = Object.assign(
+      new Error("طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل."),
+      {
+        name: "ApiError",
+        status: 409,
+        data: {
+          error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
+          code: "IDEMPOTENCY_IN_FLIGHT",
+        },
+      },
+    );
+    createOrderMock.mockRejectedValueOnce(inFlight);
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+
+    // The key SURVIVES the transient 409 (unlike a definitive rejection)…
+    expect(storedUnitKey(5, 0)).toBe(createOrderMock.mock.calls[0][1].headers["Idempotency-Key"]);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    // …so the retry REUSES it verbatim (server replays, no second charge)…
+    createOrderMock.mockResolvedValueOnce({ order_code: "SNDBKEYINFLIGHT" });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+    const retryKey = createOrderMock.mock.calls[1][1].headers["Idempotency-Key"];
+    const firstKey = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
+    expect(retryKey).toBe(firstKey);
+    // …and the replayed success then accounts the charge (cart + key clear).
+    await waitFor(() => expect(readCart()).toHaveLength(0));
+    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+  });
+
   it("keeps the partial-success accounting intact: qty 2, 1 ordered + 1 rejected → cart shrinks to 1", async () => {
     seedCart(2);
     renderPage();

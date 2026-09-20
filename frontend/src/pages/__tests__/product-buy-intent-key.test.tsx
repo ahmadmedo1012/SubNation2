@@ -212,6 +212,43 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     expect(retryKey).not.toBe(firstKey);
   });
 
+  it("99-M2: KEEPS the key on a 409 IDEMPOTENCY_IN_FLIGHT rejection (transient — the retry must replay, never re-execute)", async () => {
+    renderPage();
+
+    // The same-key request is still executing server-side (this attempt
+    // merely raced it, e.g. a double-tap the client cancelled). Clearing
+    // the key here would mint a fresh key on retry and DOUBLE-CHARGE once
+    // the in-flight request commits — the exact bug 99-M2 closes.
+    const inFlight = Object.assign(
+      new Error("طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل."),
+      {
+        name: "ApiError",
+        status: 409,
+        data: {
+          error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
+          code: "IDEMPOTENCY_IN_FLIGHT",
+        },
+      },
+    );
+    createOrderMock.mockRejectedValueOnce(inFlight);
+    await clickBuy();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+
+    // The key SURVIVES the transient 409…
+    expect(readStoredIntent(PRODUCT.id)).not.toBeNull();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    // …so the retry REUSES it (replay) instead of minting a fresh one.
+    createOrderMock.mockResolvedValueOnce({ order_code: "SNDBUY003" });
+    await clickBuy();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+    const retryKey = createOrderMock.mock.calls[1][1].headers["Idempotency-Key"];
+    const firstKey = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
+    expect(retryKey).toBe(firstKey);
+    // The replay's success then clears it (terminal resolution).
+    expect(sessionStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
+  });
+
   it("ignores a stored key older than the 10-minute TTL (fresh key minted)", async () => {
     renderPage();
 

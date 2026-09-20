@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { generateIdempotencyKey } from "@/lib/idempotency";
 import { formatCount, formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
@@ -21,7 +22,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 interface LoyaltyData {
@@ -59,6 +60,12 @@ export default function LoyaltyPage() {
   // Conversion failures used to be toast-only (4 s) — a money-critical
   // error must stay visible until the next attempt clears it (B4 P1-7).
   const [convertError, setConvertError] = useState<string | null>(null);
+  // 99-M4 (R99-A2 P2 — money): ONE Idempotency-Key per conversion INTENT.
+  // Minted lazily on the intent's first attempt, reused across retries of
+  // the same intent (network drop after a server-side commit → retry
+  // replays the cached response instead of converting AGAIN), cleared on
+  // a definitive resolution so the next conversion is a fresh intent.
+  const convertIntentKeyRef = useRef<string | null>(null);
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
@@ -110,15 +117,34 @@ export default function LoyaltyPage() {
     // A new attempt clears the previous failure — the inline banner is
     // persistent BY DESIGN, not permanent.
     setConvertError(null);
+    // 99-M4: mint-once-per-intent (see convertIntentKeyRef above).
+    const intentKey = convertIntentKeyRef.current ?? generateIdempotencyKey();
+    convertIntentKeyRef.current = intentKey;
     try {
       const res = await fetch("/api/loyalty/convert-points", {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          "Idempotency-Key": intentKey,
+        },
         body: JSON.stringify({ points: pts }),
       });
-      const result = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-      if (!res.ok) throw new Error(result?.error || "فشلت العملية");
+      const result = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        code?: string;
+      };
+      if (!res.ok) {
+        // 99-M4: only a non-IN_FLIGHT rejection resolves the intent — a 409
+        // IDEMPOTENCY_IN_FLIGHT means the same-key conversion is still
+        // executing server-side and the retry MUST replay it (keep the key).
+        if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") convertIntentKeyRef.current = null;
+        throw new Error(result?.error || "فشلت العملية");
+      }
       toast({ title: "تم التحويل", description: result.message });
+      // 99-M4: success is terminal — the next conversion mints a fresh key.
+      convertIntentKeyRef.current = null;
       setConvertPoints("");
       // Money moved: the Navbar balance (useGetMe) and the wallet page
       // (useGetWallet) caches go stale for up to 60 s otherwise — same
