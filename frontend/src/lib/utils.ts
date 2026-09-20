@@ -104,9 +104,17 @@ export function tierColor(tier: string): string {
 }
 
 export function categoryLabel(cat: string | null | undefined): string {
+  // Live categories first (mirror products.category in production),
+  // then the retired gaming/productivity kept for archived products
+  // and old links so labels never degrade to a raw English slug.
   const labels: Record<string, string> = {
     streaming: "بث مباشر",
     music: "موسيقى",
+    software: "برامج وتراخيص",
+    vpn: "شبكات VPN",
+    "ai-tools": "ذكاء اصطناعي",
+    "seo-tools": "أدوات SEO",
+    education: "تعليم ومكتبات",
     gaming: "ألعاب",
     productivity: "إنتاجية",
   };

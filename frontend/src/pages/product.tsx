@@ -8,6 +8,7 @@ import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
+import { CATEGORY_META } from "@/lib/categories";
 import { categoryLabel, copyToClipboard, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -57,6 +58,13 @@ import { useLocation, useParams } from "wouter";
 const CATEGORY_GRADIENTS: Record<string, string> = {
   streaming: "from-cat-streaming/30 via-cat-streaming/15 to-transparent",
   music: "from-cat-music/30 via-cat-music/15 to-transparent",
+  software: "from-cat-software/30 via-cat-software/15 to-transparent",
+  vpn: "from-cat-vpn/30 via-cat-vpn/15 to-transparent",
+  "ai-tools": "from-cat-ai-tools/30 via-cat-ai-tools/15 to-transparent",
+  "seo-tools": "from-cat-seo-tools/30 via-cat-seo-tools/15 to-transparent",
+  education: "from-cat-education/30 via-cat-education/15 to-transparent",
+  // Retired categories — kept so archived products still render a
+  // themed gradient if the operator previews them from admin.
   gaming: "from-cat-gaming/30 via-cat-gaming/15 to-transparent",
   productivity: "from-cat-productivity/30 via-cat-productivity/15 to-transparent",
 };
@@ -67,7 +75,7 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
  * the product's category is in this set; unknown categories fall back
  * to "/" so the breadcrumb never produces a broken link.
  */
-const KNOWN_CATEGORIES = new Set(["streaming", "music", "gaming", "productivity"]);
+const KNOWN_CATEGORIES = new Set(Object.keys(CATEGORY_META));
 
 // Empty-image fallback foreground tint per category. Mirrors the
 // gradient palette above so the giant first-letter glyph reads as
@@ -75,6 +83,12 @@ const KNOWN_CATEGORIES = new Set(["streaming", "music", "gaming", "productivity"
 const CATEGORY_INITIAL_COLOR: Record<string, string> = {
   streaming: "text-cat-streaming",
   music: "text-cat-music",
+  software: "text-cat-software",
+  vpn: "text-cat-vpn",
+  "ai-tools": "text-cat-ai-tools",
+  "seo-tools": "text-cat-seo-tools",
+  education: "text-cat-education",
+  // Retired — same rationale as CATEGORY_GRADIENTS above.
   gaming: "text-cat-gaming",
   productivity: "text-cat-productivity",
 };

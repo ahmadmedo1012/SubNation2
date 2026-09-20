@@ -5,14 +5,19 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import {
   AlertTriangle,
+  AppWindow,
   Briefcase,
   Gamepad2,
+  GraduationCap,
   Lock,
   Music2,
   Package,
+  ShieldCheck,
   ShoppingCart,
+  Sparkles,
   Star,
   Tag,
+  TrendingUp,
   Tv2,
   Zap,
   type LucideIcon,
@@ -77,6 +82,43 @@ const CATEGORY_ACCENT: Record<
     gradient: "from-cat-music/12 via-cat-music/4 to-transparent",
     accentLine: "bg-cat-music/55",
   },
+  software: {
+    bg: "bg-cat-software/10",
+    text: "text-cat-software",
+    border: "border-cat-software/22",
+    gradient: "from-cat-software/12 via-cat-software/4 to-transparent",
+    accentLine: "bg-cat-software/55",
+  },
+  vpn: {
+    bg: "bg-cat-vpn/10",
+    text: "text-cat-vpn",
+    border: "border-cat-vpn/22",
+    gradient: "from-cat-vpn/12 via-cat-vpn/4 to-transparent",
+    accentLine: "bg-cat-vpn/55",
+  },
+  "ai-tools": {
+    bg: "bg-cat-ai-tools/10",
+    text: "text-cat-ai-tools",
+    border: "border-cat-ai-tools/22",
+    gradient: "from-cat-ai-tools/12 via-cat-ai-tools/4 to-transparent",
+    accentLine: "bg-cat-ai-tools/55",
+  },
+  "seo-tools": {
+    bg: "bg-cat-seo-tools/10",
+    text: "text-cat-seo-tools",
+    border: "border-cat-seo-tools/22",
+    gradient: "from-cat-seo-tools/12 via-cat-seo-tools/4 to-transparent",
+    accentLine: "bg-cat-seo-tools/55",
+  },
+  education: {
+    bg: "bg-cat-education/10",
+    text: "text-cat-education",
+    border: "border-cat-education/22",
+    gradient: "from-cat-education/12 via-cat-education/4 to-transparent",
+    accentLine: "bg-cat-education/55",
+  },
+  // Retired categories — kept so archived products still render a
+  // themed accent if surfaced from admin previews (r100).
   gaming: {
     bg: "bg-cat-gaming/10",
     text: "text-cat-gaming",
@@ -108,6 +150,12 @@ const DEFAULT_ACCENT = {
 const CATEGORY_ICON: Record<string, LucideIcon> = {
   streaming: Tv2,
   music: Music2,
+  software: AppWindow,
+  vpn: ShieldCheck,
+  "ai-tools": Sparkles,
+  "seo-tools": TrendingUp,
+  education: GraduationCap,
+  // Retired — same rationale as CATEGORY_ACCENT above.
   gaming: Gamepad2,
   productivity: Briefcase,
 };

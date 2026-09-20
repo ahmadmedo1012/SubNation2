@@ -124,13 +124,18 @@ let sitemapCache: SitemapCacheEntry | null = null;
 const STATIC_ROUTES: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/", changefreq: "daily", priority: "1.0" },
   // Category landing pages — each targets a distinct intent cluster
-  // (streaming/music/gaming/productivity) with unique h1, intro, and
-  // FAQs. Higher priority than /support + /terms because they're
-  // money pages with money intent.
+  // (the seven live categories mirroring products.category in
+  // production) with unique h1, intro, and FAQs. Higher priority
+  // than /support + /terms because they're money pages with money
+  // intent. Retired gaming/productivity pages are intentionally
+  // absent: they render a noindex surface until restocked.
   { path: "/category/streaming", changefreq: "weekly", priority: "0.9" },
   { path: "/category/music", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/gaming", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/productivity", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/software", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/vpn", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/ai-tools", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/seo-tools", changefreq: "weekly", priority: "0.9" },
+  { path: "/category/education", changefreq: "weekly", priority: "0.9" },
   { path: "/support", changefreq: "monthly", priority: "0.4" },
   { path: "/terms", changefreq: "yearly", priority: "0.3" },
   // V3-A4: money page missing from the sitemap — index,follow but

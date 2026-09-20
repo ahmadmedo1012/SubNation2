@@ -8,7 +8,17 @@ import {
   useListProducts,
   type Product,
 } from "@workspace/api-client-react";
-import { Briefcase, ChevronLeft, Gamepad2, Music2, Tv2, WifiOff } from "lucide-react";
+import {
+  AppWindow,
+  ChevronLeft,
+  GraduationCap,
+  Music2,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Tv2,
+  WifiOff,
+} from "lucide-react";
 import { useMemo, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
@@ -20,9 +30,9 @@ import { Link, useParams, useLocation } from "wouter";
 // hero + matching FAQ heading border is what makes each landing page
 // feel like a coherent themed surface rather than a generic list.
 //
-// All four palettes ride the shared --cat-streaming/music/gaming/
-// productivity CSS variables (exposed to Tailwind via @theme), so the
-// landing pages re-tone themselves correctly on the light theme.
+// All seven live palettes ride the shared --cat-* CSS variables
+// (exposed to Tailwind via @theme), so the landing pages re-tone
+// themselves correctly on the light theme.
 // Tailwind needs the full class strings present in source for its
 // content scan, which is why these are static strings.
 
@@ -66,25 +76,55 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     chipBorder: "border-cat-music/25 hover:border-cat-music/45",
     Icon: Music2,
   },
-  gaming: {
-    heroGradient: "from-cat-gaming/15",
-    edgeAccent: "from-cat-gaming/70 via-cat-gaming/25 to-transparent",
-    blurOrb: "bg-cat-gaming/15",
-    headingBorder: "border-cat-gaming",
-    chipBg: "bg-cat-gaming/10 hover:bg-cat-gaming/15",
-    chipText: "text-cat-gaming",
-    chipBorder: "border-cat-gaming/25 hover:border-cat-gaming/45",
-    Icon: Gamepad2,
+  software: {
+    heroGradient: "from-cat-software/15",
+    edgeAccent: "from-cat-software/70 via-cat-software/25 to-transparent",
+    blurOrb: "bg-cat-software/15",
+    headingBorder: "border-cat-software",
+    chipBg: "bg-cat-software/10 hover:bg-cat-software/15",
+    chipText: "text-cat-software",
+    chipBorder: "border-cat-software/25 hover:border-cat-software/45",
+    Icon: AppWindow,
   },
-  productivity: {
-    heroGradient: "from-cat-productivity/15",
-    edgeAccent: "from-cat-productivity/70 via-cat-productivity/25 to-transparent",
-    blurOrb: "bg-cat-productivity/15",
-    headingBorder: "border-cat-productivity",
-    chipBg: "bg-cat-productivity/10 hover:bg-cat-productivity/15",
-    chipText: "text-cat-productivity",
-    chipBorder: "border-cat-productivity/25 hover:border-cat-productivity/45",
-    Icon: Briefcase,
+  vpn: {
+    heroGradient: "from-cat-vpn/15",
+    edgeAccent: "from-cat-vpn/70 via-cat-vpn/25 to-transparent",
+    blurOrb: "bg-cat-vpn/15",
+    headingBorder: "border-cat-vpn",
+    chipBg: "bg-cat-vpn/10 hover:bg-cat-vpn/15",
+    chipText: "text-cat-vpn",
+    chipBorder: "border-cat-vpn/25 hover:border-cat-vpn/45",
+    Icon: ShieldCheck,
+  },
+  "ai-tools": {
+    heroGradient: "from-cat-ai-tools/15",
+    edgeAccent: "from-cat-ai-tools/70 via-cat-ai-tools/25 to-transparent",
+    blurOrb: "bg-cat-ai-tools/15",
+    headingBorder: "border-cat-ai-tools",
+    chipBg: "bg-cat-ai-tools/10 hover:bg-cat-ai-tools/15",
+    chipText: "text-cat-ai-tools",
+    chipBorder: "border-cat-ai-tools/25 hover:border-cat-ai-tools/45",
+    Icon: Sparkles,
+  },
+  "seo-tools": {
+    heroGradient: "from-cat-seo-tools/15",
+    edgeAccent: "from-cat-seo-tools/70 via-cat-seo-tools/25 to-transparent",
+    blurOrb: "bg-cat-seo-tools/15",
+    headingBorder: "border-cat-seo-tools",
+    chipBg: "bg-cat-seo-tools/10 hover:bg-cat-seo-tools/15",
+    chipText: "text-cat-seo-tools",
+    chipBorder: "border-cat-seo-tools/25 hover:border-cat-seo-tools/45",
+    Icon: TrendingUp,
+  },
+  education: {
+    heroGradient: "from-cat-education/15",
+    edgeAccent: "from-cat-education/70 via-cat-education/25 to-transparent",
+    blurOrb: "bg-cat-education/15",
+    headingBorder: "border-cat-education",
+    chipBg: "bg-cat-education/10 hover:bg-cat-education/15",
+    chipText: "text-cat-education",
+    chipBorder: "border-cat-education/25 hover:border-cat-education/45",
+    Icon: GraduationCap,
   },
 };
 
@@ -336,6 +376,12 @@ export default function CategoryPage() {
   );
 }
 
+const KNOWN_SLUGS = new Set<string>(Object.keys(CATEGORY_META));
+
 function isKnownSlug(s: string | undefined): s is CategoryMeta["slug"] {
-  return s === "streaming" || s === "music" || s === "gaming" || s === "productivity";
+  // Derived from CATEGORY_META so a new category entry in
+  // lib/categories.ts lights up its landing page here automatically —
+  // a hand-maintained literal list here once shadowed five live
+  // categories behind a 404 surface (r100).
+  return typeof s === "string" && KNOWN_SLUGS.has(s);
 }

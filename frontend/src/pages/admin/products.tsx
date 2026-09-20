@@ -68,22 +68,41 @@ const EMPTY_FORM = {
 const CATEGORY_INITIAL_COLOR: Record<string, string> = {
   streaming: "bg-violet-500/20 text-violet-300",
   music: "bg-emerald-500/20 text-emerald-300",
+  software: "bg-sky-500/20 text-sky-300",
+  vpn: "bg-cyan-500/20 text-cyan-300",
+  "ai-tools": "bg-fuchsia-500/20 text-fuchsia-300",
+  "seo-tools": "bg-orange-500/20 text-orange-300",
+  education: "bg-amber-500/20 text-amber-300",
   gaming: "bg-blue-500/20 text-blue-300",
   productivity: "bg-amber-500/20 text-amber-300",
 };
 
+// Seven live categories first (mirror products.category in production);
+// gaming/productivity kept at the end so the operator can still manage
+// their archived products (PS Plus, Xbox, Canva, MS 365 …) and re-list
+// them the moment stock returns.
 const CATEGORY_OPTIONS = [
   { value: "", label: "اختر الفئة" },
   { value: "streaming", label: "بث مباشر" },
   { value: "music", label: "موسيقى" },
-  { value: "gaming", label: "ألعاب" },
-  { value: "productivity", label: "إنتاجية" },
+  { value: "software", label: "برامج وتراخيص" },
+  { value: "vpn", label: "شبكات VPN" },
+  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
+  { value: "seo-tools", label: "أدوات SEO" },
+  { value: "education", label: "تعليم ومكتبات" },
+  { value: "gaming", label: "ألعاب (مؤرشفة)" },
+  { value: "productivity", label: "إنتاجية (مؤرشفة)" },
 ];
 
 const CATEGORY_FILTERS = [
   { value: "", label: "الكل" },
   { value: "streaming", label: "بث مباشر" },
   { value: "music", label: "موسيقى" },
+  { value: "software", label: "برامج وتراخيص" },
+  { value: "vpn", label: "شبكات VPN" },
+  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
+  { value: "seo-tools", label: "أدوات SEO" },
+  { value: "education", label: "تعليم ومكتبات" },
   { value: "gaming", label: "ألعاب" },
   { value: "productivity", label: "إنتاجية" },
 ];

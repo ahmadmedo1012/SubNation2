@@ -391,9 +391,12 @@ export default defineConfig({
         // Belt & suspenders: even if a future glob somehow matches the
         // deferred-vendor chunks, refuse to precache anything heavy —
         // runtime caching exists precisely for the rarely/never-visited
-        // routes. 256 KB raw (≈ 64 KB gz) comfortably admits the largest
-        // allowlisted font subsets while excluding every vendor chunk.
-        maximumFileSizeToCacheInBytes: 256 * 1024,
+        // routes. 384 KB raw (≈ 45 KB gz) still excludes every vendor
+        // chunk (all ≥ 1 MB) while admitting the entry CSS (271 KB after
+        // the r100 five-category palette expansion — the offline shell
+        // must precache its own stylesheet or a cold offline boot
+        // renders unstyled) and the allowlisted font subsets.
+        maximumFileSizeToCacheInBytes: 384 * 1024,
         // Never precache JS: the entry HTML already links the entry
         // chunk, and a stale precached entry + freshly runtime-cached
         // chunks is the classic "partially updated PWA" failure mode.

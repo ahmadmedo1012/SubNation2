@@ -103,14 +103,14 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
   });
 
   it("mounts with ?category/sort/available_only/search applied to chips, select and the products query", () => {
-    setUrl("/?search=نتفلكس&category=gaming&sort=price_asc&available_only=true");
+    setUrl("/?search=نتفلكس&category=software&sort=price_asc&available_only=true");
 
     renderPage();
 
     // The search box is pre-filled with the committed query.
     expect(screen.getByLabelText("البحث في المنتجات")).toHaveValue("نتفلكس");
     // The category chip is pressed.
-    expect(screen.getByRole("button", { name: "ألعاب" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "برامج" })).toHaveAttribute("aria-pressed", "true");
     // The availability chip is pressed.
     expect(screen.getByRole("button", { name: "متوفر فقط" })).toHaveAttribute(
       "aria-pressed",
@@ -122,7 +122,7 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     const firstCall = vi.mocked(useListProducts).mock.calls[0]!;
     expect(firstCall[0]).toEqual({
       search: "نتفلكس",
-      category: "gaming",
+      category: "software",
       sort: "price_asc",
       available_only: "true",
     });
@@ -159,11 +159,11 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
   });
 
   it("clearing filters strips the querystring back to the bare path", async () => {
-    setUrl("/?category=gaming");
+    setUrl("/?category=software");
     const replaceSpy = vi.spyOn(window.history, "replaceState");
     renderPage();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "ألعاب" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "برامج" })).toHaveAttribute("aria-pressed", "true");
     });
 
     // مسح (1) — the clear-all affordance in the result header (the empty
@@ -183,7 +183,16 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
 
     expect(screen.getByLabelText("ترتيب المنتجات")).toHaveValue("");
     // No category chip is armed.
-    for (const label of ["الكل", "بث مباشر", "موسيقى", "ألعاب", "إنتاجية"]) {
+    for (const label of [
+      "الكل",
+      "بث مباشر",
+      "موسيقى",
+      "برامج",
+      "VPN وشبكات",
+      "ذكاء اصطناعي",
+      "أدوات SEO",
+      "تعليم",
+    ]) {
       expect(screen.getByRole("button", { name: label })).toHaveAttribute(
         "aria-pressed",
         label === "الكل" ? "true" : "false",

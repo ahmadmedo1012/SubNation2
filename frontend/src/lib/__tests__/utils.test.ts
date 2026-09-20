@@ -137,6 +137,14 @@ describe("categoryLabel", () => {
     expect(categoryLabel("productivity")).toBe("إنتاجية");
   });
 
+  it("returns Arabic labels for the seven live catalog categories (r100)", () => {
+    expect(categoryLabel("software")).toBe("برامج وتراخيص");
+    expect(categoryLabel("vpn")).toBe("شبكات VPN");
+    expect(categoryLabel("ai-tools")).toBe("ذكاء اصطناعي");
+    expect(categoryLabel("seo-tools")).toBe("أدوات SEO");
+    expect(categoryLabel("education")).toBe("تعليم ومكتبات");
+  });
+
   it("returns the 'general' fallback for null / undefined", () => {
     expect(categoryLabel(null)).toBe("عام");
     expect(categoryLabel(undefined)).toBe("عام");

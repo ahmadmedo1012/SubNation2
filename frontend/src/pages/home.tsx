@@ -19,13 +19,13 @@ import {
   useListProducts,
 } from "@workspace/api-client-react";
 import {
+  AppWindow,
   ArrowLeft,
-  Briefcase,
   CheckCircle,
   ChevronDown,
   ChevronLeft,
   Clock,
-  Gamepad2,
+  GraduationCap,
   Headphones,
   LayoutGrid,
   Music2,
@@ -34,7 +34,9 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Star,
+  TrendingUp,
   Truck,
   Tv2,
   WifiOff,
@@ -44,12 +46,19 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 
+// The seven live catalog categories (mirrors products.category values
+// verified against production — see lib/categories.ts). Retired chips
+// (gaming/productivity) were removed once their products were archived:
+// a chip that filters to an empty grid misleads shoppers.
 const CATEGORIES = [
   { value: "", label: "الكل", Icon: LayoutGrid },
   { value: "streaming", label: "بث مباشر", Icon: Tv2 },
   { value: "music", label: "موسيقى", Icon: Music2 },
-  { value: "gaming", label: "ألعاب", Icon: Gamepad2 },
-  { value: "productivity", label: "إنتاجية", Icon: Briefcase },
+  { value: "software", label: "برامج", Icon: AppWindow },
+  { value: "vpn", label: "VPN وشبكات", Icon: ShieldCheck },
+  { value: "ai-tools", label: "ذكاء اصطناعي", Icon: Sparkles },
+  { value: "seo-tools", label: "أدوات SEO", Icon: TrendingUp },
+  { value: "education", label: "تعليم", Icon: GraduationCap },
 ];
 
 const SORTS = [
