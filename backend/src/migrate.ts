@@ -1859,6 +1859,14 @@ export async function runMigrations() {
     logger.info("Migrations completed");
 
     // ── Data Migration: Legacy providers to user_auth_identities ───────────
+    // 2026-09-20 final audit fix: this loop used to reference github_id /
+    // facebook_id unconditionally — columns Stage C deliberately DROPPED
+    // (the providers never shipped). Every cold start therefore threw
+    // "column github_id does not exist" (level-50 "Data migration failed")
+    // AND the exception aborted the loop before telegram_id ever ran.
+    // Now each provider is catalog-probed (the same F1 discipline the
+    // cleanup stage below uses) and wrapped in its own try/catch so one
+    // missing column can never mask another provider's backfill.
     try {
       const providersToMigrate = [
         { column: "google_id", provider: "google.com" },
@@ -1867,22 +1875,48 @@ export async function runMigrations() {
         { column: "telegram_id", provider: "telegram.org" },
       ];
 
+      // One catalog probe for the users table's column set.
+      const usersColumns = new Set(
+        extractRows(
+          await db.execute(sql`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users'
+          `),
+        ).map((r) => String(r.column_name)),
+      );
+
       for (const { column, provider } of providersToMigrate) {
-        await db.execute(sql`
-          INSERT INTO user_auth_identities (user_id, provider, provider_uid, firebase_uid, email, phone, email_verified, phone_verified)
-          SELECT 
-            id as user_id,
-            ${provider} as provider,
-            ${sql.raw(column)} as provider_uid,
-            firebase_uid,
-            email,
-            phone,
-            email_verified,
-            phone_verified
-          FROM users
-          WHERE ${sql.raw(column)} IS NOT NULL
-          ON CONFLICT (provider, provider_uid) DO NOTHING;
-        `);
+        if (!usersColumns.has(column)) {
+          logger.info(
+            `Legacy provider backfill skipped — users.${column} no longer exists (provider retired)`,
+          );
+          continue;
+        }
+        try {
+          await db.execute(sql`
+            INSERT INTO user_auth_identities (user_id, provider, provider_uid, firebase_uid, email, phone, email_verified, phone_verified)
+            SELECT
+              id as user_id,
+              ${provider} as provider,
+              ${sql.raw(column)} as provider_uid,
+              firebase_uid,
+              email,
+              phone,
+              email_verified,
+              phone_verified
+            FROM users
+            WHERE ${sql.raw(column)} IS NOT NULL
+            ON CONFLICT (provider, provider_uid) DO NOTHING;
+          `);
+        } catch (perProviderErr) {
+          // Per-provider isolation: a failure here must not abort the
+          // remaining providers (the pre-fix bug: github's error starved
+          // telegram's backfill forever).
+          logger.error(
+            { err: perProviderErr, provider, column },
+            "Legacy provider backfill failed for one provider — continuing with the rest",
+          );
+        }
       }
       logger.info("Legacy provider data migrated to user_auth_identities");
     } catch (migErr) {

@@ -276,17 +276,14 @@ services:
       # transiently in the dashboard, redeploys, then unsets it.
       - key: DISABLE_BOOT_MIGRATIONS
         value: "false"
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: subnation-redis
-          property: connectionString
-
-  - type: redis
-    name: subnation-redis
-    plan: free
-    ipAllowList: []
-    maxmemoryPolicy: allkeys-lru
+      # 2026-09-20 final audit: REDIS_URL is intentionally ABSENT from this
+      # blueprint. Production runs on the PG-lease scheduler fallback
+      # (lib/pg-leader-lease.ts) — no Redis service is provisioned and the
+      # system is fully functional without one (rate-limit store, cache,
+      # idempotency middleware and Socket.IO all degrade to in-process
+      # fallbacks by design). The code-level fallback stays; only the
+      # blueprint definition was removed so `Apply Blueprint` can never
+      # create a Redis the deployment does not use.
 
   # 2026-09-20 (free-infrastructure round): the `subnation-worker`
   # service (plan: starter — a PAID worker Render would auto-create on

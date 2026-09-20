@@ -138,7 +138,14 @@ async function seedOrder(userId: number, productId: number, daysAgo: number): Pr
     productId,
     amount: "10.00",
     status: "completed",
-    createdAt: new Date(Date.now() - daysAgo * 86_400_000 - 3_600_000),
+    // 2026-09-20 final audit — midnight flake fix: the old wall-clock math
+    // (Date.now() - daysAgo*24h - 1h) pushed every order ONE day further
+    // back whenever the suite ran between 00:00 and 01:00 UTC, shrinking
+    // the in-window count to 13/14 (avg 0.9286 ≠ 1). Pin each order to
+    // 12:00 UTC of its intended calendar day — the aggregate maps
+    // created_at to DATE(… AT TIME ZONE 'UTC'), so the ISO date is now
+    // deterministic at any time of day the suite runs.
+    createdAt: new Date(`${addDays(todayUtcDate(), -daysAgo)}T12:00:00Z`),
   });
 }
 

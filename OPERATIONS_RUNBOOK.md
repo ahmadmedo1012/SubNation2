@@ -58,6 +58,11 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 
 ### #fe-sentry — `frontend_sentry_error_rate_high`
 
+> **2026-09-20 final audit — DORMANT (no evaluator).** This rule returns
+> false by design: it needs a Sentry-events signal the backend cannot read
+> for free. Triage Sentry's own dashboards directly; treat this rule as
+> deferred until a signal source is wired.
+
 - **Threshold:** > 10 frontend events / min.
 - **Triage:** open Sentry, group by browser / route — usually a regression
   on a specific lazy chunk. Check that the `release` tag matches the latest
@@ -84,12 +89,25 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 
 ### #worker — `worker_heartbeat_missing`
 
+> **2026-09-20 final audit — dormant in the current deployment.** The
+> heartbeat is written to Redis only (`worker/heartbeat.ts`), and NO Redis
+> service is provisioned (the app runs on the PG-lease scheduler fallback).
+> The rule evaluator fails safe (`return false` when `getRedisClient()` is
+> null), so it can never fire in the current shape — this is intentional,
+> not a defect. It becomes live again the moment a Redis is attached.
+
 - **Threshold:** no `worker:heartbeat` Redis key for 2 min.
 - **Triage:**
-  1. Render worker service status (`subnation-worker`). Free-tier worker
-     can be evicted; redeploy.
-  2. Inspect Render worker logs for `Failed to start worker` or
-     `Redis client error`.
+  1. The WEB process owns the heartbeat under the scheduler leader lock
+     (`lib/web-scheduler.ts` + PG lease — the dedicated `subnation-worker`
+     service was REMOVED in the 2026-09-20 free-infrastructure round and
+     must not be re-created from the blueprint). Check the web service
+     health + `/api/healthz` first; a sleeping free-tier instance is
+     expected to pause the heartbeat with everything else.
+  2. Inspect web service logs for `Failed to start` or scheduler
+     demotion messages (`[scheduler] lost leadership`).
+  3. If a Redis was later attached: `redis_errors_total` should stay 0;
+     a disconnect storm re-elects the leader via the PG lease.
 
 ### #latency — `api_p95_latency_high`
 
@@ -103,8 +121,14 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 
 ### #jobs — `worker_job_failures_high`
 
+> **2026-09-20 final audit — DORMANT (no evaluator).** Returns false by
+> design: needs a job-outcome counter that is not emitted yet (the worker
+> tier was removed in the free-infrastructure round). Deferred, not
+> broken.
+
 - **Threshold:** > 3 failed background jobs in 5 min.
-- **Triage:** worker logs filtered by `category:"worker" outcome:"failed"`.
+- **Triage:** web service logs filtered by `category:"worker" outcome:"failed"`
+  (the web process owns the scheduler jobs under the leader lock).
 
 ### #lockouts — `abnormal_lockouts`
 
@@ -161,13 +185,20 @@ ORDER BY duration DESC;
 
 ## 5. Scaling thresholds
 
-| Resource     | Free / current               | Watch                                                    | Promote when                                                     |
-| ------------ | ---------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
-| Render web   | starter                      | CPU > 70% sustained 30 min, memory > 400 MB, p95 > 1.5 s | move to `pro_max` and add a second instance                      |
-| Render Redis | free, `allkeys-lru`          | maxmemory eviction events                                | move to `starter` (no eviction surprises for rate-limit / dedup) |
-| Neon         | free                         | active connections > 50, `pg_stat_activity` shows queue  | scale plan                                                       |
-| Sentry       | free 5K events/mo            | events > 4K/mo                                           | upgrade or sample harder                                         |
-| Telegram bot | bot API rate limit (~30/sec) | global rate-limit > 25/min                               | already capped at 30/min in alerting service                     |
+> **2026-09-20 final audit:** the deployment is FREE-TIER by design —
+> Render web sleeps after ~15 min without inbound traffic (accepted; the
+> boot gate + frontend cold-start retry make the wake transparent), and
+> NO Redis is provisioned (the app runs the PG-lease scheduler fallback;
+> rate-limit / cache / idempotency degrade to in-process). The thresholds
+> below record future operator decisions; none are active today.
+
+| Resource     | Current (free tier)           | Watch                                                     | Promote when                                                     |
+| ------------ | ----------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------- |
+| Render web   | free (sleeps when idle)       | wake frequency hurting UX; CPU/memory on `/api/metrics`   | sustained traffic where wake latency is unacceptable              |
+| Redis        | NOT provisioned (PG-lease)    | only if a Redis is attached later                         | rate-limit/dedup consistency across multiple instances            |
+| Neon         | free (0.25 CU, sleeps ~5 min) | active connections > 8 (DB_POOL_MAX), queueing            | scale plan                                                        |
+| Sentry       | free 5K events/mo             | events > 4K/mo                                            | upgrade or sample harder                                         |
+| Telegram bot | bot API rate limit (~30/sec)  | global rate-limit > 25/min                                | already capped at 30/min in alerting service                     |
 
 Every tier change must be recorded in
 `observability-seo-cwv-maturity:tier-decisions` Memory_MCP entry per the

@@ -207,8 +207,13 @@ export class AlertingService {
    * evaluation tick (signal = delta over the 60 s evaluator window).
    *
    * Rules without a real evaluator return false — they are a no-op and need
-   * concrete metric reads in a future iteration. They are documented as
-   * "P2-pending" in OBSERVABILITY_SETUP.md / ALERTING_ARCHITECTURE.md.
+   * concrete metric reads in a future iteration. The two dormant rules are
+   * documented explicitly in OPERATIONS_RUNBOOK.md §2 (final-audit note):
+   *   - frontend_sentry_error_rate_high — needs a Sentry-events signal;
+   *   - worker_job_failures_high        — needs a job-outcome counter.
+   * (2026-09-20 final audit: the previous comment pointed at
+   * OBSERVABILITY_SETUP.md / ALERTING_ARCHITECTURE.md — files that do not
+   * exist in the repo; the runbook is the real home of this truth.)
    */
   protected async checkRuleCondition(rule: AlertRuleSpec): Promise<boolean> {
     try {
