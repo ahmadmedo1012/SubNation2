@@ -500,11 +500,11 @@ describe("GET /api/loyalty", () => {
     expect(res.body.referrals_total).toBe(0);
   });
 
-  it("returns 404 NOT_FOUND when the token's user no longer exists", async () => {
+  it("returns 401 ACCOUNT_NOT_FOUND when the token's user no longer exists (AUD103-4-F2 r103: one failure class, one shape)", async () => {
     const token = signUserToken({ userId: 999_999 });
     const res = await call<{ code: string }>(app, "GET", "/api/loyalty", { token });
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe("NOT_FOUND");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("ACCOUNT_NOT_FOUND");
   });
 
   it("rejects an unauthenticated request with 401", async () => {

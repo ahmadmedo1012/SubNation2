@@ -1,13 +1,7 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  adminUsersTable,
-  db,
-  initTestDb,
-  productsTable,
-  resetTestDb,
-} from "../../test/db";
+import { adminUsersTable, db, initTestDb, productsTable, resetTestDb } from "../../test/db";
 import { signAdminToken } from "../jwt";
 import { hasPermission, requirePermission } from "../permissions";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -28,7 +22,15 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 
 describe("hasPermission — the RBAC predicate (AUD103-5-F1)", () => {
   it("the 'all' wildcard satisfies every scope", () => {
-    for (const scope of ["orders", "finance", "inventory", "support", "users", "admins", "settings"]) {
+    for (const scope of [
+      "orders",
+      "finance",
+      "inventory",
+      "support",
+      "users",
+      "admins",
+      "settings",
+    ]) {
       expect(hasPermission(["all"], scope as never)).toBe(true);
     }
   });
@@ -58,15 +60,10 @@ function buildApp(): Express {
   // A stand-in privileged mutation: inserts a product row ONLY when the
   // guard chain (requireAdmin → requirePermission("finance")) lets it
   // through — mirrors the parent-mount shape routes/admin/index.ts uses.
-  app.post(
-    "/api/admin/guarded",
-    requireAdmin,
-    requirePermission("finance"),
-    async (_req, res) => {
-      await db.insert(productsTable).values({ name: "side-effect", price: "1.00" });
-      res.status(201).json({ ok: true });
-    },
-  );
+  app.post("/api/admin/guarded", requireAdmin, requirePermission("finance"), async (_req, res) => {
+    await db.insert(productsTable).values({ name: "side-effect", price: "1.00" });
+    res.status(201).json({ ok: true });
+  });
   return app;
 }
 

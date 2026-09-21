@@ -87,10 +87,7 @@ describe("stacked discounts — flash sale × coupon (AUD103-5 #17)", () => {
     expect(parseFloat(String(u.walletBalance))).toBeCloseTo(28.4, 2); // 50 − 21.6
 
     // The ORDER row carries the snapshot with 2-dp money strings.
-    const [order] = await db
-      .select()
-      .from(ordersTable)
-      .where(eq(ordersTable.userId, user.id));
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id));
     expect(parseFloat(String(order.amount))).toBe(21.6);
     // discountAmount's column contract = the COUPON discount only
     // (2.40 = 10% of the post-flash 24) — the flash discount (6.00) is
@@ -99,10 +96,7 @@ describe("stacked discounts — flash sale × coupon (AUD103-5 #17)", () => {
     expect(order.couponCode).toBe("STACK10");
 
     // The coupon slot was consumed exactly once.
-    const [coupon] = await db
-      .select()
-      .from(couponsTable)
-      .where(eq(couponsTable.code, "STACK10"));
+    const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, "STACK10"));
     expect(coupon.usedCount).toBe(1);
   });
 });

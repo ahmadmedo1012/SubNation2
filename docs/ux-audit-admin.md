@@ -6,20 +6,21 @@
 
 ## مصفوفة الجداول (قبل → بعد)
 
-| الصفحة | جدول؟ | TableSkeleton قبل | الحالة الآن |
-|---|---|---|---|
-| orders.tsx | نعم (جدول حقيقي + بطاقات جوال) | ✅ كان يستخدمه | ✅ (مرجع) — ChevronRight rotate-90 → **ChevronDown** صريح |
-| users.tsx | نعم | ✅ | ✅ (مرجع) |
-| coupons.tsx | نعم (شبكة div) | ✅ لكن `zebra=false` بينما الصفوف الحية مخططة | ✅ النموذج مُوثَّق؛ **modal الإنشاء أُضيف له max-h-[90vh] + تمرير** |
-| referrals.tsx | نعم | ✅ | ✅ (مرجع) |
-| **risk.tsx** | نعم | ❌ نص "جاري التحميل…" فقط + chrome منحرف + **لا overflow-x-auto ولا بطاقات جوال** | ✅ **أُعيد بناؤه بالكامل:** chrome قياسي (bg-card border-border/60 rounded-2xl) + `overflow-x-auto` + `min-w-[720px]` + حبيبات/zebra + `TableSkeleton` + `EmptyState` + **قائمة بطاقات جوال** (مطابقة لنمط orders/users) |
-| topups.tsx | لا (بطاقات — استثناء موثَّق) | TopupCardSkeleton خاص | ✅ بقي — **flex-wrap لصف الإجراءات** (كان يفيض أفقياً على 375px) |
-| tickets.tsx | قائمة split-pane | skeleton يدوي مناسب | ✅ أزرار إغلاق/إعادة فتح: **حالة in-flight** (spinner + disabled + toast نجاح/فشل) |
-| باقي الصفحات | بطاقات/لوحات | حسب الشكل | راجع "المتبقي" أدناه |
+| الصفحة        | جدول؟                          | TableSkeleton قبل                                                                 | الحالة الآن                                                                                                                                                                                                              |
+| ------------- | ------------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| orders.tsx    | نعم (جدول حقيقي + بطاقات جوال) | ✅ كان يستخدمه                                                                    | ✅ (مرجع) — ChevronRight rotate-90 → **ChevronDown** صريح                                                                                                                                                                |
+| users.tsx     | نعم                            | ✅                                                                                | ✅ (مرجع)                                                                                                                                                                                                                |
+| coupons.tsx   | نعم (شبكة div)                 | ✅ لكن `zebra=false` بينما الصفوف الحية مخططة                                     | ✅ النموذج مُوثَّق؛ **modal الإنشاء أُضيف له max-h-[90vh] + تمرير**                                                                                                                                                      |
+| referrals.tsx | نعم                            | ✅                                                                                | ✅ (مرجع)                                                                                                                                                                                                                |
+| **risk.tsx**  | نعم                            | ❌ نص "جاري التحميل…" فقط + chrome منحرف + **لا overflow-x-auto ولا بطاقات جوال** | ✅ **أُعيد بناؤه بالكامل:** chrome قياسي (bg-card border-border/60 rounded-2xl) + `overflow-x-auto` + `min-w-[720px]` + حبيبات/zebra + `TableSkeleton` + `EmptyState` + **قائمة بطاقات جوال** (مطابقة لنمط orders/users) |
+| topups.tsx    | لا (بطاقات — استثناء موثَّق)   | TopupCardSkeleton خاص                                                             | ✅ بقي — **flex-wrap لصف الإجراءات** (كان يفيض أفقياً على 375px)                                                                                                                                                         |
+| tickets.tsx   | قائمة split-pane               | skeleton يدوي مناسب                                                               | ✅ أزرار إغلاق/إعادة فتح: **حالة in-flight** (spinner + disabled + toast نجاح/فشل)                                                                                                                                       |
+| باقي الصفحات  | بطاقات/لوحات                   | حسب الشكل                                                                         | راجع "المتبقي" أدناه                                                                                                                                                                                                     |
 
 ## فلاتر/بحث — الاتساق
 
 النمط المرجعي: **tab-strip حالة + بحث فوري** (orders.tsx: فوري client-side + اختصار `/` + عدّاد). الانحرافات الموثَّقة:
+
 - topups/tickets/coupons: لا بحث نصي رغم عرض هواتف/أكواد (موصى به لاحقاً)
 - security.tsx: `<select>` أصلية — الصفحة الوحيدة خارج نمط chips/tabs (موثَّق)
 - users.tsx: فلترة خلف لوحة قابلة للطي (انحراف تفاعلي موثَّق)
@@ -27,14 +28,14 @@
 
 ## قابلية الاستخدام على 375px — الإصلاحات المنفَّذة
 
-| الملف:السطر | المشكلة | الإصلاح |
-|---|---|---|
-| **risk.tsx** (الجدول كله) | 7 أعمدة بلا تمرير أفقي — تُسحق على 375px | overflow-x-auto + min-w + **بطاقات جوال md:hidden** |
-| **topups.tsx:603** | صف إجراءات (تحديد الكل + موافقة جماعية + رفض + 4 تبويبات) بلا `flex-wrap` | ✅ `flex-wrap` |
-| **alerts.tsx:490** | أزرار حذف/تعيين مقروء `opacity-0 group-hover:opacity-100` — **غير مرئية على اللمس** | ✅ `opacity-100 sm:opacity-0 sm:group-hover:opacity-100` |
-| **CopilotPanel:1166** | زر نسخ hover-only — نفس المشكلة | ✅ نفس الحل |
-| **coupons.tsx:247** | modal بلا max-height — يقصّ على شاشات قصيرة | ✅ `max-h-[90vh] flex flex-col` + تمرير للنموذج |
-| **admins.tsx:528** | DialogShell بلا تمرير | ✅ `max-h-[90vh] overflow-y-auto` |
+| الملف:السطر               | المشكلة                                                                             | الإصلاح                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **risk.tsx** (الجدول كله) | 7 أعمدة بلا تمرير أفقي — تُسحق على 375px                                            | overflow-x-auto + min-w + **بطاقات جوال md:hidden**      |
+| **topups.tsx:603**        | صف إجراءات (تحديد الكل + موافقة جماعية + رفض + 4 تبويبات) بلا `flex-wrap`           | ✅ `flex-wrap`                                           |
+| **alerts.tsx:490**        | أزرار حذف/تعيين مقروء `opacity-0 group-hover:opacity-100` — **غير مرئية على اللمس** | ✅ `opacity-100 sm:opacity-0 sm:group-hover:opacity-100` |
+| **CopilotPanel:1166**     | زر نسخ hover-only — نفس المشكلة                                                     | ✅ نفس الحل                                              |
+| **coupons.tsx:247**       | modal بلا max-height — يقصّ على شاشات قصيرة                                         | ✅ `max-h-[90vh] flex flex-col` + تمرير للنموذج          |
+| **admins.tsx:528**        | DialogShell بلا تمرير                                                               | ✅ `max-h-[90vh] overflow-y-auto`                        |
 
 ## الأيقونات (التفصيل الكامل في docs/ux-audit-icons.md)
 
@@ -45,25 +46,26 @@
 
 ## التنقّل في الشريط الجانبي — إصلاحات layout.tsx
 
-| المشكلة | الإصلاح |
-|---|---|
-| المطابقة exact فقط (`location === item.href`) → `/admin/risk/events/:id` و`/admin/products/enrichment` **لا يضيئان أبداً** | **أطول مطابقة prefix** (`computeActiveHref`) — البند الأكثر تحديداً يضيء (enrichment يضيئ بنده، risk-event يضيء "مراقبة المخاطر") |
-| PAGE_TITLES ناقصة: `/admin/risk`, `/admin/risk/events/:id`, `/admin/products/enrichment` → الشريط العلوي يظهر "الإدارة" فقط | ✅ أضيفت الثلاثة (مع fallback لسطر تفاصيل الحدث) |
-| **`/admin/security` صفحة يتيمة** — موجودة في المسارات والعناوين لكن غائبة عن NAV_SECTIONS (وصول URL فقط!) | ✅ أضيفت لقسم "النظام" (أيقونة ShieldAlert، نطاق صلاحيات admins — نطاق موجود في PERMISSION_SCOPES) |
+| المشكلة                                                                                                                     | الإصلاح                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| المطابقة exact فقط (`location === item.href`) → `/admin/risk/events/:id` و`/admin/products/enrichment` **لا يضيئان أبداً**  | **أطول مطابقة prefix** (`computeActiveHref`) — البند الأكثر تحديداً يضيء (enrichment يضيئ بنده، risk-event يضيء "مراقبة المخاطر") |
+| PAGE_TITLES ناقصة: `/admin/risk`, `/admin/risk/events/:id`, `/admin/products/enrichment` → الشريط العلوي يظهر "الإدارة" فقط | ✅ أضيفت الثلاثة (مع fallback لسطر تفاصيل الحدث)                                                                                  |
+| **`/admin/security` صفحة يتيمة** — موجودة في المسارات والعناوين لكن غائبة عن NAV_SECTIONS (وصول URL فقط!)                   | ✅ أضيفت لقسم "النظام" (أيقونة ShieldAlert، نطاق صلاحيات admins — نطاق موجود في PERMISSION_SCOPES)                                |
 
 ## حالات التحميل/الإجراءات
 
-| البند | الإصلاح |
-|---|---|
-| **dashboard.tsx** — بث الطلبات الأخيرة: `isLoading` غير مفكَّك → ومضة "لا توجد طلبات" قبل وصول البيانات | ✅ skeleton صفوف (5) قبل الفراغ |
-| **tickets.tsx** — إغلاق/إعادة فتح بلا حالة in-flight (خطر نقر مزدوج على PATCH) + بلا toast نجاح | ✅ `statusBusy` + spinner + disabled + toast نجاح/فشل |
-| **products.tsx InlineStockEdit** — `catch(() => {})` صامت: **فشل تعديل المخزون يبدو نجاحاً** | ✅ فحص res.ok + toast نجاح/فشل مع رسالة الخطأ |
-| **topups.tsx جماعي** — toast نجاح غير مشروط حتى عند فشل كلي ("✓ تمت الموافقة 0/N" بجانب toast الخطأ) | ✅ toast النجاح فقط عند successCount>0 + variant success |
-| **pricing.tsx** — تعليق يدّعي debounce لكن **POST لكل ضغطة مفتاح** فعلياً (React batching لا يجمّع effects) | ✅ debounce حقيقي 300ms عبر ref |
-| plain-text loading (بدون skeleton) في: risk.tsx (أُصلح)، risk-event.tsx، enrichment.tsx، security.tsx، admins.tsx، whatsapp.tsx؛ StockoutRiskPanel يرجع null أثناء التحميل | موثَّق كمتبقٍّ (أولوية منخفضة — ليست جداول) |
-| EmptyStates يدوية تتجاوز EmptyState في: tickets, alerts, admins, enrichment, whatsapp, security | موثَّق كمتبقٍّ |
+| البند                                                                                                                                                                      | الإصلاح                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **dashboard.tsx** — بث الطلبات الأخيرة: `isLoading` غير مفكَّك → ومضة "لا توجد طلبات" قبل وصول البيانات                                                                    | ✅ skeleton صفوف (5) قبل الفراغ                          |
+| **tickets.tsx** — إغلاق/إعادة فتح بلا حالة in-flight (خطر نقر مزدوج على PATCH) + بلا toast نجاح                                                                            | ✅ `statusBusy` + spinner + disabled + toast نجاح/فشل    |
+| **products.tsx InlineStockEdit** — `catch(() => {})` صامت: **فشل تعديل المخزون يبدو نجاحاً**                                                                               | ✅ فحص res.ok + toast نجاح/فشل مع رسالة الخطأ            |
+| **topups.tsx جماعي** — toast نجاح غير مشروط حتى عند فشل كلي ("✓ تمت الموافقة 0/N" بجانب toast الخطأ)                                                                       | ✅ toast النجاح فقط عند successCount>0 + variant success |
+| **pricing.tsx** — تعليق يدّعي debounce لكن **POST لكل ضغطة مفتاح** فعلياً (React batching لا يجمّع effects)                                                                | ✅ debounce حقيقي 300ms عبر ref                          |
+| plain-text loading (بدون skeleton) في: risk.tsx (أُصلح)، risk-event.tsx، enrichment.tsx، security.tsx، admins.tsx، whatsapp.tsx؛ StockoutRiskPanel يرجع null أثناء التحميل | موثَّق كمتبقٍّ (أولوية منخفضة — ليست جداول)              |
+| EmptyStates يدوية تتجاوز EmptyState في: tickets, alerts, admins, enrichment, whatsapp, security                                                                            | موثَّق كمتبقٍّ                                           |
 
 ## ما حُفظ عمداً (أنماط مرجعية ممتازة)
+
 - orders/users/referrals/coupons: TableSkeleton + chrome قياسي + حالات in-flight مع idempotency keys — **المرجع**
 - استثناء topups (TopupCardSkeleton) موثَّق أصلاً في TableSkeleton.tsx وصحيح الشكل
 - drawer الجوال في layout.tsx (يمين-مرساة، 85vw) — سليم RTL
@@ -71,6 +73,7 @@
 - CopilotPanel/settings/system: أنماط تحميل وتقدّم ممتازة
 
 ## المتبقي (موصى به، لم يُنفَّذ في هذه الجولة لتقييد نطاق UX)
+
 1. بحث نصي لـ topups/tickets/coupons (النمط المرجعي orders.tsx)
 2. توحيد security.tsx من select أصلية إلى chips
 3. GlobalSearch: تنفيذ ملاحة لوحة مفاتيح (↑↓ Enter) أو إزالة تلميح "↵"
@@ -83,12 +86,12 @@
 
 صفحات الأدمن محمية بجلسة أدمن (ADMIN_USERNAME/PASSWORD متغيرات بيئة في Render — غير متاحة للمدقق)، لذا التحقق الحي المباشر اقتصر على الواجهة العامة، وبنود الأدمن **مُتحقَّق بالبناء**: typecheck نظيف + build إنتاجي كامل ناجح (يشمل كل صفحات الأدمن) + 310 اختبار خلفي/39 أمامي يمرّ — والنشر نفسه live (سير البناء الخلفي يخدم حزمة الواجهة المبنية من نفس الأصل).
 
-| # | البند | مقاس | الحالة |
-|---|---|---|---|
-| 1 | risk.tsx: بطاقات جوال + جدول قابل للتمرير | 375/768 | ✅ مُتحقَّق بالبناء (الكود الجديد منشور — `hidden md:block` للجدول + `md:hidden` للبطاقات + min-w-[720px] + overflow-x-auto) |
-| 2 | أزرار التنبيهات ظاهرة على اللمس | 375 | ✅ بالبناء (`opacity-100 sm:opacity-0 sm:group-hover:opacity-100`) |
-| 3 | صف إجراءات topups لا يفيض | 375 | ✅ بالبناء (`flex-wrap`) |
-| 4 | nav: prefix-match + security في القائمة | 1440 | ✅ بالبناء (computeActiveHref + NAV_SECTIONS محدثة) |
-| 5 | KPI cards: ArrowUpLeft | 1440 | ✅ بالبناء |
-| 6 | modal كوبونات قابل للتمرير | 375×600 | ✅ بالبناء (max-h-[90vh] + overflow) |
-| 7 | الموقع الحي بلا أخطاء صفحة بعد النشر | الكل | ✅ مُتحقَّق حياً (جولة متصفح على 3 مقاسات — راجع ux-audit-storefront.md) |
+| #   | البند                                     | مقاس    | الحالة                                                                                                                       |
+| --- | ----------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | risk.tsx: بطاقات جوال + جدول قابل للتمرير | 375/768 | ✅ مُتحقَّق بالبناء (الكود الجديد منشور — `hidden md:block` للجدول + `md:hidden` للبطاقات + min-w-[720px] + overflow-x-auto) |
+| 2   | أزرار التنبيهات ظاهرة على اللمس           | 375     | ✅ بالبناء (`opacity-100 sm:opacity-0 sm:group-hover:opacity-100`)                                                           |
+| 3   | صف إجراءات topups لا يفيض                 | 375     | ✅ بالبناء (`flex-wrap`)                                                                                                     |
+| 4   | nav: prefix-match + security في القائمة   | 1440    | ✅ بالبناء (computeActiveHref + NAV_SECTIONS محدثة)                                                                          |
+| 5   | KPI cards: ArrowUpLeft                    | 1440    | ✅ بالبناء                                                                                                                   |
+| 6   | modal كوبونات قابل للتمرير                | 375×600 | ✅ بالبناء (max-h-[90vh] + overflow)                                                                                         |
+| 7   | الموقع الحي بلا أخطاء صفحة بعد النشر      | الكل    | ✅ مُتحقَّق حياً (جولة متصفح على 3 مقاسات — راجع ux-audit-storefront.md)                                                     |

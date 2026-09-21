@@ -2,13 +2,7 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  adminUsersTable,
-  db,
-  flashSalesTable,
-  initTestDb,
-  resetTestDb,
-} from "../../test/db";
+import { adminUsersTable, db, flashSalesTable, initTestDb, resetTestDb } from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
 import { adminFlashSalesRouter } from "../admin/flash-sales";
 

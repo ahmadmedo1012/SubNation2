@@ -64,6 +64,10 @@ vi.mock("../redis-client", () => ({
   requireRedisClient: () => redisStub,
   isRedisInitialised: () => redisStub !== null,
   stopPingWatchdog: () => {},
+  // AUD103-8-F2 (r103): the consent flow now bounds its Redis commands
+  // (issue SET + consume GETDEL) — a passthrough wrapper for the healthy
+  // stub mirrors the real module's contract for a responsive client.
+  withRedisCommandTimeout: (_label: string, fn: () => Promise<unknown>) => fn(),
 }));
 
 // Import AFTER the mock is registered so the module's top-level import

@@ -63,10 +63,7 @@ export const enrichmentDraftsTable = pgTable(
   },
   (t) => ({
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    stateCreatedIdx: index("idx_enrichment_drafts_state_created").on(
-      t.state,
-      t.createdAt.desc(),
-    ),
+    stateCreatedIdx: index("idx_enrichment_drafts_state_created").on(t.state, t.createdAt.desc()),
     productFieldStateIdx: index("idx_enrichment_drafts_product_field_state").on(
       t.productId,
       t.fieldName,

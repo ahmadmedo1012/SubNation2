@@ -66,7 +66,9 @@ export const inventoryTable = pgTable(
     productIdx: index("idx_inventory_product").on(t.productId),
     // AUD103-1-F3 (r103): partial mirrors the boot definition (migrate.ts):
     // idx_inventory_sold ON inventory(is_sold) WHERE is_sold = false.
-    soldIdx: index("idx_inventory_sold").on(t.isSold).where(sql`is_sold = false`),
+    soldIdx: index("idx_inventory_sold")
+      .on(t.isSold)
+      .where(sql`is_sold = false`),
     productSoldIdx: index("idx_inventory_product_sold").on(t.productId, t.isSold),
     // R98-DB-01: V1-M16 (migrate.ts applyProductVariantsStage) creates this
     // live for the variant-scoped stock lookups. Declared here so the

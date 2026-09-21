@@ -28,7 +28,7 @@
 | الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                                             |
 | الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                         |
 | المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                              |
-| قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                                 |
+| قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                               |
 | الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                                                  |
 | مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                     |
 | صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                |

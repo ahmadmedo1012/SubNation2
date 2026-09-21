@@ -18,7 +18,11 @@ import { reportOrphanInventory } from "../stockWatcher";
  * miscounting leftJoin) would have passed CI silently.
  */
 
-async function seedProduct(name: string, archived: boolean, units: { unsold: number; sold: number }) {
+async function seedProduct(
+  name: string,
+  archived: boolean,
+  units: { unsold: number; sold: number },
+) {
   const [p] = await db
     .insert(productsTable)
     .values({ name, price: "10.00", isArchived: archived, isActive: !archived })

@@ -95,7 +95,10 @@ export class TopupService {
           .select({ id: walletTopupsTable.id })
           .from(walletTopupsTable)
           .where(
-            and(eq(walletTopupsTable.paymentReference, cleanRef), eq(walletTopupsTable.status, "approved")),
+            and(
+              eq(walletTopupsTable.paymentReference, cleanRef),
+              eq(walletTopupsTable.status, "approved"),
+            ),
           )
           .limit(1);
         if (dup.length > 0) {
@@ -140,7 +143,9 @@ export class TopupService {
           .set({
             walletBalance: String(newBalance),
           })
-          .where(and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))))
+          .where(
+            and(eq(usersTable.id, user.id), eq(usersTable.walletBalance, String(balanceBefore))),
+          )
           .returning({ id: usersTable.id });
         if (updated.length !== 1) {
           throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مرة أخرى.");
@@ -187,7 +192,11 @@ export class TopupService {
       `تمت إضافة الرصيد عبر ${provider} بنجاح`,
       "/wallet",
     );
-    emitToUser(user.id, "topup-updated", { id: topup.id, status: "approved", amount: creditAmount });
+    emitToUser(user.id, "topup-updated", {
+      id: topup.id,
+      status: "approved",
+      amount: creditAmount,
+    });
     emitToAdmins("admin-stats-update", { type: "topup-automated" });
 
     return topup;

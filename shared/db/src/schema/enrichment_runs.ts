@@ -46,6 +46,6 @@ export const enrichmentRunsTable = pgTable(
   (t) => ({
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     startedAtIdx: index("idx_enrichment_runs_started_at").on(t.startedAt.desc()),
-        outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, t.startedAt.desc()),
+    outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, t.startedAt.desc()),
   }),
 );

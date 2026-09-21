@@ -88,16 +88,10 @@ describe("price snapshot immutability (AUD103-5 #3)", () => {
     expect(parseFloat(String(u1.walletBalance))).toBe(23); // 50 − 27
 
     // ── The admin re-prices the product AFTER the purchase ──────────────
-    await db
-      .update(productsTable)
-      .set({ price: "999.00" })
-      .where(eq(productsTable.id, product.id));
+    await db.update(productsTable).set({ price: "999.00" }).where(eq(productsTable.id, product.id));
 
     // The committed order still carries its purchase-time snapshot…
-    const [order] = await db
-      .select()
-      .from(ordersTable)
-      .where(eq(ordersTable.userId, user.id));
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id));
     expect(order).toBeDefined();
     expect(parseFloat(String(order.amount))).toBe(27);
     expect(parseFloat(String(order.discountAmount))).toBe(3);

@@ -109,7 +109,10 @@ describe("CheckoutService — money-integrity gate (round-3 regression, M1)", ()
     expect(parseFloat(String(u.walletBalance))).toBe(50);
     expect(await db.select().from(ordersTable)).toHaveLength(0);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
-    const inv = await db.select().from(inventoryTable).where(eq(inventoryTable.productId, product.id));
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, product.id));
     expect(inv.every((i) => i.isSold === false)).toBe(true);
   });
 });
@@ -155,7 +158,9 @@ describe("CheckoutService — not-found / out-of-stock guards", () => {
     // partial-state regressions).
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(50); // untouched
-    expect(await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id))).toHaveLength(0);
+    expect(await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id))).toHaveLength(
+      0,
+    );
     expect(
       await db.select().from(walletLedgerTable).where(eq(walletLedgerTable.userId, user.id)),
     ).toHaveLength(0);
