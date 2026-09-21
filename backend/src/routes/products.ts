@@ -6,6 +6,7 @@ import {
   productsTable,
 } from "@workspace/db";
 import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
+import { withCatalogCache } from "../lib/catalog-cache";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
 import { and, asc, count, eq, inArray, isNotNull, min, or, sql } from "drizzle-orm";
@@ -197,182 +198,213 @@ async function getActiveFlashSale(): Promise<{
 router.get("/", catalogCache, async (req, res) => {
   const { category, available_only, sort, search } = req.query;
 
-  // Build SQL filter conditions — pushdown to the database.
-  const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
-  if (typeof category === "string" && category.trim()) {
-    conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
-  }
-  if (typeof search === "string" && search.trim()) {
-    conditions.push(sql`${productsTable.name} ILIKE ${"%" + search.trim() + "%"}`);
-  }
+  // R104 (AG5-7): 30 s in-process response cache keyed by the validated
+  // filter combo — the single most-repeated query set in the app (every
+  // home/category page view + crawler hit). 200-only via loader-throw
+  // semantics; admin CRUD bumps the generation. See lib/catalog-cache.ts
+  // for the full safety analysis.
+  // RT-1 (R104 red team): the KEY must be built from the SAME
+  // normalized values the loader actually acts on — sort folds to the
+  // 4-value whitelist (anything else = the default branch), search is
+  // lowercased (the ILIKE is case-insensitive). Otherwise unique garbage
+  // (?sort=<random>) mints a fresh full-payload LRU entry per request.
+  const normalizedSort =
+    sort === "price_asc" || sort === "price_desc" || sort === "popular" ? sort : "";
+  const cacheKey = JSON.stringify([
+    typeof category === "string" ? category.trim().toLowerCase() : "",
+    typeof search === "string" ? search.trim().toLowerCase() : "",
+    normalizedSort,
+    available_only === "true",
+  ]);
 
-  // Aggregate stock + order counts as a single subquery join, no JS-side reduce.
-  // R102 (inventory truthfulness): stock counts DELIVERABLE units only
-  // (≥1 credential field) — matches what checkout can actually sell.
-  const stockSub = db
-    .select({
-      productId: inventoryTable.productId,
-      stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
-    })
-    .from(inventoryTable)
-    .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition()))
-    .groupBy(inventoryTable.productId)
-    .as("stock_sub");
+  const result = await withCatalogCache("list", cacheKey, 30, async () => {
+    // Build SQL filter conditions — pushdown to the database.
+    const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
+    if (typeof category === "string" && category.trim()) {
+      conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
+    }
+    if (typeof search === "string" && search.trim()) {
+      conditions.push(sql`${productsTable.name} ILIKE ${"%" + search.trim() + "%"}`);
+    }
 
-  const orderSub = db
-    .select({
-      productId: ordersTable.productId,
-      orderCount: sql<number>`COUNT(*)::int`.as("order_count"),
-    })
-    .from(ordersTable)
-    .where(eq(ordersTable.status, "completed"))
-    .groupBy(ordersTable.productId)
-    .as("order_sub");
+    // Aggregate stock + order counts as a single subquery join, no JS-side reduce.
+    // R102 (inventory truthfulness): stock counts DELIVERABLE units only
+    // (≥1 credential field) — matches what checkout can actually sell.
+    const stockSub = db
+      .select({
+        productId: inventoryTable.productId,
+        stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
+      })
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition()))
+      .groupBy(inventoryTable.productId)
+      .as("stock_sub");
 
-  const stockExpr = sql<number>`COALESCE(${stockSub.stockCount}, 0)`;
-  const orderExpr = sql<number>`COALESCE(${orderSub.orderCount}, 0)`;
+    const orderSub = db
+      .select({
+        productId: ordersTable.productId,
+        orderCount: sql<number>`COUNT(*)::int`.as("order_count"),
+      })
+      .from(ordersTable)
+      .where(eq(ordersTable.status, "completed"))
+      .groupBy(ordersTable.productId)
+      .as("order_sub");
 
-  if (available_only === "true") {
-    conditions.push(sql`COALESCE(${stockSub.stockCount}, 0) > 0`);
-  }
+    const stockExpr = sql<number>`COALESCE(${stockSub.stockCount}, 0)`;
+    const orderExpr = sql<number>`COALESCE(${orderSub.orderCount}, 0)`;
 
-  let query = db
-    .select({
-      id: productsTable.id,
-      slug: productsTable.slug,
-      name: productsTable.name,
-      description: productsTable.description,
-      imageUrl: productsTable.imageUrl,
-      price: productsTable.price,
-      category: productsTable.category,
-      isActive: productsTable.isActive,
-      usageTerms: productsTable.usageTerms,
-      stockCount: stockExpr,
-      orderCount: orderExpr,
-    })
-    .from(productsTable)
-    .leftJoin(stockSub, eq(stockSub.productId, productsTable.id))
-    .leftJoin(orderSub, eq(orderSub.productId, productsTable.id))
-    .where(and(...conditions))
-    // Hard ceiling — the storefront renders categories from this list;
-    // 500 products is far beyond current catalog size but prevents an
-    // unbounded scan if the catalog ever balloons.
-    .limit(500)
-    .$dynamic();
+    if (available_only === "true") {
+      conditions.push(sql`COALESCE(${stockSub.stockCount}, 0) > 0`);
+    }
 
-  if (sort === "price_asc") query = query.orderBy(productsTable.price);
-  else if (sort === "price_desc") query = query.orderBy(sql`${productsTable.price} DESC`);
-  else if (sort === "popular") query = query.orderBy(sql`${orderExpr} DESC`);
-  else query = query.orderBy(sql`${productsTable.id} DESC`);
+    let query = db
+      .select({
+        id: productsTable.id,
+        slug: productsTable.slug,
+        name: productsTable.name,
+        description: productsTable.description,
+        imageUrl: productsTable.imageUrl,
+        price: productsTable.price,
+        category: productsTable.category,
+        isActive: productsTable.isActive,
+        usageTerms: productsTable.usageTerms,
+        stockCount: stockExpr,
+        orderCount: orderExpr,
+      })
+      .from(productsTable)
+      .leftJoin(stockSub, eq(stockSub.productId, productsTable.id))
+      .leftJoin(orderSub, eq(orderSub.productId, productsTable.id))
+      .where(and(...conditions))
+      // Hard ceiling — the storefront renders categories from this list;
+      // 500 products is far beyond current catalog size but prevents an
+      // unbounded scan if the catalog ever balloons.
+      .limit(500)
+      .$dynamic();
 
-  const [rows, flashSale] = await Promise.all([query, getActiveFlashSale()]);
-  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+    if (sort === "price_asc") query = query.orderBy(productsTable.price);
+    else if (sort === "price_desc") query = query.orderBy(sql`${productsTable.price} DESC`);
+    else if (sort === "popular") query = query.orderBy(sql`${orderExpr} DESC`);
+    else query = query.orderBy(sql`${productsTable.id} DESC`);
 
-  // Variants ride a single follow-up query for the whole page of
-  // products (see loadPublicVariants) — kept OUT of the main join so
-  // the limit(500) product ceiling stays exact and the hot list query
-  // shape is unchanged for variant-less catalogs.
-  const variantsByProduct = await loadPublicVariants(
-    rows.map((p) => p.id),
-    discountPercent,
-  );
+    const [rows, flashSale] = await Promise.all([query, getActiveFlashSale()]);
+    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
 
-  const result = rows.map((p) => {
-    const basePrice = parseFloat(String(p.price));
-    const stockCount = Number(p.stockCount ?? 0);
-    const variants = variantsByProduct.get(p.id) ?? [];
-    // "تبدأ من" semantics: when variants exist, the card price is the
-    // cheapest active variant's LYD price — the import maintains
-    // products.price = MIN(variants.price_lyd) so both agree. The flash
-    // sale is applied exactly ONCE on that base (per-variant sale prices
-    // are already computed by loadPublicVariants and stay authoritative
-    // for the detail page selector).
-    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
-    const displayPrice =
-      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : displayBase;
-    return {
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      description: p.description,
-      image_url: p.imageUrl,
-      price: displayBase,
-      price_from: variants.length > 1,
-      category: p.category,
-      is_active: p.isActive,
-      usage_terms: p.usageTerms,
-      stock_count: stockCount,
-      is_available: stockCount > 0,
-      sale_price: discountPercent > 0 ? displayPrice : null,
-      discount_percent: discountPercent > 0 ? discountPercent : null,
-      order_count: Number(p.orderCount ?? 0),
-      variants: variants.map((v) => ({
-        id: v.id,
-        plan_label: v.plan_label,
-        duration_label: v.duration_label,
-        label: v.label,
-        price: v.price,
-        sale_price: v.sale_price,
-        discount_percent: v.discount_percent,
-        is_available: v.is_available,
-      })),
-    };
+    // Variants ride a single follow-up query for the whole page of
+    // products (see loadPublicVariants) — kept OUT of the main join so
+    // the limit(500) product ceiling stays exact and the hot list query
+    // shape is unchanged for variant-less catalogs.
+    const variantsByProduct = await loadPublicVariants(
+      rows.map((p) => p.id),
+      discountPercent,
+    );
+
+    const products = rows.map((p) => {
+      const basePrice = parseFloat(String(p.price));
+      const stockCount = Number(p.stockCount ?? 0);
+      const variants = variantsByProduct.get(p.id) ?? [];
+      // "تبدأ من" semantics: when variants exist, the card price is the
+      // cheapest active variant's LYD price — the import maintains
+      // products.price = MIN(variants.price_lyd) so both agree. The flash
+      // sale is applied exactly ONCE on that base (per-variant sale prices
+      // are already computed by loadPublicVariants and stay authoritative
+      // for the detail page selector).
+      const displayBase =
+        variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+      const displayPrice =
+        discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : displayBase;
+      return {
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        description: p.description,
+        image_url: p.imageUrl,
+        price: displayBase,
+        price_from: variants.length > 1,
+        category: p.category,
+        is_active: p.isActive,
+        usage_terms: p.usageTerms,
+        stock_count: stockCount,
+        is_available: stockCount > 0,
+        sale_price: discountPercent > 0 ? displayPrice : null,
+        discount_percent: discountPercent > 0 ? discountPercent : null,
+        order_count: Number(p.orderCount ?? 0),
+        variants: variants.map((v) => ({
+          id: v.id,
+          plan_label: v.plan_label,
+          duration_label: v.duration_label,
+          label: v.label,
+          price: v.price,
+          sale_price: v.sale_price,
+          discount_percent: v.discount_percent,
+          is_available: v.is_available,
+        })),
+      };
+    });
+
+    return products;
   });
 
   return res.json(result);
 });
 
 export async function getProductStatsHandler(_req: Request, res: Response) {
-  // Aggregate everything in SQL — no in-memory spread, no full table scan in JS.
-  // Round-3 (8-c §3.3): `available_products` used to fetch one row per
-  // stocked product into JS just to take `.length` — COUNT(DISTINCT)
-  // computes it in the database in one row.
-  const [[{ totalProducts, lowestPrice }], [{ totalUnits }], [{ availableProducts }], flashSale] =
-    await Promise.all([
-      db
-        .select({
-          totalProducts: count(),
-          lowestPrice: min(productsTable.price),
-        })
-        .from(productsTable)
-        .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false))),
-      db
-        .select({
-          totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
-        })
-        .from(inventoryTable)
-        // R102: total units = deliverable units (matches the public
-        // stock definition — ghost rows don't count).
-        .where(deliverableUnitCondition()),
-      db
-        .select({
-          availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
-        })
-        .from(inventoryTable)
-        // R102: available products = ACTIVE, non-archived products with
-        // deliverable stock. It used to count archived products too — the
-        // live stats said "2 available" while both were archived TEST
-        // artifacts invisible to the storefront.
-        .innerJoin(
-          productsTable,
-          and(
-            eq(productsTable.id, inventoryTable.productId),
-            eq(productsTable.isActive, true),
-            eq(productsTable.isArchived, false),
-          ),
-        )
-        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
-      getActiveFlashSale(),
-    ]);
+  // R104 (AG5-7): 60 s in-process cache — the stats row is 4 aggregate
+  // queries for a payload the client already treats as 10-min-fresh.
+  // Admin CRUD bumps the generation (see lib/catalog-cache.ts).
+  const payload = await withCatalogCache("stats", "stats", 60, async () => {
+    // Aggregate everything in SQL — no in-memory spread, no full table scan in JS.
+    // Round-3 (8-c §3.3): `available_products` used to fetch one row per
+    // stocked product into JS just to take `.length` — COUNT(DISTINCT)
+    // computes it in the database in one row.
+    const [[{ totalProducts, lowestPrice }], [{ totalUnits }], [{ availableProducts }], flashSale] =
+      await Promise.all([
+        db
+          .select({
+            totalProducts: count(),
+            lowestPrice: min(productsTable.price),
+          })
+          .from(productsTable)
+          .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false))),
+        db
+          .select({
+            totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
+          })
+          .from(inventoryTable)
+          // R102: total units = deliverable units (matches the public
+          // stock definition — ghost rows don't count).
+          .where(deliverableUnitCondition()),
+        db
+          .select({
+            availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
+          })
+          .from(inventoryTable)
+          // R102: available products = ACTIVE, non-archived products with
+          // deliverable stock. It used to count archived products too — the
+          // live stats said "2 available" while both were archived TEST
+          // artifacts invisible to the storefront.
+          .innerJoin(
+            productsTable,
+            and(
+              eq(productsTable.id, inventoryTable.productId),
+              eq(productsTable.isActive, true),
+              eq(productsTable.isArchived, false),
+            ),
+          )
+          .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
+        getActiveFlashSale(),
+      ]);
 
-  return res.json({
-    total_products: Number(totalProducts ?? 0),
-    available_products: Number(availableProducts ?? 0),
-    total_units: Number(totalUnits ?? 0),
-    lowest_price:
-      lowestPrice !== null && lowestPrice !== undefined ? parseFloat(String(lowestPrice)) : null,
-    has_flash_sale: !!flashSale,
+    return {
+      total_products: Number(totalProducts ?? 0),
+      available_products: Number(availableProducts ?? 0),
+      total_units: Number(totalUnits ?? 0),
+      lowest_price:
+        lowestPrice !== null && lowestPrice !== undefined ? parseFloat(String(lowestPrice)) : null,
+      has_flash_sale: !!flashSale,
+    };
   });
+
+  return res.json(payload);
 }
 
 export async function getFlashSaleHandler(_req: Request, res: Response) {
@@ -384,8 +416,13 @@ export async function getFlashSaleHandler(_req: Request, res: Response) {
   // `is_active AND ends_at > now()` predicate — the sweep only keeps
   // is_active honest for the admin list + the singleton index.
   fireThrottledMaintenance("flash-sale-sweep", 10 * 60 * 1000, deactivateExpiredFlashSales);
-  const flashSale = await getActiveFlashSale();
-  return res.json({ flash_sale: flashSale });
+  // R104 (AG5-3): 30 s in-process cache — this endpoint is hit by the
+  // site-wide banner (now a 10-min adaptive poll, but still the
+  // most-shared response in the app) and by the flash-sales page.
+  // The read predicate (`is_active AND ends_at > now()`) plus the
+  // generation bump on admin flash-sale writes bound staleness.
+  const payload = await withCatalogCache("flash-sale", "active", 30, getActiveFlashSale);
+  return res.json({ flash_sale: payload });
 }
 
 router.get("/stats", catalogCache, getProductStatsHandler);
@@ -409,80 +446,91 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
       .json(createErrorResponse("معرف المنتج غير صالح", ErrorCode.INVALID_DATA));
   }
 
-  // Round-3 (8-c §2.6): 4 sequential round trips → 2. The flash-sale row
-  // doesn't depend on the product, so it rides the first Promise.all;
-  // stock + order counts ride the second. Also routes the sale-price
-  // arithmetic through computeFlashSalePrice (lib/pricing single source
-  // — this file previously carried a 4th copy of the formula).
-  const [[product], flashSale] = await Promise.all([
-    db
-      .select()
-      .from(productsTable)
-      .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
-      .limit(1),
-    getActiveFlashSale(),
-  ]);
+  // R104 (AG5-7): 60 s in-process cache, 200-ONLY (a pinned 404 would
+  // hide a freshly published product). Admin CRUD bumps the generation.
+  const cached = await withCatalogCache("detail-by-slug", slug, 60, async () => {
+    // Round-3 (8-c §2.6): 4 sequential round trips → 2. The flash-sale row
+    // doesn't depend on the product, so it rides the first Promise.all;
+    // stock + order counts ride the second. Also routes the sale-price
+    // arithmetic through computeFlashSalePrice (lib/pricing single source
+    // — this file previously carried a 4th copy of the formula).
+    const [[product], flashSale] = await Promise.all([
+      db
+        .select()
+        .from(productsTable)
+        .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
+        .limit(1),
+      getActiveFlashSale(),
+    ]);
 
-  if (!product)
-    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+    if (!product) return { found: false as const };
 
-  const [[stockResult], [orderResult]] = await Promise.all([
-    db
-      .select({ count: count() })
-      .from(inventoryTable)
-      .where(
-        and(
-          eq(inventoryTable.productId, product.id),
-          eq(inventoryTable.isSold, false),
-          deliverableUnitCondition(),
+    const [[stockResult], [orderResult]] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(inventoryTable)
+        .where(
+          and(
+            eq(inventoryTable.productId, product.id),
+            eq(inventoryTable.isSold, false),
+            deliverableUnitCondition(),
+          ),
         ),
-      ),
-    db
-      .select({ count: count() })
-      .from(ordersTable)
-      .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed"))),
-  ]);
+      db
+        .select({ count: count() })
+        .from(ordersTable)
+        .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed"))),
+    ]);
 
-  const basePrice = parseFloat(String(product.price));
-  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const stockCount = Number(stockResult?.count ?? 0);
-  const variants = (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
-  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
-  const salePrice =
-    discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
+    const basePrice = parseFloat(String(product.price));
+    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+    const stockCount = Number(stockResult?.count ?? 0);
+    const variants =
+      (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
+    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+    const salePrice =
+      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
-  return res.json({
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    description: product.description,
-    description_long: product.descriptionLong ?? null,
-    faq: product.faq ?? null,
-    seo_title: product.seoTitle ?? null,
-    features: product.features ?? null,
-    seo_description: product.seoDescription ?? null,
-    image_url: product.imageUrl,
-    price: displayBase,
-    price_from: variants.length > 1,
-    category: product.category,
-    is_active: product.isActive,
-    usage_terms: product.usageTerms,
-    stock_count: stockCount,
-    is_available: stockCount > 0,
-    sale_price: salePrice,
-    discount_percent: discountPercent > 0 ? discountPercent : null,
-    order_count: Number(orderResult?.count ?? 0),
-    variants: variants.map((v) => ({
-      id: v.id,
-      plan_label: v.plan_label,
-      duration_label: v.duration_label,
-      label: v.label,
-      price: v.price,
-      sale_price: v.sale_price,
-      discount_percent: v.discount_percent,
-      is_available: v.is_available,
-    })),
+    return {
+      found: true as const,
+      dto: {
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
+        description: product.description,
+        description_long: product.descriptionLong ?? null,
+        faq: product.faq ?? null,
+        seo_title: product.seoTitle ?? null,
+        features: product.features ?? null,
+        seo_description: product.seoDescription ?? null,
+        image_url: product.imageUrl,
+        price: displayBase,
+        price_from: variants.length > 1,
+        category: product.category,
+        is_active: product.isActive,
+        usage_terms: product.usageTerms,
+        stock_count: stockCount,
+        is_available: stockCount > 0,
+        sale_price: salePrice,
+        discount_percent: discountPercent > 0 ? discountPercent : null,
+        order_count: Number(orderResult?.count ?? 0),
+        variants: variants.map((v) => ({
+          id: v.id,
+          plan_label: v.plan_label,
+          duration_label: v.duration_label,
+          label: v.label,
+          price: v.price,
+          sale_price: v.sale_price,
+          discount_percent: v.discount_percent,
+          is_available: v.is_available,
+        })),
+      },
+    };
   });
+
+  if (!cached.found)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+  return res.json(cached.dto);
 });
 
 router.get("/:id", catalogCache, async (req, res) => {
@@ -490,76 +538,87 @@ router.get("/:id", catalogCache, async (req, res) => {
   if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  // Round-3 (8-c §2.6): same 4→2 parallelization as /by-slug above.
-  const [[product], flashSale] = await Promise.all([
-    db
-      .select()
-      .from(productsTable)
-      .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
-      .limit(1),
-    getActiveFlashSale(),
-  ]);
+  // R104 (AG5-7): 60 s in-process cache, 200-ONLY (same shape contract
+  // as /by-slug above).
+  const cached = await withCatalogCache("detail-by-id", String(id), 60, async () => {
+    // Round-3 (8-c §2.6): same 4→2 parallelization as /by-slug above.
+    const [[product], flashSale] = await Promise.all([
+      db
+        .select()
+        .from(productsTable)
+        .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
+        .limit(1),
+      getActiveFlashSale(),
+    ]);
 
-  if (!product)
-    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+    if (!product) return { found: false as const };
 
-  const [[stockResult], [orderResult]] = await Promise.all([
-    db
-      .select({ count: count() })
-      .from(inventoryTable)
-      .where(
-        and(
-          eq(inventoryTable.productId, id),
-          eq(inventoryTable.isSold, false),
-          deliverableUnitCondition(),
+    const [[stockResult], [orderResult]] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(inventoryTable)
+        .where(
+          and(
+            eq(inventoryTable.productId, id),
+            eq(inventoryTable.isSold, false),
+            deliverableUnitCondition(),
+          ),
         ),
-      ),
-    db
-      .select({ count: count() })
-      .from(ordersTable)
-      .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed"))),
-  ]);
+      db
+        .select({ count: count() })
+        .from(ordersTable)
+        .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed"))),
+    ]);
 
-  const basePrice = parseFloat(String(product.price));
-  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-  const stockCount = Number(stockResult?.count ?? 0);
-  const variants = (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
-  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
-  const salePrice =
-    discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
+    const basePrice = parseFloat(String(product.price));
+    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+    const stockCount = Number(stockResult?.count ?? 0);
+    const variants =
+      (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
+    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+    const salePrice =
+      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
-  return res.json({
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    description: product.description,
-    description_long: product.descriptionLong ?? null,
-    faq: product.faq ?? null,
-    seo_title: product.seoTitle ?? null,
-    features: product.features ?? null,
-    seo_description: product.seoDescription ?? null,
-    image_url: product.imageUrl,
-    price: displayBase,
-    price_from: variants.length > 1,
-    category: product.category,
-    is_active: product.isActive,
-    usage_terms: product.usageTerms,
-    stock_count: stockCount,
-    is_available: stockCount > 0,
-    sale_price: salePrice,
-    discount_percent: discountPercent > 0 ? discountPercent : null,
-    order_count: Number(orderResult?.count ?? 0),
-    variants: variants.map((v) => ({
-      id: v.id,
-      plan_label: v.plan_label,
-      duration_label: v.duration_label,
-      label: v.label,
-      price: v.price,
-      sale_price: v.sale_price,
-      discount_percent: v.discount_percent,
-      is_available: v.is_available,
-    })),
+    return {
+      found: true as const,
+      dto: {
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
+        description: product.description,
+        description_long: product.descriptionLong ?? null,
+        faq: product.faq ?? null,
+        seo_title: product.seoTitle ?? null,
+        features: product.features ?? null,
+        seo_description: product.seoDescription ?? null,
+        image_url: product.imageUrl,
+        price: displayBase,
+        price_from: variants.length > 1,
+        category: product.category,
+        is_active: product.isActive,
+        usage_terms: product.usageTerms,
+        stock_count: stockCount,
+        is_available: stockCount > 0,
+        sale_price: salePrice,
+        discount_percent: discountPercent > 0 ? discountPercent : null,
+        order_count: Number(orderResult?.count ?? 0),
+        variants: variants.map((v) => ({
+          id: v.id,
+          plan_label: v.plan_label,
+          duration_label: v.duration_label,
+          label: v.label,
+          price: v.price,
+          sale_price: v.sale_price,
+          discount_percent: v.discount_percent,
+          is_available: v.is_available,
+        })),
+      },
+    };
   });
+
+  if (!cached.found)
+    return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
+  return res.json(cached.dto);
 });
 
 // ── /api/products/by-slug/:slug ─────────────────────────────────────────────
@@ -574,41 +633,49 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
   if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  const [product] = await db
-    .select({ category: productsTable.category })
-    .from(productsTable)
-    .where(eq(productsTable.id, id))
-    .limit(1);
+  // R104 (AG5-7): 60 s in-process cache, 200-only (same contract as the
+  // detail endpoints).
+  const cached = await withCatalogCache("recommendations", String(id), 60, async () => {
+    const [product] = await db
+      .select({ category: productsTable.category })
+      .from(productsTable)
+      .where(eq(productsTable.id, id))
+      .limit(1);
 
-  if (!product)
+    if (!product) return { found: false as const };
+
+    const recommendations = await db
+      .select({
+        id: productsTable.id,
+        name: productsTable.name,
+        imageUrl: productsTable.imageUrl,
+        price: productsTable.price,
+      })
+      .from(productsTable)
+      .where(
+        and(
+          eq(productsTable.category, product.category as string),
+          eq(productsTable.isActive, true),
+          eq(productsTable.isArchived, false),
+          sql`${productsTable.id} != ${id}`,
+        ),
+      )
+      .limit(4);
+
+    return {
+      found: true as const,
+      items: recommendations.map((r) => ({
+        id: r.id,
+        name: r.name,
+        image_url: r.imageUrl,
+        price: parseFloat(String(r.price)),
+      })),
+    };
+  });
+
+  if (!cached.found)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
-
-  const recommendations = await db
-    .select({
-      id: productsTable.id,
-      name: productsTable.name,
-      imageUrl: productsTable.imageUrl,
-      price: productsTable.price,
-    })
-    .from(productsTable)
-    .where(
-      and(
-        eq(productsTable.category, product.category as string),
-        eq(productsTable.isActive, true),
-        eq(productsTable.isArchived, false),
-        sql`${productsTable.id} != ${id}`,
-      ),
-    )
-    .limit(4);
-
-  return res.json(
-    recommendations.map((r) => ({
-      id: r.id,
-      name: r.name,
-      image_url: r.imageUrl,
-      price: parseFloat(String(r.price)),
-    })),
-  );
+  return res.json(cached.items);
 });
 
 export { router as productsRouter };

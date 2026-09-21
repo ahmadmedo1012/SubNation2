@@ -17,8 +17,12 @@
 import * as Sentry from "@sentry/node";
 import { initSentry } from "./lib/sentry";
 
-// 1. Init Sentry as the very first runtime side effect.
-initSentry();
+// 1. Init Sentry as the very first runtime side effect (R104/AG6-3:
+//    async — the dynamic @sentry/profiling-node import only loads when
+//    a DSN is configured; the no-DSN path resolves synchronously before
+//    any await and still registers the process-level handlers below
+//    without delay).
+void initSentry();
 
 // 2. Belt-and-suspenders: flush Sentry on the way out so error events are
 //    not lost when the process is killed by an uncaught exception. Sentry's

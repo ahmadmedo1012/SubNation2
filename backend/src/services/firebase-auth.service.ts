@@ -118,7 +118,7 @@ export interface FirebaseSessionResult {
 }
 
 export async function verifyFirebaseIdToken(idToken: string, checkRevoked = false) {
-  const auth = getFirebaseAdminAuth();
+  const auth = await getFirebaseAdminAuth();
   if (!auth) {
     logger.error(
       "Firebase Admin Auth is null - service account credentials are missing or invalid",

@@ -4,6 +4,68 @@ import { hashPassword } from "./lib/crypto";
 import { encrypt, isEncrypted } from "./lib/encryption";
 import { logger } from "./lib/logger";
 
+/**
+ * R104 (AG5-1 / AG6-1 — cold-start fast-path): build-time fingerprint of
+ * THIS file, injected by build.mjs as an esbuild `define`
+ * (sha256 of src/migrate.ts). Steady-state cold starts were paying ~141
+ * sequential no-op DB round trips (2-7 s on 0.1 CPU + a cold Neon
+ * resume) on EVERY Render free-tier wake — the dominant readiness cost.
+ *
+ * When the fingerprint matches the value persisted in system_settings
+ * after the last successful full reconcile, runMigrations() skips the
+ * entire replay. Any edit to this file changes the hash → one full
+ * reconcile on the next boot → new hash persisted. Tests/dev (no
+ * define) see `undefined` → always full run, semantics unchanged.
+ * `MIGRATIONS_FORCE_RECONCILE=true` bypasses the fast-path; deleting
+ * the system_settings row forces a full reconcile too.
+ */
+declare const __MIGRATIONS_FINGERPRINT__: string | undefined;
+
+let MIGRATIONS_FINGERPRINT: string | undefined =
+  typeof __MIGRATIONS_FINGERPRINT__ === "string" && __MIGRATIONS_FINGERPRINT__.length > 0
+    ? __MIGRATIONS_FINGERPRINT__
+    : undefined;
+
+/** Test-only: simulate the build-time define (null = unset). */
+export function __setMigrationsFingerprintForTests(fp: string | null): void {
+  MIGRATIONS_FINGERPRINT = fp ?? undefined;
+}
+
+/** system_settings key holding the last fully-reconciled fingerprint. */
+const MIGRATIONS_FINGERPRINT_KEY = "migrations.fingerprint";
+
+export async function readStoredMigrationFingerprint(): Promise<string | null> {
+  try {
+    const rows = extractRows(
+      await db.execute(
+        sql`SELECT value FROM system_settings WHERE key = ${MIGRATIONS_FINGERPRINT_KEY} LIMIT 1`,
+      ),
+    );
+    const value = rows[0]?.["value"];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    // Table not created yet (true first boot) or transient — either way:
+    // fall through to the full reconcile. Never let the fast-path
+    // PROBE break boot.
+    return null;
+  }
+}
+
+export async function writeStoredMigrationFingerprint(fingerprint: string): Promise<void> {
+  try {
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value, updated_at)
+          VALUES (${MIGRATIONS_FINGERPRINT_KEY}, ${fingerprint}, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    );
+  } catch (err) {
+    // Persisting the marker is best-effort: a failure here must never
+    // fail an otherwise-successful migration run — the next boot simply
+    // reconciles again (idempotent).
+    logger.warn({ err }, "migrations.fingerprint write skipped (non-fatal)");
+  }
+}
+
 /** Minimal executor signature so boot-critical SQL helpers stay unit-testable. */
 type SqlExecutor = (query: SQL) => Promise<unknown>;
 
@@ -940,6 +1002,26 @@ export async function applyIdempotencyReferenceTypeStage(
 
 export async function runMigrations() {
   try {
+    // ── R104 fingerprint fast-path ────────────────────────────────────────
+    // One SELECT replaces ~141 no-op round trips when this build's
+    // migrate.ts is byte-identical to the last fully-reconciled one.
+    if (MIGRATIONS_FINGERPRINT && (process.env.MIGRATIONS_FORCE_RECONCILE ?? "") !== "true") {
+      const stored = await readStoredMigrationFingerprint();
+      if (stored === MIGRATIONS_FINGERPRINT) {
+        logger.info(
+          { category: "storage" },
+          "[migrations] fingerprint match — schema already reconciled for this build (fast-path)",
+        );
+        return;
+      }
+      if (stored !== null) {
+        logger.info(
+          { category: "storage" },
+          "[migrations] fingerprint changed — running full reconcile",
+        );
+      }
+    }
+
     // ── Extensions ─────────────────────────────────────────────────────────
     // pg_trgm gives us trigram similarity for fuzzy product name lookup
     // (010-ai-admin-copilot resolve_product tool — Arabic/English/typo
@@ -2684,6 +2766,12 @@ export async function runMigrations() {
     // ALTERs; the checkout path is unchanged. See
     // applyIdempotencyReferenceTypeStage docs.
     await applyIdempotencyReferenceTypeStage();
+
+    // ── R104: persist the build fingerprint AFTER a successful full ──
+    // reconcile so the next cold start can take the fast-path above.
+    if (MIGRATIONS_FINGERPRINT) {
+      await writeStoredMigrationFingerprint(MIGRATIONS_FINGERPRINT);
+    }
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

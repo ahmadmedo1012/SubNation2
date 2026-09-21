@@ -35,6 +35,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedisClient } from "../../lib/redis-client";
 
+// R104 (AG4-2): the Neon-persisted epoch marker is mocked out HERE —
+// these are unit tests of the in-memory gate. The marker adoption path
+// (store round-trip, adopt-on-epoch-match, fresh-window-on-re-pair,
+// warmed adoption, kill switch) is covered END-TO-END against the real
+// store + pglite harness in openwa-epoch-memory.test.ts.
+vi.mock("../../lib/whatsapp-epoch-store", () => ({
+  readEpochMarker: vi.fn(async () => null),
+  writeEpochMarker: vi.fn(),
+  epochMemoryEnabled: vi.fn(() => false),
+}));
+
 vi.mock("../../lib/redis-client", () => ({
   getRedisClient: vi.fn(),
   // Passthrough — the raced wrapper's timeout behavior is covered by

@@ -41,7 +41,9 @@ export interface AdminSessionToken {
   sid: string;
 }
 
-export async function createAdminSession(input: CreateAdminSessionInput): Promise<AdminSessionToken> {
+export async function createAdminSession(
+  input: CreateAdminSessionInput,
+): Promise<AdminSessionToken> {
   const sid = randomUUID().replace(/-/g, "");
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_MS);
   await db.insert(adminSessionsTable).values({
@@ -59,6 +61,14 @@ export async function createAdminSession(input: CreateAdminSessionInput): Promis
 }
 
 export async function revokeAdminSession(sid: string, reason: string): Promise<void> {
+  // RT-4 (R104 red team): purge the 60 s validity cache so a logout /
+  // password-change revocation takes effect immediately on THIS
+  // instance instead of waiting out the cache window. The cache key is
+  // `${sid}:${adminId}` — this function only holds the sid, so purge by
+  // prefix (the sid half is unique per session row).
+  for (const key of adminSessionValidityCache.keys()) {
+    if (key.startsWith(`${sid}:`)) adminSessionValidityCache.delete(key);
+  }
   await db
     .update(adminSessionsTable)
     .set({ revokedAt: new Date(), revokedReason: reason.slice(0, 100) })
@@ -66,6 +76,11 @@ export async function revokeAdminSession(sid: string, reason: string): Promise<v
 }
 
 export async function revokeAllAdminSessions(adminId: number, reason: string): Promise<void> {
+  // RT-4 (R104 red team): same immediate-purge contract as above, scoped
+  // to the admin's every session.
+  for (const key of adminSessionValidityCache.keys()) {
+    if (key.endsWith(`:${adminId}`)) adminSessionValidityCache.delete(key);
+  }
   const result = await db
     .update(adminSessionsTable)
     .set({ revokedAt: new Date(), revokedReason: reason.slice(0, 100) })
@@ -82,9 +97,39 @@ export async function revokeAllAdminSessions(adminId: number, reason: string): P
  * revoked nor expired. The JWT's own expiry is checked by the verifier
  * before this runs — here the ROW is the truth for revocation.
  */
+// ── R104 (AG5-4): 60 s in-process validity cache ────────────────────────────
+//
+// requireAdmin ran 2 uncached session queries on EVERY admin request —
+// and the admin UI polls observability at 15-60 s (system tab metrics
+// alone = 8 auth queries/min). Same pattern + trade-off as user
+// sessions (lib/session-liveness.ts): revocation propagates within
+// ≤ 60 s per instance, an explicit, documented window. The admin ROW
+// (is_active soft-disable + permissions) deliberately stays UNcached —
+// real-time disable semantics are preserved.
+const ADMIN_SESSION_CACHE_TTL_MS = 60_000;
+const adminSessionValidityCache = new Map<string, number>();
+
+let adminCachePruneCounter = 0;
+function pruneAdminSessionValidityCache(): void {
+  if (++adminCachePruneCounter % 500 !== 0) return;
+  const now = Date.now();
+  for (const [key, expiry] of adminSessionValidityCache) {
+    if (expiry < now) adminSessionValidityCache.delete(key);
+  }
+}
+
 export async function isValidAdminSession(sid: string, adminId: number): Promise<boolean> {
+  const cacheKey = `${sid}:${adminId}`;
+  const now = Date.now();
+  const cachedUntil = adminSessionValidityCache.get(cacheKey);
+  if (cachedUntil !== undefined && cachedUntil > now) return true;
+
   const [row] = await db
-    .select({ id: adminSessionsTable.id, expiresAt: adminSessionsTable.expiresAt, revokedAt: adminSessionsTable.revokedAt })
+    .select({
+      id: adminSessionsTable.id,
+      expiresAt: adminSessionsTable.expiresAt,
+      revokedAt: adminSessionsTable.revokedAt,
+    })
     .from(adminSessionsTable)
     .where(eq(adminSessionsTable.id, sid))
     .limit(1);
@@ -100,7 +145,18 @@ export async function isValidAdminSession(sid: string, adminId: number): Promise
     .from(adminSessionsTable)
     .where(and(eq(adminSessionsTable.id, sid), eq(adminSessionsTable.adminId, adminId)))
     .limit(1);
-  return Boolean(owner);
+  const valid = Boolean(owner);
+  if (valid) {
+    adminSessionValidityCache.set(cacheKey, Date.now() + ADMIN_SESSION_CACHE_TTL_MS);
+    pruneAdminSessionValidityCache();
+  }
+  return valid;
+}
+
+/** Test-only hook: drop the 60 s admin-session cache. */
+export function __clearAdminSessionValidityCacheForTests(): void {
+  adminSessionValidityCache.clear();
+  adminCachePruneCounter = 0;
 }
 
 /**

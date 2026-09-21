@@ -15,6 +15,26 @@ async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
+  // R104 (AG5-1/AG6-1): migration fast-path fingerprint — sha256 of
+  // src/migrate.ts, injected as a compile-time constant. Steady-state
+  // cold starts skip the ~141-statement idempotent replay when the
+  // hash matches the value persisted in system_settings.
+  const { createHash } = await import("node:crypto");
+  const { readFile, readdir } = await import("node:fs/promises");
+  // RT-6 (R104 red team): hash migrate.ts AND the drizzle schema files —
+  // a schema edit whose DDL stage lives outside migrate.ts must also
+  // invalidate the marker, or a drifted schema would ride the fast-path.
+  const schemaDir = path.resolve(artifactDir, "../shared/db/src/schema");
+  const schemaFiles = (await readdir(schemaDir)).filter((f) => f.endsWith(".ts")).sort();
+  const corpus = [
+    path.resolve(artifactDir, "src/migrate.ts"),
+    ...schemaFiles.map((f) => path.join(schemaDir, f)),
+  ];
+  const hash = createHash("sha256");
+  for (const file of corpus) hash.update(await readFile(file, "utf8"));
+  const migrationsFingerprint = hash.digest("hex");
+  console.log(`[build] migrations fingerprint: ${migrationsFingerprint.slice(0, 16)}…`);
+
   await esbuild({
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
@@ -26,6 +46,9 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
+    define: {
+      __MIGRATIONS_FINGERPRINT__: JSON.stringify(migrationsFingerprint),
+    },
     // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
     // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
     // Examples of unbundleable packages:

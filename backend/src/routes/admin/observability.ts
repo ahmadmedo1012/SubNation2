@@ -56,6 +56,13 @@ class CachedValue<T> {
 
 const recentAlertsCache = new CachedValue(60_000, async () => getAdminAlerts(50));
 
+// R104 (AG8-4): the System tab polls /metrics every 15 s — each call
+// walked the whole prom registry (registry.getMetricsAsJSON() over
+// ~1.5-6k histogram rows). A 10 s cache caps that at ≤ 6 builds/min
+// per instance no matter how many operator tabs are open, while the
+// 15 s poll cadence still sees fresh counters on every request.
+const metricsSnapshotCache = new CachedValue(10_000, async () => buildMetricsSnapshot());
+
 router.get("/summary", requireAdmin, async (_req, res) => {
   const [alerts] = await Promise.all([recentAlertsCache.get()]);
 
@@ -147,7 +154,7 @@ router.get("/sentry/summary", requireAdmin, (_req, res) => {
  */
 router.get("/metrics", requireAdmin, async (_req, res) => {
   try {
-    const snapshot = await buildMetricsSnapshot();
+    const snapshot = await metricsSnapshotCache.get();
     res.set("Cache-Control", "no-store");
     res.json(snapshot);
   } catch (err) {

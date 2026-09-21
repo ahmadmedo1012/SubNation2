@@ -15,6 +15,7 @@ import { intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
+import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
@@ -203,6 +204,7 @@ router.post("/products", requireAdmin, async (req, res) => {
   }
 
   bumpSitemapCache();
+  bumpCatalogCache();
   void writeAuditLog(req, "product.create", "product", product.id, {
     name: data.name,
     slug,
@@ -261,6 +263,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
   bumpSitemapCache();
+  bumpCatalogCache();
 
   const [[stockResult], [orderResult]] = await Promise.all([
     db
@@ -311,6 +314,7 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   if (archived.length === 0)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
   bumpSitemapCache();
+  bumpCatalogCache();
   void writeAuditLog(req, "product.archive", "product", id);
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });

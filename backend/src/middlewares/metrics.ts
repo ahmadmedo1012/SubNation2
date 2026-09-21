@@ -23,7 +23,10 @@ export const metricsMiddleware: RequestHandler = (req, res, next) => {
   const start = performance.now();
 
   res.on("finish", () => {
-    const route = req.route?.path ?? req.baseUrl ?? "unknown";
+    // R104 (AG8-7): leaf path only merged 11 "/:id"-style endpoints
+    // across routers into one series. Prefix with the mount path where
+    // available — still bounded (~150 patterns), now attributable.
+    const route = req.route ? `${req.baseUrl ?? ""}${req.route.path}` : (req.baseUrl ?? "unknown");
     const method = req.method.toLowerCase();
     const status = String(res.statusCode);
     const durationSec = (performance.now() - start) / 1000;

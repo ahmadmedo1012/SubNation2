@@ -221,9 +221,11 @@ router.patch(
                 status,
                 order_code: codeById.get(result.orderId) ?? null,
               });
-              emitToUser(result.userId, "wallet-updated", {
-                walletBalance: result.walletBalance,
-              });
+              // R104 (AG3-5): the `wallet-updated` emit is REMOVED — no
+              // client listener has ever existed (grep-verified), so the
+              // event was a dead no-op. The user's wallet/orders views
+              // refresh via SessionActivityManager's visibility resync
+              // and normal staleness.
             })
             .catch((err) => logger.warn({ err }, "socket notify failed (refund)"));
         } catch (err) {

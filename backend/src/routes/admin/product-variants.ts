@@ -1,5 +1,6 @@
 import { db, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
 import { and, asc, count, eq, sql } from "drizzle-orm";
+import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { Router } from "express";
 import { computeRetailLYD, getPricingConfig, round2 } from "../../lib/pricing-config";
 import { intParam } from "../../lib/http";
@@ -210,6 +211,7 @@ router.post("/products/:id/variants", async (req, res) => {
     priceOverride: priceLyd !== computed,
   });
 
+  bumpCatalogCache();
   return res.status(201).json(await formatVariant(created));
 });
 
@@ -317,6 +319,7 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
     updates: { ...updates },
   });
 
+  bumpCatalogCache();
   return res.json(await formatVariant(updated));
 });
 
@@ -360,6 +363,7 @@ router.delete("/products/:id/variants/:variantId", async (req, res) => {
     productId: id,
   });
 
+  bumpCatalogCache();
   return res.json({ success: true, message: "تم حذف الباقة" });
 });
 

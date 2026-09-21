@@ -174,9 +174,13 @@ app.use(
         // Do NOT set scriptSrcAttr to 'none' — Firebase SDK injects inline
         // event handlers in the popup/iframe auth flow.
         scriptSrcAttr: ["'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        // R104 (AG11-6): fonts.googleapis/gstatic removed from
+        // styleSrc/fontSrc — fonts have been self-hosted via @fontsource
+        // (bundled /assets/*.woff2) for many rounds; the two directives
+        // allowed a third-party origin nothing uses anymore.
+        styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
-        fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+        fontSrc: ["'self'", "data:"],
         connectSrc: [
           "'self'",
           // Firebase Realtime Database & Auth
@@ -645,7 +649,16 @@ app.use(
     autoLogging: {
       ignore: (req) => {
         const url = req.url ?? "";
-        return url === "/api/healthz" || url.startsWith("/api/healthz/") || url === "/api/cwv";
+        return (
+          url === "/api/healthz" ||
+          url.startsWith("/api/healthz/") ||
+          url === "/api/cwv" ||
+          // R104 (AG8-4): the admin observability family is a pure
+          // self-observation of dashboards polling on 15-90 s timers —
+          // ~440 log lines/awake-hour per open System tab that say
+          // nothing the dashboard itself doesn't already show.
+          url.startsWith("/api/admin/observability/")
+        );
       },
     },
     serializers: {
@@ -898,19 +911,40 @@ if (frontendDist) {
     express.static(frontendDist, {
       maxAge: "1h",
       setHeaders(res, filePath) {
-        // HTML, SW, and robots must never be cached aggressively
+        // HTML, SW, and robots must never be cached aggressively.
+        // R104 (AG11-3): registerSW.js (unhashed) joins the no-cache set —
+        // a deploy that changed it could otherwise delay SW update
+        // registration by up to an hour.
         if (
           filePath.endsWith(".html") ||
           filePath.endsWith("sw.js") ||
+          filePath.endsWith("registerSW.js") ||
           filePath.endsWith("robots.txt")
         ) {
           res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          return;
+        }
+        // R104 (AG11-2b): product art (frontend/public/products/*.webp) and
+        // the PWA icon set are effectively IMMUTABLE (filenames change on
+        // replacement — r102's WebP conversion proved the workflow). They
+        // rode the 1h default, forcing an hourly conditional-GET round
+        // trip per asset per returning visitor; 30d + SWR matches the
+        // service worker's CacheFirst window instead. Hashed workbox-*.js
+        // chunks are safe to treat the same (content-hash names).
+        if (
+          filePath.includes("/products/") ||
+          /pwa-.*\.png$/.test(filePath) ||
+          /workbox-.*\.js$/.test(filePath)
+        ) {
+          res.setHeader("Cache-Control", "public, max-age=2592000, stale-while-revalidate=86400");
         }
       },
     }),
   );
 
   // ── A7 (round-94): dynamic share-card OG for link unfurlers ──────────
+  // (SHARE_BOT_UA lifted to the exported isShareBotUserAgent below so
+  // server.ts's boot gate can gate the SAME bot set — single source.)
   //
   // The SPA fallback below serves the STATIC index.html for every GET —
   // so WhatsApp/Facebook/Telegram/Slack unfurlers (which do NOT run JS)
@@ -919,15 +953,13 @@ if (frontendDist) {
   // real per-product data. Only bot UAs on /product/* get this — humans
   // always get the SPA. Any failure falls through to the SPA fallback
   // (share cards degrade gracefully, the page itself never breaks).
-  const SHARE_BOT_UA =
-    /facebookexternalhit|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|embedly|quora link preview|outbrain|vkshare|vkrobot|showyoubot|googlebot|bingbot|yandexbot|duckduckbot|baiduspider|citizensinspector/i;
   app.use(async (req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
       return;
     }
     const match = /^\/product\/([^/]+)\/?$/.exec(req.path);
-    if (!match || !SHARE_BOT_UA.test(String(req.headers["user-agent"] ?? ""))) {
+    if (!match || !isShareBotUserAgent(String(req.headers["user-agent"] ?? ""))) {
       next();
       return;
     }
@@ -1055,5 +1087,16 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       .json(createErrorResponse("خطأ في الخادم. حاول مرة أخرى.", ErrorCode.INTERNAL_ERROR));
   }
 });
+
+/**
+ * R104 (AG6-2): the share-card unfurler-bot predicate, shared with
+ * server.ts's boot gate so the gated bot set can never drift from the
+ * set the OG-card route actually serves (DB-backed path).
+ */
+export function isShareBotUserAgent(userAgent: string): boolean {
+  return /facebookexternalhit|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|embedly|quora link preview|outbrain|vkshare|vkrobot|showyoubot|googlebot|bingbot|yandexbot|duckduckbot|baiduspider|citizensinspector/i.test(
+    userAgent,
+  );
+}
 
 export default app;

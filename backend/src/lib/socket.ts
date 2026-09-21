@@ -564,6 +564,17 @@ export class SocketConnectionTracker {
     private readonly maxTotal: number = MAX_TOTAL_SOCKET_CONNECTIONS,
   ) {}
 
+  /** R104 (AG3-4): non-mutating verdict probe — what WOULD admit()
+   * return for this IP right now? Used by the io.use pre-check so a
+   * capped client is rejected BEFORE the auth/DB probe chain without
+   * occupying a slot. */
+  peek(ip: string): SocketCapVerdict {
+    if (this.total >= this.maxTotal) return "total_cap";
+    const ids = this.perIp.get(ip);
+    if (ids && ids.size >= this.maxPerIp) return "per_ip_cap";
+    return "ok";
+  }
+
   /** Register a connection. Returns the verdict; only "ok" connections
    * are tracked (a capped socket must not occupy a slot). */
   admit(ip: string, socketId: string): SocketCapVerdict {
@@ -793,6 +804,26 @@ export function initSocket(server: HttpServer) {
 
   // ── Auth gate ────────────────────────────────────────────────────────
   io.use(async (socket, next) => {
+    // Layer 0 (R104 / AG3-4): per-IP connection-cap pre-check — BEFORE
+    // origin/token/DB liveness. A capped client (e.g. many users behind
+    // one CGNAT mobile IP) used to pay the full auth probe chain
+    // (1-3 DB queries) on EVERY reconnect attempt before learning it
+    // was over the cap in the connection handler. The admit() here is
+    // provisional — the connection handler's authoritative admit()
+    // below reconciles the slot (a handshake that never completes is
+    // released by the 60s cap sweep).
+    const preIp = resolveSocketClientIp(socket);
+    const preVerdict = connectionTracker.peek(preIp);
+    if (preVerdict !== "ok") {
+      recordRejection(preVerdict === "per_ip_cap" ? "ip_connection_cap" : "total_connection_cap", {
+        socketId: socket.id,
+        capIp: preIp,
+        verdict: preVerdict,
+        tracker: connectionTracker.stats(),
+      });
+      return next(new Error("connection_limited"));
+    }
+
     // Layer 1: origin allowlist (cheapest fail-fast).
     const origin = socket.handshake.headers.origin as string | undefined;
     if (!isOriginAllowed(origin, allowedOrigins)) {

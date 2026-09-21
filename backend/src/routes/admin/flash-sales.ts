@@ -20,6 +20,7 @@ import { desc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
+import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { deactivateExpiredFlashSales } from "../../jobs/flashSaleWatcher";
 import { logger } from "../../lib/logger";
 import { intParam } from "../../lib/http";
@@ -160,7 +161,9 @@ function toResponse(row: typeof flashSalesTable.$inferSelect): FlashSaleResponse
  * singleton index cannot block the next creation.
  */
 router.get("/flash-sales", requireAdmin, async (_req, res) => {
-  fireThrottledMaintenance("flash-sale-sweep", 60_000, deactivateExpiredFlashSales);
+  // R104 (AG1-3): admin cooldown 1 min → 5 min (idempotent hygiene
+  // sweep; mutations bump the catalog cache directly anyway).
+  fireThrottledMaintenance("flash-sale-sweep", 5 * 60_000, deactivateExpiredFlashSales);
   const rows = await db
     .select()
     .from(flashSalesTable)
@@ -203,6 +206,7 @@ router.post("/flash-sales", requireAdmin, async (req, res) => {
       ends_at: row.endsAt.toISOString(),
     });
 
+    bumpCatalogCache();
     return res.status(201).json(toResponse(row));
   } catch (err) {
     // SQLSTATE 23505 = unique_violation. Our partial index rejects
@@ -331,6 +335,7 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
       return res.status(404).json(createErrorResponse("العرض غير موجود.", ErrorCode.NOT_FOUND));
 
     void writeAuditLog(req, "flash_sale.update", "flash_sale", row.id, auditMeta);
+    bumpCatalogCache();
     return res.json(toResponse(row));
   } catch (err) {
     const code = (err as { code?: string }).code;
@@ -371,6 +376,7 @@ router.delete("/flash-sales/:id", requireAdmin, async (req, res) => {
   void writeAuditLog(req, "flash_sale.deactivate", "flash_sale", row.id, {
     title: row.title,
   });
+  bumpCatalogCache();
   return res.json(toResponse(row));
 });
 

@@ -477,7 +477,7 @@ router.get("/healthz", (_req, res) => {
 // Diagnostic endpoint — admin-gated. Leaks deployment config (Firebase
 // project id, service-account-JSON shape, env presence) so MUST NOT be
 // exposed to public users.
-router.get("/healthz/firebase", requireAdmin, (_req, res) => {
+router.get("/healthz/firebase", requireAdmin, async (_req, res) => {
   const flagEnabled = process.env.FIREBASE_AUTH_ENABLED === "true";
   const projectIdEnv = process.env.FIREBASE_PROJECT_ID || null;
   const hasServiceAccountJson = !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -501,8 +501,8 @@ router.get("/healthz/firebase", requireAdmin, (_req, res) => {
     }
   }
 
-  const app = getFirebaseAdminApp();
-  const auth = getFirebaseAdminAuth();
+  const app = await getFirebaseAdminApp();
+  const auth = await getFirebaseAdminAuth();
 
   res.json({
     auth_enabled_flag: flagEnabled,

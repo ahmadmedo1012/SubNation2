@@ -1,5 +1,6 @@
 import { db, productVariantsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
+import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { Router } from "express";
 import {
   computeRetailLYD,
@@ -54,6 +55,7 @@ router.put("/pricing/config", async (req, res) => {
       ...patch,
       effective: config,
     });
+    bumpCatalogCache();
     return res.json({
       usd_to_lyd: config.usdToLyd,
       markup_percent: config.markupPercent,
@@ -139,6 +141,7 @@ router.post("/pricing/recompute", async (req, res) => {
     products_updated: productsUpdatedCount,
   });
 
+  bumpCatalogCache();
   return res.json({
     variants_updated: variantsUpdated,
     products_updated: productsUpdatedCount,

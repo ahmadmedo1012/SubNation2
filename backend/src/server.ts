@@ -9,7 +9,7 @@ import { pool } from "@workspace/db";
 import * as Sentry from "@sentry/node";
 import { createServer, type Server } from "http";
 import express from "express";
-import app from "./app";
+import app, { isShareBotUserAgent } from "./app";
 import { bootMigrations } from "./lib/boot-migrations";
 import { instrumentDbPool } from "./lib/db-instrumentation";
 import { assertEncryptionKeyConfigured } from "./lib/encryption";
@@ -43,9 +43,11 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
 //
 //   - /api/healthz* → 503 {"status":"starting"} (flips to the real 200
 //     handlers once ready) — Render sees "starting", not "dead";
-//   - every other path → 503 SERVICE_UNAVAILABLE — business routes must
-//     never answer mid-migration (P0-4: never serve on a schema we are
-//     still reconciling).
+//   - dynamic/DB-backed paths → 503 SERVICE_UNAVAILABLE — business
+//     routes must never answer mid-migration (P0-4: never serve on a
+//     schema we are still reconciling);
+//   - R104 (AG6-2): static + SPA-shell GET/HEAD requests PASS the gate
+//     (pure fs reads — see isBootGatedRequest below).
 //
 // Genuinely-critical migration outcomes still process.exit(1) below —
 // the gate only covers the WAITING window, never a broken boot.
@@ -55,12 +57,51 @@ function isHealthProbePath(path: string): boolean {
   return path === "/api/healthz" || path.startsWith("/api/healthz/");
 }
 
+/**
+ * R104 (AG6-2): must this request WAIT for bootReady?
+ *
+ * Gated (DB-backed or stateful): everything under /api, the Socket.IO
+ * handshake (auth middleware hits the DB), sitemap.xml (DB-backed), and
+ * the /product/* share-card path for unfurler bots (DB read). Everything
+ * else GET/HEAD — hashed assets, product images, manifest/sw/icons, the
+ * SPA fallback index.html, robots.txt (static const) — is a pure
+ * filesystem read that cannot observe a mid-migration schema and PASSES
+ * the gate immediately: on a free-tier deployment (sleep after 15 min
+ * idle) the FIRST visitor of every wake used to get a JSON 503 instead
+ * of the page shell for the whole boot window (~8-18 s); now the SPA
+ * loads instantly and its customFetch boot-gate retry carries the data
+ * in the moment the gate opens.
+ */
+function isBootGatedRequest(req: {
+  method?: string;
+  path: string;
+  headers: Record<string, unknown>;
+}): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD") return true;
+  const p = req.path;
+  if (p === "/api" || p.startsWith("/api/")) return true;
+  if (p.startsWith("/socket.io/")) return true;
+  if (p === "/sitemap.xml") return true;
+  if (p.startsWith("/product/")) {
+    const ua = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : "";
+    if (isShareBotUserAgent(ua)) return true;
+  }
+  return false;
+}
+
 function buildGatedApp() {
   const gate = express();
   gate.use((req, res, next) => {
     if (bootReady) return next();
+    // AG6-5 (R104): machine-readable retry hint for crawlers/monitors.
+    res.set("Retry-After", "3");
     if (isHealthProbePath(req.path)) {
       res.status(503).json({ status: "starting" });
+      return;
+    }
+    if (!isBootGatedRequest(req)) {
+      // Static/SPA shell — served instantly during boot (see above).
+      next();
       return;
     }
     res.status(503).json({
@@ -129,7 +170,11 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): Se
   return httpServer;
 }
 
-async function bootstrap(): Promise<WebSchedulerHandle> {
+/** R104 (AG6-4): readiness-blocking core — env fail-fast, Redis init,
+ * boot migrations. Returns false when migrations failed in
+ * NON-production (production exits inside). Schedulers are started
+ * post-ready in main(). */
+async function bootstrapCore(): Promise<boolean> {
   // F8 (R98-A6, 98-F5): ENCRYPTION_KEY fail-fast at boot — same posture as
   // SESSION_SECRET (lib/jwt.ts, dev AND prod). Previously the key was only
   // validated lazily at first encrypt/decrypt: a wiped/typo'd key booted
@@ -177,12 +222,12 @@ async function bootstrap(): Promise<WebSchedulerHandle> {
       },
       "[boot] migration failed in non-production — continuing with degraded schema",
     );
+    return false;
   }
 
-  // Activate worker-tier loops inside this web process when no dedicated
-  // worker service is provisioned. Gated by DISABLE_WEB_SCHEDULERS=true
-  // (operator flips this once a real worker exists) plus a Redis-backed
-  // leader lock that only one instance can hold at a time.
+  // R104 (AG6-4): startWebSchedulers + logTelegramBootStatus moved to
+  // main() as the post-ready tail — the leader election round trips no
+  // longer delay the traffic gate.
   //
   // 2026-09-20 (free-infrastructure round): the WhatsApp warm-up loop
   // that used to start here is GONE — the warm-up self-check is now
@@ -190,14 +235,7 @@ async function bootstrap(): Promise<WebSchedulerHandle> {
   // REAL ready observation: a readiness probe or an OTP attempt — see
   // services/openwa.service.ts). Nothing periodic starts at boot
   // anymore; nothing keeps Render/Neon/OpenWA awake on its own.
-  const schedulers = await startWebSchedulers(getRedisClient());
-
-  // Surface Telegram readiness in the boot logs so the operator can
-  // confirm notifications will deliver without opening the admin panel.
-  // No-op if env is unset — just emits a single info line.
-  logTelegramBootStatus();
-
-  return schedulers;
+  return true;
 }
 
 // ── B7-P1-6: graceful SIGTERM/SIGINT drain ────────────────────────────────
@@ -283,16 +321,48 @@ async function main(): Promise<void> {
     process.env.NODE_ENV === "production" ? 0 : DEFAULT_FALLBACK_ATTEMPTS,
   );
 
-  const schedulers = await bootstrap();
+  // R104 (AG6-4): SPLIT the old bootstrap() into a readiness-blocking
+  // core and a post-ready tail. Leader election (startWebSchedulers →
+  // PG-lease first acquisition = 2 sequential cold-Neon round trips)
+  // is NOT required to serve a correct API response — the coordinator
+  // already retries acquisition in the background — so the traffic
+  // gate no longer waits for it.
+  const migrationResult = await bootstrapCore();
+  if (!migrationResult) {
+    // bootstrapCore already logged/exited for critical production
+    // failures; only the non-production degraded path reaches here.
+    logger.warn("[boot] continuing with degraded schema (non-production)");
+  }
 
-  registerShutdown(httpServer, schedulers);
-
-  // Bootstrap fully resolved — open the traffic gate.
+  // Core bootstrap resolved — open the traffic gate NOW.
   bootReady = true;
   logger.info(
     { port: httpServer.address(), category: "monitoring" },
-    "[boot] bootstrap complete — serving traffic",
+    "[boot] core bootstrap complete — serving traffic",
   );
+
+  // Post-ready tail: schedulers + leader election. Errors here must
+  // not kill a serving instance — the coordinator's internal retry
+  // loop owns transient failures.
+  let schedulers: WebSchedulerHandle;
+  try {
+    schedulers = await startWebSchedulers(getRedisClient());
+  } catch (err) {
+    logger.error(
+      { err, category: "monitoring" },
+      "[boot] scheduler start failed — serving continues without background jobs",
+    );
+    schedulers = {
+      stop: async () => {},
+    } as WebSchedulerHandle;
+  }
+
+  // Surface Telegram readiness in the boot logs so the operator can
+  // confirm notifications will deliver without opening the admin panel.
+  // No-op if env is unset — just emits a single info line.
+  logTelegramBootStatus();
+
+  registerShutdown(httpServer, schedulers);
 }
 
 main().catch((err) => {

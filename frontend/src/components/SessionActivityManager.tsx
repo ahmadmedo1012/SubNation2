@@ -90,10 +90,13 @@ export function SessionActivityManager() {
     const schedulePark = () => {
       clearParkTimer();
       const hidden = document.visibilityState === "hidden";
-      parkTimer = setTimeout(() => {
-        parkTimer = null;
-        parkSocketIfConnected();
-      }, hidden ? HIDDEN_PARK_MS : FOREGROUND_IDLE_PARK_MS);
+      parkTimer = setTimeout(
+        () => {
+          parkTimer = null;
+          parkSocketIfConnected();
+        },
+        hidden ? HIDDEN_PARK_MS : FOREGROUND_IDLE_PARK_MS,
+      );
     };
 
     const resyncIfDue = () => {
@@ -127,7 +130,7 @@ export function SessionActivityManager() {
     const handleOnline = () => {
       // 96-F3 parity: network restoration revives the socket; the
       // resync flag in lib/socket.ts fires SOCKET_RESYNC_EVENT on the
-    // next successful connect for socket-holding pages.
+      // next successful connect for socket-holding pages.
       reviveSocket();
     };
 

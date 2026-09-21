@@ -99,7 +99,10 @@ export async function sendCriticalRiskAlert(input: CriticalAlertInput): Promise<
         `User: ${input.userId ?? "anonymous"}`,
         `Investigate: ${investigationUrl}`,
       ].join("\n"),
-      runbookUrl: `${APP_ORIGIN}/docs/OPERATIONS_RUNBOOK.md#risk`,
+      // R104 (AG12-5): GitHub blob URL — /docs/OPERATIONS_RUNBOOK.md was
+      // never a served path (fell through to the SPA).
+      runbookUrl:
+        "https://github.com/ahmadmedo1012/SubNation2/blob/main/OPERATIONS_RUNBOOK.md#risk",
     };
     const results = await alertingService.dispatchAlert(event);
     for (const r of results) {

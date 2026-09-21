@@ -979,9 +979,15 @@ function parseThreshold(threshold: string): number {
 }
 
 export function buildRunbookUrl(section: string): string {
+  // R104 (AG12-5): default to the GitHub blob URL — the old default
+  // (`${APP_URL}/OPERATIONS_RUNBOOK.md`) pointed at a path the origin
+  // never served (the runbook lives at the repo root, not in the
+  // runtime image), so every alert footer + admin observability
+  // deep-link silently fell through to the SPA. Anchors work on the
+  // GitHub blob view.
   const base =
     process.env.ALERTING_RUNBOOK_URL ??
-    `${(process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "")}/OPERATIONS_RUNBOOK.md`;
+    "https://github.com/ahmadmedo1012/SubNation2/blob/main/OPERATIONS_RUNBOOK.md";
   return `${base}${section}`;
 }
 

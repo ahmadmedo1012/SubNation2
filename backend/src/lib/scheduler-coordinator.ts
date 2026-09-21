@@ -85,7 +85,11 @@ import {
 
 const SCHEDULER_LEADER_KEY = "scheduler:leader";
 const LEADER_TTL_SEC = 60;
-const REFRESH_INTERVAL_MS = 20_000;
+// R104 (AG1-1) + RT-9 (red team): 20 s → 25 s — 2.4 refreshes per 60 s
+// TTL keeps a real stall margin (a missed tick still lands ~10 s before
+// expiry; 30 s left ZERO slack) while cutting the only recurring
+// awake-idle DB load from 180 to 144 queries/awake-hour.
+const REFRESH_INTERVAL_MS = 25_000;
 const DEFAULT_ACQUIRE_RETRY_MS = 20_000;
 // R5: bound for every leadership command. Generous vs the 500 ms default
 // command timeout (lock ops are not request-path) but far below the 10 s

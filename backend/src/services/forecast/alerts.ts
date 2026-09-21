@@ -119,7 +119,11 @@ export async function dispatchForecastAlerts(runId: number): Promise<DispatchRes
           `الثقة: ${c.confidence}`,
           `لوحة المراجعة: ${buildPanelUrl(c.productId)}`,
         ].join("\n"),
-        runbookUrl: APP_ORIGIN ? `${APP_ORIGIN}/docs/OPERATIONS_RUNBOOK.md#forecast` : "",
+        // R104 (AG12-5): GitHub blob URL (served-path fix, same as
+        // risk-alerts); empty fallback kept for APP_ORIGIN-less shapes.
+        runbookUrl: APP_ORIGIN
+          ? "https://github.com/ahmadmedo1012/SubNation2/blob/main/OPERATIONS_RUNBOOK.md#forecast"
+          : "",
       };
       await alertingService.dispatchAlert(event);
     } catch (err) {

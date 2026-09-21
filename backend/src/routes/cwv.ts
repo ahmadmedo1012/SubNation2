@@ -137,6 +137,12 @@ const sessionCaps = new Map<string, { count: number; windowStart: number }>();
 const SESSION_WINDOW_MS = 60_000;
 const SESSION_CAP = 30;
 
+/** R104 (AG2-2): max samples accepted in one batched POST. The client
+ * batches at most the 5 metric families per page view (plus small
+ * re-measures); 10 is a defensive ceiling that keeps the 8 KiB body
+ * limit meaningful. */
+const MAX_BATCH_SAMPLES = 10;
+
 function isOverSessionCap(sessionId: string): boolean {
   const now = Date.now();
   const entry = sessionCaps.get(sessionId);
@@ -204,7 +210,27 @@ router.post("/cwv", cwvBodyParser, (req, res) => {
     }
   }
 
-  if (!isCWVSample(body)) {
+  // R104 (AG2-2 + AG8-3): the frontend now sends ONE batched POST per page
+  // view (array of samples, flushed on tab-hide) instead of one POST per
+  // metric — 5 requests → 1 on every page view, and no retry amplification
+  // during a cold start. Single-sample bodies (the historical shape) stay
+  // accepted: normalize both to an array here.
+  let samples: unknown[];
+  if (Array.isArray(body)) {
+    if (body.length === 0 || body.length > MAX_BATCH_SAMPLES) {
+      res.status(400).json(
+        createErrorResponse("invalid_cwv_sample", ErrorCode.INVALID_DATA, {
+          reason: "invalid_batch_size",
+        }),
+      );
+      return;
+    }
+    samples = body;
+  } else {
+    samples = [body];
+  }
+
+  if (!samples.every((s) => isCWVSample(s))) {
     res.status(400).json(
       createErrorResponse("invalid_cwv_sample", ErrorCode.INVALID_DATA, {
         reason: "schema_mismatch",
@@ -212,41 +238,50 @@ router.post("/cwv", cwvBodyParser, (req, res) => {
     );
     return;
   }
-  const sample = body;
+  const batch = samples as CWVSample[];
 
-  if (isOverSessionCap(sample.sessionId)) {
+  // Session cap applies per sample inside the batch (a 5-metric batch
+  // consumes 5 of the 30/min budget — same economics as 5 single posts).
+  const overCap = batch.find((s) => isOverSessionCap(s.sessionId));
+  if (overCap) {
     // Silently drop — the client must not retry, but the rate-limit must
     // not be observable as an error.
     res.status(204).end();
     return;
   }
 
-  // SEC-92-05: the Prometheus label is the NORMALIZED route (bounded table
-  // above) — never the raw client string. The raw route (already bounded
-  // at 512 by the validator) only reaches the structured log line below.
-  const routeLabel = normalizeCwvRouteLabel(sample.route);
+  for (const sample of batch) {
+    // SEC-92-05: the Prometheus label is the NORMALIZED route (bounded table
+    // above) — never the raw client string. The raw route (already bounded
+    // at 512 by the validator) only reaches the structured log line below.
+    const routeLabel = normalizeCwvRouteLabel(sample.route);
 
-  const labels = {
-    name: sample.name,
-    route: routeLabel,
-    viewport: sample.viewportClass,
-  };
+    const labels = {
+      name: sample.name,
+      route: routeLabel,
+      viewport: sample.viewportClass,
+    };
 
-  safeInc(cwvSamplesTotal, labels);
-  safeObserve(cwvSampleValue, labels, sample.value);
+    safeInc(cwvSamplesTotal, labels);
+    safeObserve(cwvSampleValue, labels, sample.value);
+  }
 
-  cwvLogger().info(
+  // AG8-3 (R104 log-volume): the per-sample info line was the single
+  // largest hot-path log source (~5 lines per page view, duplicating data
+  // already in cwv_samples_total / cwv_sample_value). Demoted to debug —
+  // the metrics carry the signal; enable LOG_LEVEL=debug to see payloads.
+  cwvLogger().debug(
     {
-      cwv: {
-        name: sample.name,
-        value: sample.value,
-        rating: sample.rating,
-        route: sample.route,
-        viewport: sample.viewportClass,
-        connection: sample.connectionType,
-      },
+      cwv_batch: batch.map((s) => ({
+        name: s.name,
+        value: s.value,
+        rating: s.rating,
+        route: s.route,
+        viewport: s.viewportClass,
+        connection: s.connectionType,
+      })),
     },
-    "cwv sample received",
+    "cwv samples received",
   );
 
   res.status(204).end();

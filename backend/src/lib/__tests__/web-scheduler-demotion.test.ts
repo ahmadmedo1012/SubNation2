@@ -99,9 +99,20 @@ vi.mock("../redis-client", () => ({
   getRedisClient: () => fakeRedis,
 }));
 
+// R104 (AG6-6): the boot one-shot chain is now DEFERRED via a real
+// setTimeout — a test that acquires leadership and ends without demotion
+// leaks a pending timer into the next test. Track every handle and stop
+// it afterEach (stopLeaderJobs clears the pending one-shot).
+const activeHandles: Array<{ stop: () => Promise<void> }> = [];
+function trackHandle(h: { stop: () => Promise<void> }) {
+  activeHandles.push(h);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.DISABLE_WEB_SCHEDULERS;
+  // R104 (AG6-6): zero the boot one-shot deferral (real timers here).
+  process.env.BOOT_ONE_SHOT_DELAY_MS = "0";
   capturedOptions = {};
   vi.mocked(acquireSchedulerLeadership).mockImplementation(
     async (_redis: unknown, options: CoordinatorOptions = {}) => {
@@ -115,13 +126,18 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
+  delete process.env.BOOT_ONE_SHOT_DELAY_MS;
+  for (const h of activeHandles.splice(0)) {
+    await h.stop().catch(() => undefined);
+  }
   delete process.env.DISABLE_WEB_SCHEDULERS;
 });
 
 describe("R6 — startWebSchedulers demotion wiring", () => {
   it("starts heartbeat + alerting + cron when it holds leadership", async () => {
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
 
     expect(handle.active).toBe(true);
     expect(startHeartbeat).toHaveBeenCalledTimes(1);
@@ -132,9 +148,14 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
 
   it("fires the SEQUENTIAL boot one-shot chain exactly once per leadership acquisition", async () => {
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
     expect(handle.active).toBe(true);
 
-    // Every one-shot body ran (fire-and-forget chain — flush microtasks).
+    // R104 (AG6-6): the chain is deferred BOOT_ONE_SHOT_DELAY_MS after
+    // leadership (decoupled from the first real user requests of a cold
+    // start) — the beforeEach sets the env override to 0, so the chain
+    // fires immediately; flush the fire-and-forget microtasks.
+
     await vi.waitFor(() => {
       expect(checkExpiringCoupons).toHaveBeenCalledTimes(1);
       expect(runStockSweep).toHaveBeenCalledTimes(1);
@@ -148,6 +169,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
 
   it("onLost (leadership loss) STOPS everything — the split-brain fix", async () => {
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
     expect(handle.active).toBe(true);
 
     // Another instance took the lock → coordinator fires onLost.
@@ -166,6 +188,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
 
   it("after demotion, a later re-acquisition (onAcquired) restarts everything", async () => {
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
     capturedOptions?.onLost?.();
     expect(handle.active).toBe(false);
 
@@ -187,6 +210,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
     );
 
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
     await handle.stop();
 
     // Everything local stopped once...
@@ -210,6 +234,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
     );
 
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("not_leader");
     expect(alertingService.start).not.toHaveBeenCalled();
@@ -220,6 +245,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
   it("DISABLE_WEB_SCHEDULERS=true skips everything (unchanged migration switch)", async () => {
     process.env.DISABLE_WEB_SCHEDULERS = "true";
     const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
 
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("disabled_by_env");

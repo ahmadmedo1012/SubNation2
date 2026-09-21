@@ -98,6 +98,15 @@ export interface WebSchedulerHandle {
 // afford 30 s granularity).
 const HEARTBEAT_RECOVERY_POLL_MS = 30_000;
 
+// R104 (AG6-6): deferral between leadership acquisition and the boot
+// one-shot chain, so retention DELETEs never race the first real user
+// requests of a cold start through the shared 8-connection pool.
+// Env-tunable (tests set 0; operators can stretch it under load). Read
+// at CALL time so environment changes after module load apply.
+function bootOneShotDelayMs(): number {
+  return Math.max(0, Number(process.env.BOOT_ONE_SHOT_DELAY_MS ?? 7_000) || 0);
+}
+
 export async function startWebSchedulers(
   redis: RedisClientType | null,
 ): Promise<WebSchedulerHandle> {
@@ -122,6 +131,8 @@ export async function startWebSchedulers(
   let started = false;
   let heartbeatCleanup: { stop: () => void } | null = null;
   let heartbeatRecoveryPoll: ReturnType<typeof setInterval> | null = null;
+  // R104 (AG6-6): pending delayed boot one-shots (cleared on demote/shutdown).
+  let pendingOneShot: ReturnType<typeof setTimeout> | null = null;
   let cronJobs: CronJobsHandle | null = null;
 
   /**
@@ -139,6 +150,10 @@ export async function startWebSchedulers(
     if (heartbeatRecoveryPoll) {
       clearInterval(heartbeatRecoveryPoll);
       heartbeatRecoveryPoll = null;
+    }
+    if (pendingOneShot) {
+      clearTimeout(pendingOneShot);
+      pendingOneShot = null;
     }
     heartbeatCleanup?.stop();
     heartbeatCleanup = null;
@@ -197,18 +212,30 @@ export async function startWebSchedulers(
       // since R1 (round-93); the web leader now gets the same fix:
       // poll the singleton every 30 s and attach the heartbeat (once)
       // the moment a client exists. Stopped by stopLeaderJobs.
-      heartbeatRecoveryPoll = setInterval(() => {
-        const recovered = getRedisClient();
-        if (!recovered) return;
-        if (heartbeatRecoveryPoll) clearInterval(heartbeatRecoveryPoll);
-        heartbeatRecoveryPoll = null;
-        heartbeatCleanup = startHeartbeat(recovered);
-        logger.warn(
-          { category: "monitoring", instanceId: leadership.instanceId },
-          "[scheduler] Redis recovered mid-reign — heartbeat attached",
+      // R104 (AG1-2): with REDIS_URL entirely unset (the production
+      // shape) no Redis client can EVER appear — the singleton factory
+      // resolves null permanently (redis-client.ts never creates a
+      // client object without a URL). Skip arming the 30 s no-op poll
+      // entirely; it can only ever succeed when a URL exists.
+      if (!process.env.REDIS_URL) {
+        logger.info(
+          { category: "monitoring" },
+          "[scheduler] REDIS_URL unset — heartbeat recovery poll skipped (cannot heal without a URL)",
         );
-      }, HEARTBEAT_RECOVERY_POLL_MS);
-      heartbeatRecoveryPoll.unref?.();
+      } else {
+        heartbeatRecoveryPoll = setInterval(() => {
+          const recovered = getRedisClient();
+          if (!recovered) return;
+          if (heartbeatRecoveryPoll) clearInterval(heartbeatRecoveryPoll);
+          heartbeatRecoveryPoll = null;
+          heartbeatCleanup = startHeartbeat(recovered);
+          logger.warn(
+            { category: "monitoring", instanceId: leadership.instanceId },
+            "[scheduler] Redis recovered mid-reign — heartbeat attached",
+          );
+        }, HEARTBEAT_RECOVERY_POLL_MS);
+        heartbeatRecoveryPoll.unref?.();
+      }
     }
 
     alertingService.start();
@@ -227,7 +254,19 @@ export async function startWebSchedulers(
     // the dedicated-worker path via jobs/boot-one-shots.ts (R101):
     // retention catch-up (B7-P2-12), opportunistic-sweep boot passes,
     // and the 97-F1 restart-gap cleanups — all idempotent.
-    runBootOneShots();
+    //
+    // R104 (AG6-6): DELAYED ~7 s after leadership. The chain fires
+    // ~simultaneously with gate-open on a cold start, sharing the
+    // 8-connection pool (and a just-woken 0.25 CU Neon) with the FIRST
+    // real user requests of the wake. A short deferral decouples the
+    // retention DELETEs from the first-visitor path while keeping the
+    // restart-gap catch-up semantics (the jobs are idempotent; 7 s
+    // changes nothing about correctness).
+    pendingOneShot = setTimeout(() => {
+      pendingOneShot = null;
+      runBootOneShots();
+    }, bootOneShotDelayMs());
+    pendingOneShot.unref?.();
 
     setSchedulerState({
       mode: "embedded",

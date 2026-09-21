@@ -44,7 +44,7 @@ const router = Router();
 const COOKIE_SESSION_SENTINEL = "__cookie_session__";
 
 router.post("/logout", requireUser, async (req, res) => {
-  const auth = getFirebaseAdminAuth();
+  const auth = await getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
   const sessionId = (req as AuthenticatedRequest).sessionId;
   const clientInfo = getClientInfo(req);
@@ -105,7 +105,7 @@ router.post("/logout", requireUser, async (req, res) => {
 });
 
 router.post("/logout-all-devices", requireUser, async (req, res) => {
-  const auth = getFirebaseAdminAuth();
+  const auth = await getFirebaseAdminAuth();
   const userId = (req as AuthenticatedRequest).userId;
   const clientInfo = getClientInfo(req);
 
@@ -293,7 +293,7 @@ router.post("/providers/unlink", requireUser, async (req, res) => {
 
     // If unlinking Firebase, revoke refresh tokens
     if (provider === "firebase.com" && user.firebaseUid) {
-      const auth = getFirebaseAdminAuth();
+      const auth = await getFirebaseAdminAuth();
       if (auth) {
         await auth.revokeRefreshTokens(user.firebaseUid);
       }

@@ -39,7 +39,6 @@
  */
 
 import * as Sentry from "@sentry/node";
-import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import { getCorrelationId } from "./correlation";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -274,8 +273,23 @@ let initialised = false;
  * Set SENTRY_DEBUG=1 to enable @sentry/node's own verbose logging
  * (useful for diagnosing transport / DSN parse failures).
  */
-export function initSentry(): ReturnType<typeof Sentry.init> {
-  if (initialised) return Sentry.getClient();
+/**
+ * 99-C6 (R99-A3 P3): a typo like "0.1s" made Number() → NaN and silently
+ * disabled profiling with no signal. Guard + clamp to the valid 0-1
+ * range (same pattern as the tracer's rate). Production-only.
+ * R104 (RT-5): extracted so the post-init profiling attach can gate on
+ * the SAME resolved rate (Sentry initializes traces-only when 0).
+ */
+function resolveProfilesSampleRate(): number {
+  if (process.env.NODE_ENV !== "production") return 0;
+  const raw = Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1);
+  return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.1;
+}
+
+export async function initSentry(): Promise<ReturnType<typeof Sentry.init> | undefined> {
+  // The initialised client was created by Sentry.init below (a NodeClient)
+  // — getClient()'s loose generic signature just needs the assertion.
+  if (initialised) return Sentry.getClient() as ReturnType<typeof Sentry.init> | undefined;
   initialised = true;
 
   if (!process.env.SENTRY_DSN) {
@@ -306,21 +320,13 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
       // production log spam.
       debug: process.env.SENTRY_DEBUG === "1",
       // Auto-enable Express, HTTP, Redis, Postgres integrations from
-      // @sentry/node v10+. We don't pass `integrations: [...]` for those
-      // because the defaults stay applied; we DO add nodeProfilingIntegration
-      // which is opt-in (separate package).
-      integrations: [nodeProfilingIntegration()],
+      // @sentry/node v10+. nodeProfilingIntegration is attached AFTER
+      // init (see below) so the import can stay lazy without delaying
+      // Sentry.init itself (RT-5: a ~170 ms uninitialized window at boot
+      // let synchronous early-boot failures escape capture).
+      integrations: [],
       tracesSampler: makeTracesSampler(),
-      profilesSampleRate:
-        process.env.NODE_ENV === "production"
-          ? // 99-C6 (R99-A3 P3): a typo like "0.1s" made Number() → NaN and
-            // silently disabled profiling with no signal. Guard + clamp to
-            // the valid 0–1 range (same pattern as the tracer's rate below).
-            (() => {
-              const raw = Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1);
-              return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.1;
-            })()
-          : 0,
+      profilesSampleRate: resolveProfilesSampleRate(),
       // PII sanitization. Order matters: first strip headers Sentry
       // attached automatically, then deep-walk request body / extras,
       // then add our correlation_id tag.
@@ -413,6 +419,25 @@ export function initSentry(): ReturnType<typeof Sentry.init> {
       `profiles=${process.env.SENTRY_PROFILES_SAMPLE_RATE ?? "0.1"} ` +
       `debug=${process.env.SENTRY_DEBUG === "1"}`,
   );
+
+  // R104 (AG6-3 + RT-5): @sentry/profiling-node (~168 ms module eval) is
+  // imported and ATTACHED only AFTER Sentry.init — the SDK stays live
+  // from the first millisecond (no capture-free boot window), a
+  // disabled-Sentry deployment (no DSN) never pays for the import at
+  // all, and a failure to load profiling degrades to traces-only.
+  if (resolveProfilesSampleRate() > 0) {
+    void import("@sentry/profiling-node")
+      .then(({ nodeProfilingIntegration }) => {
+        const attached = client?.addIntegration?.(nodeProfilingIntegration());
+        if (!attached) {
+          // Older SDK without addIntegration — profiling simply stays off.
+          console.warn("[sentry] profiling integration could not be attached (SDK shape)");
+        }
+      })
+      .catch((err) => {
+        console.warn("[sentry] profiling package unavailable — traces-only mode", err);
+      });
+  }
 
   return client;
 }

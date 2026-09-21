@@ -33,9 +33,12 @@ const requiresSsl =
 // missing/typo'd env doesn't silently cap us at 5 connections (which
 // causes connection-starvation under ~50 concurrent users — that was
 // the symptom the May 2026 load test surfaced).
-const poolMax = Number(
-  process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 15 : 10),
-);
+// R104 (AG5-8): production fallback 15 → 8 — matches the deployed
+// DB_POOL_MAX pin (render.yaml). A lost/typo'd env var previously
+// silently reverted to a 15-connection burst — exactly the cold-start
+// connection storm the 2026-09-20 tuning removed. Neon free (0.25 CU)
+// queues badly behind 15 concurrent connects.
+const poolMax = Number(process.env.DB_POOL_MAX ?? (process.env.NODE_ENV === "production" ? 8 : 10));
 const idleTimeoutMillis = Number(process.env.DB_IDLE_TIMEOUT_MS ?? 30_000);
 const connectionTimeoutMillis = Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 10_000);
 

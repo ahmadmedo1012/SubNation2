@@ -1,8 +1,31 @@
-import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
-import { getAuth, type Auth } from "firebase-admin/auth";
+// R104 (AG6-3): firebase-admin is a HEAVY module (~105 ms of module
+// evaluation) that used to load at boot through routes/auth.ts's static
+// import chain — BEFORE the port bound, and even in deployments where
+// Firebase auth is disabled (tests, dev, any FIREBASE_AUTH_ENABLED!=true
+// runtime). It is now imported DYNAMICALLY on first real use, AFTER the
+// enabled gate: disabled deployments never pay for it at all, and
+// enabled ones defer the cost past port-bind (nothing before listen()
+// needs it) — the early-bind gate opens that much sooner on every cold
+// start.
+import type { App } from "firebase-admin/app";
+import type { Auth } from "firebase-admin/auth";
 import { logger } from "./logger";
 
 let app: App | null | undefined;
+
+/** Memoized dynamic import of firebase-admin/app (retries if it failed). */
+let adminAppModule: Promise<typeof import("firebase-admin/app")> | null = null;
+
+function loadAdminAppModule(): Promise<typeof import("firebase-admin/app")> {
+  if (!adminAppModule) {
+    adminAppModule = import("firebase-admin/app").catch((err) => {
+      // Allow a later call to retry a transient module-load failure.
+      adminAppModule = null;
+      throw err;
+    });
+  }
+  return adminAppModule;
+}
 
 interface ServiceAccountShape {
   projectId?: string;
@@ -78,7 +101,7 @@ function parseServiceAccount(): ServiceAccountShape | null {
   return null;
 }
 
-export function getFirebaseAdminApp(): App | null {
+export async function getFirebaseAdminApp(): Promise<App | null> {
   if (app !== undefined) return app;
 
   if (process.env.FIREBASE_AUTH_ENABLED !== "true") {
@@ -86,6 +109,8 @@ export function getFirebaseAdminApp(): App | null {
     app = null;
     return app;
   }
+
+  const { cert, getApps, initializeApp } = await loadAdminAppModule();
 
   const existing = getApps()[0];
   if (existing) {
@@ -154,7 +179,9 @@ export function getFirebaseAdminApp(): App | null {
   return app;
 }
 
-export function getFirebaseAdminAuth(): Auth | null {
-  const firebaseApp = getFirebaseAdminApp();
-  return firebaseApp ? getAuth(firebaseApp) : null;
+export async function getFirebaseAdminAuth(): Promise<Auth | null> {
+  const firebaseApp = await getFirebaseAdminApp();
+  if (!firebaseApp) return null;
+  const { getAuth } = await import("firebase-admin/auth");
+  return getAuth(firebaseApp);
 }

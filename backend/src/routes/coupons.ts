@@ -180,9 +180,13 @@ router.post("/validate", requireUser, async (req, res) => {
 
 router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, res) => {
   // 2026-09-20: operator intent — the panel view triggers the expiry
-  // sweep (throttled 1 min; was an hourly interval timer) so the list
-  // it renders is already clean of expired-but-active rows.
-  fireThrottledMaintenance("coupon-sweep", 60_000, checkExpiringCoupons);
+  // sweep (was an hourly interval timer) so the list it renders is
+  // already clean of expired-but-active rows.
+  // R104 (AG1-3): admin cooldown 1 min → 5 min — the sweep is idempotent
+  // hygiene; an operator paging through the panel was firing it every
+  // 60 s. Admin actions that actually change coupon state invalidate
+  // directly; the public route keeps its 15-min throttle.
+  fireThrottledMaintenance("coupon-sweep", 5 * 60_000, checkExpiringCoupons);
   // AUD103-4-F9 (r103): the only admin list without a cap — clamp to 200
   // like every other admin list (orders/topups/users/alerts) so the row
   // count can never grow into an unbounded dump.
