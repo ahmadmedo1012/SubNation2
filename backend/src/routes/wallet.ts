@@ -251,7 +251,12 @@ router.post(
         .insert(walletTopupsTable)
         .values({
           userId,
-          amount: String(amount),
+          // R102 (money display-vs-storage parity): zod accepts up to 3+
+          // decimals but numeric(10,2) rounds SILENTLY — the operator
+          // would approve 10.555 while 10.56 is what gets credited.
+          // Round at the boundary (same as topup.service.ts:70) so the
+          // approval card, the credited amount, and the ledger agree.
+          amount: String(+amount.toFixed(2)),
           paymentMethod: method,
           paymentNetwork: payment_network ?? null,
           senderPhone: sender_phone ?? null,

@@ -131,19 +131,52 @@ export async function findIdempotentOrderId(scopedKey: string): Promise<number |
 }
 
 /**
- * Claim the key INSIDE the purchase transaction (call after the order
- * + ledger inserts so the claim commits atomically with them — a
- * rollback releases the key for the client's next retry).
+ * R102 (loyalty durable guard): pre-transaction existence check — has
+ * this (user-scoped) key been claimed by ANY intent (order or otherwise)?
+ * Unlike findIdempotentOrderId this returns a boolean, so a loyalty
+ * claim (order_id NULL) is also detected. Same 42P01 tolerance.
+ */
+export async function findIdempotencyClaimed(scopedKey: string): Promise<boolean> {
+  if (tableMissing) return false;
+  try {
+    const [row] = await db
+      .select({ key: idempotencyKeysTable.key })
+      .from(idempotencyKeysTable)
+      .where(eq(idempotencyKeysTable.key, scopedKey))
+      .limit(1);
+    return row !== undefined;
+  } catch (err) {
+    if (isUndefinedTableError(err)) {
+      tableMissing = true;
+      logger.warn(
+        "idempotency_keys table missing (pre-V1-M12) — durable idempotency degrades to legacy pass-through",
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Claim the key INSIDE the money transaction (call after the ledger
+ * insert so the claim commits atomically with it — a rollback releases
+ * the key for the client's next retry).
  *
- * No-op while the table is missing. A concurrent same-key winner
- * throws SQLSTATE 23505 — the caller (checkout) maps it to the
- * idempotent-replay path.
+ * R102: orderId is nullable + referenceType discriminates the intent —
+ * checkout claims ('<orderId>', 'order'); loyalty claims (null,
+ * 'loyalty.convert'). Existing callers pass only (client, key, orderId)
+ * and default to 'order' — byte-identical behavior.
+ *
+ * No-op while the table is missing. A concurrent same-key winner throws
+ * SQLSTATE 23505 — checkout maps it to the idempotent-replay path;
+ * loyalty maps it to a 409 "already converted".
  */
 export async function claimIdempotencyKey(
   client: DbOrTx,
   scopedKey: string,
-  orderId: number,
+  orderId: number | null,
+  referenceType: string = "order",
 ): Promise<void> {
   if (tableMissing) return;
-  await client.insert(idempotencyKeysTable).values({ key: scopedKey, orderId });
+  await client.insert(idempotencyKeysTable).values({ key: scopedKey, orderId, referenceType });
 }

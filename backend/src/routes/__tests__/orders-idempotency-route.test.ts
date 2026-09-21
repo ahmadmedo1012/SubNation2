@@ -37,7 +37,8 @@ vi.mock("../../telegram", () => ({
 const IDEMPOTENCY_DDL = `
 CREATE TABLE idempotency_keys (
   key text PRIMARY KEY,
-  order_id integer NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  order_id integer REFERENCES orders(id) ON DELETE CASCADE,
+  reference_type varchar(32) NOT NULL DEFAULT 'order',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;

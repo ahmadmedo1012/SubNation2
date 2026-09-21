@@ -248,9 +248,13 @@ router.patch(
         count_failed: failures.length,
       });
 
-      // 2026-09-20 (free-infrastructure round): a refund RETURNS inventory
-      // — one of the only events that changes stock. Trigger the
-      // low/zero-stock sweep (throttled 10 min; was a 30-minute timer).
+      // 2026-09-20 (free-infrastructure round): a refund fires the stock
+      // sweep — B2-03 semantics mean it does NOT return the unit (the
+      // buyer already saw the credentials; is_sold stays true), but the
+      // refund DOES surface the product in the operator's re-stock
+      // workflow, so re-evaluating low/zero-stock right after a refund
+      // batch is still the honest moment. Trigger the sweep (throttled
+      // 10 min; was a 30-minute timer).
       if (successes.length > 0) {
         fireThrottledMaintenance("stock-sweep", 10 * 60 * 1000, runStockSweep);
       }

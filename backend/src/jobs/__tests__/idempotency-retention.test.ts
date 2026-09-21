@@ -9,7 +9,7 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyKeysStage } from "../../migrate";
+import { applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
 import { pruneOldIdempotencyKeys } from "../idempotency-retention";
 
 /**
@@ -39,6 +39,9 @@ beforeEach(async () => {
   // the retention DELETE has the real production shape to run against.
   await db.execute(sql.raw("DROP TABLE IF EXISTS idempotency_keys"));
   await applyIdempotencyKeysStage();
+  // R102 (V1-M19): keep the harness table at the CURRENT shape so the
+  // drizzle object (which now selects reference_type) resolves.
+  await applyIdempotencyReferenceTypeStage();
 });
 
 async function seedOrder(orderCode: string): Promise<number> {

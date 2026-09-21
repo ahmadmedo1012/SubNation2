@@ -10,7 +10,18 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyKeysStage } from "../../migrate";
+import { applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
+
+/**
+ * R102: the V1-M19 generalization (nullable order_id + reference_type)
+ * is part of the CURRENT shape — every stage application below runs
+ * M12 + M19 together so the pins describe the live table the drizzle
+ * object resolves against.
+ */
+async function applyIdempotencyStages() {
+  await applyIdempotencyKeysStage();
+  await applyIdempotencyReferenceTypeStage();
+}
 import {
   __resetIdempotencyTableProbeForTests,
   claimIdempotencyKey,
@@ -28,7 +39,8 @@ import {
  * shared/db/src/schema/idempotency-keys.ts and lib/idempotency.ts:
  *
  *   key        text        PRIMARY KEY        (the user-scoped `u{id}:{k}`)
- *   order_id   integer     NOT NULL FK → orders(id) ON DELETE CASCADE
+ *   order_id   integer     NULL FK → orders(id) ON DELETE CASCADE (V1-M19)
+ *   reference_type varchar(32) NOT NULL DEFAULT 'order' (V1-M19)
  *   created_at timestamptz NOT NULL DEFAULT now()
  *   + idx_idempotency_keys_order ON (order_id)
  *
@@ -99,20 +111,22 @@ async function seedOrder(): Promise<number> {
 
 describe("V1-M12 applyIdempotencyKeysStage — catalog shape (pinned to schema TS + lib)", () => {
   it("creates exactly key/order_id/created_at with the pinned types", async () => {
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
     expect(await tableExists("idempotency_keys")).toBe(true);
     const cols = await columnsOf("idempotency_keys");
-    expect([...cols.keys()].sort()).toEqual(["created_at", "key", "order_id"]);
+    expect([...cols.keys()].sort()).toEqual(["created_at", "key", "order_id", "reference_type"]);
     // Pinned types — a drift here breaks lib/idempotency.ts's queries.
     expect(cols.get("key")).toBe("text");
     expect(cols.get("order_id")).toBe("integer");
     expect(cols.get("created_at")).toBe("timestamp with time zone");
+    // R102 (V1-M19): the loyalty-conversion discriminator.
+    expect(cols.get("reference_type")).toBe("character varying");
   });
 
   it("key is the PRIMARY KEY (duplicate claim = 23505 on idempotency_keys)", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
     await claimIdempotencyKey(db, "u1:retry-key-abc", orderId);
 
@@ -128,12 +142,13 @@ describe("V1-M12 applyIdempotencyKeysStage — catalog shape (pinned to schema T
     expect(isIdempotencyKeyViolation(violation)).toBe(true);
   });
 
-  it("order_id is NOT NULL, references orders(id), and cascades on order delete", async () => {
+  it("order_id is NULLABLE (V1-M19, loyalty claims), references orders(id), and cascades on order delete", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
-    // NOT NULL + FK + ON DELETE CASCADE, checked via the catalog and a
-    // live delete (the dedup row must never outlive the money it guards).
+    // V1-M19: NULLABLE (loyalty claims carry no order) + FK +
+    // ON DELETE CASCADE, checked via the catalog and a live delete (the
+    // dedup row must never outlive the money it guards).
     const fk = await db.execute(sql`
       SELECT confdeltype FROM pg_constraint
       WHERE contype = 'f' AND conrelid = 'idempotency_keys'::regclass
@@ -149,7 +164,7 @@ describe("V1-M12 applyIdempotencyKeysStage — catalog shape (pinned to schema T
 
   it("created_at defaults to now() and idx_idempotency_keys_order exists", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
     const defaults = await db.execute(sql`
       SELECT column_default FROM information_schema.columns
@@ -170,10 +185,10 @@ describe("V1-M12 applyIdempotencyKeysStage — catalog shape (pinned to schema T
 describe("V1-M12 — idempotent re-runs", () => {
   it("applying the stage twice keeps exactly one table and the rows intact", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
     await claimIdempotencyKey(db, "u1:stable-key-abc", orderId);
 
-    await applyIdempotencyKeysStage(); // re-run must be a no-op
+    await applyIdempotencyStages(); // re-run must be a no-op
 
     expect(await tableExists("idempotency_keys")).toBe(true);
     const rows = await db.select().from(idempotencyKeysTable);
@@ -183,7 +198,7 @@ describe("V1-M12 — idempotent re-runs", () => {
   });
 
   it("re-runs issue no DDL-class statements (recording executor)", async () => {
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
     const statements: string[] = [];
     const recording = async (query: SQL) => {
@@ -195,7 +210,7 @@ describe("V1-M12 — idempotent re-runs", () => {
       statements.push(text);
       return db.execute(query);
     };
-    await applyIdempotencyKeysStage(recording);
+    await applyIdempotencyKeysStage(recording); await applyIdempotencyReferenceTypeStage();
 
     // Steady-state: only the DO-block existence probe (catalog read — the
     // CREATE TABLE inside its IF never fires, hence no top-level DDL) and
@@ -210,7 +225,7 @@ describe("V1-M12 — idempotent re-runs", () => {
 describe("V1-M12 ↔ lib/idempotency.ts — the service round-trip (name parity proof)", () => {
   it("findIdempotentOrderId replays the order the claim created", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
     __resetIdempotencyTableProbeForTests();
 
     // Pre-claim: fresh key → null → checkout proceeds unguarded (legacy).
@@ -226,7 +241,7 @@ describe("V1-M12 ↔ lib/idempotency.ts — the service round-trip (name parity 
 
   it("the drizzle table object resolves against the migrated table (registry parity)", async () => {
     const orderId = await seedOrder();
-    await applyIdempotencyKeysStage();
+    await applyIdempotencyStages();
 
     // idempotencyKeysTable is now re-exported from @workspace/db/schema
     // (schema/index.ts registration) — selecting through it must work.

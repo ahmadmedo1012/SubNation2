@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 import { ordersTable } from "./orders";
 
 /**
@@ -17,6 +17,14 @@ import { ordersTable } from "./orders";
  * (`u{userId}:{clientKey}`) — two different buyers reusing the same
  * client key string can never collide (mirrors the middleware's
  * subject-scoped Redis keys).
+ *
+ * R102 (loyalty durable guard): `order_id` is now NULLABLE and a
+ * `reference_type` discriminator was added (default 'order'). The
+ * checkout path is unchanged; the loyalty convert-points path claims
+ * the same table with (order_id NULL, reference_type 'loyalty.convert')
+ * — its 23505 maps to a 409 "already converted" instead of a replay
+ * (the conversion result is reconstructible from the user's balance;
+ * replaying a payload was unnecessary complexity).
  *
  * The row is written INSIDE the checkout transaction, immediately
  * after the order + ledger inserts. FK `ON DELETE CASCADE` follows the
@@ -37,10 +45,14 @@ export const idempotencyKeysTable = pgTable(
   {
     /** User-scoped key: `u{userId}:{clientKey}` (see module docs). */
     key: text("key").primaryKey(),
-    /** The order this key created — claimed atomically in its tx. */
-    orderId: integer("order_id")
-      .notNull()
-      .references(() => ordersTable.id, { onDelete: "cascade" }),
+    /**
+     * The order this key created — claimed atomically in its tx.
+     * R102: nullable for non-order money intents (loyalty conversion
+     * claims with NULL + reference_type; checkout always sets it).
+     */
+    orderId: integer("order_id").references(() => ordersTable.id, { onDelete: "cascade" }),
+    /** R102: what the key guards — 'order' (default) or 'loyalty.convert'. */
+    referenceType: varchar("reference_type", { length: 32 }).notNull().default("order"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

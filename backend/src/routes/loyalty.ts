@@ -5,6 +5,12 @@ import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUs
 import { idempotency } from "../middlewares/idempotency";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { insertLedgerEntry } from "../lib/ledger";
+import {
+  claimIdempotencyKey,
+  findIdempotencyClaimed,
+  isIdempotencyKeyViolation,
+  scopeIdempotencyKey,
+} from "../lib/idempotency";
 import { POINTS_PER_LYD, POINTS_PER_REFERRAL, TIER_THRESHOLDS } from "../lib/loyalty-tiers";
 
 /** Internal control-flow error for transactional conflicts. */
@@ -131,6 +137,23 @@ router.post(
 
     const lydValue = +(pointsToConvert / POINTS_PER_LYD).toFixed(2);
 
+    // R102 (durable guard, R102-A F3): the middleware above is Redis-only
+    // (pass-through during a Redis outage) — a lost response + retry
+    // during that window double-converted points. The durable table
+    // backstop (same as checkout's F10) closes it: pre-tx existence
+    // check for the friendly 409, in-tx claim for the concurrent race.
+    const scopedKey = scopeIdempotencyKey(userId, req.header("idempotency-key"));
+    if (scopedKey && (await findIdempotencyClaimed(scopedKey))) {
+      return res
+        .status(409)
+        .json(
+          createErrorResponse(
+            "تم تنفيذ هذا التحويل مسبقاً بنفس المفتاح — تحقق من رصيدك",
+            ErrorCode.CONFLICT,
+          ),
+        );
+    }
+
     try {
       const result = await db.transaction(async (tx) => {
         // Fresh read INSIDE the tx — the pre-transaction state may be stale
@@ -187,6 +210,19 @@ router.post(
           },
           tx as unknown as typeof db,
         );
+
+        // R102: durable claim, committed atomically with the conversion.
+        // Concurrent same-key winner → 23505 → the catch maps to a 409
+        // (the user's balance already reflects the first conversion).
+        if (scopedKey) {
+          try {
+            await claimIdempotencyKey(tx as unknown as typeof db, scopedKey, null, "loyalty.convert");
+          } catch (claimErr) {
+            if (isIdempotencyKeyViolation(claimErr))
+              throw new ConflictError("تم تنفيذ هذا التحويل مسبقاً بنفس المفتاح — تحقق من رصيدك");
+            throw claimErr;
+          }
+        }
 
         return { ok: true as const, newPoints, newBalance };
       });

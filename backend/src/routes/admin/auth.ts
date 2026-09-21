@@ -121,14 +121,20 @@ router.post("/login", async (req, res) => {
       { category: "security", adminId: admin.id, username: admin.username },
       "Non-argon2 password hash encountered on admin login — legacy SHA-256 fallback removed (98-F3); password reset required",
     );
+    // R102 (parity hardening, R102-B F2): this branch used to answer
+    // IMMEDIATELY (verifyPassword short-circuits before any argon2 work
+    // for non-argon2 hashes) with a DISTINCT body and no lockout
+    // accounting — a timing + shape oracle that diverged from both the
+    // not-found and wrong-password branches (the exact gap 98-F3 closed
+    // for the others). Run the SAME dummy argon2, record the SAME
+    // failed attempt, and return the SAME generic 401; the loud error
+    // log above is the out-of-band reset signal. Zero such rows exist
+    // live — this is defense-in-depth, not a live fix.
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
+    await recordFailedAttempt(lockoutKey);
     return res
       .status(401)
-      .json(
-        createErrorResponse(
-          "يلزم إعادة تعيين كلمة المرور — تواصل مع مسؤول النظام",
-          ErrorCode.UNAUTHORIZED,
-        ),
-      );
+      .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
   if (!valid) {
     await recordFailedAttempt(lockoutKey);
