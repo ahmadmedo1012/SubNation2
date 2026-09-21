@@ -125,7 +125,7 @@ describe("R102 — provider_fulfillments record lifecycle", () => {
     await expect(
       db.insert(providerFulfillmentsTable).values({
         orderId: first.order.id,
-        provider: "embrionic-future",
+        provider: "external-future",
         attempt: 1,
         status: "succeeded",
         providerOrderId: "PROV-123",
@@ -136,7 +136,7 @@ describe("R102 — provider_fulfillments record lifecycle", () => {
     await expect(
       db.insert(providerFulfillmentsTable).values({
         orderId: other.id,
-        provider: "embrionic-future",
+        provider: "external-future",
         attempt: 1,
         status: "succeeded",
         providerOrderId: "PROV-123", // same provider order, second order
@@ -152,7 +152,7 @@ describe("R102 — provider registry fail-safe", () => {
 
   it("an unknown FULFILLMENT_PROVIDER value falls back to manual (money path never sees a null provider)", () => {
     const original = process.env.FULFILLMENT_PROVIDER;
-    process.env.FULFILLMENT_PROVIDER = "embrionic-not-registered-yet";
+    process.env.FULFILLMENT_PROVIDER = "external-not-registered-yet";
     try {
       expect(getFulfillmentProvider()).toBe(manualProvider);
     } finally {

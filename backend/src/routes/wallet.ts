@@ -282,6 +282,12 @@ router.post(
     }
 
     const { topup, initialStatus } = submission;
+    // AUD103-2-F6 (r103): display-vs-storage parity — everything the
+    // operator card, the user notification, and the risk pipeline SEE
+    // downstream must be the STORED (rounded) amount, not the raw
+    // submission (10.555 → stored/credited 10.56 — the approval card used
+    // to show the un-rounded value to the human checkpoint).
+    const storedAmount = Number(topup.amount);
 
     // ── Telegram approval request (fire-and-forget) ────────────────────────
     // Operators approve/reject directly from the admin group via inline
@@ -305,7 +311,7 @@ router.post(
           const text =
             `💰 <b>طلب شحن جديد #${topup.id}</b>\n` +
             `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
-            `• المبلغ: <b>${amount} د.ل</b>\n` +
+            `• المبلغ: <b>${storedAmount} د.ل</b>\n` +
             `• الطريقة: ${escapeTelegramHtml(method)}` +
             `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}\n` +
             // F-03 (round-93 A2): the receipt reference rides the approval card
@@ -349,7 +355,7 @@ router.post(
     if (currentUser)
       notifyNewTopup({
         phone: currentUser.phone,
-        amount,
+        amount: storedAmount,
         network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
         topupId: topup.id,
         provider: derivePrimaryProvider(currentUser),
@@ -367,7 +373,7 @@ router.post(
         event: {
           eventType: "topup_attempt",
           ipAddress: req.ip ?? null,
-          amount,
+          amount: storedAmount,
         },
         user: { id: userId },
       },

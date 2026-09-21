@@ -58,6 +58,32 @@ interface CachedResponse {
   completedAt: string; // ISO-8601 for audit
 }
 
+/** AUD103-2-F4 (r103): credential-bearing fields that must never persist
+ * in the replay cache. Generic on purpose — the middleware serves several
+ * routes, and only bodies actually carrying these exact keys are redacted
+ * (everything else is cached verbatim). Returns a SHALLOW CLONE when
+ * redaction applies; the original body object is never mutated (it is
+ * simultaneously going out on the wire). */
+const CACHED_CREDENTIAL_FIELDS = [
+  "delivered_email",
+  "delivered_password",
+  "delivered_extra_details",
+] as const;
+
+function redactCachedCredentials(body: unknown): unknown {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  const record = body as Record<string, unknown>;
+  const carries = CACHED_CREDENTIAL_FIELDS.some(
+    (field) => record[field] !== undefined && record[field] !== null,
+  );
+  if (!carries) return body;
+  const clone: Record<string, unknown> = { ...record };
+  for (const field of CACHED_CREDENTIAL_FIELDS) {
+    if (clone[field] !== undefined && clone[field] !== null) clone[field] = null;
+  }
+  return clone;
+}
+
 interface SubjectAttachedRequest extends Request {
   adminId?: number;
   userId?: number;
@@ -221,7 +247,16 @@ export function idempotency(opts: IdempotencyOptions) {
           const payload: CachedResponse = {
             hash: reqHash,
             status: res.statusCode,
-            body,
+            // AUD103-2-F4 (r103): POST /api/orders 201 bodies carry
+            // DECRYPTED credentials (delivered_email / delivered_password
+            // / delivered_extra_details) — caching them verbatim would
+            // keep a 24 h PLAINTEXT parallel store in Redis next to the
+            // AES-256-GCM encrypted-at-rest DB. Redact the credential
+            // fields from the CACHED copy only (the wire response is
+            // untouched); a replay returns the order with those fields
+            // nulled and the client re-fetches the order detail, which
+            // decrypts live for the owner.
+            body: redactCachedCredentials(body),
             completedAt: new Date().toISOString(),
           };
           // Fire-and-forget — the response is already going out the wire.

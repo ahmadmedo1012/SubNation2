@@ -534,9 +534,14 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // transaction as the order + charge + ledger. Manual: attempt 1,
       // 'succeeded', no provider order id. A future async provider writes
       // 'pending' here and settles post-commit — orders.status stays the
-      // only customer-visible gate either way. The UNIQUE NULLS NOT
-      // DISTINCT (provider, provider_order_id) index is the DB-level
-      // provider idempotency anchor (V1-M18).
+      // only customer-visible gate either way. The PLAIN UNIQUE
+      // (provider, provider_order_id) index — NULLS DISTINCT, the default
+      // — is the DB-level provider idempotency anchor (V1-M18): the
+      // non-null half prevents one provider order from backing two
+      // orders, while the NULL half stays permissive so manual rows
+      // (provider_order_id NULL) can coexist. AUD103-1-F1 (r103): do NOT
+      // "fix" this to NULLS NOT DISTINCT — that exact change collided
+      // with a second manual purchase in r102 and was reverted.
       await tx.insert(providerFulfillmentsTable).values({
         orderId: o.id,
         provider: provider.id,
