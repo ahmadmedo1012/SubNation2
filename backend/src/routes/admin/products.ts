@@ -566,75 +566,98 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       .status(400)
       .json(createErrorResponse("الحد الأقصى 500 عنصر دفعة واحدة", ErrorCode.INVALID_DATA));
 
-  // Server-side dedup against existing inventory for THIS product. Even
-  // though the frontend flags duplicates in the preview, an operator can
-  // still submit them on purpose ("force") — but we never want to insert
-  // the SAME email twice for the same product. Keys mirror the parser
-  // ('c:<email>' for credentials, 'k:<code>' for code-only).
-  //
-  // F7: extraDetails rows are encrypted at rest now — key existing rows
-  // by their DECRYPTED value (safeDecrypt passes legacy plaintext through)
-  // so the comparison stays apples-to-apples with the incoming plaintext.
-  const existing = await db
-    .select({
-      accountEmail: inventoryTable.accountEmail,
-      extraDetails: inventoryTable.extraDetails,
-    })
-    .from(inventoryTable)
-    .where(eq(inventoryTable.productId, productId));
-  const existingKeys = new Set<string>();
-  for (const r of existing) {
-    if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
-    else if (r.extraDetails)
-      existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
-  }
+  // AUD103-4-F1 (r103): the dedup read and the batch INSERT are now ONE
+  // transaction under a per-product advisory lock (exact wallet.ts MAX_PENDING
+  // idiom). Pre-fix, two concurrent submits of the same batch (double-click
+  // with no Idempotency-Key, or two operators) both passed the dedup read
+  // before either committed → the same credential inserted TWICE → both
+  // units sellable → one account sold to two buyers. The lock + single tx
+  // makes dedup-then-insert atomic per product; the second submitter now
+  // sees the first batch's rows and skips them honestly.
+  const insertion = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${"inventory-upload:" + productId}, 0))`,
+    );
 
-  const seenInBatch = new Set<string>();
-  const filtered: typeof items = [];
-  let skippedDuplicates = 0;
-  for (const item of items) {
-    const key = item.accountEmail
-      ? `c:${item.accountEmail.toLowerCase()}`
-      : item.plainExtra
-        ? `k:${item.plainExtra.toLowerCase()}`
-        : null;
-    if (key === null) {
+    // Server-side dedup against existing inventory for THIS product. Even
+    // though the frontend flags duplicates in the preview, an operator can
+    // still submit them on purpose ("force") — but we never want to insert
+    // the SAME email twice for the same product. Keys mirror the parser
+    // ('c:<email>' for credentials, 'k:<code>' for code-only).
+    //
+    // F7: extraDetails rows are encrypted at rest now — key existing rows
+    // by their DECRYPTED value (safeDecrypt passes legacy plaintext
+    // through) so the comparison stays apples-to-apples with the incoming
+    // plaintext.
+    const existing = await tx
+      .select({
+        accountEmail: inventoryTable.accountEmail,
+        extraDetails: inventoryTable.extraDetails,
+      })
+      .from(inventoryTable)
+      .where(eq(inventoryTable.productId, productId));
+    const existingKeys = new Set<string>();
+    for (const r of existing) {
+      if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
+      else if (r.extraDetails)
+        existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
+    }
+
+    const seenInBatch = new Set<string>();
+    const filtered: typeof items = [];
+    let skippedDuplicates = 0;
+    for (const item of items) {
+      const key = item.accountEmail
+        ? `c:${item.accountEmail.toLowerCase()}`
+        : item.plainExtra
+          ? `k:${item.plainExtra.toLowerCase()}`
+          : null;
+      if (key === null) {
+        filtered.push(item);
+        continue;
+      }
+      if (existingKeys.has(key) || seenInBatch.has(key)) {
+        skippedDuplicates++;
+        continue;
+      }
+      seenInBatch.add(key);
       filtered.push(item);
-      continue;
     }
-    if (existingKeys.has(key) || seenInBatch.has(key)) {
-      skippedDuplicates++;
-      continue;
-    }
-    seenInBatch.add(key);
-    filtered.push(item);
-  }
 
-  if (filtered.length === 0) {
+    if (filtered.length === 0) {
+      return { kind: "all_duplicates" as const, skippedDuplicates };
+    }
+
+    const inserted = await tx
+      .insert(inventoryTable)
+      .values(
+        filtered.map((item) => ({
+          productId,
+          accountEmail: item.accountEmail,
+          accountPassword: item.accountPassword,
+          // F7: GCM-encrypt the deliverable exactly once, at the insert
+          // boundary (password is already ciphertext from the parser).
+          extraDetails: item.plainExtra !== null ? encrypt(item.plainExtra) : null,
+        })),
+      )
+      .returning();
+
+    return { kind: "ok" as const, inserted, skippedDuplicates };
+  });
+
+  if (insertion.kind === "all_duplicates") {
     return res
       .status(400)
       .json(
         createErrorResponse(
-          `كل العناصر (${skippedDuplicates}) موجودة مسبقاً في المخزون`,
+          `كل العناصر (${insertion.skippedDuplicates}) موجودة مسبقاً في المخزون`,
           ErrorCode.INVALID_DATA,
-          { skipped_duplicates: skippedDuplicates },
+          { skipped_duplicates: insertion.skippedDuplicates },
         ),
       );
   }
 
-  const inserted = await db
-    .insert(inventoryTable)
-    .values(
-      filtered.map((item) => ({
-        productId,
-        accountEmail: item.accountEmail,
-        accountPassword: item.accountPassword,
-        // F7: GCM-encrypt the deliverable exactly once, at the insert
-        // boundary (password is already ciphertext from the parser).
-        extraDetails: item.plainExtra !== null ? encrypt(item.plainExtra) : null,
-      })),
-    )
-    .returning();
+  const { inserted, skippedDuplicates } = insertion;
 
   // A5-10 (round-94): inventory upload is a credential-bearing admin
   // write (up to 500 units of accounts/codes) with NO audit row, while
