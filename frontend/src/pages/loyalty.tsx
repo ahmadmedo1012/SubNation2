@@ -22,7 +22,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 interface LoyaltyData {
@@ -41,6 +41,58 @@ interface LoyaltyData {
 
 function StatSkeleton() {
   return <div className="bg-card border border-border rounded-2xl h-[108px] skeleton-shimmer" />;
+}
+
+// ── AUD103-2-F3 (r103): durable conversion-intent key ──────────────────────
+//
+// Same envelope as the checkout unit keys (98-F2): {k, t, f} — key, TTL
+// stamp, intent fingerprint (the points amount being converted). A key
+// older than the TTL is a stale intent; a different points amount is a
+// NEW intent (never replay the old charge onto different data). Every
+// access is try/catch-guarded so private-mode/quota failures degrade to
+// unstable keys instead of blocking the money path.
+const CONVERT_KEY = "subnation_convert_key";
+const CONVERT_KEY_TTL_MS = 10 * 60 * 1000;
+
+interface StoredConvertKey {
+  /** The Idempotency-Key header value. */
+  k: string;
+  /** Date.now() at mint time — the TTL stamp. */
+  t: number;
+  /** Intent fingerprint — `convert|<points>`. */
+  f: string;
+}
+
+function loadStoredConvertKey(fingerprint: string): string | null {
+  try {
+    const raw = localStorage.getItem(CONVERT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredConvertKey>;
+    if (typeof parsed.k !== "string" || !parsed.k) return null;
+    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
+    if (Date.now() - parsed.t > CONVERT_KEY_TTL_MS) return null;
+    if (parsed.f !== fingerprint) return null;
+    return parsed.k;
+  } catch {
+    return null;
+  }
+}
+
+function persistStoredConvertKey(fingerprint: string, key: string): void {
+  try {
+    const entry: StoredConvertKey = { k: key, t: Date.now(), f: fingerprint };
+    localStorage.setItem(CONVERT_KEY, JSON.stringify(entry));
+  } catch {
+    // degraded: unstable keys (pre-fix behavior) — never throw on money path
+  }
+}
+
+function clearStoredConvertKey(): void {
+  try {
+    localStorage.removeItem(CONVERT_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export default function LoyaltyPage() {
@@ -65,7 +117,20 @@ export default function LoyaltyPage() {
   // the same intent (network drop after a server-side commit → retry
   // replays the cached response instead of converting AGAIN), cleared on
   // a definitive resolution so the next conversion is a fresh intent.
-  const convertIntentKeyRef = useRef<string | null>(null);
+  //
+  // AUD103-2-F3 (r103): the intent key now lives in localStorage (same
+  // envelope as the checkout unit keys — TTL + intent fingerprint) so it
+  // SURVIVES TAB DEATH. The previous useRef died with the tab, so a
+  // retry after a crash/PWA-kill minted a fresh key that the durable
+  // V1-M19 layer correctly saw as a NEW conversion — spending the points
+  // twice (at the fair rate, but not what the user asked for). This is
+  // exactly the window r102 closed for checkout/product; loyalty was
+  // left on the r99 in-memory pattern.
+  //
+  // Not user-scoped: the backend scopes idempotency keys per user
+  // (`u{userId}:{key}`), so a shared-device slot collision between two
+  // accounts at worst degrades to the pre-fix behavior for the FIRST
+  // account (fresh key on its retry) — never a cross-account replay.
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
@@ -117,9 +182,11 @@ export default function LoyaltyPage() {
     // A new attempt clears the previous failure — the inline banner is
     // persistent BY DESIGN, not permanent.
     setConvertError(null);
-    // 99-M4: mint-once-per-intent (see convertIntentKeyRef above).
-    const intentKey = convertIntentKeyRef.current ?? generateIdempotencyKey();
-    convertIntentKeyRef.current = intentKey;
+    // 99-M4 + AUD103-2-F3: mint-once-per-intent, durable across tab death
+    // (see the helpers' docblock above for the full envelope).
+    const fingerprint = `convert|${pts}`;
+    const intentKey = loadStoredConvertKey(fingerprint) ?? generateIdempotencyKey();
+    persistStoredConvertKey(fingerprint, intentKey);
     try {
       const res = await fetch("/api/loyalty/convert-points", {
         method: "POST",
@@ -139,12 +206,12 @@ export default function LoyaltyPage() {
         // 99-M4: only a non-IN_FLIGHT rejection resolves the intent — a 409
         // IDEMPOTENCY_IN_FLIGHT means the same-key conversion is still
         // executing server-side and the retry MUST replay it (keep the key).
-        if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") convertIntentKeyRef.current = null;
+        if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") clearStoredConvertKey();
         throw new Error(result?.error || "فشلت العملية");
       }
       toast({ title: "تم التحويل", description: result.message });
       // 99-M4: success is terminal — the next conversion mints a fresh key.
-      convertIntentKeyRef.current = null;
+      clearStoredConvertKey();
       setConvertPoints("");
       // Money moved: the Navbar balance (useGetMe) and the wallet page
       // (useGetWallet) caches go stale for up to 60 s otherwise — same

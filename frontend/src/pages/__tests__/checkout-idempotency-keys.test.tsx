@@ -62,14 +62,15 @@ function httpApiError(error: string) {
   });
 }
 
-const KEY_SLOT = (productId: number, unit: number) => `subnation_checkout_key:${productId}:${unit}`;
+const KEY_SLOT = (productId: number, variantId: number, unit: number) =>
+  `subnation_checkout_key:${productId}:${variantId}:${unit}`;
 
 /** 98-F2 (r97 F-07): stored unit keys are no longer raw uuid strings —
  * each entry is a TTL+fingerprint JSON object {k, t, f}. Read the minted
  * key back out of the entry so the lifecycle assertions below keep
  * testing the SAME contract the confirm loop honors. */
-function storedUnitKey(productId: number, unit: number): string | null {
-  const raw = localStorage.getItem(KEY_SLOT(productId, unit));
+function storedUnitKey(productId: number, variantId: number, unit: number): string | null {
+  const raw = localStorage.getItem(KEY_SLOT(productId, variantId, unit));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { k?: string };
@@ -82,9 +83,10 @@ function storedUnitKey(productId: number, unit: number): string | null {
 /** Full stored entry — for the TTL/fingerprint guards the key now carries. */
 function storedUnitEntry(
   productId: number,
+  variantId: number,
   unit: number,
 ): { k?: string; t?: number; f?: string } | null {
-  const raw = localStorage.getItem(KEY_SLOT(productId, unit));
+  const raw = localStorage.getItem(KEY_SLOT(productId, variantId, unit));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as { k?: string; t?: number; f?: string };
@@ -169,12 +171,13 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
 
     const key1 = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
     expect(typeof key1).toBe("string");
-    // Persisted at generation time under subnation_checkout_key:{pid}:{unit}
-    // as a TTL+fingerprint entry whose .k is the header value, stamped NOW
-    // (98-F2: an old mint is a stale intent) and bound to this exact
-    // purchase (productId 5 | variant 101 | no coupon | unit 49).
-    expect(storedUnitKey(5, 0)).toBe(key1);
-    const entry = storedUnitEntry(5, 0);
+    // Persisted at generation time under
+    // subnation_checkout_key:{pid}:{variant}:{unit} (AUD103-2-F1: the slot
+    // is LINE-scoped) as a TTL+fingerprint entry whose .k is the header
+    // value, stamped NOW (98-F2: an old mint is a stale intent) and bound
+    // to this exact purchase (productId 5 | variant 101 | no coupon | unit 49).
+    expect(storedUnitKey(5, 101, 0)).toBe(key1);
+    const entry = storedUnitEntry(5, 101, 0);
     expect(entry?.t).toBeGreaterThan(Date.now() - 60_000);
     expect(entry?.f).toBe("5|101||49");
 
@@ -187,7 +190,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     const key2 = createOrderMock.mock.calls[1][1].headers["Idempotency-Key"];
     expect(key2).toBe(key1);
     // Still unresolved → still stored for the next retry.
-    expect(storedUnitKey(5, 0)).toBe(key1);
+    expect(storedUnitKey(5, 101, 0)).toBe(key1);
     // The cart is deliberately untouched on the network path.
     expect(readCart()[0]?.quantity).toBe(1);
   });
@@ -203,7 +206,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     // Cart synced to exactly what was charged → empty.
     await waitFor(() => expect(readCart()).toHaveLength(0));
     // …and the accounted unit's retry key is gone.
-    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
   });
 
   it("deletes the unit key on a definitive HTTP rejection so a retry mints a fresh key", async () => {
@@ -215,7 +218,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
 
     // Definitive 4xx — key cleared (a cached rejection must not answer forever).
-    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
     // The persistent money banner explains the failure (not a toast-only).
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
@@ -253,7 +256,9 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
 
     // The key SURVIVES the transient 409 (unlike a definitive rejection)…
-    expect(storedUnitKey(5, 0)).toBe(createOrderMock.mock.calls[0][1].headers["Idempotency-Key"]);
+    expect(storedUnitKey(5, 101, 0)).toBe(
+      createOrderMock.mock.calls[0][1].headers["Idempotency-Key"],
+    );
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
     // …so the retry REUSES it verbatim (server replays, no second charge)…
@@ -265,7 +270,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     expect(retryKey).toBe(firstKey);
     // …and the replayed success then accounts the charge (cart + key clear).
     await waitFor(() => expect(readCart()).toHaveLength(0));
-    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
   });
 
   it("keeps the partial-success accounting intact: qty 2, 1 ordered + 1 rejected → cart shrinks to 1", async () => {
@@ -281,10 +286,66 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     // Exactly the charged unit was removed from the cart (P0-3 accounting).
     await waitFor(() => expect(readCart()[0]?.quantity).toBe(1));
     // Unit 0 charged+accounted → key cleared; unit 1 definitively rejected → cleared.
-    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
-    expect(localStorage.getItem(KEY_SLOT(5, 1))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 1))).toBeNull();
     // Partial-success banner names what WAS charged before the stop.
     expect(await screen.findByText(/بنجاح قبل توقف العملية/)).toBeInTheDocument();
+  });
+
+  it("AUD103-2-F1: two cart lines of the SAME product (different variants) keep SEPARATE unit-key slots — no sibling overwrite", async () => {
+    // Regression for the double-debit window: the pre-r103 slot
+    // `${productId}:${unitIndex}` was variant-blind, so line B's persist
+    // OVERWROTE line A's unresolved durable key. A retry then minted a
+    // fresh key for line A's already-charged unit → second debit.
+    localStorage.setItem(
+      "subnation_cart_v2",
+      JSON.stringify([
+        {
+          productId: 5,
+          variantId: 101,
+          variantLabel: "شهر واحد",
+          slug: "netflix-1m",
+          name: "Netflix شهر",
+          imageUrl: null,
+          priceLYD: 75,
+          salePriceLYD: 49,
+          discountPercent: 35,
+          quantity: 1,
+        },
+        {
+          productId: 5,
+          variantId: 102,
+          variantLabel: "ثلاثة أشهر",
+          slug: "netflix-1m",
+          name: "Netflix ثلاثة أشهر",
+          imageUrl: null,
+          priceLYD: 180,
+          salePriceLYD: null,
+          discountPercent: null,
+          quantity: 1,
+        },
+      ]),
+    );
+    renderPage();
+
+    // Line A (variant 101) commits; line B (variant 102) hits a network
+    // failure → rethrow → cart-sync SKIPPED → both keys must survive.
+    createOrderMock
+      .mockResolvedValueOnce({ order_code: "SNDVARIANTA" })
+      .mockRejectedValueOnce(new TypeError("failed to fetch"));
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+
+    const keyA = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
+    const keyB = createOrderMock.mock.calls[1][1].headers["Idempotency-Key"];
+    // Two distinct intents → two distinct keys…
+    expect(keyA).not.toBe(keyB);
+    // …each stored in its OWN line-scoped slot (the sibling's persist must
+    // not have touched the other line's entry):
+    expect(storedUnitKey(5, 101, 0)).toBe(keyA);
+    expect(storedUnitKey(5, 102, 0)).toBe(keyB);
+    // The network-failure path leaves the cart untouched for the retry.
+    expect(readCart()).toHaveLength(2);
   });
 
   it("M06: the confirm CTA wraps (whitespace-normal + text-balance) instead of overflowing at ≤390px", async () => {

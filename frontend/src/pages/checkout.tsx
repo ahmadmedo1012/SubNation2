@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { roundToCents, useCart, type LocalCartItem } from "@/lib/cart";
+import { readLiveCartItems, roundToCents, useCart, type LocalCartItem } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { ErrorCode } from "@workspace/error-codes";
@@ -114,15 +114,19 @@ function isCouponFailureMessage(message: string | undefined): boolean {
  * (R102-A1 F1 / P1): the cart itself lives in localStorage and survives
  * tab death, but the retry tokens used to die with the tab. Scenario the
  * sessionStorage choice opened: server commits the purchase → response
- * lost (network) → user closes the tab (or returns >10 min later) →
- * cart still holds the charged unit → re-confirm mints a FRESH key →
- * the durable server layer sees a new key → a full second purchase and
- * a second debit. The 98-F2 envelope (TTL + intent fingerprint) already
- * makes stale keys inert, so durability costs nothing and closes the
- * window: a stored key now outlives the tab exactly as long as the cart
- * does. Every access is try/catch-guarded: a private-mode / quota failure
- * just degrades to the old unstable-key behavior, it never blocks the
- * money path.
+ * lost (network) → user closes the tab → cart still holds the charged
+ * unit → re-confirm mints a FRESH key → the durable server layer sees a
+ * new key → a full second purchase and a second debit.
+ *
+ * AUD103-2-F7 (r103) — scope honesty: the durability is BOUNDED by the
+ * 98-F2 TTL below (10 minutes). A user returning MORE than 10 minutes
+ * after a lost response still mints a fresh key (the stored one is
+ * treated as a stale intent); that residual window is the documented
+ * 98-F2 trade-off — a longer TTL would let ancient keys swallow
+ * genuinely new purchases via the 24 h server replay window. Every
+ * access is try/catch-guarded: a private-mode / quota failure just
+ * degrades to the old unstable-key behavior, it never blocks the money
+ * path.
  *
  * 98-F2 (r97 F-07, deferred queue): the raw key gained the 97-F5 buy-key's
  * TWO staleness guards, which the checkout keys never had — a stored key
@@ -149,8 +153,41 @@ interface StoredCheckoutUnitKey {
   f: string;
 }
 
-function checkoutUnitKeyId(productId: number, unitIndex: number): string {
-  return `${CHECKOUT_KEY_PREFIX}${productId}:${unitIndex}`;
+function checkoutUnitKeyId(
+  productId: number,
+  variantId: number | null,
+  unitIndex: number,
+): string {
+  // AUD103-2-F1 (r103): the slot is LINE-scoped (productId + variantId).
+  // The pre-fix `${productId}:${unitIndex}` slot collided across two cart
+  // lines of the same product with different variants — the sibling
+  // line's persist OVERWROTE an unresolved unit's durable key, so a retry
+  // after a network failure minted a fresh key and DOUBLE-CHARGED that
+  // unit (the 98-F2 fingerprint prevented wrong-variant replay but could
+  // not prevent overwrite). Matches the cart lineKey convention
+  // (lib/cart.tsx: `${productId}:${variantId ?? 0}`).
+  return `${CHECKOUT_KEY_PREFIX}${productId}:${variantId ?? 0}:${unitIndex}`;
+}
+
+/** AUD103-2-F1 (r103): one-time sweep of pre-r103 slots (the un-scoped
+ * `${productId}:${unitIndex}` shape — 2 numeric segments). They are inert
+ * under the line-scoped reads; removing them keeps storage clean. Runs
+ * lazily at the start of a confirm, never inside the money path. */
+function purgeLegacyCheckoutUnitKeys(): void {
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(CHECKOUT_KEY_PREFIX)) {
+        const tail = k.slice(CHECKOUT_KEY_PREFIX.length);
+        // New shape: "<pid>:<variant>:<unit>" (3 segments); legacy: 2.
+        if (tail.split(":").length === 2) stale.push(k);
+      }
+    }
+    for (const k of stale) localStorage.removeItem(k);
+  } catch {
+    // ignore — hygiene only
+  }
 }
 
 /** 98-F2 (r97 F-07): binds a stored unit key to WHAT that unit order buys
@@ -165,11 +202,12 @@ function checkoutUnitFingerprint(
 
 function loadCheckoutUnitKey(
   productId: number,
+  variantId: number | null,
   unitIndex: number,
   fingerprint: string,
 ): string | null {
   try {
-    const raw = localStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
+    const raw = localStorage.getItem(checkoutUnitKeyId(productId, variantId, unitIndex));
     if (!raw) return null;
     // Pre-98-F2 entries were raw uuid strings — JSON.parse throws → the
     // entry is treated as absent and a fresh key is minted (the old
@@ -192,21 +230,29 @@ function loadCheckoutUnitKey(
 
 function persistCheckoutUnitKey(
   productId: number,
+  variantId: number | null,
   unitIndex: number,
   fingerprint: string,
   key: string,
 ): void {
   try {
     const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(checkoutUnitKeyId(productId, unitIndex), JSON.stringify(entry));
+    localStorage.setItem(
+      checkoutUnitKeyId(productId, variantId, unitIndex),
+      JSON.stringify(entry),
+    );
   } catch {
     // degraded: unstable keys (pre-fix behavior) — never throw on money path
   }
 }
 
-function clearCheckoutUnitKey(productId: number, unitIndex: number): void {
+function clearCheckoutUnitKey(
+  productId: number,
+  variantId: number | null,
+  unitIndex: number,
+): void {
   try {
-    localStorage.removeItem(checkoutUnitKeyId(productId, unitIndex));
+    localStorage.removeItem(checkoutUnitKeyId(productId, variantId, unitIndex));
   } catch {
     // ignore
   }
@@ -769,14 +815,26 @@ export default function CheckoutPage() {
   };
 
   async function handleConfirm() {
-    if (!token || items.length === 0) return;
+    // AUD103-2-F8 (r103): synchronous re-entry guard — two clicks in one
+    // frame both entered before the CTA's disabled re-render; the shared
+    // per-unit keys dedupe them server-side, but that must stay a
+    // defense-in-depth, not the guard itself (product.tsx already does
+    // this with buyPending).
+    if (!token || items.length === 0 || submitting) return;
     setSubmitting(true);
     setOrderError(null);
     setPartialCount(0);
+    // AUD103-2-F1 (r103): sweep inert pre-r103 slot entries (hygiene,
+    // off the money path).
+    purgeLegacyCheckoutUnitKeys();
     const created: Order[] = [];
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
     let couponFailure = false;
+    // AUD103-2-F2 (r103): units skipped because the LIVE cart no longer
+    // contains them (another tab completed/removed the line while this
+    // loop iterates its stale snapshot).
+    let skippedByOtherTab = 0;
     // Per-line bookkeeping of units that ACTUALLY got ordered (P0-3). A
     // mid-line failure (e.g. unit 2 of 3) previously left the full qty=3
     // in the cart while 1 unit was already charged — a retry then bought
@@ -847,6 +905,27 @@ export default function CheckoutPage() {
         // `CreateOrderBody` accepts a single product_id with quantity 1
         // per order — a qty>1 cart line becomes N unit orders.
         for (let unit = 0; unit < unitsWanted; unit++) {
+          // AUD103-2-F2 (r103): multi-tab guard. `items` is a snapshot
+          // taken when the loop started; another tab completing this same
+          // cart clears its lines + keys in ITS cart-sync, and this loop
+          // would then mint FRESH keys for the remaining units — each
+          // "valid" per-request, i.e. duplicate orders. Re-read the LIVE
+          // cart before every unit: if the line is gone or its remaining
+          // quantity no longer covers this unit, the unit was accounted
+          // for elsewhere — skip it. A null read (storage unavailable)
+          // skips the guard entirely (pre-fix behavior).
+          const liveCart = readLiveCartItems();
+          if (liveCart) {
+            const liveLine = liveCart.find(
+              (l) =>
+                l.productId === it.productId &&
+                (l.variantId ?? null) === (it.variantId ?? null),
+            );
+            if (!liveLine || liveLine.quantity <= unit) {
+              skippedByOtherTab++;
+              break;
+            }
+          }
           const body: CreateOrderBody = { product_id: it.productId };
           // Catalog-2026-09-20: the line's SELECTED variant rides every unit
           // order — the checkout charges exactly the option the shopper
@@ -868,8 +947,15 @@ export default function CheckoutPage() {
           // CreatedOrder interface. Auth rides the shared customFetch wiring
           // (cookie session + global bearer-token getter from main.tsx).
           const unitKey =
-            loadCheckoutUnitKey(it.productId, unit, lineFingerprint) ?? generateIdempotencyKey();
-          persistCheckoutUnitKey(it.productId, unit, lineFingerprint, unitKey);
+            loadCheckoutUnitKey(it.productId, it.variantId ?? null, unit, lineFingerprint) ??
+            generateIdempotencyKey();
+          persistCheckoutUnitKey(
+            it.productId,
+            it.variantId ?? null,
+            unit,
+            lineFingerprint,
+            unitKey,
+          );
           try {
             const order = await createOrder(body, {
               headers: { "Idempotency-Key": unitKey },
@@ -908,7 +994,7 @@ export default function CheckoutPage() {
               // 96-F4 (A4 §2.2): the rejection is definitive — clear this
               // unit's stored key so a retry isn't answered forever by the
               // cached error response.
-              clearCheckoutUnitKey(it.productId, unit);
+              clearCheckoutUnitKey(it.productId, it.variantId ?? null, unit);
             }
             failureMessage = apiErrorData(e)?.error || getErrorMessage(e) || "فشل في إنشاء الطلب";
             couponFailure = isCouponFailureMessage(failureMessage ?? undefined);
@@ -959,7 +1045,7 @@ export default function CheckoutPage() {
         // deletion point: the network-failure path above skips the sync
         // precisely so a retry replays those units instead of re-charging.
         for (let unit = 0; unit < units; unit++) {
-          clearCheckoutUnitKey(productId, unit);
+          clearCheckoutUnitKey(productId, variantId, unit);
         }
       });
 
@@ -986,6 +1072,16 @@ export default function CheckoutPage() {
         // Tell the user EXACTLY what happened — never silently retry.
         setPartialCount(created.length);
         setOrderError(failureMessage);
+      } else if (created.length === 0 && skippedByOtherTab > 0) {
+        // AUD103-2-F2 (r103): every unit was completed by another tab
+        // (its cart-sync removed the lines before this loop reached
+        // them). Informative outcome — the orders exist, they were just
+        // placed from the other tab.
+        toast({
+          title: "اكتمل الشراء من نافذة أخرى",
+          description: "تم إنشاء طلباتك هناك وستجدها في صفحة طلباتك",
+        });
+        navigate("/orders");
       } else {
         // Full success.
         clear();

@@ -103,6 +103,20 @@ function parseCartItems(raw: string | null): LocalCartItem[] | null {
   }
 }
 
+/** AUD103-2-F2 (r103): read the CURRENT cart straight from localStorage
+ * with the same load-time guards (parseCartItems). Used by the checkout
+ * per-unit loop to detect another tab completing/removing lines while
+ * this tab iterates a stale snapshot. Returns null when storage is
+ * unavailable/corrupt — callers treat null as "cannot verify" and skip
+ * the guard (the pre-fix behavior), never as an empty cart. */
+export function readLiveCartItems(): LocalCartItem[] | null {
+  try {
+    return parseCartItems(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Round a money amount to 2 decimal places (Math.round(x*100)/100 — the
  * banker-safe idiom this codebase already uses elsewhere, e.g. wallet's
