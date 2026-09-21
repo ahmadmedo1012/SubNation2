@@ -89,7 +89,7 @@
 import { createHash, randomBytes } from "crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { getRedisClient } from "./redis-client";
+import { getRedisClient, withRedisCommandTimeout } from "./redis-client";
 import { logger } from "./logger";
 
 const REDIS_PREFIX = "account-link-consent:";
@@ -189,10 +189,25 @@ export async function issueConsentToken(opts: {
 
   // NX ensures we never overwrite an existing token (cryptographically
   // impossible at 256-bit entropy, but defensive). EX sets the TTL.
-  const set = await redis.set(`${REDIS_PREFIX}${token}`, JSON.stringify(record), {
-    NX: true,
-    EX: TTL_SECONDS,
-  });
+  // AUD103-8-F2 (r103): bounded — in the documented gray zone (client
+  // isReady but socket black-holed) this auth request path used to hang
+  // until the HTTP proxy timeout; a command timeout now falls through to
+  // the PG-backed variant exactly like the no-client branch.
+  let set: string | null = null;
+  try {
+    set = await withRedisCommandTimeout("consent_issue_set", () =>
+      redis.set(`${REDIS_PREFIX}${token}`, JSON.stringify(record), {
+        NX: true,
+        EX: TTL_SECONDS,
+      }),
+    );
+  } catch (err) {
+    logger.warn(
+      { err, candidateUserId: opts.candidateUserId },
+      "[account-link-consent] Redis issue SET timed out — PG fallback",
+    );
+    return issueConsentTokenViaPg(opts);
+  }
   if (set !== "OK") {
     // Should be unreachable. Treat as a server error rather than
     // silently re-using or weakening the flow.
@@ -282,7 +297,23 @@ export async function consumeConsentToken(
   const key = `${REDIS_PREFIX}${token}`;
   // Atomic read+delete via Redis 6.2+ GETDEL. If the key is missing,
   // returns null — token expired or already consumed.
-  const raw = (await redis.getDel(key)) as string | null;
+  // AUD103-8-F2 (r103): bounded like the issue path; a command timeout
+  // falls through to the PG consume (if the Redis GETDEL actually
+  // succeeded server-side but the response was lost, the PG row was
+  // never written and the user sees the honest "expired" error —
+  // far better than hanging the request until the proxy timeout).
+  let raw: string | null = null;
+  try {
+    raw = (await withRedisCommandTimeout("consent_consume_getdel", () =>
+      redis.getDel(key),
+    )) as string | null;
+  } catch (err) {
+    logger.warn(
+      { err },
+      "[account-link-consent] Redis consume GETDEL timed out — PG fallback",
+    );
+    return consumeConsentTokenViaPg(token, expected);
+  }
   if (!raw) {
     throw new ConsentTokenError(
       400,

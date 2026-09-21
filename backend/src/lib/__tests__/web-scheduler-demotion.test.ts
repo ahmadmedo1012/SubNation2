@@ -58,6 +58,16 @@ vi.mock("../../jobs/security-advisories", () => ({
 vi.mock("../../jobs/cleanup-auth-activity", () => ({
   cleanupOldAuthActivity: vi.fn(async () => 0),
 }));
+// AUD103-8-F3 (r103): idempotency-retention joined the boot one-shot
+// roster (was cron-only — the 00:00 UTC slot never fires on a sleeping
+// Render-Free instance).
+vi.mock("../../jobs/idempotency-retention", () => ({
+  pruneOldIdempotencyKeys: vi.fn(async () => 0),
+}));
+// AUD103-1-F2 (r103): notifications retention (new job).
+vi.mock("../../jobs/notifications-retention", () => ({
+  pruneOldNotifications: vi.fn(async () => 0),
+}));
 vi.mock("../../services/whatsapp-otp.service", () => ({
   pruneExpiredOtps: vi.fn(async () => 0),
 }));

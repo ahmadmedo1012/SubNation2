@@ -37,6 +37,8 @@ import { deactivateExpiredFlashSales } from "./flashSaleWatcher";
 import { runStockSweep, reportOrphanInventory } from "./stockWatcher";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
+import { pruneOldIdempotencyKeys } from "./idempotency-retention";
+import { pruneOldNotifications } from "./notifications-retention";
 
 /**
  * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at
@@ -89,7 +91,13 @@ function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<u
  *     admin-surface-triggered;
  *   - whatsapp OTP prune + admin-session prune + flash-sale catch-up:
  *     97-F1 — the silent-outage restart-gap fix (these three were
- *     cron-only with no restart catch-up).
+ *     cron-only with no restart catch-up);
+ *   - idempotency-key retention (AUD103-8-F3, r103): the 48h prune was
+ *     cron-only at 00:00 UTC — on a Render-Free instance asleep at that
+ *     hour (02:00 Libya) it effectively NEVER ran; the money path's
+ *     hottest insert table now catches up at boot like every sibling;
+ *   - notifications retention (AUD103-1-F2, r103): read > 90d /
+ *     unread > 180d — the table previously had NO retention at all.
  */
 export function runBootOneShots(): void {
   fireOneShotsSequentially([
@@ -105,6 +113,11 @@ export function runBootOneShots(): void {
     ],
     ["risk-retention", reapExpiredRiskEvents],
     ["auth-activity-retention", cleanupOldAuthActivity],
+    // AUD103-8-F3 (r103): the 48h idempotency-key prune was the ONLY
+    // daily-ladder retention job missing a boot one-shot (B7-P2-12).
+    ["idempotency-retention", pruneOldIdempotencyKeys],
+    // AUD103-1-F2 (r103): notifications had no retention anywhere.
+    ["notifications-retention", pruneOldNotifications],
     ["coupon-sweep", checkExpiringCoupons],
     ["stock-sweep", runStockSweep],
     // R102: unsold units under archived products are invisible to every
@@ -118,6 +131,6 @@ export function runBootOneShots(): void {
   ]);
   logger.info(
     { category: "monitoring" },
-    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
+    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
   );
 }

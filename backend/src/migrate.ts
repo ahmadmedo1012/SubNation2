@@ -1963,9 +1963,26 @@ export async function runMigrations() {
     }
 
     // ── Fix: clear any broken wikimedia image URLs ───────────────────────────
-    await db.execute(sql`
-      UPDATE products SET image_url = NULL WHERE image_url LIKE '%wikimedia%' OR image_url LIKE '%wikipedia%'
+    // AUD103-1-F7 (r103): probe-gated — this used to run the UPDATE
+    // unconditionally on EVERY boot (a seq-scan DML with zero matching
+    // rows in steady state, and it would silently revert a deliberate
+    // operator wikimedia image at the next restart). Same probe-then-act
+    // discipline the users backfills use.
+    const wikimediaHit = await db.execute(sql`
+      SELECT 1 FROM products
+      WHERE image_url LIKE '%wikimedia%' OR image_url LIKE '%wikipedia%'
+      LIMIT 1
     `);
+    const wikimediaRows =
+      (wikimediaHit as unknown as { rows?: unknown[] }).rows ??
+      (wikimediaHit as unknown as unknown[]) ??
+      [];
+    if (wikimediaRows.length > 0) {
+      await db.execute(sql`
+        UPDATE products SET image_url = NULL WHERE image_url LIKE '%wikimedia%' OR image_url LIKE '%wikipedia%'
+      `);
+      logger.info("Cleared broken wikimedia image URL(s) from products");
+    }
 
     // ── Add onboarding columns to users table if not present ─────────────────
     await db.execute(sql`

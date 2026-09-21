@@ -9,6 +9,7 @@ import { reapExpiredRiskEvents } from "./risk-retention";
 import { pruneExpiredSessions } from "./session-prune";
 import { pruneStaleAdminSessions } from "../lib/admin-session";
 import { pruneOldIdempotencyKeys } from "./idempotency-retention";
+import { pruneOldNotifications } from "./notifications-retention";
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -156,6 +157,26 @@ export function initCronJobs(): CronJobsHandle {
             { category: "sessions.retention", removed: adminRemoved },
             `Pruned ${adminRemoved} stale admin session row(s)`,
           );
+        // AUD103-1-F2 (r103): notifications retention — read > 90d,
+        // unread > 180d. Rides the same 05:00 slot (tiny bounded-batch
+        // job; its own try/catch so a failure can never skip the session
+        // prune above) + the boot one-shot for the restart gap.
+        try {
+          const notifRemoved = await pruneOldNotifications();
+          if (notifRemoved > 0)
+            logger.info(
+              { category: "notifications.retention", removed: notifRemoved },
+              `Pruned ${notifRemoved} old notification row(s)`,
+            );
+        } catch (err) {
+          logger.error(
+            { err, category: "notifications.retention" },
+            "Notifications retention failed",
+          );
+          captureSchedulerFailure("notifications_retention", err, {
+            cron_expression: "0 5 * * *",
+          });
+        }
       } catch (err) {
         logger.error({ err, category: "sessions.retention" }, "Session prune failed");
         captureSchedulerFailure("session_prune", err, {
