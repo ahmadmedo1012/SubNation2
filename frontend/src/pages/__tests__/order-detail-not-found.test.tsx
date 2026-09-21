@@ -25,6 +25,10 @@ import { useGetOrder } from "@workspace/api-client-react";
 vi.mock("@workspace/api-client-react", () => ({
   useGetOrder: vi.fn(),
   getGetOrderQueryKey: (code: string) => [`/api/orders/${code}`],
+  // R104: order-detail now also rides the shared /api/auth/me cache for
+  // its page-scoped socket identity.
+  useGetMe: vi.fn(() => ({ data: { id: 1 } })),
+  getGetMeQueryKey: () => ["/api/auth/me"],
 }));
 
 vi.mock("@/lib/auth", () => ({

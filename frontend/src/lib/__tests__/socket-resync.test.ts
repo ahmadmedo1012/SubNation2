@@ -4,9 +4,12 @@
  * lib/socket.ts is the socket.io singleton owner. These tests (with a
  * fake socket.io-client) pin:
  *
- *   1. the manager NEVER surrenders: reconnectionAttempts: Infinity +
- *      reconnectionDelayMax: 10_000 (the old cap of 5 meant ~31 s of
- *      tunnel silence killed realtime for the whole session);
+ *   1. R104 (free-tier sleep economics): the manager makes at most 10
+ *      reconnect attempts (reconnectionDelayMax: 10_000). The old
+ *      Infinity turned every authed tab into an accidental keep-alive
+ *      pinger that re-woke the Render free instance every 5-15 s
+ *      forever after it spun down; presence revival
+ *      (SessionActivityManager) now covers the return-to-app cases.
  *   2. the documented-disconnect → reconnect cycle dispatches exactly
  *      ONE `subnation:socket-resync` window event (SocketInitializer
  *      listens and invalidates the transactional queries);
@@ -102,7 +105,7 @@ describe("lib/socket — persistence options (96-F3 M1)", () => {
     __resetSocketStateForTests();
   });
 
-  it("creates the manager with reconnectionAttempts: Infinity and reconnectionDelayMax: 10s", async () => {
+  it("R104: creates the manager with reconnectionAttempts BOUNDED at 10 and reconnectionDelayMax: 10s", async () => {
     const fake = createFakeSocket();
 
     await getSocket();
@@ -111,7 +114,7 @@ describe("lib/socket — persistence options (96-F3 M1)", () => {
     const options = ioMock.mock.calls[0][1] as Record<string, unknown>;
     expect(options).toMatchObject({
       autoConnect: false,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 10,
       reconnectionDelayMax: 10_000,
       withCredentials: true,
     });

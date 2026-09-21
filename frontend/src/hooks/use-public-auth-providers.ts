@@ -1,5 +1,55 @@
 import { useEffect, useState } from "react";
 
+/** Raw shape of GET /api/auth/providers (public, credential-free). */
+export interface PublicAuthProvidersResponse {
+  whatsapp_enabled?: boolean;
+  whatsapp_status?: string | null;
+  providers?: unknown;
+}
+
+// ── R104 (AG2-5): SHARED single-flight fetch ───────────────────────────────
+//
+// login/register mounted TWO independent raw fetches of the same public
+// endpoint (the page-level WhatsApp-status hook + <AuthProviders />'s
+// provider list). One module-level memoized single-flight with a 60 s
+// TTL serves both consumers — exactly one request per page view — and
+// auth-page revisits inside the window are free.
+
+const PROVIDERS_CACHE_TTL_MS = 60_000;
+let providersCache: { at: number; data: PublicAuthProvidersResponse } | null = null;
+let providersInflight: Promise<PublicAuthProvidersResponse | null> | null = null;
+
+/** Test-only: drop the module-level cache so the next call fetches. */
+export function __resetPublicAuthProvidersCacheForTests(): void {
+  providersCache = null;
+  providersInflight = null;
+}
+
+/**
+ * Single-flight, 60 s-TTL cached GET /api/auth/providers.
+ *
+ * Resolves `null` on ANY failure (non-OK, malformed JSON, network
+ * error) — callers keep their safe degraded defaults. Never throws.
+ */
+export function fetchPublicAuthProviders(): Promise<PublicAuthProvidersResponse | null> {
+  if (providersCache && Date.now() - providersCache.at < PROVIDERS_CACHE_TTL_MS) {
+    return Promise.resolve(providersCache.data);
+  }
+  if (providersInflight) return providersInflight;
+  providersInflight = fetch("/api/auth/providers")
+    .then(async (res) => {
+      if (!res.ok) return null;
+      const data = (await res.json().catch(() => null)) as PublicAuthProvidersResponse | null;
+      if (data) providersCache = { at: Date.now(), data };
+      return data;
+    })
+    .catch(() => null)
+    .finally(() => {
+      providersInflight = null;
+    });
+  return providersInflight;
+}
+
 interface PublicAuthProviders {
   /** WhatsApp OTP gateway is configured + reachable. */
   whatsappEnabled: boolean;
@@ -59,16 +109,13 @@ export function usePublicAuthProviders(): PublicAuthProviders {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/auth/providers");
-        if (!res.ok) return;
-        const data = (await res.json().catch(() => null)) as {
-          whatsapp_enabled?: boolean;
-          whatsapp_status?: string | null;
-        } | null;
-        if (cancelled) return;
-        setWhatsappEnabled(!!data?.whatsapp_enabled);
+        // R104 (AG2-5): shared single-flight — the <AuthProviders />
+        // buttons on the same page consume the SAME request.
+        const data = await fetchPublicAuthProviders();
+        if (cancelled || !data) return;
+        setWhatsappEnabled(!!data.whatsapp_enabled);
         // Absent field (older backend) → null → the UI shows no hint.
-        setWhatsappStatus(data?.whatsapp_status ?? null);
+        setWhatsappStatus(data.whatsapp_status ?? null);
       } catch {
         // network error — keep the safe defaults. The user can still
         // authenticate via Telegram or Google buttons rendered by

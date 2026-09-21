@@ -4,6 +4,7 @@ import { NavigationProgress } from "@/components/NavigationProgress";
 import { MetaTags } from "@/components/seo/MetaTags";
 import { RouteSkeleton, type RouteSkeletonShape } from "@/components/ui/route-skeleton";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionActivityManager } from "@/components/SessionActivityManager";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { UserSessionWatcher } from "@/lib/user-session";
 import { apiUrl } from "@/lib/api-config";
@@ -542,30 +543,35 @@ const SocketInitializer = lazyWithRetry(() =>
 );
 
 /**
- * 96-F3 (R96 F-5 / mobile-performance-pwa §8-F5): the deferral mount
- * is now TOKEN-GATED. Anonymous visitors — the majority of traffic —
- * previously downloaded the socket.io stack (~16 KB gzip + engine.io
- * parse/TBT) 3.5 s after mount for nothing (`useSocket(undefined)`
- * no-ops, `useGetMe` disabled). Any authed token (user sentinel OR
- * admin sentinel — operators on /admin need the admin room) keeps the
- * deferral timer so first paint stays uncontended.
+ * R104 (free-tier sleep economics): the deferral mount is now
+ * ADMIN-ONLY. Anonymous visitors AND regular authenticated users
+ * never download the socket.io stack (~16 KB gzip + engine.io
+ * parse/TBT) — storefront realtime is page-scoped (order-detail) and
+ * every other surface already runs on polls/resync that cannot defeat
+ * Render's 15-minute idle sleep. Operators on /admin need the admin
+ * room for live approvals, so an admin sentinel keeps the 3.5 s
+ * deferral timer (first paint stays uncontended).
  *
- * Exported for the guest-gating regression test (same pattern as
+ * SessionActivityManager (visibility/idle socket parking + money-data
+ * resync) is mounted separately for every session — see App().
+ *
+ * Exported for the gating regression test (same pattern as
  * shapeForRoute above).
  */
 export function DeferredSocketInitializer() {
-  const { token, adminToken } = useAuth();
+  const { adminToken } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Guests: never warm the socket chunk. Login mid-session re-arms
-    // the timer (token flips truthy → effect re-runs).
-    if (!token && !adminToken) return;
+    // R104: users and guests never warm the socket chunk. An admin
+    // login mid-session re-arms the timer (adminToken flips truthy →
+    // effect re-runs).
+    if (!adminToken) return;
 
     // Wait for initial hydration and paint to settle
     const timeout = setTimeout(() => setMounted(true), 3500);
     return () => clearTimeout(timeout);
-  }, [token, adminToken]);
+  }, [adminToken]);
 
   if (!mounted) return null;
 
@@ -591,6 +597,10 @@ function App() {
           {/* observer on the shared client. Renders nothing. */}
           <UserSessionWatcher />
           <AuthGate>
+            {/* R104 (free-tier sleep economics): visibility/idle socket
+                parking + transactional money/identity resync for every
+                session — socket-agnostic, renders nothing. */}
+            <SessionActivityManager />
             <DeferredSocketInitializer />
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <AppRoutes />

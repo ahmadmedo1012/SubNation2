@@ -1,52 +1,77 @@
 /**
- * 94-C3 — FlashSaleBanner regressions (A3 P2-11 / P2-12 + A7 CLS P2).
+ * 94-C3 → R104 — FlashSaleBanner regressions.
  *
- * Pins the three behaviors the round-94 fixes added:
+ * Pins the behaviors the fixes added:
  *
- *   1. Height reservation: a cached active sale (localStorage window)
- *      makes the banner hold a 44px slot BEFORE the first poll
- *      resolves, so the lazy-mounted banner can't push the page down
- *      (~0.05 CLS on every page while a sale runs). A definitive
- *      "no sale" response collapses the slot.
- *   2. Timer hard-stop: the 1s countdown clears itself the moment the
- *      sale window closes (flash-sales.tsx parity) — no perpetual
- *      zero-ticking re-renders.
- *   3. Polling stops once the banner is hidden: dismissed/expired is
- *      terminal; no more 60s /api/flash-sale hits forever.
- *   4. The countdown unit labels are ≥10px (was 7px/50% opacity —
- *      unreadable; the units are functional copy).
+ *   1. Height reservation (94-C3): a cached active sale (localStorage
+ *      window) makes the banner hold a 44px slot BEFORE the first fetch
+ *      resolves; a definitive "no sale" response collapses the slot.
+ *   2. Timer hard-stop (94-C3): the 1s countdown clears itself the
+ *      moment the sale window closes — no perpetual zero-ticking.
+ *   3. Polling stops once the banner is hidden (94-C3):
+ *      dismissed/expired is terminal.
+ *   4. The countdown unit labels are ≥10px (was 7px/50%).
+ *
+ * R104 (free-tier sleep economics — AG2-1, P0): the banner now rides
+ * the shared useGetFlashSale query with an ADAPTIVE cadence:
+ *   5. active sale → one /api/flash-sale hit per 60 s;
+ *   6. no active sale (the common case) → 10-minute cadence, NOT one
+ *      per minute — the old raw interval kept the Render free instance
+ *      permanently awake from any open tab;
+ *   7. the shared query key means the banner consumes the same cache
+ *      entry the /flash-sales page uses (no duplicate mount fetch when
+ *      fresh).
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FlashSaleBanner } from "@/components/layout/FlashSaleBanner";
 
 const SALE = {
+  id: 1,
   title: "عرض نهاية الأسبوع",
   discount_percent: 25,
   ends_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
 };
 
-function jsonResponse(body: unknown) {
+/** Full Response-like mock — the banner rides the generated client
+ * (customFetch), which reads content-type to pick the parser, so the
+ * minimal {ok, json} stub used by the old raw-fetch tests is not
+ * enough (shape mirrors lib/__tests__/custom-fetch-network.test.ts). */
+function jsonResponse(body: unknown): Response {
   return {
     ok: true,
+    status: 200,
+    statusText: "OK",
+    url: "",
+    headers: new Headers({ "content-type": "application/json" }),
     json: async () => body,
-  } as Response;
+    text: async () => JSON.stringify(body),
+  } as unknown as Response;
 }
 
 function renderBanner() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <Router>
-      <FlashSaleBanner />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <FlashSaleBanner />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 
-/** Resolve the in-flight initial load() with fake timers active. */
+/** Resolve the in-flight initial query fetch with fake timers active. */
 async function flushInitialLoad() {
   await act(async () => {
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -139,7 +164,7 @@ describe("FlashSaleBanner — countdown honesty + timer hard-stop (flash-sales p
     }
   });
 
-  it("clears every timer when the sale window closes — no zero-ticking loop", async () => {
+  it("stops ALL /api/flash-sale traffic when the sale window closes — no zero-ticking loop", async () => {
     vi.useFakeTimers();
     const shortSale = { ...SALE, ends_at: new Date(Date.now() + 1_500).toISOString() };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: shortSale }));
@@ -153,9 +178,14 @@ describe("FlashSaleBanner — countdown honesty + timer hard-stop (flash-sales p
       vi.advanceTimersByTime(3_000);
     });
     expect(screen.queryByText("عرض نهاية الأسبوع")).not.toBeInTheDocument();
-    // …and BOTH the 1s countdown and the 60s poll are gone (the old
-    // code kept ticking 0 forever + polling forever).
-    expect(vi.getTimerCount()).toBe(0);
+
+    // …and the query is disabled (expired is terminal): no further
+    // network hits for a long time (the old code kept polling forever).
+    const callsAtExpiry = fetchMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700_000);
+    });
+    expect(fetchMock.mock.calls.length).toBe(callsAtExpiry);
   });
 
   it("stops polling /api/flash-sale after dismissal", async () => {
@@ -173,22 +203,76 @@ describe("FlashSaleBanner — countdown honesty + timer hard-stop (flash-sales p
     expect(window.localStorage.getItem("sn_flash_sale_ends")).toBeNull();
 
     await act(async () => {
-      vi.advanceTimersByTime(130_000);
+      await vi.advanceTimersByTimeAsync(130_000);
     });
-    // Initial load only — the 60s poller is dead (was 3 calls).
+    // Initial load only — the poller is dead (was 3 calls).
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
 
-  it("keeps polling while the banner is visible", async () => {
+describe("FlashSaleBanner — R104 adaptive cadence (free-tier sleep economics)", () => {
+  it("ACTIVE sale → one /api/flash-sale hit per 60 s", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: SALE }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderBanner();
+    await flushInitialLoad();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("NO active sale → 10-minute cadence, not one per minute (the P0 fix)", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderBanner();
+    await flushInitialLoad();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Five minutes of an open tab: the OLD code would have fired 5
+    // requests (60 s interval); the adaptive query must stay quiet.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // …and only refetches at the 10-minute mark.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 5_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a hidden tab never polls (refetchIntervalInBackground defaults to false)", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: SALE }));
     vi.stubGlobal("fetch", fetchMock);
     renderBanner();
     await flushInitialLoad();
 
+    // Background the tab: the interval must stop firing (React Query
+    // only runs refetchInterval while the tab is focused unless
+    // refetchIntervalInBackground is true).
     await act(async () => {
-      vi.advanceTimersByTime(125_000);
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(180_000);
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
     });
-    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

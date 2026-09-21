@@ -10,19 +10,31 @@ import { formatCurrency, statusLabel } from "@/lib/utils";
 /**
  * Subscribe to user-scoped Socket.IO events.
  *
- * Emits:
- *   - order-updated → toast "تم تحديث حالة طلبك …"
+ * R104 (free-tier sleep economics): this hook is PAGE-SCOPED. It used to
+ * be mounted at the App root for every authenticated user — a 25 s
+ * ping/pong socket held for the whole session that kept the Render free
+ * instance permanently awake (voiding the accepted sleep design). Now
+ * ONLY the order-detail page mounts it (the one storefront surface with
+ * a genuine realtime need: watching a fresh purchase flip to delivered).
+ * While mounted it:
+ *
+ *   - order-updated → toast "تم تحديث حالة طلبك …" + invalidate orders
  *   - topup-updated → toast (success or destructive based on status)
  *   - notification-new → window event → NotificationBell refetch
- *     (Round-4, perf P1-4: the backend emits the moment a notification
- *     row is inserted; the bell's 60s poll is now only a fallback)
+ *
+ * Every other storefront surface runs on its existing fallbacks
+ * (NotificationBell 60 s foreground poll, TopupWaitingModal 3 s poll
+ * while pending, SessionActivityManager visibility resync). The socket
+ * parks when the tab is hidden ≥ 15 min or idle ≥ 30 min
+ * (SessionActivityManager) and revives on user presence.
  *
  * All toasts route through the unified `@/hooks/use-toast` shim (Sonner
  * under the hood) so a single Toaster instance owns the stack — no
  * duplicates, no stuck-on-screen failures.
  *
  * Errors from the socket transport are warned to the console but never
- * surfaced to the user; the Socket.IO adapter retries automatically.
+ * surfaced to the user; the Socket.IO adapter retries automatically
+ * (bounded to 10 attempts — presence revival covers the rest).
  */
 export function useSocket(userId?: number | string) {
   const socketRef = useRef<Socket | null>(null);

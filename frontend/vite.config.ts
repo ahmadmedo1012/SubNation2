@@ -273,7 +273,13 @@ export default defineConfig({
       // here created two <link rel="manifest"> candidates with conflicting
       // theme colors.
       manifest: false,
-      includeAssets: ["favicon.svg", "subnation-logo.png"],
+      // R104 (AG11-1): subnation-logo.png (66.5 KB) removed from the
+      // precache — it is ONLY read by crawler/unfurl surfaces
+      // (seo-builders og:image + JSON-LD logo), which never run a
+      // service worker. Keeping it in the manifest burned ~66 KB of the
+      // 5 GB monthly bandwidth budget per NEW visitor for zero runtime
+      // value. favicon.svg (163 B) stays.
+      includeAssets: ["favicon.svg"],
       workbox: {
         // Fonts are now bundled into /assets/ via @fontsource (no longer
         // fetched from fonts.googleapis.com), so the previous
@@ -380,10 +386,13 @@ export default defineConfig({
         globPatterns: [
           "index.html",
           // 96-main (R96 P3-2): favicon.svg + subnation-logo.png removed —
-          // includeAssets above already precaches them; the overlap made
-          // each appear TWICE in the generated precache manifest (14
-          // advertised entries, 12 unique).
-          "opengraph.jpg",
+          // includeAssets above already precaches favicon; no overlap.
+          // R104 (AG11-1): opengraph.jpg (39.6 KB) ALSO removed — it is
+          // an unfurl-only asset (crawlers don't run SWs); precaching it
+          // burned ~40 KB per new visitor for zero offline value. Both
+          // stay served with normal cache headers for their real
+          // consumers.
+          // -> nothing image-like is precached anymore.
           "manifest.json",
           "assets/*.css",
           "assets/*.woff2",

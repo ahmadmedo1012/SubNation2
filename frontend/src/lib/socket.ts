@@ -109,15 +109,17 @@ export async function getSocket() {
       const socketUrl = getSocketUrl();
       socket = io(socketUrl || undefined, {
         autoConnect: false,
-        // 96-F3 (R96 M1): the old hard cap of 5 attempts meant ~31 s
-        // of tunnel/elevator/handoff silence killed the realtime
-        // channel for the REST of the session (a backgrounded phone
-        // or WiFi→cellular switch exhausts it silently). The manager
-        // now never surrenders on its own; revival listeners
-        // (SocketInitializer: online + visibilitychange) cover the
-        // cases where socket.io does not auto-reconnect by itself
-        // (notably server-initiated disconnects).
-        reconnectionAttempts: Infinity,
+        // R104 (free-tier sleep economics): the manager makes at most
+        // 10 reconnect attempts (~2 min at the capped 10 s backoff) and
+        // then STOPS. The old `Infinity` turned every authenticated tab
+        // into an accidental keep-alive pinger: after Render spun the
+        // service down, retries every 5–15 s (foreground) / ~once a
+        // minute (throttled background tab) kept re-waking it forever,
+        // silently burning the shared 750 instance-hours/month budget.
+        // SessionActivityManager (visibility/online/activity listeners)
+        // now revives the socket when the user ACTUALLY returns — the
+        // resync invalidation covers anything missed meanwhile.
+        reconnectionAttempts: 10,
         // Cap the exponential backoff (default doubles up to 5 min in
         // v4) so a long outage still reconnects within ~10 s of the
         // network returning.
@@ -215,6 +217,28 @@ export function reviveSocket(): void {
   const s = socket;
   if (s && !s.connected) {
     s.connect();
+  }
+}
+
+/**
+ * R104 (free-tier sleep economics): park a connected socket WITHOUT
+ * destroying the singleton. The Socket.IO engine exchanges ping/pong
+ * frames every 25 s (socket.ts server default) — inbound frames that
+ * reset Render's 15-minute idle timer, so an open socket in a forgotten
+ * tab keeps the free instance awake 24/7. Parking disconnects the
+ * transport; listeners on the socket object survive (reviveSocket()
+ * reconnects the SAME instance with them intact). Never creates a
+ * socket — guests and socket-less sessions are a no-op.
+ *
+ * Disconnect reason is "io client disconnect", which deliberately does
+ * NOT arm the resync flag — the catch-up invalidation on the next
+ * visibilitychange(visible) (SessionActivityManager) covers events that
+ * fired while parked.
+ */
+export function parkSocketIfConnected(): void {
+  const s = socket;
+  if (s && s.connected) {
+    s.disconnect();
   }
 }
 

@@ -207,7 +207,13 @@ export async function setupFirebaseTokenRefresh(onTokenRefresh: (token: string) 
     lastRefreshTime = now;
 
     try {
-      const idToken = await user.getIdToken(true); // Force refresh
+      // R104 (AG7-12): NOT forced — onIdTokenChanged already fires when
+      // the SDK rotated the token itself; forcing here made every
+      // rotation a double round-trip to Google (a cached read suffices
+      // inside this listener). The explicit force-refresh path stays in
+      // the manual exchange/refresh entry points where a FRESH token is
+      // genuinely required.
+      const idToken = await user.getIdToken();
       const session = await refreshFirebaseSession(idToken);
       onTokenRefresh(session.token);
       // Success — reset failure counter.

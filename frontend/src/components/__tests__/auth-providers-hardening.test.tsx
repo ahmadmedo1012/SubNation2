@@ -54,6 +54,11 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 
 const fetchMock = vi.fn();
 
+// R104 (AG2-5): AuthProviders now rides the shared module-level
+// single-flight cache (fetchPublicAuthProviders) — reset it between
+// cases so each one observes ITS OWN mocked response.
+import { __resetPublicAuthProvidersCacheForTests } from "@/hooks/use-public-auth-providers";
+
 function renderProviders() {
   return render(
     <Router>
@@ -63,6 +68,7 @@ function renderProviders() {
 }
 
 beforeEach(() => {
+  __resetPublicAuthProvidersCacheForTests();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   firebaseConfigured.configured = false;

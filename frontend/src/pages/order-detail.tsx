@@ -10,8 +10,14 @@ import {
   statusColor,
   statusLabel,
 } from "@/lib/utils";
-import { getGetOrderQueryKey, useGetOrder } from "@workspace/api-client-react";
+import {
+  getGetMeQueryKey,
+  getGetOrderQueryKey,
+  useGetMe,
+  useGetOrder,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSocket } from "@/hooks/use-socket";
 import {
   ArrowRight,
   CheckCircle,
@@ -142,6 +148,21 @@ export default function OrderDetailPage() {
     query: { queryKey: getGetOrderQueryKey(orderCode ?? ""), enabled: !!orderCode && !!token },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
+
+  // R104 (free-tier sleep economics): page-scoped realtime. This is
+  // the one storefront surface with a genuine realtime need — watching
+  // a fresh purchase flip to «تم التسليم». The /api/auth/me query is
+  // the SHARED key Navbar/home already populate (60 s staleTime →
+  // cache hit, no extra request); `me?.id` arms the socket once the
+  // identity is known. Leaving the page keeps the socket only while
+  // the session is active (SessionActivityManager parks it when the
+  // tab is hidden ≥ 15 min or idle ≥ 30 min; logout/identity switch
+  // tears it down in auth.tsx as before).
+  const { data: me } = useGetMe({
+    query: { queryKey: getGetMeQueryKey(), enabled: !!token, staleTime: 60_000 },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+  useSocket(me?.id);
 
   // R94-A1 #4 (P2): a 404 (ORDER_NOT_FOUND — unknown code / another
   // user's order / stale link) used to render the «خطأ اتصال» card with

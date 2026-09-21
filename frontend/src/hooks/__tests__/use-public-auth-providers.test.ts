@@ -12,7 +12,10 @@
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import {
+  __resetPublicAuthProvidersCacheForTests,
+  usePublicAuthProviders,
+} from "@/hooks/use-public-auth-providers";
 
 const fetchMock = vi.fn();
 
@@ -22,6 +25,9 @@ function providersResponse(body: unknown) {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  // R104 (AG2-5): the hook now rides a module-level 60 s single-flight
+  // cache — reset it so each case observes ITS OWN mocked response.
+  __resetPublicAuthProvidersCacheForTests();
   vi.stubGlobal("fetch", fetchMock);
 });
 

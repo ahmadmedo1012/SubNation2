@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Zap, X, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
+import { getGetFlashSaleQueryKey, useGetFlashSale } from "@workspace/api-client-react";
 
 interface FlashSale {
   title: string;
@@ -23,6 +24,22 @@ interface FlashSale {
  *     closes) instead of ticking `0` forever.
  *   • Polling stops once the banner is hidden (dismissed/expired) —
  *     the old loop kept hitting `/api/flash-sale` every 60s forever.
+ *
+ * R104 (free-tier sleep economics) — THE wake-up fix (AG2-1, P0):
+ *   The old raw `setInterval(load, 60_000)` polled unconditionally on
+ *   EVERY storefront page for EVERY visitor (guests included), with
+ *   no visibility gating — 1 req/min/tab meant the Render free
+ *   instance could NEVER reach its 15-minute idle sleep while any
+ *   tab was open anywhere (~1,440 req/day per idle tab). Now the
+ *   banner rides the shared `useGetFlashSale` query with:
+ *     • ADAPTIVE cadence — 60 s only while an active sale is actually
+ *       running (countdown freshness), 10 min otherwise (the no-sale
+ *       common case does not need sub-minute discovery on a strip);
+ *     • `refetchIntervalInBackground: false` (default) — a hidden tab
+ *       never polls at all;
+ *     • the shared query key means the banner + the /flash-sales page
+ *       + any other consumer cost ONE request per window, not one
+ *       each.
  */
 
 /** Rendered banner height: py-2 (16) + one ~28px content row. Both the
@@ -71,34 +88,34 @@ export function FlashSaleBanner() {
   // a banner is likely about to mount (see file header).
   const [reserved, setReserved] = useState(() => readCachedSaleEnd() !== null);
 
-  // ── Poll /api/flash-sale every 60s while the banner is visible ────
+  // ── Shared flash-sale query (R104 — replaces the raw 60s interval) ──
+  //
+  // `enabled` flips false on dismissed/expired (terminal for this
+  // mount) — a disabled query never fetches and never ticks its
+  // refetchInterval, which is the R104 equivalent of the old
+  // clearInterval.
+  const { data } = useGetFlashSale({
+    query: {
+      queryKey: getGetFlashSaleQueryKey(),
+      enabled: !dismissed && !expired,
+      refetchInterval: (query) => (query.state.data?.flash_sale ? 60_000 : 600_000),
+    },
+  });
+
+  // React to query data — same bookkeeping the old load() did.
   useEffect(() => {
-    // 94-C3 (A3 P2-12): dismissed/expired is terminal for this mount —
-    // stop paying the network cost of polling a hidden banner.
-    if (dismissed || expired) return;
-    const load = async () => {
-      try {
-        const r = await fetch("/api/flash-sale");
-        if (!r.ok) return;
-        const d = await r.json();
-        if (d.flash_sale) {
-          setFlashSale(d.flash_sale);
-          cacheSaleEnd(new Date(d.flash_sale.ends_at).getTime());
-        } else {
-          // Definitive "no active sale" — drop any stale reservation
-          // from a previous visit. A banner already on screen is left
-          // alone (its own countdown ends it).
-          setReserved(false);
-          clearCachedSaleEnd();
-        }
-      } catch {
-        // network blip — next 60s tick retries
-      }
-    };
-    void load();
-    const interval = setInterval(load, 60_000);
-    return () => clearInterval(interval);
-  }, [dismissed, expired]);
+    if (!data) return;
+    if (data.flash_sale) {
+      setFlashSale(data.flash_sale);
+      cacheSaleEnd(new Date(data.flash_sale.ends_at).getTime());
+    } else {
+      // Definitive "no active sale" — drop any stale reservation
+      // from a previous visit. A banner already on screen is left
+      // alone (its own countdown ends it).
+      setReserved(false);
+      clearCachedSaleEnd();
+    }
+  }, [data]);
 
   // ── 1s countdown — hard stop at zero (flash-sales.tsx parity) ─────
   useEffect(() => {

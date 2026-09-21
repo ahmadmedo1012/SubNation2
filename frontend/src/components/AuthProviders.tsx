@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useLocation } from "wouter";
 import { apiUrl } from "@/lib/api-config";
+import { fetchPublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { LinkConsentModal } from "./LinkConsentModal";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
@@ -227,11 +228,14 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
     // migration): this is a public, credential-free endpoint whose failure
     // has a dedicated degraded path below.
     let cancelled = false;
-    fetch("/api/auth/providers")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const d = (await r.json().catch(() => null)) as { providers?: unknown } | null;
+    // R104 (AG2-5): shared single-flight — the page-level WhatsApp-status
+    // hook consumes the SAME request (one /api/auth/providers hit per
+    // auth-page view, was two). Same raw-fetch hardening contract as
+    // before (r.ok / shape checked before state lands).
+    fetchPublicAuthProviders()
+      .then((d) => {
         if (cancelled) return;
+        if (!d || !Array.isArray(d.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
         if (!Array.isArray(d?.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
         setProviders(includeFirebaseGoogleProvider(d.providers as Provider[]));
       })

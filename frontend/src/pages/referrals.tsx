@@ -124,8 +124,13 @@ export default function ReferralsPage() {
   // Two coupled queries with shared queryKey scoping. Both:
   //   - run only when authenticated
   //   - 60s staleTime matches the rest of the app (home, navbar, etc.)
-  //   - refetchOnWindowFocus picks up fresh referral credits when the
-  //     user returns to the tab after a friend completes signup
+  //   - R104 (AG2-4): the per-query `refetchOnWindowFocus: true` overrides
+  //     are REMOVED — they were the only two in the app, re-arming the
+  //     exact focus-refetch behavior the global QueryClient policy
+  //     disables. Freshness on return-to-tab is covered by
+  //     SessionActivityManager's visibility resync (invalidates the
+  //     money/identity families on visible, throttled 30 s) — the same
+  //     freshness contract wallet/orders already run on.
   // Replaces the previous fetch+useState+useEffect-on-mount pattern
   // which never refreshed unless the user reloaded the page — that
   // was the source of the "data feels stale" complaint.
@@ -134,7 +139,6 @@ export default function ReferralsPage() {
     queryFn: () => customFetch<LoyaltyOverview>("/api/loyalty", { headers }),
     enabled: !!token,
     staleTime: 60_000,
-    refetchOnWindowFocus: true,
   });
 
   const eventsQ = useQuery<ReferralEvent[]>({
@@ -145,7 +149,6 @@ export default function ReferralsPage() {
     },
     enabled: !!token,
     staleTime: 60_000,
-    refetchOnWindowFocus: true,
   });
 
   const overview = overviewQ.data ?? null;

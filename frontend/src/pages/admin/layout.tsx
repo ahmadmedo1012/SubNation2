@@ -672,6 +672,14 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     };
 
     const poll = () => {
+      // R104 (AG2-7): a hidden admin tab must NEVER poll — this is a raw
+      // setInterval (react-query's refetchIntervalInBackground:false
+      // does not apply here), and an operator's forgotten background tab
+      // polling every 5 min keeps resetting Render's 15-minute idle
+      // timer all night. Visible-tab semantics only; the socket event
+      // listener below still covers background delivery while the admin
+      // socket is parked-then-revived.
+      if (document.visibilityState === "hidden") return;
       const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
       fetch(`/api/admin/alerts/new?since=${lastId}`, {
         headers,
@@ -694,11 +702,17 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
     poll();
     const onSocketAlert = () => poll();
+    // Returning to the tab catches up anything missed while hidden.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") poll();
+    };
     window.addEventListener(ADMIN_ALERT_NEW_EVENT, onSocketAlert);
+    document.addEventListener("visibilitychange", onVisible);
     const id = setInterval(poll, 300_000);
     return () => {
       clearInterval(id);
       window.removeEventListener(ADMIN_ALERT_NEW_EVENT, onSocketAlert);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [adminToken, headers]);
 

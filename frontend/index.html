@@ -56,7 +56,7 @@
          preconnect runs the DNS+TLS+TCP handshake during HTML parse so
          the first request to each origin starts ~150 ms sooner on a
          cold visit. Origins that we always hit on first paint go here
-         (image2url for product images). Origins that are only hit on
+         (reserved for a future image host; catalog art is local /products/*.webp). Origins that are only hit on
          a delayed action (Firebase popup on login click, recaptcha)
          get dns-prefetch — cheaper signal that doesn't burn an idle
          TLS slot.
@@ -70,7 +70,6 @@
          preconnect opens an ANONYMOUS CORS connection the image fetch
          never reuses, so the LCP image paid DNS+TLS twice. A no-cors
          preconnect is reused by the actual request. -->
-    <link rel="preconnect" href="https://image2url.com" />
     <link rel="dns-prefetch" href="https://apis.google.com" />
     <link rel="dns-prefetch" href="https://subnation-2571e.firebaseapp.com" />
     <link rel="dns-prefetch" href="https://www.google.com" />

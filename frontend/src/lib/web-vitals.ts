@@ -2,9 +2,16 @@
  * Core Web Vitals client for the SubNation frontend.
  *
  * - Captures LCP / FCP / INP / CLS / TTFB once per page visit.
- * - Sends each sample as a beacon to POST /api/cwv via navigator.sendBeacon
- *   (with a `fetch keepalive` fallback) and never blocks the UI.
- * - Buffers samples up to 60 s and flushes on visibilitychange / beforeunload.
+ * - R104 (AG2-2, free-tier wake-up economics): buffers ALL samples and
+ *   sends ONE combined POST /api/cwv (array body) — flushed on
+ *   tab-hide/pagehide or 30 s after the last flush at the latest
+ *   sample arrival. The old shape fired one POST PER METRIC
+ *   immediately (up to 5 requests per page view, each with its own
+ *   2×5 s retry amplification during a cold start — pure wake-up
+ *   pressure on the Render free instance for telemetry nobody reads
+ *   in real time).
+ * - Uses navigator.sendBeacon (with a `fetch keepalive` fallback) and
+ *   never blocks the UI.
  * - All exceptions are caught at the module boundary so a CWV bug can never
  *   break the app.
  *
@@ -22,6 +29,11 @@ const BEACON_ENDPOINT = apiUrl("/api/cwv");
 const MAX_BUFFER_AGE_MS = 60_000;
 const RETRY_COUNT = 2;
 const RETRY_DELAY_MS = 5_000;
+/** R104: a fresh sample arriving this long after the last flush triggers a
+ * combined batch send — no timers, purely event-driven. The 5 metric
+ * families typically land within the first seconds of a visit, so one
+ * page view ≈ one POST. */
+const BATCH_WINDOW_MS = 30_000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,25 +97,25 @@ function getCurrentRoute(): string {
  * rejecting every beacon as `400 invalid_cwv_sample`. Wrapping the JSON in
  * a `Blob` with an explicit MIME type fixes that.
  */
-function toBeaconBody(sample: CWVSample): Blob {
-  return new Blob([JSON.stringify(sample)], { type: "application/json" });
+function toBeaconBody(samples: CWVSample[]): Blob {
+  return new Blob([JSON.stringify(samples)], { type: "application/json" });
 }
 
-function sendBeaconSync(sample: CWVSample): boolean {
+function sendBeaconSync(samples: CWVSample[]): boolean {
   try {
-    const body = toBeaconBody(sample);
+    const body = toBeaconBody(samples);
     return navigator.sendBeacon?.(BEACON_ENDPOINT, body) ?? false;
   } catch {
     return false;
   }
 }
 
-async function sendBeaconAsync(sample: CWVSample): Promise<boolean> {
+async function sendBeaconAsync(samples: CWVSample[]): Promise<boolean> {
   try {
     const response = await fetch(BEACON_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sample),
+      body: JSON.stringify(samples),
       keepalive: true,
     });
     return response.ok;
@@ -112,12 +124,12 @@ async function sendBeaconAsync(sample: CWVSample): Promise<boolean> {
   }
 }
 
-async function sendWithRetry(sample: CWVSample): Promise<boolean> {
-  if (sendBeaconSync(sample)) return true;
-  if (await sendBeaconAsync(sample)) return true;
+async function sendWithRetry(samples: CWVSample[]): Promise<boolean> {
+  if (sendBeaconSync(samples)) return true;
+  if (await sendBeaconAsync(samples)) return true;
   for (let i = 0; i < RETRY_COUNT; i++) {
     await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    if (await sendBeaconAsync(sample)) return true;
+    if (await sendBeaconAsync(samples)) return true;
   }
   return false;
 }
@@ -130,6 +142,8 @@ interface BufferedSample {
 }
 
 const sampleBuffer: BufferedSample[] = [];
+let lastFlushAt = 0;
+let flushInFlight = false;
 
 function addToBuffer(sample: CWVSample): void {
   const cutoff = Date.now() - MAX_BUFFER_AGE_MS;
@@ -140,15 +154,17 @@ function addToBuffer(sample: CWVSample): void {
 }
 
 async function flushBuffer(): Promise<void> {
-  if (sampleBuffer.length === 0) return;
-  const samplesToSend = sampleBuffer.splice(0, sampleBuffer.length);
-  await Promise.all(
-    samplesToSend.map(({ sample }) =>
-      sendWithRetry(sample).catch(() => {
-        // Swallowed at module boundary — never break the UI.
-      }),
-    ),
-  );
+  if (flushInFlight || sampleBuffer.length === 0) return;
+  flushInFlight = true;
+  try {
+    const samplesToSend = sampleBuffer.splice(0, sampleBuffer.length);
+    lastFlushAt = Date.now();
+    await sendWithRetry(samplesToSend.map(({ sample }) => sample)).catch(() => {
+      // Swallowed at module boundary — never break the UI.
+    });
+  } finally {
+    flushInFlight = false;
+  }
 }
 
 // ── Rating mapping ───────────────────────────────────────────────────────────
@@ -196,7 +212,20 @@ function buildSample(name: "LCP" | "FCP" | "INP" | "CLS" | "TTFB", value: number
 function collectAndSend(name: CWVSample["name"], value: number): void {
   try {
     addToBuffer(buildSample(name, value));
-    void flushBuffer();
+    // R104 (AG2-2): NO immediate flush — the sample waits in the buffer
+    // for its siblings (the 5 metric families land within seconds of
+    // each other) and ships as ONE batched POST when either (a) a fresh
+    // sample arrives ≥ 30 s after the last flush, or (b) the tab is
+    // hidden / the page unloaded (see initWebVitals listeners). No
+    // timers: a blind delayed POST could wake an already-sleeping
+    // Render instance — flushes are strictly user/metric-event driven.
+    if (lastFlushAt === 0) {
+      // First batch of the session: OPEN the window instead of flushing
+      // (a zero initial would otherwise satisfy any elapsed check).
+      lastFlushAt = Date.now();
+    } else if (Date.now() - lastFlushAt >= BATCH_WINDOW_MS) {
+      void flushBuffer();
+    }
   } catch {
     // Module boundary — never break the UI.
   }

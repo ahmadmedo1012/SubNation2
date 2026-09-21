@@ -76,11 +76,11 @@ export default function StatusPage(): ReactElement {
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery<HealthzSummary>({
     queryKey: ["public-status-summary"],
     queryFn: fetchHealthzSummary,
-    // 90 s in the client. Backend cache at 15 s. Net effect: at most
-    // a few clients trigger an actual aggregation per minute even at
-    // moderate concurrent visitor counts.
-    refetchInterval: 90_000,
-    staleTime: 60_000,
+    // R104 (AG2-9): 90 s → 5 min. A left-open status tab was 40
+    // wake-up requests/hour; the backend aggregates on a 15 s cache and
+    // the page is a self-selecting audience — 5 min is plenty honest.
+    refetchInterval: 300_000,
+    staleTime: 240_000,
     retry: false,
   });
 
@@ -114,7 +114,7 @@ export default function StatusPage(): ReactElement {
               <a href="https://subnation.ly" className="text-primary hover:underline">
                 subnation.ly
               </a>{" "}
-              · تحديث تلقائي كل دقيقة ونصف
+              · تحديث تلقائي كل خمس دقائق
             </p>
           </div>
         </div>
