@@ -116,3 +116,51 @@ export const checkLowStockForTests = checkLowStock;
  * of checkouts / refunds / admin writes collapse to one sweep.
  */
 export const runStockSweep = checkLowStock;
+
+/**
+ * R102 (inventory truthfulness) — orphaned stock report.
+ *
+ * Unsold units under ARCHIVED products are stranded by design: the admin
+ * products list filters is_archived=false, so their management routes
+ * (/inventory, /set-count) are unreachable, and the stock sweep above
+ * only walks active products — they neither sell nor alert, they just
+ * sit (live evidence: 3 units under 2 archived TEST artifacts).
+ *
+ * This is a VISIBILITY sweep, deliberately NOT a reaper: units may hold
+ * real (paid-for) credentials, and deleting data is an operator decision
+ * (the alert text says exactly where to look). Fires as a boot one-shot
+ * (leader start); the 24h dedupeKey keeps the drawer clean across
+ * restarts.
+ */
+export async function reportOrphanInventory(): Promise<void> {
+  try {
+    const rows = await db
+      .select({
+        productId: productsTable.id,
+        name: productsTable.name,
+        unsold: count(),
+      })
+      .from(inventoryTable)
+      .innerJoin(productsTable, eq(productsTable.id, inventoryTable.productId))
+      .where(and(eq(inventoryTable.isSold, false), eq(productsTable.isArchived, true)))
+      .groupBy(productsTable.id, productsTable.name);
+
+    if (rows.length === 0) return;
+
+    const total = rows.reduce((acc, r) => acc + Number(r.unsold), 0);
+    const listing = rows.map((r) => `${r.name} (#${r.productId}): ${Number(r.unsold)} وحدة`).join(" · ");
+    await logAdminAlert(
+      "system",
+      `مخزون يتيم تحت منتجات مؤرشفة: ${total} وحدة`,
+      `توجد وحدات غير مباعة مرتبطة بمنتجات مؤرشفة — غير قابلة للبيع ولا تظهر في لوحة المنتجات: ${listing}. راجعها من قاعدة البيانات (جدول inventory) وقرر الحذف أو إعادة التفعيل يدويًا.`,
+      { dedupeKey: "inventory:orphan-archived" },
+    );
+    logger.warn(
+      { category: "inventory", products: rows.length, totalUnsold: total },
+      "Orphan inventory detected: unsold units under archived products",
+    );
+  } catch (err) {
+    logger.error({ err }, "Orphan inventory report failed");
+    captureSchedulerFailure("orphan_inventory_report", err);
+  }
+}

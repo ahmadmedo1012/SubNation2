@@ -533,15 +533,18 @@ const updateStockSpec: Tool = {
   function: {
     name: "update_stock",
     description:
-      "Adjust the available stock of a product by adding/removing inventory " +
-      "rows. Use { delta: +N } to add N empty inventory rows. Use { delta: -N } " +
-      "to delete the N most-recent unsold rows. Executes IMMEDIATELY.",
+      "Adjust the available stock of a product. Only { delta: -N } is " +
+      "supported — it deletes the N most-recent unsold inventory rows. " +
+      "Adding stock is NOT possible here: every inventory unit must carry " +
+      "real delivery credentials (uploaded via the admin inventory upload " +
+      "route) — empty rows would advertise stock checkout can never " +
+      "deliver. Executes IMMEDIATELY.",
     parameters: {
       type: "object",
       required: ["product_id", "delta"],
       properties: {
         product_id: { type: "integer" },
-        delta: { type: "integer", minimum: -1000, maximum: 1000 },
+        delta: { type: "integer", minimum: -1000, maximum: -1 },
       },
       additionalProperties: false,
     },
@@ -558,6 +561,19 @@ export async function executeUpdateStock(
     return { ok: false, error: "invalid product_id" };
   if (!Number.isFinite(delta) || delta === 0)
     return { ok: false, error: "delta must be non-zero integer" };
+  // R102 (inventory truthfulness): +N used to fabricate EMPTY inventory
+  // rows — units with zero credential fields. They counted as public
+  // stock (advertised availability) but checkout's R93-DATA gate refuses
+  // them (INVENTORY_CORRUPT at pay time) — the exact ghost-stock incident
+  // class from the historical demo-stock episode. Stock can only be added
+  // WITH credentials via the admin inventory upload route.
+  if (delta > 0)
+    return {
+      ok: false,
+      error:
+        "adding empty stock rows is not supported — upload real credentials " +
+        "via the admin inventory upload (POST /api/admin/products/:id/inventory)",
+    };
   if (Math.abs(delta) > 1000) return { ok: false, error: "delta out of range" };
 
   try {
@@ -575,16 +591,11 @@ export async function executeUpdateStock(
         .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)));
       const before = Number(beforeStock?.c ?? 0);
 
-      let added = 0;
       let removed = 0;
-      if (delta > 0) {
-        const rowsToInsert = Array.from({ length: delta }).map(() => ({
-          productId,
-          isSold: false,
-        }));
-        await tx.insert(inventoryTable).values(rowsToInsert);
-        added = delta;
-      } else {
+      // delta < 0 here by construction (delta > 0 returns early above —
+      // R102: empty-row fabrication removed; the only remaining operation
+      // is deleting the most-recent unsold rows).
+      {
         const want = Math.min(-delta, before);
         if (want > 0) {
           const idsRes = await tx.execute(sql`
@@ -606,7 +617,7 @@ export async function executeUpdateStock(
         }
       }
 
-      const after = before + added - removed;
+      const after = before - removed;
 
       const [actionRow] = await tx
         .insert(copilotActionsTable)
@@ -641,7 +652,6 @@ export async function executeUpdateStock(
         productName: product.name,
         before_stock: before,
         after_stock: after,
-        added,
         removed,
       };
     });

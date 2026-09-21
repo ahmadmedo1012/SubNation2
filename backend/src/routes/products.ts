@@ -8,7 +8,7 @@ import {
 import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
-import { and, asc, count, eq, inArray, min, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNotNull, min, or, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
@@ -47,10 +47,15 @@ export const flashSaleCache = cacheable(30, 60);
  * Public shape of a catalog variant — deliberately EXCLUDES every
  * internal field (cost_price, sku, supplier identity). The customer
  * sees: which option it is (labels), what it costs (LYD), whether the
- * flash sale discounts it. `is_available` mirrors the PRODUCT's stock
- * state: the fulfillment pool is per-product (variant-scoped units are
- * claimed first, then product-level units), so a variant is sellable
- * exactly when the product has stock.
+ * flash sale discounts it.
+ *
+ * R102 (inventory truthfulness): `is_available` is now VARIANT-scoped,
+ * mirroring the checkout claim's two-pool semantics exactly — a variant
+ * is sellable when its own scoped pool has a deliverable unit OR the
+ * product's generic pool (variant_id IS NULL) has one. (It used to
+ * mirror the PRODUCT-level stock flag, which misled once variant-scoped
+ * pools exist: an option with zero scoped stock showed available and
+ * failed at checkout.)
  */
 interface PublicVariantDto {
   id: number;
@@ -65,40 +70,89 @@ interface PublicVariantDto {
 }
 
 /**
+ * R102 (inventory truthfulness): a unit counts as STOCK only when it is
+ * DELIVERABLE — at least one credential field present (email, password,
+ * or extra details). Checkout's R93-DATA gate refuses to sell a unit with
+ * zero credential fields (INVENTORY_CORRUPT at pay time), so counting
+ * such rows as stock advertised availability the platform could never
+ * honor (the copilot +N ghost-stock incident class). Decryption health
+ * stays a checkout-time concern — SQL can't see GCM auth failures.
+ */
+const deliverableUnitCondition = () =>
+  or(
+    isNotNull(inventoryTable.accountPassword),
+    isNotNull(inventoryTable.accountEmail),
+    isNotNull(inventoryTable.extraDetails),
+  );
+
+/**
  * Load the active variants for a set of products in ONE query, grouped
  * in JS by product_id. Ordered by (sort_order, price) so the selector
- * renders cheapest-first deterministically.
+ * renders cheapest-first deterministically. R102: availability is
+ * computed here per-variant from the SAME two-pool semantics the
+ * checkout claim uses (variant-scoped first, then generic) — the
+ * product-level callback parameter is gone.
  */
 async function loadPublicVariants(
   productIds: number[],
   discountPercent: number,
-  productAvailable: (productId: number) => boolean,
 ): Promise<Map<number, PublicVariantDto[]>> {
   const map = new Map<number, PublicVariantDto[]>();
   if (productIds.length === 0) return map;
 
-  const rows = await db
-    .select({
-      id: productVariantsTable.id,
-      productId: productVariantsTable.productId,
-      planLabel: productVariantsTable.planLabel,
-      durationLabel: productVariantsTable.durationLabel,
-      priceLyd: productVariantsTable.priceLyd,
-      sortOrder: productVariantsTable.sortOrder,
-      isActive: productVariantsTable.isActive,
-    })
-    .from(productVariantsTable)
-    .where(
-      and(
-        inArray(productVariantsTable.productId, productIds),
-        eq(productVariantsTable.isActive, true),
-      ),
-    )
-    .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd));
+  const [rows, stockRows] = await Promise.all([
+    db
+      .select({
+        id: productVariantsTable.id,
+        productId: productVariantsTable.productId,
+        planLabel: productVariantsTable.planLabel,
+        durationLabel: productVariantsTable.durationLabel,
+        priceLyd: productVariantsTable.priceLyd,
+        sortOrder: productVariantsTable.sortOrder,
+        isActive: productVariantsTable.isActive,
+      })
+      .from(productVariantsTable)
+      .where(
+        and(
+          inArray(productVariantsTable.productId, productIds),
+          eq(productVariantsTable.isActive, true),
+        ),
+      )
+      .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd)),
+    // R102: per-pool deliverable stock counts — (product, variant) scoped
+    // pools plus the generic (variant_id IS NULL) pool per product.
+    db
+      .select({
+        productId: inventoryTable.productId,
+        variantId: inventoryTable.variantId,
+        stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
+      })
+      .from(inventoryTable)
+      .where(
+        and(
+          inArray(inventoryTable.productId, productIds),
+          eq(inventoryTable.isSold, false),
+          deliverableUnitCondition(),
+        ),
+      )
+      .groupBy(inventoryTable.productId, inventoryTable.variantId),
+  ]);
+
+  const genericByProduct = new Map<number, number>();
+  const scopedByVariant = new Map<number, number>();
+  for (const s of stockRows) {
+    if (s.variantId === null) {
+      genericByProduct.set(s.productId, (genericByProduct.get(s.productId) ?? 0) + s.stockCount);
+    } else {
+      scopedByVariant.set(s.variantId, (scopedByVariant.get(s.variantId) ?? 0) + s.stockCount);
+    }
+  }
 
   for (const v of rows) {
     const price = parseFloat(String(v.priceLyd));
-    const available = productAvailable(v.productId);
+    // Two-pool availability, mirroring the checkout claim exactly.
+    const available =
+      (scopedByVariant.get(v.id) ?? 0) > 0 || (genericByProduct.get(v.productId) ?? 0) > 0;
     const plan = v.planLabel?.trim() || null;
     const duration = v.durationLabel?.trim() || null;
     const label = [plan, duration].filter(Boolean).join(" — ") || "الخيار الافتراضي";
@@ -153,13 +207,15 @@ router.get("/", catalogCache, async (req, res) => {
   }
 
   // Aggregate stock + order counts as a single subquery join, no JS-side reduce.
+  // R102 (inventory truthfulness): stock counts DELIVERABLE units only
+  // (≥1 credential field) — matches what checkout can actually sell.
   const stockSub = db
     .select({
       productId: inventoryTable.productId,
       stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
     })
     .from(inventoryTable)
-    .where(eq(inventoryTable.isSold, false))
+    .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition()))
     .groupBy(inventoryTable.productId)
     .as("stock_sub");
 
@@ -216,11 +272,9 @@ router.get("/", catalogCache, async (req, res) => {
   // products (see loadPublicVariants) — kept OUT of the main join so
   // the limit(500) product ceiling stays exact and the hot list query
   // shape is unchanged for variant-less catalogs.
-  const stockByProduct = new Map(rows.map((p) => [p.id, Number(p.stockCount ?? 0)]));
   const variantsByProduct = await loadPublicVariants(
     rows.map((p) => p.id),
     discountPercent,
-    (pid) => (stockByProduct.get(pid) ?? 0) > 0,
   );
 
   const result = rows.map((p) => {
@@ -286,13 +340,28 @@ export async function getProductStatsHandler(_req: Request, res: Response) {
         .select({
           totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
         })
-        .from(inventoryTable),
+        .from(inventoryTable)
+        // R102: total units = deliverable units (matches the public
+        // stock definition — ghost rows don't count).
+        .where(deliverableUnitCondition()),
       db
         .select({
           availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
         })
         .from(inventoryTable)
-        .where(eq(inventoryTable.isSold, false)),
+        // R102: available products = ACTIVE, non-archived products with
+        // deliverable stock. It used to count archived products too — the
+        // live stats said "2 available" while both were archived TEST
+        // artifacts invisible to the storefront.
+        .innerJoin(
+          productsTable,
+          and(
+            eq(productsTable.id, inventoryTable.productId),
+            eq(productsTable.isActive, true),
+            eq(productsTable.isArchived, false),
+          ),
+        )
+        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
       getActiveFlashSale(),
     ]);
 
@@ -361,7 +430,13 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
     db
       .select({ count: count() })
       .from(inventoryTable)
-      .where(and(eq(inventoryTable.productId, product.id), eq(inventoryTable.isSold, false))),
+      .where(
+        and(
+          eq(inventoryTable.productId, product.id),
+          eq(inventoryTable.isSold, false),
+          deliverableUnitCondition(),
+        ),
+      ),
     db
       .select({ count: count() })
       .from(ordersTable)
@@ -372,9 +447,7 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
   const variants =
-    (await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)).get(
-      product.id,
-    ) ?? [];
+    (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
   const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
@@ -435,7 +508,13 @@ router.get("/:id", catalogCache, async (req, res) => {
     db
       .select({ count: count() })
       .from(inventoryTable)
-      .where(and(eq(inventoryTable.productId, id), eq(inventoryTable.isSold, false))),
+      .where(
+        and(
+          eq(inventoryTable.productId, id),
+          eq(inventoryTable.isSold, false),
+          deliverableUnitCondition(),
+        ),
+      ),
     db
       .select({ count: count() })
       .from(ordersTable)
@@ -446,9 +525,7 @@ router.get("/:id", catalogCache, async (req, res) => {
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
   const variants =
-    (await loadPublicVariants([product.id], discountPercent, () => stockCount > 0)).get(
-      product.id,
-    ) ?? [];
+    (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
   const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;

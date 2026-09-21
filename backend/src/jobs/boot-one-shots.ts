@@ -34,7 +34,7 @@ import { pruneExpiredSessions } from "./session-prune";
 import { reapExpiredRiskEvents } from "./risk-retention";
 import { markStaleUnreadAlertsRead, pruneReadAlerts } from "./alertLogger";
 import { deactivateExpiredFlashSales } from "./flashSaleWatcher";
-import { runStockSweep } from "./stockWatcher";
+import { runStockSweep, reportOrphanInventory } from "./stockWatcher";
 import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 
@@ -107,6 +107,10 @@ export function runBootOneShots(): void {
     ["auth-activity-retention", cleanupOldAuthActivity],
     ["coupon-sweep", checkExpiringCoupons],
     ["stock-sweep", runStockSweep],
+    // R102: unsold units under archived products are invisible to every
+    // admin surface — this surfaces them as a deduped ops alert (never
+    // auto-deletes; data is an operator decision).
+    ["orphan-inventory-report", reportOrphanInventory],
     ["copilot-reaper", reapExpiredCopilotPreviews],
     ["whatsapp-otp-prune", pruneExpiredOtps],
     ["admin-session-prune", pruneStaleAdminSessions],
@@ -114,6 +118,6 @@ export function runBootOneShots(): void {
   ]);
   logger.info(
     { category: "monitoring" },
-    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, couponSweep, stockSweep, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
+    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
   );
 }
