@@ -8,6 +8,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { productsTable } from "./products";
 import { productVariantsTable } from "./product-variants";
@@ -28,6 +29,14 @@ export const inventoryTable = pgTable(
      */
     variantId: integer("variant_id").references(() => productVariantsTable.id, {
       onDelete: "set null",
+      // AUD103-1-F6 (r103) — CONTRACT: ON DELETE SET NULL silently DEMOTES a
+      // variant-scoped unit to a generic unit, which the manual provider can
+      // then fulfill against ANY variant of the product (a "1 Year" credential
+      // could ship on a "1 Month" order). Dormant today (no production write
+      // path sets variant_id — scoped uploads are consciously-deferred work),
+      // but the moment scoped uploads ship, the admin variant-DELETE guard
+      // (routes/admin/product-variants.ts) MUST also 409 on unsold scoped
+      // units for that variant — ship the guard in the SAME change.
     }),
     accountEmail: varchar("account_email", { length: 255 }),
     accountPassword: varchar("account_password", { length: 512 }),
@@ -55,7 +64,9 @@ export const inventoryTable = pgTable(
   },
   (t) => ({
     productIdx: index("idx_inventory_product").on(t.productId),
-    soldIdx: index("idx_inventory_sold").on(t.isSold),
+    // AUD103-1-F3 (r103): partial mirrors the boot definition (migrate.ts):
+    // idx_inventory_sold ON inventory(is_sold) WHERE is_sold = false.
+    soldIdx: index("idx_inventory_sold").on(t.isSold).where(sql`is_sold = false`),
     productSoldIdx: index("idx_inventory_product_sold").on(t.productId, t.isSold),
     // R98-DB-01: V1-M16 (migrate.ts applyProductVariantsStage) creates this
     // live for the variant-scoped stock lookups. Declared here so the

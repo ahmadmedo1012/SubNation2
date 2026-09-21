@@ -54,7 +54,6 @@ export const usersTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    referralCodeIdx: index("idx_users_referral_code").on(t.referralCode),
     referredByIdx: index("idx_users_referred_by").on(t.referredBy),
     // R97-DB-04 (D4 closure, round-97 F7): idx_users_firebase_uid (plain)
     // and idx_users_firebase_uid_unique (partial UNIQUE) were dropped from

@@ -51,7 +51,8 @@ export const inventoryForecastRunsTable = pgTable(
     failureReason: text("failure_reason"),
   },
   (t) => ({
-    startedAtIdx: index("idx_forecast_runs_started_at").on(t.startedAt),
-    outcomeIdx: index("idx_forecast_runs_outcome").on(t.outcome, t.startedAt),
+    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
+    startedAtIdx: index("idx_forecast_runs_started_at").on(t.startedAt.desc()),
+        outcomeIdx: index("idx_forecast_runs_outcome").on(t.outcome, t.startedAt.desc()),
   }),
 );

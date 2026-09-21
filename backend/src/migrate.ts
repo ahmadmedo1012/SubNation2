@@ -646,6 +646,26 @@ export async function applyTicketRepliesDriftClosureStage(
       "V1-M15: dropped duplicate users.firebase_uid indexes (users_firebase_uid_key stays)",
     );
   }
+
+  // 5. AUD103-1-F4 (r103): drop the redundant partial idx_users_referral_code
+  //    — the column's UNIQUE constraint backing index (users_referral_code_key)
+  //    already serves every lookup; the partial only added write maintenance
+  //    (the last surviving sibling of the R97-DB-04 duplicate pattern).
+  //    Probe-gated like the block above: steady-state boots send no DDL.
+  const referralIdxRows = extractRows(
+    await execute(sql`
+      SELECT indexname AS indexname FROM pg_indexes
+      WHERE tablename = 'users'
+        AND indexname = 'idx_users_referral_code'
+    `),
+  );
+  if (referralIdxRows.length > 0) {
+    await execute(sql`DROP INDEX IF EXISTS idx_users_referral_code`);
+    logger.info(
+      { category: "storage" },
+      "r103: dropped redundant idx_users_referral_code (users_referral_code_key stays)",
+    );
+  }
 }
 
 // ── V1-M16 (catalog reconstruction 2026-09-20): product_variants + ──────────
@@ -796,6 +816,30 @@ export async function applyProductVariantsNullsNotDistinctStage(
   );
   const indexdef = String(indexRows[0]?.indexdef ?? "");
   if (indexdef.includes("NULLS NOT DISTINCT")) return; // steady state
+
+  // AUD103-1-F5 (r103): pre-probe for NULL-equal duplicates before the
+  // rebuild — the CREATE throws on duplicates and a critical migration
+  // failure aborts production boot (503 crash-loop) until manual dedup.
+  // The V1-M9 house pattern: probe → alert → skip. Standard GROUP BY
+  // already treats NULLs as equal, so any hit here is a NULL-equal
+  // collision (non-null duplicates are impossible under the live plain
+  // UNIQUE). Verified 0 duplicates live at r98/r103 — pure defense
+  // against the documented R98-DB-05 API race.
+  const dupRows = extractRows(
+    await execute(sql`
+      SELECT product_id, plan_label, duration_label, COUNT(*) AS n
+      FROM product_variants
+      GROUP BY product_id, plan_label, duration_label
+      HAVING COUNT(*) > 1
+    `),
+  );
+  if (dupRows.length > 0) {
+    logger.error(
+      { category: "storage", duplicates: dupRows.length },
+      "V1-M17 SKIPPED: NULL-equal duplicate variant rows found — dedupe manually, then reboot to apply NULLS NOT DISTINCT",
+    );
+    return;
+  }
 
   await execute(sql`DROP INDEX IF EXISTS uniq_product_variants_plan_duration`);
   await execute(sql`

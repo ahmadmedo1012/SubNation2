@@ -83,7 +83,8 @@ export const ordersTable = pgTable(
     userIdx: index("idx_orders_user").on(t.userId),
     productIdx: index("idx_orders_product").on(t.productId),
     statusIdx: index("idx_orders_status").on(t.status),
-    createdIdx: index("idx_orders_created").on(t.createdAt),
+    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
+    createdIdx: index("idx_orders_created").on(t.createdAt.desc()),
     statusCreatedIdx: index("idx_orders_status_created").on(t.status, t.createdAt),
     // Round-3 (8-c §4.5): the user's own orders list sorts by createdAt
     // DESC filtered by user_id — composite covers both in one index.

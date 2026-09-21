@@ -30,6 +30,7 @@ export const authActivityTable = pgTable(
     userIdIdx: index("idx_auth_activity_user").on(table.userId),
     identifierIdx: index("idx_auth_activity_identifier").on(table.identifier),
     actionIdx: index("idx_auth_activity_action").on(table.action),
-    createdIdx: index("idx_auth_activity_created").on(table.createdAt),
+    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
+    createdIdx: index("idx_auth_activity_created").on(table.createdAt.desc()),
   }),
 );

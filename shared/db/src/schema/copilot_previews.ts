@@ -88,7 +88,11 @@ export const copilotPreviewsTable = pgTable(
     confirmedTwiceAt: timestamp("confirmed_twice_at", { withTimezone: true }),
   },
   (t) => ({
-    adminCreatedIdx: index("idx_copilot_previews_admin_created").on(t.adminId, t.createdAt),
+    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
+    adminCreatedIdx: index("idx_copilot_previews_admin_created").on(
+      t.adminId,
+      t.createdAt.desc(),
+    ),
     expiresIdx: index("idx_copilot_previews_expires").on(t.expiresAt),
     actionClassIdx: index("idx_copilot_previews_action_class").on(t.actionClass),
   }),

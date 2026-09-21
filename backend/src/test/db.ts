@@ -140,10 +140,10 @@ CREATE TABLE orders (
   id serial PRIMARY KEY,
   order_code varchar(50) NOT NULL UNIQUE,
   user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  product_id integer NOT NULL REFERENCES products(id),
+  product_id integer NOT NULL REFERENCES products(id) ON DELETE RESTRICT, -- AUD103-1-F9 (r103): prod parity
   variant_id integer REFERENCES product_variants(id) ON DELETE SET NULL,
   variant_label varchar(240),
-  inventory_id integer REFERENCES inventory(id),
+  inventory_id integer REFERENCES inventory(id) ON DELETE SET NULL, -- AUD103-1-F9 (r103): prod parity
   amount numeric(10,2) NOT NULL,
   wallet_balance_before numeric(10,2) NOT NULL DEFAULT '0.00',
   wallet_balance_after numeric(10,2) NOT NULL DEFAULT '0.00',
@@ -200,7 +200,7 @@ CREATE TABLE wallet_ledger (
   balance_before numeric(10,2) NOT NULL,
   balance_after numeric(10,2) NOT NULL,
   reference_id integer,
-  reference_type varchar(50),
+  reference_type varchar(32), -- AUD103-8 (r103): align with schema/migrate varchar(32)
   description varchar(500),
   created_at timestamptz NOT NULL DEFAULT now()
 );

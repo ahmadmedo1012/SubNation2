@@ -79,7 +79,11 @@ export const copilotActionsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    adminCreatedIdx: index("idx_copilot_actions_admin_created").on(t.adminId, t.createdAt),
+    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
+    adminCreatedIdx: index("idx_copilot_actions_admin_created").on(
+      t.adminId,
+      t.createdAt.desc(),
+    ),
     actionClassIdx: index("idx_copilot_actions_action_class").on(t.actionClass),
     outcomeIdx: index("idx_copilot_actions_outcome").on(t.outcome),
     previewIdx: index("idx_copilot_actions_preview").on(t.previewId),
