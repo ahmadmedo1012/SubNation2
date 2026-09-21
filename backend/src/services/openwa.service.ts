@@ -76,6 +76,7 @@ import { logger } from "../lib/logger";
 // observation across restarts and sibling instances. Reuses the same
 // resilient singleton + bounded-command helpers as idempotency.ts.
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
+import { readEpochMarker, writeEpochMarker } from "../lib/whatsapp-epoch-store";
 // 2026-09-20 free-infrastructure round: the channel-death watch is fed
 // by REAL observations (readiness probes + OTP send attempts) instead
 // of a 60 s interval timer. One-way dependency — whatsapp-watch imports
@@ -223,6 +224,13 @@ function readPostLinkSettleMs(): number {
 }
 export const POST_LINK_SETTLE_MS = readPostLinkSettleMs();
 
+/** R104 (AG4-2): minimum settle that still applies to an ADOPTED
+ * (restored, marker-proven) pairing epoch — the gateway socket just
+ * reconnected; cheap insurance against dispatching in the very first
+ * seconds of a fresh engine boot even though key propagation is not in
+ * question on a restore. */
+const RESTORE_RESIDUAL_SETTLE_MS = 5_000;
+
 /** Bounded in-request wait inside the OTP send path (§1.3A): one honest
  *  spinner beats a 503 round-trip, but no request may hang for the whole
  *  window. */
@@ -299,7 +307,11 @@ function settleRemainingMs(readySince: number): number {
  * and this backend therefore cannot mask a re-pair (or invent one).
  */
 function sessionPairingEpoch(session: SessionRecord): string {
-  return (session.lastReadyAt ?? session.connectedAt ?? "").trim();
+  // R104 (AG4-2): prefer the STABLE pairing identity. pairingId survives
+  // routine restores (same creds → same registrationId), so a wake after
+  // idle no longer masquerades as a re-pair. lastReadyAt stays as the
+  // legacy fallback (gateway builds without pairingId).
+  return (session.pairingId ?? session.lastReadyAt ?? session.connectedAt ?? "").trim();
 }
 
 /**
@@ -420,9 +432,46 @@ async function recordReadySince(session: SessionRecord): Promise<number> {
     }
   }
 
+  // ── R104 (AG4-2): Neon-persisted epoch marker (the no-Redis prod shape)
+  // ────────────────────────────────────────────────────────────────────────
+  // A cold process (Render free sleeps after 15 idle minutes) checking the
+  // SAME stable pairingId as the marker records = a routine RESTORE, not a
+  // re-pair: adopt the proven ready-since (+ warmed flag) instead of
+  // re-arming the full 45 s settle + warm-up ceremony on every wake.
+  const epoch = sessionPairingEpoch(session);
+  if (epoch) {
+    const marker = await readEpochMarker(session.id);
+    if (marker && marker.epoch === epoch) {
+      // Residual settle floor: the gateway socket just came up on a
+      // restore — never dispatch in the very first seconds even though
+      // the pre-sleep epoch was fully settled (cheap insurance; the
+      // OTP path's bounded settle-wait rides it out).
+      const adoptedReadySince = Math.max(
+        marker.readySince,
+        Date.now() - (POST_LINK_SETTLE_MS - RESTORE_RESIDUAL_SETTLE_MS),
+      );
+      sessionReadySince.set(gateKey, adoptedReadySince);
+      if (marker.warmed) {
+        dispatchReady.set(gateKey, true);
+        logger.info(
+          { category: "whatsapp.gateway", sessionId: session.id, gateKey },
+          "[whatsapp-otp] restored pairing adopted — epoch already settled+warm (marker hit)",
+        );
+      } else {
+        scheduleInitialWarmup(gateKey, adoptedReadySince);
+      }
+      readinessCache = null;
+      return adoptedReadySince;
+    }
+  }
+
   const now = Date.now();
   sessionReadySince.set(gateKey, now);
   readinessCache = null; // never cache a pre-gate `ready` verdict
+  if (epoch) {
+    // Persist the new epoch's marker (fresh window, warm-up pending).
+    writeEpochMarker(session.id, { epoch, readySince: now, warmed: false });
+  }
   logger.info(
     { category: "whatsapp.gateway", sessionId: session.id, gateKey, settleMs: POST_LINK_SETTLE_MS },
     "[whatsapp-otp] session observed ready — post-link settle window started",
@@ -509,6 +558,12 @@ async function runWarmupCycle(): Promise<void> {
   });
   if (result.ok) {
     dispatchReady.set(gateKey, true);
+    // R104 (AG4-2): persist the warmed flag so the next cold start of the
+    // SAME epoch (routine restore) adopts the proven state.
+    const epoch = sessionPairingEpoch(session);
+    if (epoch) {
+      writeEpochMarker(session.id, { epoch, readySince, warmed: true });
+    }
     logger.info(
       { category: "whatsapp.gateway", sessionId: session.id, gateKey },
       "[whatsapp-otp] warm-up self-check delivered — OTP dispatch enabled for this session",
@@ -536,11 +591,23 @@ interface SessionRecord {
   name: string;
   status: SessionStatus;
   /**
+   * R104 (AG4-2): STABLE pairing identity (gateway exposes
+   * creds.registrationId — minted at pairing, reused by every restore,
+   * replaced only by a true re-pair). Preferred over lastReadyAt as the
+   * epoch token: lastReadyAt is rewritten on EVERY connection open,
+   * which made a routine boot-restore after an idle sleep look like a
+   * re-pair and re-arm the full 45 s settle + warm-up gate on every
+   * wake. Optional (older gateways omit it — falls back gracefully).
+   */
+  pairingId?: string;
+  /**
    * 97-F3 (R97-WA-01): pairing-epoch token — the timestamp of the
    * CURRENT ready (gateway `publicView.lastReadyAt`). The gateway
    * rewrites it on every new connection open, so the SAME session id
    * (which survives loggedOut + re-pair) carries a NEW token after a
    * re-pair. Treated as an opaque string — see sessionPairingEpoch().
+   * R104: used as the epoch ONLY when the gateway does not expose
+   * pairingId (legacy shape).
    */
   lastReadyAt?: string;
   /** 97-F3 fallback epoch token when the gateway omits lastReadyAt
@@ -1083,7 +1150,7 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
     if (session && session.status === "ready") {
       // Probe observation feeds the settle gate — this is also how a
       // freshly-paired session gets its warm-up scheduled without any
-      // OTP traffic (the /api/auth/providers poll drives it).
+      // OTP traffic (the /api/auth/providers mount-fetch drives it).
       const readySince = await recordReadySince(session);
       const remainingMs = settleRemainingMs(readySince);
       settled = remainingMs === 0;
@@ -1121,6 +1188,20 @@ export async function getWhatsAppGatewayReadiness(): Promise<WhatsAppGatewayRead
 }
 
 /** Test seam — clears the readiness cache. */
+/**
+ * R104 (AG4-2) / RT-3: simulate a COLD PROCESS for the settle-gate
+ * state (the in-memory ready-since / dispatch-ready / observed-epoch /
+ * pending-warmup maps) WITHOUT re-importing the module — used by the
+ * epoch-memory tests to exercise the Neon-marker adoption path exactly
+ * as a post-sleep wake would find it.
+ */
+export function __resetSettleGateStateForTests(): void {
+  sessionReadySince.clear();
+  dispatchReady.clear();
+  pendingInitialWarmups.clear();
+  sessionObservedEpoch.clear();
+}
+
 export function __resetWhatsAppReadinessCacheForTests(): void {
   readinessCache = null;
 }
