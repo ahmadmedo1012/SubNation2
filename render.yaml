@@ -203,7 +203,10 @@ services:
       - key: SENTRY_TRACES_SAMPLE_RATE
         value: "0.1"
       - key: SENTRY_PROFILES_SAMPLE_RATE
-        value: "0.1"
+        # R104 (AG7-1): 0.1 → 0 — profiling chunks on a 0.1-CPU free
+        # instance are starvation noise (and the heaviest per-event
+        # Sentry payload, ~1% effective rate). Traces at 0.1 stay.
+        value: "0"
       # Slow-query threshold in ms. Queries above this are warn-logged +
       # surface in pg_query_duration_seconds histogram with slow="1".
       - key: SLOW_QUERY_THRESHOLD_MS
@@ -286,8 +289,12 @@ services:
       #      SENTRY_DSN / TELEGRAM_* / DISCORD_WEBHOOK_URL so alerting
       #      works from the worker tier too).
       # Flipping only one side either stops all crons (no worker running
-      # them) or double-runs them (both tiers racing under the leader
-      # lock — harmless but wasteful).
+      # them) or double-runs them. NOTE (R104/AG1-4): the worker entry
+      # (worker.ts) runs cron/alerting/heartbeat WITHOUT acquiring the
+      # leader lock — it is the only node running them by convention, so
+      # a mis-flip double-RUNS them outright (in-process dedup does not
+      # span processes), not merely "races under the lock". Set both
+      # flags together, as documented above.
       - key: DISABLE_WEB_SCHEDULERS
         value: "false"
       # Operator escape hatch for the boot-time migration runner. When

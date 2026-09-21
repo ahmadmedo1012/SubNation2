@@ -94,7 +94,13 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_GSC_VERIFICATION=$VITE_GSC_VERIFICATION \
     VITE_RELEASE_SHA=$RENDER_GIT_COMMIT
 
-RUN pnpm run build
+# R104 (AG12-1): build ONLY. The root `pnpm run build` chains
+# lint + typecheck BEFORE the actual build — duplicating the CI quality
+# job inside the paid-by-minutes Render pipeline (build minutes are a
+# shared 500/mo free-tier budget). CI (.github/workflows/ci.yml) and
+# the deploy gate already own those gates; a manual deploy of a red-CI
+# commit is the operator's explicit override.
+RUN pnpm --filter @workspace/api-server run build
 
 # --- runtime: lean image with production deps and built artifacts -------------
 FROM node:${NODE_VERSION} AS runtime

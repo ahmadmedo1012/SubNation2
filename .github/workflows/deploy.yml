@@ -85,7 +85,7 @@ jobs:
           if echo "$response" | grep -q '"id"'; then
             deploy_id=$(echo "$response" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
             echo "::notice::Deploy triggered: $deploy_id"
-            echo "Track progress: https://dashboard.render.com/web/srv-…/deploys/$deploy_id"
+            echo "Track progress: Render Dashboard → subnation → Events (deploy $deploy_id)"
           else
             # Hook returned 2xx but no deploy ID — still a success path
             # (some Render service types return empty 2xx). Log the body

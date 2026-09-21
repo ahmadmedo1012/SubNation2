@@ -63,7 +63,11 @@ export async function readEpochMarker(sessionId: string): Promise<EpochMarker | 
       (parsed.readySince as number) > 0 &&
       typeof parsed.warmed === "boolean"
     ) {
-      return { epoch: parsed.epoch, readySince: parsed.readySince as number, warmed: parsed.warmed };
+      return {
+        epoch: parsed.epoch,
+        readySince: parsed.readySince as number,
+        warmed: parsed.warmed,
+      };
     }
     return null;
   } catch {

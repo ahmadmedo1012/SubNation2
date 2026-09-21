@@ -33,3 +33,14 @@ yarn-error.log*
 Thumbs.db
 *.zip
 zipFile/
+
+# R104 (AG12-7): non-build content excluded from the build context —
+# ~2.3 MB of docs/specs/tooling the builder never reads.
+docs
+specs
+.kiro
+.husky
+.specify
+.github
+*.md
+.gitleaks.toml

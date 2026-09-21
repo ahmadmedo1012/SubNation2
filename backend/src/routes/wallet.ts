@@ -238,7 +238,9 @@ router.post(
         const [existing] = await db
           .select()
           .from(walletTopupsTable)
-          .where(and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)))
+          .where(
+            and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)),
+          )
           .limit(1);
         if (existing) {
           // Same contract as the checkout replay (orders.ts): 200 (not
@@ -320,7 +322,12 @@ router.post(
       // client's retry. A concurrent same-key winner throws 23505.
       if (scopedIdemKey) {
         try {
-          await claimIdempotencyKey(tx as unknown as typeof db, scopedIdemKey, topup.id, "topup.create");
+          await claimIdempotencyKey(
+            tx as unknown as typeof db,
+            scopedIdemKey,
+            topup.id,
+            "topup.create",
+          );
         } catch (err) {
           const code = (err as { code?: string }).code;
           if (code === "23505") {
@@ -351,9 +358,11 @@ router.post(
           }
         }
       }
-      return res.status(409).json(
-        createErrorResponse("طلب مكرر قيد المعالجة — أعد المحاولة بعد لحظات", ErrorCode.CONFLICT),
-      );
+      return res
+        .status(409)
+        .json(
+          createErrorResponse("طلب مكرر قيد المعالجة — أعد المحاولة بعد لحظات", ErrorCode.CONFLICT),
+        );
     }
 
     if (submission.kind === "limited") {

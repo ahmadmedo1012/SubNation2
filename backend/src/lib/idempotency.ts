@@ -121,7 +121,10 @@ export async function findIdempotentOrderId(
     // the historical any-type behavior for existing callers.
     const conditions =
       referenceType !== undefined
-        ? and(eq(idempotencyKeysTable.key, scopedKey), eq(idempotencyKeysTable.referenceType, referenceType))
+        ? and(
+            eq(idempotencyKeysTable.key, scopedKey),
+            eq(idempotencyKeysTable.referenceType, referenceType),
+          )
         : eq(idempotencyKeysTable.key, scopedKey);
     const [row] = await db
       .select({ orderId: idempotencyKeysTable.orderId })

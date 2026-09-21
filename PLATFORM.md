@@ -10,11 +10,14 @@
 
 - Frontend (Vercel): https://subnation-seven.vercel.app — **LIVE**
 - Frontend (custom domain): https://subnation.ly and https://www.subnation.ly —
-  currently 503 while Render is suspended (Cloudflare → Render direct; see runbook)
-- Backend (Render): https://subnation2.onrender.com — **SUSPENDED** (operator
-  billing gate)
-- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — **SUSPENDED**
-  (same billing gate)
+  Cloudflare → Render direct (see runbook). Cold-start: the first request
+  after an idle sleep pays a ~10-20 s boot; static/SPA shell passes the
+  boot gate instantly (R104) and the frontend retries API calls.
+- Backend (Render): https://subnation2.onrender.com — free tier, sleeps
+  after ~15 min idle BY DESIGN (operator billing gate resolved; verify
+  current state in the Render dashboard — this doc is a dated snapshot)
+- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — free tier,
+  same sleep-by-design posture (wakes on real OTP/admin traffic)
 - Neon Database: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
   (project `calm-art-99771185`) — live
 
@@ -114,8 +117,8 @@ Admin (requires admin role):
 
 | Service        | ID                       | Status                                                     | Purpose                        |
 | -------------- | ------------------------ | ---------------------------------------------------------- | ------------------------------ |
-| SubNation2     | srv-d7vv91tckfvc73evnccg | SUSPENDED (operator billing gate — see OPERATIONS_RUNBOOK) | Main API + Socket.IO           |
-| openwa-gateway | srv-da6piju7bikc739anbtg | SUSPENDED (same billing gate)                              | WhatsApp OTP gateway (Baileys) |
+| SubNation2     | srv-d7vv91tckfvc73evnccg | free tier — sleeps when idle (by design; R104 posture)     | Main API + Socket.IO           |
+| openwa-gateway | srv-da6piju7bikc739anbtg | free tier — sleeps when idle (by design)                   | WhatsApp OTP gateway (Baileys) |
 | SmartBot       | srv-d94hn57aqgkc73ds0vhg | LIVE                                                       | Unrelated (Python)             |
 | POS            | srv-d8sps3cmmk8c739eo6lg | SUSPENDED                                                  | Unrelated                      |
 | Smart-Menu     | srv-d8q9a768bjmc738hhh90 | SUSPENDED                                                  | Unrelated                      |

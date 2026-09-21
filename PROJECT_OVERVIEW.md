@@ -29,11 +29,11 @@
 | الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                         |
 | المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                              |
 | قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                               |
-| الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                                                  |
+| الكاش/الحالة   | ~~Redis (rate-limit, leader-lock, socket adapter)~~ — أُزيل Redis من render.yaml في جولة 2026-09-20 (بدائل داخل العملية + PG-lease)  |
 | مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                     |
 | صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                |
 | الاختبارات     | ~1800+ اختبار (backend+frontend+openwa — الأعداد المتغيرة راجع `docs/final-audit-2026-09-20.md`) |
-| النشر          | Render (Docker): web + worker + redis                                                            |
+| النشر          | ~~Render (Docker): web + worker + redis~~ — الآن web فقط على الخطة المجانية (أُزيل worker وRedis في 2026-09-20)  |
 | المراقبة       | Sentry + Prometheus (prom-client) + pino                                                         |
 
 ---
@@ -54,7 +54,7 @@ config/      env.example (مرجع مُعلّق كامل)
 
 - **أصل واحد (single origin):** الخلفية تخدم الواجهة المبنية من نفس المنفذ.
 - **التهيئة كلها عبر `.env`** — لا حاجة لتعديل كود لتغيير النطاق/المنفذ/الأصل.
-- **Worker tier:** خدمة `subnation-worker` منفصلة (cron + alerting + heartbeat) تحت قفل Redis، أو يشغّلها الـ web إن لم تكن مفعّلة (`DISABLE_WEB_SCHEDULERS`).
+- **Worker tier:** خدمة `subnation-worker` أُزيلت من render.yaml في جولة 2026-09-20 (توثيق تاريخي: كانت cron + alerting + heartbeat)؛ الـ web يشغّلها تحت قائد PG-lease (`DISABLE_WEB_SCHEDULERS` يبقى مفتاح الترحيل لعمال مستقبليين).
 
 ---
 
@@ -215,7 +215,7 @@ admin_alerts، whatsapp_otps، risk_events، forecast*/enrichment* …)**
 - **Health:** `/api/healthz` (probe)، canonical-host redirect (www/onrender → apex).
 - **الهجرات:** تُشغَّل عند الإقلاع (قفل Redis NX فقط عند وجود `REDIS_URL`)؛ `DISABLE_BOOT_MIGRATIONS` مخرج طوارئ.
 - **الأسرار:** كلها `sync:false` في render.yaml (تُضبط يدوياً في Dashboard) — ممارسة سليمة.
-- **النسخ الاحتياطي:** سكربتات `db-backup.sh` / `db-restore.sh` + `docs/DISASTER_RECOVERY.md`.
+- **النسخ الاحتياطي:** `pnpm run db:backup` (scripts/src/backup-db.ts) + `docs/DISASTER_RECOVERY.md`.
 
 ---
 

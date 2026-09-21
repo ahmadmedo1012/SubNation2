@@ -189,26 +189,81 @@ ORDER BY duration DESC;
      in Memory_MCP with `commitSha`, `regression`, `rollbackOutcome`,
      `durationSec`.
 
-## 5. Scaling thresholds
+## 5. Free-tier posture & resource budget
 
-> **2026-09-20 final audit:** the deployment is FREE-TIER by design —
-> Render web sleeps after ~15 min without inbound traffic (accepted; the
-> boot gate + frontend cold-start retry make the wake transparent), and
-> NO Redis is provisioned (the app runs the PG-lease scheduler fallback;
-> rate-limit / cache / idempotency degrade to in-process). The thresholds
-> below record future operator decisions; none are active today.
+> **R104 (2026-09-21) — the current-state authority for Render free-tier
+> economics.** Supersedes the budget rows in
+> `docs/free-tier-optimization-2026-09-20.md`. Production topology:
+> **Render free web (subnation, Docker: API + SPA) + Render free web
+> (openwa-gateway, separate repo) + Neon Postgres (external) + Vercel
+> (parallel frontend)**. No worker. No Redis. **No Northflank** (the
+> 2026-09-21 experiment was rolled back — commit f582254).
 
-| Resource     | Current (free tier)           | Watch                                                   | Promote when                                           |
-| ------------ | ----------------------------- | ------------------------------------------------------- | ------------------------------------------------------ |
-| Render web   | free (sleeps when idle)       | wake frequency hurting UX; CPU/memory on `/api/metrics` | sustained traffic where wake latency is unacceptable   |
-| Redis        | NOT provisioned (PG-lease)    | only if a Redis is attached later                       | rate-limit/dedup consistency across multiple instances |
-| Neon         | free (0.25 CU, sleeps ~5 min) | active connections > 8 (DB_POOL_MAX), queueing          | scale plan                                             |
-| Sentry       | free 5K events/mo             | events > 4K/mo                                          | upgrade or sample harder                               |
-| Telegram bot | bot API rate limit (~30/sec)  | global rate-limit > 25/min                              | already capped at 30/min in alerting service           |
+### The allocation (verified against render.com docs + pricing, 2026-09-21)
 
-Every tier change must be recorded in
-`observability-seo-cwv-maturity:tier-decisions` Memory_MCP entry per the
-free-tier discipline rule (Property 20 of the spec).
+| Budget pool                  | Monthly allowance | Shared across          | Consumed only when                |
+| ---------------------------- | ----------------- | ---------------------- | --------------------------------- |
+| Free instance hours          | **750 h**         | ALL free web services  | a service is RUNNING (sleeping = free) |
+| Outbound bandwidth           | **5 GB**          | workspace              | bytes leave Render (API + SPA + images) |
+| Build pipeline minutes       | **500 min**       | workspace              | a build runs (both services)      |
+
+Failure modes: hours exhausted → all free services suspended until next
+month; bandwidth exhausted (no payment method) → free services suspended;
+build minutes exhausted → new builds disabled (running services stay up).
+Render may ALSO suspend a free service that generates uncommonly high
+service-initiated outbound volume (DB/API calls count).
+
+### Engineering targets (comfortably inside, not on the edge)
+
+| Target                                | Ceiling | Design budget | Margin |
+| ------------------------------------- | ------- | ------------- | ------ |
+| Instance hours (both services)        | 750 h   | **≤ 500 h (67%)** | ~250 h |
+| Outbound bandwidth                    | 5 GB    | **≤ 3 GB (60%)** | ~2 GB  |
+| Build minutes                         | 500 min | **≤ 350 min (70%)** | ~150 min |
+
+Expected normal usage: subnation awake ~1-4 h/day (30-120 h/mo — every
+wake serves real traffic then idles out 15 min later), openwa-gateway
+awake only during OTP activity + operator dashboards (well under 30
+h/mo). Every budget line holds ≥ 2× headroom over a realistic month.
+
+### What wakes what (the event-driven contract)
+
+| Wake source                          | Wakes                    | Legitimacy |
+| ------------------------------------ | ------------------------ | ---------- |
+| Storefront page view (Vercel/Render) | subnation → Neon         | real user traffic |
+| Admin panel session                  | subnation                | operator traffic |
+| OTP login attempt                    | subnation → openwa → WhatsApp servers | real user traffic |
+| Operator dashboard tab (openwa /dash)| openwa                   | operator traffic (poll is visibility-gated, R104) |
+| Deploy (manual, CI-gated)            | subnation / openwa       | operator action |
+| /robots.txt on a spun-down service   | nothing (Render answers before the app) | platform |
+
+### NEVER reintroduce (the anti-pattern list)
+
+Self-pings, keep-alive pingers, uptime pingers, scheduled GitHub-Action
+wakeups, `refetchInterval`-in-background polling, always-on storefront
+sockets, `reconnectionAttempts: Infinity`, timer-driven "preventive"
+maintenance, scheduled builds. Each of these was found and removed
+(2026-09-20 round + R104); every one of them converts a sleep-capable
+service into a 24/7 instance-hour burner (one forgotten tab ≈ 730 h/mo).
+
+### Remaining recurring activity (the complete timer inventory)
+
+While AWAKE (zero cost while sleeping — see AG1 inventory for file:line):
+PG-lease refresh 30 s (1 query), alerting evaluator 60 s (in-process
+counters only), boot one-shots once per leadership (+7 s deferral),
+daily crons 00:00-05:00 UTC under the leader lock. NOTHING runs while
+the service sleeps; nothing sends outbound while idle.
+
+### Inspection & alarm thresholds
+
+| Check                                | Where                                      | Investigate when                                  |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------------- |
+| Instance hours this month            | Render Dashboard → Billing → Monthly Usage | > 300 h by mid-month (projected > 600 h)          |
+| Bandwidth this month                 | same                                       | > 1.5 GB by mid-month (projected > 3 GB)          |
+| Build minutes this month             | same                                       | > 175 min by mid-month (projected > 350)          |
+| Wake frequency                        | logs: `Server listening` per day           | > ~40 cold boots/day sustained (usage grew — reassess) |
+| First-byte after wake                | logs: boot gate open → first 200           | > 25 s (check migration fast-path is hitting)     |
+| Neon compute hours                   | Neon console                               | unexpectedly high (check lease refresh + query load) |
 
 ## 6. Incident template
 

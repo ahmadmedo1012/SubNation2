@@ -106,7 +106,11 @@ async function flushAsync(): Promise<void> {
   }
 }
 
-async function readMarker(): Promise<{ epoch: string; readySince: number; warmed: boolean } | null> {
+async function readMarker(): Promise<{
+  epoch: string;
+  readySince: number;
+  warmed: boolean;
+} | null> {
   const rows = (await db.execute(
     sql`SELECT value FROM system_settings WHERE key = ${"openwa:epoch:" + SESSION_ID}`,
   )) as unknown as { rows?: Array<{ value?: string }> };
@@ -163,7 +167,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
   it("2. cold process + SAME pairingId → ADOPTED: only the 5 s residual remains (not 45 s)", async () => {
     // Boot 1: record the epoch + let the window fully elapse.
     installFetchMock(PAIRING_A);
-    let mod = await importOpenwa();
+    const mod = await importOpenwa();
     await mod.getWhatsAppGatewayReadiness();
     await vi.advanceTimersByTimeAsync(46_000);
     const settled = await mod.getWhatsAppGatewayReadiness();
@@ -183,7 +187,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
 
   it("3. cold process + CHANGED pairingId (true re-pair) → full fresh window + marker overwritten", async () => {
     installFetchMock(PAIRING_A);
-    let mod = await importOpenwa();
+    const mod = await importOpenwa();
     coldRestart(mod); // clean gate state (tests share module state in-file)
     await mod.getWhatsAppGatewayReadiness();
     await vi.advanceTimersByTimeAsync(46_000);
@@ -218,7 +222,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
     // self-check delivers → marker flips to warmed:true.
     process.env.WHATSAPP_OTP_OPERATOR_E164 = "218913456789";
     const calls = installFetchMock(PAIRING_A);
-    let mod = await importOpenwa();
+    const mod = await importOpenwa();
     coldRestart(mod); // clean gate state (tests share module state in-file)
     await mod.getWhatsAppGatewayReadiness();
     await vi.advanceTimersByTimeAsync(46_000);
@@ -246,7 +250,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
   it("5. WHATSAPP_OTP_DISABLE_EPOCH_MEMORY=true → no adoption (operator kill switch)", async () => {
     process.env.WHATSAPP_OTP_DISABLE_EPOCH_MEMORY = "true";
     installFetchMock(PAIRING_A);
-    let mod = await importOpenwa();
+    const mod = await importOpenwa();
     await mod.getWhatsAppGatewayReadiness();
     await flushAsync();
     expect(await readMarker()).toBeNull(); // nothing persisted either

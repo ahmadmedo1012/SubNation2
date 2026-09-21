@@ -13,5 +13,5 @@
 
 ## Backup Policies
 
-- **Database** _(r99 — corrected)_: Backups are **MANUAL** today (`pnpm run db:backup` → `scripts/db-backup.sh`; see `docs/DISASTER_RECOVERY.md`). Neon's point-in-time recovery window exists at the provider level, but no automated nightly backup job runs — provisioning one (Render Cron Job or equivalent) is an operator TODO documented in DISASTER_RECOVERY.md.
+- **Database** _(r99 — corrected, R104 — script repointed)_: Backups are **MANUAL** today (`pnpm run db:backup` → `scripts/src/backup-db.ts`; see `docs/DISASTER_RECOVERY.md`). Neon's point-in-time recovery window exists at the provider level, but no automated nightly backup job runs — provisioning one (Render Cron Job or equivalent) is an operator TODO documented in DISASTER_RECOVERY.md.
 - **Drills**: Restore drills are manual and currently **not scheduled** (DISASTER_RECOVERY.md tracks the drill log as "none yet").
