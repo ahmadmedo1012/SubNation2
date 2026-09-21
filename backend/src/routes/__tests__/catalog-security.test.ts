@@ -79,6 +79,15 @@ const FORBIDDEN_KEYS = [
   "supplier",
   "sku",
   "internal_cost",
+  // R102 (provider-readiness): the fulfillment-layer vocabulary joins the
+  // forbidden set — provider identity/references are operator-only data
+  // (provider_fulfillments table), never public catalog fields.
+  "providerOrder",
+  "provider_order",
+  "providerOrderId",
+  "provider_order_id",
+  "fulfillment",
+  "attempt",
 ];
 
 function collectKeys(value: unknown, acc: Set<string> = new Set()): Set<string> {

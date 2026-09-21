@@ -809,6 +809,88 @@ export async function applyProductVariantsNullsNotDistinctStage(
   );
 }
 
+// ── V1-M18 (R102, provider-readiness): provider_fulfillments table ───────
+// + the provider-order idempotency index.
+//
+// The provider abstraction seam (services/providers/): one row per
+// fulfillment attempt per order. Records WHO fulfilled WHAT and AGAINST
+// WHICH provider order — the durable, auditable relation the external
+// provider phase needs. Fully additive: no existing table is touched;
+// the manual path writes 'succeeded' rows in the purchase transaction.
+//
+// The UNIQUE (provider, provider_order_id) index is the provider-level
+// idempotency anchor — PLAIN unique semantics (default NULLS DISTINCT,
+// deliberately NOT V1-M17's NULLS NOT DISTINCT): the non-null half
+// makes one provider order attachable to exactly ONE SubNation order
+// (race-proof at the DB level), while distinct NULLs let any number of
+// manual rows (which never carry a provider order id) coexist — one per
+// order. The first R102 draft shipped NULLS NOT DISTINCT and the
+// checkout suite caught it on the second-ever manual purchase:
+// (manual, NULL) collided. Own the SEMANTIC, not the idiom.
+export async function applyProviderFulfillmentsStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'provider_fulfillment_status') THEN
+        CREATE TYPE provider_fulfillment_status AS ENUM ('pending', 'succeeded', 'failed');
+      END IF;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE TABLE IF NOT EXISTS provider_fulfillments (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      provider VARCHAR(32) NOT NULL DEFAULT 'manual',
+      attempt INTEGER NOT NULL DEFAULT 1,
+      status provider_fulfillment_status NOT NULL,
+      provider_order_id VARCHAR(255),
+      error_code VARCHAR(64),
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_provider_fulfillments_order
+      ON provider_fulfillments (order_id);
+  `);
+  await execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_provider_fulfillments_provider_order
+      ON provider_fulfillments (provider, provider_order_id);
+  `);
+  logger.info(
+    { category: "storage" },
+    "V1-M18: provider_fulfillments table + provider-order idempotency index",
+  );
+}
+
+// ── V1-M19 (R102, loyalty durable guard): idempotency_keys generalized ────
+// for non-order money intents.
+//
+// order_id becomes NULLABLE and a reference_type discriminator is added
+// (default 'order' — every existing row backfills automatically, the
+// checkout claim path is byte-identical). The loyalty convert-points
+// route claims the same table with (NULL, 'loyalty.convert') so the
+// last Redis-only client-money write gains the durable, transactional
+// backstop checkout has had since F10: during a Redis outage, a lost
+// response + retry can no longer double-convert points.
+// Additive + idempotent (ALTER ... DROP NOT NULL and ADD COLUMN IF NOT
+// EXISTS are both no-ops on re-runs).
+export async function applyIdempotencyReferenceTypeStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    ALTER TABLE idempotency_keys
+      ALTER COLUMN order_id DROP NOT NULL;
+  `);
+  await execute(sql`
+    ALTER TABLE idempotency_keys
+      ADD COLUMN IF NOT EXISTS reference_type VARCHAR(32) NOT NULL DEFAULT 'order';
+  `);
+  logger.info({ category: "storage" }, "V1-M19: idempotency_keys generalized (nullable order_id + reference_type)");
+}
+
 export async function runMigrations() {
   try {
     // ── Extensions ─────────────────────────────────────────────────────────
@@ -2526,6 +2608,18 @@ export async function runMigrations() {
     // the table + base index); probe-gated → steady-state boots are
     // no-ops. See applyProductVariantsNullsNotDistinctStage docs.
     await applyProductVariantsNullsNotDistinctStage();
+
+    // ── V1-M18 (R102, provider-readiness): provider_fulfillments + the ──
+    // provider-order idempotency index. Fully additive; runs last so the
+    // orders table it references is guaranteed present. Probe-gated →
+    // steady-state boots are no-ops. See applyProviderFulfillmentsStage docs.
+    await applyProviderFulfillmentsStage();
+
+    // ── V1-M19 (R102, loyalty durable guard): idempotency_keys ──
+    // generalization (nullable order_id + reference_type). Idempotent
+    // ALTERs; the checkout path is unchanged. See
+    // applyIdempotencyReferenceTypeStage docs.
+    await applyIdempotencyReferenceTypeStage();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

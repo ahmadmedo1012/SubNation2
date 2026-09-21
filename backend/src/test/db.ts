@@ -162,6 +162,29 @@ CREATE TABLE orders (
 -- the harness matches production's post-boot shape.
 CREATE INDEX idx_orders_variant ON orders (variant_id);
 
+-- V1-M18 (R102, provider-readiness): fulfillment relation — one row per
+-- attempt per order. Mirrored so purchase tests certify the provider
+-- record writes atomically with the order. PLAIN UNIQUE (default NULLS
+-- DISTINCT): non-null provider orders dedup (idempotency anchor);
+-- manual rows (NULL) coexist freely — NULLS NOT DISTINCT collided on
+-- the second manual purchase (caught by this very suite).
+CREATE TYPE provider_fulfillment_status AS ENUM ('pending','succeeded','failed');
+CREATE TABLE provider_fulfillments (
+  id serial PRIMARY KEY,
+  order_id integer NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  provider varchar(32) NOT NULL DEFAULT 'manual',
+  attempt integer NOT NULL DEFAULT 1,
+  status provider_fulfillment_status NOT NULL,
+  provider_order_id varchar(255),
+  error_code varchar(64),
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_provider_fulfillments_order ON provider_fulfillments (order_id);
+CREATE UNIQUE INDEX uniq_provider_fulfillments_provider_order
+  ON provider_fulfillments (provider, provider_order_id);
+
 CREATE TABLE wallet_ledger (
   id serial PRIMARY KEY,
   -- V1-M9 (B8-02): named FK (ON DELETE CASCADE) — prod name/definition,

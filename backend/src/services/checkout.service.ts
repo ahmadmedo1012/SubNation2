@@ -6,12 +6,14 @@ import {
   ordersTable,
   productVariantsTable,
   productsTable,
+  providerFulfillmentsTable,
   usersTable,
 } from "@workspace/db";
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
-import { isEncrypted, safeDecrypt } from "../lib/encryption";
+// R102: isEncrypted/safeDecrypt moved WITH the claim block into
+// services/providers/manual.provider.ts (the deliverability gate's home).
 import {
   claimIdempotencyKey,
   findIdempotentOrderId,
@@ -23,6 +25,7 @@ import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
 import { computeTier } from "../lib/loyalty-tiers";
 import { toNumber } from "../lib/numeric";
+import { getFulfillmentProvider } from "./providers/registry";
 
 /**
  * Checkout service — the single owner of the purchase flow.
@@ -382,89 +385,31 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         if (saleStale) throw new Error("STALE_FLASH_SALE");
       }
 
-      // H4 (deep-audit 2026-09-06): race-free inventory claim. The old
-      // flow selected one row OUTSIDE the transaction with no ORDER BY —
-      // two concurrent buyers grabbed the SAME row, one won the claim,
-      // and the loser saw a false 409 "claimed" while identical units
-      // sat unsold. FOR UPDATE SKIP LOCKED inside the transaction makes
-      // each buyer take a DIFFERENT row (locked rows are skipped).
-      //
-      // Claim preference (catalog 2026-09-20): variant-scoped units
-      // FIRST (exact option match), then legacy product-level units
-      // (variant_id IS NULL) — two ordered selects, so a variant-scoped
-      // unit is never burned on another variant's order while generic
-      // stock remains. ORDER BY id keeps each pool deterministic.
-      let lockedInventory: typeof inventoryTable.$inferSelect | undefined;
-      if (variant) {
-        [lockedInventory] = await tx
-          .select()
-          .from(inventoryTable)
-          .where(
-            and(
-              eq(inventoryTable.productId, productId),
-              eq(inventoryTable.isSold, false),
-              eq(inventoryTable.variantId, variant.id),
-            ),
-          )
-          .orderBy(inventoryTable.id)
-          .limit(1)
-          .for("update", { skipLocked: true });
+      // R102 (provider-readiness): fulfillment is provider-owned. The
+      // claim block below (H4's two ordered FOR UPDATE SKIP LOCKED selects
+      // → R93-DATA deliverability gate → the guarded claim UPDATE) moved
+      // VERBATIM into ManualProvider (services/providers/manual.provider.ts)
+      // — today's only registered provider (registry.ts, env
+      // FULFILLMENT_PROVIDER, default + fail-safe 'manual'). Business
+      // rules are UNCHANGED — the transaction body was moved, not
+      // rewritten. A future external provider registers in the registry
+      // and slots in here without this file learning provider specifics.
+      const provider = getFulfillmentProvider();
+      const fulfillment = await provider.fulfill(
+        { productId, variantId: variant?.id ?? null, now },
+        tx as unknown as typeof db,
+      );
+      if (!fulfillment.ok) {
+        // Map the provider's structured refusal onto the SAME stable
+        // error strings the catch below has always keyed on (INVENTORY_*
+        // ride the existing CheckoutFailureReason members).
+        throw new Error(
+          fulfillment.reason === "INVENTORY_CORRUPT"
+            ? `INVENTORY_CORRUPT:${fulfillment.detail ?? ""}`
+            : fulfillment.reason,
+        );
       }
-      if (!lockedInventory) {
-        [lockedInventory] = await tx
-          .select()
-          .from(inventoryTable)
-          .where(
-            and(
-              eq(inventoryTable.productId, productId),
-              eq(inventoryTable.isSold, false),
-              isNull(inventoryTable.variantId),
-            ),
-          )
-          .orderBy(inventoryTable.id)
-          .limit(1)
-          .for("update", { skipLocked: true });
-      }
-      if (!lockedInventory) throw new Error("OUT_OF_STOCK");
-
-      const inventoryItem = lockedInventory;
-
-      // R93-DATA (round-93): deliverability gate — run BEFORE any mutation.
-      // A unit whose ciphertext fails GCM authentication with the current
-      // ENCRYPTION_KEY would render as null credentials at the API boundary
-      // (money for nothing). Refuse the sale instead; the whole transaction
-      // (this claim included) rolls back. The catch maps this to
-      // INVENTORY_CORRUPT and fires a deduped admin alert.
-      //
-      // Product shapes are heterogeneous (C1's refund tests pin this):
-      //   - account products: email + password;
-      //   - code products: the deliverable IS extraDetails (email/password
-      //     legitimately null).
-      // So a unit is deliverable when at least ONE field is present AND every
-      // PRESENT encrypted field decrypts. Legacy PLAINTEXT rows pass through
-      // safeDecrypt unchanged — they stay sellable by design.
-      const fieldDeliverable = (v: string | null) =>
-        v === null || !isEncrypted(v) || safeDecrypt(v) !== null;
-      const hasAnyDeliverable =
-        inventoryItem.accountPassword !== null ||
-        inventoryItem.accountEmail !== null ||
-        inventoryItem.extraDetails !== null;
-      if (
-        !hasAnyDeliverable ||
-        !fieldDeliverable(inventoryItem.accountPassword) ||
-        !fieldDeliverable(inventoryItem.accountEmail) ||
-        !fieldDeliverable(inventoryItem.extraDetails ?? null)
-      ) {
-        throw new Error(`INVENTORY_CORRUPT:${inventoryItem.id}`);
-      }
-
-      // Atomic inventory claim inside transaction to prevent race conditions
-      const [inv] = await tx
-        .update(inventoryTable)
-        .set({ isSold: true, soldAt: now })
-        .where(and(eq(inventoryTable.id, inventoryItem.id), eq(inventoryTable.isSold, false)))
-        .returning();
-      if (!inv) throw new Error("INVENTORY_CLAIMED");
+      const claimedUnit = fulfillment.unit;
 
       const newLifetimeSpend = +(toNumber(user.lifetimeSpend) + finalPrice).toFixed(2);
       const [updatedUser] = await tx
@@ -560,28 +505,45 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           // or deleted; FK is ON DELETE SET NULL for that reason).
           variantId: variant?.id ?? null,
           variantLabel,
-          inventoryId: inventoryItem.id,
+          inventoryId: claimedUnit.inventoryItemId,
           amount: String(finalPrice),
           walletBalanceBefore: String(currentBalance),
           walletBalanceAfter: String(newBalance),
           status: "completed",
-          deliveredEmail: inventoryItem.accountEmail,
+          deliveredEmail: claimedUnit.email,
           // H2 (deep-audit 2026-09-06): store the password ENCRYPTED at
-          // rest — the inventory value is already AES-256-GCM ciphertext,
-          // so pass it through unchanged. The old code decrypted it here,
-          // leaving plaintext credentials in every orders row (a DB dump
-          // / backup leak = every delivered account exposed). The API
-          // boundary (routes/orders.ts formatOrder) still decrypts with
-          // safeDecrypt, and legacy plaintext rows pass through it
-          // unchanged — no backfill needed, reads keep working.
-          deliveredPassword: inventoryItem.accountPassword,
-          deliveredExtraDetails: inventoryItem.extraDetails ?? null,
+          // rest — the provider returns it in its AT-REST shape (the
+          // inventory value is already AES-256-GCM ciphertext for manual
+          // fulfillment, so it passes through unchanged). The old code
+          // decrypted it here, leaving plaintext credentials in every
+          // orders row (a DB dump / backup leak = every delivered account
+          // exposed). The API boundary (routes/orders.ts formatOrder)
+          // still decrypts with safeDecrypt, and legacy plaintext rows
+          // pass through it unchanged — no backfill needed.
+          deliveredPassword: claimedUnit.password,
+          deliveredExtraDetails: claimedUnit.extraDetails,
           deliveredUsageTerms: product.usageTerms ?? null,
           deliveredAt: now,
           couponCode: appliedCoupon?.code ?? null,
           discountAmount: String(discountAmount),
         })
         .returning();
+
+      // R102 (provider-readiness): durable fulfillment record — WHO
+      // fulfilled this order, against WHICH provider order, in the SAME
+      // transaction as the order + charge + ledger. Manual: attempt 1,
+      // 'succeeded', no provider order id. A future async provider writes
+      // 'pending' here and settles post-commit — orders.status stays the
+      // only customer-visible gate either way. The UNIQUE NULLS NOT
+      // DISTINCT (provider, provider_order_id) index is the DB-level
+      // provider idempotency anchor (V1-M18).
+      await tx.insert(providerFulfillmentsTable).values({
+        orderId: o.id,
+        provider: provider.id,
+        attempt: 1,
+        status: "succeeded",
+        providerOrderId: claimedUnit.providerOrderId,
+      });
 
       // Ledger entry committed atomically with balance mutation. If this
       // fails the whole purchase rolls back, keeping the audit trail in sync.

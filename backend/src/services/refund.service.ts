@@ -43,11 +43,39 @@
  * the idempotency middleware in `middlewares/idempotency.ts`.
  */
 
-import { db, couponsTable, ordersTable, usersTable } from "@workspace/db";
+import {
+  couponsTable,
+  db,
+  ordersTable,
+  providerFulfillmentsTable,
+  usersTable,
+} from "@workspace/db";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { logAdminAlert, type AlertType } from "../jobs/alertLogger";
 import { insertLedgerEntry } from "../lib/ledger";
 import { computeTier } from "../lib/loyalty-tiers";
+import { getFulfillmentProvider } from "./providers/registry";
+
+/**
+ * R102 (provider-readiness): the provider order reference for a refunded
+ * order, from the fulfillment audit trail (latest succeeded attempt).
+ * Null when the order was fulfilled manually (no provider order id) or
+ * the trail is absent — both mean "nothing to release".
+ */
+async function lookupProviderOrderId(orderId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ providerOrderId: providerFulfillmentsTable.providerOrderId })
+    .from(providerFulfillmentsTable)
+    .where(
+      and(
+        eq(providerFulfillmentsTable.orderId, orderId),
+        eq(providerFulfillmentsTable.status, "succeeded"),
+      ),
+    )
+    .orderBy(sql`${providerFulfillmentsTable.attempt} DESC`)
+    .limit(1);
+  return row?.providerOrderId ?? null;
+}
 
 export class RefundError extends Error {
   constructor(
@@ -312,6 +340,32 @@ export class RefundService {
         `استُرد الطلب #${orderId} بينما كانت بيانات التسليم قد سُلّمت للعميل ومُحيت الآن من قاعدة البيانات — يلزم تدوير كلمة مرور الحساب المصدر فوراً لمنع إساءة الاستخدام.`,
         { dedupeKey: `refund:creds:${orderId}` },
       );
+    }
+
+    // R102 (provider-readiness): optional provider-side recovery — if the
+    // fulfilling provider supports release (returned-to-provider refunds),
+    // notify it AFTER the refund tx commits. Fire-and-forget BY DESIGN:
+    // a provider outage must never fail the already-committed refund; the
+    // attempt is recoverable via the provider_fulfillments audit trail and
+    // a later reconciliation pass. ManualProvider exposes no release()
+    // (B2-03: revoke-not-return), so this whole block is a no-op today.
+    const refundProvider = getFulfillmentProvider();
+    if (typeof refundProvider.release === "function") {
+      const providerOrderId = await lookupProviderOrderId(orderId).catch(() => null);
+      if (providerOrderId) {
+        void refundProvider
+          .release(providerOrderId)
+          .catch((err) =>
+            logAdminAlert(
+              "system",
+              `فشل إخطار المورد بالاسترداد: ${orderCodeForAlert ?? orderId}`,
+              `استُرد الطلب #${orderId} لكن نداء release للمورد فشل — الاسترداد مُلتزم محلياً؛ سيتولى التسوية اللاحقة. الخطأ: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+              { dedupeKey: `refund:release_failed:${orderId}` },
+            ),
+          );
+      }
     }
 
     return result;
