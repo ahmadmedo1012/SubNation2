@@ -484,7 +484,15 @@ router.post("/change-password", requireAdmin, async (req, res) => {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
     return res
       .status(429)
-      .json(createErrorResponse(`محاولات كثيرة. حاول بعد ${mins} دقيقة.`, ErrorCode.INVALID_DATA));
+      .json(
+        // AUD103-4-F6 (r103): same "too many attempts" class as the login
+        // lockout — ACCOUNT_LOCKED, not INVALID_DATA (the two codes render
+        // different Arabic copy client-side).
+        createErrorResponse(
+          `محاولات كثيرة. حاول بعد ${mins} دقيقة.`,
+          ErrorCode.ACCOUNT_LOCKED,
+        ),
+      );
   }
 
   const { valid } = await verifyPassword(current_password, admin.passwordHash);

@@ -130,8 +130,10 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   const body = (req.body ?? {}) as Partial<AskBody>;
   const intentText = typeof body.intent_text === "string" ? body.intent_text.trim() : "";
   if (!intentText || intentText.length > 4000) {
+    // AUD103-4-F16 (r103): Arabic like every other message (the envelope
+    // language contract) — this surfaces in the admin copilot toasts.
     res.status(400).json({
-      error: "intent_text required (1–4000 chars)",
+      error: "النص مطلوب (بين حرف و4000 حرف)",
       code: ErrorCode.COPILOT_INVALID_INPUT,
     });
     return;

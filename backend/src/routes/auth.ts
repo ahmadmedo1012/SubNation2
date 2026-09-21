@@ -527,7 +527,9 @@ router.post("/firebase/session", async (req, res) => {
         .json(
           createErrorResponse(
             "تسجيل الدخول برقم الهاتف عبر Firebase معطّل — استخدم WhatsApp OTP",
-            ErrorCode.SERVICE_UNAVAILABLE,
+            // AUD103-4-F7 (r103): 403 paired with SERVICE_UNAVAILABLE was
+            // contradictory — FEATURE_DISABLED exists for exactly this.
+            ErrorCode.FEATURE_DISABLED,
             { reason: "phone_auth_disabled" },
           ),
         );

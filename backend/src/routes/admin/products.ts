@@ -22,6 +22,14 @@ import { runStockSweep } from "../../jobs/stockWatcher";
 
 const router = Router();
 
+// AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
+// this surface carries inventory listing returns decrypted emails/codes; an intermediary must never
+// serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 router.get("/products", requireAdmin, async (req, res) => {
   // V4: the admin command palette sends ?search= — previously ignored
   // (the handler didn't even read req). Match name or category,

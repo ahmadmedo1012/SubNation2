@@ -183,7 +183,14 @@ router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, re
   // sweep (throttled 1 min; was an hourly interval timer) so the list
   // it renders is already clean of expired-but-active rows.
   fireThrottledMaintenance("coupon-sweep", 60_000, checkExpiringCoupons);
-  const coupons = await db.select().from(couponsTable).orderBy(desc(couponsTable.createdAt));
+  // AUD103-4-F9 (r103): the only admin list without a cap — clamp to 200
+  // like every other admin list (orders/topups/users/alerts) so the row
+  // count can never grow into an unbounded dump.
+  const coupons = await db
+    .select()
+    .from(couponsTable)
+    .orderBy(desc(couponsTable.createdAt))
+    .limit(200);
   return res.json(coupons.map(formatCoupon));
 });
 

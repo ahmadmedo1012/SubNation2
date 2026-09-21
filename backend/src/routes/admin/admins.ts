@@ -10,6 +10,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+// AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
+// this surface carries admin account list (usernames, 2FA state, permission sets); an intermediary must never
+// serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const VALID_SCOPES = new Set<string>([PERMISSION_SCOPES.ALL, ...ALL_SCOPES]);
 
 /**
@@ -92,17 +100,36 @@ router.post("/", async (req, res) => {
   };
 
   if (!username || typeof username !== "string" || username.trim().length < 3) {
-    return res.status(400).json(createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA),
+      );
   }
   if (!password || typeof password !== "string" || password.length < 8) {
-    return res.status(400).json(createErrorResponse("كلمة المرور يجب أن تكون 8 أحرف على الأقل", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("كلمة المرور يجب أن تكون 8 أحرف على الأقل", ErrorCode.INVALID_DATA),
+      );
   }
   const cleanPerms = sanitizePermissions(permissions);
   if (cleanPerms === null || cleanPerms.length === 0) {
-    return res.status(400).json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل من القائمة", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("يجب اختيار صلاحية واحدة على الأقل من القائمة", ErrorCode.INVALID_DATA),
+      );
   }
   if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
-    return res.status(403).json(createErrorResponse("منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً", ErrorCode.INSUFFICIENT_PERMISSIONS));
+    return res
+      .status(403)
+      .json(
+        createErrorResponse(
+          "منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً",
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+        ),
+      );
   }
 
   try {
@@ -117,7 +144,7 @@ router.post("/", async (req, res) => {
       .values({
         username: username.trim(),
         passwordHash: await hashPassword(password),
-        displayName: (display_name ?? username).trim() || username.trim(),
+        displayName: ((display_name ?? username).trim() || username.trim()).slice(0, 200),
         role: cleanRole,
         permissions: cleanPerms,
         isActive: true,
@@ -146,7 +173,9 @@ router.post("/", async (req, res) => {
       "code" in err &&
       (err as { code: string }).code === "23505"
     ) {
-      return res.status(409).json(createErrorResponse("اسم المستخدم مستخدم بالفعل", ErrorCode.ALREADY_EXISTS));
+      return res
+        .status(409)
+        .json(createErrorResponse("اسم المستخدم مستخدم بالفعل", ErrorCode.ALREADY_EXISTS));
     }
     throw err;
   }
@@ -162,7 +191,8 @@ router.post("/", async (req, res) => {
  */
 router.patch("/:id", async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const adminReq = req as unknown as AdminAuthenticatedRequest;
   if (adminReq.adminId === id) {
@@ -184,27 +214,47 @@ router.patch("/:id", async (req, res) => {
   const updates: { displayName?: string; permissions?: string[] } = {};
   if (display_name !== undefined) {
     if (typeof display_name !== "string" || display_name.trim().length === 0) {
-      return res.status(400).json(createErrorResponse("الاسم الظاهر مطلوب", ErrorCode.INVALID_DATA));
+      return res
+        .status(400)
+        .json(createErrorResponse("الاسم الظاهر مطلوب", ErrorCode.INVALID_DATA));
     }
-    updates.displayName = display_name.trim();
+    // AUD103-4-F14 (r103): cap at 200 like PATCH /profile (admin/auth.ts)
+    // does — an unbounded string landed in admin_users and echoed through
+    // every list.
+    updates.displayName = display_name.trim().slice(0, 200);
   }
   if (permissions !== undefined) {
     const cleanPerms = sanitizePermissions(permissions);
     if (cleanPerms === null || cleanPerms.length === 0) {
-      return res.status(400).json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل", ErrorCode.INVALID_DATA));
+      return res
+        .status(400)
+        .json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل", ErrorCode.INVALID_DATA));
     }
     if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
-      return res.status(403).json(createErrorResponse("منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً", ErrorCode.INSUFFICIENT_PERMISSIONS));
+      return res
+        .status(403)
+        .json(
+          createErrorResponse(
+            "منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً",
+            ErrorCode.INSUFFICIENT_PERMISSIONS,
+          ),
+        );
     }
     updates.permissions = cleanPerms;
   }
   if (Object.keys(updates).length === 0) {
-    return res.status(400).json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("لا توجد حقول للتحديث", ErrorCode.INVALID_DATA));
   }
 
   // Last-admin guard: if removing the "admins" scope from this user,
   // make sure at least one OTHER active admin still has it (or "all").
-  if (updates.permissions && !updates.permissions.includes("admins") && !updates.permissions.includes("all")) {
+  if (
+    updates.permissions &&
+    !updates.permissions.includes("admins") &&
+    !updates.permissions.includes("all")
+  ) {
     const [{ count: stillCount } = { count: 0 }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(adminUsersTable)
@@ -216,7 +266,14 @@ router.patch("/:id", async (req, res) => {
         ),
       );
     if (Number(stillCount) === 0) {
-      return res.status(400).json(createErrorResponse("لا يمكن سحب صلاحية إدارة المسؤولين من آخر مسؤول يملكها", ErrorCode.INVALID_DATA));
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "لا يمكن سحب صلاحية إدارة المسؤولين من آخر مسؤول يملكها",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
     }
   }
 
@@ -258,11 +315,14 @@ router.patch("/:id", async (req, res) => {
  */
 router.post("/:id/disable", async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const adminReq = req as unknown as AdminAuthenticatedRequest;
   if (adminReq.adminId === id) {
-    return res.status(400).json(createErrorResponse("لا يمكنك تعطيل حسابك", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("لا يمكنك تعطيل حسابك", ErrorCode.INVALID_DATA));
   }
 
   // Last-active-admin-with-admins-scope guard.
@@ -277,7 +337,14 @@ router.post("/:id/disable", async (req, res) => {
       ),
     );
   if (Number(othersCount) === 0) {
-    return res.status(400).json(createErrorResponse("لا يمكن تعطيل آخر مسؤول قادر على إدارة الحسابات", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "لا يمكن تعطيل آخر مسؤول قادر على إدارة الحسابات",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
   }
 
   const [updated] = await db
@@ -286,7 +353,8 @@ router.post("/:id/disable", async (req, res) => {
     .where(eq(adminUsersTable.id, id))
     .returning();
 
-  if (!updated) return res.status(404).json(createErrorResponse("الحساب غير موجود", ErrorCode.NOT_FOUND));
+  if (!updated)
+    return res.status(404).json(createErrorResponse("الحساب غير موجود", ErrorCode.NOT_FOUND));
 
   void writeAuditLog(req, "admin.disabled", "admin_user", id, {});
   return res.json({ id: updated.id, is_active: updated.isActive });
@@ -294,7 +362,8 @@ router.post("/:id/disable", async (req, res) => {
 
 router.post("/:id/enable", async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالحة", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالحة", ErrorCode.INVALID_DATA));
 
   // A disabled ["all"] super-admin being re-enabled restores full
   // access — the same escalation surface as granting "all" (V1-L11,
@@ -323,7 +392,8 @@ router.post("/:id/enable", async (req, res) => {
     .where(eq(adminUsersTable.id, id))
     .returning();
 
-  if (!updated) return res.status(404).json(createErrorResponse("الحساب غير موجود", ErrorCode.NOT_FOUND));
+  if (!updated)
+    return res.status(404).json(createErrorResponse("الحساب غير موجود", ErrorCode.NOT_FOUND));
 
   void writeAuditLog(req, "admin.enabled", "admin_user", id, {});
   return res.json({ id: updated.id, is_active: updated.isActive });

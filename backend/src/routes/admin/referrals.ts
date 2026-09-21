@@ -21,6 +21,15 @@ router.get("/referrals", requireAdmin, async (req, res) => {
   const status = queryString(req, "status");
   const search = queryString(req, "search");
 
+  // AUD103-4-F10 (r103): an out-of-enum ?status= fed the raw SQL filter
+  // and silently returned an EMPTY list that read as "no referrals" —
+  // 400 like the topups enum guard instead of a silent blank page.
+  if (status !== "" && status !== "pending" && status !== "credited") {
+    return res
+      .status(400)
+      .json(createErrorResponse("قيمة تصفية غير صالحة", ErrorCode.INVALID_DATA));
+  }
+
   // Round-3 (8-c §2.6): the three list/aggregate queries were sequential;
   // they share nothing but the (optional) status filter — run concurrently.
   // The `50` literals below duplicate lib/loyalty-tiers POINTS_PER_REFERRAL;

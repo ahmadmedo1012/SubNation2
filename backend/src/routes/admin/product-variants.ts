@@ -24,6 +24,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
  */
 
 const router = Router();
+
+// AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
+// this surface carries variant rows (pricing, SKUs); an intermediary must never
+// serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 router.use(requireAdmin);
 
 /** Serialize one variant row for the admin UI (internal fields included). */

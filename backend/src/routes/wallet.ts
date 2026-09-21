@@ -66,7 +66,12 @@ router.get("/", requireUser, async (req, res) => {
       .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending"))),
   ]);
   if (!user)
-    return res.status(401).json(createErrorResponse("المستخدم غير موجود", ErrorCode.UNAUTHORIZED));
+    // AUD103-4-F2 (r103): one failure class, one shape — "user row missing
+    // under a valid session" is 401 ACCOUNT_NOT_FOUND everywhere (auth/me
+    // already used this; loyalty used to 404, wallet used UNAUTHORIZED).
+    return res
+      .status(401)
+      .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
   return res.json({
     balance: toNumber(user.walletBalance),

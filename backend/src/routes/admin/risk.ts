@@ -41,6 +41,14 @@ import { sendCriticalRiskAlert } from "../../services/risk-alerts.service";
 
 const router = Router();
 
+// AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
+// this surface carries risk events carry phones, IPs, user agents; an intermediary must never
+// serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const VALID_LEVELS = new Set(["low", "medium", "high", "critical"]);
 const VALID_LABELS = new Set(["confirmed_fraud", "false_positive", "escalated"]);
 // A5-03 (round-94): `?eventType=` feeds the risk_event_type pg-enum

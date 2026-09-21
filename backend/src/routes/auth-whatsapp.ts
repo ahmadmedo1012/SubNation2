@@ -143,10 +143,23 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         headers["Retry-After"] = retryAfter;
       }
       res.set(headers as Record<string, string>);
+      // AUD103-4-F5 (r103): the body code now classifies like the status
+      // does — a typed client reading only `code` couldn't tell a
+      // rate-limit from a gateway-down (everything was INVALID_DATA).
+      const codeByReason: Partial<Record<string, ErrorCode>> = {
+        cooldown: ErrorCode.RATE_LIMITED,
+        hourly_limit: ErrorCode.RATE_LIMITED,
+        gateway_disabled: ErrorCode.SERVICE_UNAVAILABLE,
+        whatsapp_not_paired: ErrorCode.SERVICE_UNAVAILABLE,
+        whatsapp_settling: ErrorCode.SERVICE_UNAVAILABLE,
+        gateway_waking: ErrorCode.SERVICE_UNAVAILABLE,
+        store_failed: ErrorCode.INTERNAL_ERROR,
+      };
+      const bodyCode = codeByReason[result.reason] ?? ErrorCode.INVALID_DATA;
       return res.status(status).json(
         createErrorResponse(
           messages[result.reason] ?? "تعذّر إرسال الرمز",
-          ErrorCode.INVALID_DATA,
+          bodyCode,
           {
             reason: result.reason,
             ...(retryAfter ? { retry_after_sec: retryAfter } : {}),

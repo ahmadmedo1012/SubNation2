@@ -21,6 +21,14 @@ import {
 
 const router = Router();
 
+// AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
+// this surface carries stock forecasting detail per product; an intermediary must never
+// serve it from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 type PipelineState = "fresh" | "stale" | "uninitialized" | "calibrating";

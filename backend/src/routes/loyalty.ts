@@ -47,7 +47,12 @@ router.get("/", requireUser, async (req, res) => {
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user)
-    return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
+    // AUD103-4-F2 (r103): one failure class, one shape — 401
+    // ACCOUNT_NOT_FOUND like /api/auth/me and /api/wallet (was 404
+    // NOT_FOUND, a misleading shape for a session-bearing request).
+    return res
+      .status(401)
+      .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
   const referrals = await db
     .select()

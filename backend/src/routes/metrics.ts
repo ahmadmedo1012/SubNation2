@@ -123,7 +123,9 @@ router.get("/metrics", requireMetricsAuth, async (_req, res) => {
     res.send(body);
   } catch (err) {
     logger.error({ err, category: "monitoring" }, "Failed to render Prometheus metrics");
-    res.status(500).json(createErrorResponse("metrics_unavailable", ErrorCode.INTERNAL_ERROR));
+    // AUD103-4-F16 (r103): Arabic like every other user-facing message —
+    // this string is operator-visible, not an internal identifier.
+    res.status(500).json(createErrorResponse("تعذّر جلب المقاييس", ErrorCode.INTERNAL_ERROR));
   }
 });
 
