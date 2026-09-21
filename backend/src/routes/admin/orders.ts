@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
-import { queryString } from "../../lib/http";
+import { escapeLikeTerm, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
@@ -46,7 +46,9 @@ router.get("/orders", requireAdmin, async (req, res) => {
   // name, or product name (case-insensitive).
   const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
   if (search.length > 0) {
-    const like = `%${search.toLowerCase()}%`;
+    // AUD103-3-F4 (r103): escape LIKE wildcards before wrapping — a bare
+    // "%" in the palette search must not match every row.
+    const like = `%${escapeLikeTerm(search.toLowerCase())}%`;
     conditions.push(
       sql`(
         LOWER(${ordersTable.orderCode}) LIKE ${like}

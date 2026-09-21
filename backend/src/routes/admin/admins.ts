@@ -106,13 +106,19 @@ router.post("/", async (req, res) => {
   }
 
   try {
+    // AUD103-3-F3 (r103): `role` is cosmetic today (RBAC keys off
+    // permissions and requireRole has no production callers), but a future
+    // adoption of the legacy requireRole gate would honor an injected
+    // "super_admin" — store only the two known-good values, exactly like
+    // the admin UI offers.
+    const cleanRole = role === "super_admin" ? "super_admin" : "admin";
     const [created] = await db
       .insert(adminUsersTable)
       .values({
         username: username.trim(),
         passwordHash: await hashPassword(password),
         displayName: (display_name ?? username).trim() || username.trim(),
-        role: role && typeof role === "string" ? role : "admin",
+        role: cleanRole,
         permissions: cleanPerms,
         isActive: true,
       })

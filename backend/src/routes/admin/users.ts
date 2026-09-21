@@ -2,7 +2,7 @@ import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { intParam, queryString } from "../../lib/http";
+import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
@@ -38,7 +38,10 @@ router.get("/users", requireAdmin, async (req, res) => {
       ? await db
           .select()
           .from(usersTable)
-          .where(like(usersTable.phone, `%${search}%`))
+          // AUD103-3-F4 (r103): escape LIKE wildcards so a "%"/"_" in the
+          // search box can't act as a pattern wildcard (bare "%" matched
+          // every row).
+          .where(like(usersTable.phone, `%${escapeLikeTerm(search)}%`))
           .orderBy(desc(usersTable.createdAt))
           .limit(limit)
           .offset((page - 1) * limit)

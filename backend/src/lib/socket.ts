@@ -91,6 +91,7 @@ import { Server as SocketServer, type Socket } from "socket.io";
 import { __testables as cloudflareIpTestables } from "../middlewares/cloudflareClientIp";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "./jwt";
 import { logger } from "./logger";
+import { hasPermission } from "./permissions";
 import { isSessionRowLive } from "./session-liveness";
 import { isValidAdminSession } from "./admin-session";
 import { getConfiguredOrigins } from "./origins";
@@ -109,6 +110,21 @@ let io: SocketServer | null = null;
  * DB (sessions row / admin is_active). 93-A1 S1 recommended "e.g. every 5
  * min" — cheap indexed lookups (session probe is additionally 60 s-cached). */
 export const SOCKET_REVERIFY_INTERVAL_MS = 5 * 60_000;
+
+/** AUD103-3-F2 (r103): scope-gated room for live admin ALERT broadcasts.
+ * "admin-room" stays open to every active admin (counter-only stats
+ * updates), but admin-alert-new payloads carry operational content
+ * (product names, coupon codes, risk references) — the socket stream now
+ * mirrors the HTTP RBAC of /api/admin/alerts (support scope; "all"
+ * wildcard passes). */
+export const ADMIN_ALERTS_ROOM = "admin-alerts-room";
+
+/** AUD103-3-F2 (r103): does this permission set unlock the live alert
+ * room? Kept in sync with the HTTP mount (routes/admin/index.ts mounts
+ * the alerts router under the `support` scope). */
+export function hasAlertScope(granted: readonly string[] | null | undefined): boolean {
+  return hasPermission(granted, "support");
+}
 
 // ── R97-06 (round-97 F2): connection caps ────────────────────────────────
 
@@ -304,6 +320,12 @@ export interface SocketLivenessResult {
   userRevoked?: boolean;
   /** The admin component (adminId/role/isAdmin) is revoked — strip it / leave admin-room. */
   adminRevoked?: boolean;
+  /** AUD103-3-F2 (r103): the admin's CURRENT permission scopes, read by
+   * the same probe that checks is_active — present whenever the admin row
+   * was found (even on fail-open probe errors it stays undefined, in which
+   * case room membership is simply left as-is). Used to reconcile the
+   * scope-gated alert room on every re-verify pass. */
+  adminPermissions?: string[];
   /** First failure reason — used for the rejection counter + logs. */
   reason?: SocketLivenessFailure;
 }
@@ -364,7 +386,7 @@ export async function verifySocketIdentityLive(
         }
       }
       const [admin] = await db
-        .select({ isActive: adminUsersTable.isActive })
+        .select({ isActive: adminUsersTable.isActive, permissions: adminUsersTable.permissions })
         .from(adminUsersTable)
         .where(eq(adminUsersTable.id, identity.adminId))
         .limit(1);
@@ -376,6 +398,10 @@ export async function verifySocketIdentityLive(
         result.ok = false;
         result.adminRevoked = true;
         result.reason ??= "admin_inactive";
+      } else {
+        // AUD103-3-F2 (r103): carry the live scopes out so the caller can
+        // reconcile the scope-gated alert room without a second read.
+        result.adminPermissions = admin.permissions;
       }
     } catch (err) {
       logger.warn(
@@ -667,6 +693,20 @@ async function reverifyAndEnforce(socket: Socket): Promise<void> {
   }
   if (liveness.adminRevoked === true && identity.isAdmin) {
     socket.leave("admin-room");
+    socket.leave(ADMIN_ALERTS_ROOM);
+  }
+
+  // AUD103-3-F2 (r103): reconcile the scope-gated alert room on every
+  // pass — a scope granted or removed mid-connection takes effect within
+  // one re-verify interval, without waiting for a reconnect. Only when the
+  // probe actually returned the live scopes (fail-open probes leave the
+  // current membership untouched).
+  if (liveness.ok && identity.isAdmin && liveness.adminPermissions) {
+    if (hasAlertScope(liveness.adminPermissions)) {
+      socket.join(ADMIN_ALERTS_ROOM);
+    } else {
+      socket.leave(ADMIN_ALERTS_ROOM);
+    }
   }
 
   recordRejection(liveness.reason ?? "session_revoked", {
@@ -860,6 +900,29 @@ export function initSocket(server: HttpServer) {
     }
     if (identity?.isAdmin === true) {
       socket.join("admin-room");
+      // AUD103-3-F2 (r103): the scope-gated alert room needs the admin's
+      // LIVE permission scopes, which the JWT handshake does not carry —
+      // fetch them async (best-effort: the HTTP RBAC remains the
+      // enforcement truth; a failed read just means no live alert stream
+      // until the next re-verify pass reconciles it).
+      if (identity.adminId != null) {
+        const adminId = identity.adminId;
+        void (async () => {
+          try {
+            const [row] = await db
+              .select({ permissions: adminUsersTable.permissions })
+              .from(adminUsersTable)
+              .where(eq(adminUsersTable.id, adminId))
+              .limit(1);
+            if (row && hasAlertScope(row.permissions)) {
+              socket.join(ADMIN_ALERTS_ROOM);
+            }
+          } catch {
+            // fail-open posture matches the liveness probes: never kick a
+            // cryptographically-verified admin over a DB blip.
+          }
+        })();
+      }
     }
 
     // ── Periodic identity re-verification (93-A1 S1) ──────────────────
@@ -976,10 +1039,24 @@ export function emitToUser(userId: string | number, event: string, data: unknown
   }
 }
 
-/** Emit event to all admins */
+/** Emit event to all admins (every active admin — counter-only stats
+ * broadcasts). For operational alert content use emitToAdminAlerts —
+ * AUD103-3-F2 (r103). */
 export function emitToAdmins(event: string, data: unknown) {
   if (io) {
     io.to("admin-room").emit(event, data);
+    safeInc(socketEventsTotal, { event, direction: "outbound" });
+  }
+}
+
+/** AUD103-3-F2 (r103): emit to the scope-gated admin alert room. Live
+ * alert broadcasts (admin-alert-new) carry operational content (product
+ * names, coupon codes, risk references) and now mirror the HTTP RBAC of
+ * /api/admin/alerts (support scope; "all" wildcard passes). Membership is
+ * granted at connect and reconciled on every liveness re-verify pass. */
+export function emitToAdminAlerts(event: string, data: unknown) {
+  if (io) {
+    io.to(ADMIN_ALERTS_ROOM).emit(event, data);
     safeInc(socketEventsTotal, { event, direction: "outbound" });
   }
 }

@@ -246,10 +246,10 @@ describe("exempt paths stay exempt (no Origin/Referer required)", () => {
   it.each([
     "/api/webhook/telegram",
     "/api/cwv",
-    // 98-F3: /api/auth/firebase/refresh stays skipped — the COOP-isolated
-    // popup rotation edge case it was added for (rotation of an
-    // already-bound session; no fixation gain).
-    "/api/auth/firebase/refresh",
+    // AUD103-3-F1 (r103): /api/auth/firebase/refresh is NO LONGER exempt —
+    // it is a session MINT exactly like /session (the handler requires no
+    // prior session), so the skip reopened the login-CSRF window 98-F3
+    // closed for /api/auth/firebase/session. See the new describe below.
   ])("%s passes with an auth cookie and no Origin/Referer", async (path) => {
     const res = await fire(GATE(), { method: "POST", path, cookie: "auth_token=some-jwt" });
     expect(res.status).toBe(200);
@@ -301,6 +301,41 @@ describe("98-F3 — POST /api/auth/firebase/session is gated like every other mu
       method: "POST",
       path: "/api/auth/firebase/session",
       cookie: "auth_token=some-jwt",
+      origin: "https://subnation.ly",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ reached: true });
+  });
+});
+
+// ── AUD103-3-F1 (r103): the refresh MINT is no longer exempt either ─────────
+
+describe("AUD103-3-F1 — POST /api/auth/firebase/refresh is gated (login-CSRF closure)", () => {
+  const GATE = () => buildGateApp(["https://subnation.ly"], true);
+
+  it("a form-POST shape (auth cookie, no Origin/Referer) → 403 (was: unconditional mint)", async () => {
+    // Same shape as the 98-F3 session mint: the handler requires only an
+    // id_token — NO prior session — so it mints a fresh 30-day auth_token.
+    // The "rotation of an already-bound session" justification in the old
+    // skip comment was false; this closes the last silent re-binding path.
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/refresh",
+      cookie: "auth_token=some-jwt",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("no cookie and no Origin/Referer → 403 (headerless clients must present their own credentials)", async () => {
+    const res = await fire(GATE(), { method: "POST", path: "/api/auth/firebase/refresh" });
+    expect(res.status).toBe(403);
+  });
+
+  it("an allowed Origin passes — the legitimate silent-refresh fetch always sends Origin", async () => {
+    const res = await fire(GATE(), {
+      method: "POST",
+      path: "/api/auth/firebase/refresh",
       origin: "https://subnation.ly",
     });
     expect(res.status).toBe(200);

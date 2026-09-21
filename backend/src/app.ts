@@ -694,15 +694,20 @@ export function createCsrfGate(allowedOrigins: string[], production: boolean) {
 
       // Skip CSRF check ONLY for endpoints where the browser legitimately omits
       // Origin/Referer:
-      //   - /api/auth/firebase/refresh: Firebase popup auth round-trips can
-      //     land here without a valid Referer in some COOP-isolated popup
-      //     configurations. The ID-token signature is the real auth; Origin
-      //     is belt+suspenders. (Refresh is a rotation of an ALREADY-bound
-      //     session, so a fixation attack gains nothing new — unlike the
-      //     session mint below.)
       //   - /api/cwv: navigator.sendBeacon does not set Origin on most browsers.
       //   - /api/webhook/*: third-party callbacks (Telegram, Stripe-style) sign
       //     their bodies; Origin from a different host is expected.
+      //
+      // AUD103-3-F1 (r103): /api/auth/firebase/refresh is NO LONGER skipped.
+      // The old justification ("rotation of an ALREADY-bound session") was
+      // false — the handler at auth.ts requires only a signed Firebase ID
+      // token and NO prior session, i.e. it is a session MINT with the exact
+      // same shape 98-F3 closed for /api/auth/firebase/session: with
+      // SameSite=None production cookies, a hostile page could POST a
+      // CORS-simple form carrying the attacker's own ID token and silently
+      // bind the victim's browser to the attacker's account. The SPA calls
+      // refresh via fetch (firebase-auth.ts), which always sends Origin, so
+      // the skip bought nothing for the legitimate client.
       //
       // 98-F3 (R98-A1 P2-3): /api/auth/firebase/session is NO LONGER skipped.
       // It is a session MINT (Set-Cookie of a fresh auth_token), so skipping
@@ -720,7 +725,7 @@ export function createCsrfGate(allowedOrigins: string[], production: boolean) {
       // Login / register / forgot-password / reset-password / change-password /
       // toggle-password-login / sessions / logout / providers — ALL inside the
       // CSRF gate. SameSite cookies remain the second layer.
-      const skipPaths = ["/api/auth/firebase/refresh", "/api/cwv", "/api/webhook"];
+      const skipPaths = ["/api/cwv", "/api/webhook"];
       if (skipPaths.some((path) => req.path.startsWith(path))) {
         next();
         return;

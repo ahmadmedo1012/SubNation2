@@ -80,11 +80,30 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
       );
     }
   } else {
-    // Legacy token without sessionId (pre-unification). Still valid for
-    // its signed lifetime; these age out within 30 days of the token.
+    // Legacy token without sessionId (pre-unification). Production now
+    // REJECTS these (AUD103-3-F5, r103 — mirroring requireAdmin's A8-01
+    // posture): a sid-less token is UNREVOKABLE — logout, logout-all and
+    // user deletion could never kill it — so it stayed valid for its full
+    // 30-day life regardless of any revocation. Fail-closed: affected
+    // users (tokens minted before session unification) re-login once;
+    // every mint since unification carries a sid. Non-production keeps
+    // accepting them so pglite fixtures that sign tokens directly keep
+    // passing without minting session rows.
+    if (process.env.NODE_ENV === "production") {
+      logger.info(
+        { userId: result.payload.userId, category: "auth.session" },
+        "[auth] rejected legacy sid-less user token (production fail-closed)",
+      );
+      res
+        .status(401)
+        .json(
+          createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED),
+        );
+      return;
+    }
     logger.debug(
       { userId: result.payload.userId },
-      "[auth] legacy token without sessionId — skipping row check",
+      "[auth] legacy token without sessionId — skipping row check (non-production)",
     );
   }
 

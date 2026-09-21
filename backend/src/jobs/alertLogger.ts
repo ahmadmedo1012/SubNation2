@@ -168,8 +168,12 @@ export async function logAdminAlert(
     // lazy-socket pattern the admin order routes use — keeps socket.io
     // and its import-time env reads out of the job/service test graph.
     import("../lib/socket")
-      .then(({ emitToAdmins }) => {
-        emitToAdmins("admin-alert-new", { id: insertedId, type, title, message });
+      .then(({ emitToAdminAlerts }) => {
+        // AUD103-3-F2 (r103): alert payloads carry operational content
+        // (product names, coupon codes, risk references) — route them to
+        // the scope-gated alert room (support|all) instead of the
+        // every-admin room, mirroring the HTTP RBAC of /api/admin/alerts.
+        emitToAdminAlerts("admin-alert-new", { id: insertedId, type, title, message });
       })
       .catch((err) =>
         logger.warn({ err, type, title }, "logAdminAlert: socket emit failed (non-fatal)"),
