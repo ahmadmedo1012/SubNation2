@@ -8,7 +8,14 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { copyToClipboard, formatCount, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import {
+  copyToClipboard,
+  formatCount,
+  formatCurrency,
+  formatDate,
+  statusColor,
+  statusLabel,
+} from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -173,10 +180,14 @@ function RejectModal({
         </div>
 
         <div className="mb-4">
-          <label htmlFor="topups-f1-28266" className="text-xs font-bold text-muted-foreground block mb-1.5">
+          <label
+            htmlFor="topups-f1-28266"
+            className="text-xs font-bold text-muted-foreground block mb-1.5"
+          >
             سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
           </label>
-          <textarea id="topups-f1-28266"
+          <textarea
+            id="topups-f1-28266"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
@@ -201,7 +212,12 @@ function RejectModal({
         </div>
 
         <div className="flex gap-2.5">
-          <Button variant="outline" className="flex-1 h-9 active:scale-[0.97]" onClick={onCancel} disabled={loading}>
+          <Button
+            variant="outline"
+            className="flex-1 h-9 active:scale-[0.97]"
+            onClick={onCancel}
+            disabled={loading}
+          >
             إلغاء
           </Button>
           <Button
@@ -421,10 +437,13 @@ export default function AdminTopupsPage() {
   } = useInfiniteQuery<AdminTopupRow[], Error>({
     queryKey: ["/api/admin/topups", "load-more"],
     queryFn: ({ pageParam, signal }) =>
-      customFetch<AdminTopupRow[]>(`/api/admin/topups?page=${pageParam}&limit=${TOPUPS_PAGE_SIZE}`, {
-        signal,
-        headers,
-      }),
+      customFetch<AdminTopupRow[]>(
+        `/api/admin/topups?page=${pageParam}&limit=${TOPUPS_PAGE_SIZE}`,
+        {
+          signal,
+          headers,
+        },
+      ),
     initialPageParam: 1,
     // Frozen contract (A2 P1-1): plain-array body — a full page means
     // the next page MIGHT exist; a short page is the definite end.
@@ -443,8 +462,7 @@ export default function AdminTopupsPage() {
   // 94-C2 (A2 P1-1): the queue total is only provably known when a
   // single short page arrived — otherwise «عرض N» (never «إجمالاً
   // N» for a truncated window).
-  const knownTotal =
-    (topupsPages?.pages.length ?? 0) <= 1 && allTopups.length < TOPUPS_PAGE_SIZE;
+  const knownTotal = (topupsPages?.pages.length ?? 0) <= 1 && allTopups.length < TOPUPS_PAGE_SIZE;
 
   const invalidate = () =>
     // Base key (no params) so the accumulating infinite query — and any

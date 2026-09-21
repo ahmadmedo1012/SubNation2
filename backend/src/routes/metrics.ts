@@ -30,11 +30,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  *
  * Both paths fail closed within 1 s and never reveal which path failed.
  */
-async function requireMetricsAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+async function requireMetricsAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const headerAuth = req.headers.authorization;
   const expectedToken = process.env.METRICS_ADMIN_TOKEN;
   const presentedToken =

@@ -262,8 +262,11 @@ export function AdminSecurityDashboard() {
           {/* Filters */}
           <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <label htmlFor="security-f1-11119" className="text-sm font-medium">الإجراء:</label>
-              <select id="security-f1-11119"
+              <label htmlFor="security-f1-11119" className="text-sm font-medium">
+                الإجراء:
+              </label>
+              <select
+                id="security-f1-11119"
                 value={filters.action}
                 onChange={(e) => setFilters({ ...filters, action: e.target.value })}
                 className="px-3 py-1.5 border rounded text-sm"
@@ -277,8 +280,11 @@ export function AdminSecurityDashboard() {
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <label htmlFor="security-f2-9574" className="text-sm font-medium">الحالة:</label>
-              <select id="security-f2-9574"
+              <label htmlFor="security-f2-9574" className="text-sm font-medium">
+                الحالة:
+              </label>
+              <select
+                id="security-f2-9574"
                 value={filters.success}
                 onChange={(e) => setFilters({ ...filters, success: e.target.value })}
                 className="px-3 py-1.5 border rounded text-sm"

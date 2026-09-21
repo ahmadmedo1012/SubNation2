@@ -122,63 +122,63 @@ router.post(
   // as a raw 500 from the catch-all before this). Dedup at the door.
   idempotency({ routeKey: "admin.referrals.credit" }),
   async (req, res) => {
-  const id = intParam(req, "id");
-  if (id === null)
-    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+    const id = intParam(req, "id");
+    if (id === null)
+      return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-  const [event] = await db
-    .select()
-    .from(referralEventsTable)
-    .where(eq(referralEventsTable.id, id))
-    .limit(1);
-  if (!event)
-    return res.status(404).json(createErrorResponse("الإحالة غير موجودة", ErrorCode.NOT_FOUND));
-  if (event.status === "credited")
-    return res
-      .status(400)
-      .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
+    const [event] = await db
+      .select()
+      .from(referralEventsTable)
+      .where(eq(referralEventsTable.id, id))
+      .limit(1);
+    if (!event)
+      return res.status(404).json(createErrorResponse("الإحالة غير موجودة", ErrorCode.NOT_FOUND));
+    if (event.status === "credited")
+      return res
+        .status(400)
+        .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
 
-  const POINTS = 50;
-  // Status flip is guarded at the UPDATE level (WHERE status='pending') and
-  // runs in a transaction with the points grant: two concurrent credits
-  // serialize on the row lock and the second matches 0 rows → 409, instead
-  // of double-granting the referrer's points.
-  let credited = false;
-  try {
-    await db.transaction(async (tx) => {
-      const flipped = await tx
-        .update(referralEventsTable)
-        .set({ status: "credited", creditedAt: new Date() })
-        .where(and(eq(referralEventsTable.id, id), eq(referralEventsTable.status, "pending")))
-        .returning({ id: referralEventsTable.id });
-      if (flipped.length !== 1) return; // lost the race — already credited
+    const POINTS = 50;
+    // Status flip is guarded at the UPDATE level (WHERE status='pending') and
+    // runs in a transaction with the points grant: two concurrent credits
+    // serialize on the row lock and the second matches 0 rows → 409, instead
+    // of double-granting the referrer's points.
+    let credited = false;
+    try {
+      await db.transaction(async (tx) => {
+        const flipped = await tx
+          .update(referralEventsTable)
+          .set({ status: "credited", creditedAt: new Date() })
+          .where(and(eq(referralEventsTable.id, id), eq(referralEventsTable.status, "pending")))
+          .returning({ id: referralEventsTable.id });
+        if (flipped.length !== 1) return; // lost the race — already credited
 
-      await tx
-        .update(usersTable)
-        .set({ loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS}` })
-        .where(eq(usersTable.id, event.referrerId));
-      credited = true;
-    });
-  } catch {
-    return res
-      .status(500)
-      .json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));
-  }
-  if (!credited) {
-    return res
-      .status(409)
-      .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
-  }
+        await tx
+          .update(usersTable)
+          .set({ loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS}` })
+          .where(eq(usersTable.id, event.referrerId));
+        credited = true;
+      });
+    } catch {
+      return res
+        .status(500)
+        .json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));
+    }
+    if (!credited) {
+      return res
+        .status(409)
+        .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
+    }
 
-  await createNotification(
-    event.referrerId,
-    "loyalty",
-    "تم منح نقاط الإحالة",
-    `تم قيد ${POINTS} نقطة في حسابك كمكافأة إحالة`,
-    "/loyalty",
-  );
+    await createNotification(
+      event.referrerId,
+      "loyalty",
+      "تم منح نقاط الإحالة",
+      `تم قيد ${POINTS} نقطة في حسابك كمكافأة إحالة`,
+      "/loyalty",
+    );
 
-  return res.json({ success: true, points_credited: POINTS });
+    return res.json({ success: true, points_credited: POINTS });
   },
 );
 

@@ -90,9 +90,7 @@ router.get("/risk/events", requireAdmin, async (req, res) => {
   const eventType = typeof req.query.eventType === "string" ? req.query.eventType : null;
   if (eventType) {
     if (!VALID_EVENT_TYPES.has(eventType)) {
-      res.status(400).json(
-        createErrorResponse("نوع حدث مخاطر غير صالح", ErrorCode.INVALID_DATA),
-      );
+      res.status(400).json(createErrorResponse("نوع حدث مخاطر غير صالح", ErrorCode.INVALID_DATA));
       return;
     }
     filters.push(eq(riskEventsTable.eventType, eventType as never));
@@ -517,13 +515,7 @@ const RiskConfigPutBody = z.object({
     })
     .optional(),
   modelEnabled: z.boolean().optional(),
-  requireApprovalUserIds: z
-    .number()
-    .int()
-    .positive()
-    .array()
-    .max(1000)
-    .optional(),
+  requireApprovalUserIds: z.number().int().positive().array().max(1000).optional(),
 });
 
 router.put("/risk/config", requireAdmin, async (req, res) => {
@@ -616,8 +608,7 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
   // silently DROPPED bad entries instead of rejecting the request (the
   // corruption survived, just smaller).
   const requireApprovalUserIds =
-    body.requireApprovalUserIds ??
-    ((current?.requireApprovalUserIds as number[] | null) ?? []);
+    body.requireApprovalUserIds ?? (current?.requireApprovalUserIds as number[] | null) ?? [];
 
   const updated = {
     thresholds,
@@ -744,12 +735,15 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     res
       .status(403)
-      .json(createErrorResponse("الأداة الاصطناعية متاحة في بيئات التطوير فقط", ErrorCode.FORBIDDEN));
+      .json(
+        createErrorResponse("الأداة الاصطناعية متاحة في بيئات التطوير فقط", ErrorCode.FORBIDDEN),
+      );
     return;
   }
   const adminReq = req as AdminAuthenticatedRequest;
   const body = (req.body ?? {}) as { level?: string; event_type?: string; user_id?: number };
-  const level = typeof body.level === "string" && VALID_LEVELS.has(body.level) ? body.level : "critical";
+  const level =
+    typeof body.level === "string" && VALID_LEVELS.has(body.level) ? body.level : "critical";
   const eventType = typeof body.event_type === "string" ? body.event_type : "topup_attempt";
   const score = level === "critical" ? 95 : level === "high" ? 70 : level === "medium" ? 40 : 10;
 
@@ -771,11 +765,17 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
     })
     .returning({ id: riskEventsTable.id });
   if (!row) {
-    res.status(500).json(createErrorResponse("فشل إنشاء الحدث الاصطناعي", ErrorCode.INTERNAL_ERROR));
+    res
+      .status(500)
+      .json(createErrorResponse("فشل إنشاء الحدث الاصطناعي", ErrorCode.INTERNAL_ERROR));
     return;
   }
 
-  await writeAuditLog(req, "risk.synth", "risk_event", row.id, { level, score, event_type: eventType });
+  await writeAuditLog(req, "risk.synth", "risk_event", row.id, {
+    level,
+    score,
+    event_type: eventType,
+  });
 
   // For critical events, fire the alert path so the admin can see the
   // Discord/Telegram dispatch (or its failure) without needing real traffic.

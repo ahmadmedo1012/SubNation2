@@ -304,14 +304,11 @@ export async function consumeConsentToken(
   // far better than hanging the request until the proxy timeout).
   let raw: string | null = null;
   try {
-    raw = (await withRedisCommandTimeout("consent_consume_getdel", () =>
-      redis.getDel(key),
-    )) as string | null;
+    raw = (await withRedisCommandTimeout("consent_consume_getdel", () => redis.getDel(key))) as
+      | string
+      | null;
   } catch (err) {
-    logger.warn(
-      { err },
-      "[account-link-consent] Redis consume GETDEL timed out — PG fallback",
-    );
+    logger.warn({ err }, "[account-link-consent] Redis consume GETDEL timed out — PG fallback");
     return consumeConsentTokenViaPg(token, expected);
   }
   if (!raw) {

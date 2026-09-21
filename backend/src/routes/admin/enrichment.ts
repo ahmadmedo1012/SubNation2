@@ -83,96 +83,87 @@ router.get("/enrichment/list", requireAdmin, async (req: Request, res: Response)
   });
 });
 
-router.post(
-  "/enrichment/:id/publish",
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    const adminReq = req as AdminAuthenticatedRequest;
-    const id = Number.parseInt(String(req.params.id ?? ""), 10);
-    if (!Number.isFinite(id) || id <= 0) {
-      res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+router.post("/enrichment/:id/publish", requireAdmin, async (req: Request, res: Response) => {
+  const adminReq = req as AdminAuthenticatedRequest;
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = (req.body ?? {}) as { final_text?: string };
+  const finalTextOverride =
+    typeof body.final_text === "string" && body.final_text.trim().length > 0
+      ? body.final_text
+      : null;
+
+  const outcome = await publishDraft({
+    draftId: id,
+    adminId: adminReq.adminId,
+    finalTextOverride,
+  });
+  switch (outcome.kind) {
+    case "success":
+      res.json({ success: true, product_id: outcome.productId, field: outcome.field });
       return;
-    }
-    const body = (req.body ?? {}) as { final_text?: string };
-    const finalTextOverride =
-      typeof body.final_text === "string" && body.final_text.trim().length > 0
-        ? body.final_text
-        : null;
-
-    const outcome = await publishDraft({
-      draftId: id,
-      adminId: adminReq.adminId,
-      finalTextOverride,
-    });
-    switch (outcome.kind) {
-      case "success":
-        res.json({ success: true, product_id: outcome.productId, field: outcome.field });
-        return;
-      case "not_found":
-        res.status(404).json(createErrorResponse("المسودة غير موجودة", ErrorCode.NOT_FOUND));
-        return;
-      case "wrong_state":
-        res
-          .status(409)
-          .json(
-            createErrorResponse(
-              `المسودة في حالة '${outcome.current}' — لا يمكن النشر`,
-              ErrorCode.INVALID_DATA,
-            ),
-          );
-        return;
-      case "failure":
-        res
-          .status(500)
-          .json(createErrorResponse(`فشل النشر: ${outcome.reason}`, ErrorCode.INTERNAL_ERROR));
-        return;
-    }
-  },
-);
-
-router.post(
-  "/enrichment/:id/reject",
-  requireAdmin,
-  async (req: Request, res: Response) => {
-    const adminReq = req as AdminAuthenticatedRequest;
-    const id = Number.parseInt(String(req.params.id ?? ""), 10);
-    if (!Number.isFinite(id) || id <= 0) {
-      res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+    case "not_found":
+      res.status(404).json(createErrorResponse("المسودة غير موجودة", ErrorCode.NOT_FOUND));
       return;
-    }
-    const body = (req.body ?? {}) as { reason?: string };
-    const reason =
-      typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+    case "wrong_state":
+      res
+        .status(409)
+        .json(
+          createErrorResponse(
+            `المسودة في حالة '${outcome.current}' — لا يمكن النشر`,
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+      return;
+    case "failure":
+      res
+        .status(500)
+        .json(createErrorResponse(`فشل النشر: ${outcome.reason}`, ErrorCode.INTERNAL_ERROR));
+      return;
+  }
+});
 
-    const outcome = await rejectDraftHandler({
-      draftId: id,
-      adminId: adminReq.adminId,
-      reason,
-    });
-    switch (outcome.kind) {
-      case "success":
-        res.json({ success: true });
-        return;
-      case "not_found":
-        res.status(404).json(createErrorResponse("المسودة غير موجودة", ErrorCode.NOT_FOUND));
-        return;
-      case "wrong_state":
-        res
-          .status(409)
-          .json(
-            createErrorResponse(
-              `المسودة في حالة '${outcome.current}' — لا يمكن الرفض`,
-              ErrorCode.INVALID_DATA,
-            ),
-          );
-        return;
-      case "failure":
-        res
-          .status(500)
-          .json(createErrorResponse(`فشل الرفض: ${outcome.reason}`, ErrorCode.INTERNAL_ERROR));
-        return;
-    }
-  },
-);
+router.post("/enrichment/:id/reject", requireAdmin, async (req: Request, res: Response) => {
+  const adminReq = req as AdminAuthenticatedRequest;
+  const id = Number.parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = (req.body ?? {}) as { reason?: string };
+  const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+
+  const outcome = await rejectDraftHandler({
+    draftId: id,
+    adminId: adminReq.adminId,
+    reason,
+  });
+  switch (outcome.kind) {
+    case "success":
+      res.json({ success: true });
+      return;
+    case "not_found":
+      res.status(404).json(createErrorResponse("المسودة غير موجودة", ErrorCode.NOT_FOUND));
+      return;
+    case "wrong_state":
+      res
+        .status(409)
+        .json(
+          createErrorResponse(
+            `المسودة في حالة '${outcome.current}' — لا يمكن الرفض`,
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+      return;
+    case "failure":
+      res
+        .status(500)
+        .json(createErrorResponse(`فشل الرفض: ${outcome.reason}`, ErrorCode.INTERNAL_ERROR));
+      return;
+  }
+});
 
 export const adminEnrichmentRouter = router;

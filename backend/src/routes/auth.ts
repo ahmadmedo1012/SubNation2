@@ -522,17 +522,15 @@ router.post("/firebase/session", async (req, res) => {
     const signInProvider = (decoded.firebase as { sign_in_provider?: string } | undefined)
       ?.sign_in_provider;
     if (signInProvider === "phone") {
-      return res
-        .status(403)
-        .json(
-          createErrorResponse(
-            "تسجيل الدخول برقم الهاتف عبر Firebase معطّل — استخدم WhatsApp OTP",
-            // AUD103-4-F7 (r103): 403 paired with SERVICE_UNAVAILABLE was
-            // contradictory — FEATURE_DISABLED exists for exactly this.
-            ErrorCode.FEATURE_DISABLED,
-            { reason: "phone_auth_disabled" },
-          ),
-        );
+      return res.status(403).json(
+        createErrorResponse(
+          "تسجيل الدخول برقم الهاتف عبر Firebase معطّل — استخدم WhatsApp OTP",
+          // AUD103-4-F7 (r103): 403 paired with SERVICE_UNAVAILABLE was
+          // contradictory — FEATURE_DISABLED exists for exactly this.
+          ErrorCode.FEATURE_DISABLED,
+          { reason: "phone_auth_disabled" },
+        ),
+      );
     }
 
     const result = await resolveFirebaseSession(

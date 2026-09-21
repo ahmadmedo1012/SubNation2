@@ -40,7 +40,7 @@ GET   /api/wallet                     balance + ledger summary
 GET   /api/wallet/topups              latest 200
 POST  /api/wallet/topups              request topup (429 TOPUP_LIMIT_EXCEEDED at 3 pending)
 GET   /api/loyalty                    points/tier/referrals
-POST  /api/loyalty/convert-points     {points} → wallet (transactional; 409 on race)
+POST  /api/loyalty/convert-points     {points} → wallet (transactional; Idempotency-Key honored — durable DB-backed claim (V1-M19): same-key retry → 409 already-converted; 409 on race)
 GET   /api/loyalty/referrals          masked referee list
 GET   /api/support/tickets            latest 200 (+/:id, POST /, POST /:id/reply; 5 tickets/h)
 POST  /api/coupons/validate           {code, order_amount} → discount preview

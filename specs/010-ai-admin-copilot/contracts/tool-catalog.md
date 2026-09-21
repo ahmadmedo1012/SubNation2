@@ -195,23 +195,22 @@ Same shape as `draft_price_change` but writes `cost_price`.
   "name": "draft_stock_change",
   "input_schema": {
     "type": "object",
-    "required": ["product_id"],
-    "oneOf": [
-      {
-        "required": ["delta"],
-        "properties": { "delta": { "type": "integer", "minimum": -10000, "maximum": 10000 } }
-      },
-      {
-        "required": ["set_to"],
-        "properties": { "set_to": { "type": "integer", "minimum": 0, "maximum": 100000 } }
-      }
-    ],
-    "properties": { "product_id": { "type": "integer" } }
+    "required": ["product_id", "delta"],
+    "properties": {
+      "product_id": { "type": "integer" },
+      "delta": { "type": "integer", "minimum": -10000, "maximum": -1 }
+    }
   }
 }
 ```
 
 **Permission**: `inventory` or `all`. **Risk**: `high`.
+
+> **(r103 update)** The `set_to` variant was never shipped, and r102's
+> stock-truthfulness round made `delta > 0` a hard rejection (empty
+> inventory rows are never fabricated — adding credentials goes through
+> the admin inventory upload route). The contract above reflects the
+> shipped shape.
 
 ### `draft_status_change` (high risk)
 

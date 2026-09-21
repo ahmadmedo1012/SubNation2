@@ -153,11 +153,7 @@ interface StoredCheckoutUnitKey {
   f: string;
 }
 
-function checkoutUnitKeyId(
-  productId: number,
-  variantId: number | null,
-  unitIndex: number,
-): string {
+function checkoutUnitKeyId(productId: number, variantId: number | null, unitIndex: number): string {
   // AUD103-2-F1 (r103): the slot is LINE-scoped (productId + variantId).
   // The pre-fix `${productId}:${unitIndex}` slot collided across two cart
   // lines of the same product with different variants — the sibling
@@ -237,10 +233,7 @@ function persistCheckoutUnitKey(
 ): void {
   try {
     const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(
-      checkoutUnitKeyId(productId, variantId, unitIndex),
-      JSON.stringify(entry),
-    );
+    localStorage.setItem(checkoutUnitKeyId(productId, variantId, unitIndex), JSON.stringify(entry));
   } catch {
     // degraded: unstable keys (pre-fix behavior) — never throw on money path
   }
@@ -918,8 +911,7 @@ export default function CheckoutPage() {
           if (liveCart) {
             const liveLine = liveCart.find(
               (l) =>
-                l.productId === it.productId &&
-                (l.variantId ?? null) === (it.variantId ?? null),
+                l.productId === it.productId && (l.variantId ?? null) === (it.variantId ?? null),
             );
             if (!liveLine || liveLine.quantity <= unit) {
               skippedByOtherTab++;

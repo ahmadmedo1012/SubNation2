@@ -96,9 +96,7 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
       );
       res
         .status(401)
-        .json(
-          createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED),
-        );
+        .json(createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));
       return;
     }
     logger.debug(

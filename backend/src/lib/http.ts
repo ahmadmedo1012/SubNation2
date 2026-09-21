@@ -17,9 +17,7 @@ export function intParam(req: Request, name: string): number | null {
   // "-5" (negative PK → wasted DB round trip → 404 with the wrong shape)
   // and "12abc" (silent truncation). Digit-exact strict parse: only a
   // positive integer whose canonical string form equals the input passes.
-  return Number.isInteger(parsed) && parsed > 0 && String(parsed) === trimmed
-    ? parsed
-    : null;
+  return Number.isInteger(parsed) && parsed > 0 && String(parsed) === trimmed ? parsed : null;
 }
 
 export function queryString(req: Request, name: string, fallback = ""): string {

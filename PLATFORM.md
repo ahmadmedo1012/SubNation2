@@ -51,7 +51,7 @@ Auth-gated (returns 401 without session):
 - `DELETE /api/cart/items/:id` — remove item
 - `DELETE /api/cart` — clear cart
 - `GET /api/orders` — user's orders
-- `GET /api/orders/:orderCode` — order tracking (requireUser-gated, `orders.ts:305`)
+- `GET /api/orders/:orderCode` — order tracking (requireUser-gated, `orders.ts:319`)
 - `POST /api/orders` — create order (there is no `/api/orders/checkout` route)
 - `GET /api/wallet` — wallet balance
 - `GET /api/loyalty` — loyalty points

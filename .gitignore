@@ -84,9 +84,12 @@ PageSpeed Insights.html
 *.firebase-adminsdk*.json
 ruflo
 .kiro/settings/mcp.json
-.kiro
+# AUD103-7-C3 (r103): the bare `.kiro` and `.husky` ignores were REMOVED —
+# .husky/pre-commit and .kiro/specs/** are TRACKED, so the bare ignores
+# silently kept every NEW hook/spec file untracked between clones (that
+# is exactly how hooks get lost). Only the operator-local mcp.json stays
+# ignored. (.vscode stays ignored.)
 .vscode
-.husky
 
 # Load-test exports / audit dumps (operator-local, never commit)
 report*.json

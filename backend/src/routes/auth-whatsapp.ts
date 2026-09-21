@@ -157,14 +157,10 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       };
       const bodyCode = codeByReason[result.reason] ?? ErrorCode.INVALID_DATA;
       return res.status(status).json(
-        createErrorResponse(
-          messages[result.reason] ?? "تعذّر إرسال الرمز",
-          bodyCode,
-          {
-            reason: result.reason,
-            ...(retryAfter ? { retry_after_sec: retryAfter } : {}),
-          },
-        ),
+        createErrorResponse(messages[result.reason] ?? "تعذّر إرسال الرمز", bodyCode, {
+          reason: result.reason,
+          ...(retryAfter ? { retry_after_sec: retryAfter } : {}),
+        }),
       );
     }
 

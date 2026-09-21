@@ -28,7 +28,7 @@
 | الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                                             |
 | الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                         |
 | المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                              |
-| قاعدة البيانات | PostgreSQL (Neon) — 40 جدول (مخطط Drizzle موحّد)                                                 |
+| قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                                 |
 | الكاش/الحالة   | Redis (rate-limit, leader-lock, socket adapter)                                                  |
 | مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                     |
 | صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                |
@@ -76,12 +76,13 @@ config/      env.example (مرجع مُعلّق كامل)
 
 ---
 
-## 4) قاعدة البيانات (40 جدولاً)
+## 4) قاعدة البيانات (41 جدولاً)
 
-**(أُحدّث في الجولة 99 — كان العدد المعلن 21 ثم 33؛ العدد الفعلي اليوم 40 تعريف pgTable
-في shared/db/src/schema/، منها: product*variants (إعمار الكتالوج r98)،
-scheduler_leader_lease + account_link_consents (r97)، idempotency_keys (r94)،
-admin_alerts، whatsapp_otps، risk_events، forecast*\_/enrichment\_\_ …)**
+**(أُحدّث في الجولة 103 — كان العدد المعلن 21 ثم 33 ثم 40 في r99؛ العدد الفعلي اليوم
+41 تعريف pgTable في shared/db/src/schema/، منها: product_variants (إعمار الكتالوج
+r98)، scheduler_leader_lease + account_link_consents (r97)، idempotency_keys (r94)،
+provider_fulfillments (r102، V1-M18 — سجل استيفاء المورد لكل طلب)،
+admin_alerts، whatsapp_otps، risk_events، forecast*/enrichment* …)**
 
 **الأساسية:** `users`, `products`, `product_variants`, `inventory`, `orders`,
 `wallet_ledger`, `wallet_topups`, `sessions`, `user_auth_identities`, `admin_users`.
@@ -95,8 +96,8 @@ admin_alerts، whatsapp_otps، risk_events، forecast*\_/enrichment\_\_ …)**
   `idx_products_active_category`).
 - **النزاهة المالية:** المحفظة بـ `numeric(10,2)`، دفتر أستاذ (`wallet_ledger`)
   يسجّل `balanceBefore/After` لكل حركة.
-- **الهجرات:** ملف واحد `migrate.ts` (2537 سطراً كما في r99)، كل العبارات idempotent
-  (`IF NOT EXISTS`)، يُشغَّل عند الإقلاع تحت قفل Redis NX (مثيل واحد فقط).
+- **الهجرات:** ملف واحد `migrate.ts` (2634 سطراً كما في r103، المراحل حتى V1-M19)، كل العبارات idempotent
+  (`IF NOT EXISTS`)، يُشغَّل عند الإقلاع — والقفل قفل Redis NX فقط عندما يكون `REDIS_URL` مضبوطاً؛ على الطوبولوجيا الحالية (مثيل free واحد، بلا Redis) تعمل الهجرات بلا قفل بأمان لأن الإقلاع مَسلسَل خلف بوابة 503.
 
 ---
 
@@ -210,9 +211,9 @@ admin_alerts، whatsapp_otps، risk_events، forecast*\_/enrichment\_\_ …)**
 
 ## 10) النشر والتشغيل (Deploy & Ops)
 
-- **Render Docker:** `web` (starter) + `worker` (starter) + `redis` (free, allkeys-lru).
+- **Render Docker:** خدمة `web` واحدة (خطة free) — بلا worker وبلا Redis بعد جولة 2026-09-20 (الطوبولوجيا الكاملة الحالية في render.yaml).
 - **Health:** `/api/healthz` (probe)، canonical-host redirect (www/onrender → apex).
-- **الهجرات:** تُشغَّل عند الإقلاع تحت قفل Redis؛ `DISABLE_BOOT_MIGRATIONS` مخرج طوارئ.
+- **الهجرات:** تُشغَّل عند الإقلاع (قفل Redis NX فقط عند وجود `REDIS_URL`)؛ `DISABLE_BOOT_MIGRATIONS` مخرج طوارئ.
 - **الأسرار:** كلها `sync:false` في render.yaml (تُضبط يدوياً في Dashboard) — ممارسة سليمة.
 - **النسخ الاحتياطي:** سكربتات `db-backup.sh` / `db-restore.sh` + `docs/DISASTER_RECOVERY.md`.
 

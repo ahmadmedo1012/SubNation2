@@ -61,7 +61,7 @@ It is a **pnpm monorepo**:
 ```
 frontend/   Vite + React + Tailwind SPA (Arabic RTL)
 backend/    Express API, auth, jobs, migrations; serves the built frontend
-shared/     db (Drizzle schema) · api-zod (validation) · api-client-react (hooks) · api-spec (OpenAPI)
+shared/     db (Drizzle schema) · api-zod (validation) · api-client-react (hooks) · api-spec (OpenAPI) · error-codes (سجل رموز الأخطاء المشترك بين الطرفين)
 scripts/    local orchestration, seed, maintenance
 config/     env.example (fully annotated reference)
 ```

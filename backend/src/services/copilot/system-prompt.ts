@@ -137,8 +137,10 @@ preview / confirm step. Pick the right tool for the task:
   - update_product(id, fields)
         Apply ANY editable product fields in one call.
   - update_stock(product_id, delta)
-        delta > 0 adds inventory rows; delta < 0 removes the most-
-        recent unsold rows.
+        Only delta: -N is supported — it removes the most-recent unsold
+        rows. Adding stock (delta > 0) is REJECTED by the tool (empty
+        inventory rows are never fabricated); to add credentials, tell
+        the operator to use the admin inventory upload route instead.
 
   UNIVERSAL ADMIN TOOL (use for everything else):
   - admin_request(method, path, body?, confirm?)

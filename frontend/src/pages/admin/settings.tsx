@@ -685,8 +685,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="settings-f1-17486" className="text-xs font-bold mb-1 block">اسم المستخدم</label>
-            <input id="settings-f1-17486"
+            <label htmlFor="settings-f1-17486" className="text-xs font-bold mb-1 block">
+              اسم المستخدم
+            </label>
+            <input
+              id="settings-f1-17486"
               type="text"
               value={profileUsername}
               onChange={(e) => setProfileUsername(e.target.value)}
@@ -697,8 +700,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
             />
           </div>
           <div>
-            <label htmlFor="settings-f2-17484" className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
-            <input id="settings-f2-17484"
+            <label htmlFor="settings-f2-17484" className="text-xs font-bold mb-1 block">
+              الاسم الظاهر
+            </label>
+            <input
+              id="settings-f2-17484"
               type="text"
               value={profileDisplayName}
               onChange={(e) => setProfileDisplayName(e.target.value)}
@@ -708,8 +714,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
           </div>
         </div>
         <div>
-          <label htmlFor="settings-f3-38230" className="text-xs font-bold mb-1 block">كلمة المرور الحالية للتأكيد</label>
-          <input id="settings-f3-38230"
+          <label htmlFor="settings-f3-38230" className="text-xs font-bold mb-1 block">
+            كلمة المرور الحالية للتأكيد
+          </label>
+          <input
+            id="settings-f3-38230"
             type="password"
             value={profilePassword}
             onChange={(e) => setProfilePassword(e.target.value)}
@@ -747,8 +756,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
           </p>
         </div>
         <div>
-          <label htmlFor="settings-f4-27077" className="text-xs font-bold mb-1 block">كلمة المرور الحالية</label>
-          <input id="settings-f4-27077"
+          <label htmlFor="settings-f4-27077" className="text-xs font-bold mb-1 block">
+            كلمة المرور الحالية
+          </label>
+          <input
+            id="settings-f4-27077"
             type="password"
             value={pwCurrent}
             onChange={(e) => setPwCurrent(e.target.value)}
@@ -759,9 +771,12 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="settings-f5-27063" className="text-xs font-bold mb-1 block">كلمة المرور الجديدة</label>
+            <label htmlFor="settings-f5-27063" className="text-xs font-bold mb-1 block">
+              كلمة المرور الجديدة
+            </label>
             <div className="relative">
-              <input id="settings-f5-27063"
+              <input
+                id="settings-f5-27063"
                 type={pwShowNew ? "text" : "password"}
                 value={pwNew}
                 onChange={(e) => setPwNew(e.target.value)}
@@ -781,8 +796,11 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
             </div>
           </div>
           <div>
-            <label htmlFor="settings-f6-35008" className="text-xs font-bold mb-1 block">تأكيد كلمة المرور الجديدة</label>
-            <input id="settings-f6-35008"
+            <label htmlFor="settings-f6-35008" className="text-xs font-bold mb-1 block">
+              تأكيد كلمة المرور الجديدة
+            </label>
+            <input
+              id="settings-f6-35008"
               type={pwShowNew ? "text" : "password"}
               value={pwConfirm}
               onChange={(e) => setPwConfirm(e.target.value)}

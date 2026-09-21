@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-03
 
-**Status**: Draft (design-only — no code, no migrations, no production behavior changes in this phase)
+**Status**: Implemented & wired in production (r103 update) — shape diverged from this design doc: the shipped copilot uses DIRECT-EXECUTE tools (backend/src/services/copilot/admin-direct.ts) + a two-step preview/confirm flow on the universal `admin_request` tool, not the doc's draft→confirm pipeline. Kept as the original design record.
 
 **Input**: User description: "Design an AI-powered Admin Copilot for SubNation that lets administrators run natural-language commands across catalog, inventory, pricing, and operations, but only after a structured preview-and-confirm safety pipeline. Design-only phase. Required outputs: spec.md, research.md, data-model.md, quickstart.md."
 
