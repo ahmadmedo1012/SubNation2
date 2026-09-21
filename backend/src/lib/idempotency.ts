@@ -29,7 +29,7 @@
  */
 
 import { db, idempotencyKeysTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
 
 // Drizzle transaction is structurally compatible with `db` for our
@@ -109,13 +109,24 @@ export function scopeIdempotencyKey(userId: number, rawKey: string | undefined):
  * is fresh OR the backing table is missing (42P01 → legacy behavior,
  * latched — see module docs).
  */
-export async function findIdempotentOrderId(scopedKey: string): Promise<number | null> {
+export async function findIdempotentOrderId(
+  scopedKey: string,
+  referenceType?: string,
+): Promise<number | null> {
   if (tableMissing) return null;
   try {
+    // RT-2 (R104 red team): filter by referenceType when the caller knows
+    // its intent — a client reusing one Idempotency-Key across /orders and
+    // /topups must never replay the OTHER intent's row. Undefined keeps
+    // the historical any-type behavior for existing callers.
+    const conditions =
+      referenceType !== undefined
+        ? and(eq(idempotencyKeysTable.key, scopedKey), eq(idempotencyKeysTable.referenceType, referenceType))
+        : eq(idempotencyKeysTable.key, scopedKey);
     const [row] = await db
       .select({ orderId: idempotencyKeysTable.orderId })
       .from(idempotencyKeysTable)
-      .where(eq(idempotencyKeysTable.key, scopedKey))
+      .where(conditions)
       .limit(1);
     return row?.orderId ?? null;
   } catch (err) {

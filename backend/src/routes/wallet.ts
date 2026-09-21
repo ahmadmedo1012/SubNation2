@@ -16,6 +16,11 @@ import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 // 96-F1 (R96-A5 M2): POST /topups is the last unprotected money path —
 // same Redis-backed replay guard checkout already mounts.
 import { idempotency } from "../middlewares/idempotency";
+import {
+  claimIdempotencyKey,
+  findIdempotentOrderId,
+  scopeIdempotencyKey,
+} from "../lib/idempotency";
 import { notifyNewTopup } from "../telegram";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
@@ -214,6 +219,40 @@ router.post(
       }
     }
 
+    // ── R104 (AG9-1, F10 mirror): durable idempotency for topup CREATION ──
+    //
+    // The HTTP middleware above is the fast Redis layer; without Redis
+    // (the production shape) it is a pass-through, so a double-submit /
+    // post-timeout retry created DUPLICATE pending rows. Money still
+    // only moves at approval (dedup battery: advisory lock + in-tx
+    // exact check + V1-M9 partial unique + composite soft-dedup), but
+    // that battery requires a payment_reference — an OPTIONAL field —
+    // so two ref-less pending rows for one real transfer could both be
+    // approved by an operator. The DB-backed claim closes that window:
+    // a retry of the same Idempotency-Key now replays the original
+    // pending row instead of inserting a second one.
+    const scopedIdemKey = scopeIdempotencyKey(userId, req.header("Idempotency-Key"));
+    if (scopedIdemKey) {
+      const replayedTopupId = await findIdempotentOrderId(scopedIdemKey, "topup.create");
+      if (replayedTopupId !== null) {
+        const [existing] = await db
+          .select()
+          .from(walletTopupsTable)
+          .where(and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)))
+          .limit(1);
+        if (existing) {
+          // Same contract as the checkout replay (orders.ts): 200 (not
+          // 201 — nothing new was created), Idempotent-Replayed header,
+          // the ORIGINAL formatted DTO, and NO new operator notification.
+          res.setHeader("Idempotent-Replayed", "true");
+          return res.json(formatTopup(existing));
+        }
+        // Key points at a topup this user no longer owns (cascade-deleted
+        // user row): fall through; the in-tx claim surfaces a still-live
+        // stale key as a classified conflict below.
+      }
+    }
+
     // Anti-abuse: max 3 pending requests per user.
     //
     // B2-09 (round-92 audit): the count-then-insert pair runs inside ONE
@@ -276,8 +315,46 @@ router.post(
         })
         .returning();
 
+      // R104 (AG9-1): claim the key INSIDE this transaction — commits
+      // atomically with the pending row; a rollback releases it for the
+      // client's retry. A concurrent same-key winner throws 23505.
+      if (scopedIdemKey) {
+        try {
+          await claimIdempotencyKey(tx as unknown as typeof db, scopedIdemKey, topup.id, "topup.create");
+        } catch (err) {
+          const code = (err as { code?: string }).code;
+          if (code === "23505") {
+            return { kind: "replayed" as const };
+          }
+          throw err;
+        }
+      }
+
       return { kind: "ok" as const, topup, initialStatus };
     });
+
+    if (submission.kind === "replayed") {
+      // Lost the same-key race to a concurrent duplicate (double-click
+      // with two in-flight POSTs): the winner's row is the real one —
+      // replay it exactly like the pre-tx path above.
+      if (scopedIdemKey) {
+        const winnerId = await findIdempotentOrderId(scopedIdemKey, "topup.create");
+        if (winnerId !== null) {
+          const [existing] = await db
+            .select()
+            .from(walletTopupsTable)
+            .where(and(eq(walletTopupsTable.id, winnerId), eq(walletTopupsTable.userId, userId)))
+            .limit(1);
+          if (existing) {
+            res.setHeader("Idempotent-Replayed", "true");
+            return res.json(formatTopup(existing));
+          }
+        }
+      }
+      return res.status(409).json(
+        createErrorResponse("طلب مكرر قيد المعالجة — أعد المحاولة بعد لحظات", ErrorCode.CONFLICT),
+      );
+    }
 
     if (submission.kind === "limited") {
       return res.status(429).json({
