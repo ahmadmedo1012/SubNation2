@@ -201,11 +201,11 @@ ORDER BY duration DESC;
 
 ### The allocation (verified against render.com docs + pricing, 2026-09-21)
 
-| Budget pool                  | Monthly allowance | Shared across          | Consumed only when                |
-| ---------------------------- | ----------------- | ---------------------- | --------------------------------- |
-| Free instance hours          | **750 h**         | ALL free web services  | a service is RUNNING (sleeping = free) |
-| Outbound bandwidth           | **5 GB**          | workspace              | bytes leave Render (API + SPA + images) |
-| Build pipeline minutes       | **500 min**       | workspace              | a build runs (both services)      |
+| Budget pool            | Monthly allowance | Shared across         | Consumed only when                      |
+| ---------------------- | ----------------- | --------------------- | --------------------------------------- |
+| Free instance hours    | **750 h**         | ALL free web services | a service is RUNNING (sleeping = free)  |
+| Outbound bandwidth     | **5 GB**          | workspace             | bytes leave Render (API + SPA + images) |
+| Build pipeline minutes | **500 min**       | workspace             | a build runs (both services)            |
 
 Failure modes: hours exhausted → all free services suspended until next
 month; bandwidth exhausted (no payment method) → free services suspended;
@@ -215,11 +215,11 @@ service-initiated outbound volume (DB/API calls count).
 
 ### Engineering targets (comfortably inside, not on the edge)
 
-| Target                                | Ceiling | Design budget | Margin |
-| ------------------------------------- | ------- | ------------- | ------ |
-| Instance hours (both services)        | 750 h   | **≤ 500 h (67%)** | ~250 h |
-| Outbound bandwidth                    | 5 GB    | **≤ 3 GB (60%)** | ~2 GB  |
-| Build minutes                         | 500 min | **≤ 350 min (70%)** | ~150 min |
+| Target                         | Ceiling | Design budget       | Margin   |
+| ------------------------------ | ------- | ------------------- | -------- |
+| Instance hours (both services) | 750 h   | **≤ 500 h (67%)**   | ~250 h   |
+| Outbound bandwidth             | 5 GB    | **≤ 3 GB (60%)**    | ~2 GB    |
+| Build minutes                  | 500 min | **≤ 350 min (70%)** | ~150 min |
 
 Expected normal usage: subnation awake ~1-4 h/day (30-120 h/mo — every
 wake serves real traffic then idles out 15 min later), openwa-gateway
@@ -228,14 +228,14 @@ h/mo). Every budget line holds ≥ 2× headroom over a realistic month.
 
 ### What wakes what (the event-driven contract)
 
-| Wake source                          | Wakes                    | Legitimacy |
-| ------------------------------------ | ------------------------ | ---------- |
-| Storefront page view (Vercel/Render) | subnation → Neon         | real user traffic |
-| Admin panel session                  | subnation                | operator traffic |
-| OTP login attempt                    | subnation → openwa → WhatsApp servers | real user traffic |
-| Operator dashboard tab (openwa /dash)| openwa                   | operator traffic (poll is visibility-gated, R104) |
-| Deploy (manual, CI-gated)            | subnation / openwa       | operator action |
-| /robots.txt on a spun-down service   | nothing (Render answers before the app) | platform |
+| Wake source                           | Wakes                                   | Legitimacy                                        |
+| ------------------------------------- | --------------------------------------- | ------------------------------------------------- |
+| Storefront page view (Vercel/Render)  | subnation → Neon                        | real user traffic                                 |
+| Admin panel session                   | subnation                               | operator traffic                                  |
+| OTP login attempt                     | subnation → openwa → WhatsApp servers   | real user traffic                                 |
+| Operator dashboard tab (openwa /dash) | openwa                                  | operator traffic (poll is visibility-gated, R104) |
+| Deploy (manual, CI-gated)             | subnation / openwa                      | operator action                                   |
+| /robots.txt on a spun-down service    | nothing (Render answers before the app) | platform                                          |
 
 ### NEVER reintroduce (the anti-pattern list)
 
@@ -256,14 +256,14 @@ the service sleeps; nothing sends outbound while idle.
 
 ### Inspection & alarm thresholds
 
-| Check                                | Where                                      | Investigate when                                  |
-| ------------------------------------ | ------------------------------------------ | ------------------------------------------------- |
-| Instance hours this month            | Render Dashboard → Billing → Monthly Usage | > 300 h by mid-month (projected > 600 h)          |
-| Bandwidth this month                 | same                                       | > 1.5 GB by mid-month (projected > 3 GB)          |
-| Build minutes this month             | same                                       | > 175 min by mid-month (projected > 350)          |
-| Wake frequency                        | logs: `Server listening` per day           | > ~40 cold boots/day sustained (usage grew — reassess) |
-| First-byte after wake                | logs: boot gate open → first 200           | > 25 s (check migration fast-path is hitting)     |
-| Neon compute hours                   | Neon console                               | unexpectedly high (check lease refresh + query load) |
+| Check                     | Where                                      | Investigate when                                       |
+| ------------------------- | ------------------------------------------ | ------------------------------------------------------ |
+| Instance hours this month | Render Dashboard → Billing → Monthly Usage | > 300 h by mid-month (projected > 600 h)               |
+| Bandwidth this month      | same                                       | > 1.5 GB by mid-month (projected > 3 GB)               |
+| Build minutes this month  | same                                       | > 175 min by mid-month (projected > 350)               |
+| Wake frequency            | logs: `Server listening` per day           | > ~40 cold boots/day sustained (usage grew — reassess) |
+| First-byte after wake     | logs: boot gate open → first 200           | > 25 s (check migration fast-path is hitting)          |
+| Neon compute hours        | Neon console                               | unexpectedly high (check lease refresh + query load)   |
 
 ## 6. Incident template
 

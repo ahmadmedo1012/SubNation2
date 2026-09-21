@@ -22,19 +22,19 @@
 (بث مباشر، موسيقى، ألعاب، أدوات إنتاجية). الدفع عبر محفظة داخلية، التسليم فوري
 (بيانات حساب مشفّرة تُسلَّم بعد الدفع). يعمل على https://subnation.ly.
 
-| البُعد         | القيمة                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| البنية         | pnpm monorepo                                                                                    |
-| الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                                             |
-| الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                         |
-| المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                              |
-| قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                               |
-| الكاش/الحالة   | ~~Redis (rate-limit, leader-lock, socket adapter)~~ — أُزيل Redis من render.yaml في جولة 2026-09-20 (بدائل داخل العملية + PG-lease)  |
-| مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                     |
-| صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                |
-| الاختبارات     | ~1800+ اختبار (backend+frontend+openwa — الأعداد المتغيرة راجع `docs/final-audit-2026-09-20.md`) |
-| النشر          | ~~Render (Docker): web + worker + redis~~ — الآن web فقط على الخطة المجانية (أُزيل worker وRedis في 2026-09-20)  |
-| المراقبة       | Sentry + Prometheus (prom-client) + pino                                                         |
+| البُعد         | القيمة                                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| البنية         | pnpm monorepo                                                                                                                       |
+| الخلفية        | Express 5 + TypeScript (~21,500 سطر)                                                                                                |
+| الواجهة        | React 19 + Vite + Tailwind (~30,000 سطر)                                                                                            |
+| المشترك        | Drizzle ORM (DB) + api-zod (تحقق) + api-client-react (hooks مولّدة)                                                                 |
+| قاعدة البيانات | PostgreSQL (Neon) — 41 جدولاً (مخطط Drizzle موحّد)                                                                                  |
+| الكاش/الحالة   | ~~Redis (rate-limit, leader-lock, socket adapter)~~ — أُزيل Redis من render.yaml في جولة 2026-09-20 (بدائل داخل العملية + PG-lease) |
+| مسارات الخلفية | 17 ملف موجِه + مجموعات فرعية                                                                                                        |
+| صفحات الواجهة  | 35 صفحة، 75 مكوّن                                                                                                                   |
+| الاختبارات     | ~1800+ اختبار (backend+frontend+openwa — الأعداد المتغيرة راجع `docs/final-audit-2026-09-20.md`)                                    |
+| النشر          | ~~Render (Docker): web + worker + redis~~ — الآن web فقط على الخطة المجانية (أُزيل worker وRedis في 2026-09-20)                     |
+| المراقبة       | Sentry + Prometheus (prom-client) + pino                                                                                            |
 
 ---
 

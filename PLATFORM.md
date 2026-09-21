@@ -115,15 +115,15 @@ Admin (requires admin role):
 
 ## Render Services Inventory
 
-| Service        | ID                       | Status                                                     | Purpose                        |
-| -------------- | ------------------------ | ---------------------------------------------------------- | ------------------------------ |
-| SubNation2     | srv-d7vv91tckfvc73evnccg | free tier — sleeps when idle (by design; R104 posture)     | Main API + Socket.IO           |
-| openwa-gateway | srv-da6piju7bikc739anbtg | free tier — sleeps when idle (by design)                   | WhatsApp OTP gateway (Baileys) |
-| SmartBot       | srv-d94hn57aqgkc73ds0vhg | LIVE                                                       | Unrelated (Python)             |
-| POS            | srv-d8sps3cmmk8c739eo6lg | SUSPENDED                                                  | Unrelated                      |
-| Smart-Menu     | srv-d8q9a768bjmc738hhh90 | SUSPENDED                                                  | Unrelated                      |
-| zu-connect     | srv-d8ne9tcm0tmc73e2c4b0 | SUSPENDED                                                  | Unrelated                      |
-| lyosint        | srv-d8ir0se47okc739lh3d0 | LIVE                                                       | Unrelated                      |
+| Service        | ID                       | Status                                                 | Purpose                        |
+| -------------- | ------------------------ | ------------------------------------------------------ | ------------------------------ |
+| SubNation2     | srv-d7vv91tckfvc73evnccg | free tier — sleeps when idle (by design; R104 posture) | Main API + Socket.IO           |
+| openwa-gateway | srv-da6piju7bikc739anbtg | free tier — sleeps when idle (by design)               | WhatsApp OTP gateway (Baileys) |
+| SmartBot       | srv-d94hn57aqgkc73ds0vhg | LIVE                                                   | Unrelated (Python)             |
+| POS            | srv-d8sps3cmmk8c739eo6lg | SUSPENDED                                              | Unrelated                      |
+| Smart-Menu     | srv-d8q9a768bjmc738hhh90 | SUSPENDED                                              | Unrelated                      |
+| zu-connect     | srv-d8ne9tcm0tmc73e2c4b0 | SUSPENDED                                              | Unrelated                      |
+| lyosint        | srv-d8ir0se47okc739lh3d0 | LIVE                                                   | Unrelated                      |
 
 ## Critical Env Vars (all set on Render)
 
