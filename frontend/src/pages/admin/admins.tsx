@@ -380,8 +380,8 @@ function CreateAdminDialog({
     <DialogShell title="إضافة مسؤول جديد" onClose={onClose} busy={saving}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="text-xs font-bold mb-1 block">اسم المستخدم</label>
-          <input
+          <label htmlFor="admins-f1-17486" className="text-xs font-bold mb-1 block">اسم المستخدم</label>
+          <input id="admins-f1-17486"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -392,8 +392,8 @@ function CreateAdminDialog({
           />
         </div>
         <div>
-          <label className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
-          <input
+          <label htmlFor="admins-f2-17484" className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
+          <input id="admins-f2-17484"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -402,8 +402,8 @@ function CreateAdminDialog({
           />
         </div>
         <div>
-          <label className="text-xs font-bold mb-1 block">كلمة المرور</label>
-          <input
+          <label htmlFor="admins-f3-15951" className="text-xs font-bold mb-1 block">كلمة المرور</label>
+          <input id="admins-f3-15951"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -510,8 +510,8 @@ function EditAdminDialog({
     <DialogShell title={`تعديل: @${admin.username}`} onClose={onClose} busy={saving}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
-          <input
+          <label htmlFor="admins-f5-17484" className="text-xs font-bold mb-1 block">الاسم الظاهر</label>
+          <input id="admins-f5-17484"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -641,3 +641,5 @@ function ScopeCheckboxGrid({
     </div>
   );
 }
+
+// AUD103-6-F2 (r103): admin form labels programmatically associated with their controls.

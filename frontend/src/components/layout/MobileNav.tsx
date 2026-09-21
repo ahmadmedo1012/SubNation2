@@ -68,6 +68,7 @@ export function MobileNav() {
 
   return (
     <nav
+      aria-label="التنقل السفلي"
       className={`md:hidden fixed bottom-0 left-0 right-0 z-50 [@media(max-height:480px)]:hidden ${
         keyboardHidden ? "hidden" : ""
       }`}

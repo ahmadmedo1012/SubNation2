@@ -24,7 +24,11 @@
 
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
+/* AUD103-6-F7 (r103): the dead `@custom-variant dark` was REMOVED — the
+   theme system applies `.light` explicitly (dark = no class), so the old
+   `&:is(.dark *)` selector could never fire and any `dark:` utility
+   copied from shadcn docs silently did nothing. Do not re-add without
+   wiring an actual .dark class strategy. */
 
 @theme inline {
   --color-background: hsl(var(--background));

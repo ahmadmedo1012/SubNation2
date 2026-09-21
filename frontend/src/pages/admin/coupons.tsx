@@ -352,8 +352,8 @@ export default function AdminCouponsPage() {
           <div className="space-y-4">
             {/* Code */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold">رمز الكوبون</Label>
-              <Input
+              <Label htmlFor="coupons-f1-15956" className="text-xs font-bold">رمز الكوبون</Label>
+              <Input id="coupons-f1-15956"
                 value={form.code}
                 onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                 placeholder="SUMMER20"
@@ -392,10 +392,10 @@ export default function AdminCouponsPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold">
+                <Label htmlFor="coupons-f3-25257" className="text-xs font-bold">
                   {form.type === "percentage" ? "النسبة (%)" : "المبلغ (د.ل)"}
                 </Label>
-                <Input
+                <Input id="coupons-f3-25257"
                   type="number"
                   value={form.value}
                   onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
@@ -409,8 +409,8 @@ export default function AdminCouponsPage() {
             {/* Min order + max uses */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold">حد أدنى للطلب (اختياري)</Label>
-                <Input
+                <Label htmlFor="coupons-f4-28708" className="text-xs font-bold">حد أدنى للطلب (اختياري)</Label>
+                <Input id="coupons-f4-28708"
                   type="number"
                   value={form.min_order_amount}
                   onChange={(e) => setForm((f) => ({ ...f, min_order_amount: e.target.value }))}
@@ -418,8 +418,8 @@ export default function AdminCouponsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold">الحد الأقصى للاستخدام</Label>
-                <Input
+                <Label htmlFor="coupons-f5-30186" className="text-xs font-bold">الحد الأقصى للاستخدام</Label>
+                <Input id="coupons-f5-30186"
                   type="number"
                   value={form.max_uses}
                   onChange={(e) => setForm((f) => ({ ...f, max_uses: e.target.value }))}
@@ -430,8 +430,8 @@ export default function AdminCouponsPage() {
 
             {/* Expires at + description */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold">تاريخ الانتهاء (اختياري)</Label>
-              <Input
+              <Label htmlFor="coupons-f6-31815" className="text-xs font-bold">تاريخ الانتهاء (اختياري)</Label>
+              <Input id="coupons-f6-31815"
                 type="datetime-local"
                 value={form.expires_at}
                 onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
@@ -446,8 +446,8 @@ export default function AdminCouponsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold">وصف (اختياري)</Label>
-              <Input
+              <Label htmlFor="coupons-f7-15994" className="text-xs font-bold">وصف (اختياري)</Label>
+              <Input id="coupons-f7-15994"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 placeholder="مثال: خصم الصيف على الاشتراكات"
@@ -641,3 +641,5 @@ export default function AdminCouponsPage() {
     </AdminLayout>
   );
 }
+
+// AUD103-6-F2 (r103): admin form labels programmatically associated with their controls.

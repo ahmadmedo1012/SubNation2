@@ -756,7 +756,7 @@ export default function HomePage() {
                       </span>
                       <button
                         onClick={handleClearHistory}
-                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                        className="min-h-11 px-2 -my-2 text-xs text-muted-foreground hover:text-destructive transition-colors"
                       >
                         مسح
                       </button>
@@ -765,7 +765,7 @@ export default function HomePage() {
                       <button
                         key={query}
                         onClick={() => handleSearchHistoryClick(query)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
+                        className="min-h-11 w-full flex items-center gap-2 px-2 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
                       >
                         <Clock className="w-3 h-3 text-muted-foreground" />
                         {query}

@@ -7,6 +7,8 @@
  * identical hashes — useful for caching and Lighthouse comparison.
  */
 
+import { categoryLabel } from "./utils";
+
 const DEFAULT_ORIGIN = "https://subnation.ly";
 
 function getOrigin(): string {
@@ -90,11 +92,22 @@ export function buildProductLd(p: ProductLdInput) {
     "@id": productUrl,
     name: p.name,
     description: (p.descriptionLong ?? p.description ?? p.name).slice(0, 5000),
-    image: p.imageUrl ?? `${origin}/subnation-logo.png`,
+    // AUD103-6-F1 (r103): Google's Product rich-result validator (and
+    // every OG-style unfurler) expects a fully-qualified URL — the DB
+    // stores site-relative /products/<slug>.webp, so absolutize like
+    // MetaTags does for og:image.
+    image: p.imageUrl
+      ? p.imageUrl.startsWith("http")
+        ? p.imageUrl
+        : `${origin}${p.imageUrl}`
+      : `${origin}/subnation-logo.png`,
     sku: String(p.id),
+    // AUD103-6-F3 (r103): Brand means MANUFACTURER to Google — the raw
+    // category slug ("streaming"/"vpn") polluted the knowledge-graph
+    // association; ship the human Arabic label instead.
     brand: {
       "@type": "Brand",
-      name: p.category ?? "SubNation",
+      name: categoryLabel(p.category) || "SubNation",
     },
     offers: {
       "@type": "Offer",

@@ -173,10 +173,10 @@ function RejectModal({
         </div>
 
         <div className="mb-4">
-          <label className="text-xs font-bold text-muted-foreground block mb-1.5">
+          <label htmlFor="topups-f1-28266" className="text-xs font-bold text-muted-foreground block mb-1.5">
             سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
           </label>
-          <textarea
+          <textarea id="topups-f1-28266"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
@@ -1159,3 +1159,5 @@ export default function AdminTopupsPage() {
     </AdminLayout>
   );
 }
+
+// AUD103-6-F2 (r103): admin form labels programmatically associated with their controls.

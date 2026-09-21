@@ -132,7 +132,10 @@ export function Navbar() {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-0.5">
+        {/* AUD103-6-F4 (r103): distinguished landmark label — a page can
+            render 3 <nav> elements (desktop, mobile, breadcrumb); the
+            rotor needs them disambiguated. */}
+        <nav aria-label="التنقل الرئيسي" className="hidden md:flex items-center gap-0.5">
           {navLink("/", "الكتالوج")}
           {token && (
             <>

@@ -114,10 +114,15 @@ function setTitle(title: string): void {
 export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const origin = getAppOrigin();
   const url = `${origin}${input.path.startsWith("/") ? input.path : "/" + input.path}`;
-  const image = input.image ?? `${origin}${DEFAULT_IMAGE}`;
+  // AUD103-6-F1 (r103): OG/Twitter scrapers (WhatsApp is the DOMINANT
+  // share channel in Libya) silently drop RELATIVE image URLs — all 45
+  // product pages passed the site-relative /products/<slug>.webp from the
+  // DB and every share unfurled without a thumbnail. Absolutize caller
+  // images once here; absolute URLs pass through untouched.
+  const rawImage = input.image ?? DEFAULT_IMAGE;
+  const image = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage}`;
   const lang = input.locale ?? "ar";
   const ogLocale = lang === "ar" ? "ar_LY" : "en_US";
-  const ogLocaleAlt = lang === "ar" ? "en_US" : "ar_LY";
   const title = clamp(input.title.trim(), 60);
   const description = clamp(input.description.trim(), 160);
   const robots = input.robots ?? "index,follow";
@@ -150,7 +155,10 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
     upsertMeta('meta[property="og:url"]', "property", "og:url", url);
     upsertMeta('meta[property="og:image"]', "property", "og:image", image);
     upsertMeta('meta[property="og:locale"]', "property", "og:locale", ogLocale);
-    upsertMeta('meta[property="og:locale:alternate"]', "property", "og:locale:alternate", ogLocaleAlt);
+    // AUD103-6-F10 (r103): og:locale:alternate DROPPED — the alternate
+    // list must name REAL translations; advertising a nonexistent en_US
+    // locale contradicts the ar-only discipline the sitemap enforces
+    // (seo.ts deliberately refuses phantom alternates).
     upsertMeta('meta[property="og:site_name"]', "property", "og:site_name", "SubNation");
 
     upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image");
