@@ -81,9 +81,7 @@ async function tableExists(table: string): Promise<boolean> {
 }
 
 async function indexExists(name: string): Promise<boolean> {
-  const result = await db.execute(
-    sql`SELECT 1 AS one FROM pg_indexes WHERE indexname = ${name}`,
-  );
+  const result = await db.execute(sql`SELECT 1 AS one FROM pg_indexes WHERE indexname = ${name}`);
   const rows = (result as unknown as { rows?: unknown[] }).rows ?? [];
   return rows.length > 0;
 }
@@ -210,7 +208,8 @@ describe("V1-M12 — idempotent re-runs", () => {
       statements.push(text);
       return db.execute(query);
     };
-    await applyIdempotencyKeysStage(recording); await applyIdempotencyReferenceTypeStage();
+    await applyIdempotencyKeysStage(recording);
+    await applyIdempotencyReferenceTypeStage();
 
     // Steady-state: only the DO-block existence probe (catalog read — the
     // CREATE TABLE inside its IF never fires, hence no top-level DDL) and

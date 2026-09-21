@@ -446,8 +446,7 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
-  const variants =
-    (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
+  const variants = (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
   const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
@@ -524,8 +523,7 @@ router.get("/:id", catalogCache, async (req, res) => {
   const basePrice = parseFloat(String(product.price));
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const stockCount = Number(stockResult?.count ?? 0);
-  const variants =
-    (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
+  const variants = (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
   const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;

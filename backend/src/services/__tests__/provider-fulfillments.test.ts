@@ -39,10 +39,7 @@ async function seedUserWithBalance(balance: string) {
 }
 
 async function seedProductWithStock(name: string) {
-  const [p] = await db
-    .insert(productsTable)
-    .values({ name, price: "10.00" })
-    .returning();
+  const [p] = await db.insert(productsTable).values({ name, price: "10.00" }).returning();
   await db.insert(inventoryTable).values({
     productId: p.id,
     accountEmail: "acct@test.local",
@@ -86,10 +83,7 @@ describe("R102 — provider_fulfillments record lifecycle", () => {
     const product = await seedProductWithStock("Rollback Product");
     // Deactivate the product AFTER seeding stock — purchase must fail at
     // the PRODUCT_STALE gate, inside the transaction.
-    await db
-      .update(productsTable)
-      .set({ isActive: false })
-      .where(eq(productsTable.id, product.id));
+    await db.update(productsTable).set({ isActive: false }).where(eq(productsTable.id, product.id));
 
     const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
     expect(result).toMatchObject({ ok: false });

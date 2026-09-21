@@ -104,18 +104,28 @@ describe("R102 — loyalty convert-points durable idempotency", () => {
     const user = await seedUserWithPoints(points);
     const token = signUserToken({ userId: user.id });
 
-    const first = await call("/api/loyalty/convert-points", token, { points }, {
-      "Idempotency-Key": "loyalty-retry-key-0001",
-    });
+    const first = await call(
+      "/api/loyalty/convert-points",
+      token,
+      { points },
+      {
+        "Idempotency-Key": "loyalty-retry-key-0001",
+      },
+    );
     expect(first.status).toBe(200);
     expect(first.body.new_points).toBe(0);
 
     // The retry that motivated the whole guard: response lost (client
     // assumes failure), same key re-sent. Durable claim → 409, and the
     // balance/points reflect exactly ONE conversion.
-    const retry = await call("/api/loyalty/convert-points", token, { points }, {
-      "Idempotency-Key": "loyalty-retry-key-0001",
-    });
+    const retry = await call(
+      "/api/loyalty/convert-points",
+      token,
+      { points },
+      {
+        "Idempotency-Key": "loyalty-retry-key-0001",
+      },
+    );
     expect(retry.status).toBe(409);
 
     const [after] = await db
@@ -137,14 +147,24 @@ describe("R102 — loyalty convert-points durable idempotency", () => {
     const user = await seedUserWithPoints(points * 2);
     const token = signUserToken({ userId: user.id });
 
-    const first = await call("/api/loyalty/convert-points", token, { points }, {
-      "Idempotency-Key": "loyalty-fresh-key-0001",
-    });
+    const first = await call(
+      "/api/loyalty/convert-points",
+      token,
+      { points },
+      {
+        "Idempotency-Key": "loyalty-fresh-key-0001",
+      },
+    );
     expect(first.status).toBe(200);
 
-    const second = await call("/api/loyalty/convert-points", token, { points }, {
-      "Idempotency-Key": "loyalty-fresh-key-0002",
-    });
+    const second = await call(
+      "/api/loyalty/convert-points",
+      token,
+      { points },
+      {
+        "Idempotency-Key": "loyalty-fresh-key-0002",
+      },
+    );
     expect(second.status).toBe(200);
 
     const [after] = await db

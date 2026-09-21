@@ -20,9 +20,7 @@ import { logger } from "../../lib/logger";
 import { manualProvider } from "./manual.provider";
 import type { FulfillmentProvider } from "./types";
 
-const PROVIDERS: ReadonlyMap<string, FulfillmentProvider> = new Map([
-  ["manual", manualProvider],
-]);
+const PROVIDERS: ReadonlyMap<string, FulfillmentProvider> = new Map([["manual", manualProvider]]);
 
 /** Unknown/missing → manual (fail-safe to current behavior), with one loud log. */
 export function getFulfillmentProvider(): FulfillmentProvider {

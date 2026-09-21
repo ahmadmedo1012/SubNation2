@@ -667,14 +667,14 @@ export function WhatsAppPhoneSignIn({
             {settling.autoPending ? (
               settling.wake ? (
                 <>
-                  خدمة <span lang="en">WhatsApp</span> تستيقظ من السكون الآن — ستُرسل الرمز
-                  تلقائيًا خلال لحظات
+                  خدمة <span lang="en">WhatsApp</span> تستيقظ من السكون الآن — ستُرسل الرمز تلقائيًا
+                  خلال لحظات
                 </>
               ) : (
-              <>
-                قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وستُرسل الرمز تلقائيًا
-                خلال أقل من دقيقة
-              </>
+                <>
+                  قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وستُرسل الرمز
+                  تلقائيًا خلال أقل من دقيقة
+                </>
               )
             ) : settling.wake ? (
               <>

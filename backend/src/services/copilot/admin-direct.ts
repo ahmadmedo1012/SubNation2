@@ -372,8 +372,7 @@ const updateProductSpec: Tool = {
             },
             costPrice: {
               type: "string",
-              description:
-                "Numeric string with 2 decimals. Must be between 0.01 and 1000000.",
+              description: "Numeric string with 2 decimals. Must be between 0.01 and 1000000.",
               pattern: "^\\d{1,9}(\\.\\d{1,2})?$",
               maxLength: 12,
             },

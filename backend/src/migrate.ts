@@ -888,7 +888,10 @@ export async function applyIdempotencyReferenceTypeStage(
     ALTER TABLE idempotency_keys
       ADD COLUMN IF NOT EXISTS reference_type VARCHAR(32) NOT NULL DEFAULT 'order';
   `);
-  logger.info({ category: "storage" }, "V1-M19: idempotency_keys generalized (nullable order_id + reference_type)");
+  logger.info(
+    { category: "storage" },
+    "V1-M19: idempotency_keys generalized (nullable order_id + reference_type)",
+  );
 }
 
 export async function runMigrations() {

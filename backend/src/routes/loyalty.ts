@@ -216,7 +216,12 @@ router.post(
         // (the user's balance already reflects the first conversion).
         if (scopedKey) {
           try {
-            await claimIdempotencyKey(tx as unknown as typeof db, scopedKey, null, "loyalty.convert");
+            await claimIdempotencyKey(
+              tx as unknown as typeof db,
+              scopedKey,
+              null,
+              "loyalty.convert",
+            );
           } catch (claimErr) {
             if (isIdempotencyKeyViolation(claimErr))
               throw new ConflictError("تم تنفيذ هذا التحويل مسبقاً بنفس المفتاح — تحقق من رصيدك");

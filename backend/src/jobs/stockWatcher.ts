@@ -148,7 +148,9 @@ export async function reportOrphanInventory(): Promise<void> {
     if (rows.length === 0) return;
 
     const total = rows.reduce((acc, r) => acc + Number(r.unsold), 0);
-    const listing = rows.map((r) => `${r.name} (#${r.productId}): ${Number(r.unsold)} وحدة`).join(" · ");
+    const listing = rows
+      .map((r) => `${r.name} (#${r.productId}): ${Number(r.unsold)} وحدة`)
+      .join(" · ");
     await logAdminAlert(
       "system",
       `مخزون يتيم تحت منتجات مؤرشفة: ${total} وحدة`,
