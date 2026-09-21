@@ -159,7 +159,13 @@ export function WhatsAppPhoneSignIn({
   // error-styled. { autoPending: true } while an automatic retry is
   // scheduled or in flight; { autoPending: false } once the auto-retry
   // budget (2) is spent and the user drives the next attempt manually.
-  const [settling, setSettling] = useState<{ autoPending: boolean } | null>(null);
+  // R102: `wake` selects honest copy for the gateway cold-wake variant
+  // (Render-Free idle sleep) vs a freshly-linked channel — same
+  // auto-retry machinery, different explanation.
+  const [settling, setSettling] = useState<{
+    autoPending: boolean;
+    wake?: boolean;
+  } | null>(null);
   // 96-F2 (R96-A4 §4.1): OTP TTL (expires_at from /start) → subtle M:SS countdown.
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [expiryLeft, setExpiryLeft] = useState(0);
@@ -238,7 +244,14 @@ export function WhatsAppPhoneSignIn({
         // NEVER error-styled: honest copy, auto-retry after
         // retry_after_sec, max 2 auto-retries, then a manual button.
         // This 503 is NOT a rate limit — no cooldown is burned.
-        if (data.details?.reason === "whatsapp_settling") {
+        // R102 (cold-wake, R102-B F3): gateway_waking (the Render-Free
+        // gateway booting after idle sleep) rides the SAME auto-retry
+        // path — the first OTP after a sleep period used to hard-fail
+        // 502 and force a manual re-tap.
+        if (
+          data.details?.reason === "whatsapp_settling" ||
+          data.details?.reason === "gateway_waking"
+        ) {
           setError("");
           const raw = Number(data.details.retry_after_sec);
           const waitSec =
@@ -247,7 +260,10 @@ export function WhatsAppPhoneSignIn({
               : SETTLING_FALLBACK_WAIT_SEC;
           if (settlingRetriesRef.current < SETTLING_MAX_AUTO_RETRIES) {
             settlingRetriesRef.current += 1;
-            setSettling({ autoPending: true });
+            setSettling({
+              autoPending: true,
+              wake: data.details?.reason === "gateway_waking",
+            });
             cancelSettlingTimer(settlingTimerRef);
             settlingTimerRef.current = window.setTimeout(() => {
               settlingTimerRef.current = null;
@@ -256,7 +272,10 @@ export function WhatsAppPhoneSignIn({
           } else {
             // Auto-retry budget spent — keep the honest banner, hand
             // control back to the user (send button re-enabled).
-            setSettling({ autoPending: false });
+            setSettling({
+              autoPending: false,
+              wake: data.details?.reason === "gateway_waking",
+            });
           }
           return;
         }
@@ -646,9 +665,21 @@ export function WhatsAppPhoneSignIn({
         >
           <p className="text-xs text-muted-foreground text-center leading-relaxed">
             {settling.autoPending ? (
+              settling.wake ? (
+                <>
+                  خدمة <span lang="en">WhatsApp</span> تستيقظ من السكون الآن — ستُرسل الرمز
+                  تلقائيًا خلال لحظات
+                </>
+              ) : (
               <>
                 قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وستُرسل الرمز تلقائيًا
                 خلال أقل من دقيقة
+              </>
+              )
+            ) : settling.wake ? (
+              <>
+                ما زالت خدمة <span lang="en">WhatsApp</span> تستيقظ من السكون — أعد المحاولة أو
+                استخدم Google / Telegram
               </>
             ) : (
               <>

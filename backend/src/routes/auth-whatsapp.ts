@@ -105,6 +105,12 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         // race). Honest copy + Retry-After so the client auto-retries
         // instead of burning a resend on an undecryptable dispatch.
         whatsapp_settling: "قناة WhatsApp ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من دقيقة",
+        // R102 (cold-wake, R102-B F3): the gateway service itself is
+        // booting after a Render-Free idle sleep. Honest copy + 503 +
+        // Retry-After — the client's settling auto-retry (max 2) rides
+        // the wake instead of the user manually re-tapping a hard 502.
+        gateway_waking:
+          "جاري استيقاظ خدمة WhatsApp من السكون — ستُعاد المحاولة تلقائياً خلال لحظات",
         // 96-F1 (R96-A4 §4.2): the code WAS delivered but storing it
         // failed twice — 500 with a short cooldown instead of an instant
         // re-send that would deliver a SECOND WhatsApp message.
@@ -120,7 +126,9 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
                 result.reason === "whatsapp_not_paired" ||
                 // 96-F1: settling is a transient server-side state —
                 // 503 + Retry-After is the honest mapping.
-                result.reason === "whatsapp_settling"
+                result.reason === "whatsapp_settling" ||
+                // R102: gateway cold-wake — same honest transient mapping.
+                result.reason === "gateway_waking"
               ? 503
               : result.reason === "store_failed"
                 ? 500

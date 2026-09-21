@@ -79,6 +79,12 @@ export type StartOtpResult =
         // 96-F1 (R96-A4 §1.3C): the session was just linked and is still
         // inside the settle / warm-up window — retry after retryAfterSec.
         | "whatsapp_settling"
+        // R102 (cold-wake, R102-B F3): the gateway itself is booting after
+        // a Render-Free idle sleep — the retry loop exhausted its ~30 s
+        // budget against a service that needs 30-60 s+ to boot. The honest
+        // verdict is "waking, retry later" (503 + Retry-After), not a hard
+        // 502 — the frontend then rides the wake with its auto-retry.
+        | "gateway_waking"
         // 96-F1 (R96-A4 §4.2): the WhatsApp message WAS delivered but the
         // OTP row could not be persisted (insert failed twice). The client
         // gets a short cooldown so it does not instantly re-send a SECOND
@@ -214,15 +220,27 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     const isNotPaired = send.reason === "session_not_ready";
     const isSettling = send.reason === "session_settling";
     const isRecipientMissing = send.reason === "recipient_not_on_whatsapp";
+    // R102 (cold-wake): the RETRYABLE wire-failure shape — network
+    // error/timeout (request_failed) or a 5xx from the gateway. The
+    // retry loop (3 attempts, ~30 s) already burned through, and on the
+    // free tier that exhaustion almost always means the gateway is
+    // mid-boot after an idle sleep — a definitive-looking 502 forced the
+    // user to manually re-tap (which then succeeded once awake). 4xx
+    // rejections stay `delivery_failed` — those are NOT a wake shape.
+    const isGatewayWaking =
+      send.reason === "request_failed" ||
+      (send.reason === "non_ok_status" && (send.status ?? 0) >= 500);
     const failureReason = isGatewayDisabled
       ? "gateway_disabled"
       : isNotPaired
         ? "whatsapp_not_paired"
         : isSettling
           ? "whatsapp_settling"
-          : isRecipientMissing
-            ? "recipient_not_on_whatsapp"
-            : "delivery_failed";
+          : isGatewayWaking
+            ? "gateway_waking"
+            : isRecipientMissing
+              ? "recipient_not_on_whatsapp"
+              : "delivery_failed";
     await safeLog({
       identifier: `wa:${phone}`,
       action: "register",
@@ -236,7 +254,9 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
       reason: failureReason,
       ...(isSettling && send.readyInMs !== undefined
         ? { retryAfterSec: Math.max(1, Math.ceil(send.readyInMs / 1000)) }
-        : {}),
+        : isGatewayWaking
+          ? { retryAfterSec: 30 }
+          : {}),
     };
   }
 
