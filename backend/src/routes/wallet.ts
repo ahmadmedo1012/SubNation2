@@ -3,6 +3,7 @@ import { db, ordersTable, productsTable, usersTable, walletTopupsTable } from "@
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { logger } from "../lib/logger";
+import { roundLydString } from "../lib/money";
 import { normalizeLibyanPhone } from "../lib/crypto";
 import { safeDecrypt } from "../lib/encryption";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
@@ -259,9 +260,12 @@ router.post(
           // R102 (money display-vs-storage parity): zod accepts up to 3+
           // decimals but numeric(10,2) rounds SILENTLY — the operator
           // would approve 10.555 while 10.56 is what gets credited.
-          // Round at the boundary (same as topup.service.ts:70) so the
-          // approval card, the credited amount, and the ledger agree.
-          amount: String(+amount.toFixed(2)),
+          // Round at the boundary so the approval card, the credited
+          // amount, and the ledger agree. AUD103 (r103): roundLydString —
+          // +toFixed(2) missed the exact half-cent case (binary
+          // 10.554999… → "10.55"); the epsilon-corrected rounding yields
+          // the intended 10.56.
+          amount: roundLydString(amount),
           paymentMethod: method,
           paymentNetwork: payment_network ?? null,
           senderPhone: sender_phone ?? null,

@@ -2,6 +2,7 @@ import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspa
 import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { POINTS_PER_REFERRAL } from "../lib/loyalty-tiers";
+import { roundLyd } from "../lib/money";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
@@ -66,8 +67,11 @@ export class TopupService {
     if (cleanRef.length > 255) {
       throw new ServiceError(400, "مرجع الدفع طويل جداً");
     }
-    // All money writes go through toFixed(2) — numeric(10,2) parity.
-    const creditAmount = +amount.toFixed(2);
+    // All money writes go through 2-dp rounding — numeric(10,2) parity.
+    // AUD103 (r103): roundLyd instead of +toFixed(2) — the binary float
+    // 10.555 is 10.5549999…, so toFixed(2) yielded 10.55 while the R102
+    // contract (and Postgres numeric) intend 10.56 for the half-cent case.
+    const creditAmount = roundLyd(amount);
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 

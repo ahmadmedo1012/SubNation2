@@ -149,6 +149,16 @@ describe("CheckoutService — not-found / out-of-stock guards", () => {
     const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("OUT_OF_STOCK");
+    // AUD103-5-F6 (r103): strengthen to the full zero-state battery — the
+    // sibling INSUFFICIENT_BALANCE test asserts all of this, and stock
+    // exhaustion must meet the same bar (asserting the reason alone hid
+    // partial-state regressions).
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(50); // untouched
+    expect(await db.select().from(ordersTable).where(eq(ordersTable.userId, user.id))).toHaveLength(0);
+    expect(
+      await db.select().from(walletLedgerTable).where(eq(walletLedgerTable.userId, user.id)),
+    ).toHaveLength(0);
   });
 });
 

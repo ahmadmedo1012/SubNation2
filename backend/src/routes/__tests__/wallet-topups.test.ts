@@ -464,3 +464,39 @@ describe("GET /api/wallet/topups", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ── AUD103-5-F7 (r103): topup rounding at the boundary (R102 fix, unpinned) ──
+
+describe("POST /api/wallet/topups — boundary rounding (AUD103-5-F7)", () => {
+  it("a 3-decimal amount is stored, responded, and credited as the 2-dp rounded value", async () => {
+    const user = await seedUser({ walletBalance: "0.00" });
+    const token = signUserToken({ userId: user.id });
+
+    // zod accepts up to 3+ decimals; numeric(10,2) rounds SILENTLY. The
+    // R102 fix rounds at the boundary so the operator approval card, the
+    // credited amount, and the ledger agree (10.555 → 10.56).
+    const res = await call<{ id: number; amount: number; status: string }>(
+      app,
+      "POST",
+      "/api/wallet/topups",
+      { token, body: { amount: 10.555, payment_network: "madar" } },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.amount).toBe(10.56);
+
+    // The STORED row is the rounded value (display-vs-storage parity).
+    const [row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.userId, user.id));
+    expect(row).toBeDefined();
+    expect(String(row.amount)).toBe("10.56");
+
+    // And the APPROVED credit moves exactly the rounded amount (same
+    // rounding idiom at the service boundary — topup.service.ts).
+    const { TopupService } = await import("../../services/topup.service");
+    await TopupService.approve(row.id, null);
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(10.56);
+  });
+});
