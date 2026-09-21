@@ -110,10 +110,19 @@ function isCouponFailureMessage(message: string | undefined): boolean {
  *         keys. The sync step (which runs on every definitive flow outcome:
  *         partial HTTP failure AND full success) is the safe deletion point.
  *
- * sessionStorage (per-tab) rather than localStorage: these are retry tokens
- * for THIS checkout session, not durable state — they die with the tab.
- * Every access is try/catch-guarded: a private-mode / quota failure just
- * degrades to the old unstable-key behavior, it never blocks the money path.
+ * localStorage (durable) rather than sessionStorage (per-tab) — R102
+ * (R102-A1 F1 / P1): the cart itself lives in localStorage and survives
+ * tab death, but the retry tokens used to die with the tab. Scenario the
+ * sessionStorage choice opened: server commits the purchase → response
+ * lost (network) → user closes the tab (or returns >10 min later) →
+ * cart still holds the charged unit → re-confirm mints a FRESH key →
+ * the durable server layer sees a new key → a full second purchase and
+ * a second debit. The 98-F2 envelope (TTL + intent fingerprint) already
+ * makes stale keys inert, so durability costs nothing and closes the
+ * window: a stored key now outlives the tab exactly as long as the cart
+ * does. Every access is try/catch-guarded: a private-mode / quota failure
+ * just degrades to the old unstable-key behavior, it never blocks the
+ * money path.
  *
  * 98-F2 (r97 F-07, deferred queue): the raw key gained the 97-F5 buy-key's
  * TWO staleness guards, which the checkout keys never had — a stored key
@@ -160,7 +169,7 @@ function loadCheckoutUnitKey(
   fingerprint: string,
 ): string | null {
   try {
-    const raw = sessionStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
+    const raw = localStorage.getItem(checkoutUnitKeyId(productId, unitIndex));
     if (!raw) return null;
     // Pre-98-F2 entries were raw uuid strings — JSON.parse throws → the
     // entry is treated as absent and a fresh key is minted (the old
@@ -189,7 +198,7 @@ function persistCheckoutUnitKey(
 ): void {
   try {
     const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
-    sessionStorage.setItem(checkoutUnitKeyId(productId, unitIndex), JSON.stringify(entry));
+    localStorage.setItem(checkoutUnitKeyId(productId, unitIndex), JSON.stringify(entry));
   } catch {
     // degraded: unstable keys (pre-fix behavior) — never throw on money path
   }
@@ -197,7 +206,7 @@ function persistCheckoutUnitKey(
 
 function clearCheckoutUnitKey(productId: number, unitIndex: number): void {
   try {
-    sessionStorage.removeItem(checkoutUnitKeyId(productId, unitIndex));
+    localStorage.removeItem(checkoutUnitKeyId(productId, unitIndex));
   } catch {
     // ignore
   }

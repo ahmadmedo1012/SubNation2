@@ -69,7 +69,7 @@ const KEY_SLOT = (productId: number, unit: number) => `subnation_checkout_key:${
  * key back out of the entry so the lifecycle assertions below keep
  * testing the SAME contract the confirm loop honors. */
 function storedUnitKey(productId: number, unit: number): string | null {
-  const raw = sessionStorage.getItem(KEY_SLOT(productId, unit));
+  const raw = localStorage.getItem(KEY_SLOT(productId, unit));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { k?: string };
@@ -84,7 +84,7 @@ function storedUnitEntry(
   productId: number,
   unit: number,
 ): { k?: string; t?: number; f?: string } | null {
-  const raw = sessionStorage.getItem(KEY_SLOT(productId, unit));
+  const raw = localStorage.getItem(KEY_SLOT(productId, unit));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as { k?: string; t?: number; f?: string };
@@ -143,7 +143,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     getMeMock.mockClear();
     toastSpy.mockReset();
     localStorage.clear();
-    sessionStorage.clear();
+    localStorage.clear();
     // The page's balance probe (/api/auth/me) must resolve a solvent
     // balance so the confirm CTA stays enabled.
     vi.stubGlobal(
@@ -203,7 +203,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     // Cart synced to exactly what was charged → empty.
     await waitFor(() => expect(readCart()).toHaveLength(0));
     // …and the accounted unit's retry key is gone.
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
   });
 
   it("deletes the unit key on a definitive HTTP rejection so a retry mints a fresh key", async () => {
@@ -215,7 +215,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
 
     // Definitive 4xx — key cleared (a cached rejection must not answer forever).
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
     // The persistent money banner explains the failure (not a toast-only).
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
@@ -265,7 +265,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     expect(retryKey).toBe(firstKey);
     // …and the replayed success then accounts the charge (cart + key clear).
     await waitFor(() => expect(readCart()).toHaveLength(0));
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
   });
 
   it("keeps the partial-success accounting intact: qty 2, 1 ordered + 1 rejected → cart shrinks to 1", async () => {
@@ -281,8 +281,8 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     // Exactly the charged unit was removed from the cart (P0-3 accounting).
     await waitFor(() => expect(readCart()[0]?.quantity).toBe(1));
     // Unit 0 charged+accounted → key cleared; unit 1 definitively rejected → cleared.
-    expect(sessionStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
-    expect(sessionStorage.getItem(KEY_SLOT(5, 1))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 1))).toBeNull();
     // Partial-success banner names what WAS charged before the stop.
     expect(await screen.findByText(/بنجاح قبل توقف العملية/)).toBeInTheDocument();
   });

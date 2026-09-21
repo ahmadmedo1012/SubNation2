@@ -131,8 +131,13 @@ const TRUST_SIGNALS = [
 //         so a stale intent is never replayed onto changed data (and the
 //         backend's same-key-different-body 409 branch stays unreachable).
 //
-// sessionStorage (per-tab) rather than localStorage: these are retry
-// tokens for THIS browsing session, not durable state. Every access is
+// localStorage (durable) rather than sessionStorage (per-tab) — R102
+// (R102-A1 F1 / P1, mirroring checkout.tsx): the retry token must
+// outlive the tab exactly as long as the user's intent can — a network-
+// level loss (server committed, response lost) followed by tab death
+// used to mint a FRESH key on the next visit and charge twice. The
+// TTL + fingerprint guards minted at birth (97-F5) already make stale
+// keys inert, so durability costs nothing. Every access is
 // try/catch-guarded: a private-mode / quota failure degrades to the old
 // unstable-key behavior and never blocks the money path.
 const BUY_KEY_PREFIX = "subnation_buykey:";
@@ -165,7 +170,7 @@ function buyIntentFingerprint(
 
 function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
   try {
-    const raw = sessionStorage.getItem(buyIntentKeyId(productId));
+    const raw = localStorage.getItem(buyIntentKeyId(productId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredBuyIntent>;
     if (typeof parsed.k !== "string" || !parsed.k) return null;
@@ -186,7 +191,7 @@ function loadBuyIntentKey(productId: number, fingerprint: string): string | null
 function persistBuyIntentKey(productId: number, fingerprint: string, key: string): void {
   try {
     const entry: StoredBuyIntent = { k: key, t: Date.now(), f: fingerprint };
-    sessionStorage.setItem(buyIntentKeyId(productId), JSON.stringify(entry));
+    localStorage.setItem(buyIntentKeyId(productId), JSON.stringify(entry));
   } catch {
     // degraded: unstable keys (pre-fix behavior) — never throw on money path
   }
@@ -194,7 +199,7 @@ function persistBuyIntentKey(productId: number, fingerprint: string, key: string
 
 function clearBuyIntentKey(productId: number): void {
   try {
-    sessionStorage.removeItem(buyIntentKeyId(productId));
+    localStorage.removeItem(buyIntentKeyId(productId));
   } catch {
     // ignore
   }

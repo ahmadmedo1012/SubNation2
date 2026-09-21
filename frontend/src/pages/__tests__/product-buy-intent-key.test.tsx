@@ -6,7 +6,7 @@
  * with the component: a refresh / back-navigation / PWA cold-resume
  * after a NETWORK-level failure (response lost, wallet already charged)
  * minted a FRESH key on the re-tap → a second order + a second
- * deduction. These tests pin the sessionStorage lifecycle that mirrors
+ * deduction. These tests pin the localStorage lifecycle that mirrors
  * checkout.tsx (96-F4):
  *
  *   1. NETWORK failure → the stored key SURVIVES (TTL + fingerprint
@@ -94,7 +94,7 @@ function httpApiError(error: string) {
 const KEY_SLOT = (productId: number) => `subnation_buykey:${productId}`;
 
 function readStoredIntent(productId: number): { k: string; t: number; f: string } | null {
-  const raw = sessionStorage.getItem(KEY_SLOT(productId));
+  const raw = localStorage.getItem(KEY_SLOT(productId));
   return raw ? (JSON.parse(raw) as { k: string; t: number; f: string }) : null;
 }
 
@@ -126,7 +126,7 @@ beforeEach(() => {
   createOrderMock.mockReset();
   getMeMock.mockClear();
   toastSpy.mockReset();
-  sessionStorage.clear();
+  localStorage.clear();
   localStorage.clear();
 });
 
@@ -134,7 +134,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
+describe("ProductPage — localStorage buy-intent key (97-F5 F-02)", () => {
   it("keeps the key across a network failure and REUSES it on the retry (no double charge)", async () => {
     renderPage();
 
@@ -153,7 +153,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     expect(typeof stored!.t).toBe("number");
 
     // Refresh-survival simulation: the retry reads the key back from
-    // sessionStorage (the useRef is gone — this is the F-02 fix).
+    // localStorage (the useRef is gone — this is the F-02 fix).
     createOrderMock.mockRejectedValueOnce(new TypeError("failed to fetch"));
     await clickBuy();
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
@@ -181,7 +181,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
 
     // The order success screen is up — the intent is terminally resolved.
     await waitFor(() => expect(screen.getByText("تم الشراء بنجاح!")).toBeInTheDocument());
-    expect(sessionStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
 
     // F-06: the wallet page's OWN data point is invalidated alongside
     // the orders list — /wallet must not show the pre-purchase balance
@@ -200,7 +200,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
 
     // Definitive 4xx — key cleared (a cached rejection must not answer forever).
-    expect(sessionStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
 
     // The retry generates a NEW key (old one consumed by the rejection).
@@ -246,14 +246,14 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     const firstKey = createOrderMock.mock.calls[0][1].headers["Idempotency-Key"];
     expect(retryKey).toBe(firstKey);
     // The replay's success then clears it (terminal resolution).
-    expect(sessionStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(PRODUCT.id))).toBeNull();
   });
 
   it("ignores a stored key older than the 10-minute TTL (fresh key minted)", async () => {
     renderPage();
 
     // A stale retry token left from an abandoned attempt long ago.
-    sessionStorage.setItem(
+    localStorage.setItem(
       KEY_SLOT(PRODUCT.id),
       JSON.stringify({
         k: "stale-key-uuid",
@@ -278,7 +278,7 @@ describe("ProductPage — sessionStorage buy-intent key (97-F5 F-02)", () => {
     // The product's price changed since the key was minted — replaying
     // the old intent would swallow a genuinely new purchase (or trip
     // the backend's same-key-different-body 409).
-    sessionStorage.setItem(
+    localStorage.setItem(
       KEY_SLOT(PRODUCT.id),
       JSON.stringify({ k: "other-price-key", t: Date.now(), f: `${PRODUCT.id}|99|` }),
     );
