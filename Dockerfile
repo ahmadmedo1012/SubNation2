@@ -142,8 +142,17 @@ COPY --from=build --chown=node:node /app/backend              ./backend
 COPY --from=build --chown=node:node /app/frontend/dist        ./frontend/dist
 COPY --from=build --chown=node:node /app/shared               ./shared
 
+# R109 P0-1: the root `prepare: husky` script runs under this --prod install,
+# but husky is a devDependency (absent here) -> `husky: not found` -> exit 1
+# -> the ENTIRE docker build aborted (empirically reproduced; every path that
+# builds this image was dead: docker-verify.sh, compose, Coolify, GHCR).
+# --ignore-scripts is safe for this stage: the only real runtime externals are
+# argon2 + firebase-admin, and both load their bundled/prebuilt artifacts at
+# require-time (verified: `require('argon2')` and `require('firebase-admin')`
+# succeed in a --ignore-scripts prod tree; pnpm 10 additionally gates
+# dependency lifecycle scripts behind onlyBuiltDependencies anyway).
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --prod --filter @workspace/api-server... \
+    pnpm install --frozen-lockfile --prod --ignore-scripts --filter @workspace/api-server... \
     && chown -R node:node /app
 
 # F-011 (security audit 004) — drop root in the runtime stage.
