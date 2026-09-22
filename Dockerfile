@@ -60,6 +60,11 @@ ARG VITE_APP_ORIGIN=""
 # 99-C7 (R99-A3 P3): VITE_APP_NAME + VITE_FIREBASE_DATABASE_URL removed —
 # zero readers in the frontend (grep: import.meta.env never touches them;
 # firebase.ts passes no databaseURL). Dead declarations invite drift.
+# 110-I (R109 109-p P3): VITE_FIREBASE_MEASUREMENT_ID removed for the same
+# reason — firebase.ts never initializes analytics, so zero import.meta.env
+# readers exist (r98 deadcode audit; re-verified r110). render.yaml no longer
+# lists it either; the stale env.example/ENVIRONMENT_MATRIX.md entries belong
+# to the env-matrix owner.
 ARG VITE_APP_VERSION=""
 ARG VITE_GOOGLE_CLIENT_ID=""
 ARG VITE_FIREBASE_AUTH_ENABLED=""
@@ -69,7 +74,6 @@ ARG VITE_FIREBASE_PROJECT_ID=""
 ARG VITE_FIREBASE_APP_ID=""
 ARG VITE_FIREBASE_STORAGE_BUCKET=""
 ARG VITE_FIREBASE_MESSAGING_SENDER_ID=""
-ARG VITE_FIREBASE_MEASUREMENT_ID=""
 ARG VITE_GSC_VERIFICATION=""
 # R107 (migration): gateway docs deep-link override for the admin
 # WhatsApp page. Empty default = the built-in Render URL (current prod).
@@ -98,7 +102,6 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID \
     VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET \
     VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
-    VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID \
     VITE_GSC_VERIFICATION=$VITE_GSC_VERIFICATION \
     VITE_OPENWA_DOCS_URL=$VITE_OPENWA_DOCS_URL \
     VITE_RELEASE_SHA=$RENDER_GIT_COMMIT
@@ -132,6 +135,10 @@ ENV NODE_ENV=production \
 # Alpine's default-absent /etc/localtime (UTC by accident). A base-image
 # change or an injected TZ env would silently shift every daily slot.
 # node-cron schedules also pass timezone:"UTC" explicitly (belt+braces).
+# R110 (109-j P3, re-verified NOT dead): the runtime stage's own
+# `pnpm install` further below needs the corepack pnpm shim — node:*-alpine
+# ships neither pnpm nor enabled shims (same pattern as the deps stage
+# above). Only the runtime CMD bypasses pnpm (FH-A3 F-3 note at the CMD).
 RUN corepack enable
 
 COPY --from=build --chown=node:node /app/package.json         ./package.json

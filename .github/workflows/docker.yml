@@ -13,6 +13,27 @@
 # arm64 builds are ~3-5× slower than native (~15-25 min each). The zero-cost
 # alternative is letting Coolify build from Git directly on the VM.
 #
+# STRUCTURE (r110, closes R109 109-j P2-2 — arm64 failure used to block the
+# amd64 publish because ONE buildx invocation built+pushed both platforms):
+#
+#   build-and-push — fail-fast:false matrix, one leg per platform. Each leg
+#     builds and pushes ONLY arch-suffixed tags (docker/metadata-action
+#     flavor suffix):
+#       sha-<short>-amd64 / sha-<short>-arm64   (immutable, per-commit)
+#       1.2.3-<arch>, 1.2-<arch>, latest-<arch>, <branch>-<arch>  (when
+#       those semantic tags apply). The legs share nothing but the checkout,
+#     so an arm64 failure can no longer take the amd64 publish down with it.
+#
+#   merge — needs both legs but runs `if: !cancelled()`, probes GHCR for the
+#     arch tags that ACTUALLY landed, and assembles the canonical multi-arch
+#     tags with `docker buildx imagetools create -t <canonical> …`:
+#       sha-<short>  1.2.3  1.2  latest  <branch>
+#     amd64 is the primary publish target: if its image is missing the merge
+#     fails and NO canonical tag is minted. arm64 is best-effort: when its
+#     leg fails, the canonical tags ship amd64-only and pick arm64 back up
+#     on the next commit whose arm64 leg is green. Previously-published
+#     sha-<short> tags are immutable and are never retro-fitted.
+#
 # STATUS: NOT YET VERIFIED on real infrastructure (no Docker in the r107
 # workspace + Actions minutes exhausted). Validate with a manual run before
 # relying on the published image.
@@ -43,36 +64,58 @@ env:
 
 jobs:
   build-and-push:
+    name: Build and push (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      # R109 P2-2: an arm64 failure must NOT cancel the amd64 leg (nor vice
+      # versa) — each platform publishes its arch tags independently.
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # SHA-pinned (r110, 109-p P2); kept on the v4 line this job already
+        # used — ci.yml is on v5.1.0, unify deliberately if desired.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
+      # amd64 is native on ubuntu-latest — QEMU only exists for the arm64 leg.
       - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v3
+        if: matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         with:
           platforms: arm64
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata (tags + labels)
+      # Same tag rules as always, but EVERY tag gets a -<arch> suffix here
+      # (flavor): sha-<short>-<arch>, 1.2.3-<arch>, 1.2-<arch>,
+      # latest-<arch>, <branch>-<arch>. The canonical un-suffixed tags are
+      # minted by the merge job below.
+      - name: Docker metadata (arch-suffixed tags + labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=-${{ matrix.arch }}
           tags: |
-            # semantic tags: v1.2.3 → 1.2.3, 1.2, latest
+            # semantic tags: v1.2.3 → 1.2.3-<arch>, 1.2-<arch>, latest-<arch>
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern=latest
@@ -81,11 +124,11 @@ jobs:
             # branch builds (manual dispatch on main)
             type=ref,event=branch
 
-      - name: Build and push (amd64 + arm64)
-        uses: docker/build-push-action@v6
+      - name: Build and push (${{ matrix.arch }} leg only)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -97,5 +140,98 @@ jobs:
           # are intentionally NOT baked here either: pass them in the
           # Coolify build environment when you want per-environment control,
           # or fork this step with the extra build-args.
-          cache-from: type=gha,scope=multi-arch
-          cache-to: type=gha,scope=multi-arch,mode=max
+          # Per-arch cache scope: both legs build concurrently and must not
+          # thrash a single shared gha scope.
+          cache-from: type=gha,scope=multi-arch-${{ matrix.arch }}
+          cache-to: type=gha,scope=multi-arch-${{ matrix.arch }},mode=max
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Merge: assemble the canonical multi-arch tags from whatever landed.
+  # ─────────────────────────────────────────────────────────────────────────
+  merge:
+    name: Merge multi-arch tags (imagetools)
+    needs: [build-and-push]
+    # Run even when a leg failed — the merge decides from the REGISTRY which
+    # platforms are available (race-free: both legs have finished by then).
+    # !cancelled() so a manually cancelled run pushes no half tag set.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Docker Buildx (imagetools CLI)
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Identical tag rules to the legs but WITHOUT the arch suffix — these
+      # are the canonical tags consumers pull: sha-<short>, 1.2.3, 1.2,
+      # latest, <branch>.
+      - name: Docker metadata (canonical multi-arch tags)
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=latest
+            type=sha,prefix=sha-
+            type=ref,event=branch
+
+      - name: Merge landed platforms into the canonical tags
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          # GHCR wants the lowercase image name for the source probes
+          # (metadata-action already lowercases its own outputs).
+          image="${REGISTRY}/${IMAGE_NAME,,}"
+
+          # Per-commit arch tags pushed by the legs: sha-<short>-<arch>.
+          sha_tag="$(printf '%s\n' "$TAGS" | grep -oE 'sha-[0-9a-f]+' | head -1)"
+          if [ -z "$sha_tag" ]; then
+            echo "::error::metadata produced no sha- tag; cannot locate the per-arch images."
+            exit 1
+          fi
+          amd64_src="${image}:${sha_tag}-amd64"
+          arm64_src="${image}:${sha_tag}-arm64"
+
+          amd64_ok=0
+          arm64_ok=0
+          if docker buildx imagetools inspect "$amd64_src" >/dev/null 2>&1; then
+            amd64_ok=1
+          fi
+          if docker buildx imagetools inspect "$arm64_src" >/dev/null 2>&1; then
+            arm64_ok=1
+          fi
+
+          # amd64 is the primary publish target — without it there is nothing
+          # canonical to publish. (The failed leg already turned the workflow
+          # red; keep it red and leave previously-published tags untouched.)
+          if [ "$amd64_ok" -ne 1 ]; then
+            echo "::error::amd64 image ${amd64_src} is missing in GHCR — primary platform build failed; canonical tags NOT created."
+            exit 1
+          fi
+
+          sources=("$amd64_src")
+          if [ "$arm64_ok" -eq 1 ]; then
+            sources+=("$arm64_src")
+          else
+            echo "::warning::arm64 leg did not land (${arm64_src}) — canonical tags below are amd64-only. arm64 rejoins on the next green arm64 build; immutable sha- tags are never retro-fitted."
+          fi
+
+          tag_args=()
+          for t in $TAGS; do
+            tag_args+=(-t "$t")
+          done
+
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+
+          echo "Canonical multi-arch tags now point at:"
+          docker buildx imagetools inspect "${image}:${sha_tag}" || true
