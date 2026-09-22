@@ -30,9 +30,21 @@ import { signAdminToken } from "../../lib/jwt";
  *   4. R97-02: the login / verify-2fa response bodies carry NO `token`
  *      — the httpOnly cookie is the sole session transport.
  *
- * Module mocks: @workspace/db (fixed admin row), lib/lockout (key
- * capture), lib/admin-session (arg capture), lib/crypto (password
- * verdict), lib/audit (no-op), otplib (TOTP verdict). lib/jwt is REAL
+ * R110-01 (round-110, R109 109-g §8 P2): POST /login additionally
+ * consults a GLOBAL, IP-independent `admin-username:${username}` lockout
+ * (threshold 10 / base 15 min — see USERNAME_LOCKOUT_POLICY in
+ * routes/admin/auth.ts) so a distributed attacker rotating source IPs
+ * hits a per-username ceiling. The locked branch MUST be a uniform 401
+ * (dummy argon2 included) — the R110 describe block pins the ceiling,
+ * its expiry/decay, the below-threshold success path, and the absence of
+ * any enumeration/timing split vs the unknown-username and
+ * wrong-password branches.
+ *
+ * Module mocks: @workspace/db (fixed admin row + h.dbReturnsAdmin toggle
+ * for the unknown-username branch), lib/lockout (key capture + an
+ * in-memory mirror of the login_attempts envelope), lib/admin-session
+ * (arg capture), lib/crypto (verdict via h.verify + a mocked dummy-hash
+ * constant), lib/audit (no-op), otplib (TOTP verdict). lib/jwt is REAL
  * so the verify-2fa temp token round-trips the actual HS256 secret.
  */
 
@@ -53,6 +65,19 @@ const h = vi.hoisted(() => {
     lockoutKeys: { check: [] as string[], record: [] as string[], reset: [] as string[] },
     locked: false,
     sessionCalls: [] as Array<Record<string, unknown>>,
+    // ── R110-01: in-memory mirror of lib/lockout's login_attempts row ──
+    /** identifier → attempt_count (drives the mock's lockout threshold). */
+    failureCounts: new Map<string, number>(),
+    /** identifier → lockedUntil (ms epoch); a future value = locked. */
+    lockedUntilByKey: new Map<string, number>(),
+    /** The mocked verifyPassword verdict — selects which login branch runs. */
+    verify: { valid: true, needsRehash: false, resetRequired: false } as {
+      valid: boolean;
+      needsRehash: boolean;
+      resetRequired: boolean;
+    },
+    /** When false, the mocked db select returns [] (unknown-username branch). */
+    dbReturnsAdmin: true,
   };
 });
 
@@ -61,7 +86,8 @@ vi.mock("@workspace/db", () => ({
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: async () => [h.adminRow],
+          // R110: h.dbReturnsAdmin=false feeds the unknown-username branch.
+          limit: async () => (h.dbReturnsAdmin ? [h.adminRow] : []),
         }),
       }),
     }),
@@ -79,16 +105,41 @@ vi.mock("@workspace/db", () => ({
 vi.mock("../../lib/lockout", () => ({
   checkLockout: vi.fn(async (key: string) => {
     h.lockoutKeys.check.push(key);
-    return {
-      locked: h.locked,
-      lockedUntil: h.locked ? new Date(Date.now() + 10 * 60_000) : null,
-    };
+    // h.locked = legacy kill-switch: every key reports locked (the
+    // per-IP 429 contract). Otherwise mirror the real helper: a future
+    // locked_until locks; an EXPIRED one decays the envelope to zero
+    // (the keep-the-row bookkeeping is DB-internal, invisible here).
+    if (h.locked) {
+      return { locked: true, lockedUntil: new Date(Date.now() + 10 * 60_000), attemptCount: 0 };
+    }
+    const until = h.lockedUntilByKey.get(key);
+    if (until === undefined) {
+      return { locked: false, lockedUntil: null, attemptCount: 0 };
+    }
+    if (until > Date.now()) {
+      return { locked: true, lockedUntil: new Date(until), attemptCount: 0 };
+    }
+    h.lockedUntilByKey.delete(key);
+    h.failureCounts.delete(key);
+    return { locked: false, lockedUntil: null, attemptCount: 0 };
   }),
-  recordFailedAttempt: vi.fn(async (key: string) => {
+  recordFailedAttempt: vi.fn(async (key: string, policy?: { maxAttempts?: number }) => {
     h.lockoutKeys.record.push(key);
+    // Mirror of the real upsert's SQL CASE: count+1 >= the namespace's
+    // maxAttempts flips locked_until on at the base 15-min duration
+    // (the exponential tiers are DB-internal and pinned by
+    // lockout-upsert.test.ts — not observable from the route).
+    const maxAttempts = policy?.maxAttempts ?? 5;
+    const next = (h.failureCounts.get(key) ?? 0) + 1;
+    h.failureCounts.set(key, next);
+    if (next >= maxAttempts) {
+      h.lockedUntilByKey.set(key, Date.now() + 15 * 60_000);
+    }
   }),
   resetAttempts: vi.fn(async (key: string) => {
     h.lockoutKeys.reset.push(key);
+    h.failureCounts.delete(key);
+    h.lockedUntilByKey.delete(key);
   }),
 }));
 
@@ -103,7 +154,11 @@ vi.mock("../../lib/admin-session", () => ({
 }));
 
 vi.mock("../../lib/crypto", () => ({
-  verifyPassword: vi.fn(async () => ({ valid: true, needsRehash: false })),
+  // 98-F3 shape: the dummy-hash constant the route pairs with the dummy
+  // verify on the parity branches (real precomputed value lives in
+  // lib/crypto.ts — its ARGON2 cost is what the mock can't reproduce).
+  DUMMY_PASSWORD_HASH: "$argon2id$mocked-dummy-hash",
+  verifyPassword: vi.fn(async () => h.verify),
   hashPassword: vi.fn(async () => "rehashed-mock"),
 }));
 
@@ -118,6 +173,7 @@ vi.mock("otplib", () => ({
 }));
 
 import { adminAuthRouter } from "../admin/auth";
+import { verifyPassword } from "../../lib/crypto"; // the mocked one — call-arg capture
 
 // ── Mini-app harness (same shape as body-schema-400s.test.ts) ────────────────
 
@@ -129,6 +185,29 @@ function buildApp(): Express {
   app.use(express.json());
   app.use((req, _res, next) => {
     seenIps.push(String(req.ip));
+    next();
+  });
+  app.use("/api/admin", adminAuthRouter);
+  return app;
+}
+
+/**
+ * R110-01 harness: per-request req.ip override driven by the test-only
+ * `x-test-client-ip` header — the same Object.defineProperty mechanism
+ * the CF-tracking test below uses to mirror cloudflareClientIp's
+ * rewrite. Lets one test simulate a distributed attacker (every request
+ * from a different source IP) against a single real HTTP listener.
+ */
+function buildMultiIpApp(): Express {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    const header = req.headers["x-test-client-ip"];
+    const ip = typeof header === "string" && header ? header : String(req.ip);
+    seenIps.push(ip);
+    if (ip !== String(req.ip)) {
+      Object.defineProperty(req, "ip", { value: ip, configurable: true, writable: true });
+    }
     next();
   });
   app.use("/api/admin", adminAuthRouter);
@@ -181,6 +260,13 @@ beforeEach(() => {
   seenIps.length = 0;
   h.adminRow.totpEnabled = false;
   h.adminRow.totpSecret = null;
+  // R110-01 state: fresh envelope mirror, default success verdict, admin
+  // row visible, and a clean argon2 call log.
+  h.failureCounts.clear();
+  h.lockedUntilByKey.clear();
+  h.verify = { valid: true, needsRehash: false, resetRequired: false };
+  h.dbReturnsAdmin = true;
+  vi.mocked(verifyPassword).mockClear();
 });
 
 // ── R97-01: the lockout key is unforgeable via CF-Connecting-IP ──────────────
@@ -205,16 +291,28 @@ describe("R97-01 — admin login lockout keys on req.ip, not the raw CF header",
         expect(res.status).toBe(200);
       }
 
-      expect(h.lockoutKeys.check).toHaveLength(3);
-      // Same key for all three — the lockout envelope accumulates.
-      expect(new Set(h.lockoutKeys.check).size).toBe(1);
-      const key = h.lockoutKeys.check[0]!;
+      expect(h.lockoutKeys.check).toHaveLength(6); // 3 requests × 2 keys (R110-01)
+      // Same per-IP key for all three — the lockout envelope accumulates.
+      // (R110-01: every login also consults the global `admin-username:`
+      // key, so filter down to the IP-keyed surface under attack here.)
+      const ipKeys = h.lockoutKeys.check.filter((k) => k.startsWith("admin:root:"));
+      expect(ipKeys).toHaveLength(3);
+      expect(new Set(ipKeys).size).toBe(1);
+      const key = ipKeys[0]!;
       // The key is username + the connection's req.ip …
       expect(key).toBe(`admin:root:${seenIps[0]}`);
       // … and contains NONE of the forged header values.
       for (const ip of forged) {
         expect(key).not.toContain(ip);
       }
+      // R110-01: the IP-independent username key is constant (no header
+      // or IP component to forge) and was consulted on every request.
+      const usernameKeys = h.lockoutKeys.check.filter((k) => k.startsWith("admin-username:"));
+      expect(usernameKeys).toEqual([
+        "admin-username:root",
+        "admin-username:root",
+        "admin-username:root",
+      ]);
     } finally {
       close();
     }
@@ -234,8 +332,14 @@ describe("R97-01 — admin login lockout keys on req.ip, not the raw CF header",
       );
       await postLogin(url, { username: "root", password: "guess" });
 
-      expect(new Set(h.lockoutKeys.check).size).toBe(1);
-      expect(h.lockoutKeys.check[0]).toBe(`admin:root:${seenIps[0]}`);
+      const ipKeys = h.lockoutKeys.check.filter((k) => k.startsWith("admin:root:"));
+      expect(new Set(ipKeys).size).toBe(1);
+      expect(ipKeys[0]).toBe(`admin:root:${seenIps[0]}`);
+      expect(h.lockoutKeys.check.filter((k) => k.startsWith("admin-username:"))).toEqual([
+        "admin-username:root",
+        "admin-username:root",
+        "admin-username:root",
+      ]);
     } finally {
       close();
     }
@@ -280,8 +384,13 @@ describe("R97-01 — admin login lockout keys on req.ip, not the raw CF header",
         },
       );
 
-      expect(new Set(h.lockoutKeys.check).size).toBe(1);
-      expect(h.lockoutKeys.check[0]).toBe("admin:root:203.0.113.9");
+      const ipKeys = h.lockoutKeys.check.filter((k) => k.startsWith("admin:root:"));
+      expect(new Set(ipKeys).size).toBe(1);
+      expect(ipKeys[0]).toBe("admin:root:203.0.113.9");
+      expect(h.lockoutKeys.check.filter((k) => k.startsWith("admin-username:"))).toEqual([
+        "admin-username:root",
+        "admin-username:root",
+      ]);
     } finally {
       close();
     }
@@ -400,6 +509,262 @@ describe("R97-02 — admin login responses carry no session token in the body", 
       });
       expect(res.status).toBe(401);
       expect(h.sessionCalls).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── R110-01: global per-username password ceiling (distributed brute force) ──
+
+describe("R110-01 — global per-username lockout on the password step", () => {
+  /** The byte-exact invalid-credentials envelope every failure branch shares. */
+  const UNIFORM_401 = { error: "اسم المستخدم أو كلمة المرور غير صحيحة", code: "UNAUTHORIZED" };
+  const DUMMY_HASH = "$argon2id$mocked-dummy-hash"; // the mocked DUMMY_PASSWORD_HASH
+  const REAL_HASH = "$argon2id$mocked-not-a-real-hash"; // h.adminRow.passwordHash
+  const INVALID = () => ({ valid: false, needsRehash: false, resetRequired: false });
+  const VALID = () => ({ valid: true, needsRehash: false, resetRequired: false });
+
+  it("(a) 10 wrong passwords at ONE username from 10 DIFFERENT IPs lock it globally — the 11th, correct attempt is a uniform 401", async () => {
+    h.verify = INVALID();
+    const app = buildMultiIpApp();
+    const { url, close } = await listen(app);
+    try {
+      // Distributed attack shape: every request from a FRESH source IP —
+      // the per-(username,ip) envelope sees count 1 each time and never
+      // engages; only the global per-username key accumulates.
+      for (let i = 1; i <= 10; i++) {
+        const res = await postLogin(
+          url,
+          { username: "root", password: "wrong" },
+          { "x-test-client-ip": `198.51.100.${i}` },
+        );
+        expect(res.status).toBe(401);
+        expect(res.body).toEqual(UNIFORM_401);
+      }
+
+      // 11th attempt: yet another fresh IP, this time the CORRECT
+      // password — still rejected, byte-identical to the 10 failures
+      // above (a locked username is indistinguishable from an
+      // invalid-credentials one).
+      const eleventh = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "198.51.100.11" },
+      );
+      expect(eleventh.status).toBe(401);
+      expect(eleventh.body).toEqual(UNIFORM_401);
+
+      // No session was ever minted; the global envelope was never reset.
+      expect(h.sessionCalls).toHaveLength(0);
+      expect(h.lockoutKeys.reset).not.toContain("admin-username:root");
+
+      // The per-(username,ip) envelopes never engaged: 11 distinct IP
+      // keys, each carrying a single failure (threshold 5 never reached).
+      const ipKeys = h.lockoutKeys.check.filter((k) => k.startsWith("admin:root:"));
+      expect(new Set(ipKeys).size).toBe(11);
+      expect(h.lockoutKeys.record.filter((k) => k.startsWith("admin:root:"))).toHaveLength(10);
+
+      // The username key accrued exactly the 10 failures (the 11th,
+      // locked request records nothing)…
+      expect(h.lockoutKeys.record.filter((k) => k === "admin-username:root")).toHaveLength(10);
+
+      // …and every request paid exactly ONE argon2: requests 1–10 against
+      // the real hash, the locked 11th against the DUMMY hash (98-F3
+      // parity — no cheap fast-401 oracle on the locked branch).
+      const calls = vi.mocked(verifyPassword).mock.calls;
+      expect(calls).toHaveLength(11);
+      expect(calls.slice(0, 10).every(([, hash]) => hash === REAL_HASH)).toBe(true);
+      expect(calls[10]).toEqual(["right", DUMMY_HASH]);
+    } finally {
+      close();
+    }
+  });
+
+  it("(b)+(e) 9 failures across 9 IPs stay BELOW the ceiling — the 10th, correct attempt from a fresh IP succeeds", async () => {
+    h.verify = INVALID();
+    const app = buildMultiIpApp();
+    const { url, close } = await listen(app);
+    try {
+      for (let i = 1; i <= 9; i++) {
+        const res = await postLogin(
+          url,
+          { username: "root", password: "wrong" },
+          { "x-test-client-ip": `203.0.113.${i}` },
+        );
+        expect(res.status).toBe(401);
+        expect(res.body).toEqual(UNIFORM_401);
+      }
+
+      // Below the threshold the ceiling is invisible: correct password
+      // logs in, cookie minted, session row created…
+      h.verify = VALID();
+      const res = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "203.0.113.99" },
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ display_name: "Root Admin", role: "super_admin" });
+      expect(res.cookies.find((c) => c.startsWith("admin_token="))).toBeDefined();
+
+      // …and BOTH envelopes were cleared on success.
+      expect(h.sessionCalls).toHaveLength(1);
+      expect(h.lockoutKeys.reset).toContain("admin-username:root");
+      expect(h.lockoutKeys.reset).toContain("admin:root:203.0.113.99");
+    } finally {
+      close();
+    }
+  });
+
+  it("(e) a legit admin fat-fingering twice from the SAME IP still logs in", async () => {
+    const app = buildMultiIpApp();
+    const { url, close } = await listen(app);
+    try {
+      h.verify = INVALID();
+      for (let i = 0; i < 2; i++) {
+        const res = await postLogin(
+          url,
+          { username: "root", password: "wrong" },
+          { "x-test-client-ip": "192.0.2.10" },
+        );
+        expect(res.status).toBe(401);
+      }
+      h.verify = VALID();
+      const res = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "192.0.2.10" },
+      );
+      expect(res.status).toBe(200);
+      expect(h.sessionCalls).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("(c) an engaged global lock EXPIRES and the envelope DECAYS to zero", async () => {
+    const app = buildMultiIpApp();
+    const { url, close } = await listen(app);
+    try {
+      // Engage the lock for real: 10 wrong passwords, one per IP.
+      h.verify = INVALID();
+      for (let i = 1; i <= 10; i++) {
+        const res = await postLogin(
+          url,
+          { username: "root", password: "wrong" },
+          { "x-test-client-ip": `198.51.100.${i}` },
+        );
+        expect(res.status).toBe(401);
+      }
+
+      // Engaged: even the CORRECT password from a fresh IP → uniform 401.
+      h.verify = VALID();
+      const locked = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "198.51.100.50" },
+      );
+      expect(locked.status).toBe(401);
+      expect(locked.body).toEqual(UNIFORM_401);
+
+      // Let the 15-minute window lapse (forced past-expiry — the same
+      // trick lockout-upsert.test.ts plays against the real table).
+      const until = h.lockedUntilByKey.get("admin-username:root");
+      expect(until).toBeDefined();
+      h.lockedUntilByKey.set("admin-username:root", Date.now() - 1_000);
+
+      // DECAY: the expired envelope restarts at zero. These 9 fresh
+      // failures do NOT re-engage it — were the pre-expiry count of 10
+      // preserved, the very first of them would re-lock for 15 min and
+      // the attempt below would 401.
+      h.verify = INVALID();
+      for (let i = 1; i <= 9; i++) {
+        const res = await postLogin(
+          url,
+          { username: "root", password: "wrong" },
+          { "x-test-client-ip": `203.0.113.${i}` },
+        );
+        expect(res.status).toBe(401);
+        expect(res.body).toEqual(UNIFORM_401);
+      }
+      h.verify = VALID();
+      const retry = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "203.0.113.99" },
+      );
+      expect(retry.status).toBe(200);
+      expect(h.sessionCalls).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("(d) locked / unknown-username / wrong-password are byte-identical 401s — no enumeration, no timing split", async () => {
+    const app = buildMultiIpApp();
+    const { url, close } = await listen(app);
+    try {
+      // (1) Globally LOCKED username — even the correct password fails.
+      h.lockedUntilByKey.set("admin-username:root", Date.now() + 15 * 60_000);
+      h.verify = VALID();
+      vi.mocked(verifyPassword).mockClear();
+      const lockedRes = await postLogin(
+        url,
+        { username: "root", password: "right" },
+        { "x-test-client-ip": "192.0.2.1" },
+      );
+      expect(lockedRes.status).toBe(401);
+      const lockedCalls = [...vi.mocked(verifyPassword).mock.calls];
+
+      // (2) UNKNOWN username (select comes back empty).
+      h.lockedUntilByKey.clear();
+      h.dbReturnsAdmin = false;
+      vi.mocked(verifyPassword).mockClear();
+      const unknownRes = await postLogin(
+        url,
+        { username: "ghost", password: "right" },
+        { "x-test-client-ip": "192.0.2.2" },
+      );
+      expect(unknownRes.status).toBe(401);
+      const unknownCalls = [...vi.mocked(verifyPassword).mock.calls];
+
+      // (3) KNOWN username, WRONG password.
+      h.dbReturnsAdmin = true;
+      h.verify = INVALID();
+      vi.mocked(verifyPassword).mockClear();
+      const wrongRes = await postLogin(
+        url,
+        { username: "root", password: "wrong" },
+        { "x-test-client-ip": "192.0.2.3" },
+      );
+      expect(wrongRes.status).toBe(401);
+      const wrongCalls = [...vi.mocked(verifyPassword).mock.calls];
+
+      // Identical bodies: locked looks exactly like unknown-username and
+      // like wrong-password — no status/message/code split an attacker
+      // could use to enumerate real usernames.
+      expect(lockedRes.body).toEqual(UNIFORM_401);
+      expect(unknownRes.body).toEqual(UNIFORM_401);
+      expect(wrongRes.body).toEqual(UNIFORM_401);
+
+      // Timing parity: each of the three paths paid exactly ONE argon2 —
+      // locked + unknown against the DUMMY hash, wrong-password against
+      // the real one (the ~1 ms DB work around it is noise under argon2's
+      // ~100 ms).
+      expect(lockedCalls).toEqual([["right", DUMMY_HASH]]);
+      expect(unknownCalls).toEqual([["right", DUMMY_HASH]]);
+      expect(wrongCalls).toEqual([["wrong", REAL_HASH]]);
+
+      // The locked branch recorded NOTHING (192.0.2.1 never appears) —
+      // the trio's only per-(user,ip) record is the wrong-password one.
+      expect(h.lockoutKeys.record.filter((k) => k.startsWith("admin:root:"))).toEqual([
+        "admin:root:192.0.2.3",
+      ]);
+
+      // No session, no reset anywhere in the trio.
+      expect(h.sessionCalls).toHaveLength(0);
+      expect(h.lockoutKeys.reset).toHaveLength(0);
     } finally {
       close();
     }

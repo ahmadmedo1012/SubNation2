@@ -13,7 +13,12 @@ import {
   revokeAdminSession,
   revokeAllAdminSessions,
 } from "../../lib/admin-session";
-import { checkLockout, recordFailedAttempt, resetAttempts } from "../../lib/lockout";
+import {
+  checkLockout,
+  recordFailedAttempt,
+  resetAttempts,
+  type LockoutPolicy,
+} from "../../lib/lockout";
 import { logger } from "../../lib/logger";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -37,6 +42,49 @@ const ADMIN_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   ...getAuthCookieOptions(8 * 60 * 60 * 1000),
+};
+
+/**
+ * R110-01 (round-110, R109 109-g §8 P2): GLOBAL per-username password
+ * lockout policy for POST /login.
+ *
+ * Why: the lockout keys on the password step were `admin:${username}:${ip}`
+ * (below) and authLimiter's per-IP budget — a distributed attacker
+ * rotating source IPs minted a fresh 5-attempt envelope per request, so
+ * the aggregate guessing budget against ONE admin's password was
+ * unbounded. Only argon2id cost + the per-admin 2FA lockout stood behind
+ * it. This policy is applied through the SAME DB-backed mechanism
+ * (lib/lockout.ts) on an IP-INDEPENDENT key (`admin-username:${username}`),
+ * so IP rotation no longer refreshes the envelope.
+ *
+ * Chosen numbers (mirroring the 2FA precedent at admin/auth.ts's
+ * `admin-2fa:${admin.id}` lockout — same base 15-min lock, same doubling
+ * backoff shape, only the threshold is raised):
+ *   - threshold 10 failures — double the per-(username,ip)/2FA envelope's
+ *     5. The 2FA verify path ALREADY accepts a per-admin global lockout
+ *     (an attacker who knows a real adminId can lock that admin's 2FA
+ *     with 5 anonymous failures), so a per-username password ceiling is
+ *     the same accepted trade-off for the same asset — but with 2× the
+ *     headroom + only a 15-min base lock, a spoofed-username lockout is
+ *     a nuisance (admin retries after 15 min), not a denial of service.
+ *   - base lock 15 min, doubling per full extra envelope (15/30/60/…)
+ *     via lib/lockout.ts's shared exponential formula.
+ *
+ * Availability trade-off (accepted, documented): keying on the SUBMITTED
+ * username means an attacker who knows a real username CAN lock that
+ * admin out of the password step for 15 min with 10 failures. Mitigations:
+ * the threshold is high (10), the lock is short (15 min base), each
+ * spoofed failure costs the attacker a full argon2 round-trip server-side
+ * (the !valid branch below only records after a real row + real argon2
+ * verify — no cheap DB-row-free lockout spam), and the 2FA lockout
+ * already accepted the identical trade-off. A8-03 rejected per-username
+ * keying when the threshold was 5 and the lock repeatable forever; 10 +
+ * 15-min decay keeps the DoS leverage negligible while capping
+ * distributed brute force.
+ */
+const USERNAME_LOCKOUT_POLICY: LockoutPolicy = {
+  maxAttempts: 10,
+  baseLockoutMinutes: 15,
 };
 
 router.post("/login", async (req, res) => {
@@ -66,6 +114,11 @@ router.post("/login", async (req, res) => {
   // is exactly what express-rate-limit already keys on.
   const clientIp = req.ip || "unknown";
   const lockoutKey = `admin:${username}:${clientIp}`;
+  // R110-01: IP-independent companion key — see USERNAME_LOCKOUT_POLICY
+  // above. Checked before the user lookup so a locked username never
+  // reaches the DB row or the real password hash (the dummy-argon2 on
+  // the locked branch below preserves the timing shape).
+  const usernameLockoutKey = `admin-username:${username}`;
   const { locked, lockedUntil } = await checkLockout(lockoutKey);
   if (locked) {
     const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
@@ -78,6 +131,24 @@ router.post("/login", async (req, res) => {
           ErrorCode.ACCOUNT_LOCKED,
         ),
       );
+  }
+
+  // R110-01: global per-username ceiling (distributed / IP-rotating
+  // brute force). MUST look identical to invalid credentials — a 429
+  // here would hand a distributed prober a free username-existence
+  // oracle ("locked" ⇒ real, heavily-attacked username; 401 ⇒ unknown).
+  // So: same generic 401 body as every other failure branch, preceded by
+  // the SAME single dummy-argon2 verify (98-F3 parity) — the skipped DB
+  // select (~1 ms) is noise under argon2's ~100 ms, keeping the locked,
+  // unknown-username and wrong-password paths timing-indistinguishable.
+  // Checked after the per-(username,ip) envelope so the pre-existing 429
+  // contract for an engaged per-IP lock is unchanged.
+  const usernameLockout = await checkLockout(usernameLockoutKey);
+  if (usernameLockout.locked) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
+    return res
+      .status(401)
+      .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
   }
 
   const [admin] = await db
@@ -138,6 +209,16 @@ router.post("/login", async (req, res) => {
   }
   if (!valid) {
     await recordFailedAttempt(lockoutKey);
+    // R110-01: accrue to the GLOBAL per-username envelope too. Only THIS
+    // branch records it — the username row exists, is active, argon2-
+    // verified, and the password was wrong. Unknown usernames (not-found
+    // branch above) are NOT recorded: they can't be brute-forced into an
+    // account, and recording them would let anonymous traffic mint
+    // unbounded lockout rows for arbitrary strings. Inactive/
+    // reset-required rows are skipped for the same no-value reason (they
+    // can never validate a password), keeping the spoofable lockout
+    // surface limited to real, active, argon2-backed accounts.
+    await recordFailedAttempt(usernameLockoutKey, USERNAME_LOCKOUT_POLICY);
     return res
       .status(401)
       .json(createErrorResponse("اسم المستخدم أو كلمة المرور غير صحيحة", ErrorCode.UNAUTHORIZED));
@@ -149,6 +230,10 @@ router.post("/login", async (req, res) => {
       .where(eq(adminUsersTable.id, admin.id));
   }
   await resetAttempts(lockoutKey);
+  // R110-01: a correct password clears the global per-username envelope
+  // as well (only a valid password can reach here — an attacker cannot
+  // self-heal the counter they are filling).
+  await resetAttempts(usernameLockoutKey);
 
   if (admin.totpEnabled && admin.totpSecret) {
     // A8-05 (round-94): the 2FA challenge token lived as long as a full

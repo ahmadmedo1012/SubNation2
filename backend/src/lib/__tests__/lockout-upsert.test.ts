@@ -23,6 +23,12 @@ import {
  *     (calculateLockoutDuration is the closed-form mirror of the SQL)
  *   - CONCURRENT first failures no longer raise (the S12 regression)
  *
+ * r110 (R110-01): recordFailedAttempt/calculateLockoutDuration take an
+ * optional per-namespace policy {maxAttempts, baseLockoutMinutes} — the
+ * second describe block pins the parameterized envelope against the
+ * same SQL mirror, using the exact numbers the admin-login route passes
+ * for its global `admin-username:` key (10 failures / 15-min base).
+ *
  * login_attempts is not part of the shared test DDL (src/test/db.ts), so
  * this file owns its schema — mirroring shared/db schema/login_attempts.ts.
  */
@@ -176,4 +182,95 @@ it("calculateLockoutDuration — documented exponential backoff", () => {
   expect(calculateLockoutDuration(11)).toBe(60);
   expect(calculateLockoutDuration(15)).toBe(60);
   expect(calculateLockoutDuration(16)).toBe(120);
+});
+
+// ── r110 (R110-01): parameterized policy — the admin-username namespace ──────
+
+describe("recordFailedAttempt with a custom policy — r110 admin-username envelope (10 failures / 15 min)", () => {
+  // Exactly what routes/admin/auth.ts passes for its GLOBAL per-username
+  // password key (USERNAME_LOCKOUT_POLICY) — deliberately double the
+  // default 5-failure threshold to blunt the spoofed-username lockout
+  // trade-off, same 15-min base + doubling shape as every other key.
+  const POLICY = { maxAttempts: 10, baseLockoutMinutes: 15 };
+
+  it("9 failures stay unlocked; the 10th locks at the base 15-min duration", async () => {
+    for (let i = 0; i < 9; i++) await recordFailedAttempt("admin-username:root", POLICY);
+    let row = await fetchRow("admin-username:root");
+    expect(row!.attemptCount).toBe(9);
+    expect(row!.lockedUntil).toBeNull();
+
+    await recordFailedAttempt("admin-username:root", POLICY);
+    row = await fetchRow("admin-username:root");
+    expect(row!.attemptCount).toBe(10);
+    expect(row!.lockedUntil).not.toBeNull();
+    const minutes = (row!.lockedUntil!.getTime() - Date.now()) / 60_000;
+    expect(minutes).toBeGreaterThan(14);
+    expect(minutes).toBeLessThanOrEqual(15);
+  });
+
+  it("lockout duration follows the parameterized exponential formula (SQL ⇄ JS mirror)", async () => {
+    // Cross-check every failure-count plateau against the JS function —
+    // the parameterized SQL CASE must agree with the parameterized
+    // calculateLockoutDuration exactly (same invariant as the default
+    // envelope's mirror test above).
+    const counts = [10, 11, 20, 21];
+    for (const n of counts) {
+      await db.execute(sql.raw(`DELETE FROM login_attempts;`));
+      const identifier = `admin-username:form_${n}`;
+      for (let i = 0; i < n; i++) await recordFailedAttempt(identifier, POLICY);
+      const row = await fetchRow(identifier);
+      expect(row!.attemptCount).toBe(n);
+      expect(row!.lockedUntil).not.toBeNull();
+
+      const expectedMinutes = calculateLockoutDuration(n, POLICY);
+      const actualMinutes = (row!.lockedUntil!.getTime() - Date.now()) / 60_000;
+      // ±3s of scheduling slack between the last insert and this read.
+      expect(actualMinutes).toBeGreaterThan(expectedMinutes - 0.05);
+      expect(actualMinutes).toBeLessThanOrEqual(expectedMinutes);
+    }
+  });
+
+  it("an expired policy lock decays the counter (same forced-expiry as the default envelope)", async () => {
+    for (let i = 0; i < 10; i++) await recordFailedAttempt("admin-username:expired", POLICY);
+    // Force the lock into the past.
+    await db.execute(
+      sql`UPDATE login_attempts SET locked_until = now() - interval '1 minute' WHERE identifier = ${"admin-username:expired"}`,
+    );
+    const verdict = await checkLockout("admin-username:expired");
+    expect(verdict.locked).toBe(false);
+    expect(verdict.attemptCount).toBe(0);
+    const row = await fetchRow("admin-username:expired");
+    expect(row).not.toBeNull();
+    expect(row!.attemptCount).toBe(0);
+  });
+
+  it("resetAttempts clears a policy-locked envelope (successful login)", async () => {
+    for (let i = 0; i < 10; i++) await recordFailedAttempt("admin-username:reset", POLICY);
+    await resetAttempts("admin-username:reset");
+    const verdict = await checkLockout("admin-username:reset");
+    expect(verdict.locked).toBe(false);
+    expect(verdict.attemptCount).toBe(0);
+  });
+
+  it("no-policy callers keep the default 5/15 envelope (pre-existing keys unchanged)", async () => {
+    for (let i = 0; i < 4; i++) await recordFailedAttempt("user:default");
+    let row = await fetchRow("user:default");
+    expect(row!.attemptCount).toBe(4);
+    expect(row!.lockedUntil).toBeNull();
+    await recordFailedAttempt("user:default"); // 5th — DEFAULT threshold
+    row = await fetchRow("user:default");
+    expect(row!.attemptCount).toBe(5);
+    expect(row!.lockedUntil).not.toBeNull(); // 5 ≥ 5 → locked at 15 min
+  });
+
+  it("calculateLockoutDuration — policy overrides shift the plateau, defaults are untouched", () => {
+    expect(calculateLockoutDuration(10, POLICY)).toBe(15);
+    expect(calculateLockoutDuration(11, POLICY)).toBe(30);
+    expect(calculateLockoutDuration(20, POLICY)).toBe(30);
+    expect(calculateLockoutDuration(21, POLICY)).toBe(60);
+    // Defaults (no policy) — same numbers the block above pinned pre-r110.
+    expect(calculateLockoutDuration(5)).toBe(15);
+    expect(calculateLockoutDuration(6)).toBe(30);
+    expect(calculateLockoutDuration(11)).toBe(60);
+  });
 });

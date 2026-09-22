@@ -4,15 +4,53 @@ import { eq, sql } from "drizzle-orm";
 const MAX_ATTEMPTS = 5;
 const BASE_LOCKOUT_MINUTES = 15;
 
+/**
+ * Per-namespace lockout policy (r110 / R110-01).
+ *
+ * The default envelope (5 failures → 15-min lock, doubling per full extra
+ * envelope) governs every pre-existing key: user `admin:${username}:${ip}`
+ * + `admin-2fa:${adminId}` password/2FA login, `admin-pwchange:` and
+ * `admin-2fasetup:` re-auth. r110 adds the IP-independent
+ * `admin-username:${username}` password ceiling with a deliberately HIGHER
+ * threshold (10) — see routes/admin/auth.ts for why the availability
+ * trade-off wants the extra headroom. Both knobs flow into the same
+ * upsert SQL so the mechanism stays single-sourced.
+ */
+export interface LockoutPolicy {
+  /** Failures before locked_until is set (default 5). */
+  maxAttempts: number;
+  /** Base lockout length in minutes; doubles per full extra envelope (default 15). */
+  baseLockoutMinutes: number;
+}
+
+const DEFAULT_LOCKOUT_POLICY: LockoutPolicy = {
+  maxAttempts: MAX_ATTEMPTS,
+  baseLockoutMinutes: BASE_LOCKOUT_MINUTES,
+};
+
+function resolvePolicy(policy?: Partial<LockoutPolicy>): LockoutPolicy {
+  if (!policy) return DEFAULT_LOCKOUT_POLICY;
+  return {
+    maxAttempts: policy.maxAttempts ?? MAX_ATTEMPTS,
+    baseLockoutMinutes: policy.baseLockoutMinutes ?? BASE_LOCKOUT_MINUTES,
+  };
+}
+
 // Exponential backoff: 15min, 30min, 60min, 120min, 240min for 2nd+ lockouts.
 // Kept as the JS mirror of the SQL CASE inside recordFailedAttempt's upsert —
 // the lockout-upsert test cross-checks the two against each other.
-export function calculateLockoutDuration(failureCount: number): number {
-  if (failureCount <= MAX_ATTEMPTS) {
-    return BASE_LOCKOUT_MINUTES;
+// r110: policy overrides swap in the namespace's maxAttempts/baseLockoutMinutes
+// (same closed form — `base * 2^(ceil((count - max) / max))`).
+export function calculateLockoutDuration(
+  failureCount: number,
+  policy?: Partial<LockoutPolicy>,
+): number {
+  const { maxAttempts, baseLockoutMinutes } = resolvePolicy(policy);
+  if (failureCount <= maxAttempts) {
+    return baseLockoutMinutes;
   }
-  const lockoutNumber = Math.ceil((failureCount - MAX_ATTEMPTS) / MAX_ATTEMPTS) + 1;
-  return BASE_LOCKOUT_MINUTES * Math.pow(2, lockoutNumber - 1);
+  const lockoutNumber = Math.ceil((failureCount - maxAttempts) / maxAttempts) + 1;
+  return baseLockoutMinutes * Math.pow(2, lockoutNumber - 1);
 }
 
 export async function checkLockout(
@@ -61,8 +99,17 @@ export async function checkLockout(
  * The duration math in SQL is the closed form of the JS function:
  *   JS:  15 * 2^(ceil((count - MAX) / MAX) + 1 - 1)
  *   SQL: 15 * 2^(ceil((attempt_count + 1 - MAX) / MAX))
+ *
+ * r110 (R110-01): the optional policy parameter swaps in a namespace's
+ * maxAttempts/baseLockoutMinutes — the parameterized SQL and the
+ * parameterized calculateLockoutDuration stay each other's mirror, and
+ * every pre-existing caller (no policy) behaves byte-for-byte as before.
  */
-export async function recordFailedAttempt(identifier: string): Promise<void> {
+export async function recordFailedAttempt(
+  identifier: string,
+  policy?: Partial<LockoutPolicy>,
+): Promise<void> {
+  const { maxAttempts, baseLockoutMinutes } = resolvePolicy(policy);
   await db
     .insert(loginAttemptsTable)
     .values({
@@ -76,10 +123,10 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
         attemptCount: sql`${loginAttemptsTable.attemptCount} + 1`,
         lastAttempt: new Date(),
         lockedUntil: sql`CASE
-          WHEN ${loginAttemptsTable.attemptCount} + 1 >= ${MAX_ATTEMPTS}
+          WHEN ${loginAttemptsTable.attemptCount} + 1 >= ${maxAttempts}
           THEN now() + (
-            ${BASE_LOCKOUT_MINUTES}
-            * power(2, ceil((${loginAttemptsTable.attemptCount} + 1 - ${MAX_ATTEMPTS})::numeric / ${MAX_ATTEMPTS}))
+            ${baseLockoutMinutes}
+            * power(2, ceil((${loginAttemptsTable.attemptCount} + 1 - ${maxAttempts})::numeric / ${maxAttempts}))
             * interval '1 minute'
           )
           ELSE NULL
