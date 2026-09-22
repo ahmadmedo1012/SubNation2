@@ -283,8 +283,13 @@ let initialised = false;
  */
 function resolveProfilesSampleRate(): number {
   if (process.env.NODE_ENV !== "production") return 0;
-  const raw = Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0.1);
-  return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0.1;
+  // R108 (FH-A8 F2): default 0 — matching ENVIRONMENT_MATRIX.md's
+  // documented intent ("profiling disabled") and the small-Oracle-server
+  // mission rule (no high-volume telemetry). The old 0.1 default silently
+  // ran profiling on 10% of transactions whenever the var was unset (the
+  // GHCR/compose/Coolify builds) contrary to the matrix.
+  const raw = Number(process.env.SENTRY_PROFILES_SAMPLE_RATE ?? 0);
+  return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
 }
 
 export async function initSentry(): Promise<ReturnType<typeof Sentry.init> | undefined> {

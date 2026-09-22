@@ -1,6 +1,10 @@
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { getRedisClient } from "../../lib/redis-client";
+// R108 (FH-A4 F-1): neutral release identity — GIT_SHA (Coolify/CI/Docker) with
+// RENDER_GIT_COMMIT as the LEGACY fallback. Direct env reads here showed
+// "unknown" on Oracle while healthz/Sentry reported the real SHA.
+import { getReleaseSha } from "../../lib/release-sha";
 import { captureMessage, captureSubsystemException } from "../../lib/sentry";
 import { writeAuditLog } from "../../lib/audit";
 import { getIO } from "../../lib/socket";
@@ -173,7 +177,7 @@ router.get("/", requireAdmin, (_req, res) => {
     },
     runtime: {
       uptimeSec: Math.floor(process.uptime()),
-      version: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown",
+      version: getReleaseSha(),
       env: process.env.NODE_ENV ?? "development",
       service: process.env.RENDER_SERVICE_NAME ?? "web",
     },
@@ -262,9 +266,11 @@ router.get("/sentry-debug", requireAdmin, (req, res, next) => {
     sentry: {
       dsnConfigured,
       environment: process.env.NODE_ENV ?? "development",
-      release: (process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7),
+      // R108 (FH-A4 F-1): must mirror the ACTUAL Sentry release (sentry.ts
+      // resolves via getReleaseSha) — a direct env read misreported it.
+      release: getReleaseSha(),
       tracesSampleRate: process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1 (default)",
-      profilesSampleRate: process.env.SENTRY_PROFILES_SAMPLE_RATE ?? "0.1 (default)",
+      profilesSampleRate: process.env.SENTRY_PROFILES_SAMPLE_RATE ?? "0 (default)",
       processTags: {
         instance_id: process.env.RENDER_INSTANCE_ID ?? "local",
         service_id: process.env.RENDER_SERVICE_ID ?? "subnation",

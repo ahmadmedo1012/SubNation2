@@ -464,13 +464,106 @@ export async function bootMigrations(): Promise<MigrationResult> {
     return { ok: true, outcome: "skipped_lock", durationMs };
   }
 
-  // We hold the lock — run the migrations.
+  // We hold the lock — run the migrations. In the no-Redis shape
+  // (R108, FH-A5 P2-1) the phase additionally runs inside a PG
+  // advisory-lock transaction: two cold containers overlapping during
+  // a Coolify blue-green redeploy can no longer race runMigrations()
+  // (V1-M17's probe→DROP→CREATE has a brief unique-constraint-absent
+  // window). The Redis lock path is unchanged.
+  if (lock.reason === "no_redis") {
+    return runWithPgAdvisoryLock(() => runMigrationPhase(observe, start, lock.reason));
+  }
+  return runMigrationPhase(observe, start, lock.reason);
+}
+
+/**
+ * R108 (FH-A5 P2-1): no-Redis mutual exclusion for boot migrations.
+ *
+ * The Redis lock (tryAcquireLock) is the primary coordinator, but the
+ * production + Oracle/Coolify target shape runs WITHOUT Redis by design —
+ * there, boot-migrations used to run ungated ("no coordination needed:
+ * single instance"), which is only true until a blue-green overlap or an
+ * accidental `--scale 2` puts two cold containers against one database.
+ *
+ * This wrapper serializes them with a TRANSACTION-SCOPED Postgres
+ * advisory lock (`pg_try_advisory_xact_lock`):
+ *   - acquired  → the migration phase runs while the lock transaction
+ *     idles open; commit/rollback/CRASH releases it automatically
+ *     (no orphaned lock to clean up — unlike a session-level lock, the
+ *     xact variant cannot outlive its transaction).
+ *   - held      → poll-wait (1.5 s interval) for the other instance to
+ *     finish, then run (our reconcile is idempotent; the other instance's
+ *     marker is just as valid as ours would have been).
+ *   - timeout   → fail OPEN and run anyway — identical philosophy to the
+ *     redis_error path above: every migration statement is guarded, and
+ *     refusing to boot is a worse outcome than an idempotent concurrent
+ *     reconcile.
+ *
+ * The poll loop retries in FRESH transactions: pg_try_advisory_xact_lock
+ * returns immediately, so each attempt opens the candidate holder tx,
+ * tries, and rolls back empty when the lock is taken.
+ */
+async function runWithPgAdvisoryLock(
+  phase: () => Promise<MigrationResult>,
+): Promise<MigrationResult> {
+  const maxWaitMs = numEnv("MIGRATION_PG_LOCK_WAIT_MAX_MS", 90_000);
+  const POLL_MS = 1_500;
+  const start = Date.now();
+  let waitingLogged = false;
+
+  for (;;) {
+    // null ⇒ lock held by another instance (this tx rolled back empty);
+    // any other value ⇒ the phase ran to completion inside the lock tx.
+    const outcome = await db.transaction(async (tx) => {
+      const res = await tx.execute(
+        sql`SELECT pg_try_advisory_xact_lock(hashtext('subnation:migrations')) AS acquired`,
+      );
+      if (!pgLockAcquired(res)) return null;
+      return await phase();
+    });
+    if (outcome !== null) return outcome;
+
+    if (Date.now() - start >= maxWaitMs) {
+      logger.warn(
+        { category: "monitoring", maxWaitMs, instanceId: INSTANCE_ID },
+        "[migrations] pg advisory lock still held after timeout — proceeding without it (statements are idempotent; boot refusal is the worse failure)",
+      );
+      return phase();
+    }
+    if (!waitingLogged) {
+      waitingLogged = true;
+      logger.info(
+        { category: "monitoring", instanceId: INSTANCE_ID },
+        "[migrations] another instance holds the pg advisory lock — waiting",
+      );
+    }
+    await sleep(POLL_MS);
+  }
+}
+
+/** Parse the pg_try_advisory_xact_lock result across driver shapes. */
+function pgLockAcquired(result: unknown): boolean {
+  const rows = (result as { rows?: Array<{ acquired?: unknown }> }).rows;
+  return rows?.[0]?.acquired === true;
+}
+
+/**
+ * The migration phase (run → classify → transient retry), extracted so the
+ * Redis path and the PG-advisory path (R108) can both run it under their
+ * respective locks. `releaseLock()` in the finally is a no-op without
+ * Redis, so sharing it between both paths is safe.
+ */
+async function runMigrationPhase(
+  observe: (o: MigrationOutcome) => number,
+  start: number,
+  lockReason?: string,
+): Promise<MigrationResult> {
   try {
     logger.info(
       {
         category: "monitoring",
         instanceId: INSTANCE_ID,
-        lockReason: lock.reason ?? "acquired",
+        lockReason: lockReason ?? "acquired",
       },
       "[migrations] starting",
     );

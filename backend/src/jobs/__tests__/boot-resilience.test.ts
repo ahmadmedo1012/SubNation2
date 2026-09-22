@@ -29,11 +29,25 @@ vi.mock("../../lib/redis-client", () => ({
   getRedisClient: vi.fn(() => null),
 }));
 
+// R108 (FH-A5 P2-1, test-harness update): the no-Redis path — the exact
+// shape this suite pins (Redis singleton mocked null) — now wraps the
+// migration phase in a transaction-scoped PG advisory lock
+// (`pg_try_advisory_xact_lock`). The mocked db therefore also needs a
+// `transaction` whose ONLY use inside the callback is the advisory-lock
+// probe; it answers acquired:true (this instance wins the lock).
+const { advisoryLockProbe } = vi.hoisted(() => ({
+  advisoryLockProbe: vi.fn(async () => ({ rows: [{ acquired: true }] })),
+}));
+
 vi.mock("@workspace/db", () => ({
   db: {
     execute: vi.fn(async () => ({
       rows: [{ in_recovery: false, tro: "off" }],
     })),
+    transaction: vi.fn(
+      async (cb: (tx: { execute: typeof advisoryLockProbe }) => Promise<unknown>) =>
+        cb({ execute: advisoryLockProbe }),
+    ),
   },
 }));
 
@@ -48,6 +62,7 @@ import { db } from "@workspace/db";
 
 const mockRunMigrations = vi.mocked(runMigrations);
 const mockExecute = vi.mocked(db.execute);
+const mockTransaction = vi.mocked(db.transaction);
 
 // Drizzle's `db.execute` returns a PgRaw thenable (QueryPromise with
 // extra driver methods) — NOT a plain Promise — so a plain async mock
@@ -79,6 +94,8 @@ beforeEach(() => {
   mockRunMigrations.mockReset();
   mockExecute.mockReset();
   mockExecute.mockImplementation(asExecuteImpl(async () => writableProbe()));
+  mockTransaction.mockClear();
+  advisoryLockProbe.mockClear();
 });
 
 afterEach(() => {
@@ -225,6 +242,32 @@ describe("bootMigrations — end-to-end classification outcomes", () => {
     expect(result.ok).toBe(true);
     expect(result.outcome).toBe("ok");
     expect(mockRunMigrations).toHaveBeenCalledTimes(1);
+  });
+
+  // R108 (FH-A5 P2-1): without Redis (this suite's shape — the singleton
+  // is mocked null), the migration phase must run INSIDE the
+  // transaction-scoped PG advisory lock: the pg_try_advisory_xact_lock
+  // probe executes inside db.transaction BEFORE runMigrations is
+  // attempted, so two cold containers racing a blue-green overlap are
+  // serialized (V1-M17's probe→DROP→CREATE window).
+  it("no-Redis shape: the phase runs inside the PG advisory-lock transaction (lock probe first)", async () => {
+    mockRunMigrations.mockResolvedValue(undefined);
+    const result = await bootMigrations();
+    expect(result.ok).toBe(true);
+    expect(mockTransaction).toHaveBeenCalled();
+    expect(advisoryLockProbe).toHaveBeenCalledTimes(1);
+    // The lock probe runs BEFORE the DDL body (runMigrations) — the
+    // serialization is real, not decorative.
+    const order: string[] = [];
+    advisoryLockProbe.mockImplementation(async () => {
+      order.push("lock");
+      return { rows: [{ acquired: true }] };
+    });
+    mockRunMigrations.mockImplementation(async () => {
+      order.push("migrations");
+    });
+    await bootMigrations();
+    expect(order).toEqual(["lock", "migrations"]);
   });
 
   it("retries the FULL run after a transient (25006) failure and reports transient_recovered", async () => {

@@ -138,6 +138,27 @@ describe("isOriginAllowed same-origin Host fallback (R107)", () => {
     expect(isOriginAllowed(undefined, wonky, "subnation.ly")).toBe(true);
     expect(isOriginAllowed(undefined, wonky, "evil.com")).toBe(false);
   });
+
+  // R108 (FH-B3, pinning FH-A12 F-11): IPv6 Host headers are FAIL-CLOSED
+  // today. The Host parser's port extraction uses the FIRST colon
+  // (`hostLower.indexOf(":")`), which for a bracketed IPv6 literal like
+  // `[::1]:3000` lands INSIDE the address — the extracted "port" is
+  // garbage (":1]:3000") and never equals the origin's effective port, so
+  // even an exactly-listed IPv6 origin refuses the Origin-less handshake.
+  // Harmless for the production hostnames (apex domains) but conscious:
+  // if an IPv6 deployment ever needs the Host fallback, the parser must
+  // learn bracket-aware splitting — relaxing this test is that change.
+  it("IPv6 Host headers fail CLOSED against an exactly-listed IPv6 origin (conscious gap)", () => {
+    const v6 = ["http://[::1]:3000"];
+    expect(isOriginAllowed(undefined, v6, "[::1]:3000")).toBe(false);
+    // Portless bracketed form too (indexOf(":") still hits the address).
+    expect(isOriginAllowed(undefined, ["http://[::1]"], "[::1]")).toBe(false);
+    // Unbracketed IPv6 is not a hostname match either.
+    expect(isOriginAllowed(undefined, v6, "::1")).toBe(false);
+    // An explicit Origin on the same IPv6 origin still passes — the
+    // fail-closed behavior is limited to the Origin-less Host fallback.
+    expect(isOriginAllowed("http://[::1]:3000", v6)).toBe(true);
+  });
 });
 
 describe("authenticateSocketHandshake", () => {
@@ -291,12 +312,8 @@ describe("authorizeJoinAdmin — forgery defense", () => {
   });
 
   it("rejects identity where isAdmin is anything other than true", () => {
-    expect(
-      authorizeJoinAdmin({ userId: 1, isAdmin: 1 as unknown as boolean }),
-    ).toBe(false);
-    expect(
-      authorizeJoinAdmin({ userId: 1, isAdmin: "true" as unknown as boolean }),
-    ).toBe(false);
+    expect(authorizeJoinAdmin({ userId: 1, isAdmin: 1 as unknown as boolean })).toBe(false);
+    expect(authorizeJoinAdmin({ userId: 1, isAdmin: "true" as unknown as boolean })).toBe(false);
   });
 
   it("accepts admin identity with isAdmin === true", () => {

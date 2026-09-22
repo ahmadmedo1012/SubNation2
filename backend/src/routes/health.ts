@@ -575,15 +575,20 @@ export async function computeReadyState(): Promise<HealthCheckResponseExtended> 
     } else if (!process.env.REDIS_URL) {
       // Intentional single-tier mode (redis-client.ts CASE 1): no URL set,
       // in-memory stores active. This is a deliberate operator choice —
-      // degraded (yellow), NOT failing (red). Marking it "failing" made the
-      // public /status page show an outage during normal operation.
+      // and since R108 it is the DESIGNED production/target shape (the
+      // Coolify compose + render.yaml both pin REDIS_URL unset; all 17
+      // rate limiters / caches / idempotency replays run in-memory —
+      // verified by the final-hardening audit). r107 marked it
+      // "degraded" which kept the public /status page and
+      // /healthz/summary permanently YELLOW during normal operation —
+      // a designed state must read as OK (FH-A5 P2-3). The note keeps
+      // the single-tier fact visible to operators.
       checks.redis = {
-        status: "degraded",
+        status: "ok",
         optional: true,
-        error: "REDIS_URL not configured — in-memory fallback (single-instance mode)",
+        note: "REDIS_URL not configured — in-memory fallback (single-tier mode, by design)",
         lastCheckedAt: new Date().toISOString(),
       };
-      fold(checks.redis);
     } else {
       // URL is configured but the client failed to connect — real outage.
       checks.redis = {
