@@ -11,11 +11,13 @@
 
 ## Phase 0 — Pre-migration checks (on current production)
 
-- [ ] Confirm current prod is the r104+ build (admin → System, or
-      `GET /api/healthz` shows `version`; Render dashboard shows the last
-      deploy ≥ `6f4b715`). All r107 fixes are in `main` after this round.
+- [ ] Confirm current prod is the r104+ build (admin → System shows the
+      release SHA via the R108 neutral identity chain, or Render dashboard
+      shows the last deploy ≥ `6f4b715`). All r107+R108 fixes are in `main`
+      after this round.
 - [ ] Take a fresh Neon backup NOW (before anything changes):
-      `./scripts/db-backup.sh` (or Neon dashboard → Backup/PITR point).
+      `pnpm run db:backup` (needs `pg_dump` + `DATABASE_URL` in env — see
+      `scripts/src/backup-db.ts`; or Neon dashboard → Backup/PITR point).
       Verify the dump file is non-empty and downloadable.
 - [ ] Record current secrets inventory (Render dashboard → Environment):
       DATABASE_URL, SESSION_SECRET, ENCRYPTION_KEY, ADMIN_JWT_SECRET,
@@ -62,10 +64,18 @@
       `OPENWA_CREDENTIALS_KEY=$(openssl rand -hex 32)` (if the gateway has
       never had one, setting it now is safe — legacy blobs re-encrypt on
       first read; if one is ALREADY set on Render, copy it).
-- [ ] Decide the scheduler cadence (see migration doc §9): default 25 s/60 s
-      keeps Neon always awake (also kills cold starts) — set
-      `SCHEDULER_LEASE_REFRESH_MS=50000` + `SCHEDULER_LEASE_TTL_SEC=120`
-      only as a conscious trade.
+- [ ] Scheduler mode (R108): `SINGLE_INSTANCE_MODE=true` is now the default
+      in `deploy/env.compose.example` — schedulers run ungated in-process,
+      zero periodic Neon coordination queries, idle Neon autosuspend
+      preserved. The old "pick a lease cadence" trade (25 s/60 s keeps Neon
+      awake 24/7) is GONE — do not re-enable lease tuning unless you deploy
+      multiple replicas (then unset SINGLE_INSTANCE_MODE and see migration
+      doc §9).
+- [ ] Validate the filled env file BEFORE any deploy minutes are spent
+      (R108): `pnpm --filter @workspace/scripts run validate:env -- --file
+      .env --strict` — catches placeholder secrets that pass boot rules,
+      missing vars, origin inconsistencies, and the WHATSAPP_OTP_API_KEY ↔
+      OPENWA_API_KEY parity requirement. Exit 0 = proceed.
 - [ ] Neon: confirm `DATABASE_URL` allows connections from the VM's IP
       (Neon IP-allow-list if configured) — test:
       `docker run --rm postgres:16-alpine pg_isready -d "<DATABASE_URL>"` or
@@ -82,13 +92,21 @@
   - [ ] `AUTH_COOKIE_SAMESITE=lax` (same-origin now).
   - [ ] `WHATSAPP_OTP_API_KEY` == `OPENWA_API_KEY`.
   - [ ] `WHATSAPP_OTP_BASE_URL=http://<openwa-service>:2785` (internal).
-- [ ] openwa service: swap `build:` for `image: ghcr.io/ahmadmedo1012/openwa:main`
+- [ ] openwa service: swap `build:` for an IMMUTABLE image tag
+      `ghcr.io/ahmadmedo1012/openwa:sha-<short>` (pin the sha tag from the
+      Actions run or `docker manifest inspect`; `:latest`/`:main` float and
+      are dev-only — R108)
       (or deploy openwa as its own Coolify application from its repo and
       remove the service from the stack — see migration doc §5).
 - [ ] Deploy. Watch: build ~2-4 min (first time), then container logs:
-  - [ ] `[boot]` migration lines complete, gate opens,
+  - [ ] `[boot]` migration lines complete (incl. V1-M20), gate opens,
         `GET /api/healthz` → 200 on the VM:
         `curl -s http://127.0.0.1:3000/api/healthz` (if compose ports kept).
+  - [ ] Deployed-SHA gate (R108): the running build must be the one you
+        intended — `curl -s http://127.0.0.1:3000/api/healthz | jq -r .version`
+        returns the 7-char GIT_SHA; compare against `git rev-parse --short
+        HEAD` (or the sha- tag you pinned). Mismatch = investigate before
+        attaching any domain.
 - [ ] Attach a TEST domain first (e.g. `test.subnation.ly` → subnation
       service, Cloudflare DNS-only/grey initially) — do NOT touch the
       production record yet.
@@ -98,8 +116,8 @@
 All must pass BEFORE the DNS cutover:
 
 - [ ] `GET /api/healthz` → 200 `{"status":"ok"}`.
-- [ ] `GET /api/healthz/summary` → 200 (degraded for Redis-absence is
-      acceptable; failing is not).
+- [ ] `GET /api/healthz/summary` → 200. No-Redis reads `ok` (single-tier
+      note) since R108 — `failing` is not acceptable.
 - [ ] SPA loads (Arabic RTL, admin login page reachable).
 - [ ] User auth: Telegram + Google + WhatsApp OTP login flows.
 - [ ] Socket.IO: admin panel → the bell/order pages live-update
@@ -116,8 +134,16 @@ All must pass BEFORE the DNS cutover:
       traffic; container exits 0 within ~25 s, no 502 burst.
 - [ ] Restart persistence: reboot the gateway container; WhatsApp session
       auto-restores from Neon (no QR re-scan needed).
-- [ ] Scheduler: after 2 min, admin → observability shows leader=true on
-      the web tier (PG-lease).
+- [ ] Scheduler: after 2 min, admin → observability shows mode `single`
+      (SINGLE_INSTANCE_MODE) with active=true — the R108 shape. The old
+      leader=true (PG-lease) reading applies only to the multi-instance
+      election mode.
+- [ ] WhatsApp gateway collision guard (R108): after the Oracle gateway
+      passes its E2E OTP test, manually SUSPEND the Render `openwa-gateway`
+      service (user-suspend, not billing-suspend — user-suspends are NOT
+      auto-resumed at the free-hours reset). Two live gateways restoring the
+      same `openwa_sessions` credentials = WhatsApp one-linked-device
+      conflict = OTP breaks on BOTH paths during the soak window.
 
 ## Phase 6 — Production cutover (operator decision — do it yourself)
 
@@ -138,4 +164,8 @@ All must pass BEFORE the DNS cutover:
       the Phase-0 backup into a fresh Neon branch and point Render at it).
 - [ ] Gateway: `WHATSAPP_OTP_BASE_URL` back to
       `https://openwa-gateway-7aaa.onrender.com` (Render env) — the persisted
-      session table is shared, the old gateway picks it up on boot.
+      session table is shared, the old gateway picks it up on boot. RESUME
+      the manually-suspended Render `openwa-gateway` FIRST and stop the
+      Oracle gateway container BEFORE the DNS flip when rolling back the
+      gateway too — never run both live (WhatsApp one-linked-device rule,
+      see the Phase-5 guard).

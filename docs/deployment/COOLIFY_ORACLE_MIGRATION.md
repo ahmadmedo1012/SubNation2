@@ -78,12 +78,18 @@ Actions minutes allow.
 
 ### Path A — CI-built multi-arch image (recommended later)
 `.github/workflows/docker.yml` (r107) builds `linux/amd64 + linux/arm64`
-and pushes to GHCR on `v*` tags / manual dispatch, with `GIT_SHA` baked in.
+and pushes to GHCR on `v*` tags / manual dispatch, with `GIT_SHA` baked in
+and immutable `sha-<short>` tags (r108: prefer these over `:latest` in
+production — see the runbook Phase-4 gate).
 openwa's public repo has the identical workflow and free unmetered runners.
 Costs to know: SubNation2 is a PRIVATE repo — QEMU-emulated arm64 builds take
 ~15-25 min of metered Actions time each. Status: **NOT YET VERIFIED**
 (no Docker + exhausted minutes in the r107 sandbox) — run it once manually
-before depending on it.
+before depending on it. **Pulling the PRIVATE image on the VM needs a
+one-time `docker login ghcr.io` with a PAT that has `read:packages`
+(Settings → Developer settings → PAT; the GITHUB_TOKEN the workflow uses to
+PUSH does not exist on the VM) — otherwise the first `docker compose pull`
+fails with "denied". openwa's public image needs no login.**
 
 ### Path B — Coolify builds from Git (start here)
 Coolify clones the repo and runs the Dockerfile on the VM. Build cost on the
@@ -127,10 +133,15 @@ sudo apt -y install ufw fail2ban
 | 3000/3001 | compose host bindings are **127.0.0.1-only** — never open these | — |
 
 ```bash
-# Oracle host iptables (Ubuntu images) — insert BEFORE the REJECT rules:
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 8000 -j ACCEPT
+# Oracle host iptables (Ubuntu images) — the shipped ruleset REJECTs all
+# inbound except 22. Find the FIRST REJECT rule's line number, then insert
+# the ACCEPTs BEFORE it (R108: the old hard-coded "line 6" breaks when the
+# shipped ruleset differs):
+LN=$(sudo iptables -L INPUT --line-numbers -n | awk '/REJECT/{print $1; exit}')
+sudo iptables -I INPUT "$LN" -m state --state NEW -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT "$LN" -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo iptables -I INPUT "$LN" -m state --state NEW -p tcp --dport 8000 -j ACCEPT
+# Repeat for ip6tables if the VM has an IPv6 address (same pattern).
 sudo netfilter-persistent save
 # UFW on top:
 sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
@@ -139,7 +150,29 @@ sudo ufw allow 8000/tcp && sudo ufw enable
 Coolify manages its own Traefik inside Docker — you do NOT open 8080/2785
 publicly. The compose file binds them to `127.0.0.1` for local debugging only.
 
-### 4.4 Install Coolify
+### 4.4 Swap (R108 — do this before running the stack)
+
+12 GB total is NOT 12 GB of app RAM (OS + Docker + Coolify's own containers
+eat ~1.5-2 GB before your app starts; see the budget in
+`docs/architecture/PRODUCTION_ARCHITECTURE.md` §5). A modest swap file is a
+safety net against OOM-kills during build spikes — NOT extra RAM (Node +
+Baileys under swap-thrash perform terribly; the goal is surviving the rare
+spike, never swapping at steady state):
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo sysctl -w vm.swappiness=10
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swappiness.conf
+```
+
+Rationale: 2 GB covers a Coolify Git-build spike (~1.5-2 GB transient) with
+the OS page cache intact; swappiness=10 keeps the kernel from swapping idle
+anonymous pages it merely thinks are cold. No zram — the ARM64 Ubuntu kernel
+handles a plain swapfile fine and it is one less moving part.
+
+### 4.5 Install Coolify
 ```bash
 curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
 ```
@@ -245,6 +278,17 @@ Keep the same DNS records, change only the origin:
   via `VITE_OPENWA_DOCS_URL`).
 - Do the DNS switch YOURSELF (operator decision), after the runbook's
   validation gates pass. Nothing in this document requires it to happen now.
+- **Origin lockdown (R108 — tiered, honest):** locking the VM's 80/443 to
+  Cloudflare IP ranges (`https://www.cloudflare.com/ips/`) as a ufw allowlist
+  is tempting, but it BREAKS Coolify's Let's Encrypt HTTP-01 renewal unless
+  you also switch certificates to DNS-01 (Cloudflare API token in Coolify).
+  Recommended tiers: (0) no lockdown at first — Traefik only serves the
+  domains it has certs for anyway; (1) later, if you want it: Cloudflare
+  Origin-CA certificates (15-year, issued through the CF dashboard, uploaded
+  to Coolify) + CF-IP allowlist on 80/443 — health checks from the VM itself
+  (`curl 127.0.0.1`) stay unaffected because they bypass the edge entirely.
+  Grey-cloud (DNS-only) fallback remains possible at any tier if Cloudflare
+  itself has an incident.
 
 ## 8. Health model (what to monitor)
 
@@ -261,21 +305,27 @@ worker-heartbeat alert is inert by design; an external probe covers that gap.
 
 ## 9. Scheduler + Neon economics on an always-on box
 
-The web container elects itself leader via a Postgres lease
-(`scheduler_leader_lease`) refreshed every **25 s** (r104 default; TTL 60 s).
-On Render Free that cadence only ran while awake. Always-on it runs 24/7 —
-**with Neon Free (autosuspend ≈5 min) this keeps Neon's compute awake
-~720 h/mo against a 191.9 h free allowance.** r107 made the cadence
-env-tunable so this is a CONSCIOUS choice, not an accident:
+**R108 RESOLVED — `SINGLE_INSTANCE_MODE=true` (default in
+`deploy/env.compose.example`).** The single-container topology has no second
+instance to arbitrate, so the R107-era PG-lease heartbeat (25 s refresh /
+60 s TTL) bought nothing while keeping Neon's compute awake 24/7 — **144
+coordination queries/hour ≈ 720 awake-h/mo against Neon Free's ~192 h
+allowance** (DISASTER_RECOVERY.md records this exact failure already burning
+the allowance once). In single-instance mode the scheduler runs ungated
+in-process: no leader election, no lease heartbeat, ZERO periodic Neon
+coordulation queries — **idle Neon autosuspend is preserved** and the only
+remaining fixed-time wake-ups are the retention ladder itself (00:00-05:00
+UTC, ~25 min/day ≈ 12.5 h/mo). Every job keeps running on its normal
+cadence; the election machinery stays intact for a future flip-back (unset
+the flag). Constraints: NEVER scale the subnation service >1 replica in this
+mode (every cron would double-run); a dedicated `worker.ts` process alongside
+it double-runs too (it logs a loud warning naming the fix — see §9 of the
+ENVIRONMENT_MATRIX SINGLE_INSTANCE_MODE row).
 
-- Accept always-awake Neon (it also kills cold-start latency — arguably a
-  feature), or
-- `SCHEDULER_LEASE_REFRESH_MS=50000` + `SCHEDULER_LEASE_TTL_SEC=120`
-  (halves the query rate; Neon still never sleeps at 50 s intervals — this
-  only reduces load, NOT the awake hours), or
-- Migrate Postgres onto the VM later (Docker Postgres or managed) — the lease
-  refresh then costs nothing external.
-
+The R107-era options remain available for the multi-instance future (all
+inert while SINGLE_INSTANCE_MODE=true): lease cadence tuning via
+`SCHEDULER_LEASE_REFRESH_MS`/`SCHEDULER_LEASE_TTL_SEC`, or migrating
+Postgres onto the VM (the lease refresh then costs nothing external).
 `DISABLE_WEB_SCHEDULERS` must stay `false` (no worker tier exists — flipping
 it silently kills every cron; the 2026-09-08 outage class).
 
@@ -290,7 +340,8 @@ the slow path; steady redeploys are seconds.
 
 **Shutdown (r107-fixed):** on SIGTERM the app now evicts idle keep-alive
 sockets IMMEDIATELY (the old order deadlocked on Traefik's pooled backend
-connections until the force-exit fired), then releases the leader lease,
+connections until the force-exit fired), then releases the leader lease
+(no-op in SINGLE_INSTANCE_MODE — there is no lease),
 closes Socket.IO, drains in-flight HTTP (budget 25 s, env-tunable via
 `GRACEFUL_SHUTDOWN_TIMEOUT_MS`), ends the Postgres pool, flushes Sentry,
 exit(0). Compose/Coolify stop grace (40 s) sits above the app budget so the
@@ -303,7 +354,12 @@ Docker — `scripts/docker-verify.sh` step 5 proves it (exit code 0, not 137).**
 pinned redaction list (tokens/cookies/OTP never logged — VERIFIED by
 `logger-nested-redaction.test.ts`). The gateway masks phone digits to
 last-4 at every call site. Log volume at idle is near-zero (event-driven
-design, no periodic chatter beyond the leader refresh at debug level).
+design, no periodic chatter). **R108: `docker-compose.yml` now pins a
+rotation policy on both services (`json-file`, `max-size: 10m`,
+`max-file: 3` → ≤30 MB/service on the host); Coolify additionally runs its
+own Docker-cleanup (weekly image GC by default). If you bypass compose and
+`docker run` manually, set `--log-opt max-size=10m --log-opt max-file=3` or
+the json-file driver grows unbounded.**
 
 ## 12. Rollback
 
@@ -317,14 +373,20 @@ design, no periodic chatter beyond the leader refresh at debug level).
   services) until the new stack has run clean for an agreed soak period.
   Rolling back the DNS record is then a 1-minute operation.
 - **Gateway:** sessions live in Neon; re-pointing `WHATSAPP_OTP_BASE_URL`
-  to the Render gateway instantly restores the old path (both gateways can
-  serve the same persisted session — the table is shared).
+  to the Render gateway restores the old path — **but NEVER run both
+  gateways live at once (R108 correction of the old "both can serve" note):
+  WhatsApp enforces one linked device per session-credential set. Two
+  gateways restoring the same `openwa_sessions` row fight over the link and
+  OTP breaks on BOTH paths.** The safe dance: stop the Oracle gateway
+  container → resume the Render `openwa-gateway` (it must have been
+  USER-suspended, not billing-suspended — see the runbook Phase-5 guard) →
+  flip `WHATSAPP_OTP_BASE_URL` → verify one OTP end-to-end.
 
 ## 13. Backup / restore — current honest state
 
 | Asset | Backup status |
 |---|---|
-| Neon business data | **Operator must configure.** `scripts/db-backup.sh` exists in-repo (pg_dump → local file); schedule it on the VM cron or use Neon's own PITR (free tier: 7 days restore window on their dashboard). Not automated today — CONFIGURE BEFORE CUTOVER. |
+| Neon business data | **Operator must configure.** The in-repo command is `pnpm run db:backup` (`scripts/src/backup-db.ts`, needs `pg_dump` + `DATABASE_URL` — the r104-era `scripts/db-backup.sh` no longer exists; R108 corrected the stale references). **R108 honesty fix on Neon's own recovery: the Free plan's restore-history window is ~6 HOURS, not 7 days — beyond that window a pg_dump is the ONLY recovery path.** Treat the daily off-VM dump as the PRIMARY recovery mechanism, not redundancy: schedule it in VM cron, copy it OFF the VM (object storage / another machine), and verify restorability once by loading it into a scratch Neon branch. Not automated today — CONFIGURE BEFORE CUTOVER. |
 | openwa sessions | Same DB → covered by the same backup; `OPENWA_CREDENTIALS_KEY` needed to decrypt → back it up with the secrets. |
 | Secrets/.env | Operator-owned. Keep an encrypted copy (e.g. age/gpg) OUTSIDE the VM. |
 | Coolify config | Lives in `/data/coolify` (volume) — snapshot the volume or re-provision (stack is reproducible from this doc + git). |

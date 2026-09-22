@@ -1,5 +1,12 @@
 # Disaster Recovery Runbook — SubNation
 
+> **Render-era document (written 2026-09 against the pre-migration stack).**
+> The Render/Vercel procedures below are the LEGACY ROLLBACK PATH — valid
+> until the Phase-6 deletion, kept per mission §63. Post-migration recovery
+> for the Oracle/Coolify stack: `docs/deployment/MIGRATION_RUNBOOK.md`
+> Phase 6 + `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12 (rollback),
+> §13 (backup/restore), §14 (troubleshooting).
+
 **Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned in the current free-tier deployment (an optional Redis tier exists only on paper — see `OPERATIONS_RUNBOOK.md` §5). This runbook is platform-specific.
 
 ## RTO / RPO targets
@@ -36,7 +43,12 @@ Optional upload: set `BACKUP_PRESIGNED_PUT_URL` to a presigned PUT URL from any 
 DATABASE_URL=postgresql://... pnpm run db:backup
 ```
 
-**Render Cron Job invocation (provision separately):**
+**Render Cron Job invocation (provision separately) — LEGACY (Render, pre-migration):**
+
+> Post-migration on Oracle: schedule the same `pnpm run db:backup` on the VM
+> host cron (or any machine with a repo clone) — see
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §13. The script itself is
+> hosting-neutral and unchanged.
 
 1. Create a new Render Cron Job (free tier supports cron jobs ≤ 15 min runtime).
 2. Build command: `pnpm install --frozen-lockfile`.
@@ -51,19 +63,19 @@ DATABASE_URL=postgresql://... pnpm run db:backup
 
 Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch protection: require CI green + 1 reviewer (already enforced by CI workflow). Commit history is the recovery source of truth.
 
-### 4. Render service config
+### 4. Render service config — LEGACY (pre-migration)
 
-`render.yaml` checked in. Re-applying via `render blueprint apply` recreates the web service definition modulo `sync: false` secrets, which must be repopulated from password manager.
+`render.yaml` checked in. Re-applying via `render blueprint apply` recreates the web service definition modulo `sync: false` secrets, which must be repopulated from password manager. Post-migration the stack definition is `docker-compose.yml` + Coolify (re-provision from `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git).
 
 ### 5. Secrets
 
 Owner-managed. Rotation procedure: rotate from the source of truth for each secret
-(e.g. BotFather for TELEGRAM*BOT_TOKEN, Neon console for DATABASE_URL,
+(e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
 Sentry dashboard for DSNs) then update the matching Render env var and
 redeploy. The list of `sync: false` keys on the Render service *(r99 —
 regenerated verbatim from render.yaml; the previous list predated rounds
 93–98 and was missing over half the keys — dangerous in the rotation
-scenario below, where this list IS the runbook)\_:
+scenario below, where this list IS the runbook)*:
 
 - **Core secrets**: `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_JWT_SECRET`, `ENCRYPTION_KEY`, `METRICS_ADMIN_TOKEN`
 - **Origins**: `FRONTEND_ORIGINS`, `VITE_SENTRY_DSN`, `VITE_GSC_VERIFICATION`, `VITE_GA_TRACKING_ID`
@@ -81,7 +93,9 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 ### Scenario A — A single table corrupted by a bad migration / app bug
 
-1. Stop traffic if necessary: Render Dashboard → service → Maintenance Mode.
+1. Stop traffic if necessary: Render Dashboard → service → Maintenance Mode
+   (LEGACY — post-migration: stop the `subnation` container in Coolify or
+   enable a Cloudflare maintenance rule).
 2. Open Neon Console → SQL Editor.
 3. From a known-good Neon branch (or a `pg_dump` artifact), run a targeted restore:
    ```sql
@@ -104,13 +118,19 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
    ```bash
    gunzip -c subnation-<ISO>.sql.gz | psql "<NEW_DATABASE_URL>"
    ```
-4. Update `DATABASE_URL` in Render Dashboard → Environment.
-5. Render auto-redeploys.
-6. Verify: `curl -s https://subnation.ly/api/healthz/ready | jq .checks.neon` → `status: ok`.
+4. Update `DATABASE_URL` in Render Dashboard → Environment (LEGACY —
+   post-migration: update the compose `.env` — from
+   `deploy/env.compose.example` — in Coolify).
+5. Render auto-redeploys (post-migration: redeploy the container in Coolify).
+6. Verify: `curl -s -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/healthz/ready | jq .checks.neon` → `status: ok` (`/ready` is admin-gated — a bare curl gets 401).
 
 **RTO target: 60 min** (most of the time is the `psql` restore, ~1 min/MB of dump).
 
-### Scenario C — Application failed deploy (bad commit went to main)
+### Scenario C — Application failed deploy (bad commit went to main) — LEGACY (Render, pre-migration)
+
+> Post-migration equivalent: redeploy the previous Coolify deployment (or pin
+> an older image tag in compose) — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md`
+> §12.
 
 1. Render Dashboard → Service → Deploys → click the previous-known-good deploy → **Rollback**.
 2. Render serves the rolled-back artifact within ~30 s.
@@ -119,7 +139,12 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 **RTO target: 5 min.**
 
-### Scenario D — Region outage (Render Oregon down)
+### Scenario D — Region outage (Render Oregon down) — LEGACY (Render, pre-migration)
+
+> Post-migration: single-VM topology — no region failover. VM-level recovery =
+> snapshot `/data/coolify` + re-provision the stack from
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git (§13); watch Oracle's
+> status page instead of status.render.com.
 
 1. Subscribe to https://status.render.com — usually within 15 min an estimate appears.
 2. If outage > 1 h, consider failover:
@@ -132,7 +157,9 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 ### Scenario E — Security breach (suspected unauthorized access)
 
-1. Rotate every `sync: false` secret in the Render dashboard. Order matters: Firebase admin first (highest blast radius), then SESSION_SECRET (forces all users to log out — this is desirable), then DATABASE_URL.
+1. Rotate every `sync: false` secret in the Render dashboard (LEGACY —
+   post-migration: rotate them in the compose `.env` / Coolify env).
+   Order matters: Firebase admin first (highest blast radius), then SESSION_SECRET (forces all users to log out — this is desirable), then DATABASE_URL.
 2. Open `/admin/system` → review:
    - Recent alerts panel
    - Auth & Security panel (failure rate, lockouts, Firebase failures)

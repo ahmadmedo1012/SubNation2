@@ -27,3 +27,12 @@ shared/db/drizzle/
 # Lockfile siblings (pnpm preinstall removes these on its own).
 package-lock.json
 yarn.lock
+
+# Markdown — prettier MANGLES prose, it does not format it. The emphasis
+# normalizer rewrites underscore identifiers inside sentences (DATABASE_URL
+# -> DATABASE*URL, TELEGRAM_BOT_TOKEN -> TELEGRAM*BOT_TOKEN, VITE_* escapes)
+# and collapses nested checklists onto a single line. Two historical docs
+# already carry these scars (inspection-r97/database-deep-dive.md,
+# DISASTER_RECOVERY.md), and a 2026-09-22 stray `prettier --write` run
+# corrupted 7 files before being discarded. Hand-written docs are exempt.
+*.md

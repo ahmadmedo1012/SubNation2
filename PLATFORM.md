@@ -1,14 +1,21 @@
 # SubNation2 Platform
 
-> **Status banner (2026-09-22, r107):** the platform is MIGRATION-READY for
-> self-hosted Oracle Cloud (ARM64) + Coolify + Docker. The app code is
-> hosting-agnostic (r107 audit: no Render/Vercel runtime coupling; all
-> `RENDER_*` reads degrade gracefully; a neutral `GIT_SHA` release identity
-> now covers every platform). Artifacts: `docker-compose.yml` (full stack),
-> `deploy/env.compose.example`, `scripts/docker-verify.sh`, multi-arch image
-> workflows, and `docs/deployment/{COOLIFY_ORACLE_MIGRATION,MIGRATION_RUNBOOK,
-> ENVIRONMENT_MATRIX}.md` + `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
-> Render/Vercel remain live as the rollback path until the DNS cutover.
+> **Status banner (2026-09-22, r108):** the platform is a FINAL MIGRATION
+> CANDIDATE for self-hosted Oracle Cloud (ARM64) + Coolify + Docker. The
+> app code is hosting-agnostic (r107 audit: no Render/Vercel runtime
+> coupling; all `RENDER_*` reads degrade gracefully; a neutral `GIT_SHA`
+> release identity covers every platform — completed to all admin surfaces
+> in r108). R108 closed the final gaps: `SINGLE_INSTANCE_MODE` (zero
+> periodic Neon coordination queries — idle autosuspend preserved), the
+> V1-M20 idempotency FK fix, no-Redis migration mutual exclusion, a
+> 37-rule pre-deploy env validator, compose secret isolation + log
+> rotation, and the CI cost/trap fixes. Artifacts: `docker-compose.yml`
+> (full stack), `deploy/env.compose.example`,
+> `scripts/docker-verify.sh`, multi-arch image workflows, and
+> `docs/deployment/{COOLIFY_ORACLE_MIGRATION,MIGRATION_RUNBOOK,
+> ENVIRONMENT_MATRIX,FINAL_MIGRATION_READINESS}.md` +
+> `docs/architecture/PRODUCTION_ARCHITECTURE.md`. Render/Vercel remain
+> live as the rollback path until the DNS cutover.
 >
 > **Status banner (2026-09-20):** this file is a snapshot dated 2026-09-02 and
 > its "all working / LIVE" claims predate the free-infrastructure round. For

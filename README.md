@@ -129,9 +129,15 @@ Single-origin contract: leave `VITE_API_BASE_URL` / `VITE_SOCKET_URL` /
 
 The platform is hosting-agnostic (no Render/Vercel runtime coupling — r107
 audit) and runs as the two Docker images above behind Coolify on an Oracle
-Always Free ARM64 VM, with Neon staying external. Full guide + runbook:
-`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
-`docs/deployment/MIGRATION_RUNBOOK.md`; target architecture:
+Always Free ARM64 VM, with Neon staying external. R108 makes the
+single-container shape first-class: `SINGLE_INSTANCE_MODE=true` runs the
+schedulers ungated in-process with ZERO periodic Neon coordination queries
+(idle autosuspend preserved) — see `deploy/env.compose.example`. Validate
+your env file before deploying:
+`pnpm --filter @workspace/scripts run validate:env -- --file .env --strict`.
+Full guide + runbook: `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
+`docs/deployment/MIGRATION_RUNBOOK.md`; readiness state:
+`docs/deployment/FINAL_MIGRATION_READINESS.md`; target architecture:
 `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
 
 ### Render (current production)

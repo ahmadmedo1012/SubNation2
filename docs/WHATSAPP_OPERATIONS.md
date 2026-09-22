@@ -1,5 +1,12 @@
 # إدارة جلسة WhatsApp OTP
 
+> **قبل الهجرة (PRE-MIGRATION):** هذه الصفحة مكتوبة ضد بوابة OpenWA
+> المستضافة على Render. بعد الهجرة إلى Oracle/Coolify تعمل البوابة نفسها
+> كحاوية `openwa` داخل منشأة Coolify على Oracle (شبكة داخلية بجانب حاوية
+> `subnation`) — حدّث روابط اللوحة إلى أصل البوابة الجديد وفق
+> `docs/deployment/MIGRATION_RUNBOOK.md` Phase 6، ولن تعود الخدمة «تنام»
+> بعد الهجرة (الطوبولوجيا الجديدة تعمل 24/7 بلا خطة مجانية).
+
 ## لوحة إدارة OpenWA (الرابط المباشر)
 
 **<https://openwa-gateway-7aaa.onrender.com>**
@@ -50,6 +57,10 @@
 
 ## روابط التشغيل
 
+> **LEGACY / PRE-MIGRATION (Render):** الروابط أدناه تخص النشر الحالي على
+> Render. بعد الهجرة تُدار الخدمة من Coolify على Oracle — انظر
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §6.
+
 - لوحة خدمة Render الخاصة بالتطبيق: <https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg>
 - خدمة OpenWA: <https://openwa-gateway-7aaa.onrender.com>
 - قائمة عقد OpenWA: <https://openwa-gateway-7aaa.onrender.com/api/docs> (تتطلب مفتاح API)
@@ -57,7 +68,7 @@
 إذا ظهر `Service Suspended` في رابط OpenWA أو التطبيق، أعد تشغيل الخدمة من Render
 وانتظر نجاح `/healthz` قبل محاولة إنشاء الجلسة.
 
-## حفظ الجلسة بعد إعادة تشغيل Render
+## حفظ الجلسة بعد إعادة تشغيل البوابة (Render تاريخيًا / Coolify لاحقًا)
 
 خدمة OpenWA منفصلة عن مستودع SubNation وهي التي تملك ملفات اعتماد Baileys.
 لكي لا تضيع الجلسة عند إعادة النشر أو إعادة التشغيل، يجب ضبط المتغيرات التالية

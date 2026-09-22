@@ -96,7 +96,7 @@ admin_alerts، whatsapp_otps، risk_events، forecast*/enrichment* …)**
   `idx_products_active_category`).
 - **النزاهة المالية:** المحفظة بـ `numeric(10,2)`، دفتر أستاذ (`wallet_ledger`)
   يسجّل `balanceBefore/After` لكل حركة.
-- **الهجرات:** ملف واحد `migrate.ts` (2634 سطراً كما في r103، المراحل حتى V1-M19)، كل العبارات idempotent
+- **الهجرات:** ملف واحد `migrate.ts` (2856 سطراً كما في r108، المراحل حتى V1-M20)، كل العبارات idempotent
   (`IF NOT EXISTS`)، يُشغَّل عند الإقلاع — والقفل قفل Redis NX فقط عندما يكون `REDIS_URL` مضبوطاً؛ على الطوبولوجيا الحالية (مثيل free واحد، بلا Redis) تعمل الهجرات بلا قفل بأمان لأن الإقلاع مَسلسَل خلف بوابة 503.
 
 ---

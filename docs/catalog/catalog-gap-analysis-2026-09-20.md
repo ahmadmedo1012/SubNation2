@@ -1,12 +1,12 @@
 # تحليل فجوة الكتالوج — SubNation vs Embronic (2026-09-20)
 
 > Phase 3 deliverable. Source of truth: live crawl of embronic.com via WooCommerce Store API
-> (`/wp-json/wc/store/v1/products` + product-page `data-product_variations`) — 51 products,
+> (`/wp-json/wc/store/v1/products` + product-page `data-product_variations`) — 56 products,
 > real prices (USD), real variation matrices. Zero assumptions.
 
 ## 1. ما هو موجود في Embronic (Retail)
 
-**51 منتجًا إجماليًا** موزعة على تصنيفات:
+**56 منتجًا إجماليًا** موزعة على تصنيفات: [صُحّح من 51 — خطأ نسخ، الجدول أدناه يجمع إلى 56]
 STREAMING(17) · MUSIC(11) · RESELLER(10) · Utility(5) · VPN(4) · EDUCATION(2) · AI Tools(2) ·
 SEO Tools(2) · Automation(1) · Other(1) · Webmaster(1) — بالإضافة إلى ADULT(0)/Sports(0)/Uncategorized(0) فارغة.
 

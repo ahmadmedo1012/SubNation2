@@ -1,18 +1,27 @@
 # Operations Runbook
 
+> **Migration state (r107):** Oracle ARM64 + Coolify is the TARGET/final
+> architecture (`docs/deployment/MIGRATION_RUNBOOK.md`). Everything
+> Render/Vercel below is the PRE-MIGRATION / rollback path and stays valid
+> only until the Phase-6 deletion. New-stack triage:
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §8/§12/§14.
+
 This runbook is the on-call companion. Each alert rule includes a triage
 section anchored to its `runbookSection` value in `ALERT_RULES`.
 
 ## 1. Dashboards
 
-| Surface                      | URL                                                         | What it shows                                |
-| ---------------------------- | ----------------------------------------------------------- | -------------------------------------------- |
-| Render                       | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars  |
-| Sentry                       | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`)        | unresolved issues, traces, performance       |
-| Neon                         | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`)  | slow queries, indexes, connections           |
-| Internal admin observability | `/admin/observability` (admin JWT required)                 | summary, alerts, deploys, sentry placeholder |
+| Surface                         | URL                                                         | What it shows                                  |
+| ------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| Render (LEGACY — rollback path) | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars (pre-migration) |
+| Coolify/VM (TARGET)             | `http://<VM>/coolify` or `:8000` → project                  | containers, logs, redeploys (post-migration)   |
+| Sentry                          | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`)        | unresolved issues, traces, performance         |
+| Neon                            | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`)  | slow queries, indexes, connections             |
+| Internal admin observability    | `/admin/observability` (admin JWT required)                 | summary, alerts, deploys, sentry placeholder   |
 
-CLI helpers via Render MCP / Neon MCP:
+CLI helpers via Render MCP / Neon MCP (Render MCP = LEGACY, pre-migration;
+post-migration use `docker logs` / the Coolify UI —
+`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11):
 
 ```
 # last hour of web service logs
@@ -36,11 +45,14 @@ rows.
 - **Triage:**
   1. Check Sentry: filter `event.tags.correlation_id` matching the most
      recent 5xx response in Render logs (`/api/healthz/ready` body for
-     correlation id, or look at `correlation_id` Pino field).
+     correlation id — admin JWT required — or look at `correlation_id` Pino
+     field).
   2. If a single endpoint dominates: rollback (§4) or hotfix.
   3. If Redis or Neon failing checks fired simultaneously, treat as a
      dependency outage (`#redis` or `#neon`).
-- **Mitigation:** rollback to last-known-good deploy via Render dashboard.
+- **Mitigation:** rollback to last-known-good deploy via Render dashboard
+  (LEGACY, pre-migration — §4). Post-migration: Coolify redeploy previous /
+  compose image pin — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12.
 
 ### #auth-failure — `auth_failure_rate_high`
 
@@ -144,6 +156,11 @@ rows.
 
 ## 3. Reading Render &amp; Neon logs
 
+> **LEGACY (pre-migration):** the Render access below is rollback-path only.
+> Post-migration on Oracle/Coolify: `docker logs subnation` / Coolify's log
+> pane — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11. (The Neon parts
+> stay valid on either stack.)
+
 ### Render logs (last hour, web service)
 
 Render MCP:
@@ -168,7 +185,10 @@ WHERE state = 'active' AND NOW() - query_start > INTERVAL '500ms'
 ORDER BY duration DESC;
 ```
 
-## 4. Deploy rollback
+## 4. Deploy rollback — LEGACY (Render, pre-migration)
+
+> Post-migration app rollback = Coolify redeploy previous / compose image
+> pin — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12.
 
 1. **Identify last-known-good deploy:**
    - Render MCP `list_deploys serviceId=srv-d7vv91tckfvc73evnccg limit=10`.
@@ -178,7 +198,8 @@ ORDER BY duration DESC;
    - Render MCP equivalent forthcoming once `RENDER_API_KEY` is wired into
      the admin observability backend.
 3. **Verify:**
-   - `GET /api/healthz/ready` returns `{status:"ok"}` within 30 s.
+   - `GET /api/healthz/ready` (admin JWT required) returns `{status:"ok"}`
+     within 30 s.
    - `GET /api/admin/diagnostics` shows the rolled-back commit SHA.
 4. **Notify:**
    - Telegram message via `POST /api/admin/alerts/test rule=worker_heartbeat_missing`
@@ -310,7 +331,8 @@ Append observation to `:incidents` entity.
 $ curl https://subnation.ly/api/healthz
 {"status":"ok"}
 
-$ curl https://subnation.ly/api/healthz/ready
+# /ready is admin-gated (requireAdmin) — a bare curl gets 401
+$ curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/healthz/ready
 {"status":"ok","checks":{"redis":{...},"neon":{...},"worker":{...},"socket":{...}},"version":"abc1234","uptimeSec":12345}
 
 $ curl https://subnation.ly/api/healthz/firebase
@@ -335,6 +357,10 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 ## 9. Dual-Deployment Architecture — «معمارية النشر المزدوج»
+
+> **Pre-migration architecture (Render primary + Vercel secondary).**
+> Post-cutover: the Vercel project is deleted, single origin only —
+> `docs/deployment/MIGRATION_RUNBOOK.md` Phase 6.
 
 97-F6 (R97 J-4): two live deployments run in parallel from this same repo.
 This section is the source of truth for which one is canonical and what

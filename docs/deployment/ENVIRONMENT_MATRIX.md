@@ -1,6 +1,6 @@
 # Environment Variable Matrix
 
-> r107 canonical matrix for SubNation2 + openwa. Legend:
+> Canonical matrix (r108) for SubNation2 + openwa. Legend:
 > **Req** = required (boot fails / feature dead without it) · **Sec** = secret
 > (never in build args, logs, or frontend) · `D`efault shown when unset.
 > Failure behavior: what actually happens when the var is missing/broken.
@@ -21,31 +21,38 @@
 | Variable | Sec | Default | Used by | Notes / failure |
 |---|---|---|---|---|
 | `AUTH_COOKIE_SAMESITE` | ✖ | `lax` prod-safe | `app.ts` cookie flags | same-origin now; `none` only for the old split |
-| `REDIS_URL` | ✔ | unset | `lib/redis-client.ts` + consumers | unset = in-memory fallbacks (current prod shape); set-but-down = capped backoff, boot degrades ≤8 s, never exits |
-| `DISABLE_WEB_SCHEDULERS` | ✖ | `false` | `lib/web-scheduler.ts` | **true with no worker = all crons silently dead** (keep false) |
+| `REDIS_URL` | ✔ | unset | `lib/redis-client.ts` + consumers | unset = in-memory fallbacks (current prod shape, by design — /healthz reads `ok` with a single-tier note since r108); set-but-down = capped backoff, boot degrades ≤8 s, never exits |
+| `SINGLE_INSTANCE_MODE` | ✖ | `false` | `lib/web-scheduler.ts` (R108) | **`true` = the Oracle single-container shape**: schedulers run ungated in-process, NO leader election, NO PG-lease heartbeat, ZERO periodic Neon coordination queries (idle Neon autosuspend preserved — the lease alone would burn ~720 awake-h/mo vs ~192 free). All jobs keep running; election machinery intact for a flip-back. NEVER scale the service >1 replica in this mode (double-run). Precedence: `DISABLE_WEB_SCHEDULERS=true` still wins |
+| `DISABLE_WEB_SCHEDULERS` | ✖ | `false` | `lib/web-scheduler.ts` | **true with no worker = all crons silently dead** (keep false; wins over SINGLE_INSTANCE_MODE) |
 | `DISABLE_BOOT_MIGRATIONS` | ✖ | `false` | `server.ts` | emergency rollback hatch only |
+| `MIGRATIONS_FORCE_RECONCILE` | ✖ | `false` | `backend/src/migrate.ts` | accepts `true`/`1`/`yes` (r108) — bypasses the fingerprint fast-path → full reconcile on next boot |
+| `MIGRATION_PG_LOCK_WAIT_MAX_MS` | ✖ | `90000` | `lib/boot-migrations.ts` (R108) | no-Redis migration mutual exclusion (pg advisory xact lock) — poll-wait window for a blue-green overlap before proceeding unlocked |
 | `WORKER_TIER` | ✖ | unset | cron slot gating | unset on the single container is correct |
-| `DB_POOL_MAX` / `DB_IDLE_TIMEOUT_MS` / `DB_CONNECTION_TIMEOUT_MS` | ✖ | `8` / `10000` / `30000` | pool init | 8 matches Neon free compute |
-| `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | ✖ | `25000` (r107) | `server.ts` drain | keep BELOW compose `stop_grace_period` (40 s) |
-| `SCHEDULER_LEASE_REFRESH_MS` | ✖ | `25000` (r107) | `lib/scheduler-coordinator.ts` | capped at TTL/2; see migration doc §9 for the Neon-awake trade |
-| `SCHEDULER_LEASE_TTL_SEC` | ✖ | `60` (r107) | same | ≥10 enforced |
+| `DB_POOL_MAX` / `DB_IDLE_TIMEOUT_MS` / `DB_CONNECTION_TIMEOUT_MS` | ✖ | `8` / `30000` / `10000` | pool init (`shared/db/src/index.ts`) | r108 matrix fix (was swapped): idle 30 s, connect 10 s per code; 8 matches Neon free compute |
+| `GRACEFUL_SHUTDOWN_TIMEOUT_MS` | ✖ | `25000` (r107) | `server.ts` drain | keep BELOW compose `stop_grace_period` (40 s) — exceeding it = SIGKILL mid-drain |
+| `SCHEDULER_LEASE_REFRESH_MS` | ✖ | `25000` (r107) | `lib/scheduler-coordinator.ts` | multi-instance future ONLY — inert while SINGLE_INSTANCE_MODE=true; capped at TTL/2 (pure `resolveLeaseTimings`, r108-tested) |
+| `SCHEDULER_LEASE_TTL_SEC` | ✖ | `60` (r107) | same | multi-instance future ONLY; ≥10 enforced (below 10 silently floors to 60) |
 | `SCHEDULER_OP_TIMEOUT_MS` | ✖ | `2000` | leadership ops | test/ops override |
 | `GIT_SHA` | ✖ | — | `lib/release-sha.ts` | falls to RENDER_GIT_COMMIT → "unknown" (cosmetic) |
 | `SLOW_QUERY_THRESHOLD_MS` | ✖ | `250` | db instrumentation | warn-log only |
-| `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` / `SENTRY_PROFILES_SAMPLE_RATE` | DSN ✖ | `0.1` / `0` | `lib/sentry.ts` | unset = Sentry off cleanly |
+| `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` / `SENTRY_PROFILES_SAMPLE_RATE` | DSN ✖ | `0.1` / `0` | `lib/sentry.ts` | unset = Sentry off cleanly; profiles default 0 since r108 (small-server intent — matches this row exactly now) |
 | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` | ✔ | — | `build.mjs` sourcemaps | unset = upload silently skipped |
 | `SENTRY_DASHBOARD_URL` / `NEON_DASHBOARD_URL` / `RENDER_DASHBOARD_URL` | ✖ | — | admin observability links | unset = link hidden |
-| `ALERTING_ENABLED` | ✖ | — | `services/alerting.service.ts` | unset/false = NOBODY paged |
+| `ALERTING_ENABLED` | ✖ | unset = **ENABLED** | `services/alerting.service.ts` | only the literal `false` disables (unset/garbage = paged) — r108 matrix fix |
+| `APP_ORIGIN` | ✖ | falls back to `APP_URL` | admin alert deep links (`routes/admin/forecast.ts`, `enrichment.ts`), `routes/seo.ts` | unset = APP_URL used; keep it inside the APP_ORIGINS set |
 | `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | ✔ | — | alerting ops bot | unset = channel degrades per-channel |
 | `TELEGRAM_WEBHOOK_SECRET` / `TELEGRAM_ADMIN_IDS` | ✔ | — | approval gateway | unset = approval webhook disabled |
 | `DISCORD_WEBHOOK_URL` / `GENERIC_ALERT_WEBHOOK_URL` | ✔ | — | alerting channels | per-channel degrade |
 | `METRICS_ADMIN_TOKEN` | ✔ | — | `/api/metrics` bearer | unset = metrics endpoint 404-class denial |
 | `WHATSAPP_OTP_BASE_URL` / `WHATSAPP_OTP_API_KEY` | API_KEY ✔ | — | `services/openwa.service.ts` | unset = OTP 503 `gateway_disabled`; base can be the compose-internal `http://openwa:2785` |
-| `WHATSAPP_OTP_SESSION` / `WHATSAPP_OTP_AUTO_CREATE_SESSION` / `WHATSAPP_OTP_SETTLE_MS` / `WHATSAPP_OTP_OPERATOR_E164` | ✖ | `subnation-otp` / `true` / `45000` / — | same | settle window clamped 0-300000 |
+| `WHATSAPP_OTP_SESSION` / `WHATSAPP_OTP_AUTO_CREATE_SESSION` / `WHATSAPP_OTP_SETTLE_MS` / `WHATSAPP_OTP_OPERATOR_E164` | ✖ | **no default** / `true` / `45000` / — | same | r108 matrix fix: WHATSAPP_OTP_SESSION has NO code default — unset = the OTP session ref is empty (set `subnation-otp`); settle window clamped 0-300000 |
 | `COPILOT_PROVIDER` / `COPILOT_API_KEY` / `COPILOT_MODEL` / `COPILOT_BASE_URL` | API_KEY ✔ | — | copilot + enrichment | all-four-or-nothing; feature disabled cleanly |
 | `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_SERVICE_ACCOUNT_JSON` | SA-JSON ✔ | — | `lib/firebase-admin.ts` | unset = Google/Telegram identity off, WhatsApp OTP unaffected |
 | `OTP_HMAC_KEY` | ✔ | derives from SESSION_SECRET | `whatsapp-otp.service.ts` | explicit key recommended in prod |
 | `ENRICHMENT_RUNNER_ENABLED` / `FORECAST_RUNNER_ENABLED` | ✖ | `false` | runners | worker-tier gated, inert today |
+| `FRONTEND_ORIGINS` / `VERCEL_FRONTEND_ORIGIN` | ✖ | unset | `lib/origins.ts` | r108 matrix addition: EXTRA origins for the legacy split deployment (Vercel→Render); leave unset on the single-origin stack (lax cookies reject cross-site anyway) |
+| `FULFILLMENT_PROVIDER` | ✖ | `manual` (fail-safe) | `services/fulfillment/` registry (r102) | unset = ManualProvider (claim block flow); future providers register here |
+| `RISK_PIPELINE_ENABLED` | ✖ | dormant unless `true` | `lib/risk-emit.ts` | dark-launch gate; keep unset unless operating the risk pipeline |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_RESET_PASSWORD` | PASSWORD ✔ | — | seed script only | never needed at runtime |
 | `ALLOW_DEMO_SEED` | ✖ | — | seed guard | keep unset in prod |
 
