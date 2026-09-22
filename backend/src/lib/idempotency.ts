@@ -8,7 +8,8 @@
  * request ("double-fire = two purchases, two debits"). This module is
  * the transactional backstop the inspection asked for:
  *
- *   1. `scopeIdempotencyKey` — normalize + per-user scope.
+ *   1. `scopeIdempotencyKey` — normalize + per-subject scope (user and
+ *      admin ids share the `u{id}:` PK namespace — see its docs).
  *   2. `findIdempotentOrderId` — pre-tx lookup: a retry with a key that
  *      already created an order replays that order instead of
  *      re-pricing/re-charging (crucially, this also short-circuits
@@ -86,10 +87,20 @@ export function isIdempotencyKeyViolation(err: unknown): boolean {
 }
 
 /**
- * Normalize + scope a client-supplied Idempotency-Key to one buyer:
- * `u{userId}:{key}`. Scoping mirrors the middleware's subject-scoped
- * Redis keys — two users sending the same key string must never
- * alias each other's orders (an IDOR-flavored replay leak).
+ * Normalize + scope a client-supplied Idempotency-Key to one subject:
+ * `u{subjectId}:{key}`. Subjects are userIds (checkout, topups, loyalty)
+ * AND adminIds (the admin wallet-adjustment path) — the `u{…}:` prefix
+ * does NOT encode subject kind, so admin N and user N sending the same
+ * raw key string share ONE durable PK (unlike the HTTP middleware's
+ * Redis keys, which bake in `admin:`/`user:`). A cross-subject reuse is
+ * therefore a collision, and it is CLASSIFIED, never replayed: the
+ * 409 pre-check or the in-tx 23505 surfaces, and the referenceType
+ * filter keeps one subject's row from ever resolving for the other
+ * intent — a liveness papercut (pick a fresh key), not a money-safety
+ * hole. The shared namespace is the frozen on-disk contract (existing
+ * rows live in it), so it is documented here rather than re-keyed.
+ * What the scoping does guarantee: two DIFFERENT ids never alias each
+ * other's rows (the IDOR-flavored replay leak it was built for).
  *
  * Returns null when the raw key is absent/undersized/oversized — the
  * caller then runs the legacy (pre-F10) unguarded path, exactly like a

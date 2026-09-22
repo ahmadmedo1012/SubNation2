@@ -58,8 +58,9 @@ export interface PricingConfig {
 
 /**
  * The one formula. cost USD → retail LYD, rounded to cents (2 decimals)
- * with the banker-safe idiom used across the money pipeline
- * (cart.tsx roundToCents / wallet rounding).
+ * with the same half-up idiom (Math.round — NOT banker's rounding: an
+ * exact half cent goes up, e.g. 0.125 → 0.13) used across the money
+ * pipeline (cart.tsx roundToCents / wallet rounding).
  *
  * $3.99 × (1+100/100) × 10 = 79.80 LYD
  * $5    × 2 × 10           = 100.00 LYD

@@ -3,50 +3,50 @@ import type { NextFunction, Request, Response } from "express";
 /**
  * Cloudflare-aware client-IP resolution.
  *
- * CONTEXT
- * -------
- * The platform sits behind a two-hop proxy chain when Cloudflare is
- * in front:
+ * CONTRACT (generic trusted-proxy — platform-agnostic)
+ * ---------------------------------------------------
+ * The app runs behind exactly ONE trusted reverse-proxy hop
+ * (Express `trust proxy = 1`, configured in `app.ts`). That hop
+ * appends the TRUE connecting peer as the RIGHTMOST `X-Forwarded-For`
+ * entry, so the rightmost XFF value is trustworthy while everything
+ * to its left is client-controlled. When Cloudflare sits in front of
+ * that hop, the real client IP additionally arrives in the
+ * `CF-Connecting-IP` header — and `req.ip`, which trusts only the one
+ * hop, would otherwise resolve to Cloudflare's edge IP instead of the
+ * client.
  *
- *     Browser → Cloudflare edge → Render edge → app
- *
- * Express's `trust proxy = 1` (configured in `app.ts`) trusts the
- * single most recent proxy hop — Render. For a Cloudflare request
- * Render preserves CF's `X-Forwarded-Proto: https`, so HTTPS detection
- * works. But `req.ip` resolves to CF's edge IP, not the real client.
- *
- * Cloudflare sends the real client IP in the `CF-Connecting-IP`
- * header. We override `req.ip` with that value transparently, so
- * downstream code (rate-limit-redis, audit logs, auth-activity, Sentry
- * user context) reads the correct IP without any per-call changes.
+ * We therefore override `req.ip` with `CF-Connecting-IP` — but ONLY
+ * when the request genuinely traversed Cloudflare — so downstream
+ * code (rate limiting, audit logs, auth-activity, Sentry user
+ * context) reads the correct IP without any per-call changes.
  *
  * SECURITY — H11 (deep-audit 2026-09-06)
  * --------------------------------------
- * The public `*.onrender.com` origin is deliberately reachable, so an
- * attacker CAN bypass Cloudflare and hit Render directly with a forged
- * `CF-Connecting-IP`. Trusting the header blindly turned every IP-keyed
- * control (login rate-limits, lockout windows, audit/forensics) into
- * attacker-chosen data.
+ * The origin is reachable WITHOUT Cloudflare too (requests can
+ * bypass it and reach the trusted proxy directly), so an attacker CAN
+ * present a forged `CF-Connecting-IP`. Trusting the header blindly
+ * turned every IP-keyed control (login rate-limits, lockout windows,
+ * audit/forensics) into attacker-chosen data.
  *
- * Defense: ONLY trust `CF-Connecting-IP` when the connection ACTUALLY
- * came through Cloudflare. Render appends the true connecting peer as
- * the RIGHTMOST entry of X-Forwarded-For — for genuine CF traffic that
- * peer is a Cloudflare edge IP; for a direct-to-origin attacker it is
- * the attacker's own IP. We verify the rightmost peer against
- * Cloudflare's published IP ranges before honouring the header.
+ * Defense: `CF-Connecting-IP` is honoured ONLY when the rightmost XFF
+ * peer — the address that actually connected to our trusted proxy —
+ * falls inside Cloudflare's published IP ranges. For genuine CF
+ * traffic that peer is a Cloudflare edge IP; for an attacker bypassing
+ * Cloudflare it is the attacker's own IP, and the header is ignored.
  *
  * Leftmost XFF entries are client-controlled and never consulted.
  *
  * BEHAVIOUR
  * ---------
  *   - Via Cloudflare (peer ∈ CF ranges): req.ip = CF-Connecting-IP (real client)
- *   - Direct to Render / forged header:  req.ip = Express default
+ *   - Direct to origin / forged header:  req.ip = Express default
  *
- * This makes the platform CORRECT under both configurations. No
- * Cloudflare-specific lock-in: removing CF reverts behaviour
- * automatically. The strongest long-term fix remains restricting the
- * Render service to Cloudflare ingress (origin firewall / CF Tunnel) —
- * see CLOUDFLARE_SETUP.md; this check is the code-level backstop.
+ * The logic is deliberately proxy-agnostic: it assumes nothing about
+ * WHICH platform fronts the app — any single trusted hop that appends
+ * the connecting peer to XFF satisfies it, so removing Cloudflare
+ * reverts behaviour automatically. The strongest long-term fix
+ * remains restricting the origin to Cloudflare ingress only (origin
+ * firewall / CF Tunnel); this check is the code-level backstop.
  */
 
 // Cloudflare published ranges (https://www.cloudflare.com/ips-v4 & ips-v6).
@@ -98,10 +98,7 @@ function cidr6(cidr: string): readonly [bigint, bigint] {
   // HIGH bits (leftmost `bits` positions). The previous right-shift put
   // them in the low bits, so every range collapsed to "low-bits-zero"
   // matching and real CF IPv6 edges (e.g. 2606:4700::/68) never matched.
-  const mask =
-    bits === 0n
-      ? 0n
-      : ((1n << bits) - 1n) << (128n - bits);
+  const mask = bits === 0n ? 0n : ((1n << bits) - 1n) << (128n - bits);
   return [expanded & mask, mask] as const;
 }
 
@@ -120,7 +117,10 @@ function expandIpv6(ip: string): bigint {
   if (doubleColonCount > 0) {
     const idx = full.indexOf("::");
     head = full.slice(0, idx).split(":").filter(Boolean);
-    tail = full.slice(idx + 2).split(":").filter(Boolean);
+    tail = full
+      .slice(idx + 2)
+      .split(":")
+      .filter(Boolean);
     const missing = 8 - head.length - tail.length;
     full = [...head, ...Array(missing).fill("0"), ...tail].join(":");
   } else {
@@ -170,12 +170,15 @@ function isCloudflareIp(ip: string): boolean {
 const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 const IPV6_RE = /^[0-9a-fA-F:]{2,45}$/;
 
-/** The peer that actually connected to Render = RIGHTMOST XFF entry
- * (appended by the trusted Render hop — never client-controlled). */
+/** The peer that actually connected to our trusted proxy = RIGHTMOST
+ * XFF entry (appended by that hop — never client-controlled). */
 function renderFacingPeer(req: Request): string | null {
   const xff = req.headers["x-forwarded-for"];
   if (typeof xff !== "string" || xff.length === 0) return null;
-  const entries = xff.split(",").map((e) => e.trim()).filter(Boolean);
+  const entries = xff
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
   return entries.length > 0 ? entries[entries.length - 1] : null;
 }
 
@@ -188,8 +191,8 @@ export function cloudflareClientIp(req: Request, _res: Response, next: NextFunct
     (IPV4_RE.test(cfIp) || IPV6_RE.test(cfIp));
 
   // H11: only honour the header when the connection genuinely traversed
-  // Cloudflare (the Render-facing peer is a CF edge IP). A forged header
-  // arriving via the public onrender.com origin is ignored and req.ip
+  // Cloudflare (the trusted-proxy-facing peer is a CF edge IP). A forged
+  // header from a request that bypassed Cloudflare is ignored and req.ip
   // falls back to Express's default resolution.
   const viaCloudflare = (() => {
     const peer = renderFacingPeer(req);

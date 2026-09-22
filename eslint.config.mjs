@@ -42,7 +42,12 @@ export default tseslint.config(
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      // Allow any in route handlers temporarily (Phase 2 will clean these)
+      // no-explicit-any stays at WARN, not error (repo-wide, not just
+      // route handlers): the codebase still carries ~20+ deliberate
+      // `any` casts (drizzle tx/pool plumbing, test harness mocks).
+      // Originally framed as "temporarily (Phase 2 will clean these)";
+      // that cleanup never landed, so warn-without-gating CI is the
+      // standing policy — new code still gets flagged in review.
       "@typescript-eslint/no-explicit-any": "warn",
       // Non-null assertions are common in Drizzle queries
       "@typescript-eslint/no-non-null-assertion": "off",

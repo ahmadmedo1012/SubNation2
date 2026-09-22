@@ -422,7 +422,10 @@ export async function initSentry(): Promise<ReturnType<typeof Sentry.init> | und
   console.log(
     `[sentry] initialized — host=${dsnHost} env=${process.env.NODE_ENV || "development"} ` +
       `release=${tags.git_commit} traces=${process.env.SENTRY_TRACES_SAMPLE_RATE ?? "0.1"} ` +
-      `profiles=${process.env.SENTRY_PROFILES_SAMPLE_RATE ?? "0.1"} ` +
+      // R108 (FH-A8 F2): profiles default to 0 (and are zeroed outside
+      // production) — log the RESOLVED rate, not the raw env with a stale
+      // "0.1" fallback that no longer matches the effective default.
+      `profiles=${resolveProfilesSampleRate()} ` +
       `debug=${process.env.SENTRY_DEBUG === "1"}`,
   );
 

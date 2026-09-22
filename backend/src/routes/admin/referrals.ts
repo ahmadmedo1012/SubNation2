@@ -4,6 +4,7 @@ import { Router } from "express";
 import { intParam, queryString, rowsFromResult } from "../../lib/http";
 import { idempotency } from "../../middlewares/idempotency";
 import { requireAdmin } from "../../middlewares/requireAdmin";
+import { writeAuditLog } from "../../lib/audit";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
@@ -169,6 +170,16 @@ router.post(
         .status(409)
         .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.ALREADY_EXISTS));
     }
+
+    // R110 (109-m P3): the referral credit is a loyalty-points grant —
+    // the last money-adjacent admin write without an audit row. Same
+    // minimal-metadata convention as topup.approve (fire-and-forget: a
+    // failed audit never blocks the mutation).
+    void writeAuditLog(req, "referral.credit", "referral_event", event.id, {
+      referrer_id: event.referrerId,
+      referee_id: event.refereeId,
+      points: POINTS,
+    });
 
     await createNotification(
       event.referrerId,

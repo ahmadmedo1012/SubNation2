@@ -9,6 +9,7 @@ import { computeCouponDiscount, type CouponType } from "../lib/pricing";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
+import { writeAuditLog } from "../lib/audit";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
 
@@ -260,6 +261,18 @@ router.post("/admin", requireAdmin, requirePermission("finance"), async (req, re
     throw err;
   }
 
+  // R110 (109-m P3): the admin coupon mutations were the last
+  // finance-perimeter writes without an audit row — same convention as
+  // flash_sale.create (minimal metadata, fire-and-forget: a failed
+  // audit never blocks the mutation).
+  void writeAuditLog(req, "coupon.create", "coupon", coupon.id, {
+    code: coupon.code,
+    type: coupon.type,
+    value,
+    max_uses: max_uses ?? null,
+    expires_at: coupon.expiresAt?.toISOString() ?? null,
+  });
+
   return res.status(201).json(formatCoupon(coupon));
 });
 
@@ -279,19 +292,43 @@ router.patch("/admin/:id", requireAdmin, requirePermission("finance"), async (re
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { is_active, max_uses, expires_at, description } = parse.data;
   const updates: Partial<typeof couponsTable.$inferInsert> = {};
+  // R110 (109-m P3): before/after for exactly the changed fields — the
+  // audit trail must be reconstructable without diffing coupon rows.
+  const auditChanges: Record<string, { before: unknown; after: unknown }> = {};
 
-  if (is_active !== undefined) updates.isActive = is_active;
+  if (is_active !== undefined) {
+    updates.isActive = is_active;
+    auditChanges.is_active = { before: existing.isActive, after: is_active };
+  }
   if (max_uses !== undefined) {
     updates.maxUses = max_uses ?? null;
+    auditChanges.max_uses = { before: existing.maxUses ?? null, after: max_uses ?? null };
   }
-  if (expires_at !== undefined) updates.expiresAt = expires_at ? new Date(expires_at) : null;
-  if (description !== undefined) updates.description = description || null;
+  if (expires_at !== undefined) {
+    updates.expiresAt = expires_at ? new Date(expires_at) : null;
+    auditChanges.expires_at = {
+      before: existing.expiresAt?.toISOString() ?? null,
+      after: updates.expiresAt?.toISOString() ?? null,
+    };
+  }
+  if (description !== undefined) {
+    updates.description = description || null;
+    auditChanges.description = { before: existing.description ?? null, after: description || null };
+  }
 
   const [updated] = await db
     .update(couponsTable)
     .set(updates)
     .where(eq(couponsTable.id, id))
     .returning();
+
+  // R110 (109-m P3): fire-and-forget audit (same convention as
+  // admin.updated / flash_sale.update — minimal metadata, no secrets).
+  void writeAuditLog(req, "coupon.update", "coupon", id, {
+    code: existing.code,
+    changes: auditChanges,
+  });
+
   return res.json(formatCoupon(updated));
 });
 
@@ -309,9 +346,16 @@ router.delete("/admin/:id", requireAdmin, requirePermission("finance"), async (r
     .update(couponsTable)
     .set({ isActive: false })
     .where(eq(couponsTable.id, id))
-    .returning({ id: couponsTable.id });
+    .returning({ id: couponsTable.id, code: couponsTable.code });
   if (archived.length === 0)
     return res.status(404).json(createErrorResponse("الكوبون غير موجود", ErrorCode.NOT_FOUND));
+
+  // R110 (109-m P3): soft-archive audit — mirror product.archive, plus
+  // the coupon code (the identifier operators actually recognize).
+  void writeAuditLog(req, "coupon.archive", "coupon", archived[0].id, {
+    code: archived[0].code,
+  });
+
   return res.json({ success: true });
 });
 

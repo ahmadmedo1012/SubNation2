@@ -109,7 +109,7 @@ describe("computeRetailLYD — cost × 2 × 10", () => {
     expect(computeRetailLYD(5, { usdToLyd: 4.8, markupPercent: 100 })).toBe(48);
   });
 
-  it("rounds to cents (banker-safe idiom)", () => {
+  it("rounds to cents (half-up Math.round idiom)", () => {
     // 3.335 × 20 = 66.7 exactly at the boundary — 2dp rounding is stable
     expect(computeRetailLYD(3.335, DEFAULTS)).toBe(round2(66.7));
     // floating dust: 0.1 + 0.2 style inputs must not leak into prices
