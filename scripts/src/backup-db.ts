@@ -4,6 +4,7 @@
  *
  * Usage:
  *   pnpm tsx scripts/src/backup-db.ts                       # local file under ./backups/
+ *   pnpm tsx scripts/src/backup-db.ts --keep 30             # keep newest 30 local dumps
  *   BACKUP_DIR=/var/backups pnpm tsx scripts/src/backup-db.ts
  *   BACKUP_PRESIGNED_PUT_URL=https://... pnpm tsx scripts/src/backup-db.ts
  *
@@ -24,30 +25,175 @@
  *   - R2: same with R2's S3-compatible endpoint
  *   - AWS: aws s3 presign s3://bucket/path --expires-in 86400
  *
- * Retention is the operator's responsibility — set a lifecycle rule on the
- * bucket (e.g. "keep daily for 14 days, then delete"). The script doesn't
- * manage retention because lifecycle rules are cheaper and more reliable
- * than client-side enumerate-and-delete.
+ * (r110) Local retention: after a fully successful run (write + optional
+ * upload) the oldest dumps beyond the newest `--keep <N>` (default 14) are
+ * pruned from the backup dir. Only files matching the exact
+ * `subnation-<ISO>.sql.gz` name pattern this script generates are ever
+ * deleted — everything else in the dir is untouched. Off-VM copies are a
+ * different tier: keep a lifecycle rule on the bucket (e.g. "keep daily for
+ * 30 days, then delete") — lifecycle rules are cheaper and more reliable
+ * than client-side enumerate-and-delete for the off-VM tier.
+ *
+ * (r110) Connection secrecy: DATABASE_URL is decomposed into libpq's PG*
+ * environment variables (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE/PGSSLMODE
+ * and friends — pg_dump reads those natively) instead of being passed as a
+ * pg_dump argument, so credentials never appear in the process list (`ps`).
+ * URL-encoded components (user/password) are decoded, and URL query
+ * parameters that have no PG* equivalent are dropped with a warning (pg_dump
+ * would reject most of them as invalid connection options anyway).
  *
  * Exit codes:
  *   0 — success
  *   1 — generic error (pg_dump failed, write failed, etc.)
- *   2 — DATABASE_URL not set
+ *   2 — DATABASE_URL missing, unparseable, or without a database name
  *   3 — pg_dump not found on PATH
+ *   4 — invalid usage (unknown flag, bad --keep value)
  */
 
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 
+// (r110) The exact filename pattern this script generates — the retention
+// prune matches against this and NOTHING else, so a hand-dropped
+// `subnation-manual.sql.gz` (or any other file) is never deleted.
+const BACKUP_FILENAME_RE = /^subnation-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.sql\.gz$/;
+
+/**
+ * (r110) Pure retention helper: given every entry name in the backup dir and
+ * the number of dumps to keep, return the names that should be deleted.
+ * Lexicographic order of the ISO-8601 stamp in the name is chronological,
+ * so the oldest `length - keep` names are the ones to prune.
+ */
+export function selectFilesToPrune(filenames: string[], keep: number): string[] {
+  const backups = filenames.filter((name) => BACKUP_FILENAME_RE.test(name)).sort();
+  return keep >= backups.length ? [] : backups.slice(0, backups.length - keep);
+}
+
+// (r110) libpq connection-string query parameters that map 1:1 to a PG*
+// environment variable. `application_name` is the one spelling exception
+// (PGAPPNAME, not PGAPPLICATION_NAME). Parameters with no env equivalent are
+// dropped with a warning — names only, never values.
+const PG_ENV_BY_PARAM: Record<string, string> = {
+  sslmode: "PGSSLMODE",
+  channel_binding: "PGCHANNELBINDING",
+  connect_timeout: "PGCONNECT_TIMEOUT",
+  client_encoding: "PGCLIENTENCODING",
+  application_name: "PGAPPNAME",
+  options: "PGOPTIONS",
+  sslrootcert: "PGSSLROOTCERT",
+  sslcert: "PGSSLCERT",
+  sslkey: "PGSSLKEY",
+  sslpassword: "PGSSLPASSWORD",
+  sslcrl: "PGSSLCRL",
+  sslcrldir: "PGSSLCRLDIR",
+  gssencmode: "PGGSSENCMODE",
+  requiressl: "PGREQUIRESSL",
+  krbsrvname: "PGKRBSRVNAME",
+};
+
+// (r110) decodeURIComponent() throws on malformed escapes — pass those
+// through verbatim instead of killing the backup over a character.
+function decodeMaybe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * (r110) Pure helper: decompose a postgres:// URL into libpq PG* env vars so
+ * pg_dump needs no connection info on its command line. URL-encoded user /
+ * password components are decoded (Neon passwords regularly contain @ : /).
+ * Throws a plain Error when the value is not a parseable URL or has no
+ * database name.
+ */
+export function pgEnvFromUrl(databaseUrl: string): Record<string, string> {
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("DATABASE_URL is not a parseable postgres:// URL");
+  }
+
+  const env: Record<string, string> = {};
+
+  let host = url.hostname;
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1); // (r110) IPv6 literal — drop the URL brackets
+  }
+  if (host) env.PGHOST = host;
+  env.PGPORT = url.port || "5432";
+  if (url.username) env.PGUSER = decodeMaybe(url.username);
+  if (url.password) env.PGPASSWORD = decodeMaybe(url.password);
+
+  const database = url.pathname.length > 1 ? decodeMaybe(url.pathname.slice(1)) : "";
+  if (!database) {
+    throw new Error("DATABASE_URL has no database name (postgres://host/<dbname>)");
+  }
+  env.PGDATABASE = database;
+
+  const dropped: string[] = [];
+  for (const [param, value] of url.searchParams) {
+    const envName = PG_ENV_BY_PARAM[param];
+    if (envName) env[envName] = value;
+    else dropped.push(param);
+  }
+  if (dropped.length > 0) {
+    // names only — parameter values are not printed
+    console.warn(
+      `⚠ ignoring DATABASE_URL parameter(s) with no pg_dump equivalent: ${dropped.join(", ")}`,
+    );
+  }
+  return env;
+}
+
+// (r110) Strict argv parsing — a typo'd flag in a cron job must fail fast
+// instead of being silently ignored. `--keep <N>` / `--keep=<N>`, default 14,
+// minimum 1 (`--keep 0` would prune the backup it just wrote).
+function usageError(message: string): never {
+  console.error(`✗ ${message}`);
+  console.error("  usage: backup-db.ts [--keep <N>]");
+  process.exit(4);
+}
+
+function parseKeepArg(argv: string[]): number {
+  let keep = 14;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg !== "--keep" && !arg.startsWith("--keep=")) {
+      usageError(`unknown argument "${arg}"`);
+    }
+    const value = arg === "--keep" ? argv[++i] : arg.slice("--keep=".length);
+    if (value === undefined || !/^\d+$/.test(value) || Number(value) < 1) {
+      usageError(`--keep must be a positive integer (got "${value ?? ""}")`);
+    }
+    keep = Number(value);
+  }
+  return keep;
+}
+
 async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error("✗ DATABASE_URL is not set");
+    process.exit(2);
+  }
+
+  // (r110) usage errors fail fast BEFORE any file or child process exists.
+  const keep = parseKeepArg(process.argv.slice(2));
+
+  // (r110) libpq reads PG* env natively — keep pg_dump's argv secret-free.
+  let pgEnv: Record<string, string>;
+  try {
+    pgEnv = pgEnvFromUrl(databaseUrl);
+  } catch (err) {
+    console.error(`✗ ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
   }
 
@@ -69,6 +215,10 @@ async function main() {
   //   --format=plain        SQL text (works with any psql version on restore)
   //   --quote-all-identifiers  defensive against reserved-word collisions
   //   --serializable-deferrable  consistent snapshot
+  // (r110) R109 §27 P2 fix: connection info travels in the PG* environment
+  // (see pgEnvFromUrl), so `ps` on the backup host never sees the connstring
+  // or password — the old argv connstring leaked DATABASE_URL to every
+  // local user via the process list.
   const pgDump = spawn(
     "pg_dump",
     [
@@ -77,9 +227,8 @@ async function main() {
       "--format=plain",
       "--quote-all-identifiers",
       "--serializable-deferrable",
-      databaseUrl,
     ],
-    { stdio: ["ignore", "pipe", "pipe"] },
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...pgEnv } },
   );
 
   // (F3) spawn errors are handled via the unified exit-signal promise
@@ -173,6 +322,32 @@ async function main() {
     );
   } else {
     console.log("ℹ BACKUP_PRESIGNED_PUT_URL not set — backup stays local only");
+  }
+
+  // (r110) Local retention — pruned only AFTER a fully successful run (write
+  // + optional upload), so a failed night never deletes the last good
+  // backup. selectFilesToPrune returns only names matching the exact
+  // generated pattern; anything else in the dir is never touched.
+  try {
+    const dirEntries = await readdir(backupDir);
+    const toPrune = selectFilesToPrune(dirEntries, keep);
+    for (const name of toPrune) {
+      try {
+        await unlink(join(backupDir, name));
+        console.log(`✓ pruned old backup (keep=${keep}): ${name}`);
+      } catch (err) {
+        // the artifact itself is safe — a prune failure only costs disk
+        console.warn(
+          `⚠ could not prune ${name}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  } catch (err) {
+    console.warn(
+      `⚠ retention prune skipped (could not list ${backupDir}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   console.log(`✓ backup complete: ${filename}`);

@@ -33,6 +33,14 @@ ruflo/
 # build contexts too).
 .secrets
 
+# (r110) DB dump artifacts (backup-db.ts / backup-cron.sh output) — never
+# send local backups into a Docker build context or bake them into images.
+# `**/backups/` also covers `scripts/backups/`, where dumps actually land
+# when the backup script runs via pnpm without an explicit BACKUP_DIR.
+backups
+backups/
+**/backups/
+
 # misc
 *.log
 npm-debug.log*

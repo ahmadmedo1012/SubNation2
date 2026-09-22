@@ -34,8 +34,9 @@ Access: https://console.neon.tech/app/projects → SubNation → Branches → ma
 ### 2. Off-site `pg_dump` backups (this repo)
 
 Script: `scripts/src/backup-db.ts` (run via `pnpm run db:backup`).  
-Behaviour: streams `pg_dump --no-owner --no-privileges --format=plain` through `gzip` to `./backups/subnation-<ISO>.sql.gz`.  
+Behaviour: streams `pg_dump --no-owner --no-privileges --format=plain` through `gzip` to `./backups/subnation-<ISO>.sql.gz`. Local retention (r110): the newest `--keep <N>` dumps (default 14) are kept — older files matching the exact generated name are pruned after each successful run.  
 Optional upload: set `BACKUP_PRESIGNED_PUT_URL` to a presigned PUT URL from any S3-compatible provider (Backblaze B2, Cloudflare R2, AWS S3) — file is HTTP PUT after the local write completes.
+Nightly automation (r110): `scripts/backup-cron.sh` — see [Automated backups](#automated-backups-r110--host-cron-on-the-oracle-vm) below.
 
 **Local invocation (any Postgres-client-equipped shell):**
 
@@ -45,10 +46,10 @@ DATABASE_URL=postgresql://... pnpm run db:backup
 
 **Render Cron Job invocation (provision separately) — LEGACY (Render, pre-migration):**
 
-> Post-migration on Oracle: schedule the same `pnpm run db:backup` on the VM
-> host cron (or any machine with a repo clone) — see
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §13. The script itself is
-> hosting-neutral and unchanged.
+> Post-migration on Oracle: automated — `scripts/backup-cron.sh` installed in
+> the VM host crontab (see "Automated backups" below).
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §13 keeps the asset table.
+> The backup script itself is hosting-neutral and unchanged.
 
 1. Create a new Render Cron Job (free tier supports cron jobs ≤ 15 min runtime).
 2. Build command: `pnpm install --frozen-lockfile`.
@@ -88,6 +89,113 @@ scenario below, where this list IS the runbook)*:
 - **AI (dormant until worker tier)**: `COPILOT_PROVIDER`, `COPILOT_API_KEY`, `COPILOT_MODEL`, `COPILOT_BASE_URL`, `ENRICHMENT_DAILY_TOKEN_CAP`, `ENRICHMENT_PER_RUN_CAP`
 
 Keep these in a password manager (1Password / Bitwarden) with the service entry "SubNation Render".
+
+## Automated backups (r110 — host cron on the Oracle VM)
+
+> **Status (r110): automated in-repo, operator installs once.**
+> `scripts/backup-cron.sh` is the cron wrapper; the crontab line below must
+> exist on the VM for backups to run. Until it is installed, backups remain
+> manual-only. This closes the R109 §27 P1 gap ("no automated backup before
+> cutover").
+
+**What the wrapper does per run** — `backup-cron.sh <REPO_DIR> [ENV_FILE]`:
+
+1. Resolves the repo checkout and loads the env file (`KEY=VALUE` lines,
+   parsed without sourcing, **values never printed**): needs `DATABASE_URL`,
+   honours optional `BACKUP_DIR` / `BACKUP_KEEP` / `BACKUP_PRESIGNED_PUT_URL`
+   / `BACKUP_CRON_LOG`.
+2. Runs the in-repo backup with the repo's own tsx:
+   `pnpm --filter @workspace/scripts run backup --keep <N>` — exactly what
+   root `pnpm run db:backup` resolves to; `--keep` defaults to 14.
+3. Appends ONE ledger line to the log — `<UTC timestamp> exit=<code>
+   file=<name|-> keep=<N>` — no secrets.
+4. Propagates the backup's exit code so cron flags the failure.
+
+**Why host cron and not the app container:** the app runtime image has no
+`pg_dump` (adding `postgresql-client` plus the DB credentials to the app
+image would widen the blast radius), and a host-level job keeps taking
+backups while the app container is down or redeploying — exactly when you
+want them.
+
+### One-time install (on the VM, as root)
+
+```bash
+# Repo convention for the VM host: /opt/subnation (the Coolify doc builds
+# from git and fixes no host-side path; any path works — pass it to the
+# wrapper as its first argument).
+git clone https://github.com/ahmadmedo1012/SubNation2 /opt/subnation
+cd /opt/subnation && pnpm install --frozen-lockfile
+apt install -y postgresql-client # provides pg_dump
+
+# env file (root-only readable; nothing below ever prints its values)
+install -m 600 /dev/null /opt/subnation/.env
+cat >> /opt/subnation/.env <<'EOF'
+DATABASE_URL=postgresql://...?sslmode=require
+BACKUP_DIR=/var/backups/subnation
+BACKUP_KEEP=14
+# optional off-VM copy: BACKUP_PRESIGNED_PUT_URL=https://... (see below)
+EOF
+
+# smoke-test once before scheduling — expect a "✓ backup complete" line
+/opt/subnation/scripts/backup-cron.sh /opt/subnation
+```
+
+Set `BACKUP_DIR` explicitly as above: run through pnpm, the script's
+`./backups` default resolves relative to the `scripts/` package dir
+(`scripts/backups/`), not the repo root.
+
+### Crontab (root, `crontab -e`)
+
+```cron
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 4 * * * /opt/subnation/scripts/backup-cron.sh /opt/subnation >> /var/log/subnation-backup.log 2>&1
+```
+
+- `30 4 * * *` — daily 04:30 UTC: low-traffic window for the .ly audience;
+  the dump runs for minutes and does not affect the Neon autosuspend
+  economics (`COOLIFY_ORACLE_MIGRATION.md` §9).
+- The `PATH=` line matters — cron's default PATH is minimal and pnpm/node
+  usually live outside it; adjust to the output of `command -v pnpm`.
+- The redirect sends the full run transcript to the same file as the
+  one-line ledger (`/var/log/subnation-backup.log`; when `/var/log` is not
+  writable — non-root install — the wrapper falls back to
+  `<REPO_DIR>/backups/backup-cron.log`, or honours `BACKUP_CRON_LOG`).
+
+### Retention policy
+
+- **Local (on the VM):** newest **14** dumps kept (`--keep`, override with
+  `BACKUP_KEEP` in the env file). Only files matching the exact generated
+  `subnation-<ISO>.sql.gz` name are ever pruned, and only after a fully
+  successful run — a failed night never deletes the last good backup.
+- **Off-VM:** not managed by this job — see below.
+
+### Off-VM copy (the copy that actually matters)
+
+`BACKUP_PRESIGNED_PUT_URL` stays the documented option — backup-db.ts
+HTTP-PUTs every successful dump to it. **Presigned URLs expire** (the
+examples use `--expires-in 86400`, i.e. 24 h; S3 sigv4 caps at 7 days), so
+the value in the env file must be re-issued periodically. Until the
+operator automates that re-issue (e.g. a weekly `aws s3 presign` cron) or
+switches to an `rclone`/`rsync` copy with long-lived credentials plus a
+bucket lifecycle rule ("keep daily 30 days, then delete"), treat the
+off-VM copy as best-effort. Losing the VM loses every local backup, and
+Neon Free's restore-history window is only ~6 h
+(`COOLIFY_ORACLE_MIGRATION.md` §13) — the nightly off-VM dump is the
+PRIMARY recovery mechanism, not redundancy.
+
+### Checking health
+
+`tail -n 5 /var/log/subnation-backup.log` — every line should read
+`... exit=0 file=subnation-<ISO>.sql.gz keep=14`; a non-zero `exit=` means
+open the transcript just above that line. No alerting is wired to this
+ledger yet (honest) — fold the check into the weekly ops pass, or wire it
+to the alerting webhook later.
+
+### Security note (r110)
+
+backup-db.ts passes the connection to pg_dump via libpq `PG*` environment
+variables instead of a command-line connstring — the DB password is no
+longer visible in `ps` output on the backup host (R109 §27 P2 fix).
 
 ## Recovery scenarios
 
@@ -174,12 +282,17 @@ Keep these in a password manager (1Password / Bitwarden) with the service entry 
 
 Quarterly. Calendar events on the 1st of January / April / July / October.
 
-**Drill procedure:**
+**Drill procedure (Scenario B — full-DB restore into a scratch Neon branch):**
 
-1. Take a fresh `pg_dump` via `pnpm run db:backup` (write to local).
+1. Locate the newest `subnation-<ISO>.sql.gz` in the backup dir (the nightly
+   cron produces one — see "Automated backups"); or take a fresh one via
+   `pnpm run db:backup`.
 2. Spin up a throwaway Neon branch via Console → "New branch from main".
-3. `psql "<branch-url>" < backup-file`.
-4. Run smoke queries:
+3. Restore the dump into it:
+   ```bash
+   gunzip -c subnation-<ISO>.sql.gz | psql "<branch-url>"
+   ```
+4. Run smoke queries on the branch:
    ```sql
    SELECT count(*) FROM users;
    SELECT count(*) FROM products;
@@ -193,11 +306,15 @@ Quarterly. Calendar events on the 1st of January / April / July / October.
    ```
 6. Confirm difference is 0 (or accounted for by writes since the backup time).
 7. Delete the throwaway branch.
-8. Document in this file: drill date, backup age tested, rows verified, anomalies found.
+8. Record the run in the drill ledger below (date, scenario, steps, result,
+   operator). Never backfill — a drill that was not executed does not go in
+   the ledger.
 
-| Drill date                                          | Backup tested | Rows verified | Anomalies | Operator |
-| --------------------------------------------------- | ------------- | ------------- | --------- | -------- |
-| _(none yet — first drill due before public launch)_ |               |               |           |          |
+**Drill ledger (r110):**
+
+| Date             | Scenario                                  | Steps                 | Result                                                                                                                                                                                                                       | Operator |
+| ---------------- | ----------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| PENDING-OPERATOR | B — full-DB restore into a scratch branch | procedure above (1–8) | **NOT EXERCISED** — r110 automated the nightly backup but could not run a drill: the remediation sandbox has no live `DATABASE_URL` and no `pg_dump`/`psql` binaries. First drill is a pre-cutover requirement (`COOLIFY_ORACLE_MIGRATION.md` §13) | —        |
 
 ## Emergency contacts
 
@@ -215,7 +332,7 @@ Sentry alerts: routed to operator email + Telegram via webhook
 Update this runbook after every:
 
 - Real incident (add to Lessons Learned).
-- Drill (update the table above).
+- Drill (update the drill ledger above).
 - Infrastructure change (Neon tier upgrade, region change, new managed service).
 - Secret rotation procedure change.
 
