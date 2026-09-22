@@ -53,6 +53,13 @@ interface EditUserForm {
   wallet_value: string;
   loyalty_points: string;
   loyalty_tier: string;
+  // (r110) Backend contract (round-94 39a84be): PATCH
+  // /api/admin/users/:id requires `note` (≥3 trimmed chars)
+  // whenever a wallet field (wallet_adjustment / wallet_balance)
+  // rides the body — the operator justification recorded on the
+  // wallet_ledger row. Only a filled-in wallet amount requires it;
+  // loyalty-only saves neither need nor send a note.
+  note: string;
 }
 
 const TIERS = [
@@ -184,6 +191,8 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<EditUserForm>({
     wallet_mode: "add",
     wallet_value: "",
+    // (r110) see EditUserForm.note — the wallet-edit reason.
+    note: "",
     loyalty_points: "",
     loyalty_tier: "",
   });
@@ -284,6 +293,9 @@ export default function AdminUsersPage() {
     setForm({
       wallet_mode: "add",
       wallet_value: "",
+      // (r110) a fresh note per edit intent — a stale reason from a
+      // previous save must not silently justify the next adjustment.
+      note: "",
       loyalty_points: String(user.loyalty_points),
       loyalty_tier: user.loyalty_tier ?? "",
     });
@@ -302,6 +314,23 @@ export default function AdminUsersPage() {
       toast({
         title: "المبلغ غير صالح",
         description: "أدخل مبلغ محفظة رقميًا صحيحًا (0 أو أكثر) قبل الحفظ",
+        variant: "destructive",
+      });
+      return;
+    }
+    // (r110) Contract parity with the backend note guard
+    // (backend/src/routes/admin/users.ts, round-94 39a84be): a wallet
+    // field without a ≥3-char note is a guaranteed 400 — the R109
+    // §109-m P1 finding (the dialog never sent one, so every wallet
+    // adjust from this UI failed). The disabled submit covers the
+    // click path; this guard covers programmatic / novalidate
+    // submits (same layering as the numeric-wallet guard above) and
+    // mirrors the backend semantics exactly: required ONLY when a
+    // wallet field is present.
+    if (walletValue !== null && form.note.trim().length < 3) {
+      toast({
+        title: "سبب التعديل مطلوب",
+        description: "أدخل سببًا لتعديل المحفظة (3 أحرف على الأقل) قبل الحفظ",
         variant: "destructive",
       });
       return;
@@ -350,6 +379,11 @@ export default function AdminUsersPage() {
       if (form.wallet_mode === "set") body.wallet_balance = walletValue;
       else if (form.wallet_mode === "add") body.wallet_adjustment = walletValue;
       else body.wallet_adjustment = -walletValue;
+      // (r110) The note rides the PATCH exactly when a wallet field
+      // does (backend contract, round-94) — trimmed and capped at 500
+      // to mirror what AdjustmentService persists on the ledger row.
+      // Loyalty-only saves omit it (the backend ignores it there).
+      body.note = form.note.trim().slice(0, 500);
     }
     if (form.loyalty_points !== "") {
       // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5"
@@ -412,6 +446,15 @@ export default function AdminUsersPage() {
   }
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
+
+  // (r110) Wallet-edit note gate: the backend 400s any wallet
+  // mutation whose note is <3 trimmed chars (round-94). "Wallet field
+  // present" mirrors handleSave's parse — a non-empty wallet_value
+  // input is what puts wallet_adjustment / wallet_balance in the
+  // PATCH body — so the submit stays enabled for loyalty-only edits
+  // (note not required there, mirroring the backend semantics).
+  const walletFieldPresent = form.wallet_value.trim() !== "";
+  const walletNoteValid = form.note.trim().length >= 3;
 
   const exportUsersCSV = () => {
     const csvHeaders = [
@@ -643,7 +686,11 @@ export default function AdminUsersPage() {
                 type="submit"
                 form="user-edit-form"
                 className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
-                disabled={saving}
+                // (r110) Contract gate: a wallet edit is submittable
+                // only with a valid (≥3 trimmed chars) note — the
+                // backend 400s otherwise (round-94). Loyalty-only
+                // saves stay enabled.
+                disabled={saving || (walletFieldPresent && !walletNoteValid)}
               >
                 <CheckCircle className="w-4 h-4 ml-1.5" />
                 {saving ? "جارٍ الحفظ..." : "حفظ"}
@@ -736,6 +783,40 @@ export default function AdminUsersPage() {
                       dir="ltr"
                       className="h-10"
                     />
+                    {/* (r110) R109 §109-m P1 fix: the wallet-edit note.
+                        The backend (round-94 39a84be) rejects a wallet
+                        mutation whose note is <3 trimmed chars — this
+                        dialog never sent one, so every wallet adjust
+                        from the admin UI was a guaranteed 400. The
+                        field is always visible but only constrains the
+                        submit when a wallet amount is filled (mirrors
+                        the backend's when-required semantics); its
+                        value is recorded on the wallet_ledger row. */}
+                    <div className="mt-3">
+                      <Label
+                        htmlFor="user-edit-note"
+                        className="mb-1.5 block text-sm font-semibold"
+                      >
+                        سبب تعديل المحفظة
+                      </Label>
+                      <Input
+                        id="user-edit-note"
+                        type="text"
+                        value={form.note}
+                        onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                        placeholder="سبب التعديل (3 أحرف على الأقل)"
+                        // (r110) mirror the backend contract: required
+                        // + ≥3 chars when a wallet field will ride the
+                        // PATCH; 500 max (AdjustmentService slices).
+                        required={walletFieldPresent}
+                        minLength={walletFieldPresent ? 3 : undefined}
+                        maxLength={500}
+                        className="h-10"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                        إلزامي عند تعديل المحفظة (3 أحرف على الأقل) ويُسجَّل في سجل حركات المحفظة
+                      </p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

@@ -2222,7 +2222,7 @@ export const UpdateAdminUserBody = zod.object({
     .string()
     .optional()
     .describe(
-      'Free-form note recorded on the wallet_ledger row when a\nwallet field is supplied (defaults to \"Admin adjustment\" \/\n\"Admin balance set\").\n',
+      "Operator note recorded on the wallet_ledger row for the\nadjustment. REQUIRED by the backend whenever\nwallet_adjustment or wallet_balance is sent: a missing or\ntoo-short note (trimmed length < 3 chars) is rejected\nwith 400 INVALID_DATA before any mutation (round-94\nA8-09 — the note is the human-readable audit-trail\ncontent that makes an incident review of a wallet\nmutation possible). Optional for loyalty-only edits,\nwhere it is ignored. Kept schema-optional because OpenAPI\ncannot express the conditional requirement. Trimmed and\ncapped at 500 chars on the ledger row.\n",
     ),
 });
 

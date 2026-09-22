@@ -5246,9 +5246,17 @@ components:
         note:
           type: string
           description: |
-            Free-form note recorded on the wallet_ledger row when a
-            wallet field is supplied (defaults to "Admin adjustment" /
-            "Admin balance set").
+            Operator note recorded on the wallet_ledger row for the
+            adjustment. REQUIRED by the backend whenever
+            wallet_adjustment or wallet_balance is sent: a missing or
+            too-short note (trimmed length < 3 chars) is rejected
+            with 400 INVALID_DATA before any mutation (round-94
+            A8-09 — the note is the human-readable audit-trail
+            content that makes an incident review of a wallet
+            mutation possible). Optional for loyalty-only edits,
+            where it is ignored. Kept schema-optional because OpenAPI
+            cannot express the conditional requirement. Trimmed and
+            capped at 500 chars on the ledger row.
       minProperties: 1
 
     # 200 body of PATCH /admin/users/{id} — the current post-edit state

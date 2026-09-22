@@ -29,6 +29,18 @@
  *
  * `@workspace/api-client-react`, `@/lib/auth`, the admin shell and the
  * toast hook are mocked at the module boundary (vitest-config pattern).
+ *
+ * (r110) Wallet-note contract tests — R109 §109-m P1: round-94
+ * (39a84be) made `note` (≥3 trimmed chars) mandatory on the backend
+ * whenever a wallet field rides the PATCH, but this dialog never
+ * sent one → every wallet adjust from the admin UI was a guaranteed
+ * 400. The dialog now renders a note input that (a) is required
+ * only when a wallet amount is filled (mirroring the backend's
+ * when-required semantics — loyalty-only saves neither need nor
+ * send it), (b) keeps the submit disabled until the note is valid
+ * (with a save-path guard for programmatic/novalidate submits), and
+ * (c) rides the PATCH body — trimmed, ≤500 chars — whenever the
+ * wallet fields do.
  */
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -129,12 +141,28 @@ function walletInput(dialog: HTMLElement, placeholder: string) {
   return within(dialog).getByPlaceholderText(placeholder);
 }
 
+/** (r110) The wallet-edit note input — required (≥3 trimmed chars) by
+ *  the backend whenever a wallet field rides the PATCH. */
+const NOTE_PLACEHOLDER = "سبب التعديل (3 أحرف على الأقل)";
+
+function noteInput(dialog: HTMLElement) {
+  return within(dialog).getByPlaceholderText(NOTE_PLACEHOLDER);
+}
+
+/** (r110) A valid default note so the wallet-confirm helper passes
+ *  the note gate (the backend rejects wallet bodies without one). */
+const DEFAULT_NOTE = "تسوية رصيد إدارية";
+
 async function openWalletConfirm(
   dialog: HTMLElement,
   amount: string,
   placeholder = "المبلغ للإضافة",
+  // (r110) wallet edits carry a mandatory note — the helper fills a
+  // valid one so the حفظ click passes the note gate.
+  note: string = DEFAULT_NOTE,
 ) {
   fireEvent.change(walletInput(dialog, placeholder), { target: { value: amount } });
+  fireEvent.change(noteInput(dialog), { target: { value: note } });
   fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
   // The useConfirm AlertDialog (rendered at page level) opens.
   const title = await screen.findByText("تأكيد تعديل المحفظة");
@@ -181,14 +209,21 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     expect(screen.getByText("تعديل المستخدم")).toBeInTheDocument();
   });
 
-  it("confirm fires the PATCH once with the amount + Idempotency-Key", async () => {
+  it("confirm fires the PATCH once with the amount + Idempotency-Key + note (r110)", async () => {
     fetchMock.mockResolvedValue(
       resLike({ body: { id: 16, wallet_balance: 175, loyalty_points: 100 } }),
     );
     renderPage();
 
     const dialog = await openEditModal();
-    const confirmDialog = await openWalletConfirm(dialog, "25");
+    // (r110) whitespace-padded note — the dialog trims (and caps at
+    // 500) before the PATCH, mirroring what the backend persists.
+    const confirmDialog = await openWalletConfirm(
+      dialog,
+      "25",
+      "المبلغ للإضافة",
+      "  إضافة رصيد عبر تحويل بنكي  ",
+    );
 
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "تنفيذ التعديل" }));
 
@@ -197,10 +232,70 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     expect(url).toBe("/api/admin/users/16");
     expect(init.method).toBe("PATCH");
     expect(init.headers).toMatchObject({ "Idempotency-Key": expect.any(String) });
-    expect(JSON.parse(String(init.body))).toMatchObject({ wallet_adjustment: 25 });
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      wallet_adjustment: 25,
+      // (r110) the note rides the PATCH exactly when a wallet field
+      // does — trimmed like the backend's own note guard expects.
+      note: "إضافة رصيد عبر تحويل بنكي",
+    });
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     expect(toastMock.mock.calls[0][0].title).toBe("تم الحفظ");
+  });
+
+  // (r110) The note input exists and mirrors the backend's
+  // when-required semantics: unconstrained with no wallet amount
+  // (loyalty-only saves stay submittable), required + ≥3 chars once
+  // one is filled.
+  it("(r110) renders the note field — required only when a wallet amount is filled", async () => {
+    renderPage();
+    const dialog = await openEditModal();
+
+    const note = noteInput(dialog);
+    expect(note).toBeInTheDocument();
+    // No wallet amount yet → the note is not required.
+    expect(note).not.toHaveAttribute("required");
+
+    fireEvent.change(walletInput(dialog, "المبلغ للإضافة"), { target: { value: "25" } });
+    // A wallet amount is in the form → the note gates the PATCH.
+    expect(note).toHaveAttribute("required");
+    expect(note).toHaveAttribute("minLength", "3");
+    expect(note).toHaveAttribute("maxLength", "500");
+  });
+
+  // (r110) The two-layer note gate (same layering as the
+  // numeric-wallet guard): the disabled submit covers the click
+  // path; the handleSave guard covers programmatic / novalidate
+  // submits. Nothing reaches the PATCH or the money-confirm dialog.
+  it("(r110) a wallet change with a <3-char note never reaches the PATCH (two-layer gate)", async () => {
+    renderPage();
+    const dialog = await openEditModal();
+
+    fireEvent.change(walletInput(dialog, "المبلغ للإضافة"), { target: { value: "25" } });
+    const save = within(dialog).getByRole("button", { name: "حفظ" });
+
+    // Layer 1 — empty note: the submit button is disabled.
+    expect(save).toBeDisabled();
+    // Two trimmed chars still fail the ≥3-char backend contract.
+    fireEvent.change(noteInput(dialog), { target: { value: "لا" } });
+    expect(save).toBeDisabled();
+
+    // Layer 2 — the save-path guard: destructive toast, no money
+    // confirm dialog, no PATCH (direct submit dispatch bypasses the
+    // browser's interactive validation — the guard is the layer
+    // under test, mirroring novalidate/programmatic submits).
+    fireEvent.submit(document.getElementById("user-edit-form") as HTMLFormElement);
+    expect(screen.queryByText("تأكيد تعديل المحفظة")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock.mock.calls[0][0]).toMatchObject({
+      title: "سبب التعديل مطلوب",
+      variant: "destructive",
+    });
+
+    // A valid note re-opens the submit path.
+    fireEvent.change(noteInput(dialog), { target: { value: "تسوية دفعة يدوية" } });
+    expect(save).toBeEnabled();
   });
 
   it("subtract mode previews the deduction and flags an overdrawn result", async () => {
@@ -230,6 +325,8 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     // programmatic-submit paths. Either way, the OLD silent-drop
     // behavior (loyalty saved + "تم الحفظ" while the money field
     // vanished from the body, U-1) is impossible: nothing is sent.
+    // (r110: the empty note ALSO disables the submit button in this
+    // state — a wallet amount is filled — one blocked layer earlier.)
     fireEvent.change(walletInput(dialog, "المبلغ للإضافة"), { target: { value: "-5" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
 
@@ -249,9 +346,13 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("تأكيد تعديل المحفظة")).not.toBeInTheDocument();
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body).toMatchObject({
       loyalty_points: 100,
     });
+    // (r110) the note is NOT sent for loyalty-only saves — the
+    // backend requires (and reads) it only on the wallet path.
+    expect(body.note).toBeUndefined();
   });
 
   // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5" from
