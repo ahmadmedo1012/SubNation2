@@ -1,4 +1,5 @@
 {
+  "_comment": "LEGACY — retired split-stack blueprint (2026-09): Vercel served the SPA and proxied /api, /robots.txt, /sitemap.xml to subnation2.onrender.com. Production target is Coolify on Oracle Cloud (docs/deployment/COOLIFY_ORACLE_MIGRATION.md). Kept for EMERGENCY ROLLBACK reference only — do NOT apply (vercel --prod / Apply Blueprint would resurrect the dead split stack).",
   "framework": null,
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @workspace/subnation run build",

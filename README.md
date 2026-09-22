@@ -7,7 +7,7 @@
 Streaming, music, gaming and productivity subscriptions — bought with an in-app
 wallet and delivered instantly with encrypted account credentials.
 
-[![Live](https://img.shields.io/badge/live-subnation.ly-22c55e)](https://subnation.ly)
+[![Status](https://img.shields.io/badge/status-cutover_pending-f59e0b)](./docs/deployment/FINAL_MIGRATION_READINESS.md)
 [![Stack](https://img.shields.io/badge/stack-React_19_·_Express_5_·_Postgres-3b82f6)](#tech-stack)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](#requirements)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220)](#requirements)
@@ -18,14 +18,20 @@ wallet and delivered instantly with encrypted account credentials.
 
 ## What is this?
 
-SubNation is a production e-commerce platform where customers in Libya buy
+SubNation is a production-grade e-commerce platform where customers in Libya buy
 digital subscriptions (Netflix, Spotify, PlayStation, Adobe, Microsoft 365, …).
 It is **passwordless** for customers — sign in with **Google**, **Telegram**, or
 **WhatsApp OTP** — top up an internal **wallet**, and receive subscription
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> 🌐 **Live:** <https://subnation.ly>
+> 🚧 **Status (2026-09-23): production is offline.** The Render free tier has
+> been billing-suspended since ~2026-09-11 (`subnation.ly` answers 503; the
+> Render API rejects deploys for billing-suspended services). The project is
+> mid-migration to self-hosted Docker on Oracle Cloud (Coolify, ARM64) —
+> cutover pending. Details: [Deployment status](#deployment-status-2026-09-23)
+> below and
+> [`docs/deployment/FINAL_MIGRATION_READINESS.md`](./docs/deployment/FINAL_MIGRATION_READINESS.md).
 
 ---
 
@@ -39,7 +45,7 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 - 🌍 **Arabic RTL** UI with a unified dark/light theme.
 - 📈 Production-grade **observability** — Sentry, Prometheus metrics, structured logs, public `/status`.
 - 🔒 Hardened security — Helmet/CSP, CORS allow-list, CSRF checks, multi-tier rate-limiting
-  (Redis-backed when provisioned; in-process fallback in the current no-Redis production), admin 2FA.
+  (Redis-backed when provisioned; in-process fallbacks in the no-Redis target topology), admin 2FA.
 
 ---
 
@@ -50,11 +56,11 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 | Frontend         | React 19, Vite, Tailwind CSS, wouter, TanStack Query (RTL, Arabic)                                                              |
 | Backend          | Express 5, TypeScript, Socket.IO                                                                                                |
 | Database         | PostgreSQL (Neon) via Drizzle ORM                                                                                               |
-| Cache / realtime | Redis — **optional, not provisioned today** (in-process rate-limit/cache/idempotency fallbacks; PG-lease scheduler leader lock) |
+| Cache / realtime | Redis — **optional, not provisioned** (in-process rate-limit/cache/idempotency fallbacks; the single-instance scheduler mode needs no leader lock) |
 | Auth             | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies                                           |
 | Validation       | Zod (shared contracts)                                                                                                          |
 | Observability    | Sentry, Prometheus (`prom-client`), Pino                                                                                        |
-| Deploy           | Render (Docker, free): single web service + Neon — no worker, no Redis (optional tiers in `OPERATIONS_RUNBOOK.md`)              |
+| Deploy           | Docker (single image) on Oracle Cloud A1 (ARM64) + Coolify — migration in progress, cutover pending; Neon stays external. Render free tier suspended since 2026-09-11 (see [status](#deployment-status-2026-09-23)) |
 
 It is a **pnpm monorepo**:
 
@@ -125,7 +131,7 @@ Single-origin contract: leave `VITE_API_BASE_URL` / `VITE_SOCKET_URL` /
 `./scripts/docker-verify.sh` (build + health gate + graceful-drain proof;
 `--arm64` cross-builds the Oracle Ampere target via QEMU).
 
-### Self-hosted: Oracle Cloud + Coolify (target topology)
+### Self-hosted: Oracle Cloud + Coolify (target — migration in progress)
 
 The platform is hosting-agnostic (no Render/Vercel runtime coupling — r107
 audit) and runs as the two Docker images above behind Coolify on an Oracle
@@ -140,24 +146,35 @@ Full guide + runbook: `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
 `docs/deployment/FINAL_MIGRATION_READINESS.md`; target architecture:
 `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
 
-### Render (current production)
+### Deployment status (2026-09-23)
 
-Services: a **single free-tier web service** (`subnation`, serves API + SPA) + a
-separate **openwa-gateway** web service (WhatsApp OTP relay, built from the
-`ahmadmedo1012/openwa` repo) + Neon Postgres. No worker and no Redis are
-provisioned — both are optional documented tiers (`OPERATIONS_RUNBOOK.md` §5,
-`render.yaml` header). Deploys to production happen ONLY after green
-CI — `.github/workflows/deploy.yml` triggers the Render deploy hook via
-`workflow_run` gated on the CI conclusion (`autoDeploy: false` on the
-service). Secrets live in the Render dashboard (`sync: false`).
-
-The free tier **sleeps by design** (removed 2026-09-20 — see
-`docs/free-tier-optimization-2026-09-20.md`): no keep-alive, no self-ping, no
-external pingers. A cold start surfaces as the backend's early-bind 503
-"starting" answer, which the frontend `customFetch` retries transparently
-(3 attempts, 1.5/3/5 s backoff, 45 s budget). The archived
-`ahmadmedo1012/keep-alive` repo documents its own retirement and pings
-nothing.
+- **Production is offline.** All eight services on the Render free-tier
+  account (including `subnation` and the openwa gateway) have been
+  billing-suspended since ~2026-09-11: `subnation.ly` answers 503 and the
+  Render API rejects both resumes and deploys for billing-suspended services.
+  The last live deploy runs 2026-09-11 code. The dated records
+  `docs/free-tier-optimization-2026-09-20.md` and
+  `docs/final-audit-2026-09-20.md` capture the suspension and the operator's
+  options (a billing action in the Render dashboard, or the free-hours
+  reset). The `deploy.yml` Render hook stays kill-switched behind the
+  `RENDER_DEPLOY_ENABLED` repo variable.
+- **The active path is the self-hosted migration** to Oracle Cloud Always
+  Free (ARM64) + Coolify described above — cutover pending; nothing in the
+  code requires Render or Vercel (r107 hosting-coupling audit).
+- **Repo state:** the full suite was green at the R109 audit base `6ab63bc`
+  (backend 1264/1264, frontend 573/573, openwa 80/80, lint/typecheck clean).
+  GitHub Actions CI is red for **billing reasons only** — private-repo
+  minutes are exhausted; jobs die in seconds without a runner.
+- **Docker builds are unblocked** (commit `bb4418e`, 2026-09-22): R109 found
+  two P0s that made the image unbuildable — the root `prepare: husky`
+  script failing the `--prod` runtime-stage install, and the arm64/musl
+  build-toolchain natives excluded from the lockfile. Both are fixed and
+  verified statically plus by an exact-stage replay in the sandbox; an
+  actual `docker build` on a Docker host is still pending
+  (`./scripts/docker-verify.sh`, extended in r110).
+- **Nightly backups are automated as of r110** — `scripts/backup-cron.sh`
+  (host-cron wrapper around `pnpm run db:backup`); see the "Automated
+  backups" section of `docs/DISASTER_RECOVERY.md`.
 
 ---
 
@@ -172,7 +189,7 @@ Most important keys:
 | `DATABASE_URL`                   | Postgres connection string (**required**)                                                                                              |
 | `SESSION_SECRET`                 | JWT signing secret (**required in prod**, ≥ 32 chars)                                                                                  |
 | `ENCRYPTION_KEY`                 | AES-256-GCM key (64 hex chars) for inventory credentials                                                                               |
-| `REDIS_URL`                      | Redis connection (**optional** — unset in current production; rate-limit/cache/idempotency degrade to in-process + PG-lease fallbacks) |
+| `REDIS_URL`                      | Redis connection (**optional** — unset in the target topology; rate-limit/cache/idempotency degrade to in-process fallbacks; the single-instance scheduler mode needs no lease) |
 | `APP_URL` / `APP_ORIGINS`        | Public origin and CORS allow-list                                                                                                      |
 | `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In                                                                                                                  |
 | `TELEGRAM_BOT_TOKEN`             | Operational notifications (Telegram **login** is configured in the admin UI)                                                           |

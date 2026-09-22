@@ -13,6 +13,26 @@
 > executed) · **NOT VERIFIED** (no runtime evidence yet — exact command given) ·
 > **BLOCKED BY EXTERNAL INFRASTRUCTURE** (needs an asset this phase cannot
 > provision) · **FAILED** (attempted and broken — none).
+>
+> **r110 update (2026-09-23, post-`bb4418e`):** R109 proved two Docker P0s —
+> the runtime-stage `pnpm install --prod` died on the root `prepare: husky`
+> script (husky is a devDependency, absent from a prod tree), and the
+> pnpm-workspace platform-exclusion overrides had stripped every non-x64-linux
+> native (arm64-gnu/musl, x64-musl) from the lockfile — so the image was
+> UNBUILDABLE at the R108/R109 bases and the ARM64/Docker rows below
+> overstated readiness. Both P0s are fixed in `bb4418e` (`--ignore-scripts` on
+> the runtime-stage install; exclusions dropped + lockfile regenerated).
+> Current verification: static + exact-stage replay in the sandbox — full
+> frozen install exit 0; the runtime stage's exact command and file layout
+> exit 0; arm64/musl + x64-musl natives present (30 lockfile refs);
+> `require('argon2')` + `require('firebase-admin')` succeed in the
+> `--ignore-scripts` prod tree. Still NOT done: an actual `docker build`
+> anywhere (no Docker in the sandbox) — `scripts/docker-verify.sh` (extended
+> in r110) upgrades this on any Docker host. The affected rows are amended
+> in place below.
+>
+> `FH-A*` references below point to the R108 mission audit specs (a
+> working-session record) — they are **not** files in this repository.
 
 ## 1. What R108 changed (the final-hardening deltas)
 
@@ -33,7 +53,7 @@
 | 13 | **gitleaks allowlist** for `deploy/env.compose.example` placeholders (the secret-scan job was failing on the r107 templates → quality silently skipped) + `.dockerignore` nested `**/.env*` + `**/.env.example` exemption | config | `.gitleaks.toml`, `.dockerignore` |
 | 14 | **openwa repo**: pg pool `error` listener + `statement_timeout` 10 s + keepalives (Neon autosuspend survival), `.dockerignore`, CI workflow for its 80 tests (public repo = free), `OPENWA_API_KEY` <32-char boot warning | code (sibling repo) | 80/80 green incl. strict tsc |
 | 15 | **Prettier markdown landmine defused** — `*.md` excluded in `.prettierignore` (the formatter rewrites `DATABASE_URL`→`DATABASE*URL` in prose and mashes checklists; a stray run corrupted 7 files + 2 historical scars — all repaired) | config + repairs | `.prettierignore`; `inspection-r97` + `DISASTER_RECOVERY` scars fixed |
-| 16 | **Docs truth pass** — runbook phantom `db-backup.sh` → `pnpm run db:backup`; Neon Free restore window corrected (7 days → **~6 hours** — daily off-VM pg_dump is the PRIMARY recovery); WhatsApp one-linked-device rollback trap documented + runbook guard; swap policy (2 GB / swappiness 10); iptables discovery command; CF tiered origin-lockdown; `OPERATIONS_RUNBOOK`/`WHATSAPP_OPERATIONS`/`DISASTER_RECOVERY` legacy-labeled; catalog counts reconciled (56−11=45=45+14=59, 263 variants) | docs | per-file edit lists in `audit/FH-*.md` |
+| 16 | **Docs truth pass** — runbook phantom `db-backup.sh` → `pnpm run db:backup`; Neon Free restore window corrected (7 days → **~6 hours** — daily off-VM pg_dump is the PRIMARY recovery); WhatsApp one-linked-device rollback trap documented + runbook guard; swap policy (2 GB / swappiness 10); iptables discovery command; CF tiered origin-lockdown; `OPERATIONS_RUNBOOK`/`WHATSAPP_OPERATIONS`/`DISASTER_RECOVERY` legacy-labeled; catalog counts reconciled (56−11=45=45+14=59, 263 variants) | docs | per-file edit lists in the R108 audit record (`FH-*` specs — working-session record, not repo files) |
 
 ## 2. Readiness status by subsystem
 
@@ -41,15 +61,15 @@
 |---|---|---|---|
 | Source gates (tests/type/lint/build) | **VERIFIED** | backend **1264/1264** (+35), frontend **573/573** (+3), openwa **80/80**, typecheck 0×4 packages, lint 0 errors (86 baseline warnings), build green (PWA 10 / 346.85 KiB) | — |
 | Single-instance scheduler mode | **VERIFIED** (code+tests) | 11 unit tests: election never called, jobs all start, stop clean, precedence, no-Redis no-poll; observability/healthz/banner pinned | VM runtime = NOT VERIFIED (needs the VM) |
-| Neon economics | **VERIFIED (design)** | idle traffic drops 144 q/h (never sleeps) → ~0.5 q/h avg in 5 night windows (~12.5 awake-h/mo vs 720) — audit FH-A1 §9.11 | Runtime measurement on the VM pending |
-| Money invariants | **VERIFIED** | 12-scenario red-team table (FH-A7) re-verified at HEAD + V1-M20 + adjustment idempotency + checkout referenceType filter + 23505 classification fix | Live-DB execution pending first post-cutover flows |
+| Neon economics | **VERIFIED (design)** | idle traffic drops 144 q/h (never sleeps) → ~0.5 q/h avg in 5 night windows (~12.5 awake-h/mo vs 720) — R108 audit record FH-A1 §9.11 | Runtime measurement on the VM pending |
+| Money invariants | **VERIFIED** | 12-scenario red-team table (R108 audit record FH-A7) re-verified at HEAD + V1-M20 + adjustment idempotency + checkout referenceType filter + 23505 classification fix | Live-DB execution pending first post-cutover flows |
 | Migration safety | **VERIFIED** | fingerprint hashes migrate.ts+schemas at build → a code-side schema change cannot ride the fast-path (attack matrix traced); V1-M20 idempotent + probe-gated; advisory lock closes the no-Redis race | — |
-| ARM64 — package tier | **STATICALLY VERIFIED** | argon2@0.44 arm64 glibc+musl prebuilds (tarball re-verified), sharp arm64 optional deps pinned, node:22-alpine multi-arch, Baileys = pure WebSocket (no Chromium) | — |
-| ARM64 — build tier | **NOT VERIFIED** | exact command: `./scripts/docker-verify.sh --arm64` (QEMU cross-build) on any Docker host | needs Docker (sandbox has none) |
+| ARM64 — package tier | **STATICALLY VERIFIED** (r110: now incl. the build toolchain) | runtime natives: argon2@0.44 arm64 glibc+musl prebuilds bundled in the package (load at require-time — proven by `require('argon2')` in the `--ignore-scripts` prod tree); Baileys = pure WebSocket (no Chromium); node:22-alpine multi-arch. Build toolchain (post-`bb4418e`): @esbuild/linux-arm64, @rollup/rollup-linux-arm64-gnu+musl, @tailwindcss/oxide-linux-arm64-*, lightningcss-linux-arm64-* and the x64-musl variants all present in `pnpm-lock.yaml` (30 refs). (sharp is the **openwa repo's** dep, pinned in its own lockfile — not a SubNation2 dependency) | — |
+| ARM64 — build tier | **BUILD BLOCKERS FIXED (`bb4418e`) · BUILD NOT YET RUN** | both R109 P0s fixed (husky `prepare` killed the `--prod` runtime-stage install → `--ignore-scripts`; platform-exclusion overrides dropped + lockfile regenerated). Proven so far: static inspection + exact runtime-stage replay in the sandbox (exit 0). The actual `docker build` has not run anywhere — exact command: `./scripts/docker-verify.sh --arm64` (QEMU cross-build; script extended in r110) on any Docker host | needs Docker (sandbox has none) |
 | ARM64 — runtime/functional tier | **NOT VERIFIED** | exact command: run the arm64 image on the VM (or `--platform` QEMU boot) + Phase-5 gates | needs the Oracle VM |
-| Docker artifacts | **STATICALLY VERIFIED** | Dockerfile line-audit (FH-A3), compose three-way consistency, healthcheck parity, final-image content trace (no .env/secrets/maps), image ~300-330 MB estimated | runtime = NOT VERIFIED until `docker-verify.sh` runs |
+| Docker artifacts | **STATICALLY VERIFIED** (r110: install stages replay-proven) | Dockerfile line-audit (R108 audit record FH-A3), compose three-way consistency, healthcheck parity, final-image content trace (no .env/secrets/maps), image ~300-330 MB estimated; r110: both install stages replay exit 0 post-`bb4418e` | runtime = NOT VERIFIED until `docker-verify.sh` runs |
 | OpenWA isolation & security | **VERIFIED** | internal-only binding, X-API-Key timing-safe + 8 s timeout + bounded retry, key separation (API vs credentials key) proven with 5 dedicated tests, dashboard lockout, no CORS | — |
-| OpenWA restart persistence | **VERIFIED WITH LIMITATION** | persistence-level tests + boot auto-restore path verified in code; harness specced (FH-A2 §8) | **Real WhatsApp E2E = BLOCKED EXTERNALLY** (needs a phone pairing on the VM) |
+| OpenWA restart persistence | **VERIFIED WITH LIMITATION** | persistence-level tests + boot auto-restore path verified in code; harness specced (R108 audit record FH-A2 §8) | **Real WhatsApp E2E = BLOCKED EXTERNALLY** (needs a phone pairing on the VM) |
 | Single-origin contract | **STATICALLY VERIFIED** | SPA+`/api/*`+same-origin Socket.IO (r107 Host-match + r108 IPv6 pin) + robots/sitemap; zero forbidden `onrender/vercel` runtime reads (census: 20 sites all degrade safely) | live-container check pending |
 | Hosting neutrality | **VERIFIED** | §11 census: 0 forbidden occurrences; identity chain GIT_SHA→RENDER_GIT_COMMIT→unknown now uniform across 9 surfaces | — |
 | Secrets hygiene | **VERIFIED** | full-pattern sweep of both repos + workflows + Docker inputs: no real secret committed at HEAD; public-by-design values correctly exempt | git-history rotation status unverifiable from shallow clone (audit note) |
@@ -68,13 +88,13 @@
 - [x] Single-instance architecture explicitly defined (`SINGLE_INSTANCE_MODE`, matrix + compose + docs)
 - [x] Scheduler/PG-lease economics resolved (zero coordination queries; flip-back documented)
 - [x] Neon not accidentally kept awake (idle autosuspend preserved; retention ladder ≈12.5 h/mo)
-- [x] All periodic jobs inventoried (FH-A1 tables: 9 crons + 14 one-shots + evaluator + sweeps, classified)
+- [x] All periodic jobs inventoried (R108 audit record FH-A1 tables: 9 crons + 14 one-shots + evaluator + sweeps, classified)
 - [x] OpenWA safely isolated (internal-only, env-split, no public port)
 - [x] OpenWA persistence verified at persistence-level + E2E procedure written (real pairing = externally blocked)
 - [x] OpenWA encryption key separation verified (5 dedicated tests; rotation docs corrected)
 - [x] Docker Compose internally consistent (three-way env/health/grace audit)
 - [x] Dockerfile internally consistent (line audit; CMD/sourcemap/healthcheck/signal path)
-- [ ] ARM64 build actually tested — **NOT VERIFIED** (no Docker in sandbox; command ready: `./scripts/docker-verify.sh --arm64`)
+- [ ] ARM64 build actually tested — **NOT VERIFIED** (build blockers fixed at `bb4418e` — static + replay verification only; no Docker in sandbox; command ready: `./scripts/docker-verify.sh --arm64`, extended in r110)
 - [x] ARM64 external verification documented exactly (§2 table + docker-verify.sh gates)
 - [x] Runtime vs package compatibility distinguished (three-tier labels above)
 - [x] Render runtime dependencies removed/isolated (census; 3 identity reads fixed; deploy.yml gated)
@@ -92,13 +112,13 @@
 - [x] Money/idempotency invariants verified (12-scenario table + V1-M20 + adjustments backstop)
 - [x] Catalog numbers reconcile (56−11=45=45+14=59 rows, 263 variants; docs corrected)
 - [x] Environment matrix matches source (r108 matrix fixes: defaults un-swapped, missing vars added)
-- [ ] Local Docker deployment reproducible — **STATICALLY VERIFIED** (compose audit; execution needs Docker)
+- [ ] Local Docker deployment reproducible — **STATICALLY VERIFIED** (compose audit; image build unblocked at `bb4418e`; execution needs Docker)
 - [x] CI/CD internally consistent (cost table + gates; first live run pending minutes)
 - [x] Backup/restore procedure exists (honest labels; restore rehearsal = operator step)
 - [x] Rollback procedure exists (incl. gateway collision dance)
 - [x] Current docs consistent (banners + fixes; historical docs preserved + dated)
 - [x] Historical docs clearly marked (§63 respected — nothing deleted)
-- [x] Final red-team performed (16/16 vectors BLOCKED/MITIGATED, FH-A11)
+- [x] Final red-team performed (16/16 vectors BLOCKED/MITIGATED, R108 audit record FH-A11)
 - [x] Second-pass review performed (this report cross-checks every R108 change against its audit spec)
 
 ## 4. Remaining before Oracle deployment — the exact list
@@ -110,9 +130,9 @@
 
 **Operator actions at cutover (all in `MIGRATION_RUNBOOK.md`):**
 4. Set `RENDER_DEPLOY_ENABLED=false` (repo variable) or disable `deploy.yml` in the Actions UI **before October's renewal**.
-5. Configure the daily off-VM `pnpm run db:backup` cron + run ONE restore rehearsal (Neon Free restore window is only ~6 h).
+5. Install the nightly backup cron — `scripts/backup-cron.sh` (r110; host-cron wrapper around `pnpm run db:backup`; install line in `docs/DISASTER_RECOVERY.md` "Automated backups") — + run ONE restore rehearsal (Neon Free restore window is only ~6 h).
 6. Run `pnpm --filter @workspace/scripts run validate:env -- --file .env --strict` on the filled env (Phase-3 gate).
-7. On any Docker host first: `./scripts/docker-verify.sh` + `--arm64` (upgrades ARM64 to VERIFIED before touching the VM).
+7. On any Docker host first: `./scripts/docker-verify.sh` + `--arm64` (upgrades ARM64 to VERIFIED before touching the VM; the script is extended in r110 with the remaining container gates — compose config, Socket.IO, gateway health, restart/inspect).
 
 ## 5. The single command that starts the real migration
 

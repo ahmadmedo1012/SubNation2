@@ -5,6 +5,11 @@
 > stateful, what can fail independently — the Render/Vercel split it replaces
 > is documented as history at the bottom. Operations detail lives in
 > `OPERATIONS_RUNBOOK.md`; migration steps in `docs/deployment/`.
+>
+> r110 truth pass: the scheduler section now reflects the R108
+> `SINGLE_INSTANCE_MODE` default (the r107 text still described the PG-lease
+> leader as THE mode), and the migration count is corrected to the real
+> chain.
 
 ## 1. Runtime topology (single server)
 
@@ -19,7 +24,7 @@
 │  │    ├── JSON API  /api/*  (auth, catalog, checkout, wallet, admin, copilot, SEO files)    │
 │  │    ├── Socket.IO (same http server, /socket.io/, WS+polling)                             │
 │  │    ├── SPA static  (frontend/dist/public — single origin, no split hosting)              │
-│  │    ├── in-process schedulers: node-cron daily slots + PG-lease leader + 60 s alerting    │
+│  │    ├── in-process schedulers: node-cron jobs + 60 s alerting (SINGLE_INSTANCE_MODE)      │
 │  │    └── in-memory fallbacks: rate-limit store, LRU caches, idempotency pass-through       │
 │  │         (Redis ABSENT by design — everything degrades, nothing blocks)                   │
 │  │                                                                                          │
@@ -32,9 +37,9 @@
 └──────────────┬─────────────────────────────────────────────┬───────────────────────────────┘
                │                                              │
       Neon PostgreSQL (EXTERNAL)                     Cloudflare → subnation.ly
-      ├── business schema (Drizzle, 12 migrations)   DNS proxy, WAF, WS passthrough
+      ├── business schema (boot reconciler, V1-M20)  DNS proxy, WAF, WS passthrough
       ├── openwa_sessions (gateway-owned, AES-GCM)
-      └── scheduler_leader_lease (single-row CAS)
+      └── scheduler_leader_lease (multi-instance shape only — idle by default)
 ```
 
 External SaaS the runtime talks to (all optional, degrade cleanly):
@@ -42,13 +47,42 @@ Firebase Auth (Google/Telegram identity verification), Telegram Bot API
 (ops alerts + approval gateway), Sentry (errors/traces), OpenAI-compatible
 LLM (admin copilot + enrichment), Google Analytics (frontend, build-time).
 
+### 1.1 Scheduler topology — SINGLE_INSTANCE_MODE is the default (R108)
+
+The default target (`SINGLE_INSTANCE_MODE=true` in
+`deploy/env.compose.example`) is the **single-instance topology**: the one
+web container owns every job, and `backend/src/lib/web-scheduler.ts`
+grants a **synthetic in-process leadership** — `isLeader` is true for the
+whole process lifetime and `release()` is a no-op. There is **no leader
+election, no PG-lease heartbeat, zero periodic Neon coordination queries**,
+so idle Neon autosuspend is preserved (the 25 s lease refresh alone would
+have kept Neon compute awake 24/7 ≈ 720 h/mo against Neon Free's ~192 h
+allowance). Every cron, the 60 s alerting evaluator and the boot one-shots
+run ungated in-process. `DISABLE_WEB_SCHEDULERS=true` remains the hard
+off-switch and takes precedence over single-instance mode.
+
+The PG-lease machinery (single-row CAS on `scheduler_leader_lease`, 25 s
+refresh / 60 s TTL, fail-closed demotion with a 20 s re-acquire loop) stays
+in the codebase for the **multi-instance shape ONLY** — unset the flag to
+flip back. Constraints while in single-instance mode: never scale the
+subnation service beyond 1 replica (every cron would double-run), and do
+not run the optional dedicated `worker.ts` alongside it (it double-runs
+too and logs a loud warning naming the fix).
+
+Schema authority: the database schema is created/reconciled by the boot
+reconciler `backend/src/migrate.ts` (labeled stages **V1-M6 … V1-M20** —
+the current chain; the V1-M11 number was never used), mirrored by the
+Drizzle chain in `shared/db/drizzle/` (0000–0012 at HEAD `bb4418e`; 0013
+lands in r110 to re-sync the mirror for the CI drift gate). The r107 map's
+"12 migrations" count was stale.
+
 ## 2. What is stateful / stateless / external
 
 | Piece | Nature | Where its state lives | Failure isolation |
 |---|---|---|---|
 | subnation container | stateless | Neon (+ ephemeral in-memory caches, bounded LRU) | restart-safe; boot re-runs idempotent migrations |
 | Socket.IO connections | ephemeral | client reconnect backoff (r104: 10 attempts, 10 s cap) | users reconnect transparently |
-| schedulers | process-local, lease-guarded | `scheduler_leader_lease` row in Neon | fail-closed demotion on DB error, 20 s re-acquire |
+| schedulers | process-local, single-instance by default | synthetic in-process leadership (`web-scheduler.ts`); the `scheduler_leader_lease` row in Neon is written only in the multi-instance shape | single container: Docker `restart: unless-stopped` is the recovery; multi-instance: fail-closed demotion on DB error, 20 s re-acquire |
 | openwa container | effectively stateless | Neon `openwa_sessions` + /data volume | restart → boot auto-restore from DB |
 | Neon | external, THE database | its own infra | app answers 503 `starting`/failing; gateway runs on local folder until DB returns |
 | Cloudflare | external edge | DNS only | grey-cloud fallback possible |
@@ -97,19 +131,25 @@ cache (60 s TTL), generation-scoped catalog LRU (5000 entries).
 | Build spike (Coolify Git builds) | ~1.5-2 GB, 2-4 min | transient; cache makes it rare |
 | Headroom for bursts | ~7-8 GB | generous for a store of this scale |
 
-Idle CPU is dominated by per-connection Socket.IO pings (25 s) and the
-leader refresh (25 s single UPDATE) — effectively 0 on 2 OCPU.
+Idle CPU is dominated by per-connection Socket.IO pings (25 s) — effectively
+0 on 2 OCPU. In the default SINGLE_INSTANCE_MODE there is no periodic
+leader-refresh query at all; the 25 s lease UPDATE exists only in the
+multi-instance shape.
 
 ## 6. History (what this replaced)
 
 - **Until 2026-09:** Render web service (this Dockerfile, blueprint
   `render.yaml`) + Vercel SPA (`vercel.json` rewrites → Render API) + Render
   openwa gateway. Free-tier hour economics: shared 750 h/month pool across 8
-  services → exhausted 2026-09-16 → all suspended → monthly October reset
-  cycle. The migration's motivation.
+  services → exhausted → all services billing-suspended (~2026-09-11;
+  `subnation.ly` 503, resume/deploy API-rejected — dated records:
+  `docs/free-tier-optimization-2026-09-20.md`, `docs/final-audit-2026-09-20.md`;
+  the last live deploy runs 2026-09-11 code) → monthly October reset cycle.
+  The migration's motivation.
 - **2026-09-20:** Northflank fully rolled back (project deleted, keys
   revoked) — never to return (standing order).
 - **2026-09-22 (r107):** migration-readiness round — hosting coupling
-  removed from code, ARM64 proven at the dependency level, compose + CI
-  images + runbooks added, three lifecycle bugs fixed (shutdown drain order,
-  same-origin socket handshake, lease cadence economics).
+  removed from code, ARM64 runtime natives proven at the dependency level
+  (the build-toolchain gap was found by R109 and fixed in r110 `bb4418e`),
+  compose + CI images + runbooks added, three lifecycle bugs fixed (shutdown
+  drain order, same-origin socket handshake, lease cadence economics).

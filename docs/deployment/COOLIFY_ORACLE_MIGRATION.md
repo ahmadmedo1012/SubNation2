@@ -43,11 +43,11 @@
 
 **Redis: intentionally NOT deployed.** The single container runs the app's
 in-memory fallbacks for rate limiting, cache, idempotency replay and the
-PG-lease scheduler leadership. This is the CURRENT production shape
-(VERIFIED in code: `backend/src/lib/redis-client.ts` returns a permanent
-`null` client when `REDIS_URL` is unset and every consumer null-branches).
-Adding Redis later is one env var — everything self-wires on the `"ready"`
-event — but it must earn its ~30 MB RAM.
+scheduler ownership (single-instance mode — see §9). This is the designed
+production shape (VERIFIED in code: `backend/src/lib/redis-client.ts` returns
+a permanent `null` client when `REDIS_URL` is unset and every consumer
+null-branches). Adding Redis later is one env var — everything self-wires on
+the `"ready"` event — but it must earn its ~30 MB RAM.
 
 ## 2. ARM64 Compatibility — the evidence
 
@@ -60,7 +60,7 @@ Target CPU: Ampere A1 (arm64, 2 OCPU, 12 GB shared with OS+Docker+Coolify).
 | Chromium/Puppeteer | — | **Not used anywhere.** The gateway is Baileys (pure WebSocket WhatsApp-Web protocol). The SubNation backend has no browser dependency. | **VERIFIED** (dependency graph) |
 | pg / pino / express / qrcode / nanoid / baileys / libsignal | pure JS | no native bindings | **VERIFIED** |
 | Base images | — | `node:22-alpine` is multi-arch (amd64+arm64) — official manifest | **VERIFIED** (manifest) |
-| Full build + boot + drain on real ARM64 hardware | — | — | **NOT YET VERIFIED** → run `scripts/docker-verify.sh --arm64` (needs Docker; the r107 sandbox had none) |
+| Full build + boot + drain on real ARM64 hardware | — | — | **NOT YET VERIFIED** → run `scripts/docker-verify.sh --arm64` (needs Docker; no audit sandbox has had Docker, r107–r110) |
 
 How to upgrade the last row to VERIFIED before cutover, from any x86 machine
 with Docker:
@@ -70,6 +70,33 @@ with Docker:
 # or on the Oracle VM itself (native arm64):
 ./scripts/docker-verify.sh
 ```
+
+**r110 status (post-`bb4418e`) — the image is buildable again, but no Docker
+build has run yet.** R109 proved two P0s that made the Dockerfile unbuildable
+on every path — buildability the r107/r108 readiness labels above had
+implicitly assumed:
+
+1. The runtime stage's `pnpm install --frozen-lockfile --prod ...` executed
+   the root `prepare: husky` script; husky is a devDependency, absent from a
+   `--prod` tree → `husky: not found` → exit 1 → every image build aborted.
+   **Fixed:** the install now runs with `--ignore-scripts` (the only real
+   runtime externals are argon2 + firebase-admin, and both load
+   bundled/prebuilt artifacts at require-time).
+2. The pnpm-workspace platform-exclusion overrides ("local deployment target
+   is linux-x64") had stripped every non-x64-linux native — including the
+   arm64-gnu/musl AND x64-musl variants of the build toolchain
+   (esbuild/rollup/@tailwindcss/oxide/lightningcss) — out of `pnpm-lock.yaml`,
+   so an Alpine build failed at the vite/esbuild step on every architecture.
+   **Fixed:** the exclusion overrides were dropped and the lockfile
+   regenerated (the natives are back — 30 lockfile refs).
+
+Verified so far: static inspection plus an exact-stage replay in the sandbox
+(full frozen install exit 0; the runtime stage's exact command and file
+layout exit 0; `require('argon2')` + `require('firebase-admin')` succeed in
+the `--ignore-scripts` prod tree). NOT verified: an actual `docker build` —
+no Docker exists in the audit sandbox. `scripts/docker-verify.sh` (extended
+in r110 with the remaining container gates) is the command that upgrades
+this on any Docker host.
 
 ## 3. Build strategy — do not burn the VM on builds
 
@@ -97,6 +124,13 @@ VM: one pnpm install + Vite build per deploy (~2-4 min on 2 OCPU, ~1.5-2 GB
 peak RAM — fits inside the 12 GB envelope comfortably with both apps idle at
 ~300-500 MB combined). The Dockerfile layer cache makes subsequent builds
 much cheaper (deps layer cached unless the lockfile changes).
+
+**Version identity on VM builds (r110 note):** pass the `GIT_SHA` build arg
+when building on the VM — e.g. in Coolify's build-arg settings or
+`docker compose build --build-arg GIT_SHA=$(git rev-parse --short HEAD)`.
+Otherwise `getReleaseSha()` (`backend/src/lib/release-sha.ts`) falls through
+`RENDER_GIT_COMMIT` (absent on the VM) to `"unknown"`, and health payloads,
+logs and admin surfaces report an unnamed release.
 
 **Never needed:** Render/Vercel build minutes — that economy no longer
 applies on self-hosted hardware.
@@ -199,12 +233,16 @@ The installer prints a root password and serves the first-run wizard on
    in its network model.
 3. The `openwa` service build context is `${OPENWA_REPO_DIR:-../openwa}` —
    **a sibling clone does not exist inside Coolify's build environment.**
-   For Coolify deployments, comment out `build:` for openwa and use:
-   `image: ghcr.io/ahmadmedo1012/openwa:main` (public repo → free Actions
-   image) or point Coolify at a second application resource for openwa and
-   drop the service from the stack. Alternative for a pure-Git setup:
-   deploy the two as separate Coolify "Applications" (Dockerfile source)
-   — SubNation from this repo, openwa from its repo — and wire
+   For Coolify deployments, comment out `build:` for openwa and pull the
+   CI-built image instead, **pinned to an immutable tag**:
+   `image: ghcr.io/ahmadmedo1012/openwa:sha-<short>` — the openwa GHCR
+   workflow publishes a `sha-<short>` tag with every build (copy it from the
+   Actions run or `docker manifest inspect`); the floating `:main`/`:latest`
+   tags are dev-only, exactly as `docker-compose.yml`'s own image-guidance
+   comments say (public repo → free Actions image, no `docker login`
+   needed). Alternatively point Coolify at a second application resource for
+   openwa (Dockerfile source, pure-Git setup — SubNation from this repo,
+   openwa from its repo), drop the service from the stack, and wire
    `WHATSAPP_OTP_BASE_URL` to the gateway's Coolify-internal hostname.
 4. Domains (per service, in Coolify):
    - subnation → `https://subnation.ly` (+ `https://www.subnation.ly` or a
@@ -335,7 +373,8 @@ it silently kills every cron; the 2026-09-08 outage class).
 `starting` on `/api/healthz*` → encryption-key assert → Redis init (8 s cap,
 degrades to null) → migrations (write-wait ≤120 s, leader lock ≤300 s
 pathological, fingerprint fast-path 1-2 queries steady-state) → gate opens
-200 → schedulers elect leader 7 s later. First boot against a cold Neon is
+200 → schedulers start ungated (`SINGLE_INSTANCE_MODE` — no leader election;
+the boot one-shots fire ~7 s later). First boot against a cold Neon is
 the slow path; steady redeploys are seconds.
 
 **Shutdown (r107-fixed):** on SIGTERM the app now evicts idle keep-alive
@@ -386,7 +425,7 @@ the json-file driver grows unbounded.**
 
 | Asset | Backup status |
 |---|---|
-| Neon business data | **Operator must configure.** The in-repo command is `pnpm run db:backup` (`scripts/src/backup-db.ts`, needs `pg_dump` + `DATABASE_URL` — the r104-era `scripts/db-backup.sh` no longer exists; R108 corrected the stale references). **R108 honesty fix on Neon's own recovery: the Free plan's restore-history window is ~6 HOURS, not 7 days — beyond that window a pg_dump is the ONLY recovery path.** Treat the daily off-VM dump as the PRIMARY recovery mechanism, not redundancy: schedule it in VM cron, copy it OFF the VM (object storage / another machine), and verify restorability once by loading it into a scratch Neon branch. Not automated today — CONFIGURE BEFORE CUTOVER. |
+| Neon business data | **Automated as of r110 — operator installs the cron once.** The in-repo command is `pnpm run db:backup` (`scripts/src/backup-db.ts`, needs `pg_dump` + `DATABASE_URL`); `scripts/backup-cron.sh` (r110) is the host-cron wrapper around it (loads the env file without printing values, runs the backup with `--keep`, appends a one-line ledger, propagates the exit code, optional off-VM upload via `BACKUP_PRESIGNED_PUT_URL`) — install the crontab line from `docs/DISASTER_RECOVERY.md` § "Automated backups (r110)". **R108 honesty fix on Neon's own recovery: the Free plan's restore-history window is ~6 HOURS, not 7 days — beyond that window a pg_dump is the ONLY recovery path.** Treat the daily off-VM dump as the PRIMARY recovery mechanism, not redundancy: copy it OFF the VM (object storage / another machine), and verify restorability once by loading it into a scratch Neon branch (restore rehearsal = still an operator step before cutover). |
 | openwa sessions | Same DB → covered by the same backup; `OPENWA_CREDENTIALS_KEY` needed to decrypt → back it up with the secrets. |
 | Secrets/.env | Operator-owned. Keep an encrypted copy (e.g. age/gpg) OUTSIDE the VM. |
 | Coolify config | Lives in `/data/coolify` (volume) — snapshot the volume or re-provision (stack is reproducible from this doc + git). |
