@@ -84,12 +84,43 @@ import {
 } from "./pg-leader-lease";
 
 const SCHEDULER_LEADER_KEY = "scheduler:leader";
-const LEADER_TTL_SEC = 60;
-// R104 (AG1-1) + RT-9 (red team): 20 s → 25 s — 2.4 refreshes per 60 s
-// TTL keeps a real stall margin (a missed tick still lands ~10 s before
-// expiry; 30 s left ZERO slack) while cutting the only recurring
-// awake-idle DB load from 180 to 144 queries/awake-hour.
-const REFRESH_INTERVAL_MS = 25_000;
+// R107 (migration, Oracle/Coolify): TTL + refresh cadence are now
+// env-tunable (SCHEDULER_LEASE_TTL_SEC / SCHEDULER_LEASE_REFRESH_MS)
+// because the deployment topology changed what "optimal" means:
+//
+//   - Render Free (old): the process slept ~most of the day and woke
+//     on traffic; a short lease maximized failover snappiness at a
+//     cost paid only while awake. 25 s refresh / 60 s TTL = 144 tiny
+//     queries per AWAKE hour — nothing while asleep.
+//   - Always-on single container (new): the refresher runs 24/7. With
+//     an EXTERNAL Neon Free database (autosuspend ≈5 min), a 25 s
+//     cadence keeps Neon's compute permanently awake — 720 h/mo of
+//     compute vs the 191.9 h free allowance. On the same box as the
+//     app (or with Neon paid) the queries are negligible either way.
+//
+// Suggested single-container values: SCHEDULER_LEASE_REFRESH_MS=50000
+// with SCHEDULER_LEASE_TTL_SEC=120 (1.2 refreshes/TTL keeps the stall
+// margin; 72 queries/h — Neon still autosuspends between refreshes is
+// NOT true (50 s < 5 min autosuspend), so for Neon Free the real
+// options are: accept always-awake compute, run Postgres on the VM,
+// or move to a slower cadence you consciously choose). Defaults stay
+// at the r104 values (25 s / 60 s) so nothing changes until the
+// operator opts in. Constraint enforced below: refresh must be ≤
+// half the TTL (≥2 refreshes per TTL window) — mirrors the AG1-1
+// stall-margin analysis.
+const LEADER_TTL_SEC = (() => {
+  const raw = Number(process.env.SCHEDULER_LEASE_TTL_SEC);
+  return Number.isFinite(raw) && raw >= 10 ? Math.floor(raw) : 60;
+})();
+const REFRESH_INTERVAL_MS = (() => {
+  const fallback = 25_000;
+  const raw = Number(process.env.SCHEDULER_LEASE_REFRESH_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  // Never allow more than half the TTL — a single missed tick must
+  // still leave time before expiry (fail-closed demotion window).
+  const capped = Math.min(raw, (LEADER_TTL_SEC * 1000) / 2);
+  return Math.max(1_000, Math.floor(capped));
+})();
 const DEFAULT_ACQUIRE_RETRY_MS = 20_000;
 // R5: bound for every leadership command. Generous vs the 500 ms default
 // command timeout (lock ops are not request-path) but far below the 10 s
