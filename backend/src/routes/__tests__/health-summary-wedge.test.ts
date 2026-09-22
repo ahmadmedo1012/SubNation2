@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
+import { adminUsersTable, db, initTestDb } from "../../test/db";
 
 /**
  * Round-93 C3 (A3 audit R3) — /healthz/summary permanent wedge.
@@ -21,6 +22,13 @@ import express from "express";
  * The health module is imported ONCE (pglite boot is expensive) — per-test
  * isolation comes from resetReadyStateForTests() + the lazy env-read
  * timeouts (HEALTH_CHECK_TIMEOUT_MS / HEALTH_AGGREGATE_TIMEOUT_MS).
+ *
+ * R110-E (109-k P2-1/P3-2): extended to pin the health-honesty contract
+ * for the DESIGNED no-Redis single-instance shape — /healthz/summary must
+ * read "ok" (worker/socket not-applicable, ok+note), the admin-gated
+ * /healthz/{worker,socket} endpoints must answer 200 + note instead of
+ * 503 "Redis not configured", and the Redis-CONFIGURED paths must keep
+ * their real degraded/503 semantics (regression guards below).
  */
 
 vi.mock("../../lib/redis-client", async (importOriginal) => {
@@ -38,10 +46,27 @@ import { getRedisClient } from "../../lib/redis-client";
 
 let healthModule: typeof import("../health");
 
+/**
+ * R110-E: sid-less admin token (requireAdmin accepts those outside
+ * production as long as the admin_users row exists + is active — same
+ * fixture shape as metrics-auth.test.ts). Needed because
+ * /healthz/{worker,socket} are admin-gated.
+ */
+let adminToken: string;
+
 beforeAll(async () => {
   // Dynamic import so the env assignments above run BEFORE the health
   // module's import graph (lib/jwt fail-fasts without SESSION_SECRET).
   healthModule = await import("../health");
+  const { signAdminToken } = await import("../../lib/jwt");
+  // The per-subsystem endpoints under test sit behind requireAdmin, which
+  // does a live admin_users lookup — build the schema + seed one admin.
+  await initTestDb();
+  const [admin] = await db
+    .insert(adminUsersTable)
+    .values({ username: "health_admin", passwordHash: "x", isActive: true })
+    .returning();
+  adminToken = signAdminToken({ adminId: admin.id, role: "admin" });
 }, 30_000);
 
 const ENV_KEYS = [
@@ -84,6 +109,23 @@ function makeHangingRedis() {
 }
 
 /**
+ * R110-E regression-guard shape: a HEALTHY Redis (ping PONG) whose worker
+ * heartbeat key holds a timestamp ~5 min old — past checkWorker's 180 s
+ * "failing" threshold. With REDIS_URL configured this MUST stay a real
+ * failure; only the no-Redis-designed shape is allowed to read ok.
+ */
+function makeStaleHeartbeatRedis() {
+  return {
+    isReady: true,
+    ping: vi.fn().mockResolvedValue("PONG"),
+    get: vi.fn().mockResolvedValue(JSON.stringify({ ts: Date.now() - 300_000 })),
+    incr: vi.fn().mockResolvedValue(1),
+    expire: vi.fn().mockResolvedValue(1),
+    del: vi.fn().mockResolvedValue(1),
+  };
+}
+
+/**
  * Request /healthz/summary with a watchdog: if the route ever hangs (the
  * R3 wedge), the watchdog rejects.
  */
@@ -103,6 +145,39 @@ async function requestSummary(): Promise<{ status: number; body: string }> {
       );
       try {
         const res = await fetch(`http://127.0.0.1:${addr.port}/healthz/summary`);
+        clearTimeout(watchdog);
+        resolve({ status: res.status, body: await res.text() });
+      } catch (err) {
+        clearTimeout(watchdog);
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+/**
+ * R110-E: request an arbitrary healthz route (optional headers) under the
+ * same watchdog discipline as requestSummary — generalizes it for the
+ * admin-gated per-subsystem endpoints.
+ */
+async function requestHealthz(
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
+  const app = express();
+  app.use(healthModule.default);
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        reject(new Error("no port"));
+        return;
+      }
+      const watchdog = setTimeout(() => reject(new Error(`${path} hung`)), 5_000);
+      try {
+        const res = await fetch(`http://127.0.0.1:${addr.port}${path}`, { headers });
         clearTimeout(watchdog);
         resolve({ status: res.status, body: await res.text() });
       } catch (err) {
@@ -230,5 +305,125 @@ describe("R3 — liveness endpoint stays trivially green (unchanged contract)", 
 
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ status: "ok" });
+  });
+});
+
+describe("R110-E — DESIGNED no-Redis single-instance shape reads as OK", () => {
+  it("/healthz/summary reports ok — the public /status page is no longer permanently yellow", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const { status, body } = await requestSummary();
+
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ status: "ok" });
+  });
+
+  it("aggregate: worker + socket subsystems read ok with explanatory notes", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const state = await healthModule.computeReadyState();
+
+    expect(state.status).toBe("ok");
+    // FH-A5 P2-3 (pre-existing): the redis branch already reads ok+note.
+    expect(state.checks.redis?.status).toBe("ok");
+    expect(state.checks.redis?.note).toMatch(/single-tier/);
+    // R110-E: worker + socket are NOT APPLICABLE in this topology — the old
+    // "degraded" fold here is what kept the summary permanently yellow.
+    expect(state.checks.worker?.status).toBe("ok");
+    expect(state.checks.worker?.optional).toBe(true);
+    expect(state.checks.worker?.note).toMatch(/single-instance, no-Redis by design/);
+    expect(state.checks.socket?.status).toBe("ok");
+    expect(state.checks.socket?.optional).toBe(true);
+    expect(state.checks.socket?.note).toMatch(/single-instance, no-Redis by design/);
+  });
+
+  it("/healthz/worker answers 200 + note instead of 503 'Redis not configured'", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/worker", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(res.body);
+    expect(parsed.status).toBe("ok");
+    expect(parsed.optional).toBe(true);
+    expect(parsed.note).toMatch(/single-instance, no-Redis by design/);
+    expect(parsed.lastCheckedAt).toBeTruthy();
+  });
+
+  it("/healthz/socket answers 200 + note instead of 503 'Redis not configured'", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/socket", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(res.body);
+    expect(parsed.status).toBe("ok");
+    expect(parsed.optional).toBe(true);
+    expect(parsed.note).toMatch(/single-instance, no-Redis by design/);
+    expect(parsed.lastCheckedAt).toBeTruthy();
+  });
+
+  it("admin gate unchanged: /healthz/worker without credentials still 401s", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/worker");
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("R110-E — Redis-CONFIGURED regression guards (real checks stay real)", () => {
+  it("REDIS_URL set + stale worker heartbeat → /healthz/worker 503 failing", async () => {
+    // beforeEach pins REDIS_URL=redis://127.0.0.1:6399.
+    vi.mocked(getRedisClient).mockReturnValue(makeStaleHeartbeatRedis() as never);
+
+    const res = await requestHealthz("/healthz/worker", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(503);
+    const parsed = JSON.parse(res.body);
+    expect(parsed.status).toBe("failing");
+    expect(parsed.error).toMatch(/Worker heartbeat too old/);
+  });
+
+  it("REDIS_URL set + client gone → /healthz/worker 503 'Redis configured but unavailable'", async () => {
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/worker", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(503);
+    expect(JSON.parse(res.body).error).toMatch(/Redis configured but unavailable/);
+  });
+
+  it("REDIS_URL set + stale worker heartbeat folds the aggregate off ok", async () => {
+    vi.mocked(getRedisClient).mockReturnValue(makeStaleHeartbeatRedis() as never);
+
+    const state = await healthModule.computeReadyState();
+
+    expect(state.checks.worker?.status).toBe("failing");
+    expect(state.status).not.toBe("ok");
+  });
+
+  it("REDIS_URL set + Socket.IO missing → /healthz/socket keeps 503 'Socket.IO not initialized'", async () => {
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/socket", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(503);
+    expect(JSON.parse(res.body).error).toBe("Socket.IO not initialized");
   });
 });

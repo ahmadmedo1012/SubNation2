@@ -609,7 +609,24 @@ export async function computeReadyState(): Promise<HealthCheckResponseExtended> 
       const result = await checkWorker(redis);
       checks.worker = result;
       fold(result);
+    } else if (!process.env.REDIS_URL) {
+      // R110-E (109-k P2-1): the redis branch above (FH-A5 P2-3) already
+      // treats REDIS_URL-unset as the DESIGNED single-instance shape —
+      // but this branch kept folding "degraded" into the aggregate, so
+      // the public /status page stayed permanently YELLOW during normal
+      // operation. The worker heartbeat only exists in the multi-instance
+      // (Redis) topology; in the designed shape there IS no worker to
+      // check. Not applicable, not broken.
+      checks.worker = {
+        status: "ok",
+        optional: true,
+        note: "not applicable — single-instance, no-Redis by design (worker heartbeat requires Redis)",
+        lastCheckedAt: new Date().toISOString(),
+      };
     } else {
+      // URL is configured but the client failed to connect — real outage
+      // (the redis check above already folds "failing" into the overall
+      // status). The heartbeat cannot be read, so say so honestly.
       checks.worker = {
         status: "degraded",
         optional: true,
@@ -623,7 +640,22 @@ export async function computeReadyState(): Promise<HealthCheckResponseExtended> 
       const result = await checkSocket(io, redis);
       checks.socket = result;
       fold(result);
+    } else if (!process.env.REDIS_URL) {
+      // R110-E (109-k P2-1): same honesty fix as worker above. Without
+      // Redis, Socket.IO runs on its default in-memory adapter — the only
+      // correct topology for a single instance. There is no Redis adapter
+      // to check, so the designed shape must read as OK.
+      checks.socket = {
+        status: "ok",
+        optional: true,
+        note: io
+          ? "not applicable — single-instance, no-Redis by design (Socket.IO uses the in-memory adapter)"
+          : "not applicable — single-instance, no-Redis by design (Socket.IO not initialized)",
+        lastCheckedAt: new Date().toISOString(),
+      };
     } else {
+      // URL is configured (and/or io is missing while multi-instance was
+      // expected) — keep the real signal: degraded, folded.
       checks.socket = {
         status: "degraded",
         optional: true,
@@ -796,9 +828,23 @@ router.get("/healthz/worker", requireAdmin, async (_req, res): Promise<void> => 
   const redis = getRedisClient();
 
   if (!redis) {
+    if (!process.env.REDIS_URL) {
+      // R110-E (109-k P3-2): REDIS_URL unset is the DESIGNED single-instance
+      // shape (see the aggregate branch above). The worker heartbeat only
+      // exists in the multi-instance topology — the honest answer for an
+      // operator here is "healthy, not applicable", not a 503 that reads
+      // like an outage.
+      res.status(200).json({
+        status: "ok",
+        optional: true,
+        note: "not configured — single-instance, no-Redis by design (worker heartbeat requires Redis)",
+        lastCheckedAt: new Date().toISOString(),
+      });
+      return;
+    }
     res.status(503).json({
       status: "failing",
-      error: "Redis not configured (needed for worker heartbeat check)",
+      error: "Redis configured but unavailable (needed for worker heartbeat check)",
       lastCheckedAt: new Date().toISOString(),
     });
     return;
@@ -813,9 +859,23 @@ router.get("/healthz/socket", requireAdmin, async (_req, res): Promise<void> => 
   const redis = getRedisClient();
 
   if (!io || !redis) {
+    if (!process.env.REDIS_URL) {
+      // R110-E (109-k P3-2): same designed-shape honesty as /healthz/worker
+      // above — without Redis, Socket.IO runs on its in-memory adapter, which
+      // is the only correct topology for a single instance.
+      res.status(200).json({
+        status: "ok",
+        optional: true,
+        note: "not configured — single-instance, no-Redis by design (Socket.IO uses the in-memory adapter)",
+        lastCheckedAt: new Date().toISOString(),
+      });
+      return;
+    }
     res.status(503).json({
       status: "failing",
-      error: !io ? "Socket.IO not initialized" : "Redis not configured (needed for adapter check)",
+      error: !io
+        ? "Socket.IO not initialized"
+        : "Redis configured but unavailable (needed for adapter check)",
       lastCheckedAt: new Date().toISOString(),
     });
     return;

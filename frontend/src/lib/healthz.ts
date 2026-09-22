@@ -10,8 +10,8 @@ const SUMMARY_FALLBACK: HealthzSummary = { status: "degraded" };
  * version, no uptime, no infrastructure info. Used by the public
  * /status page and the (now removed) footer pill.
  *
- * Like fetchHealthzReady, never throws — degrades to "degraded" on any
- * error so React Query never enters an error state.
+ * Never throws — degrades to "degraded" on any error so React Query
+ * never enters an error state.
  */
 export async function fetchHealthzSummary(): Promise<HealthzSummary> {
   let res: Response;
@@ -28,11 +28,7 @@ export async function fetchHealthzSummary(): Promise<HealthzSummary> {
     return SUMMARY_FALLBACK;
   }
 
-  if (
-    !body ||
-    typeof body !== "object" ||
-    typeof (body as HealthzSummary).status !== "string"
-  ) {
+  if (!body || typeof body !== "object" || typeof (body as HealthzSummary).status !== "string") {
     return SUMMARY_FALLBACK;
   }
 
@@ -40,27 +36,16 @@ export async function fetchHealthzSummary(): Promise<HealthzSummary> {
 }
 
 /**
- * Robust /api/healthz/ready fetcher.
+ * Shared response shape of /api/healthz/ready — the ADMIN-GATED detailed
+ * readiness endpoint (backend: requireAdmin).
  *
- * Never throws. The backend always returns a valid JSON body with a
- * `status` discriminator and a per-check breakdown — even for 503
- * (genuine critical failure). React Query's default `(r) => r.json()`
- * pattern would treat an HTTP error as a network failure, retry, and
- * fill DevTools with red 503 lines + Sentry breadcrumbs. That's noise
- * for an endpoint whose 503 is by-design (means "Neon down" or
- * "Redis down").
- *
- * This wrapper:
- *   • Reads the body regardless of HTTP status (always JSON now).
- *   • Treats network errors as a synthesized `degraded` result so
- *     React Query NEVER enters an error state.
- *   • Logs nothing (Sentry captures real network errors elsewhere
- *     via instrumentation).
- *
- * Used by:
- *   - frontend/src/components/layout/SystemStatusPill.tsx
- *   - frontend/src/pages/status.tsx
- *   - frontend/src/pages/admin/system.tsx
+ * R110-E (109-k P3-3): this module used to carry a ready-endpoint fetch
+ * helper whose comment claimed the endpoint is public. It is not — a bare
+ * fetch gets 401 — and the helper had no remaining callers (the admin
+ * system page sends the admin JWT itself); it was removed together with
+ * its stale comment. The live consumers of these types are
+ * pages/status.tsx (CheckStatus) and pages/admin/system.tsx
+ * (fetchAdminHealthReady → HealthzReadyResponse).
  */
 
 export type CheckStatus = "ok" | "degraded" | "failing";
@@ -79,49 +64,6 @@ export interface HealthzReadyResponse {
   checks: Record<string, HealthCheck>;
   version: string;
   uptimeSec: number;
-}
-
-const FALLBACK: HealthzReadyResponse = {
-  status: "degraded",
-  checks: {},
-  version: "unknown",
-  uptimeSec: 0,
-};
-
-export async function fetchHealthzReady(): Promise<HealthzReadyResponse> {
-  let res: Response;
-  try {
-    res = await fetch("/api/healthz/ready", {
-      // No credentials needed — endpoint is public.
-      // No retry headers — caller (React Query) controls cadence.
-    });
-  } catch {
-    // Network failure (offline, DNS, etc.). Return synthesized degraded
-    // so React Query never sees an error. Real-time UI still shows
-    // "degraded" yellow (not failure red) which is the correct semantic.
-    return FALLBACK;
-  }
-
-  // 503 is informative on this endpoint — body still has status="failing"
-  // + per-check details. Parse anyway. 200 + degraded is the common case.
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return FALLBACK;
-  }
-
-  // Defensive shape check — the backend always returns the right shape,
-  // but a CDN-injected error page or proxy fault could break this.
-  if (
-    !body ||
-    typeof body !== "object" ||
-    typeof (body as HealthzReadyResponse).status !== "string"
-  ) {
-    return FALLBACK;
-  }
-
-  return body as HealthzReadyResponse;
 }
 
 /**
