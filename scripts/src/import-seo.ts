@@ -3,8 +3,11 @@
  * into productsTable.
  *
  * Safety:
- *   - Matches by exact `product_name` against productsTable.name. Skips any
- *     product whose name is not found, instead of inventing one.
+ *   - Matches each entry by `slug` first (the canonical, stable identity —
+ *     display names drift with marketing renames), falling back to an
+ *     exact `product_name` match. Skips any entry that matches neither,
+ *     instead of inventing one. Skipped entries WARN with counts
+ *     (110-F, R110) — a stale file must never shrink the import silently.
  *   - Only writes `descriptionLong` and `faq`. Never touches name, price,
  *     slug, isActive, isArchived, costPrice, etc.
  *   - Wraps every UPDATE in a single transaction. Any failure rolls back
@@ -21,7 +24,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { loadLocalEnv, repoRoot } from "./runtime";
 
 loadLocalEnv();
@@ -102,6 +105,12 @@ async function main(): Promise<void> {
   const plans: Plan[] = [];
 
   for (const entry of entries) {
+    // 110-F (R110 — 109-n P3): slug-first join. The JSON's `slug` is the
+    // canonical URL identity (stable across marketing renames of
+    // product_name — the exact drift that made the old name-only match
+    // silently skip half the file); the exact-name fallback keeps
+    // hand-edited entries without a slug importable.
+    const slug = (entry.slug ?? "").trim().toLowerCase();
     const [row] = await db
       .select({
         id: productsTable.id,
@@ -111,7 +120,12 @@ async function main(): Promise<void> {
         isArchived: productsTable.isArchived,
       })
       .from(productsTable)
-      .where(eq(productsTable.name, entry.product_name))
+      .where(
+        or(
+          slug ? eq(productsTable.slug, slug) : undefined,
+          eq(productsTable.name, entry.product_name),
+        ),
+      )
       .limit(1);
 
     if (!row) {
@@ -136,12 +150,17 @@ async function main(): Promise<void> {
     });
   }
 
-  // Print plan
+  // Print plan. Skips go to stderr as WARNINGS (110-F, R110) — they used
+  // to be plain console.log lines that scrolled by like ordinary output.
   for (const p of plans) {
     if (p.kind === "missing") {
-      console.log(`⚠️  SKIP   "${p.entry.product_name}" — no row in productsTable`);
+      console.warn(
+        `⚠️  SKIP   "${p.entry.product_name}" — no product row matches slug "${p.entry.slug}" or the name`,
+      );
     } else if (p.kind === "archived") {
-      console.log(`⚠️  SKIP   "${p.entry.product_name}" (id=${p.productId}) — product is archived`);
+      console.warn(
+        `⚠️  SKIP   "${p.entry.product_name}" (id=${p.productId}) — product is archived`,
+      );
     } else {
       const parts: string[] = [];
       parts.push(p.willWriteDesc ? "desc✓" : "desc·kept");
@@ -152,12 +171,28 @@ async function main(): Promise<void> {
 
   const writes = plans.filter((p): p is Extract<Plan, { kind: "update" }> => p.kind === "update");
   const willWrite = writes.filter((p) => p.willWriteDesc || p.willWriteFaq);
+  const missingCount = plans.filter((p) => p.kind === "missing").length;
+  const archivedCount = plans.filter((p) => p.kind === "archived").length;
+  const skippedCount = missingCount + archivedCount;
 
   console.log(
     `\n📊 ${plans.length} entries → ${writes.length} matched, ` +
-      `${plans.length - writes.length} skipped, ` +
+      `${skippedCount} skipped, ` +
       `${willWrite.length} will be written.`,
   );
+
+  // 110-F (R110 — 109-n P3): the headline warning. A stale JSON (archived
+  // or renamed products) used to shrink the import with no signal beyond
+  // per-line logs — surface the counts on stderr so operators refresh
+  // docs/SEO_PRODUCTS.json against the live catalog.
+  if (skippedCount > 0) {
+    console.warn(
+      `⚠️  ${skippedCount}/${plans.length} SEO entries were skipped — ` +
+        `${missingCount} matched no live product (stale product_name/slug?), ` +
+        `${archivedCount} matched an archived product. ` +
+        `Refresh docs/SEO_PRODUCTS.json against the active catalog.`,
+    );
+  }
 
   if (!APPLY) {
     console.log(`\nℹ️  Dry-run only. Re-run with --apply to write changes.\n`);

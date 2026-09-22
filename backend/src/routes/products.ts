@@ -458,7 +458,18 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
       db
         .select()
         .from(productsTable)
-        .where(and(eq(productsTable.slug, slug), eq(productsTable.isArchived, false)))
+        .where(
+          and(
+            eq(productsTable.slug, slug),
+            // 110-F (R110 — 109-n P3): the detail routes filtered only
+            // is_archived, so a deactivated product (is_active=false)
+            // stayed fetchable by slug while the list route/sitemap
+            // already hid it. Mirror the list WHERE — deactivated now
+            // 404s exactly like archived (same for the /:id route below).
+            eq(productsTable.isActive, true),
+            eq(productsTable.isArchived, false),
+          ),
+        )
         .limit(1),
       getActiveFlashSale(),
     ]);
@@ -546,7 +557,14 @@ router.get("/:id", catalogCache, async (req, res) => {
       db
         .select()
         .from(productsTable)
-        .where(and(eq(productsTable.id, id), eq(productsTable.isArchived, false)))
+        .where(
+          and(
+            eq(productsTable.id, id),
+            // 110-F (R110): deactivated 404s like archived — see /by-slug.
+            eq(productsTable.isActive, true),
+            eq(productsTable.isArchived, false),
+          ),
+        )
         .limit(1),
       getActiveFlashSale(),
     ]);

@@ -206,6 +206,12 @@ export function buildWebsiteLd() {
 
 export interface ItemListEntry {
   id: number | string;
+  /**
+   * SEO slug — preferred over the numeric id for the canonical
+   * /product/<slug> URL (mirrors buildProductLd and the backend sitemap
+   * builder, routes/seo.ts, which emits slug URLs for every active row).
+   */
+  slug?: string | null;
   name: string;
 }
 
@@ -217,7 +223,13 @@ export function buildItemListLd(items: ItemListEntry[]) {
     itemListElement: items.map((p, idx) => ({
       "@type": "ListItem",
       position: idx + 1,
-      url: `${origin}/product/${p.id}`,
+      // 110-F (R110 — 109-n P3): slug-canonical URL form — matches
+      // buildProductLd above and the sitemap. The id remains the
+      // defensive fallback for slug-less legacy rows. (Both live callers
+      // already stuffed the slug into `id`, so emitted URLs were
+      // slug-shaped in practice — this makes the builder correct by
+      // construction instead of by caller convention.)
+      url: `${origin}/product/${p.slug ?? p.id}`,
       name: p.name,
     })),
   };

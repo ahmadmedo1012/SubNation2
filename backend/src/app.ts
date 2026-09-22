@@ -97,9 +97,14 @@ const csrfAllowedOrigins = (() => {
 // a Render API PUT wiped DATABASE_URL and took the deploy down), so we
 // take the same fail-fast posture as SESSION_SECRET (lib/jwt.ts): boot
 // aborts loudly instead of serving traffic without the gate.
-// Production currently sets APP_ORIGINS + APP_URL + VERCEL_FRONTEND_ORIGIN
-// (see scripts/restore_env_vars.json) — this assertion only fires when
-// they are lost. No secret values are logged.
+// 110-F (R110 — 109-b P3): comment refreshed to the current env shape.
+// Production sets APP_ORIGINS (comma-separated allow-list — the primary
+// knob, see deploy/env.compose.example) plus APP_URL (single-origin
+// shorthand); FRONTEND_ORIGINS / VERCEL_FRONTEND_ORIGIN remain optional
+// extras folded in by lib/origins.ts (the pre-Coolify Vercel split stack
+// is gone, as is the old scripts/restore_env_vars.json runbook this
+// comment used to cite). This assertion only fires when they are lost.
+// No secret values are logged.
 if (isProduction && csrfAllowedOrigins.length === 0) {
   logger.fatal(
     { category: "security", audit_finding: "SEC-92-01" },
@@ -989,6 +994,19 @@ if (frontendDist) {
           .replace(/"/g, "&quot;");
       const origin = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
       const canonical = `${origin}/product/${slugOrId}`;
+      // 110-F (R110 — 109-n P2): r103 absolutized og:image in MetaTags but
+      // missed this no-JS surface — unfurlers (WhatsApp/Facebook, the
+      // dominant share channel in Libya) drop RELATIVE image URLs, so
+      // every shared product link unfurled cardless. Absolutize against
+      // the SAME origin as the canonical above (APP_URL with the canonical
+      // production-domain default — identical to the APP_ORIGIN resolution
+      // in routes/seo.ts); DB rows carry site-relative /products/<slug>.webp,
+      // already-absolute URLs (future CDN host) pass through untouched.
+      const ogImage = product.imageUrl
+        ? product.imageUrl.startsWith("http")
+          ? product.imageUrl
+          : `${origin}${product.imageUrl.startsWith("/") ? "" : "/"}${product.imageUrl}`
+        : null;
       const desc =
         (product.description ?? "اشتراك رقمي أصلي بالدينار الليبي من SubNation")
           .replace(/\s+/g, " ")
@@ -1003,7 +1021,7 @@ if (frontendDist) {
 <meta property="og:site_name" content="SubNation">
 <meta property="og:title" content="${esc(product.name)} — SubNation">
 <meta property="og:description" content="${esc(desc)}">
-${product.imageUrl ? `<meta property="og:image" content="${esc(product.imageUrl)}">` : ""}
+${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 <meta property="og:url" content="${esc(canonical)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(product.name)} — SubNation">

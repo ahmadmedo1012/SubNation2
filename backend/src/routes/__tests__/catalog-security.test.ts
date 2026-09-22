@@ -8,7 +8,6 @@ import {
   inventoryTable,
   productVariantsTable,
   productsTable,
-  usersTable,
 } from "../../test/db";
 import { productsRouter } from "../products";
 
@@ -263,6 +262,51 @@ describe("B. catalog integrity invariants", () => {
     expect(names).toContain("Netflix");
     expect(names).toContain("Legacy Product");
     expect(names).not.toContain("Archived Product");
+  });
+
+  // 110-F (R110 — 109-n P3): the detail routes filtered is_archived only,
+  // so a deactivated product (is_active=false, not archived) stayed
+  // fetchable by id/slug while the list route and sitemap already hid it.
+  // Both detail WHEREs now mirror the list route — deactivated 404s
+  // exactly like archived. This also pins the archived filter on the
+  // DETAIL routes (list-route invisibility alone was already pinned).
+  it("deactivated (is_active=false) products 404 on the detail routes — like archived ones", async () => {
+    const { netflix } = await seedCatalog();
+    const app = buildApp();
+
+    // Deactivated-but-NOT-archived: the exact gap the fix closes.
+    const [deactivated] = await db
+      .insert(productsTable)
+      .values({
+        name: "Deactivated Product",
+        slug: "deactivated-product",
+        price: "15.00",
+        category: "streaming",
+        isActive: false,
+        isArchived: false,
+      })
+      .returning();
+
+    for (const path of [
+      `/api/products/${deactivated.id}`,
+      "/api/products/by-slug/deactivated-product",
+    ]) {
+      const { status } = await call(app, path);
+      expect(status, `${path} must 404 for a deactivated product`).toBe(404);
+    }
+
+    // Archived (seeded by seedCatalog): 404 on the detail surface too.
+    const archived = await call(app, "/api/products/by-slug/archived-product");
+    expect(archived.status, "archived product must 404 on detail").toBe(404);
+
+    // Guard against over-filtering: ACTIVE products still 200 on both
+    // detail paths (id and slug), and a truly unknown id still 404s.
+    for (const path of [`/api/products/${netflix.id}`, "/api/products/by-slug/netflix"]) {
+      const { status } = await call(app, path);
+      expect(status, `${path} must stay 200 for an active product`).toBe(200);
+    }
+    const unknown = await call(app, "/api/products/999999");
+    expect(unknown.status).toBe(404);
   });
 
   it('list price = cheapest active variant price (the "تبدأ من" number)', async () => {

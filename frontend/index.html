@@ -30,7 +30,19 @@
          removed). The legacy data-rh attributes are inert markers
          kept only for cache-busting safety. -->
     <meta data-rh="true" name="robots" content="index,follow" />
-    <meta data-rh="true" property="og:image" content="/opengraph.jpg" />
+    <!-- 110-F (R110 — 109-n P2): absolute og:image. This static baseline is
+         the only og:image a no-JS crawler/unfurler ever sees (WhatsApp and
+         Facebook scrapers silently DROP relative image URLs); at runtime
+         MetaTags upserts this very tag in place, so JS surfaces are
+         unaffected. Baked to the canonical production origin — the same
+         default seo-builders.ts DEFAULT_ORIGIN and the backend APP_ORIGIN
+         resolution (APP_URL || https://subnation.ly) use — because Vite's
+         %VAR% HTML substitution leaves the literal placeholder behind when
+         the env is unset (the seoHeadInject rationale in vite.config.ts),
+         and VITE_APP_ORIGIN is unset by default in the Docker build.
+         subnation.ly is the PRODUCT domain regardless of hosting
+         (docs/deployment/ENVIRONMENT_MATRIX.md). -->
+    <meta data-rh="true" property="og:image" content="https://subnation.ly/opengraph.jpg" />
     <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
     <meta
       data-rh="true"
