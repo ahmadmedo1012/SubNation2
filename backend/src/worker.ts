@@ -82,6 +82,19 @@ export function installWorkerSignalHandlers(resources: {
 async function startWorker() {
   logger.info("Starting background worker");
 
+  // R108 (FH-A1 §9.7 — double-run guard, warn-only): if the WEB tier was
+  // deployed with SINGLE_INSTANCE_MODE=true, it already runs every cron /
+  // alerting / one-shot ungated; running this dedicated worker alongside it
+  // would double-run all of them. The worker stays intentionally unguarded
+  // (operator escape hatch) — this log names the exact remediation.
+  if ((process.env.SINGLE_INSTANCE_MODE ?? "").toLowerCase() === "true") {
+    logger.error(
+      "[worker] SINGLE_INSTANCE_MODE=true is set — the WEB tier runs schedulers ungated. " +
+        "Running this worker too will double-run every cron/alert. Set DISABLE_WEB_SCHEDULERS=true " +
+        "on the web tier (and unset SINGLE_INSTANCE_MODE there) BEFORE starting a dedicated worker.",
+    );
+  }
+
   // Connect Redis singleton (heartbeat + alerting both depend on it).
   await initRedisClient();
   const redis = getRedisClient();

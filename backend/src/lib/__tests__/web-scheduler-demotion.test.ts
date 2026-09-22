@@ -111,6 +111,10 @@ function trackHandle(h: { stop: () => Promise<void> }) {
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.DISABLE_WEB_SCHEDULERS;
+  // R108 (FH-A1 §9.8.2): SINGLE_INSTANCE_MODE would bypass the election
+  // this suite exercises — delete it so the election path is the default
+  // under test no matter what the surrounding environment carries.
+  delete process.env.SINGLE_INSTANCE_MODE;
   // R104 (AG6-6): zero the boot one-shot deferral (real timers here).
   process.env.BOOT_ONE_SHOT_DELAY_MS = "0";
   capturedOptions = {};
@@ -132,6 +136,7 @@ afterEach(async () => {
     await h.stop().catch(() => undefined);
   }
   delete process.env.DISABLE_WEB_SCHEDULERS;
+  delete process.env.SINGLE_INSTANCE_MODE;
 });
 
 describe("R6 — startWebSchedulers demotion wiring", () => {

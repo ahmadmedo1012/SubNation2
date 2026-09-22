@@ -3,6 +3,8 @@ import { getAdminAlerts } from "../../jobs/alertLogger";
 import { buildMetricsSnapshot } from "../../lib/metrics-snapshot";
 import { getRedisClient } from "../../lib/redis-client";
 import { getSchedulerState } from "../../lib/scheduler-state";
+// R108 (FH-A4 F-1): neutral release identity for the admin System page.
+import { getReleaseSha } from "../../lib/release-sha";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router: IRouter = Router();
@@ -85,7 +87,7 @@ router.get("/summary", requireAdmin, async (_req, res) => {
 
   res.json({
     server: {
-      version: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown",
+      version: getReleaseSha(),
       uptimeSec: Math.floor(process.uptime()),
       nodeVersion: process.version,
     },
@@ -207,10 +209,20 @@ router.get("/scheduler", requireAdmin, async (_req, res) => {
   // The "expected" interpretation depends on mode:
   //   - embedded + active   → heartbeat MUST exist and be fresh
   //   - embedded + !leader  → heartbeat exists from another process; informational only
+  //   - single + active     → R108 SINGLE_INSTANCE_MODE — heartbeat only if Redis exists
   //   - dedicated           → heartbeat from the dedicated worker; UI shows worker pill
   //   - disabled            → no heartbeat expected; not a failure
+  // R108 (FH-A1 P2 F4): heartbeatExpected now requires a Redis client to exist
+  // at all. Without REDIS_URL (the Render + Oracle/Coolify production shape)
+  // the heartbeat is INERT BY DESIGN — the web-scheduler skips starting it and
+  // the 30 s recovery poll is never armed — so claiming it was "expected"
+  // kept the admin System page permanently degraded ("heartbeat stale") on
+  // every no-Redis deployment. Same fix covers embedded and single modes.
   const heartbeatExpected =
-    (state.mode === "embedded" && state.active) || state.mode === "dedicated";
+    redis !== null &&
+    ((state.mode === "embedded" && state.active) ||
+      (state.mode === "single" && state.active) ||
+      state.mode === "dedicated");
 
   res.json({
     mode: state.mode,
@@ -222,15 +234,18 @@ router.get("/scheduler", requireAdmin, async (_req, res) => {
     heartbeat: {
       ...heartbeat,
       expected: heartbeatExpected,
+      ...(redis === null ? { note: "no Redis — heartbeat inert by design" } : {}),
     },
     description:
-      state.mode === "embedded" && state.active
-        ? "الجدولة المضمّنة تعمل في عملية الخادم (لا توجد خدمة worker مستقلة)."
-        : state.mode === "embedded" && !state.active
-          ? "الجدولة المضمّنة لا تعمل (هذا الإصدار ليس قائد القفل) — عملية أخرى تتولى المهام."
-          : state.mode === "dedicated"
-            ? "الجدولة معطّلة في الخادم — يُتوقع وجود خدمة worker مستقلة."
-            : "الجدولة غير نشطة.",
+      state.mode === "single" && state.active
+        ? "الجدولة أحادية الخادم نشطة (SINGLE_INSTANCE_MODE — بلا انتخاب قائد أو نبضة إيجاز؛ مهام الجدولة تعمل داخل هذه العملية وحدها)."
+        : state.mode === "embedded" && state.active
+          ? "الجدولة المضمّنة تعمل في عملية الخادم (لا توجد خدمة worker مستقلة)."
+          : state.mode === "embedded" && !state.active
+            ? "الجدولة المضمّنة لا تعمل (هذا الإصدار ليس قائد القفل) — عملية أخرى تتولى المهام."
+            : state.mode === "dedicated"
+              ? "الجدولة معطّلة في الخادم — يُتوقع وجود خدمة worker مستقلة."
+              : "الجدولة غير نشطة.",
   });
 });
 

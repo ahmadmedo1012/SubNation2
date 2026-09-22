@@ -42,6 +42,20 @@
  * (daily 05:00) and the flash-sale expiry catch-up (5-min watcher) — all
  * idempotent, all safe to fire at every leader start.
  *
+ * R108 (final-hardening FH-A1 P0 — Oracle/Coolify economics): the
+ * PG-lease refresher (default 25 s refresh / 60 s TTL) keeps Neon's
+ * compute awake 24/7 — 144 coordination queries/hour against a free-tier
+ * allowance of ~191.9 awake-hours/month. On the single-container Oracle
+ * topology that heartbeat buys nothing: there is no second instance to
+ * arbitrate. `SINGLE_INSTANCE_MODE=true` declares this process the only
+ * scheduler owner: no leader election, no lease acquire/refresh/release,
+ * no periodic Neon coordination queries — while ALL scheduled jobs
+ * (heartbeat-if-Redis, alerting evaluator, crons, boot one-shots) keep
+ * running in-process on their normal cadence. The election machinery
+ * stays 100% intact below, env-gated — flipping the flag back to unset
+ * restores r107's hardened multi-instance behavior byte-for-byte.
+ * Precedence: DISABLE_WEB_SCHEDULERS=true still wins (hard off-switch).
+ *
  * Migration to a dedicated worker (when ready — NOTE: the 2026-09-20
  * free-infrastructure round removed the paid `subnation-worker`
  * service from render.yaml; this code path is dormant documentation):
@@ -111,6 +125,12 @@ export async function startWebSchedulers(
   redis: RedisClientType | null,
 ): Promise<WebSchedulerHandle> {
   const disabled = (process.env.DISABLE_WEB_SCHEDULERS ?? "").toLowerCase() === "true";
+  // SINGLE_INSTANCE_MODE (migration §5 / FH-A1 §9): one container = one
+  // scheduler owner by declaration. No election, no PG-lease heartbeat, no
+  // periodic Neon coordination queries — jobs still run here on their normal
+  // cadence. The election path below stays fully intact for future
+  // multi-instance (unset the flag to get r107 behavior back).
+  const singleInstance = (process.env.SINGLE_INSTANCE_MODE ?? "").toLowerCase() === "true";
 
   if (disabled) {
     logger.info(
@@ -269,7 +289,7 @@ export async function startWebSchedulers(
     pendingOneShot.unref?.();
 
     setSchedulerState({
-      mode: "embedded",
+      mode: singleInstance ? "single" : "embedded",
       active: true,
       isLeader: true,
       instanceId: leadership.instanceId,
@@ -278,25 +298,44 @@ export async function startWebSchedulers(
     });
   };
 
-  const leadership = await acquireSchedulerLeadership(redis, {
-    onAcquired: () => {
-      // B7-P1-1: the lock freed up while we were booting/running — take
-      // the schedulers over now.
-      logger.info(
-        { category: "monitoring", instanceId: leadership.instanceId },
-        "[scheduler] leadership acquired after retry — starting schedulers in this process now",
-      );
-      startLeaderJobs();
-    },
-    onLost: () => {
-      // R6 (round-93 A3): another instance took the lock — stop OUR
-      // schedulers so we don't double-run cron/alerting/heartbeat against
-      // the new leader (split-brain). The coordinator already restarted
-      // the acquisition loop; if the new leader dies, onAcquired fires
-      // and startLeaderJobs() runs again.
-      stopLeaderJobs("demoted");
-    },
-  });
+  const leadership: SchedulerLeadership = singleInstance
+    ? {
+        // Synthetic in-process leadership (FH-A1 §9.2): isLeader stays true
+        // for the whole process lifetime; release() is a no-op (nothing to
+        // hand over — there is no other instance). Every closure above that
+        // reads leadership.instanceId keeps working unchanged.
+        instanceId: `single-instance-${process.pid}`,
+        get isLeader() {
+          return true;
+        },
+        release: async () => {},
+      }
+    : await acquireSchedulerLeadership(redis, {
+        onAcquired: () => {
+          // B7-P1-1: the lock freed up while we were booting/running — take
+          // the schedulers over now.
+          logger.info(
+            { category: "monitoring", instanceId: leadership.instanceId },
+            "[scheduler] leadership acquired after retry — starting schedulers in this process now",
+          );
+          startLeaderJobs();
+        },
+        onLost: () => {
+          // R6 (round-93 A3): another instance took the lock — stop OUR
+          // schedulers so we don't double-run cron/alerting/heartbeat against
+          // the new leader (split-brain). The coordinator already restarted
+          // the acquisition loop; if the new leader dies, onAcquired fires
+          // and startLeaderJobs() runs again.
+          stopLeaderJobs("demoted");
+        },
+      });
+
+  if (singleInstance) {
+    logger.info(
+      { category: "monitoring", instanceId: leadership.instanceId },
+      "[scheduler] SINGLE_INSTANCE_MODE=true — schedulers run ungated in this process (no leader election, no lease heartbeat, zero periodic Neon coordination queries)",
+    );
+  }
 
   if (leadership.isLeader) {
     startLeaderJobs();

@@ -108,19 +108,31 @@ const SCHEDULER_LEADER_KEY = "scheduler:leader";
 // operator opts in. Constraint enforced below: refresh must be ≤
 // half the TTL (≥2 refreshes per TTL window) — mirrors the AG1-1
 // stall-margin analysis.
-const LEADER_TTL_SEC = (() => {
-  const raw = Number(process.env.SCHEDULER_LEASE_TTL_SEC);
-  return Number.isFinite(raw) && raw >= 10 ? Math.floor(raw) : 60;
-})();
-const REFRESH_INTERVAL_MS = (() => {
+// R108 (FH-A1 §9.8.3 / FH-A12 F-11 — lease-timer test gap): the TTL +
+// refresh resolution that used to live in two module-load IIFEs is now
+// a PURE function so the r107 semantics (min-TTL 10 else 60, refresh
+// fallback 25 s, cap at half the TTL, 1 s floor, non-finite → defaults)
+// are table-testable. The IIFE below calls it with process.env — the
+// resolved values (and therefore every behavior downstream) are
+// byte-identical to the pre-R108 inline logic.
+export function resolveLeaseTimings(env: NodeJS.ProcessEnv): {
+  ttlSec: number;
+  refreshMs: number;
+} {
+  const rawTtl = Number(env.SCHEDULER_LEASE_TTL_SEC);
+  const ttlSec = Number.isFinite(rawTtl) && rawTtl >= 10 ? Math.floor(rawTtl) : 60;
   const fallback = 25_000;
-  const raw = Number(process.env.SCHEDULER_LEASE_REFRESH_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  const rawRefresh = Number(env.SCHEDULER_LEASE_REFRESH_MS);
+  if (!Number.isFinite(rawRefresh) || rawRefresh <= 0) {
+    return { ttlSec, refreshMs: fallback };
+  }
   // Never allow more than half the TTL — a single missed tick must
   // still leave time before expiry (fail-closed demotion window).
-  const capped = Math.min(raw, (LEADER_TTL_SEC * 1000) / 2);
-  return Math.max(1_000, Math.floor(capped));
-})();
+  const capped = Math.min(rawRefresh, (ttlSec * 1000) / 2);
+  return { ttlSec, refreshMs: Math.max(1_000, Math.floor(capped)) };
+}
+
+const { ttlSec: LEADER_TTL_SEC, refreshMs: REFRESH_INTERVAL_MS } = resolveLeaseTimings(process.env);
 const DEFAULT_ACQUIRE_RETRY_MS = 20_000;
 // R5: bound for every leadership command. Generous vs the 500 ms default
 // command timeout (lock ops are not request-path) but far below the 10 s

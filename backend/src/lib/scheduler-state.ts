@@ -8,9 +8,14 @@
  * heartbeat key.
  *
  * Scheduler modes:
- *   - "embedded"  : the web process runs heartbeat + alerting + cron itself
+ *   - "embedded"  : the web process runs heartbeat + alerting + cron itself,
+ *                   leadership arbitrated by the Redis lock / PG lease
  *                   (current production reality — no dedicated worker
  *                   service provisioned yet).
+ *   - "single"    : SINGLE_INSTANCE_MODE=true (R108) — this process is the
+ *                   declared-only scheduler owner: no election, no lease
+ *                   heartbeat, zero periodic Neon coordination queries.
+ *                   The Oracle/Coolify single-container target shape.
  *   - "dedicated" : web process is gated off via DISABLE_WEB_SCHEDULERS=true
  *                   and a separate worker service is expected to own them.
  *   - "disabled"  : neither this process nor any other is running schedulers
@@ -18,7 +23,7 @@
  *                   so an alert can fire).
  */
 
-export type SchedulerMode = "embedded" | "dedicated" | "disabled";
+export type SchedulerMode = "embedded" | "dedicated" | "single" | "disabled";
 
 export type SchedulerReason =
   | "active"

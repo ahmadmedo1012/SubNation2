@@ -88,7 +88,7 @@ interface RecentAlert {
   createdAt: string;
 }
 
-type SchedulerMode = "embedded" | "dedicated" | "disabled";
+type SchedulerMode = "embedded" | "dedicated" | "single" | "disabled";
 
 interface SchedulerResponse {
   mode: SchedulerMode;
@@ -242,9 +242,7 @@ function MetricCard({
         >
           <Icon className={`w-4 h-4 ${color}`} />
         </div>
-        <span className="text-[10px] text-muted-foreground font-bold">
-          {label}
-        </span>
+        <span className="text-[10px] text-muted-foreground font-bold">{label}</span>
       </div>
       <div className="font-black text-lg leading-none tabular-nums">{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
@@ -606,6 +604,21 @@ export default function AdminSystemPage(): ReactElement | null {
     } else {
       schedTone = "ok";
       schedTitle = "الجدولة المضمّنة نشطة";
+      schedMessage = scheduler.description;
+    }
+  } else if (scheduler.mode === "single" && scheduler.active) {
+    // R108 SINGLE_INSTANCE_MODE (Oracle/Coolify target shape): schedulers
+    // run ungated in this process — healthy by definition. Heartbeat is
+    // only expected when Redis exists (backend sets expected=false + a
+    // note when REDIS_URL is unset — the no-Redis production shape), so no
+    // stale-heartbeat degradation here.
+    if (scheduler.heartbeat.expected && !scheduler.heartbeat.healthy) {
+      schedTone = "degraded";
+      schedTitle = "الجدولة أحادية الخادم تعمل لكن النبضة متأخرة";
+      schedMessage = `آخر نبضة قبل ${scheduler.heartbeat.ageSec ?? "—"}ث (المتوقع <60ث).`;
+    } else {
+      schedTone = "ok";
+      schedTitle = "الجدولة أحادية الخادم نشطة";
       schedMessage = scheduler.description;
     }
   } else if (scheduler.mode === "embedded" && !scheduler.active) {
