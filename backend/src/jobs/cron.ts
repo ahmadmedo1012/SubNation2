@@ -142,6 +142,12 @@ export function initCronJobs(): CronJobsHandle {
   schedule(
     "0 5 * * *",
     async () => {
+      // R110-H: the three prunes in this slot are fully independent —
+      // one failing can never skip the others (the old single try/catch
+      // chain meant a user-session prune failure silently skipped the
+      // admin-session AND notifications prunes), and each failure is
+      // captured under its OWN Sentry job_name instead of the old
+      // blanket "session_prune" tag that mislabeled which prune died.
       try {
         const removed = await pruneExpiredSessions();
         if (removed > 0)
@@ -149,37 +155,43 @@ export function initCronJobs(): CronJobsHandle {
             { category: "sessions.retention", removed },
             `Pruned ${removed} expired session row(s)`,
           );
-        // V1-M13 (round-94 A8): same retention window for the admin
-        // session rows — expired > 24h or revoked > 30 days.
+      } catch (err) {
+        logger.error({ err, category: "sessions.retention" }, "Session prune failed");
+        captureSchedulerFailure("session_prune", err, {
+          cron_expression: "0 5 * * *",
+        });
+      }
+      // V1-M13 (round-94 A8): same retention window for the admin
+      // session rows — expired > 24h or revoked > 30 days.
+      try {
         const adminRemoved = await pruneStaleAdminSessions();
         if (adminRemoved > 0)
           logger.info(
             { category: "sessions.retention", removed: adminRemoved },
             `Pruned ${adminRemoved} stale admin session row(s)`,
           );
-        // AUD103-1-F2 (r103): notifications retention — read > 90d,
-        // unread > 180d. Rides the same 05:00 slot (tiny bounded-batch
-        // job; its own try/catch so a failure can never skip the session
-        // prune above) + the boot one-shot for the restart gap.
-        try {
-          const notifRemoved = await pruneOldNotifications();
-          if (notifRemoved > 0)
-            logger.info(
-              { category: "notifications.retention", removed: notifRemoved },
-              `Pruned ${notifRemoved} old notification row(s)`,
-            );
-        } catch (err) {
-          logger.error(
-            { err, category: "notifications.retention" },
-            "Notifications retention failed",
-          );
-          captureSchedulerFailure("notifications_retention", err, {
-            cron_expression: "0 5 * * *",
-          });
-        }
       } catch (err) {
-        logger.error({ err, category: "sessions.retention" }, "Session prune failed");
-        captureSchedulerFailure("session_prune", err, {
+        logger.error({ err, category: "sessions.retention" }, "Admin-session prune failed");
+        captureSchedulerFailure("admin_session_prune", err, {
+          cron_expression: "0 5 * * *",
+        });
+      }
+      // AUD103-1-F2 (r103): notifications retention — read > 90d,
+      // unread > 180d. Rides the same 05:00 slot (tiny bounded-batch
+      // job) + the boot one-shot for the restart gap.
+      try {
+        const notifRemoved = await pruneOldNotifications();
+        if (notifRemoved > 0)
+          logger.info(
+            { category: "notifications.retention", removed: notifRemoved },
+            `Pruned ${notifRemoved} old notification row(s)`,
+          );
+      } catch (err) {
+        logger.error(
+          { err, category: "notifications.retention" },
+          "Notifications retention failed",
+        );
+        captureSchedulerFailure("notifications_retention", err, {
           cron_expression: "0 5 * * *",
         });
       }
@@ -193,10 +205,12 @@ export function initCronJobs(): CronJobsHandle {
   //                          function; deleted.
   //   job 3  "15 * * * *"   hourly whatsapp_otps prune — now
   //                          OPPORTUNISTIC: throttled 60-min fire from
-  //                          startOtp()/verifyOtp() (services/whatsapp-
-  //                          otp.service.ts) + the leader boot one-shot
-  //                          (web-scheduler.ts). A sleeping service has
-  //                          no OTP rows accumulating.
+  //                          startOtp() ONLY (services/whatsapp-otp.
+  //                          service.ts — verifyOtp() does not trigger
+  //                          the prune; r110 comment-truth fix) + the
+  //                          leader boot one-shot (jobs/boot-one-shots.
+  //                          ts). A sleeping service has no OTP rows
+  //                          accumulating.
   //   job 4  "45 * * * *"   hourly copilot-previews reaper — now
   //                          OPPORTUNISTIC: throttled 60-min fire from
   //                          the admin copilot surface (routes/admin/

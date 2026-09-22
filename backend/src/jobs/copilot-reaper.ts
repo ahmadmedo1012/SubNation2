@@ -9,12 +9,14 @@
  * the reaper runs the audit row stays valid; we just lose the original
  * preview payload).
  *
- * Constitution §V scheduling rule says cron belongs on the worker tier.
- * The web tier still imports the function (so dev workflows can call it
- * directly), but the cron registration in cron.ts only fires when this
- * process is the worker. The repo currently runs cron from the web tier;
- * when the worker tier becomes the sole owner this comment becomes the
- * thing to read.
+ * Scheduling (2026-09-20 free-infrastructure round + r110 comment-truth
+ * fix): there is NO cron registration for the reaper — the old hourly
+ * :45 slot was removed to keep Neon's idle autosuspend intact. It runs
+ * opportunistically instead: a throttled 60-min fire from the admin
+ * copilot surface (routes/admin/copilot/ask.ts) plus the boot one-shot
+ * (jobs/boot-one-shots.ts) that closes the restart gap. Both paths are
+ * idempotent — the ctid-batch DELETE below re-evaluates its predicate
+ * per batch.
  */
 
 import { copilotPreviewsTable, db } from "@workspace/db";

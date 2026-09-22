@@ -1,7 +1,9 @@
 /**
  * Cron entry-point (012-arabic-catalog-enrichment, T025).
  *
- * Wired into cron.ts at 03:45 UTC. The first action is the worker-tier
+ * Wired into cron.ts at 03:50 UTC (r110 comment-truth fix — the slot
+ * moved to 03:50 in round-92 B7-P2-3; the header said 03:45 until now).
+ * The first action is the worker-tier
  * + env-flag guard — neither the web tier nor a misconfigured worker
  * runs the cron silently.
  *

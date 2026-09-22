@@ -586,15 +586,42 @@ async function safeLog(params: {
 
 /**
  * Best-effort pruning helper. TRIGGERS (2026-09-20 free-infrastructure
- * round): the leader boot one-shot (web-scheduler.ts) + a throttled
+ * round): the leader boot one-shot (jobs/boot-one-shots.ts) + a throttled
  * 60-min opportunistic fire at the top of startOtp() (was the hourly
  * :15 cron slot) — deletes rows older than 24 h, well past the
  * 5-minute TTL and any verify window, so no active session is at risk.
  * Idempotent. Returns the number of rows deleted.
  */
+
+// R110-H: ctid-batch ceiling per DELETE statement — same 1000-row shape
+// as every other retention job (B7-P2-5 family). The 24 h window bounds
+// the steady-state table, but a boot one-shot catch-up after an extended
+// outage must not hold one unbounded statement lock on the shared pooler.
+const OTP_PRUNE_BATCH_SIZE = 1000;
+
 export async function pruneExpiredOtps(): Promise<number> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const result = await db.execute(sql`DELETE FROM whatsapp_otps WHERE created_at < ${cutoff}`);
-  // pg returns affected count via `rowCount`.
-  return (result as unknown as { rowCount?: number }).rowCount ?? 0;
+  let deleted = 0;
+  // Bounded batch loop (notifications-retention.ts shape): `ctid IN
+  // (SELECT … LIMIT n)` until a batch comes back short, so each
+  // statement's lock footprint stays tiny. Predicate embedded verbatim
+  // per batch — idempotent.
+  for (;;) {
+    const result = await db.execute(sql`
+      DELETE FROM whatsapp_otps
+      WHERE ctid IN (
+        SELECT ctid FROM whatsapp_otps
+        WHERE created_at < ${cutoff}
+        LIMIT ${OTP_PRUNE_BATCH_SIZE}
+      )
+      RETURNING id
+    `);
+    const rows =
+      (result as unknown as { rows?: Array<{ id: number }> }).rows ??
+      (result as unknown as Array<{ id: number }>) ??
+      [];
+    deleted += rows.length;
+    if (rows.length < OTP_PRUNE_BATCH_SIZE) break;
+  }
+  return deleted;
 }

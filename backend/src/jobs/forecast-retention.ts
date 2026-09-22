@@ -11,8 +11,9 @@
  *      and write it back to the latest run row. When the rate < 0.5, set
  *      the Redis pause flag (SC-008 kill criterion).
  *
- * Runs daily at 03:30 UTC; lives next to `risk-retention.ts` so on-call
- * has one mental model across the audit/forecast retention jobs.
+ * Runs daily at 03:35 UTC (cron.ts slot 7, five minutes after the 03:30
+ * risk retention); lives next to `risk-retention.ts` so on-call has one
+ * mental model across the audit/forecast retention jobs.
  */
 
 import { db, inventoryForecastsTable, inventoryForecastRunsTable } from "@workspace/db";

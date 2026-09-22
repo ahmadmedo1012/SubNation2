@@ -269,15 +269,29 @@ service into a 24/7 instance-hour burner (one forgotten tab ≈ 730 h/mo).
 
 ### Remaining recurring activity (the complete timer inventory)
 
-While AWAKE (zero cost while sleeping — see AG1 inventory for file:line):
-PG-lease refresh 25 s (1 query — R104 AG1-1; R107 made the cadence
-env-tunable: SCHEDULER_LEASE_REFRESH_MS / SCHEDULER_LEASE_TTL_SEC, defaults
-25 s/60 s), alerting evaluator 60 s (in-process
-counters only), boot one-shots once per leadership (+7 s deferral),
-daily crons 00:00-05:00 UTC under the leader lock. NOTHING runs while
-the service sleeps; nothing sends outbound while idle. NOTE for the
-always-on (Oracle/Coolify) topology: the refresher then runs 24/7 — see
-docs/deployment/COOLIFY_ORACLE_MIGRATION.md §9 for the Neon-awake trade.
+R108 shape — **`SINGLE_INSTANCE_MODE=true`** (the deployed default; see
+`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §9, the accuracy reference
+for this list): synthetic in-process leadership — **no leader election, no
+PG-lease refresher, ZERO periodic Neon coordination queries**, so idle
+Neon autosuspend is preserved. The old "PG-lease refresh 25 s
+recurring-while-awake" and "crons under the leader lock" rows described
+the pre-R108 embedded-election shape and are gone: while the process is
+up, the complete recurring inventory is — **daily retention crons
+00:00-05:00 UTC (~25 min/day) running unconditionally in the web
+process** (NOT under a leader lock); the **60 s alerting evaluator**
+(in-process counters only — no DB, no outbound); the **Redis worker
+heartbeat** (only when a Redis client exists — skipped entirely when
+`REDIS_URL` is unset); and the **boot one-shot chain** once per process
+start (+7 s deferral). NOTHING sub-hourly touches the database. The
+timers removed in the 2026-09-20 free-infrastructure round (hourly OTP
+prune, hourly copilot-previews reaper, 10-min keep-alive self-pings,
+watcher intervals) stay removed: that work runs as throttled opportunistic
+sweeps fired by real traffic (`lib/opportunistic.ts`) plus the boot
+one-shots — zero artificial wake-ups, zero cost while a Render-Free
+deployment sleeps. The multi-instance election path (PG-lease refresh
+while awake; `SCHEDULER_LEASE_REFRESH_MS` / `SCHEDULER_LEASE_TTL_SEC`)
+remains intact but INERT while the flag is set — unset
+`SINGLE_INSTANCE_MODE` to restore it.
 
 ### Inspection & alarm thresholds
 
