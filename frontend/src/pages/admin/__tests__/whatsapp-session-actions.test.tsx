@@ -157,3 +157,41 @@ describe("AdminWhatsAppPage — delete confirm + pair-code copy feedback (B5-05 
     expect(await screen.findByRole("button", { name: "تم النسخ" })).toBeInTheDocument();
   });
 });
+
+/**
+ * 110-M (109-b P3) — gateway docs deep-link degradation.
+ *
+ * The header docs link used to fall back to a baked onrender.com URL
+ * when VITE_OPENWA_DOCS_URL was unset at build time — a link that dies
+ * with the Render decommission. It now renders a muted plain-text hint
+ * instead. The URL is read at module scope, so the test asserts both
+ * branches of the ambient env: unset (the CI default — no .env file is
+ * tracked) → no anchor at all; set → the anchor points exactly at the
+ * configured URL. The retired onrender.com default must never resurface.
+ */
+describe("AdminWhatsAppPage — gateway docs deep-link degradation (110-M / 109-b)", () => {
+  const docsUrl = (import.meta.env.VITE_OPENWA_DOCS_URL as string | undefined)?.trim() || "";
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async () => resLike({ body: { sessions: [] } }));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders a plain hint (no anchor) when the docs URL is unset — never the onrender default", async () => {
+    renderPage();
+    expect(await screen.findByText("إدارة جلسة واتساب")).toBeInTheDocument();
+
+    const link = screen.queryByRole("link", { name: /وثائق البوابة/ });
+    if (docsUrl) {
+      expect(link).toHaveAttribute("href", docsUrl);
+    } else {
+      expect(link).not.toBeInTheDocument();
+      // The label survives as a muted plain-text hint — no dead-domain link.
+      expect(screen.getByText("وثائق البوابة")).toBeInTheDocument();
+    }
+  });
+});

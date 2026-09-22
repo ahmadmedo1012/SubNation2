@@ -46,14 +46,16 @@ interface PairCodeResponse {
 }
 
 // R107 (migration): gateway docs link is env-driven — the ONLY place a
-// gateway URL ever lived in executable frontend code. Default keeps the
-// current Render gateway working; a single-origin Coolify deployment sets
+// gateway URL ever lived in executable frontend code. R110 (109-b): the
+// baked onrender.com default is GONE — it dies with the Render
+// decommission, so an unset VITE_OPENWA_DOCS_URL degrades the header
+// deep-link to a plain hint instead of pointing at a doomed domain. A
+// single-origin Coolify deployment sets
 // VITE_OPENWA_DOCS_URL=<gateway-origin>/api/docs at build time (Dockerfile
 // ARG). Backend gateway traffic itself was always env-driven
 // (WHATSAPP_OTP_BASE_URL) — this is the admin deep-link only, not a secret.
 const OPENWA_DOCS_URL: string =
-  (import.meta.env.VITE_OPENWA_DOCS_URL as string | undefined) ||
-  "https://openwa-gateway-7aaa.onrender.com/api/docs";
+  (import.meta.env.VITE_OPENWA_DOCS_URL as string | undefined)?.trim() || "";
 
 const STATUS_META: Record<string, { label: string; tone: StatusBadgeVariant }> = {
   ready: { label: "جاهزة", tone: "success" },
@@ -271,15 +273,23 @@ export default function AdminWhatsAppPage() {
               المتصفح؛ الواجهة تمرّر الطلبات عبر الخادم بشكل محمي.
             </p>
           </div>
-          <a
-            href={OPENWA_DOCS_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
-          >
-            وثائق البوابة
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          {OPENWA_DOCS_URL ? (
+            <a
+              href={OPENWA_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              وثائق البوابة
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          ) : (
+            // 110-M (109-b): no build-time docs URL — a muted plain-text
+            // hint keeps the header layout; never link a dead domain.
+            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground/60">
+              وثائق البوابة
+            </span>
+          )}
         </div>
 
         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 flex gap-3 text-sm">

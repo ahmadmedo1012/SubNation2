@@ -84,6 +84,16 @@ const EMPTY_FORM: CreateForm = {
   description: "",
 };
 
+// 110-M (109-m P3): client-side parity with the backend create route
+// (backend/src/routes/coupons.ts) — percentage coupons are rejected at
+// value >= 100 (r4 red-team F-3: a 100% coupon zeroes finalPrice and the
+// checkout INVALID_PRICE gate fail-closes on every purchase), and ALL
+// values are capped at 10,000 LYD (MAX_FIXED_COUPON_VALUE — a direct
+// wallet-debit magnitude at checkout). Mirrored here so the form blocks
+// submit with an inline Arabic error instead of surfacing the server's
+// 400 after a round-trip.
+const MAX_FIXED_COUPON_VALUE = 10_000; // LYD — mirror of the backend bound
+
 export default function AdminCouponsPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
@@ -104,6 +114,9 @@ export default function AdminCouponsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
+  // 110-M (109-m P3): inline validation error for the value field (see
+  // the handleCreate parity guards) — cleared on any value/type edit.
+  const [valueError, setValueError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<number | null>(null);
 
   // 98-F7 (R98-05): dirty-state guard — a half-filled coupon form is
@@ -177,6 +190,21 @@ export default function AdminCouponsPage() {
       return;
     }
 
+    // 110-M (109-m P3): parity guards — the exact bounds the backend
+    // create route enforces (percentage < 100, value <= 10,000 LYD),
+    // blocked here with an inline Arabic error BEFORE the round-trip.
+    // The >= 100 wording matches the server's 400 message verbatim.
+    if (form.type === "percentage" && value >= 100) {
+      setValueError("نسبة الخصم يجب أن تكون أقل من 100% (السعر لا يمكن أن يصل إلى صفر)");
+      return;
+    }
+    if (value > MAX_FIXED_COUPON_VALUE) {
+      setValueError(
+        `قيمة الخصم يجب ألا تتجاوز ${MAX_FIXED_COUPON_VALUE.toLocaleString("en-US")} د.ل`,
+      );
+      return;
+    }
+
     setCreating(true);
     try {
       const body: Record<string, unknown> = {
@@ -210,6 +238,9 @@ export default function AdminCouponsPage() {
       // form — the exact A12 F-01 data-loss class. A dismissed draft
       // now survives reopening the dialog.
       setForm(EMPTY_FORM);
+      // 110-M (109-m P3): the guard error dies with the form it belonged
+      // to.
+      setValueError(null);
       fetchCoupons(true);
     } catch (err: unknown) {
       toast({
@@ -372,7 +403,12 @@ export default function AdminCouponsPage() {
                   {(["percentage", "fixed"] as const).map((t) => (
                     <button
                       key={t}
-                      onClick={() => setForm((f) => ({ ...f, type: t }))}
+                      onClick={() => {
+                        // 110-M (109-m P3): a type switch re-scales the
+                        // value field — drop any stale guard error.
+                        setValueError(null);
+                        setForm((f) => ({ ...f, type: t }));
+                      }}
                       className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold border transition-all press-spring ${
                         form.type === t
                           ? "bg-primary text-white border-primary"
@@ -402,11 +438,24 @@ export default function AdminCouponsPage() {
                   id="coupons-f3-25257"
                   type="number"
                   value={form.value}
-                  onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+                  onChange={(e) => {
+                    // 110-M (109-m P3): any edit clears the stale guard
+                    // error (re-validated on the next submit).
+                    setValueError(null);
+                    setForm((f) => ({ ...f, value: e.target.value }));
+                  }}
                   placeholder={form.type === "percentage" ? "20" : "5.00"}
                   min="0.01"
                   max={form.type === "percentage" ? "100" : undefined}
                 />
+                {/* 110-M (109-m P3): inline parity-guard error — the same
+                    text-xs/text-destructive field-error idiom as
+                    settings.tsx / wallet.tsx. */}
+                {valueError && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {valueError}
+                  </p>
+                )}
               </div>
             </div>
 

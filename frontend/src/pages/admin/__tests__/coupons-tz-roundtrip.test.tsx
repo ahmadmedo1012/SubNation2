@@ -158,3 +158,96 @@ describe("AdminCouponsPage — expires_at TZ roundtrip (A5 C-2)", () => {
     expect(await screen.findByDisplayValue("DRAFT99")).toBeInTheDocument();
   });
 });
+
+/**
+ * 110-M (109-m P3) — client-side value parity guards.
+ *
+ * The backend create route (backend/src/routes/coupons.ts) rejects
+ * percentage coupons at value >= 100 (r4 red-team F-3: a 100% coupon
+ * zeroes finalPrice and the checkout INVALID_PRICE gate fail-closes on
+ * every purchase) and caps every value at 10,000 LYD
+ * (MAX_FIXED_COUPON_VALUE). The admin form previously only checked
+ * value > 0 — the operator learned the rule from a post-round-trip
+ * 400 toast. The form now blocks submit with an inline Arabic error
+ * using the server's exact wording.
+ */
+describe("AdminCouponsPage — value parity guards (110-M / 109-m P3)", () => {
+  beforeEach(() => {
+    toastMock.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input: unknown, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST") return resLike({ body: { id: 1, code: "TEST" } });
+      return resLike({ body: [] });
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("blocks a 100% percentage coupon with the server's exact Arabic message (no POST)", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), { target: { value: "FREE100" } });
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+
+    // The backend's 400 message, verbatim, inline under the value field.
+    expect(
+      await screen.findByText("نسبة الخصم يجب أن تكون أقل من 100% (السعر لا يمكن أن يصل إلى صفر)"),
+    ).toBeInTheDocument();
+    // Blocked BEFORE the round-trip — no POST ever left the page.
+    expect(
+      fetchMock.mock.calls.filter(
+        (call) => (call[1] as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("blocks a fixed coupon above the 10,000 LYD backend cap (no POST)", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+    // Switch to fixed (مبلغ) — the value placeholder becomes "5.00".
+    fireEvent.click(screen.getByRole("button", { name: "مبلغ" }));
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), { target: { value: "MEGAFIX" } });
+    fireEvent.change(screen.getByPlaceholderText("5.00"), { target: { value: "20000" } });
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+
+    expect(await screen.findByText("قيمة الخصم يجب ألا تتجاوز 10,000 د.ل")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.filter(
+        (call) => (call[1] as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("clears the guard error when the value is corrected, then submits", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), { target: { value: "FIX99" } });
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+    expect(await screen.findByText(/نسبة الخصم يجب أن تكون أقل من 100%/)).toBeInTheDocument();
+
+    // Correcting the value clears the inline error…
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "50" } });
+    expect(screen.queryByText(/نسبة الخصم يجب أن تكون أقل من 100%/)).not.toBeInTheDocument();
+
+    // …and the resubmit goes through.
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          (call) => (call[1] as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+  });
+});

@@ -927,7 +927,8 @@ export default function CheckoutPage() {
           if (couponCode) body.coupon_code = couponCode;
           // 96-F4 (R96 A4 §2.2): one STABLE Idempotency-Key per unit order —
           // minted lazily on the unit's first attempt, persisted in
-          // sessionStorage, and reused verbatim when this exact unit is
+          // localStorage (durable — see the docblock above), and reused
+          // verbatim when this exact unit is
           // retried. A network retry / double-click of an unresolved unit now
           // replays the cached server response instead of charging the wallet
           // twice, while different units — and a genuinely NEW confirm intent
