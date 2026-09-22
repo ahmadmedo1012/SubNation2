@@ -19,6 +19,7 @@ import { idempotency } from "../middlewares/idempotency";
 import {
   claimIdempotencyKey,
   findIdempotentOrderId,
+  isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
 import { notifyNewTopup } from "../telegram";
@@ -329,8 +330,11 @@ router.post(
             "topup.create",
           );
         } catch (err) {
-          const code = (err as { code?: string }).code;
-          if (code === "23505") {
+          // R108 (FH-A7 P3-2): the manual `code === "23505"` check missed
+          // drizzle-wrapped errors (node-postgres exposes the SQLSTATE on
+          // the wrapped .cause — see lib/idempotency.ts); the race loser
+          // got a raw 500 instead of the designed replay envelope.
+          if (isIdempotencyKeyViolation(err)) {
             return { kind: "replayed" as const };
           }
           throw err;

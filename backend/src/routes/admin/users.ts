@@ -7,6 +7,7 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
+import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempotency";
 
 const router = Router();
 
@@ -260,15 +261,33 @@ router.patch(
           );
       }
       try {
+        // R108 (FH-A7 P1): durable pre-check — the key is admin-scoped
+        // (u{adminId}:…) so it can never collide with a user-scoped key.
+        // A same-key retry after a lost response short-circuits to 409
+        // here; the in-tx claim (adjustment.service) closes the race
+        // window between this check and the commit.
+        const scopedAdjKey = scopeIdempotencyKey(adminId, req.header("Idempotency-Key"));
+        if (scopedAdjKey && (await findIdempotencyClaimed(scopedAdjKey))) {
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "تم تطبيق هذا التعديل مسبقاً بنفس مفتاح الحفظ",
+                ErrorCode.CONFLICT,
+              ),
+            );
+        }
         if (typeof wallet_adjustment === "number") {
           walletResult = await AdjustmentService.adjust(id, wallet_adjustment, {
             adminId,
             note: note.trim().slice(0, 500),
+            idempotencyKey: scopedAdjKey,
           });
         } else if (typeof wallet_balance === "number") {
           walletResult = await AdjustmentService.setBalance(id, wallet_balance, {
             adminId,
             note: note.trim().slice(0, 500),
+            idempotencyKey: scopedAdjKey,
           });
         }
       } catch (err) {

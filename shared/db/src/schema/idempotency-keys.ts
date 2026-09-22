@@ -1,5 +1,4 @@
 import { index, integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
-import { ordersTable } from "./orders";
 
 /**
  * Durable idempotency for the customer money path (F10, round-94 A4).
@@ -26,11 +25,17 @@ import { ordersTable } from "./orders";
  * (the conversion result is reconstructible from the user's balance;
  * replaying a payload was unnecessary complexity).
  *
- * The row is written INSIDE the checkout transaction, immediately
- * after the order + ledger inserts. FK `ON DELETE CASCADE` follows the
- * order's lifecycle: if the buyer's account is deleted (cascade
- * removes the order), the key row goes with it — the dedup never
- * outlives the money it guards.
+ * R108 (final-hardening FH-A7 P0): `order_id` is now a POLYMORPHIC
+ * reference discriminated by `reference_type` ('order' /
+ * 'topup.create' / 'loyalty.convert' / 'admin.adjustment') — the wallet
+ * topup-create path claims it with a `wallet_topups.id`, which the
+ * V1-M12-era FK to `orders(id)` forbids (SQLSTATE 23503 → the whole
+ * submission tx rolls back → topup 500s on the first live run).
+ * V1-M20 DROPS that FK: referential integrity for the polymorphic
+ * column is app-owned (each intent's claim site knows its own id
+ * space), the same contract the loyalty path already used for NULL.
+ * The drizzle declaration therefore declares NO .references() —
+ * introspection/push must not re-create the constraint.
  *
  * Registration note (round-94 C4, updated round-98 F4): this module IS
  * re-exported from schema/index.ts (line 15 of the barrel) and the table
@@ -46,11 +51,12 @@ export const idempotencyKeysTable = pgTable(
     /** User-scoped key: `u{userId}:{clientKey}` (see module docs). */
     key: text("key").primaryKey(),
     /**
-     * The order this key created — claimed atomically in its tx.
-     * R102: nullable for non-order money intents (loyalty conversion
-     * claims with NULL + reference_type; checkout always sets it).
+     * Polymorphic reference (R102 nullable, R108 FK-free): the id of the
+     * row the key guards, interpreted by `reference_type` — orders.id for
+     * 'order', wallet_topups.id for 'topup.create', NULL for intents whose
+     * result is reconstructible (loyalty). App-owned integrity (module docs).
      */
-    orderId: integer("order_id").references(() => ordersTable.id, { onDelete: "cascade" }),
+    orderId: integer("order_id"),
     /** R102: what the key guards — 'order' (default) or 'loyalty.convert'. */
     referenceType: varchar("reference_type", { length: 32 }).notNull().default("order"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

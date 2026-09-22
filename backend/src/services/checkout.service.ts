@@ -150,7 +150,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   // behavior is byte-identical to pre-F10.
   const scopedIdempotencyKey = scopeIdempotencyKey(userId, input.idempotencyKey);
   if (scopedIdempotencyKey) {
-    const replayedOrderId = await findIdempotentOrderId(scopedIdempotencyKey);
+    // R108 (FH-A7 P3-1): filter by intent — a client reusing one
+    // Idempotency-Key across /orders and /topups must never resolve the
+    // OTHER intent's row here (the topup side has filtered since R104).
+    // Safe for legacy rows: V1-M19 backfilled every pre-existing claim
+    // to reference_type='order'.
+    const replayedOrderId = await findIdempotentOrderId(scopedIdempotencyKey, "order");
     if (replayedOrderId !== null) {
       const replay = await replayOriginalOrder(userId, replayedOrderId);
       if (replay) return replay;
@@ -678,7 +683,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // lookup raced), degrade to the retryable 409 — never a second
       // charge, never a raw 500.
       if (scopedIdempotencyKey) {
-        const winnerOrderId = await findIdempotentOrderId(scopedIdempotencyKey);
+        const winnerOrderId = await findIdempotentOrderId(scopedIdempotencyKey, "order");
         if (winnerOrderId !== null) {
           const replay = await replayOriginalOrder(userId, winnerOrderId);
           if (replay) return replay;

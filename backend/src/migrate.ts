@@ -16,8 +16,9 @@ import { logger } from "./lib/logger";
  * entire replay. Any edit to this file changes the hash → one full
  * reconcile on the next boot → new hash persisted. Tests/dev (no
  * define) see `undefined` → always full run, semantics unchanged.
- * `MIGRATIONS_FORCE_RECONCILE=true` bypasses the fast-path; deleting
- * the system_settings row forces a full reconcile too.
+ * `MIGRATIONS_FORCE_RECONCILE` (true/1/yes — R108 accepts all three)
+ * bypasses the fast-path; deleting the system_settings row forces a
+ * full reconcile too.
  */
 declare const __MIGRATIONS_FINGERPRINT__: string | undefined;
 
@@ -1000,12 +1001,76 @@ export async function applyIdempotencyReferenceTypeStage(
   );
 }
 
+// ── V1-M20 (R108, final-hardening FH-A7 P0): idempotency_keys FK drop ──────
+//
+// `order_id` became a POLYMORPHIC reference in R102 (discriminated by
+// `reference_type`), and R104's wallet topup-create durable claim
+// (routes/wallet.ts) writes a `wallet_topups.id` into it — but V1-M12
+// created the column with `REFERENCES orders(id) ON DELETE CASCADE` and
+// V1-M19 only dropped NOT NULL, never the FK. Any topup whose serial id
+// has no matching `orders` row → SQLSTATE 23503 → the entire submission
+// transaction (topup INSERT included) rolls back → topup submission 500s.
+// The 2026-09-22 deep audit proved this would have fired on the FIRST
+// live topup after the Oracle/Coolify cutover (the claim code never ran
+// in production — last live build predated r104).
+//
+// The fix: drop the FK. Referential integrity for the polymorphic column
+// is app-owned — each intent's claim site knows its own id space
+// (checkout → orders.id, wallet → wallet_topups.id, loyalty → NULL),
+// the same contract the loyalty path has used since R102. The drizzle
+// declaration (shared/db/src/schema/idempotency-keys.ts) drops
+// `.references()` in lockstep so introspection/push cannot re-create it.
+//
+// Two layers, both idempotent:
+//   1. `DROP CONSTRAINT IF EXISTS` for the default constraint name.
+//   2. A DO-block probe that drops ANY remaining FK on the column
+//      regardless of name (guards against non-default names from
+//      hand-provisioned environments).
+// No data is touched; the column + its index stay exactly as they are.
+export async function applyIdempotencyDropOrderFkStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    ALTER TABLE idempotency_keys
+      DROP CONSTRAINT IF EXISTS idempotency_keys_order_id_fkey;
+  `);
+  await execute(sql`
+    DO $$
+    DECLARE
+      fk_name text;
+    BEGIN
+      FOR fk_name IN
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_attribute a
+          ON a.attrelid = con.conrelid
+         AND a.attnum = ANY (con.conkey)
+        WHERE con.contype = 'f'
+          AND con.conrelid = 'idempotency_keys'::regclass
+          AND a.attname = 'order_id'
+      LOOP
+        EXECUTE format('ALTER TABLE idempotency_keys DROP CONSTRAINT %I', fk_name);
+      END LOOP;
+    END $$;
+  `);
+  logger.info(
+    { category: "storage" },
+    "V1-M20: idempotency_keys.order_id FK dropped (polymorphic reference — integrity app-owned)",
+  );
+}
+
 export async function runMigrations() {
   try {
     // ── R104 fingerprint fast-path ────────────────────────────────────────
     // One SELECT replaces ~141 no-op round trips when this build's
     // migrate.ts is byte-identical to the last fully-reconciled one.
-    if (MIGRATIONS_FINGERPRINT && (process.env.MIGRATIONS_FORCE_RECONCILE ?? "") !== "true") {
+    // R108 (FH-A5 P2-2): accept the common truthy spellings — the old
+    // exact-"true" comparison silently NO-OPPED the documented
+    // `=1` recipe (a forced reconcile that didn't force anything).
+    const forceReconcile = ["true", "1", "yes"].includes(
+      (process.env.MIGRATIONS_FORCE_RECONCILE ?? "").trim().toLowerCase(),
+    );
+    if (MIGRATIONS_FINGERPRINT && !forceReconcile) {
       const stored = await readStoredMigrationFingerprint();
       if (stored === MIGRATIONS_FINGERPRINT) {
         logger.info(
@@ -2766,6 +2831,14 @@ export async function runMigrations() {
     // ALTERs; the checkout path is unchanged. See
     // applyIdempotencyReferenceTypeStage docs.
     await applyIdempotencyReferenceTypeStage();
+
+    // ── V1-M20 (R108, final-hardening FH-A7 P0): drop the V1-M12 ──
+    // orders(id) FK from idempotency_keys.order_id — the column is a
+    // polymorphic reference now (reference_type-discriminated) and the
+    // wallet topup-create claim writes wallet_topups.id into it. Must run
+    // BEFORE the first post-cutover topup; idempotent + probe-gated. See
+    // applyIdempotencyDropOrderFkStage docs.
+    await applyIdempotencyDropOrderFkStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

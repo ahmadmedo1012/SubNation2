@@ -36,6 +36,7 @@
 import { db, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
+import { claimIdempotencyKey, isIdempotencyKeyViolation } from "../lib/idempotency";
 
 export class AdjustmentError extends Error {
   constructor(
@@ -68,6 +69,14 @@ export interface AdjustmentResult {
 export interface AdjustOptions {
   adminId: number;
   note: string; // required — audit trail must explain WHY
+  /**
+   * R108 (FH-A7 P1): durable idempotency backstop. Admin-scoped key
+   * (`u{adminId}:{clientKey}`) from the Idempotency-Key header. When set,
+   * the key is claimed INSIDE the adjustment transaction — a retry after
+   * a lost response (no Redis in the production/target shape, so the
+   * route middleware is a pass-through) can never re-apply the delta.
+   */
+  idempotencyKey?: string | null;
 }
 
 /**
@@ -111,6 +120,7 @@ export class AdjustmentService {
       userId,
       adminId: options.adminId,
       note: safeNote,
+      idempotencyKey: options.idempotencyKey,
       computeNext: (current) => +(current + delta).toFixed(2),
     });
   }
@@ -134,6 +144,7 @@ export class AdjustmentService {
       userId,
       adminId: options.adminId,
       note: safeNote,
+      idempotencyKey: options.idempotencyKey,
       computeNext: () => +target.toFixed(2),
     });
   }
@@ -151,11 +162,12 @@ interface AdjustmentTxParams {
   userId: number;
   adminId: number;
   note: string;
+  idempotencyKey?: string | null;
   computeNext: (current: number) => number;
 }
 
 async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<AdjustmentResult> {
-  const { userId, adminId, note, computeNext } = params;
+  const { userId, adminId, note, idempotencyKey, computeNext } = params;
 
   return db.transaction(async (tx) => {
     const [user] = await tx
@@ -214,6 +226,33 @@ async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<Adj
       },
       tx as unknown as typeof db,
     );
+
+    // R108 (FH-A7 P1): durable claim — committed atomically with the
+    // wallet write + ledger row; a rollback releases the key for the
+    // client's retry. This is the last customer-money-adjacent mutation
+    // that relied solely on the Redis middleware (a documented
+    // pass-through in the no-Redis production/target shape). A same-key
+    // retry after a lost response now maps to a clean 409 instead of a
+    // silently re-applied delta. Mirrors the R102 loyalty pattern.
+    if (idempotencyKey) {
+      try {
+        await claimIdempotencyKey(
+          tx as unknown as typeof db,
+          idempotencyKey,
+          null,
+          "admin.adjustment",
+        );
+      } catch (err) {
+        if (isIdempotencyKeyViolation(err)) {
+          throw new AdjustmentError(
+            409,
+            "CONCURRENCY_ERROR",
+            "تم تطبيق هذا التعديل مسبقاً بنفس مفتاح الحفظ",
+          );
+        }
+        throw err;
+      }
+    }
 
     return {
       userId,
