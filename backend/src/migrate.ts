@@ -6,19 +6,38 @@ import { logger } from "./lib/logger";
 
 /**
  * R104 (AG5-1 / AG6-1 — cold-start fast-path): build-time fingerprint of
- * THIS file, injected by build.mjs as an esbuild `define`
- * (sha256 of src/migrate.ts). Steady-state cold starts were paying ~141
- * sequential no-op DB round trips (2-7 s on 0.1 CPU + a cold Neon
- * resume) on EVERY Render free-tier wake — the dominant readiness cost.
+ * the migration corpus, injected by build.mjs as an esbuild `define`.
+ * Steady-state cold starts were paying ~141 sequential no-op DB round trips
+ * (2-7 s on 0.1 CPU + a cold Neon resume) on EVERY Render free-tier wake —
+ * the dominant readiness cost.
  *
- * When the fingerprint matches the value persisted in system_settings
- * after the last successful full reconcile, runMigrations() skips the
- * entire replay. Any edit to this file changes the hash → one full
- * reconcile on the next boot → new hash persisted. Tests/dev (no
- * define) see `undefined` → always full run, semantics unchanged.
+ * r110 (109-e P2-2): the marker is now a VERSIONED COMPOSITE —
+ * `v2:<codeHash>:<schemaHash>` — computed at build time by build.mjs.
+ *   - <codeHash>  = sha256 of src/migrate.ts (the migration engine);
+ *   - <schemaHash> = sha256 of shared/db/src/schema/*.ts + the emitted
+ *     drizzle chain (shared/db/drizzle/*.sql + meta/*), so OUT-OF-BAND
+ *     schema/SQL edits (a schema TS tweak, a regenerated chain, a hand
+ *     edit to a chain file) also invalidate the fast-path, not just
+ *     migrate.ts edits.
+ * Markers written by older builds (bare 64-hex, no schema component)
+ * naturally FAIL the strict-equality compare → exactly one full
+ * reconcile → the v2 marker is written. No legacy marker is ever
+ * parsed, so the upgrade path cannot crash.
+ *
+ * When the marker matches the value persisted in system_settings after
+ * the last successful full reconcile, runMigrations() skips the entire
+ * replay. Any edit to the corpus changes the hash → one full reconcile
+ * on the next boot → new hash persisted. Tests/dev (no define) see
+ * `undefined` → always full run, semantics unchanged.
  * `MIGRATIONS_FORCE_RECONCILE` (true/1/yes — R108 accepts all three)
  * bypasses the fast-path; deleting the system_settings row forces a
  * full reconcile too.
+ *
+ * r110 (109-e P2-1): the marker is persisted ONLY when the run fully
+ * reconciled — a run that took any constraint-skip alert path (probe →
+ * alert instead of ALTER) leaves the stored marker UNTOUCHED so the
+ * next boot re-runs the reconcile and actually applies what was
+ * skipped ("reboot to apply" must not silently no-op on the fast-path).
  */
 declare const __MIGRATIONS_FINGERPRINT__: string | undefined;
 
@@ -65,6 +84,75 @@ export async function writeStoredMigrationFingerprint(fingerprint: string): Prom
     // reconciles again (idempotent).
     logger.warn({ err }, "migrations.fingerprint write skipped (non-fatal)");
   }
+}
+
+// ── r110 (109-e P2-1): constraint-skip tracking ────────────────────────────
+//
+// Every probe→alert skip path in the V1-M9/M10/M17 stages records its
+// dedupe key here. runMigrations() resets the list at the top of each
+// invocation (boot-migrations.ts transient retries re-run from the top)
+// and refuses to persist the fast-path marker while it is non-empty —
+// a skipped constraint means the reconcile did NOT fully converge, so
+// the next boot must re-run it instead of fast-pathing over the gap
+// (the old behavior: marker persisted → "reboot to apply" silently
+// no-opped forever). Tests reset via the seam between stage runs.
+let constraintSkipKeys: string[] = [];
+
+/** Test-only: clear the per-run constraint-skip state. */
+export function __resetConstraintSkipStateForTests(): void {
+  constraintSkipKeys = [];
+}
+
+/** Skip paths recorded during the current/last reconcile run (dedupe keys). */
+export function getConstraintSkipAlerts(): string[] {
+  return [...constraintSkipKeys];
+}
+
+/** r110 (109-e P2-1): record a constraint-skip (called by every skip path). */
+function recordConstraintSkip(dedupeKey: string): void {
+  constraintSkipKeys.push(dedupeKey);
+}
+
+/**
+ * r110 (109-e P2-1): the marker-persist gate runMigrations() ends with.
+ *
+ * Persists the build fingerprint ONLY when the run fully reconciled
+ * (zero constraint-skip alert paths). A skip leaves the stored marker
+ * untouched — whatever it was — so the next boot's compare fails and
+ * the full reconcile re-runs (and re-alerts, deduped 24h) until the
+ * operator fixes the data. No-op when the fingerprint is undefined
+ * (tests/dev — no build-time define).
+ */
+export async function persistMigrationFingerprintAfterRun(): Promise<void> {
+  if (!MIGRATIONS_FINGERPRINT) return;
+  if (constraintSkipKeys.length > 0) {
+    logger.warn(
+      { category: "storage", skipped: [...constraintSkipKeys] },
+      "[migrations] constraint-skip alert path fired — fingerprint NOT persisted; the next boot re-runs the full reconcile (r110)",
+    );
+    return;
+  }
+  await writeStoredMigrationFingerprint(MIGRATIONS_FINGERPRINT);
+}
+
+// ── r110 (109-e P2-2): v2 composite marker diagnostics ─────────────────────
+//
+// The marker format is `v2:<codeHash>:<schemaHash>` (see build.mjs). The
+// fast-path compare stays strict string equality — old bare-hex markers
+// simply never match — but on mismatch we can tell ops WHICH component
+// moved. Pure function over opaque strings; never throws.
+function describeMarkerMismatch(stored: string, current: string): string {
+  const parts = (m: string): [string, string, string] | null => {
+    const segs = m.split(":");
+    return segs.length === 3 && segs[0] === "v2" ? (segs as [string, string, string]) : null;
+  };
+  const s = parts(stored);
+  const c = parts(current);
+  if (s && c) {
+    if (s[1] === c[1]) return "schema component changed (out-of-band schema/chain edit detected)";
+    if (s[2] === c[2]) return "migration engine code changed";
+  }
+  return "marker format/components changed (legacy or diverged marker)";
 }
 
 /** Minimal executor signature so boot-critical SQL helpers stay unit-testable. */
@@ -134,6 +222,10 @@ export async function ensurePgTrgmExtension(
 }
 
 async function alertMoneyConstraintIssue(title: string, message: string, dedupeKey: string) {
+  // r110 (109-e P2-1): a skip path is being taken — record it BEFORE the
+  // alert dispatch (a dispatch failure must not un-record the skip; the
+  // operator fix + reboot still has to re-run the reconcile).
+  recordConstraintSkip(dedupeKey);
   logger.error({ category: "monitoring", dedupeKey }, message);
   try {
     // Lazy import — same circular-load avoidance as the V1-M8 block below
@@ -897,6 +989,9 @@ export async function applyProductVariantsNullsNotDistinctStage(
     `),
   );
   if (dupRows.length > 0) {
+    // r110 (109-e P2-1): same tracker discipline as the alertMoneyConstraint
+    // paths — a skipped rebuild must block the fast-path marker for this run.
+    recordConstraintSkip("db:constraint:uniq_product_variants_plan_duration");
     logger.error(
       { category: "storage", duplicates: dupRows.length },
       "V1-M17 SKIPPED: NULL-equal duplicate variant rows found — dedupe manually, then reboot to apply NULLS NOT DISTINCT",
@@ -1061,12 +1156,20 @@ export async function applyIdempotencyDropOrderFkStage(
 
 export async function runMigrations() {
   try {
+    // r110 (109-e P2-1): per-run skip state — transient retries in
+    // boot-migrations.ts re-run from the top, so each attempt starts clean.
+    constraintSkipKeys = [];
+
     // ── R104 fingerprint fast-path ────────────────────────────────────────
     // One SELECT replaces ~141 no-op round trips when this build's
     // migrate.ts is byte-identical to the last fully-reconciled one.
     // R108 (FH-A5 P2-2): accept the common truthy spellings — the old
     // exact-"true" comparison silently NO-OPPED the documented
     // `=1` recipe (a forced reconcile that didn't force anything).
+    // r110 (109-e P2-2): the marker is the v2 composite (codeHash +
+    // schemaHash) — a stale/absent schema component (old bare-hex
+    // markers, out-of-band schema/chain edits) fails this compare and
+    // forces exactly one full reconcile, then the new marker is written.
     const forceReconcile = ["true", "1", "yes"].includes(
       (process.env.MIGRATIONS_FORCE_RECONCILE ?? "").trim().toLowerCase(),
     );
@@ -1081,7 +1184,7 @@ export async function runMigrations() {
       }
       if (stored !== null) {
         logger.info(
-          { category: "storage" },
+          { category: "storage", reason: describeMarkerMismatch(stored, MIGRATIONS_FINGERPRINT) },
           "[migrations] fingerprint changed — running full reconcile",
         );
       }
@@ -2842,9 +2945,10 @@ export async function runMigrations() {
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.
-    if (MIGRATIONS_FINGERPRINT) {
-      await writeStoredMigrationFingerprint(MIGRATIONS_FINGERPRINT);
-    }
+    // r110 (109-e P2-1): gated by persistMigrationFingerprintAfterRun —
+    // a run that skipped a constraint (probe → alert path) leaves the
+    // stored marker untouched so the next boot re-runs the reconcile.
+    await persistMigrationFingerprintAfterRun();
   } catch (err) {
     logger.error({ err }, "Startup migration failed");
     // P0-4: RE-THROW. boot-migrations.ts classifies the error and

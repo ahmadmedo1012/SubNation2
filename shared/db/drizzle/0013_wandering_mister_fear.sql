@@ -1,0 +1,14 @@
+-- r110 (109-q P1): re-emit the drizzle chain after 39bedf4 removed the
+-- `.references()` from idempotency-keys.ts — the CI drift gate (generate +
+-- git diff --exit-code) was RED at HEAD because the chain never followed.
+--
+-- Hand-hardened with IF EXISTS (109-e double-drop guard): drizzle-kit emits
+-- a plain DROP CONSTRAINT, but the runtime twin (migrate.ts V1-M20) already
+-- dropped this FK by-any-name on every live database — the runtime chain's
+-- V1-M12 created it via inline REFERENCES under the PG auto-name
+-- idempotency_keys_order_id_fkey, NEVER under the drizzle name above. A
+-- plain DROP would therefore raise SQLSTATE 42704 the moment this chain was
+-- applied to a runtime-built database (manual drizzle-kit migrate / a future
+-- wiring). IF EXISTS keeps 0013 a no-op there while still dropping the
+-- 0007-era constraint on chain-built databases.
+ALTER TABLE "idempotency_keys" DROP CONSTRAINT IF EXISTS "idempotency_keys_order_id_orders_id_fk";
