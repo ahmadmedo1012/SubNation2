@@ -15,7 +15,8 @@
  *   - origin consistency (CORS/CSRF/Socket.IO allowlist vs canonical URL
  *     vs VITE_APP_ORIGIN);
  *   - dangerous combinations (DISABLE_WEB_SCHEDULERS with no worker,
- *     drain budget > compose kill window, demo seed into prod, …).
+ *     drain budget > compose kill window, demo seed into prod, no-Redis
+ *     scheduler economics without SINGLE_INSTANCE_MODE, …).
  *
  * MASKING IS A HARD REQUIREMENT (mission §44): this script NEVER prints a
  * secret value — only variable NAMES, lengths, boolean shape results, and
@@ -183,10 +184,14 @@ export function runBootSubset({ env, templateValues }: BootSubsetInput): string[
     }
   }
 
-  // Forbidden equality among independent secrets.
-  const present = SECRET_VARS.filter((n) => get(n) !== undefined);
+  // Forbidden equality among independent secrets (r110: full family —
+  // 109-q — previously SESSION_SECRET==OPENWA_API_KEY passed clean).
+  // The gateway parity pair is the one REQUIRED equality: exempt here,
+  // enforced as must-be-EQUAL by the parity rule below.
+  const present = INDEPENDENT_SECRET_FAMILY.filter((n) => get(n) !== undefined);
   for (let i = 0; i < present.length; i++) {
     for (let j = i + 1; j < present.length; j++) {
+      if (isGatewayParityPair(present[i], present[j])) continue;
       if (secretEqual(get(present[i]), get(present[j]))) {
         out.push(`${present[i]} and ${present[j]} are EQUAL — independent secrets must differ`);
       }
@@ -220,6 +225,28 @@ const SECRET_VARS = [
   "OTP_HMAC_KEY",
   "DASHBOARD_SESSION_SECRET",
 ] as const;
+
+// (r110, 109-q) Independent-secret family for the forbidden-equality
+// rules: no member may EQUAL a different member. Extends SECRET_VARS with
+// the gateway pair and the dashboard password, which were previously only
+// placeholder-checked — so SESSION_SECRET==OPENWA_API_KEY (== the OTP key,
+// == DASHBOARD_PASSWORD) used to pass clean. Only the boot-level
+// SESSION vs ADMIN_JWT equality was enforced anywhere (jwt.ts:66).
+const INDEPENDENT_SECRET_FAMILY = [
+  ...SECRET_VARS,
+  "OPENWA_API_KEY",
+  "WHATSAPP_OTP_API_KEY",
+  "DASHBOARD_PASSWORD",
+] as const;
+
+// The ONE documented REQUIRED equality: gateway parity (the openwa
+// requireKey timing-safe compare rejects anything else). Exempt from the
+// cross-equality rule above and enforced as must-be-EQUAL instead.
+const GATEWAY_PARITY_PAIR = new Set(["OPENWA_API_KEY", "WHATSAPP_OTP_API_KEY"]);
+
+function isGatewayParityPair(a: string, b: string): boolean {
+  return a !== b && GATEWAY_PARITY_PAIR.has(a) && GATEWAY_PARITY_PAIR.has(b);
+}
 
 // ── Full validation (file + profile aware) ─────────────────────────────────
 
@@ -298,6 +325,13 @@ function main(): void {
   if (opts.profile === "compose") {
     required.push(
       ["OPENWA_API_KEY", "gateway container refuses to start (open relay guard)"],
+      // (r110, 109-h) the compose template marks this REQUIRED but nothing
+      // enforced it — absence silently degrades session-credentials
+      // encryption to the API-key-derived key (secret separation lost).
+      [
+        "OPENWA_CREDENTIALS_KEY",
+        "gateway degrades to API-key-derived credentials encryption (separation lost)",
+      ],
       ["PERSISTENCE_URL", "WhatsApp sessions will not survive restarts"],
       ["WHATSAPP_OTP_BASE_URL", "OTP bridge has no gateway address"],
       ["WHATSAPP_OTP_API_KEY", "OTP bridge cannot authenticate to the gateway"],
@@ -391,13 +425,14 @@ function main(): void {
 
   // ── 3. Placeholders / unsafe defaults ──────────────────────────────────
   for (const name of [
+    // (r110, 109-q) OTP_HMAC_KEY already arrives via SECRET_VARS — it was
+    // listed twice here, double-reporting every placeholder error.
     ...SECRET_VARS,
     "DATABASE_URL",
     "PERSISTENCE_URL",
     "OPENWA_API_KEY",
     "WHATSAPP_OTP_API_KEY",
     "DASHBOARD_PASSWORD",
-    "OTP_HMAC_KEY",
   ]) {
     if (!isSet(env, name)) continue;
     report.checked++;
@@ -414,9 +449,15 @@ function main(): void {
   }
 
   // ── 4. Equal secrets ───────────────────────────────────────────────────
-  const presentSecrets = [...SECRET_VARS].filter((n) => isSet(env, n));
+  // (r110, 109-q) Cross-check the FULL independent-secret family — the
+  // old SECRET_VARS-only set let SESSION_SECRET==OPENWA_API_KEY (== the
+  // OTP key, == DASHBOARD_PASSWORD) pass clean. The gateway parity pair is
+  // the one documented REQUIRED equality: exempt here, enforced as
+  // must-be-EQUAL by the parity rule directly below.
+  const presentSecrets = [...INDEPENDENT_SECRET_FAMILY].filter((n) => isSet(env, n));
   for (let i = 0; i < presentSecrets.length; i++) {
     for (let j = i + 1; j < presentSecrets.length; j++) {
+      if (isGatewayParityPair(presentSecrets[i], presentSecrets[j])) continue;
       report.checked++;
       if (secretEqual(get(presentSecrets[i]), get(presentSecrets[j]))) {
         report.add(
@@ -523,12 +564,34 @@ function main(): void {
     ["true", "1", "yes"].includes((get(name) ?? "").trim().toLowerCase());
   const isTrue = (name: string) => (get(name) ?? "").trim().toLowerCase() === "true";
 
-  if (isTrue("DISABLE_WEB_SCHEDULERS") && !isSet(env, "WORKER_TIER")) {
+  // (r110, 109-q) WORKER_TIER is a VALUE flag, not a presence flag: every
+  // reader compares === "true" (cron runner gates in jobs/cron.ts, logger /
+  // sentry service naming). WORKER_TIER=false used to satisfy this guard
+  // while every cron stayed dead.
+  if (isTrue("DISABLE_WEB_SCHEDULERS") && !isTrue("WORKER_TIER")) {
     report.checked++;
     report.add(
       "error",
       "DISABLE_WEB_SCHEDULERS",
-      "true with no WORKER_TIER — every cron/alert is silently dead",
+      'true but WORKER_TIER is not "true" — every cron/alert is silently dead',
+    );
+  }
+  // (r110, 109-d/109-q) Scheduler-economics gate: with REDIS_URL unset the
+  // leader lock falls back to the PG lease — a 25 s refresher against
+  // Postgres that keeps Neon compute awake 24/7 (144 q/h ≈ 720 awake-h/mo
+  // vs ~192 free) unless SINGLE_INSTANCE_MODE=true declares single-
+  // container scheduler ownership. This is the R108 P0 regression shape
+  // this gate was built to prevent; it previously passed clean.
+  if (
+    (opts.profile === "compose" || opts.strict) &&
+    !isSet(env, "REDIS_URL") &&
+    !isTrue("SINGLE_INSTANCE_MODE")
+  ) {
+    report.checked++;
+    report.add(
+      "error",
+      "SINGLE_INSTANCE_MODE",
+      'REDIS_URL is unset and SINGLE_INSTANCE_MODE is not "true" — the scheduler runs the 25 s PG-lease refresher against Postgres around the clock (Neon autosuspend defeated; set SINGLE_INSTANCE_MODE=true on the single-container shape or provision REDIS_URL)',
     );
   }
   if (

@@ -22,7 +22,7 @@
 |---|---|---|---|---|
 | `AUTH_COOKIE_SAMESITE` | ✖ | `lax` prod-safe | `app.ts` cookie flags | same-origin now; `none` only for the old split |
 | `REDIS_URL` | ✔ | unset | `lib/redis-client.ts` + consumers | unset = in-memory fallbacks (current prod shape, by design — /healthz reads `ok` with a single-tier note since r108); set-but-down = capped backoff, boot degrades ≤8 s, never exits |
-| `SINGLE_INSTANCE_MODE` | ✖ | `false` | `lib/web-scheduler.ts` (R108) | **`true` = the Oracle single-container shape**: schedulers run ungated in-process, NO leader election, NO PG-lease heartbeat, ZERO periodic Neon coordination queries (idle Neon autosuspend preserved — the lease alone would burn ~720 awake-h/mo vs ~192 free). All jobs keep running; election machinery intact for a flip-back. NEVER scale the service >1 replica in this mode (double-run). Precedence: `DISABLE_WEB_SCHEDULERS=true` still wins |
+| `SINGLE_INSTANCE_MODE` | ✖ | `false` | `lib/web-scheduler.ts` (R108) | **`true` = the Oracle single-container shape**: schedulers run ungated in-process, NO leader election, NO PG-lease heartbeat, ZERO periodic Neon coordination queries (idle Neon autosuspend preserved — the lease alone would burn ~720 awake-h/mo vs ~192 free). All jobs keep running; election machinery intact for a flip-back. NEVER scale the service >1 replica in this mode (double-run). Precedence: `DISABLE_WEB_SCHEDULERS=true` still wins. r110: pinned `true` in render.yaml and enforced by `validate-production-env` (compose profile / strict mode errors when REDIS_URL is unset without it) |
 | `DISABLE_WEB_SCHEDULERS` | ✖ | `false` | `lib/web-scheduler.ts` | **true with no worker = all crons silently dead** (keep false; wins over SINGLE_INSTANCE_MODE) |
 | `DISABLE_BOOT_MIGRATIONS` | ✖ | `false` | `server.ts` | emergency rollback hatch only |
 | `MIGRATIONS_FORCE_RECONCILE` | ✖ | `false` | `backend/src/migrate.ts` | accepts `true`/`1`/`yes` (r108) — bypasses the fingerprint fast-path → full reconcile on next boot |
@@ -35,6 +35,7 @@
 | `SCHEDULER_OP_TIMEOUT_MS` | ✖ | `2000` | leadership ops | test/ops override |
 | `GIT_SHA` | ✖ | — | `lib/release-sha.ts` | falls to RENDER_GIT_COMMIT → "unknown" (cosmetic) |
 | `SLOW_QUERY_THRESHOLD_MS` | ✖ | `250` | db instrumentation | warn-log only |
+| `LOG_LEVEL` | ✖ | `info` | `lib/logger.ts` (pino) | r110 matrix gap: trace/debug/info/warn/error/fatal; also read by openwa's logger |
 | `SENTRY_DSN` / `SENTRY_TRACES_SAMPLE_RATE` / `SENTRY_PROFILES_SAMPLE_RATE` | DSN ✖ | `0.1` / `0` | `lib/sentry.ts` | unset = Sentry off cleanly; profiles default 0 since r108 (small-server intent — matches this row exactly now) |
 | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` | ✔ | — | `build.mjs` sourcemaps | unset = upload silently skipped |
 | `SENTRY_DASHBOARD_URL` / `NEON_DASHBOARD_URL` / `RENDER_DASHBOARD_URL` | ✖ | — | admin observability links | unset = link hidden |
@@ -51,6 +52,7 @@
 | `OTP_HMAC_KEY` | ✔ | derives from SESSION_SECRET | `whatsapp-otp.service.ts` | explicit key recommended in prod |
 | `ENRICHMENT_RUNNER_ENABLED` / `FORECAST_RUNNER_ENABLED` | ✖ | `false` | runners | worker-tier gated, inert today |
 | `FRONTEND_ORIGINS` / `VERCEL_FRONTEND_ORIGIN` | ✖ | unset | `lib/origins.ts` | r108 matrix addition: EXTRA origins for the legacy split deployment (Vercel→Render); leave unset on the single-origin stack (lax cookies reject cross-site anyway) |
+| `CSRF_ALLOWED_ORIGINS` | ✖ | unset | `app.ts` CSRF gate | r110 matrix gap: explicit override extending the Origin/Referer allow-list beyond APP_ORIGINS (comma-separated, exact match); unset = APP_URL/APP_ORIGINS set only; empty allow-list in prod = boot abort |
 | `FULFILLMENT_PROVIDER` | ✖ | `manual` (fail-safe) | `services/fulfillment/` registry (r102) | unset = ManualProvider (claim block flow); future providers register here |
 | `RISK_PIPELINE_ENABLED` | ✖ | dormant unless `true` | `lib/risk-emit.ts` | dark-launch gate; keep unset unless operating the risk pipeline |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_RESET_PASSWORD` | PASSWORD ✔ | — | seed script only | never needed at runtime |
@@ -75,7 +77,7 @@
 |---|---|---|---|---|
 | `OPENWA_API_KEY` | ✔ | ✔ | — | exit(1) at boot; also gates persistence + dashboard secret fallback |
 | `PERSISTENCE_URL` | ✔* | ✔ | unset = no persistence | *required for session survival across restarts; gateway otherwise runs on the local folder |
-| `OPENWA_CREDENTIALS_KEY` | rec | ✔ | derives from API key | set once, ≥32 chars, never rotate casually |
+| `OPENWA_CREDENTIALS_KEY` | ✔ (r110: validator-required in the compose profile) | ✔ | derives from API key | set once, ≥32 chars; 1st rotation (legacy API-key blobs) re-keys transparently on first read — a 2nd rotation is NOT transparent (legacy slot accepts the API key only → forced QR re-pair) |
 | `DATA_DIR` | ✖ | ✖ | `/data` (Dockerfile) | mount the volume or lose the hot folder |
 | `PORT` | ✖ | ✖ | `2785` | compose sets it per-service |
 | `LOG_LEVEL` | ✖ | ✖ | `info` | |
