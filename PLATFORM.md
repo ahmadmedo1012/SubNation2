@@ -1,5 +1,15 @@
 # SubNation2 Platform
 
+> **Status banner (2026-09-22, r107):** the platform is MIGRATION-READY for
+> self-hosted Oracle Cloud (ARM64) + Coolify + Docker. The app code is
+> hosting-agnostic (r107 audit: no Render/Vercel runtime coupling; all
+> `RENDER_*` reads degrade gracefully; a neutral `GIT_SHA` release identity
+> now covers every platform). Artifacts: `docker-compose.yml` (full stack),
+> `deploy/env.compose.example`, `scripts/docker-verify.sh`, multi-arch image
+> workflows, and `docs/deployment/{COOLIFY_ORACLE_MIGRATION,MIGRATION_RUNBOOK,
+> ENVIRONMENT_MATRIX}.md` + `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
+> Render/Vercel remain live as the rollback path until the DNS cutover.
+>
 > **Status banner (2026-09-20):** this file is a snapshot dated 2026-09-02 and
 > its "all working / LIVE" claims predate the free-infrastructure round. For
 > current state see **OPERATIONS_RUNBOOK §5 (free-tier posture)** and

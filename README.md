@@ -111,7 +111,30 @@ docker build -t subnation .
 docker run -p 8080:8080 --env-file .env subnation
 ```
 
-### Render (production)
+**Full stack with the WhatsApp gateway** (self-hosted / local — r107):
+
+```bash
+cp deploy/env.compose.example .env          # fill the required secrets
+git clone https://github.com/ahmadmedo1012/openwa ../openwa
+docker compose up -d --build                # subnation :3000 + openwa :3001 (localhost-bound)
+```
+
+Single-origin contract: leave `VITE_API_BASE_URL` / `VITE_SOCKET_URL` /
+`VITE_API_URL` empty — the backend serves the SPA, the browser uses relative
+`/api` paths and same-origin WebSockets. Verify a deployment with
+`./scripts/docker-verify.sh` (build + health gate + graceful-drain proof;
+`--arm64` cross-builds the Oracle Ampere target via QEMU).
+
+### Self-hosted: Oracle Cloud + Coolify (target topology)
+
+The platform is hosting-agnostic (no Render/Vercel runtime coupling — r107
+audit) and runs as the two Docker images above behind Coolify on an Oracle
+Always Free ARM64 VM, with Neon staying external. Full guide + runbook:
+`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
+`docs/deployment/MIGRATION_RUNBOOK.md`; target architecture:
+`docs/architecture/PRODUCTION_ARCHITECTURE.md`.
+
+### Render (current production)
 
 Services: a **single free-tier web service** (`subnation`, serves API + SPA) + a
 separate **openwa-gateway** web service (WhatsApp OTP relay, built from the

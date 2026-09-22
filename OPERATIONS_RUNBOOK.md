@@ -249,10 +249,14 @@ service into a 24/7 instance-hour burner (one forgotten tab ≈ 730 h/mo).
 ### Remaining recurring activity (the complete timer inventory)
 
 While AWAKE (zero cost while sleeping — see AG1 inventory for file:line):
-PG-lease refresh 30 s (1 query), alerting evaluator 60 s (in-process
+PG-lease refresh 25 s (1 query — R104 AG1-1; R107 made the cadence
+env-tunable: SCHEDULER_LEASE_REFRESH_MS / SCHEDULER_LEASE_TTL_SEC, defaults
+25 s/60 s), alerting evaluator 60 s (in-process
 counters only), boot one-shots once per leadership (+7 s deferral),
 daily crons 00:00-05:00 UTC under the leader lock. NOTHING runs while
-the service sleeps; nothing sends outbound while idle.
+the service sleeps; nothing sends outbound while idle. NOTE for the
+always-on (Oracle/Coolify) topology: the refresher then runs 24/7 — see
+docs/deployment/COOLIFY_ORACLE_MIGRATION.md §9 for the Neon-awake trade.
 
 ### Inspection & alarm thresholds
 
