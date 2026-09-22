@@ -71,9 +71,17 @@ ARG VITE_FIREBASE_STORAGE_BUCKET=""
 ARG VITE_FIREBASE_MESSAGING_SENDER_ID=""
 ARG VITE_FIREBASE_MEASUREMENT_ID=""
 ARG VITE_GSC_VERIFICATION=""
+# R107 (migration): gateway docs deep-link override for the admin
+# WhatsApp page. Empty default = the built-in Render URL (current prod).
+ARG VITE_OPENWA_DOCS_URL=""
 # Render injects RENDER_GIT_COMMIT automatically; we surface it to Vite as
 # VITE_RELEASE_SHA so Sentry's release tag matches uploaded source maps.
 ARG RENDER_GIT_COMMIT=""
+# R107 (migration): neutral release identity — Coolify / GHCR / CI builds
+# pass GIT_SHA; it wins over RENDER_GIT_COMMIT everywhere (backend
+# getReleaseSha(), sourcemap upload, runtime ENV) so version telemetry
+# survives the move off Render without platform-specific code.
+ARG GIT_SHA=""
 
 ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_API_URL=$VITE_API_URL \
@@ -92,6 +100,7 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID \
     VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID \
     VITE_GSC_VERIFICATION=$VITE_GSC_VERIFICATION \
+    VITE_OPENWA_DOCS_URL=$VITE_OPENWA_DOCS_URL \
     VITE_RELEASE_SHA=$RENDER_GIT_COMMIT
 
 # R104 (AG12-1): build ONLY. The root `pnpm run build` chains
@@ -100,15 +109,24 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 # shared 500/mo free-tier budget). CI (.github/workflows/ci.yml) and
 # the deploy gate already own those gates; a manual deploy of a red-CI
 # commit is the operator's explicit override.
-RUN pnpm --filter @workspace/api-server run build
+#
+# R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
+# reliance on Dockerfile ENV substitution) so GIT_SHA wins over
+# RENDER_GIT_COMMIT for the Sentry release tag on any platform.
+RUN VITE_RELEASE_SHA="${GIT_SHA:-${VITE_RELEASE_SHA}}" \
+    pnpm --filter @workspace/api-server run build
 
 # --- runtime: lean image with production deps and built artifacts -------------
 FROM node:${NODE_VERSION} AS runtime
 WORKDIR /app
+# R107: GIT_SHA re-declared + re-exported so the runtime process reads its
+# release identity through getReleaseSha() on every platform.
+ARG GIT_SHA=""
 ENV NODE_ENV=production \
     PORT=8080 \
     FRONTEND_DIST=/app/frontend/dist/public \
-    TZ=UTC
+    TZ=UTC \
+    GIT_SHA=$GIT_SHA
 # F6 (round-94 A6): TZ pinned explicitly — the cron slots in
 # backend/src/jobs/cron.ts are documented as UTC and previously relied on
 # Alpine's default-absent /etc/localtime (UTC by accident). A base-image
@@ -136,5 +154,15 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 USER node
 
 EXPOSE 8080
+
+# R107 (migration): container-native health check — Coolify/Docker/compose
+# all read this. wget is present in alpine's busybox; the probe rides the
+# SAME cheap public endpoint the orchestrators use (/api/healthz answers
+# 503 "starting" until the boot gate opens, then 200 — see server.ts).
+# start-period covers migrations + cold Neon (bounded 120 s write-wait);
+# interval 30 s keeps probe load negligible.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=150s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT}/api/healthz >/dev/null 2>&1 || exit 1
+
 # Run DB migrations, then start the API (which also serves the SPA).
 CMD ["pnpm", "--filter", "@workspace/api-server", "start"]

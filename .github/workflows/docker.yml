@@ -1,0 +1,101 @@
+# R107 (Oracle/Coolify migration): multi-arch Docker image build for the
+# SubNation backend image (linux/amd64 + linux/arm64 → GHCR).
+#
+# WHY: the production target is Oracle Cloud Always Free Ampere A1 (ARM64).
+# Building the image in CI means the small VM never compiles the pnpm
+# dependency tree — it only pulls and runs (see docs/deployment/
+# COOLIFY_ORACLE_MIGRATION.md §build-strategy for the trade-offs).
+#
+# TRIGGERS — deliberately NOT every push:
+#   - workflow_dispatch (manual, from the Actions tab)
+#   - version tags v* (release artifacts)
+# This repo is PRIVATE: GitHub Actions minutes are metered, and QEMU-emulated
+# arm64 builds are ~3-5× slower than native (~15-25 min each). The zero-cost
+# alternative is letting Coolify build from Git directly on the VM.
+#
+# STATUS: NOT YET VERIFIED on real infrastructure (no Docker in the r107
+# workspace + Actions minutes exhausted). Validate with a manual run before
+# relying on the published image.
+name: Docker Image (multi-arch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (defaults to the selected branch)"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Repo owner/name in lowercase is required by GHCR image naming.
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # semantic tags: v1.2.3 → 1.2.3, 1.2, latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=latest
+            # manual runs tag with the short SHA
+            type=sha,prefix=sha-
+            # branch builds (manual dispatch on main)
+            type=ref,event=branch
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          # NOTE (single-origin contract): every VITE_* API/socket var stays
+          # EMPTY — the image's SPA speaks relative /api paths to whatever
+          # origin serves it. Public VITE_ vars (Sentry DSN, Firebase, GA)
+          # are intentionally NOT baked here either: pass them in the
+          # Coolify build environment when you want per-environment control,
+          # or fork this step with the extra build-args.
+          cache-from: type=gha,scope=multi-arch
+          cache-to: type=gha,scope=multi-arch,mode=max

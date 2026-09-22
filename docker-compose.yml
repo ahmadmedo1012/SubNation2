@@ -1,0 +1,124 @@
+# =============================================================================
+# SubNation — full-stack Docker Compose (self-hosted / local)
+# =============================================================================
+#
+# R107 (Oracle Cloud + Coolify migration). Runs BOTH production components of
+# the platform in one shot:
+#
+#   subnation — Express API + Socket.IO + the built SPA, single origin,
+#               port 8080 (from THIS repository's Dockerfile)
+#   openwa    — WhatsApp Baileys gateway, port 2785
+#               (from a sibling clone of github.com/ahmadmedo1012/openwa,
+#               or a prebuilt image — see the two variants below)
+#
+# Neon PostgreSQL stays EXTERNAL (DATABASE_URL). Redis stays UNSET — the
+# app degrades to its in-memory/PG-lease fallbacks by design (single
+# container does not need it).
+#
+# USAGE (local / bare VM):
+#   1. cp deploy/env.compose.example .env      # fill secrets
+#   2. git clone https://github.com/ahmadmedo1012/openwa ../openwa  (if building locally)
+#   3. docker compose up -d --build
+#   4. open http://127.0.0.1:3000  (backend + SPA)
+#
+# SINGLE-ORIGIN CONTRACT — DO NOT BREAK:
+#   Leave VITE_API_BASE_URL / VITE_SOCKET_URL / VITE_API_URL EMPTY. The
+#   backend serves the SPA itself; empty build vars make the browser use
+#   relative /api paths and same-origin WebSockets (api-config.ts).
+#   Setting them to any absolute origin silently re-splits the deployment.
+#
+# COOLIFY NOTE:
+#   In Coolify's "Docker Compose" deployment you normally let Coolify own
+#   networking/domains — delete or adjust the `ports:` mappings if they
+#   conflict. The 127.0.0.1 host bindings below are safe-by-default for a
+#   bare VM (nothing publicly exposed except via your reverse proxy/SSH
+#   tunnel). Coolify's Traefik reaches containers over the compose network
+#   regardless of published ports.
+#
+# GRACEFUL SHUTDOWN:
+#   stop_grace_period is intentionally ABOVE each app's internal drain
+#   budget (subnation 25 s, openwa 4 s) so `docker compose down` / Coolify
+#   redeploys let the app exit cleanly (pool drain + Sentry flush + WhatsApp
+#   session flush) instead of being SIGKILLed mid-write.
+# =============================================================================
+
+name: subnation
+
+services:
+  subnation:
+    # ---- Variant A (default): build from this repository ---------------------
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # R107: neutral release identity — log/health/Sentry version tags.
+        GIT_SHA: ${GIT_SHA:-}
+        # Leave every VITE_* API/socket var EMPTY (single-origin contract).
+        # Public, non-secret build-time overrides only (optional):
+        VITE_APP_ORIGIN: ${VITE_APP_ORIGIN:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_GA_TRACKING_ID: ${VITE_GA_TRACKING_ID:-}
+        VITE_GSC_VERIFICATION: ${VITE_GSC_VERIFICATION:-}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_FIREBASE_AUTH_ENABLED: ${VITE_FIREBASE_AUTH_ENABLED:-}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_OPENWA_DOCS_URL: ${VITE_OPENWA_DOCS_URL:-}
+    # ---- Variant B: prebuilt image (e.g. GHCR, built by CI) ------------------
+    #   Comment out `build:` above and uncomment (adjust the ref):
+    # image: ghcr.io/ahmadmedo1012/subnation2:latest
+    env_file:
+      - .env
+    environment:
+      # PORT is per-service (both apps read PORT) — must NOT live in .env.
+      PORT: "8080"
+    ports:
+      - "${SUBNATION_HOST_PORT:-127.0.0.1:3000}:8080"
+    restart: unless-stopped
+    stop_grace_period: 40s
+    # Health check mirrors the Dockerfile's (explicit here so Coolify's
+    # compose parser sees it; /api/healthz = 503 "starting" → 200 ready).
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 150s
+
+  openwa:
+    # ---- Variant A (default): build from a sibling clone ---------------------
+    #   git clone https://github.com/ahmadmedo1012/openwa ../openwa
+    #   Override with OPENWA_REPO_DIR=... if the clone lives elsewhere.
+    build:
+      context: ${OPENWA_REPO_DIR:-../openwa}
+      dockerfile: Dockerfile
+    # ---- Variant B: prebuilt image -------------------------------------------
+    # image: ghcr.io/ahmadmedo1012/openwa:latest
+    env_file:
+      - .env
+    environment:
+      PORT: "2785"
+      DATA_DIR: /data
+    volumes:
+      # Baileys multi-file auth state. The DB (PERSISTENCE_URL) remains the
+      # source of truth for restart survival; the volume is defense-in-depth
+      # (keeps the hot auth folder across re-creations, faster restores).
+      - openwa-data:/data
+    ports:
+      - "${OPENWA_HOST_PORT:-127.0.0.1:3001}:2785"
+    restart: unless-stopped
+    # openwa's SIGTERM handler flushes sessions within 4 s (index.ts).
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2785/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  openwa-data:
