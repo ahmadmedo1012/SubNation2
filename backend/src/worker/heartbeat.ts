@@ -19,6 +19,7 @@
 import type { RedisClientType } from "redis";
 import { logger } from "../lib/logger";
 import { withRedisCommandTimeout } from "../lib/redis-client";
+import { getReleaseSha } from "../lib/release-sha";
 import { isolate } from "../middlewares/instrumentation-isolation";
 
 // Heartbeat configuration constants
@@ -26,8 +27,8 @@ const HEARTBEAT_INTERVAL_MS = 15_000; // 15 seconds
 const HEARTBEAT_TTL_SEC = 60; // 60 seconds TTL
 const HEARTBEAT_KEY = "worker:heartbeat";
 
-// Version from RENDER_GIT_COMMIT (7-char short SHA)
-const VERSION = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown";
+// Version from getReleaseSha() (GIT_SHA / RENDER_GIT_COMMIT, 7-char)
+const VERSION = getReleaseSha();
 
 // Track the interval for cleanup
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -35,7 +36,7 @@ let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 /**
  * Heartbeat payload structure.
  * ts: Unix timestamp in milliseconds
- * version: 7-character short SHA from RENDER_GIT_COMMIT
+ * version: 7-character release short SHA (GIT_SHA / RENDER_GIT_COMMIT)
  */
 interface HeartbeatPayload {
   ts: number;

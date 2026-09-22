@@ -45,6 +45,16 @@ interface PairCodeResponse {
   code: string;
 }
 
+// R107 (migration): gateway docs link is env-driven — the ONLY place a
+// gateway URL ever lived in executable frontend code. Default keeps the
+// current Render gateway working; a single-origin Coolify deployment sets
+// VITE_OPENWA_DOCS_URL=<gateway-origin>/api/docs at build time (Dockerfile
+// ARG). Backend gateway traffic itself was always env-driven
+// (WHATSAPP_OTP_BASE_URL) — this is the admin deep-link only, not a secret.
+const OPENWA_DOCS_URL: string =
+  (import.meta.env.VITE_OPENWA_DOCS_URL as string | undefined) ||
+  "https://openwa-gateway-7aaa.onrender.com/api/docs";
+
 const STATUS_META: Record<string, { label: string; tone: StatusBadgeVariant }> = {
   ready: { label: "جاهزة", tone: "success" },
   qr_ready: { label: "تنتظر QR", tone: "warning" },
@@ -262,7 +272,7 @@ export default function AdminWhatsAppPage() {
             </p>
           </div>
           <a
-            href="https://openwa-gateway-7aaa.onrender.com/api/docs"
+            href={OPENWA_DOCS_URL}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"

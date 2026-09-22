@@ -7,6 +7,7 @@ import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { getSchedulerState, type SchedulerStateSnapshot } from "../lib/scheduler-state";
 import { getIO } from "../lib/socket";
 import { logger } from "../lib/logger";
+import { getReleaseSha } from "../lib/release-sha";
 import { requireAdmin } from "../middlewares/requireAdmin";
 
 const router: IRouter = Router();
@@ -633,7 +634,7 @@ export async function computeReadyState(): Promise<HealthCheckResponseExtended> 
       fold(result);
     }
 
-    const version = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown";
+    const version = getReleaseSha();
     const uptimeSec = Math.floor(process.uptime());
 
     return {
@@ -704,7 +705,7 @@ function degradedAggregateSnapshot(err: unknown): HealthCheckResponseExtended {
       },
     },
     scheduler: getSchedulerState(),
-    version: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || "unknown",
+    version: getReleaseSha(),
     uptimeSec: Math.floor(process.uptime()),
   };
 }

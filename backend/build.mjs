@@ -151,7 +151,13 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   // present. After uploading, we delete the `.map` files from the deploy
   // artefact so end users never receive them — Sentry retains the maps and
   // resolves stack traces server-side via the release identifier.
-  const release = (process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7);
+  // R107: neutral release identity — GIT_SHA (Coolify/CI builds) with
+  // RENDER_GIT_COMMIT (Render injects it) as the legacy fallback.
+  const release = (
+    process.env.GIT_SHA ??
+    process.env.RENDER_GIT_COMMIT ??
+    "unknown"
+  ).slice(0, 7);
   if (
     process.env.SENTRY_AUTH_TOKEN &&
     process.env.SENTRY_ORG &&

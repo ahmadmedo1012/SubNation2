@@ -1,5 +1,7 @@
 import pino from "pino";
 
+import { getReleaseSha } from "./release-sha";
+
 const isProduction = process.env.NODE_ENV === "production";
 
 // Service/version binding - read once at process start (design §3.1.2)
@@ -9,7 +11,8 @@ const isProduction = process.env.NODE_ENV === "production";
 // WORKER_TIER=true is the flag render.yaml actually sets on the worker
 // service definition (same unification as sentry.ts's subsystem tag).
 const SERVICE_NAME = process.env.WORKER_TIER === "true" ? "worker" : "web";
-const VERSION = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? "unknown";
+// R107: neutral release identity (GIT_SHA → RENDER_GIT_COMMIT → unknown)
+const VERSION = getReleaseSha();
 
 /**
  * Structured log fields contract from design §4.2.
@@ -28,7 +31,7 @@ export interface StructuredLogFields {
   span?: string;
   trace?: string;
   service: "web" | "worker";
-  version: string; // RENDER_GIT_COMMIT short SHA
+  version: string; // release short SHA (GIT_SHA / RENDER_GIT_COMMIT)
   category?: "auth" | "worker" | "alerting" | "monitoring" | "cwv" | "seo";
 }
 

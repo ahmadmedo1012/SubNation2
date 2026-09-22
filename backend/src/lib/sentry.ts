@@ -40,6 +40,7 @@
 
 import * as Sentry from "@sentry/node";
 import { getCorrelationId } from "./correlation";
+import { getReleaseSha } from "./release-sha";
 
 // ─────────────────────────────────────────────────────────────────────
 // PII SANITIZATION
@@ -206,7 +207,7 @@ function readProcessTags(): ProcessTags {
     service_id: process.env.RENDER_SERVICE_ID ?? "subnation",
     deploy_id: process.env.RENDER_DEPLOY_ID ?? "dev",
     region: process.env.RENDER_REGION ?? process.env.AWS_REGION ?? "unknown",
-    git_commit: (process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7),
+    git_commit: getReleaseSha(),
     git_branch: process.env.RENDER_GIT_BRANCH ?? "unknown",
     // 99-C2 (R99-A2/A3 P2): WORKER_ROLE was never set anywhere (render.yaml
     // documents WORKER_TIER=true — read by cron.ts and the runners) so the
