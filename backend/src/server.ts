@@ -30,8 +30,19 @@ const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 const DEFAULT_FALLBACK_ATTEMPTS = 25;
 
 // B7-P1-6: hard ceiling for graceful drain — a hung connection must not
-// wedge the deploy; Render SIGTERMs into SIGKILL anyway if we overstay.
-const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 10_000;
+// wedge the deploy; the orchestrator SIGKILLs if we overstay.
+//
+// R107 (migration P2): default raised 10s → 25s and made env-tunable
+// (GRACEFUL_SHUTDOWN_TIMEOUT_MS). The documented worst-case in-flight
+// request is ~20s (WhatsApp OTP settle wait, server.ts requestTimeout=60s);
+// a 10s budget truncated those mid-byte on every restart. Set the Docker/
+// Coolify stop grace ABOVE this value (docker stop / stop_grace_period,
+// see docker-compose.yml) so the app's own orderly path — pool drain +
+// Sentry flush + exit(0) — always wins over SIGKILL.
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = Math.max(
+  1_000,
+  Number.parseInt(process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS ?? "", 10) || 25_000,
+);
 
 // ── B7-P1-8: early-bind readiness gate ───────────────────────────────────
 //
@@ -269,6 +280,21 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
     }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
     forceExit.unref?.();
 
+    // R107 (migration P1): evict idle keep-alive sockets IMMEDIATELY, before
+    // any awaited close. io.close() internally awaits httpServer.close(),
+    // which never settles while a reverse proxy (traefik/Coolify, Render's
+    // edge) holds pooled keep-alive backend connections — the old order
+    // (closeIdleConnections only inside step 3, AFTER the io.close() await)
+    // deadlocked the drain on exactly those connections until the 10s
+    // force-exit fired, skipping pool.end() and the Sentry flush on every
+    // restart. A repeating sweeper also catches sockets that go idle AFTER
+    // the signal (in-flight requests finishing during the drain window).
+    const idleSweeper = setInterval(() => {
+      httpServer.closeIdleConnections?.();
+    }, 2_000);
+    idleSweeper.unref?.();
+    httpServer.closeIdleConnections?.();
+
     void (async () => {
       try {
         // 1. Leader lock release first.
@@ -278,6 +304,8 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
       }
 
       // 2. Socket.IO transports.
+      //    (Drops WS clients so they don't pin the server; also closes the
+      //    underlying HTTP server — safe now that idle sockets are gone.)
       try {
         const io = getIO();
         if (io) await new Promise<void>((resolve) => io.close(() => resolve()));
@@ -289,7 +317,8 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
       await new Promise<void>((resolve) => {
         httpServer.close(() => resolve());
         // Idle keep-alive sockets would otherwise hold close() open for
-        // their full timeout (Node ≥18.2).
+        // their full timeout (Node ≥18.2). The sweeper above keeps this
+        // from hanging; this call covers the sub-2s window.
         httpServer.closeIdleConnections?.();
       });
 
@@ -306,7 +335,10 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
       } catch {
         // best-effort only
       }
-    })().finally(() => process.exit(0));
+    })().finally(() => {
+      clearInterval(idleSweeper);
+      process.exit(0);
+    });
   };
 
   process.on("SIGTERM", () => handleSignal("SIGTERM"));
