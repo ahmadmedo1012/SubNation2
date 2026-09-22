@@ -181,13 +181,62 @@ function getAllowedOrigins(): string[] {
  *     any origin including `undefined`. Local server tools and
  *     curl probes have no Origin header, which is fine in dev.
  *   - non-empty allowlist → strict. The Origin header MUST match
- *     one of the entries exactly. Missing/empty Origin is rejected.
+ *     one of the entries exactly. Missing/empty Origin is rejected —
+ *     EXCEPT the R107 same-origin rule below.
+ *
+ * R107 (migration fix — same-origin polling handshake): browsers do
+ * NOT send an Origin header on same-origin XHR GETs, and the
+ * socket.io client always starts with a polling handshake. On the
+ * split deployment (Vercel SPA → Render API) every handshake was
+ * cross-origin, so Origin was always present. On a single-origin
+ * deployment (Docker/Coolify: the backend serves the SPA itself)
+ * the very first handshake arrived Origin-less and was rejected →
+ * "unauthorized" reconnect loops. WS upgrades always carry Origin
+ * and were unaffected — the bug only bit the polling transport.
+ *
+ * Fix: when Origin is absent, accept the handshake if the request's
+ * Host header matches the host of an allowlist entry (hostname,
+ * case-insensitive; explicit ports must match the origin's effective
+ * port). The Host header is set by the browser from the request URL
+ * and forwarded verbatim by Cloudflare/traefik — it is not a
+ * client-side forgeable CSRF surface, and this branch grants NO
+ * identity: layer 2 (JWT) and layer 2b (DB liveness) still apply in
+ * full. A cross-site browser attacker still sends Origin
+ * (attacker.com) and fails; a non-browser attacker with a spoofed
+ * Host still needs a valid token.
  */
-export function isOriginAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
+export function isOriginAllowed(
+  origin: string | undefined,
+  allowedOrigins: string[],
+  host?: string | null,
+): boolean {
   // Permissive mode (dev) — empty allowlist accepts everything.
   if (allowedOrigins.length === 0) return true;
-  if (!origin || typeof origin !== "string") return false;
-  return allowedOrigins.includes(origin);
+  if (origin && typeof origin === "string") {
+    return allowedOrigins.includes(origin);
+  }
+  // R107: Origin-less request — allow only when the Host header proves
+  // the request targets one of the allowlist's own origins.
+  if (typeof host === "string" && host.length > 0) {
+    const hostLower = host.toLowerCase().trim();
+    const hostNoPort = hostLower.replace(/:\d+$/, "");
+    const hostPort = hostLower.includes(":") ? hostLower.slice(hostLower.indexOf(":") + 1) : null;
+    for (const allowed of allowedOrigins) {
+      try {
+        const url = new URL(allowed);
+        const allowedHost = url.hostname.toLowerCase();
+        const allowedPort = url.port || (url.protocol === "https:" ? "443" : "80");
+        if (hostNoPort !== allowedHost) continue;
+        // No explicit port on Host (proxied default) → hostname match is
+        // sufficient; an explicit port must equal the origin's effective one.
+        if (hostPort === null || hostPort === allowedPort) return true;
+      } catch {
+        // Malformed allowlist entry — skip it (matches strict-compare
+        // behavior, which would also never equal a real header).
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -826,10 +875,12 @@ export function initSocket(server: HttpServer) {
 
     // Layer 1: origin allowlist (cheapest fail-fast).
     const origin = socket.handshake.headers.origin as string | undefined;
-    if (!isOriginAllowed(origin, allowedOrigins)) {
+    const host = socket.handshake.headers.host as string | undefined;
+    if (!isOriginAllowed(origin, allowedOrigins, host)) {
       recordRejection("bad_origin", {
         socketId: socket.id,
         origin: origin ?? "<missing>",
+        host: host ?? "<missing>",
         remoteAddress: getRemoteAddr(socket),
       });
       return next(new Error("unauthorized"));

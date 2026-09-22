@@ -95,6 +95,51 @@ describe("isOriginAllowed (P0-2)", () => {
   });
 });
 
+// R107 (migration fix): same-origin polling handshakes carry no Origin
+// header — the Host header must vouch for them on single-origin
+// deployments (Docker/Coolify: backend serves the SPA itself).
+describe("isOriginAllowed same-origin Host fallback (R107)", () => {
+  const list = ["https://subnation.ly", "https://www.subnation.ly"];
+
+  it("accepts a missing Origin when Host matches an allowlist origin", () => {
+    expect(isOriginAllowed(undefined, list, "subnation.ly")).toBe(true);
+    expect(isOriginAllowed(undefined, list, "www.subnation.ly")).toBe(true);
+  });
+
+  it("Host match is case-insensitive and tolerates the https default port", () => {
+    expect(isOriginAllowed(undefined, list, "SubNation.LY")).toBe(true);
+    expect(isOriginAllowed(undefined, list, "subnation.ly:443")).toBe(true);
+  });
+
+  it("explicit non-default Host port must match the origin's effective port", () => {
+    expect(isOriginAllowed(undefined, list, "subnation.ly:8443")).toBe(false);
+    expect(isOriginAllowed(undefined, ["http://localhost:8080"], "localhost:8080")).toBe(true);
+    expect(isOriginAllowed(undefined, ["http://localhost:8080"], "localhost:3000")).toBe(false);
+  });
+
+  it("still rejects a missing Origin when Host matches nothing", () => {
+    expect(isOriginAllowed(undefined, list, "evil.com")).toBe(false);
+    expect(isOriginAllowed(undefined, list, "subnation.ly.evil.com")).toBe(false);
+    expect(isOriginAllowed(undefined, list, undefined)).toBe(false);
+    expect(isOriginAllowed(undefined, list, "")).toBe(false);
+  });
+
+  it("an EXPLICIT Origin always wins — bad Origin + good Host is rejected", () => {
+    expect(isOriginAllowed("https://evil.com", list, "subnation.ly")).toBe(false);
+  });
+
+  it("empty-string Origin falls through to the Host rule (browsers omit the header entirely)", () => {
+    expect(isOriginAllowed("", list, "subnation.ly")).toBe(true);
+    expect(isOriginAllowed("", list, "evil.com")).toBe(false);
+  });
+
+  it("malformed allowlist entries are skipped, not fatal", () => {
+    const wonky = ["not a url", "https://subnation.ly"];
+    expect(isOriginAllowed(undefined, wonky, "subnation.ly")).toBe(true);
+    expect(isOriginAllowed(undefined, wonky, "evil.com")).toBe(false);
+  });
+});
+
 describe("authenticateSocketHandshake", () => {
   it("returns null when no cookie and no auth field is present", () => {
     expect(authenticateSocketHandshake({})).toBeNull();
