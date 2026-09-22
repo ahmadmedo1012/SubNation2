@@ -165,4 +165,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=150s --retries=3 \
   CMD wget -qO- http://127.0.0.1:${PORT}/api/healthz >/dev/null 2>&1 || exit 1
 
 # Run DB migrations, then start the API (which also serves the SPA).
-CMD ["pnpm", "--filter", "@workspace/api-server", "start"]
+# Migrations run INSIDE the app (bootMigrations() in server.ts): the port
+# binds first, /api/healthz answers 503 "starting" while migrations apply,
+# then the readiness gate opens — identical ordering to the old pnpm chain.
+# FH-A3 F-3: node is invoked DIRECTLY (not via `pnpm --filter … start`) so
+# node becomes PID 1 — SIGTERM reaches the drain handlers without an
+# unproven pnpm hop, and the corepack shim no longer re-downloads pnpm
+# from the npm registry on every fresh container start (its build-time
+# cache lives under /root, unreadable by USER node).
+CMD ["node", "--enable-source-maps", "backend/dist/index.mjs"]

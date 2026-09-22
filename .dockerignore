@@ -22,8 +22,16 @@ ruflo/
 **/coverage
 
 # local env overrides
+# FH-A6 P2-2: `**/` covers NESTED env files — a bare `.env*` only matches
+# the root, so a machine-local frontend/.env.local would ride the build
+# context and get baked into the public SPA bundle by a local docker build.
 .env*
 !config/env.example
+**/.env*
+!**/.env.example
+# FH-A6 P3-1: operator-only secret references (gitignored; keep them out of
+# build contexts too).
+.secrets
 
 # misc
 *.log

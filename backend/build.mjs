@@ -127,7 +127,12 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // FH-A3 F-2: emit maps ONLY when a Sentry upload is possible — default
+    // OFF. The old unconditional "linked" shipped +23 MB of full backend
+    // source in every image built WITHOUT SENTRY_AUTH_TOKEN (GHCR workflow,
+    // docker-verify, compose/Coolify builds). Mirrors the frontend guard
+    // (vite.config.ts: sourcemap: SENTRY_AUTH_TOKEN ? "hidden" : false).
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? "linked" : false,
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] }),
@@ -153,11 +158,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   // resolves stack traces server-side via the release identifier.
   // R107: neutral release identity — GIT_SHA (Coolify/CI builds) with
   // RENDER_GIT_COMMIT (Render injects it) as the legacy fallback.
-  const release = (
-    process.env.GIT_SHA ??
-    process.env.RENDER_GIT_COMMIT ??
-    "unknown"
-  ).slice(0, 7);
+  const release = (process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7);
   if (
     process.env.SENTRY_AUTH_TOKEN &&
     process.env.SENTRY_ORG &&
@@ -176,22 +177,29 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
       // Don't block the deploy on a Sentry upload hiccup.
       console.warn("[sentry] source-map upload failed (continuing build):", err?.message ?? err);
     }
-
-    // Strip .map files from the deploy artefact regardless of whether the
-    // upload succeeded — we don't want maps to ship to end users.
-    try {
-      const entries = await readdir(distDir);
-      for (const entry of entries) {
-        if (entry.endsWith(".map")) {
-          await unlink(path.join(distDir, entry));
-        }
-      }
-      console.log("[sentry] stripped .map files from dist");
-    } catch (err) {
-      console.warn("[sentry] could not strip .map files:", err?.message ?? err);
-    }
   } else {
     console.log("[sentry] source-map upload skipped (SENTRY_AUTH_TOKEN/ORG/PROJECT not set)");
+  }
+
+  // FH-A3 F-2: ALWAYS strip .map files from the deploy artefact — moved OUT
+  // of the Sentry gate above. Even a token-only build (org/project/release
+  // missing → upload skipped, but `sourcemap: "linked"` emitted maps) can
+  // never ship them to end users. Belt-and-braces parity with the frontend's
+  // sourcemapGuardPlugin; a no-op when no maps were emitted.
+  try {
+    const entries = await readdir(distDir);
+    let stripped = 0;
+    for (const entry of entries) {
+      if (entry.endsWith(".map")) {
+        await unlink(path.join(distDir, entry));
+        stripped += 1;
+      }
+    }
+    if (stripped > 0) {
+      console.log(`[sentry] stripped ${stripped} .map file(s) from dist`);
+    }
+  } catch (err) {
+    console.warn("[sentry] could not strip .map files:", err?.message ?? err);
   }
 }
 

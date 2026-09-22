@@ -11,6 +11,9 @@ on:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  # FH-A12 F-1: manual rollback trigger — fires the hook by hand while the
+  # RENDER_DEPLOY_ENABLED variable (see the job-level gate below) is 'true'.
+  workflow_dispatch: {}
 
 # Serialise deploys by main: a second push waits for the first deploy hook
 # to complete instead of racing it. We do NOT cancel-in-progress here —
@@ -25,8 +28,19 @@ permissions:
 jobs:
   deploy:
     name: Trigger Render Deploy Hook
-    # Skip silently when CI failed — the commit stays undeployed until fixed.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # FH-A12 F-1 kill-switch: the hook fires ONLY when the operator has set
+    # the repository variable RENDER_DEPLOY_ENABLED=true (Settings → Secrets
+    # and variables → Actions → Variables). Post-migration (Coolify is
+    # production, Render billing-suspended) a green main run must NOT fire
+    # it — every fire would burn minutes on a guaranteed-failing HTTP 400
+    # "cannot deploy suspended service", or silently re-deploy the OLD
+    # stack if Render auto-resumes. Skips are neutral: CI itself stays
+    # green. A run is deployed when CI passed AND the gate is open, or when
+    # dispatched by hand with the gate open.
+    if: >-
+      vars.RENDER_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

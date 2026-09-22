@@ -69,8 +69,10 @@ services:
         VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
         VITE_OPENWA_DOCS_URL: ${VITE_OPENWA_DOCS_URL:-}
     # ---- Variant B: prebuilt image (e.g. GHCR, built by CI) ------------------
-    #   Comment out `build:` above and uncomment (adjust the ref):
-    # image: ghcr.io/ahmadmedo1012/subnation2:latest
+    #   Comment out `build:` above and uncomment, pinned to the immutable
+    #   sha-<short> tag the workflow already publishes (copy it from the Actions
+    #   run or `docker manifest inspect`); :latest/:main float and are dev-only.
+    # image: ghcr.io/ahmadmedo1012/subnation2:sha-<short>
     env_file:
       - .env
     environment:
@@ -79,6 +81,15 @@ services:
     ports:
       - "${SUBNATION_HOST_PORT:-127.0.0.1:3000}:8080"
     restart: unless-stopped
+    # FH-A8 F1: bounded json-file logs (10 MB × 3 files per service) so a
+    # log-heavy incident or debug-level deployment can never eat the boot
+    # volume. The explicit block also covers plain `docker compose up -d` on
+    # the VM, where the default json-file driver is unbounded.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     stop_grace_period: 40s
     # Health check mirrors the Dockerfile's (explicit here so Coolify's
     # compose parser sees it; /api/healthz = 503 "starting" → 200 ready).
@@ -97,12 +108,35 @@ services:
       context: ${OPENWA_REPO_DIR:-../openwa}
       dockerfile: Dockerfile
     # ---- Variant B: prebuilt image -------------------------------------------
-    # image: ghcr.io/ahmadmedo1012/openwa:latest
-    env_file:
-      - .env
+    #   Pin the immutable sha-<short> tag the workflow already publishes (copy
+    #   it from the Actions run or `docker manifest inspect`); :latest/:main
+    #   float and are dev-only.
+    # image: ghcr.io/ahmadmedo1012/openwa:sha-<short>
+    # FH-A2 P2-1 / FH-A3 F-1: the gateway used to load the ENTIRE shared .env
+    # via env_file, inheriting every SubNation secret (DATABASE_URL,
+    # SESSION_SECRET, ENCRYPTION_KEY, ADMIN_JWT_SECRET, TELEGRAM_BOT_TOKEN...)
+    # it never reads. compose still interpolates ${VAR} from the same .env
+    # file — the operator workflow is unchanged — but ONLY the vars the
+    # gateway actually consumes land in this container (the complete read-set:
+    # rg 'process\.env\.' over the openwa sources — nothing else is listed).
+    # subnation keeps its env_file; it never reads the OPENWA_*/DASHBOARD_*
+    # vars. Defaults below mirror the openwa image (ENV NODE_ENV=production
+    # DATA_DIR=/data PORT=2785) and code defaults (LOG_LEVEL=info,
+    # OPENWA_SELF_SEND_LID unset = enabled) exactly, so an unset .env behaves
+    # identically to the old env_file pass-through.
     environment:
       PORT: "2785"
       DATA_DIR: /data
+      OPENWA_API_KEY: ${OPENWA_API_KEY}
+      PERSISTENCE_URL: ${PERSISTENCE_URL}
+      OPENWA_CREDENTIALS_KEY: ${OPENWA_CREDENTIALS_KEY}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      DASHBOARD_SESSION_SECRET: ${DASHBOARD_SESSION_SECRET:-}
+      # Optional tuning knobs — same defaults the gateway uses when unset.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: ${NODE_ENV:-production}
+      OPENWA_SELF_SEND_LID: ${OPENWA_SELF_SEND_LID:-}
     volumes:
       # Baileys multi-file auth state. The DB (PERSISTENCE_URL) remains the
       # source of truth for restart survival; the volume is defense-in-depth
@@ -111,6 +145,12 @@ services:
     ports:
       - "${OPENWA_HOST_PORT:-127.0.0.1:3001}:2785"
     restart: unless-stopped
+    # FH-A8 F1: same log ceiling as subnation (see above).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # openwa's SIGTERM handler flushes sessions within 4 s (index.ts).
     stop_grace_period: 15s
     healthcheck:

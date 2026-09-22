@@ -5,6 +5,14 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # FH-A12 F-4/F-5: manual full run (October renewal smoke test) — bypasses
+  # the path filters, so every job runs.
+  workflow_dispatch: {}
+  # FH-A12 F-5: weekly sweep — the audit job no longer installs on every
+  # push (deps-gated below), so the schedule keeps CVE coverage current
+  # even with no dependency changes.
+  schedule:
+    - cron: "17 4 * * 1"
 
 # Cancel in-progress runs for the same ref when a newer push lands.
 # Saves runner time and prevents stale results from racing.
@@ -78,13 +86,59 @@ jobs:
         continue-on-error: true
 
   # ─────────────────────────────────────────────────────────────────────────
+  # Path filter (cost gate) — FH-A12 F-4
+  # ─────────────────────────────────────────────────────────────────────────
+  #
+  # Docs-only pushes skip the heavy jobs (audit/quality) via job-level `if`
+  # on the outputs below (~19 min → ~2 min). secret-scan stays ALWAYS-ON:
+  # secrets get pasted into docs too, so a workflow-level paths-ignore
+  # would be a coverage gap.
+  filter:
+    name: Path filter (cost gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run path filters
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - "backend/**"
+              - "frontend/**"
+              - "shared/**"
+              - "scripts/**"
+              - "config/**"
+              - "deploy/**"
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - ".github/workflows/ci.yml"
+              - "Dockerfile"
+              - "docker-compose.yml"
+            deps:
+              - "pnpm-lock.yaml"
+              - "**/package.json"
+
+  # ─────────────────────────────────────────────────────────────────────────
   # CVE scanning — pnpm audit on production deps only (CG-01 closure)
   # ─────────────────────────────────────────────────────────────────────────
   #
   # Closes audit Coverage Gap CG-01 (specs/004-security-audit/research.md
   # §6): "Full automated CVE scan on pnpm-lock.yaml" was a gap because
   # the audit relied on a manual top-15 sample. This job scans the full
-  # production dependency tree on every push/PR.
+  # production dependency tree on every push/PR that changes the dependency
+  # tree, plus the weekly schedule and manual dispatch (FH-A12 F-5 — the
+  # full pnpm install it runs only pays off when deps changed).
   #
   # Gating policy:
   #   - critical CVEs in `--prod` deps → BLOCK (job fails). Currently 0.
@@ -101,6 +155,14 @@ jobs:
     name: CVE scanning (pnpm audit, prod deps)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [filter]
+    # FH-A12 F-5: deps-gated — `deps` covers pnpm-lock.yaml and every
+    # package.json (the inputs `pnpm audit` actually reads). Schedule and
+    # manual dispatch keep CVE coverage alive without dep changes.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.deps == 'true'
     permissions:
       contents: read
 
@@ -157,7 +219,13 @@ jobs:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: secret-scan
+    needs: [secret-scan, filter]
+    # FH-A12 F-4: skip the ~13-17 min suite on docs-only pushes (the
+    # filter job decides). Schedule and manual dispatch force a full run.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
     permissions:
       contents: read
     env:

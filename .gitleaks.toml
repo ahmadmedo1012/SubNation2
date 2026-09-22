@@ -122,6 +122,11 @@ paths = [
   '''pnpm-lock\.yaml''',
   '''\.env\.example''',
   '''config/env\.example''',
+  # FH-A6 P2-1: compose template placeholders — same trust class as
+  # config/env.example (template text, never real secrets). Without this
+  # the r107 placeholder spellings re-trip the session-secret /
+  # admin-jwt-secret rules and keep the secret-scan gate red.
+  '''deploy/env\.compose\.example''',
 ]
 
 # Historical-leak paths — these files were committed at some point and are
