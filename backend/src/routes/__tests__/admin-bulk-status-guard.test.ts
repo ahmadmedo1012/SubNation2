@@ -317,3 +317,50 @@ describe("PATCH /api/admin/orders/bulk-status — completed-not-demotable guard 
     }
   });
 });
+
+// ── B2-F4 (R111, round-111 B2 audit): bulk-status ids[] element cap ─────────
+//
+// The route accepted an unbounded ids[] — ~90k ids built a giant IN(...)
+// plus a per-id sequential refund loop (one transaction + notifications
+// each), an easy accidental self-DoS. Capped at 200 (the admin orders
+// list page size) with an explicit 400.
+
+describe("PATCH /api/admin/orders/bulk-status — B2-F4 ids cap (R111)", () => {
+  it("201 ids → 400 with the explicit batch-limit message, before any DB work", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const ids = Array.from({ length: 201 }, (_, i) => i + 1);
+
+      const res = await patch(url, token, { ids, status: "failed" });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect((res.body as { error: string }).error).toContain("200");
+    } finally {
+      close();
+    }
+  });
+
+  it("exactly 200 ids passes the cap (bogus ids are reported as skipped_missing, not a 400)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const real = await seedOrder("pending");
+      const ids = [real, ...Array.from({ length: 199 }, (_, i) => 900_000 + i)];
+
+      const res = await patch(url, token, { ids, status: "failed" });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        success: true,
+        updated: 1,
+        skipped_missing: 199,
+      });
+
+      // The one real order actually transitioned.
+      const after = await statuses([real]);
+      expect(after.get(real)).toBe("failed");
+    } finally {
+      close();
+    }
+  });
+});

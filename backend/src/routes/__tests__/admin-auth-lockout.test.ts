@@ -770,3 +770,78 @@ describe("R110-01 — global per-username lockout on the password step", () => {
     }
   });
 });
+
+// ── B2-F1 (R111, round-111 B2 audit): unbounded username vs varchar(100) ────
+//
+// AdminLoginBody (generated) has no username bound, and the lockout keys
+// embed the SUBMITTED username — a 100+ char username overflowed
+// login_attempts.identifier (22001) → 500 + Sentry event per failed
+// attempt, breaking the uniform-401 parity. The durable fix is the clamp
+// in lib/lockout.ts (pinned by lockout-upsert.test.ts); the route adds a
+// 255-char OUTER perimeter so multi-KB junk never reaches the keys, while
+// 101..255-char names still land on the honest uniform-401 not-found
+// branch (no real admin username can exceed the varchar(100) column).
+
+describe("B2-F1 — oversized usernames keep the uniform-401 parity (R111)", () => {
+  it("a 200-char username → uniform 401, dummy-argon2 parity, lockout keys still recorded", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      // Unknown-username branch: no admin row can carry a 200-char name
+      // (the column is varchar(100)).
+      h.dbReturnsAdmin = false;
+      vi.mocked(verifyPassword).mockClear();
+
+      const res = await postLogin(url, {
+        username: "z".repeat(200),
+        password: "guess",
+      });
+
+      // THE FIX: 401 (uniform envelope), never a 500 from the overflowed
+      // lockout identifier.
+      expect(res.status).toBe(401);
+      expect(res.body).toMatchObject({ code: "UNAUTHORIZED" });
+
+      // 98-F3 parity: the not-found branch ran the SAME single dummy
+      // argon2 verify before answering.
+      expect(verifyPassword).toHaveBeenCalledTimes(1);
+
+      // Both lockout keys were still recorded (the clamp happens inside
+      // lib/lockout — the route passes the composed key; the lib-level
+      // clamp is pinned by lockout-upsert.test.ts).
+      expect(h.lockoutKeys.record.length).toBeGreaterThan(0);
+      expect(h.lockoutKeys.record[0]!.startsWith("admin:")).toBe(true);
+    } finally {
+      close();
+    }
+  });
+
+  it("a 255-char username (outer-perimeter boundary) still answers the uniform 401", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      h.dbReturnsAdmin = false;
+      const res = await postLogin(url, { username: "y".repeat(255), password: "x" });
+      expect(res.status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+
+  it("a 256+-char username is rejected as INVALID shape at the perimeter (400, before any DB/argon2 work)", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      h.dbReturnsAdmin = false;
+      vi.mocked(verifyPassword).mockClear();
+      const res = await postLogin(url, { username: "w".repeat(256), password: "x" });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      // Cheap rejection: no argon2 burn, no lockout accounting.
+      expect(verifyPassword).not.toHaveBeenCalled();
+      expect(h.lockoutKeys.record).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});

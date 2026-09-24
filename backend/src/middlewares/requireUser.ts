@@ -51,7 +51,9 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
 
   if (result.payload.sessionId) {
     try {
-      const live = await isSessionRowLive(result.payload.sessionId);
+      // B1-4 (R111): the probe now takes the token's userId too — the
+      // ownership predicate is the admin twin's defense-in-depth.
+      const live = await isSessionRowLive(result.payload.sessionId, result.payload.userId);
       if (!live) {
         // Row deleted (logout / logout-all / user deletion) or expired.
         logger.info(

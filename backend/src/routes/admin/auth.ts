@@ -93,6 +93,23 @@ router.post("/login", async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const { username, password } = parse.data;
 
+  // B2-F1 (R111, round-111 B2 audit): the generated AdminLoginBody schema
+  // is unbounded, and the lockout keys below embed the SUBMITTED username —
+  // `admin:${username}:${ip}` overflowed login_attempts.identifier
+  // varchar(100) → 22001 → 500 + a Sentry event per failed attempt.
+  // The durable fix is the clamp inside lib/lockout.ts (every entry point);
+  // this is the outer perimeter. It is deliberately 255 — NOT the 100-char
+  // admin column — because a junk username MUST still land on the uniform
+  // 401 not-found branch (dummy-argon2 + lockout accounting) to preserve
+  // 98-F3/R110-01 parity: no real admin username can exceed varchar(100),
+  // so 101..255-char names are honestly "unknown username" and answering
+  // them with a distinct 400 would be a new shape split for zero security
+  // gain. 255 keeps multi-KB junk (log/audit pollution) out while the
+  // acceptance test (200-char username → uniform 401) stays green.
+  if (username.length > 255) {
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  }
+
   // A8-03 (round-94): the lockout key used to be `admin:${username}`
   // ALONE — anyone who knows the (single, public-ish) username could
   // lock the admin out of the money queue remotely with 5 anonymous
@@ -651,18 +668,25 @@ router.patch("/profile", requireAdmin, async (req, res) => {
   }
   // 98-F3 (R98-A1 P3-8): display_name was only `.trim()`ed — an
   // unbounded value (up to the 1 MB JSON limit) landed directly in the
-  // admin_users row and every list/probe response. Bounded like the
-  // username (generous 200 chars — display names are free-form).
+  // admin_users row and every list/probe response. B2-F3 (R111): the
+  // original bound here was 200, but admin_users.display_name is
+  // varchar(100) — a 101..200-char name passed this check and then 500'd
+  // (22001) at the UPDATE. Aligned with the column: 100.
   if (display_name !== undefined) {
     if (typeof display_name !== "string" || display_name.trim().length === 0) {
       return res
         .status(400)
         .json(createErrorResponse("الاسم الظاهر غير صالح", ErrorCode.INVALID_DATA));
     }
-    if (display_name.trim().length > 200) {
+    if (display_name.trim().length > 100) {
       return res
         .status(400)
-        .json(createErrorResponse("الاسم الظاهر طويل جداً", ErrorCode.INVALID_DATA));
+        .json(
+          createErrorResponse(
+            "الاسم الظاهر طويل جداً (الحد الأقصى 100 حرف)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
     }
   }
 

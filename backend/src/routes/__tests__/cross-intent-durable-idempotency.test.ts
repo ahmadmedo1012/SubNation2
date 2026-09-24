@@ -104,11 +104,14 @@ async function seedProductWithStock(price = "10.00"): Promise<number> {
 }
 
 function topupBody() {
+  // B4-R1 (R111): mobile_transfer requires a payment_reference now; each
+  // test uses its own key so a single fixed receipt per call site is fine.
   return {
     amount: 50,
     payment_method: "mobile_transfer",
     payment_network: "madar",
     sender_phone: "0913456789",
+    payment_reference: "TRX-CROSS-INTENT-1",
   };
 }
 

@@ -31,6 +31,36 @@ router.use((_req, res, next) => {
   next();
 });
 
+/**
+ * B2-F3 (R111, round-111 B2 audit): the generated Create/UpdateProductBody
+ * schemas carry no string bounds, but products.name / category / image_url
+ * are varchar(255/100/1000) — an over-long value 500'd (22001) instead of
+ * answering 400. Handler-enforced bounds (the wallet.ts payment_reference
+ * pattern): the generated zod stays the looser outer perimeter, the
+ * handler enforces the COLUMN-aligned semantic bound with a clear Arabic
+ * message. product-variants.ts already bounds its labels/sku the same
+ * way — this closes the inconsistency the audit flagged.
+ */
+const PRODUCT_FIELD_LIMITS = {
+  name: { max: 255, label: "اسم المنتج" },
+  category: { max: 100, label: "الفئة" },
+  image_url: { max: 1000, label: "رابط الصورة" },
+} as const;
+
+/** Returns an Arabic field error for the first over-limit string, else null. */
+function productFieldError(
+  fields: Partial<Record<keyof typeof PRODUCT_FIELD_LIMITS, string | null | undefined>>,
+): string | null {
+  for (const key of Object.keys(PRODUCT_FIELD_LIMITS) as Array<keyof typeof PRODUCT_FIELD_LIMITS>) {
+    const value = fields[key];
+    const { max, label } = PRODUCT_FIELD_LIMITS[key];
+    if (typeof value === "string" && value.length > max) {
+      return `${label} طويل جداً (الحد الأقصى ${max} حرف)`;
+    }
+  }
+  return null;
+}
+
 router.get("/products", requireAdmin, async (req, res) => {
   // V4: the admin command palette sends ?search= — previously ignored
   // (the handler didn't even read req). Match name or category,
@@ -157,6 +187,16 @@ router.post("/products", requireAdmin, async (req, res) => {
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
 
+  // B2-F3: column-aligned string bounds (name/category/image_url).
+  const fieldError = productFieldError({
+    name: data.name,
+    category: data.category ?? null,
+    image_url: data.image_url ?? null,
+  });
+  if (fieldError) {
+    return res.status(400).json(createErrorResponse(fieldError, ErrorCode.INVALID_DATA));
+  }
+
   // Two-step insert + slug derivation. We need the id to be assigned by the
   // serial PK before we can fall back to `product-<id>` for any name that
   // produces an empty slug. Worst case (rare): two products with the same
@@ -240,6 +280,17 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
   if (!parse.success)
     return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
   const data = parse.data;
+
+  // B2-F3: same column-aligned bounds on the patch path — only the
+  // fields actually present in the body are checked (nullish = unset).
+  const fieldError = productFieldError({
+    name: data.name ?? null,
+    category: data.category ?? null,
+    image_url: data.image_url ?? null,
+  });
+  if (fieldError) {
+    return res.status(400).json(createErrorResponse(fieldError, ErrorCode.INVALID_DATA));
+  }
 
   const updateData: Record<string, any> = {};
   if (data.name != null) updateData.name = data.name;

@@ -66,10 +66,18 @@ async function seedUser(overrides: Partial<typeof usersTable.$inferInsert> = {})
   return u.id;
 }
 
-async function seedAdmin(): Promise<string> {
+async function seedAdmin(permissions: string[] = ["all"]) {
   const [a] = await db
     .insert(adminUsersTable)
-    .values({ username: "admin_loyalty", passwordHash: "not-a-real-hash", isActive: true })
+    .values({
+      username: "admin_loyalty",
+      passwordHash: "not-a-real-hash",
+      isActive: true,
+      // B1-3 (R111): wallet mutations on this route now require the
+      // finance scope in addition to the router's users mount — default
+      // the fixture to the wildcard like every other admin-route suite.
+      permissions,
+    })
     .returning();
   return signAdminToken({ adminId: a.id, role: "admin" });
 }
@@ -271,6 +279,99 @@ describe("PATCH /api/admin/users/:id — loyalty happy paths (S6 guard, no race)
     try {
       const { status } = await patchUser(url, token, 999_999, { loyalty_points: 10 });
       expect(status).toBe(404);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("PATCH /api/admin/users/:id — B1-3 wallet mutations require the finance scope (R111)", () => {
+  it("a users-only admin → 403 on wallet_balance printing, wallet untouched, no ledger row", async () => {
+    const userId = await seedUser({ loyaltyPoints: 100 });
+    const token = await seedAdmin(["users"]); // the OLD mount scope alone
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status, body } = await patchUser(url, token, userId, {
+        wallet_balance: 50,
+        note: "محاولة طباعة رصيد بدون صلاحية",
+      });
+      expect(status).toBe(403);
+      expect(body.code).toBe("FORBIDDEN");
+
+      const row = await getUser(userId);
+      expect(String(row.walletBalance)).toBe("0.00");
+      const ledger = await db
+        .select()
+        .from(walletLedgerTable)
+        .where(eq(walletLedgerTable.userId, userId));
+      expect(ledger).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("a users-only admin → 403 on wallet_adjustment too (LYD 1:1 movement)", async () => {
+    const userId = await seedUser({ walletBalance: "10.00" });
+    const token = await seedAdmin(["users"]);
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status } = await patchUser(url, token, userId, {
+        wallet_adjustment: 25,
+        note: "محاولة تعديل بدون صلاحية",
+      });
+      expect(status).toBe(403);
+      expect(String((await getUser(userId)).walletBalance)).toBe("10.00");
+    } finally {
+      close();
+    }
+  });
+
+  it("loyalty edits stay available to a users-only admin (the users-scope surface is unchanged)", async () => {
+    const userId = await seedUser({ loyaltyPoints: 100 });
+    const token = await seedAdmin(["users"]);
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status, body } = await patchUser(url, token, userId, { loyalty_points: 250 });
+      expect(status).toBe(200);
+      expect(body.loyalty_points).toBe(250);
+    } finally {
+      close();
+    }
+  });
+
+  it("an admin holding finance (users+finance) may adjust the wallet — the gate is additive, not a lockout", async () => {
+    const userId = await seedUser({ walletBalance: "0.00" });
+    const token = await seedAdmin(["users", "finance"]);
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status } = await patchUser(url, token, userId, {
+        wallet_adjustment: 15,
+        note: "تعديل صلاحية مزدوجة",
+      });
+      expect(status).toBe(200);
+      expect(String((await getUser(userId)).walletBalance)).toBe("15.00");
+    } finally {
+      close();
+    }
+  });
+
+  it("a finance-only admin (no users scope) is stopped by the router mount in the real composition — here requireAdmin still authenticates, and the 403 fires before any wallet write", async () => {
+    // The mini-app mount omits the parent requirePermission("users") gate
+    // (all suites mount the router directly), so a finance-only admin
+    // reaches the handler here. The route's own finance check passes, but
+    // the real composition (admin/index.ts) keeps the users mount — the
+    // effective rule is users AND finance, pinned by admin/index.ts's
+    // mount + this route gate together.
+    const userId = await seedUser({ walletBalance: "0.00" });
+    const token = await seedAdmin(["finance"]);
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status } = await patchUser(url, token, userId, {
+        wallet_adjustment: 15,
+        note: "تعديل صلاحية مالية فقط",
+      });
+      expect(status).toBe(200);
+      expect(String((await getUser(userId)).walletBalance)).toBe("15.00");
     } finally {
       close();
     }

@@ -5,6 +5,32 @@ const MAX_ATTEMPTS = 5;
 const BASE_LOCKOUT_MINUTES = 15;
 
 /**
+ * B2-F1 (R111, round-111 B2 audit): login_attempts.identifier is
+ * varchar(100) — the admin login route composes `admin:${username}:${ip}`
+ * and `admin-username:${username}` from the SUBMITTED username, which the
+ * (generated, unbounded) AdminLoginBody schema does not cap. A 100+ char
+ * username overflowed the column with SQLSTATE 22001 → 500 + a Sentry
+ * event on EVERY failed attempt — breaking the uniform-401 parity the
+ * 98-F3/R110-01 branches carefully maintain.
+ *
+ * Every entry point (check/record/reset) funnels through this clamp, so
+ * no caller can write an over-long identifier regardless of how it
+ * composes the key. Truncation (not hashing) keeps the key human-audit-
+ * able; two usernames sharing the first ~100 composed chars merely share
+ * a lockout envelope — they both name nonexistent admins, so the merged
+ * envelope is harmless (and marginally useful against junk-username
+ * spam). Route-level outer bounds (admin/auth.ts) keep the truncation
+ * path rare.
+ */
+const IDENTIFIER_MAX_LENGTH = 100;
+
+function clampIdentifier(identifier: string): string {
+  return identifier.length > IDENTIFIER_MAX_LENGTH
+    ? identifier.slice(0, IDENTIFIER_MAX_LENGTH)
+    : identifier;
+}
+
+/**
  * Per-namespace lockout policy (r110 / R110-01).
  *
  * The default envelope (5 failures → 15-min lock, doubling per full extra
@@ -54,8 +80,9 @@ export function calculateLockoutDuration(
 }
 
 export async function checkLockout(
-  identifier: string,
+  rawIdentifier: string,
 ): Promise<{ locked: boolean; lockedUntil: Date | null; attemptCount: number }> {
+  const identifier = clampIdentifier(rawIdentifier);
   const [record] = await db
     .select()
     .from(loginAttemptsTable)
@@ -106,10 +133,13 @@ export async function checkLockout(
  * every pre-existing caller (no policy) behaves byte-for-byte as before.
  */
 export async function recordFailedAttempt(
-  identifier: string,
+  rawIdentifier: string,
   policy?: Partial<LockoutPolicy>,
 ): Promise<void> {
   const { maxAttempts, baseLockoutMinutes } = resolvePolicy(policy);
+  // B2-F1: clamp BEFORE the upsert — the INSERT branch is the exact site
+  // that overflowed varchar(100) with 22001 on a fresh long identifier.
+  const identifier = clampIdentifier(rawIdentifier);
   await db
     .insert(loginAttemptsTable)
     .values({
@@ -135,7 +165,8 @@ export async function recordFailedAttempt(
     });
 }
 
-export async function resetAttempts(identifier: string): Promise<void> {
+export async function resetAttempts(rawIdentifier: string): Promise<void> {
+  const identifier = clampIdentifier(rawIdentifier);
   await db
     .update(loginAttemptsTable)
     .set({ attemptCount: 0, lockedUntil: null })

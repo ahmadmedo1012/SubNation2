@@ -28,6 +28,24 @@ import { toNumber } from "../lib/numeric";
 
 const router = Router();
 
+/**
+ * B2-F2 (R111, round-111 B2 audit): wallet_topups.payment_network is
+ * varchar(50) with NO schema bound, and the field was free-form — an
+ * over-long or arbitrary string 500'd (22001) on the money path instead
+ * of answering 400. Allowlist = the networks the wallet UI offers plus
+ * every value present in the live table (verified 2026-09-24):
+ * libyana / madar (frontend), sadad + lypay (legacy rows). Normalized
+ * (trimmed + lowercased) BEFORE the membership check so " Madar " is
+ * canonicalized, not rejected — the same normalization discipline the
+ * payment_reference F-03 fix applies.
+ */
+const PAYMENT_NETWORK_ALLOWLIST = new Set(["libyana", "madar", "sadad", "lypay"]);
+
+/** B2-F2: sender_phone column is varchar(20) — bound for EVERY method. */
+const SENDER_PHONE_MAX = 20;
+/** B2-F2: sender_account column is varchar(255). */
+const SENDER_ACCOUNT_MAX = 255;
+
 // A7 (round-94): explicit no-store on the user-scoped wallet surface —
 // balance/pending-topup responses are per-user money state; an
 // intermediary (or the browser HTTP cache) must never serve them stale.
@@ -201,15 +219,94 @@ router.post(
 
     const method = payment_method ?? "mobile_transfer";
 
-    if (method === "mobile_transfer" && !payment_network) {
+    // B2-F2: normalize + allowlist the network before any use (it is
+    // stored verbatim below, rendered on the Telegram approval card, and
+    // compared by the composite dedup — canonical values keep all three
+    // honest).
+    let network: string | null = null;
+    if (payment_network !== undefined && payment_network !== null) {
+      network = String(payment_network).trim().toLowerCase() || null;
+    }
+    if (network !== null && !PAYMENT_NETWORK_ALLOWLIST.has(network)) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "شبكة الدفع غير صالحة (المسموح: ليبيانا، مدار)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
+
+    if (method === "mobile_transfer" && !network) {
       return res
         .status(400)
         .json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
     }
-    if (method === "lypay" && !sender_account) {
+    // B2-F2: sender_account is only required for lypay, but ANY method may
+    // carry one — bound it to the column so a long value is a 400, not a
+    // 22001 500 on the money path.
+    if (sender_account !== undefined && sender_account !== null) {
+      if (String(sender_account).trim().length === 0 && method === "lypay") {
+        return res
+          .status(400)
+          .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
+      }
+      if (String(sender_account).length > SENDER_ACCOUNT_MAX) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              `رقم حساب المُرسل طويل جداً (الحد الأقصى ${SENDER_ACCOUNT_MAX} حرف)`,
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
+    }
+    if (method === "lypay" && (sender_account === undefined || sender_account === null)) {
       return res
         .status(400)
         .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
+    }
+
+    // B2-F2: sender_phone is validated as a Libyan number for
+    // mobile_transfer below, but a lypay submission may carry ANY string
+    // (the Telegram approval-card comment) — bound both to the varchar(20)
+    // column before the shape check so neither can overflow.
+    if (sender_phone !== undefined && sender_phone !== null) {
+      if (String(sender_phone).length > SENDER_PHONE_MAX) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              `رقم هاتف المُرسل طويل جداً (الحد الأقصى ${SENDER_PHONE_MAX} رقماً)`,
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
+    }
+
+    // B4-R1 (R111, round-111 B4 audit — the last wallet-credit inflation
+    // path): a blank payment_reference is exempt from EVERY dedup layer
+    // (V1-M9 partial unique + B2-02 exact check + composite soft-dedup all
+    // key on the reference), so two ref-less pendings for one real
+    // transfer were both approvable — 200 LYD credited for one 100 LYD
+    // transfer. The wallet form's receipt field (PaymentReferenceField)
+    // makes the reference the natural input; the server now REQUIRES it
+    // for mobile_transfer (the bank-transfer channel where receipts
+    // exist). lypay keeps it optional (gateway receipts are not
+    // consistently exposed to users). Enforcement is at CREATION only —
+    // pre-existing blank-ref rows (live: 2 pending) stay approvable via
+    // TopupService.approve untouched.
+    if (method === "mobile_transfer" && paymentReference === null) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "مرجع التحويل (رقم العملية من إيصال التحويل) مطلوب لطلبات شحن المحفظة",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
     }
 
     if (method === "mobile_transfer" && sender_phone) {
@@ -271,6 +368,36 @@ router.post(
         sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`,
       );
 
+      // B4-R1: creation-time duplicate-receipt guard. With the reference
+      // now mandatory, the remaining duplicate shape is the SAME receipt
+      // resubmitted under a DIFFERENT idempotency key (or no key at all —
+      // legacy clients) — two identical pending cards in the operator
+      // queue for one real transfer. Same user + same reference + same
+      // (rounded) amount + still pending → 409 with an honest message.
+      // Same reference with a DIFFERENT amount is left through: the
+      // approval battery (exact-ref check + V1-M9 partial unique) still
+      // guarantees the second approval 409s, and blocking it here would
+      // false-positive on a bank that reuses receipt strings. Runs inside
+      // the per-user advisory lock, so a double-submit race cannot slip
+      // two rows past this check.
+      if (paymentReference !== null) {
+        const dup = await tx
+          .select({ id: walletTopupsTable.id })
+          .from(walletTopupsTable)
+          .where(
+            and(
+              eq(walletTopupsTable.userId, userId),
+              eq(walletTopupsTable.paymentReference, paymentReference),
+              eq(walletTopupsTable.amount, roundLydString(amount)),
+              eq(walletTopupsTable.status, "pending"),
+            ),
+          )
+          .limit(1);
+        if (dup.length > 0) {
+          return { kind: "duplicate" as const, existingId: dup[0].id };
+        }
+      }
+
       const [{ pendingCount }] = await tx
         .select({ pendingCount: count() })
         .from(walletTopupsTable)
@@ -309,7 +436,7 @@ router.post(
           // the intended 10.56.
           amount: roundLydString(amount),
           paymentMethod: method,
-          paymentNetwork: payment_network ?? null,
+          paymentNetwork: network,
           senderPhone: sender_phone ?? null,
           senderAccount: sender_account ?? null,
           paymentReference,
@@ -369,6 +496,22 @@ router.post(
         );
     }
 
+    if (submission.kind === "duplicate") {
+      // B4-R1: the same receipt (user + reference + amount) already has a
+      // PENDING row — a resubmission under a different idempotency key.
+      // 409 with the existing request's id so the user can see it in their
+      // list; nothing was inserted (the tx returned before the insert).
+      return res
+        .status(409)
+        .json(
+          createErrorResponse(
+            `يوجد طلب شحن قيد المراجعة بنفس المرجع والمبلغ (#${submission.existingId}) — انتظر مراجعته أو أرسل تحويلاً جديداً`,
+            ErrorCode.CONFLICT,
+            { reason: "DUPLICATE_PENDING_REFERENCE", existing_topup_id: submission.existingId },
+          ),
+        );
+    }
+
     if (submission.kind === "limited") {
       return res.status(429).json({
         error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
@@ -401,8 +544,9 @@ router.post(
           // SEC-92-09 (round-92 audit): this message previously used the
           // legacy "Markdown" parse_mode with UNESCAPED user-controlled
           // fields. sender_phone is only validated for mobile_transfer (a
-          // lypay submission can carry any string), and payment_network is a
-          // free-form string — one metacharacter (*, _, `, [) made Telegram's
+          // lypay submission can carry any string — now length-bounded,
+          // B2-F2), and payment_network is allowlisted (B2-F2) — one
+          // metacharacter (*, _, `, [) made Telegram's
           // parser reject the whole sendMessage, silently dropping the
           // approve/reject keyboard from the operator group. HTML mode +
           // escaping (same pattern as telegram.ts's dispatch pipeline) makes
@@ -412,7 +556,7 @@ router.post(
             `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
             `• المبلغ: <b>${storedAmount} د.ل</b>\n` +
             `• الطريقة: ${escapeTelegramHtml(method)}` +
-            `${payment_network ? ` (${escapeTelegramHtml(payment_network)})` : ""}\n` +
+            `${network ? ` (${escapeTelegramHtml(network)})` : ""}\n` +
             // F-03 (round-93 A2): the receipt reference rides the approval card
             // so the operator can compare it against the bank statement — the
             // duplicate guards (exact + composite) are only actionable when
@@ -455,7 +599,7 @@ router.post(
       notifyNewTopup({
         phone: currentUser.phone,
         amount: storedAmount,
-        network: method === "lypay" ? "LyPay" : (payment_network ?? ""),
+        network: method === "lypay" ? "LyPay" : (network ?? ""),
         topupId: topup.id,
         provider: derivePrimaryProvider(currentUser),
       });

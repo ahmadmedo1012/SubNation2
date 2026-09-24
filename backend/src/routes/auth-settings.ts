@@ -45,6 +45,7 @@ import {
 } from "../services/openwa.service";
 import { insertReferralSignupLedger } from "../lib/ledger";
 import { getAuthCookieOptions } from "../lib/cookie-options";
+import { getConfiguredOrigins } from "../lib/origins";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -954,6 +955,115 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
 // return_to with NO auth payload. We detect that empty redirect
 // here and surface a dedicated `cancelled` reason so the user sees
 // "تم إلغاء تسجيل الدخول" instead of the technical "missing_hash".
+//
+// ── B1-1 (R111, round-111 B1 audit): login-CSRF same-origin gate ──────
+//
+// This GET was the only session-MINT endpoint outside the CSRF Origin
+// gate (createCsrfGate in app.ts is POST/PUT/DELETE/PATCH-only). The
+// Telegram payload is signed with the BOT's key — an attacker can mint
+// a validly-signed payload for their OWN Telegram account, host it
+// behind an <img>/fetch on any page, and the victim's browser silently
+// Set-Cookies an auth_token bound to the ATTACKER's account (the exact
+// 98-F3 class: the victim then tops up the attacker's wallet).
+//
+// Chosen fix — server-side same-origin gate, no frontend change needed:
+// the CURRENT frontend never sends a browser here with a payload. The
+// TelegramLoginButton sets return_to to the SPA route
+// /auth/telegram-callback (frontend/src/pages/telegram-callback.tsx),
+// which reads the #tgAuthResult fragment (fragments never reach the
+// server) and POSTs the payload to /api/auth/telegram — a POST that is
+// already behind the CSRF Origin gate. A payload-bearing GET on THIS
+// endpoint therefore has no legitimate browser caller today, and
+// gating it same-origin breaks nothing in the product.
+//
+// Verdict rules (fail closed):
+//   - `Sec-Fetch-Site` present → allow ONLY `same-origin`. `cross-site`
+//     blocks the <img>/link attack; `same-site` is still cross-ORIGIN
+//     for our apex/www pair; `none` is attacker-influenceable via a
+//     link pasted in a chat/email (the link-click login-CSRF shape), so
+//     it blocks too.
+//   - No Sec-Fetch-Site (legacy browser / non-browser client) → fall
+//     back to Referer: allow only when the Referer origin is in the
+//     configured origin allow-list (exact scheme+host+port match, the
+//     same comparison createCsrfGate uses — no string-prefix matches).
+//   - Neither header → block. Headerless API clients have no ambient
+//     browser authority and no business on a browser-redirect endpoint;
+//     the POST /api/auth/telegram JSON transport serves them and is
+//     gated by the standard CSRF layer.
+//
+// Blocked requests redirect to /login?error=csrf_blocked (the
+// endpoint's failure envelope family — a redirect, never a mint).
+//
+// UPGRADE PATH (state nonce — the audit's preferred long-term fix):
+// issue a signed `state` nonce when the SPA starts Telegram login
+// (sessionStorage + a server-side issuance endpoint or a signed
+// short-TTL token), append it to the oauth.telegram.org URL, and
+// require + validate it here. That would allow re-opening a
+// cross-site redirect transport (return_to pointed at this endpoint)
+// safely; until such a client exists, same-origin-only is strictly
+// tighter and correct.
+const TELEGRAM_CALLBACK_CSRF_ERROR = "csrf_blocked";
+
+/** B1-1: resolve the same allow-list shape app.ts's CSRF gate uses. */
+function telegramCallbackAllowedOrigins(): string[] {
+  const explicit = process.env.CSRF_ALLOWED_ORIGINS;
+  const fromCors = getConfiguredOrigins();
+  const raw = explicit ?? (fromCors.length > 0 ? fromCors.join(",") : (process.env.APP_URL ?? ""));
+  const parsed = raw
+    .split(",")
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (parsed.length > 0) return parsed;
+  // Non-production fallback mirrors app.ts's dev defaults so local
+  // round-trips keep working; production boots fail-fast on an empty
+  // CSRF allow-list long before this branch could weaken anything.
+  if (process.env.NODE_ENV !== "production") {
+    return [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
+  }
+  return [];
+}
+
+/** B1-1: same-origin predicate for the session-mint shape of the callback. */
+export function isTelegramCallbackSameOrigin(
+  headers: { "sec-fetch-site"?: unknown; referer?: unknown },
+  allowedOrigins: string[],
+): boolean {
+  // Express types header values as string | string[] | undefined — accept
+  // any of those and normalize to the first string (browsers never send
+  // these as arrays; the normalization is purely type-safe).
+  const header = (value: unknown): string | null => {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+    return null;
+  };
+  const secFetchSite = header(headers["sec-fetch-site"]);
+  if (secFetchSite !== null && secFetchSite.length > 0) {
+    return secFetchSite === "same-origin";
+  }
+  const referer = header(headers["referer"]);
+  if (referer !== null && referer.length > 0 && allowedOrigins.length > 0) {
+    // Exact-origin comparison only (F-009 discipline): parse both sides
+    // and compare protocol+host — never string prefixes.
+    return allowedOrigins.some((allowed) => {
+      try {
+        const r = new URL(referer);
+        const a = new URL(allowed);
+        return r.protocol === a.protocol && r.host === a.host;
+      } catch {
+        return false;
+      }
+    });
+  }
+  // No modern header AND no Referer (or no allow-list to check against):
+  // fail closed — see the verdict rules above.
+  return false;
+}
+
 authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
   try {
     const query = req.query as Record<string, string | undefined>;
@@ -967,6 +1077,21 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
     // Empty / cancelled redirect: no signed payload at all.
     if (!query.hash && !query.auth_date) {
       return res.redirect("/login?error=cancelled");
+    }
+
+    // B1-1: from here on the request carries a session-MINT payload —
+    // apply the same-origin gate before any verification or cookie write.
+    if (!isTelegramCallbackSameOrigin(req.headers, telegramCallbackAllowedOrigins())) {
+      logger.warn(
+        {
+          category: "security",
+          audit_finding: "B1-1",
+          secFetchSite: req.headers["sec-fetch-site"] ?? null,
+          referer: req.headers["referer"] ?? null,
+        },
+        "[telegram-auth] callback session-mint blocked by same-origin CSRF gate",
+      );
+      return res.redirect(`/login?error=${encodeURIComponent(TELEGRAM_CALLBACK_CSRF_ERROR)}`);
     }
 
     const { ref, ...rest } = query;

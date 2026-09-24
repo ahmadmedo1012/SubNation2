@@ -25,6 +25,17 @@ router.use((_req, res, next) => {
 // Must match the order_status pg enum (shared/db/src/schema/orders.ts).
 const ORDER_STATUS_VALUES = ["pending", "completed", "failed", "refunded"] as const;
 
+/**
+ * B2-F4 (R111, round-111 B2 audit): bulk-status accepted an unbounded
+ * `ids[]` — ~90k ids built a giant IN(...) plus a per-id sequential
+ * refund loop (each with its own transaction + notifications), an
+ * easy accidental self-DoS on the admin surface. Capped at the admin
+ * orders list page size (200, the same clamp GET /orders applies to
+ * `limit`): a batch can never meaningfully exceed what one screen can
+ * select, and the 400 is explicit rather than a timeout.
+ */
+const BULK_STATUS_MAX_IDS = 200;
+
 router.get("/orders", requireAdmin, async (req, res) => {
   // A5-03 (round-94): `?status=` feeds the order_status pg-enum column —
   // an out-of-enum value used to reach Postgres as 22P02 → 500. Validate
@@ -159,6 +170,17 @@ router.patch(
     const ALLOWED: readonly string[] = ORDER_STATUS_VALUES;
     if (!Array.isArray(ids) || ids.length === 0)
       return res.status(400).json(createErrorResponse("ids مطلوبة", ErrorCode.INVALID_DATA));
+    // B2-F4: element cap BEFORE any per-id work (dedup loop, IN(...) —
+    // the refund path even runs one transaction + notification per id).
+    if (ids.length > BULK_STATUS_MAX_IDS)
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            `عدد الطلبات كبير جداً — الحد الأقصى ${BULK_STATUS_MAX_IDS} طلب في الدفعة الواحدة`,
+            ErrorCode.INVALID_DATA,
+          ),
+        );
     if (!status || !ALLOWED.includes(status))
       return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
     // M4 — the old `.map(Number).filter(!isNaN)` silently DROPPED

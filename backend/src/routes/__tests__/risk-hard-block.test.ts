@@ -506,6 +506,8 @@ describe("98-B3 — risk hard-block on POST /api/wallet/topups", () => {
         amount: 20,
         payment_method: "mobile_transfer",
         payment_network: "madar",
+        // B4-R1 (R111): reference required for mobile_transfer now.
+        payment_reference: "TRX-RISK-HB",
       });
       expect(res.status).toBe(201);
 
@@ -532,6 +534,8 @@ describe("98-B3 — risk hard-block on POST /api/wallet/topups", () => {
         amount: 20,
         payment_method: "mobile_transfer",
         payment_network: "madar",
+        // B4-R1 (R111): reference required for mobile_transfer now.
+        payment_reference: "TRX-RISK-HB",
       });
       expect(res.status).toBe(423);
       expect(res.body).toMatchObject({ code: "FORBIDDEN", error: HARD_REFUSAL_MESSAGE });
@@ -556,6 +560,8 @@ describe("98-B3 — risk hard-block on POST /api/wallet/topups", () => {
         amount: 20,
         payment_method: "mobile_transfer",
         payment_network: "madar",
+        // B4-R1 (R111): reference required for mobile_transfer now.
+        payment_reference: "TRX-RISK-HB",
       });
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({ amount: 20, status: "pending" });
@@ -577,6 +583,8 @@ describe("98-B3 — risk hard-block on POST /api/wallet/topups", () => {
         amount: 20,
         payment_method: "mobile_transfer",
         payment_network: "madar",
+        // B4-R1 (R111): reference required for mobile_transfer now.
+        payment_reference: "TRX-RISK-HB",
       });
       expect(res.status).toBe(201);
 

@@ -2,13 +2,17 @@
  * F-03 (round-93 A2) — POST /api/wallet/topups payment_reference
  * normalization at the route boundary.
  *
- * The wallet form (wallet.tsx — C5 agent) now sends the transfer receipt
+ * The wallet form (wallet.tsx — C5 agent) sends the transfer receipt
  * id as `payment_reference`. The route normalizes it BEFORE persisting so
  * every downstream dedup layer (V1-M9 partial unique index, B2-02 in-tx
  * exact check, advisory lock, composite soft-dedup) compares canonical
  * values — a raw "  TRX-9  " would dodge the exact-match guards while
- * still being the same transfer. Blank-after-trim stores NULL (the
- * partial index exempts blank refs as the legacy class).
+ * still being the same transfer.
+ *
+ * B4-R1 (R111): the reference is now REQUIRED for mobile_transfer (a
+ * blank ref was exempt from every dedup layer → the dual-approval
+ * window); blank-after-trim therefore 400s on that method instead of
+ * storing NULL. lypay keeps it optional.
  *
  * The 100-char handler cap is pinned in wallet-topups.test.ts (validation
  * block); this file pins the persistence normalization.
@@ -94,7 +98,7 @@ describe("F-03: payment_reference normalization on POST /api/wallet/topups", () 
     expect(row.paymentReference).toBe("TRX-TRIM-9");
   });
 
-  it("whitespace-only reference stores NULL (blank refs are the exempt legacy class)", async () => {
+  it("whitespace-only reference on mobile_transfer now 400s (B4-R1 — blank refs were the dual-approval class)", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
 
@@ -103,21 +107,28 @@ describe("F-03: payment_reference normalization on POST /api/wallet/topups", () 
       payment_network: "madar",
       payment_reference: "   ",
     });
-    expect(res.status).toBe(201);
-    expect(res.body!.payment_reference).toBeNull();
-
-    const [row] = await db
-      .select()
-      .from(walletTopupsTable)
-      .where(eq(walletTopupsTable.id, res.body!.id as number));
-    expect(row.paymentReference).toBeNull();
+    expect(res.status).toBe(400);
+    expect(res.body!.code).toBe("INVALID_DATA");
   });
 
-  it("omitting the field entirely still works (optional — legacy clients)", async () => {
+  it("omitting the field entirely on mobile_transfer 400s (B4-R1 — legacy ref-less shape is closed at creation)", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
 
     const res = await postTopup(token, { amount: 50, payment_network: "madar" });
+    expect(res.status).toBe(400);
+    expect(res.body!.code).toBe("INVALID_DATA");
+  });
+
+  it("a NULL reference still round-trips for lypay (optional there) — the DB column stays nullable", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+
+    const res = await postTopup(token, {
+      amount: 25,
+      payment_method: "lypay",
+      sender_account: "LYP-NULLREF-1",
+    });
     expect(res.status).toBe(201);
     expect(res.body!.payment_reference).toBeNull();
   });

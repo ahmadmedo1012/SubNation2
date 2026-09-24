@@ -259,3 +259,74 @@ describe("R110 — referral credit writes an audit row (109-m P3)", () => {
     }
   });
 });
+
+// ── B1-3 (R111, round-111 B1 audit): the referral credit is a money write ──
+// (50 loyalty points = 0.50 LYD convertible at 100:1) and now carries the
+// `finance` scope gate on the route itself — the router mount only demands
+// `users` (the LIST is user data). The mini-app mount here skips the
+// parent users gate exactly like the other suites; the route-level finance
+// gate is what these tests pin (in the real composition an admin needs
+// users + finance, matching admin/index.ts).
+
+describe("B1-3 — POST /api/admin/referrals/:id/credit requires the finance scope", () => {
+  async function seedScopedAdmin(permissions: string[]): Promise<string> {
+    const [a] = await db
+      .insert(adminUsersTable)
+      .values({
+        username: `admin_ref_scope_${permissions.join("_")}`,
+        passwordHash: "x",
+        isActive: true,
+        permissions,
+      })
+      .returning();
+    return signAdminToken({ adminId: a.id, role: "admin" });
+  }
+
+  it("a users-only admin (the old mount scope) → 403, no points granted, no audit row", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedScopedAdmin(["users"]);
+      const [referrer] = await db.insert(usersTable).values({ phone: "0911000021" }).returning();
+      const [referee] = await db.insert(usersTable).values({ phone: "0911000022" }).returning();
+      const [event] = await db
+        .insert(referralEventsTable)
+        .values({ referrerId: referrer.id, refereeId: referee.id, status: "pending" })
+        .returning();
+
+      const res = await request(url, "POST", `/api/admin/referrals/${event.id}/credit`, token);
+      expect(res.status).toBe(403);
+      expect(res.body).toMatchObject({ code: "FORBIDDEN" });
+
+      // Nothing granted: event still pending, referrer points untouched.
+      const [row] = await db
+        .select()
+        .from(referralEventsTable)
+        .where(eq(referralEventsTable.id, event.id));
+      expect(row.status).toBe("pending");
+      const [after] = await db.select().from(usersTable).where(eq(usersTable.id, referrer.id));
+      expect(after.loyaltyPoints).toBe(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("an admin holding finance (users+finance, or the wildcard) may still credit", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedScopedAdmin(["users", "finance"]);
+      const [referrer] = await db.insert(usersTable).values({ phone: "0911000031" }).returning();
+      const [referee] = await db.insert(usersTable).values({ phone: "0911000032" }).returning();
+      const [event] = await db
+        .insert(referralEventsTable)
+        .values({ referrerId: referrer.id, refereeId: referee.id, status: "pending" })
+        .returning();
+
+      const res = await request(url, "POST", `/api/admin/referrals/${event.id}/credit`, token);
+      expect(res.status).toBe(200);
+      const [after] = await db.select().from(usersTable).where(eq(usersTable.id, referrer.id));
+      expect(after.loyaltyPoints).toBe(50);
+    } finally {
+      close();
+    }
+  });
+});

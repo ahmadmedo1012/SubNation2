@@ -106,6 +106,16 @@ router.post("/", async (req, res) => {
         createErrorResponse("اسم المستخدم يجب أن يكون 3 أحرف على الأقل", ErrorCode.INVALID_DATA),
       );
   }
+  // B2-F3 (R111): admin_users.username is varchar(100) — an over-long
+  // username reached the INSERT and 500'd (22001) instead of a clean 400.
+  // Column-aligned bound (same as PATCH /profile's username rule).
+  if (username.trim().length > 100) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse("اسم المستخدم طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
+      );
+  }
   if (!password || typeof password !== "string" || password.length < 8) {
     return res
       .status(400)
@@ -144,7 +154,9 @@ router.post("/", async (req, res) => {
       .values({
         username: username.trim(),
         passwordHash: await hashPassword(password),
-        displayName: ((display_name ?? username).trim() || username.trim()).slice(0, 200),
+        // B2-F3: slice at 100 — admin_users.display_name is varchar(100);
+        // the old 200-char slice still overflowed the column.
+        displayName: ((display_name ?? username).trim() || username.trim()).slice(0, 100),
         role: cleanRole,
         permissions: cleanPerms,
         isActive: true,
@@ -218,10 +230,10 @@ router.patch("/:id", async (req, res) => {
         .status(400)
         .json(createErrorResponse("الاسم الظاهر مطلوب", ErrorCode.INVALID_DATA));
     }
-    // AUD103-4-F14 (r103): cap at 200 like PATCH /profile (admin/auth.ts)
-    // does — an unbounded string landed in admin_users and echoed through
-    // every list.
-    updates.displayName = display_name.trim().slice(0, 200);
+    // AUD103-4-F14 (r103): cap so an unbounded string can't land in
+    // admin_users and echo through every list. B2-F3 (R111): the cap is
+    // the COLUMN length (100) — the old 200 still 500'd on INSERT/UPDATE.
+    updates.displayName = display_name.trim().slice(0, 100);
   }
   if (permissions !== undefined) {
     const cleanPerms = sanitizePermissions(permissions);

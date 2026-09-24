@@ -274,3 +274,57 @@ describe("recordFailedAttempt with a custom policy — r110 admin-username envel
     expect(calculateLockoutDuration(11)).toBe(60);
   });
 });
+
+// ── B2-F1 (R111, round-111 B2 audit): identifier clamp to varchar(100) ──────
+//
+// The admin login route composes `admin:${username}:${ip}` /
+// `admin-username:${username}` from the SUBMITTED username, and the
+// generated AdminLoginBody schema has no username bound — a 100+ char
+// username overflowed login_attempts.identifier with SQLSTATE 22001 →
+// 500 + a Sentry event per failed attempt (empirically reproduced),
+// breaking the uniform-401 parity of the 98-F3/R110-01 branches.
+// recordFailedAttempt/checkLockout/resetAttempts now clamp the
+// identifier to the column length BEFORE any SQL.
+
+describe("B2-F1 — identifier clamp to varchar(100) (R111)", () => {
+  it("a 150-char identifier (composed admin-login key) stores clamped, never 22001", async () => {
+    // The exact live crash shape: a long username inside the per-(username,ip) key.
+    const longKey = `admin:${"u".repeat(130)}:127.0.0.1`;
+    expect(longKey.length).toBeGreaterThan(100);
+
+    await recordFailedAttempt(longKey);
+    const stored = await fetchRow(longKey.slice(0, 100));
+    expect(stored).not.toBeNull();
+    expect(stored!.attemptCount).toBe(1);
+  });
+
+  it("checkLockout consults the SAME clamped key — the envelope still locks at 5 failures", async () => {
+    const longKey = `admin-username:${"x".repeat(120)}`;
+    for (let i = 0; i < 4; i++) await recordFailedAttempt(longKey);
+    expect((await checkLockout(longKey)).locked).toBe(false);
+    await recordFailedAttempt(longKey); // 5th
+    const verdict = await checkLockout(longKey);
+    expect(verdict.locked).toBe(true);
+    expect(verdict.lockedUntil).not.toBeNull();
+  });
+
+  it("resetAttempts clears the clamped envelope (a correct login self-heals the counter)", async () => {
+    const longKey = `admin:${"y".repeat(150)}:10.0.0.1`;
+    for (let i = 0; i < 5; i++) await recordFailedAttempt(longKey);
+    expect((await checkLockout(longKey)).locked).toBe(true);
+    await resetAttempts(longKey);
+    expect((await checkLockout(longKey)).locked).toBe(false);
+  });
+
+  it("two identifiers sharing the first 100 chars share ONE envelope (merged, not split)", async () => {
+    // Truncation necessarily merges keys with a common 100-char prefix —
+    // both name nonexistent admins, so a shared envelope is the accepted
+    // (documented) trade-off vs. a 500 on the money-adjacent auth path.
+    const a = `admin:${"a".repeat(90)}SUFFIX-A:1.2.3.4`;
+    const b = `admin:${"a".repeat(90)}SUFFIX-B:5.6.7.8`;
+    await recordFailedAttempt(a);
+    await recordFailedAttempt(b);
+    const row = await fetchRow(a.slice(0, 100));
+    expect(row!.attemptCount).toBe(2);
+  });
+});

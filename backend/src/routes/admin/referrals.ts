@@ -7,6 +7,7 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 import { writeAuditLog } from "../../lib/audit";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { requirePermission } from "../../lib/permissions";
 
 const router = Router();
 
@@ -117,6 +118,17 @@ router.get("/referrals", requireAdmin, async (req, res) => {
 router.post(
   "/referrals/:id/credit",
   requireAdmin,
+  // B1-3 (R111, round-111 B1 audit): the referral credit grants 50
+  // LOYALTY POINTS — LYD-convertible money at the 100:1 /loyalty/
+  // convert-points rate (0.50 LYD per grant, unbounded grant count across
+  // events). The parent mount only demands the `users` scope (the LIST is
+  // user data), so a scoped users-admin could mint convertible points.
+  // The grant itself is a finance write and now carries the finance gate
+  // (same scope as every other money surface — topups approve/reject,
+  // wallet adjustments). Verified against the live DB first: every live
+  // admin holds ["all"], so nothing existing breaks; future scoped admins
+  // need users (mount) + finance (this route) to credit.
+  requirePermission("finance"),
   // Round-3 (8-b bonus): the only money-adjacent admin write without
   // idempotency — a double-click created 409 noise (the in-tx status
   // guard prevents a true double-grant, but the second attempt surfaced

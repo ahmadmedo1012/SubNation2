@@ -436,7 +436,9 @@ router.get("/probe", async (req, res) => {
   // console-error tally.
   if (result.payload.sessionId) {
     try {
-      const live = await isSessionRowLive(result.payload.sessionId);
+      // B1-4 (R111): ownership predicate — the probe checks the row
+      // belongs to the token's user, not just that the sid exists.
+      const live = await isSessionRowLive(result.payload.sessionId, result.payload.userId);
       if (!live) {
         logger.info(
           { userId: result.payload.userId, sessionId: result.payload.sessionId },

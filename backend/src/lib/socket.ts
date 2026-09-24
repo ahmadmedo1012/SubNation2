@@ -402,7 +402,9 @@ export async function verifySocketIdentityLive(
 
   if (identity.userId != null && identity.sessionId) {
     try {
-      const live = await isSessionRowLive(identity.sessionId);
+      // B1-4 (R111): pass the handshake's userId so the probe enforces
+      // session ownership (admin-twin parity).
+      const live = await isSessionRowLive(identity.sessionId, identity.userId);
       if (!live) {
         result.ok = false;
         result.userRevoked = true;

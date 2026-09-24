@@ -124,28 +124,39 @@ export async function isValidAdminSession(sid: string, adminId: number): Promise
   const cachedUntil = adminSessionValidityCache.get(cacheKey);
   if (cachedUntil !== undefined && cachedUntil > now) return true;
 
+  // B6-06 (R111, round-111 B6 audit): this is the hottest index in the
+  // system (admin_users_pkey ≈ 7,886 scans live) and it used to run TWO
+  // queries — a full row SELECT by sid followed by a second ownership
+  // SELECT (`sid AND adminId`). Both verdicts are pure predicates over
+  // the same row, so they merge into ONE query whose WHERE carries all
+  // four conditions:
+  //
+  //   1. the row exists            (eq(id, sid))
+  //   2. not revoked               (isNull(revokedAt))
+  //   3. expires in the future     (gt(expiresAt, now))
+  //   4. belongs to the token's admin (eq(adminId, adminId))
+  //
+  // Semantics identical to the two-query form (AND of the same
+  // predicates); the row-missing / revoked / expired / foreign-owner
+  // cases all fold into "no row returned" → false. The expiry boundary
+  // moved from a JS `expiresAt.getTime() <= Date.now()` compare to the
+  // SQL `expires_at > now` compare — same inclusive/exclusive shape,
+  // one fewer TOCTOU window.
   const [row] = await db
-    .select({
-      id: adminSessionsTable.id,
-      expiresAt: adminSessionsTable.expiresAt,
-      revokedAt: adminSessionsTable.revokedAt,
-    })
+    .select({ id: adminSessionsTable.id })
     .from(adminSessionsTable)
-    .where(eq(adminSessionsTable.id, sid))
+    .where(
+      and(
+        eq(adminSessionsTable.id, sid),
+        eq(adminSessionsTable.adminId, adminId),
+        isNull(adminSessionsTable.revokedAt),
+        // The JWT's own expiry is checked by the verifier before this
+        // runs — here the ROW is the truth for revocation + lifetime.
+        sql`${adminSessionsTable.expiresAt} > now()`,
+      ),
+    )
     .limit(1);
-  if (!row) return false;
-  if (row.revokedAt !== null) return false;
-  if (row.expiresAt.getTime() <= Date.now()) return false;
-  // The row must belong to the token's admin — a sid mismatch (token
-  // reuse across admins) is structurally impossible when the sid is
-  // minted with the token, but the check costs nothing and closes the
-  // "old token + re-minted sid" confusion forever.
-  const [owner] = await db
-    .select({ adminId: adminSessionsTable.adminId })
-    .from(adminSessionsTable)
-    .where(and(eq(adminSessionsTable.id, sid), eq(adminSessionsTable.adminId, adminId)))
-    .limit(1);
-  const valid = Boolean(owner);
+  const valid = Boolean(row);
   if (valid) {
     adminSessionValidityCache.set(cacheKey, Date.now() + ADMIN_SESSION_CACHE_TTL_MS);
     pruneAdminSessionValidityCache();

@@ -76,7 +76,14 @@ async function seedUser(startBalance = "0.00") {
 async function seedAdmin() {
   const [a] = await db
     .insert(adminUsersTable)
-    .values({ username: "admin_adjust", passwordHash: "not-a-real-hash", isActive: true })
+    .values({
+      username: "admin_adjust",
+      passwordHash: "not-a-real-hash",
+      isActive: true,
+      // B1-3 (R111): wallet mutations on this route now require the
+      // finance scope in addition to the router's users mount.
+      permissions: ["all"],
+    })
     .returning();
   return { adminId: a.id, token: signAdminToken({ adminId: a.id, role: "admin" }) };
 }

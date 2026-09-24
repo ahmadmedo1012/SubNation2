@@ -82,6 +82,11 @@ protectedRouter.use(
   adminFlashSalesRouter, // /flash-sales, /flash-sales/:id
 );
 
+// B1-3 (R111, round-111 B1 audit): the `users` mount covers the LIST +
+// loyalty surfaces; the MONEY writes inside these routers carry their own
+// tighter gates — PATCH /users/:id wallet mutations and POST
+// /referrals/:id/credit both additionally require the `finance` scope
+// (see users.ts / referrals.ts). The GET/list surfaces stay `users`.
 protectedRouter.use(
   "/",
   requirePermission("users"),

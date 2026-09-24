@@ -1,10 +1,11 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, initTestDb, resetTestDb, usersTable, walletTopupsTable } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { walletRouter } from "../wallet";
+import { __resetIdempotencyTableProbeForTests } from "../../lib/idempotency";
 
 /**
  * Integration tests for the wallet top-up creation API (r4-2d /
@@ -84,6 +85,7 @@ async function call<T = unknown>(
   method: "GET" | "POST",
   path: string,
   opts: { token?: string; body?: unknown } = {},
+  extraHeaders: Record<string, string> = {},
 ): Promise<ApiOk<T>> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -95,6 +97,7 @@ async function call<T = unknown>(
       try {
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (opts.token) headers.Cookie = `auth_token=${opts.token}`;
+        Object.assign(headers, extraHeaders);
         const res = await fetch(`http://127.0.0.1:${addr.port}${path}`, {
           method,
           headers,
@@ -114,12 +117,36 @@ async function call<T = unknown>(
 
 const app = buildApp();
 
+// B4-R1 (R111): the same-key replay test exercises the durable DB claim
+// (this suite has no Redis double — the middleware is a pass-through, so
+// the pre-tx findIdempotentOrderId + in-tx claimIdempotencyKey path is
+// the real guard under test). The base test schema (test/db.ts) predates
+// V1-M12 and never contained this table — mirror the post-V1-M20
+// production shape: order_id NULLABLE (V1-M19) and NO orders FK (V1-M20
+// dropped it — topup claims write topup ids, which an orders FK would
+// reject with 23503).
+const IDEMPOTENCY_DDL = `
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  key text PRIMARY KEY,
+  order_id integer,
+  reference_type varchar(32) NOT NULL DEFAULT 'order',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+`;
+
 beforeAll(async () => {
   await initTestDb();
+  await db.execute(sql.raw(IDEMPOTENCY_DDL));
+  // Re-arm the 42P01 probe: a prior suite-run may have latched
+  // tableMissing before this file created the table.
+  __resetIdempotencyTableProbeForTests();
 });
 
 beforeEach(async () => {
   await resetTestDb();
+  // resetTestDb does not know this table (orders-idempotency-route
+  // established the manual-truncate convention for the same reason).
+  await db.execute(sql.raw("TRUNCATE idempotency_keys"));
 });
 
 describe("POST /api/wallet/topups — validation (generated zod + handler rules)", () => {
@@ -187,7 +214,14 @@ describe("POST /api/wallet/topups — validation (generated zod + handler rules)
     const token = signUserToken({ userId: user.id });
     const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 50, payment_network: "madar", sender_phone },
+      // B4-R1: the reference is required now — include one so THIS test
+      // still exercises the sender-phone validation it was written for.
+      body: {
+        amount: 50,
+        payment_network: "madar",
+        sender_phone,
+        payment_reference: "TRX-PHONE-CHECK-1",
+      },
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_DATA");
@@ -238,7 +272,7 @@ describe("POST /api/wallet/topups — pending cap (MAX_PENDING = 3)", () => {
       limit: number;
     }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 50, payment_network: "madar" },
+      body: { amount: 50, payment_network: "madar", payment_reference: "TRX-CAP-4TH" },
     });
 
     expect(res.status).toBe(429);
@@ -265,7 +299,7 @@ describe("POST /api/wallet/topups — pending cap (MAX_PENDING = 3)", () => {
 
     const res = await call<{ code?: string }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 50, payment_network: "madar" },
+      body: { amount: 50, payment_network: "madar", payment_reference: "TRX-CAP-MIXED" },
     });
     expect(res.status).toBe(201);
   });
@@ -285,7 +319,7 @@ describe("POST /api/wallet/topups — auto-reject heuristic (≥3 prior rejectio
       admin_note: string | null;
     }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 50, payment_network: "madar" },
+      body: { amount: 50, payment_network: "madar", payment_reference: "TRX-AUTOREJ-1" },
     });
 
     expect(res.status).toBe(201);
@@ -312,7 +346,7 @@ describe("POST /api/wallet/topups — auto-reject heuristic (≥3 prior rejectio
       app,
       "POST",
       "/api/wallet/topups",
-      { token, body: { amount: 50, payment_network: "madar" } },
+      { token, body: { amount: 50, payment_network: "madar", payment_reference: "TRX-AUTOREJ-2" } },
     );
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("pending");
@@ -395,20 +429,20 @@ describe("POST /api/wallet/topups — happy path", () => {
 
     const min = await call<{ amount: number }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 0.01, payment_network: "madar" },
+      body: { amount: 0.01, payment_network: "madar", payment_reference: "TRX-BOUND-MIN" },
     });
     expect(min.status).toBe(201);
     expect(min.body.amount).toBe(0.01);
 
     const max = await call<{ amount: number }>(app, "POST", "/api/wallet/topups", {
       token,
-      body: { amount: 10000, payment_network: "madar" },
+      body: { amount: 10000, payment_network: "madar", payment_reference: "TRX-BOUND-MAX" },
     });
     expect(max.status).toBe(201);
     expect(max.body.amount).toBe(10000);
   });
 
-  it("accepts a payment_reference at the 100-char handler boundary", async () => {
+  it("rejects a payment_reference at the 100-char handler boundary", async () => {
     // F-03 (round-93): the handler cap (trimmed, ≤ 100) replaced the old
     // 255-char raw boundary.
     const user = await seedUser();
@@ -419,11 +453,274 @@ describe("POST /api/wallet/topups — happy path", () => {
       "/api/wallet/topups",
       {
         token,
-        body: { amount: 50, payment_network: "madar", payment_reference: "R".repeat(100) },
+        body: {
+          amount: 50,
+          payment_network: "madar",
+          payment_reference: "R".repeat(100),
+        },
       },
     );
     expect(res.status).toBe(201);
     expect(res.body.payment_reference).toHaveLength(100);
+  });
+});
+
+// ── B4-R1 (R111, round-111 B4 audit): payment_reference REQUIRED for ────────
+// mobile_transfer + creation-time duplicate-receipt guard. A blank ref was
+// exempt from EVERY dedup layer (V1-M9 partial unique, B2-02 exact check,
+// composite soft-dedup — all key on the reference), so two ref-less pendings
+// for one real transfer were both approvable (200 LYD credited for one 100
+// LYD transfer). lypay keeps the reference optional.
+
+describe("POST /api/wallet/topups — B4-R1 reference requirement (mobile_transfer)", () => {
+  it.each([
+    ["field omitted entirely", undefined],
+    ["whitespace-only reference", "   "],
+    ["empty string", ""],
+  ])(
+    "mobile_transfer without a usable reference (%s) → 400 INVALID_DATA",
+    async (_label, payment_reference) => {
+      const user = await seedUser();
+      const token = signUserToken({ userId: user.id });
+      const res = await call<{ code: string; error: string }>(app, "POST", "/api/wallet/topups", {
+        token,
+        body: { amount: 50, payment_network: "madar", payment_reference },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_DATA");
+      expect(res.body.error).toContain("مرجع التحويل");
+      // Nothing was written.
+      expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
+    },
+  );
+
+  it("lypay keeps the reference optional (gateway receipts are not consistently exposed to users)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ status: string; payment_reference: string | null }>(
+      app,
+      "POST",
+      "/api/wallet/topups",
+      { token, body: { amount: 25, payment_method: "lypay", sender_account: "LYP-ACC-B4R1" } },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.payment_reference).toBeNull();
+  });
+
+  it("same user + reference + amount with a PENDING row → 409 DUPLICATE_PENDING_REFERENCE, no second row", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+
+    const first = await call<{ id: number }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 100,
+        payment_network: "libyana",
+        payment_reference: "RECEIPT-DUP-1",
+        sender_phone: "0912345678",
+      },
+    });
+    expect(first.status).toBe(201);
+
+    // A DIFFERENT idempotency key (or none) — the resubmission shape the
+    // HTTP replay layer cannot catch.
+    const dup = await call<{ code: string; details: { reason?: string } }>(
+      app,
+      "POST",
+      "/api/wallet/topups",
+      {
+        token,
+        body: {
+          amount: 100,
+          payment_network: "libyana",
+          payment_reference: "RECEIPT-DUP-1",
+          sender_phone: "0912345678",
+        },
+      },
+    );
+    expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe("CONFLICT");
+    expect(dup.body.details.reason).toBe("DUPLICATE_PENDING_REFERENCE");
+
+    // Exactly ONE row for the receipt.
+    const rows = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.userId, user.id));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("same reference with a DIFFERENT amount is allowed (approval battery still guards it)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const first = await call(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 100, payment_network: "madar", payment_reference: "RECEIPT-AMT-1" },
+    });
+    expect(first.status).toBe(201);
+    const second = await call(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 200, payment_network: "madar", payment_reference: "RECEIPT-AMT-1" },
+    });
+    expect(second.status).toBe(201);
+  });
+
+  it("the same Idempotency-Key replay still short-circuits BEFORE the duplicate-receipt 409", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const body = {
+      amount: 100,
+      payment_network: "madar",
+      payment_reference: "RECEIPT-IDEM-1",
+    };
+    const key = { "Idempotency-Key": "b4r1 replay key 0001" };
+
+    const first = await call(app, "POST", "/api/wallet/topups", { token, body }, key);
+    expect(first.status).toBe(201);
+    const retry = await call(app, "POST", "/api/wallet/topups", { token, body }, key);
+    expect(retry.status).toBe(200);
+  });
+
+  it("legacy blank-ref PENDING rows stay approvable (B4-R1 enforces at CREATION only)", async () => {
+    // The live table holds pre-fix blank-ref pending rows (verified
+    // 2026-09-24: 2 pending blank-ref). Seeded directly — the route can no
+    // longer mint this shape, but TopupService.approve must keep reviewing
+    // the existing ones, else real customer money strands in limbo.
+    const user = await seedUser({ walletBalance: "0.00" });
+    const [legacy] = await db
+      .insert(walletTopupsTable)
+      .values({
+        userId: user.id,
+        amount: "100.00",
+        paymentMethod: "mobile_transfer",
+        paymentNetwork: "libyana",
+        paymentReference: null,
+        status: "pending",
+      })
+      .returning();
+
+    const { TopupService } = await import("../../services/topup.service");
+    await TopupService.approve(legacy.id, null);
+
+    const [after] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(after.walletBalance))).toBe(100);
+    const [row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, legacy.id));
+    expect(row.status).toBe("approved");
+  });
+});
+
+// ── B2-F2 (R111, round-111 B2 audit): payment_network allowlist + column ────
+// bounds (varchar(50/20/255)) — oversized values are 400s, never 22001 500s.
+
+describe("POST /api/wallet/topups — B2-F2 network allowlist + field bounds", () => {
+  it("rejects an off-allowlist payment_network with 400 (was free-form)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ code: string; error: string }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 50, payment_network: "crypto-chain", payment_reference: "TRX-NET-1" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+    expect(res.body.error).toContain("شبكة الدفع");
+  });
+
+  it("rejects an over-long payment_network with 400 (varchar(50) — was a 500)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 50,
+        payment_network: "n".repeat(51),
+        payment_reference: "TRX-NET-2",
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+  });
+
+  it("normalizes the network (trim + lowercase) before the allowlist + storage", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ payment_network: string | null }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 50,
+        payment_network: "  Madar ",
+        payment_reference: "TRX-NET-3",
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.payment_network).toBe("madar");
+  });
+
+  it.each(["libyana", "madar", "sadad", "lypay"])(
+    "accepts every allowlisted network (%s) — frontend + live legacy values",
+    async (network) => {
+      const user = await seedUser();
+      const token = signUserToken({ userId: user.id });
+      const res = await call<{ payment_network: string | null }>(
+        app,
+        "POST",
+        "/api/wallet/topups",
+        {
+          token,
+          body: { amount: 50, payment_network: network, payment_reference: `TRX-${network}` },
+        },
+      );
+      expect(res.status).toBe(201);
+      expect(res.body.payment_network).toBe(network);
+    },
+  );
+
+  it("rejects an over-long sender_account with 400 (varchar(255) — was a 500)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 25,
+        payment_method: "lypay",
+        sender_account: "A".repeat(256),
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+  });
+
+  it("rejects an over-long sender_phone on lypay with 400 (varchar(20) — was a 500; lypay skips the Libyan-number check)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 25,
+        payment_method: "lypay",
+        sender_account: "LYP-ACC-PHONE-LEN",
+        sender_phone: "9".repeat(21),
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+  });
+
+  it("accepts sender_account at the 255-char boundary", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ sender_account: string | null }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 25,
+        payment_method: "lypay",
+        sender_account: "A".repeat(255),
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.sender_account).toHaveLength(255);
   });
 });
 
@@ -436,7 +733,7 @@ describe("GET /api/wallet/topups", () => {
 
     await call(app, "POST", "/api/wallet/topups", {
       token: tokenA,
-      body: { amount: 10, payment_network: "madar" },
+      body: { amount: 10, payment_network: "madar", payment_reference: "TRX-LIST-A1" },
     });
     await call(app, "POST", "/api/wallet/topups", {
       token: tokenA,
@@ -479,7 +776,10 @@ describe("POST /api/wallet/topups — boundary rounding (AUD103-5-F7)", () => {
       app,
       "POST",
       "/api/wallet/topups",
-      { token, body: { amount: 10.555, payment_network: "madar" } },
+      {
+        token,
+        body: { amount: 10.555, payment_network: "madar", payment_reference: "TRX-ROUND-1" },
+      },
     );
     expect(res.status).toBe(201);
     expect(res.body.amount).toBe(10.56);

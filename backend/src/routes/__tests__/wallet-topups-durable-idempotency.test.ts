@@ -89,11 +89,15 @@ async function seedUser() {
 }
 
 function topupBody() {
+  // B4-R1 (R111): mobile_transfer requires a payment_reference now. Fixed
+  // value: the same-key retry in test (a) must send the IDENTICAL body so
+  // the durable replay (not the receipt dedup) answers it.
   return {
     amount: 50,
     payment_method: "mobile_transfer",
     payment_network: "madar",
     sender_phone: "0913456789",
+    payment_reference: "TRX-DURABLE-1",
   };
 }
 

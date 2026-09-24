@@ -3,11 +3,12 @@ import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
-import { requireAdmin } from "../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempotency";
+import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 
 const router = Router();
 
@@ -243,6 +244,30 @@ router.patch(
     // ── Wallet path: AdjustmentService (atomic, ledger-backed) ────────
     let walletResult: { walletBalance: number } | null = null;
     if (typeof wallet_adjustment === "number" || typeof wallet_balance === "number") {
+      // B1-3 (R111, round-111 B1 audit): the router mount gates this route
+      // on the `users` scope, but a wallet mutation is a MONEY write —
+      // setting an arbitrary wallet_balance prints balances (up to the
+      // 99,999,999.99 LYD service cap) and wallet_adjustment moves LYD 1:1.
+      // Those need the `finance` scope exactly like every other money
+      // surface (topup approve/reject are requirePermission("finance") at
+      // the parent mount). Verified safe against the live DB before
+      // shipping: every live admin (sole active: ahmadmedo) holds ["all"],
+      // so no existing principal loses access; only FUTURE scoped admins
+      // are bound to the tighter rule (users + finance for wallet edits,
+      // the same combo the users page needs for loyalty edits + finance
+      // viewing anyway). 403 (not 401): the caller IS authenticated, just
+      // under-scoped — requirePermission's envelope.
+      const actingPerms = (req as AdminAuthenticatedRequest).adminPermissions ?? [];
+      if (!hasPermission(actingPerms, PERMISSION_SCOPES.FINANCE)) {
+        return res
+          .status(403)
+          .json(
+            createErrorResponse(
+              "تعديل رصيد المحفظة يتطلب صلاحية «المعاملات المالية» (finance)",
+              ErrorCode.FORBIDDEN,
+            ),
+          );
+      }
       // A8-09 (round-94): a wallet mutation with no operator note means
       // the audit trail (F-004) records "Admin adjustment" — useless in
       // an incident review, and the ONLY control on self-dealing via a

@@ -80,12 +80,20 @@ async function seedUser(): Promise<{ id: number; token: string }> {
   return { id: u.id, token: signUserToken({ userId: u.id }) };
 }
 
+let topupRefSeq = 0;
 function topupBody() {
+  // B4-R1 (R111): mobile_transfer now REQUIRES a payment_reference, and
+  // the route dedups same user+ref+amount PENDING resubmissions. Each
+  // call mints a FRESH receipt so every test post here is a distinct
+  // transfer intent — the same-receipt dedup is pinned in
+  // wallet-topups.test.ts (B4-R1 describe block).
+  topupRefSeq += 1;
   return {
     amount: 50,
     payment_method: "mobile_transfer",
     payment_network: "madar",
     sender_phone: "0913456789",
+    payment_reference: `TRX-IDEM-${topupRefSeq}`,
   };
 }
 
@@ -158,6 +166,8 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
         "Idempotency-Key": "topup idem key 0002",
       });
       expect(first.status).toBe(201);
+      // B4-R1: a distinct key AND a distinct receipt (topupBody() mints a
+      // fresh reference per call) — two genuinely separate transfers.
       const second = await postTopup(url, token, topupBody(), {
         "Idempotency-Key": "topup idem key 0003",
       });
@@ -188,7 +198,7 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
     }
   });
 
-  it("requests WITHOUT a key still pass through (legacy clients keep working)", async () => {
+  it("requests WITHOUT a key still pass through (legacy clients keep working for distinct receipts)", async () => {
     const { url, close } = await listen(buildApp());
     try {
       const { id: userId, token } = await seedUser();
@@ -199,7 +209,10 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
       expect(second.status).toBe(201);
       expect(second.headers.get("Idempotent-Replayed")).toBeNull();
 
-      // Legacy shape: no key → no dedup (same as the pre-fix behavior).
+      // Legacy shape: no key → no KEY-layer dedup. (The B4-R1 receipt
+      // dedup DOES engage for the same receipt without a key — pinned in
+      // wallet-topups.test.ts — but these two posts carry distinct
+      // receipts, i.e. two real transfers.)
       expect(await pendingRowCount(userId)).toBe(2);
     } finally {
       close();
