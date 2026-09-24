@@ -279,7 +279,9 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
       ) : (
         <Copy className="w-3 h-3" />
       )}
-      {failed ? "فشل النسخ" : copied ? "تم" : (label ?? "نسخ")}
+      {/* R111-F2 Q2: canonical copy-failure label (CopyButton.tsx:62 /
+          CopilotPanel) — was «فشل النسخ», a duplicate verb form. */}
+      {failed ? "تعذّر النسخ" : copied ? "تم" : (label ?? "نسخ")}
     </button>
   );
 }
@@ -389,7 +391,9 @@ function TransferCodePanel({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 text-xs font-bold text-primary/80">
           <PhoneCall className="w-3.5 h-3.5" />
-          كود التحويل
+          {/* R111-F2 N3: «رمز» family (رمز الكوبون، رمز التحقق) — was
+              «كود التحويل». */}
+          رمز التحويل
         </div>
         {code && <CopyBtn text={code} />}
       </div>
@@ -411,7 +415,7 @@ function TransferCodePanel({
           </div>
         ) : (
           <div className="rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/60 text-sm">
-            أدخل المبلغ لإنشاء الكود تلقائياً
+            أدخل المبلغ لإنشاء الرمز تلقائياً
           </div>
         )}
       </div>
@@ -422,7 +426,7 @@ function TransferCodePanel({
           Surfacing it above the action sets the right expectation up
           front: tap is the fast path, copy is the universal fallback. */}
       <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
-        على الجوال: اضغط الزر لفتح لوحة الاتصال. على الحاسوب: انسخ الكود وأدخله يدوياً.
+        على الجوال: اضغط الزر لفتح لوحة الاتصال. على الحاسوب: انسخ الرمز وأدخله يدوياً.
       </p>
 
       {href ? (
@@ -631,7 +635,9 @@ export default function WalletPage() {
 
   useEffect(() => {
     if (!token) navigate("/login");
-  }, [token]);
+    // wouter's navigate is a stable reference — listing it is free and
+    // keeps exhaustive-deps honest (r111 lint parity).
+  }, [token, navigate]);
 
   // 93-C5 / F-05 (A4 #7): no error state — on a failed /api/wallet probe
   // the balance card used to silently VANISH (wallet ? card : null) and

@@ -128,7 +128,9 @@ export function statusLabel(status: string): string {
     completed: "مكتمل",
     delivered: "مكتمل",
     failed: "فشل",
-    refunded: "مسترجع",
+    // R111-F2 N2: unified on the استرداد root (canonical across
+    // order-detail «تم الاسترداد», support, terms). Was «مسترجع».
+    refunded: "مُسترد",
     approved: "موافق عليه",
     rejected: "مرفوض",
     // 93-C7 / C-UX2 (A12 §11.1 rule 1): the label side of the status

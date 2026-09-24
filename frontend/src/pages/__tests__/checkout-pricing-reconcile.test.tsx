@@ -200,7 +200,7 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     );
 
     // The CTA sells the LIVE total.
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     await waitFor(() => expect(cta.textContent).toContain("150.00 د.ل"));
     expect(cta).toBeEnabled();
     // No line was dropped.
@@ -252,7 +252,7 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     expect(snapshotTotals.length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText(PRICE_NOTICE)).not.toBeInTheDocument();
     expect(screen.queryByText(/أُزيل من الطلب/)).not.toBeInTheDocument();
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     await waitFor(() => expect(cta).toBeEnabled());
     expect(cta.textContent).toContain("98.00 د.ل");
     // The stored snapshot was NOT rewritten (identity-stable no-op).
@@ -269,7 +269,7 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     const snapshotTotals = await screen.findAllByText("98.00 د.ل");
     expect(snapshotTotals.length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText(PRICE_NOTICE)).not.toBeInTheDocument();
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     await waitFor(() => expect(cta).toBeEnabled());
   });
 
@@ -285,7 +285,7 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
 
     // While the re-quote is pending, the CTA's accessible label IS the
     // in-flight one («جارٍ تحديث الأسعار…») — query by THAT; the
-    // confirm label «تأكيد الطلب» cannot exist mid-flight.
+    // confirm label «إتمام الطلب» cannot exist mid-flight.
     const cta = await screen.findByRole("button", { name: /جارٍ تحديث الأسعار/ });
     expect(cta).toBeDisabled();
 

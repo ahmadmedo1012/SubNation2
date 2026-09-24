@@ -59,7 +59,9 @@ const OUTCOME_META: Record<Outcome, { label: string; tone: StatusBadgeVariant; i
     partial: { label: "جزئي", tone: "warning", icon: AlertTriangle },
     failure: { label: "فشل", tone: "error", icon: XCircle },
     refused: { label: "رفض", tone: "error", icon: XCircle },
-    validation_rejected: { label: "فحص فشل", tone: "warning", icon: AlertTriangle },
+    // R111-F2 C6: was «فحص فشل» — inverted word order; the correct
+    // noun-phrase order is «فشل الفحص» (the validation failed).
+    validation_rejected: { label: "فشل الفحص", tone: "warning", icon: AlertTriangle },
     rate_limited: { label: "حدّ معدل", tone: "warning", icon: AlertTriangle },
     stale: { label: "قديم", tone: "neutral", icon: AlertTriangle },
     expired: { label: "منتهٍ", tone: "neutral", icon: AlertTriangle },

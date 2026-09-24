@@ -1,5 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// R111-F1 G1: the checkout-shaped skeleton shell (same max-w-5xl +
+// grid geometry as this page) for the cart-hydration guard below.
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
@@ -1079,7 +1082,7 @@ export default function CheckoutPage() {
         // Full success.
         clear();
         toast({
-          title: "تم تأكيد الطلب",
+          title: "تم إتمام الطلب",
           description: `تم إنشاء ${formatCount(created.length, {
             one: "طلب",
             two: "طلبين",
@@ -1111,6 +1114,18 @@ export default function CheckoutPage() {
   }
 
   if (!token) return null;
+
+  // R111-F1 G1 (P3): cart-hydration guard — mirrors cart.tsx:122. The
+  // cart reads localStorage in a mount effect; until it flips
+  // `isLoaded`, items=[] and the empty branch below rendered
+  // «سلتك فارغة» for one paint on every deep link to /checkout with a
+  // FULL cart — a false "your cart is empty" flash on the money
+  // screen. The "checkout" skeleton shell mirrors this page's exact
+  // two-column geometry (route-skeleton.tsx CheckoutShell), so the
+  // swap-in is a content-fill, not a layout jump.
+  if (!isLoaded) {
+    return <RouteSkeleton shape="checkout" />;
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -1167,7 +1182,7 @@ export default function CheckoutPage() {
               >
                 <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
                 <span>
-                  تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند التأكيد.
+                  تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند إتمام الطلب.
                 </span>
               </div>
             )}
@@ -1187,7 +1202,7 @@ export default function CheckoutPage() {
                     href="/wallet?return=/checkout"
                     className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
                   >
-                    اشحن المحفظة ثم عُد لإكمال الطلب
+                    اشحن المحفظة ثم عُد لإتمام الطلب
                   </Link>
                 </div>
               </div>
@@ -1272,7 +1287,7 @@ export default function CheckoutPage() {
               </p>
             )}
             <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-              يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند تأكيد الطلب.
+              يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند إتمام الطلب.
             </p>
           </div>
 
@@ -1462,7 +1477,7 @@ export default function CheckoutPage() {
                 <Button
                   onClick={handleConfirm}
                   disabled={!canSubmit}
-                  /* 96-F4 (R96 A1 M06): the coupon-state label («تأكيد الطلب —
+                  /* 96-F4 (R96 A1 M06): the coupon-state label («إتمام الطلب —
                      الإجمالي بعد الكوبون (…)» ≈ 300–330px of Arabic + tabular
                      digits) overflowed the button's inner width at ≤390px because
                      buttonVariants' base ships whitespace-nowrap — the label bled
@@ -1485,13 +1500,17 @@ export default function CheckoutPage() {
                       جارٍ تحديث الأسعار…
                     </>
                   ) : appliedCoupon ? (
-                    <>تأكيد الطلب — الإجمالي بعد الكوبون ({formatCurrency(comparisonTotal)})</>
+                    // R111-F2 N1: unified CTA verb — the page title, the
+                    // error banner and this button all say «إتمام الطلب»
+                    // now (was «تأكيد الطلب», a second verb family on the
+                    // money screen).
+                    <>إتمام الطلب — الإجمالي بعد الكوبون ({formatCurrency(comparisonTotal)})</>
                   ) : (
-                    <>تأكيد الطلب ({formatCurrency(totalLYD)})</>
+                    <>إتمام الطلب ({formatCurrency(totalLYD)})</>
                   )}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center mt-3">
-                  بالنقر على «تأكيد الطلب» فإنك توافق على شروط الاستخدام
+                  بالنقر على «إتمام الطلب» فإنك توافق على شروط الاستخدام
                 </p>
               </>
             )}

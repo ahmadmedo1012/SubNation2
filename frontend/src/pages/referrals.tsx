@@ -90,7 +90,9 @@ function CopyBtn({
       ) : (
         <Copy className="w-3.5 h-3.5" />
       )}
-      {failed ? "فشل النسخ" : copied ? "تم النسخ!" : label}
+      {/* R111-F2 Q2: canonical copy-failure label (CopyButton.tsx:62) —
+          was «فشل النسخ», a duplicate verb form for the same action. */}
+      {failed ? "تعذّر النسخ" : copied ? "تم النسخ!" : label}
     </button>
   );
 }

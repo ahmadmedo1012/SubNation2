@@ -134,7 +134,7 @@ function renderPage() {
 }
 
 async function clickConfirm() {
-  const btn = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+  const btn = await screen.findByRole("button", { name: /إتمام الطلب/ });
   await waitFor(() => expect(btn).toBeEnabled());
   fireEvent.click(btn);
 }
@@ -352,7 +352,7 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     seedCart(1);
     renderPage();
 
-    const btn = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const btn = await screen.findByRole("button", { name: /إتمام الطلب/ });
     // whitespace-normal overrides buttonVariants' base whitespace-nowrap via
     // twMerge; text-balance spreads the long coupon-state label evenly; the
     // fixed h-12 became min-h-12 so a 2-line label grows the button.

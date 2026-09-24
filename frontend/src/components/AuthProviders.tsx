@@ -7,7 +7,7 @@ import {
   type LinkConsentCandidateHint,
 } from "@/lib/firebase-auth";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { apiUrl } from "@/lib/api-config";
 import { fetchPublicAuthProviders } from "@/hooks/use-public-auth-providers";
@@ -111,7 +111,10 @@ function ProviderButton({
 }: {
   provider: Provider;
   onSuccess: (token: string) => void;
-  onError: (msg: string) => void;
+  // R111-F2 N4: ReactNode (not string) so the message can carry
+  // <span lang="en"> brand wrapping — see the Firebase-Google fallback
+  // below. `string` remains fully assignable at every other call-site.
+  onError: (msg: ReactNode) => void;
   /**
    * F-003 (security audit 004) — invoked when the backend returns
    * 409 with reason="link_consent_required". The parent renders a
@@ -139,7 +142,13 @@ function ProviderButton({
 
       if (provider.id === "google") {
         if (!isFirebaseAuthConfigured()) {
-          onError("خدمة Firebase Google غير مفعلة حالياً");
+          // R111-F2 N4: Latin brand names wrapped in lang="en" (same
+          // treatment as WhatsApp across the auth surfaces).
+          onError(
+            <>
+              خدمة <span lang="en">Firebase Google</span> غير مفعلة حالياً
+            </>,
+          );
           return;
         }
 
@@ -205,7 +214,9 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   // /api/auth/providers round-trip resolves. The fetch below then merges
   // the full server list (Telegram, etc.) in place.
   const [providers, setProviders] = useState<Provider[]>(() => includeFirebaseGoogleProvider([]));
-  const [error, setError] = useState("");
+  // R111-F2 N4: ReactNode so the Firebase-Google fallback message can
+  // carry the <span lang="en"> brand wrapping.
+  const [error, setError] = useState<ReactNode>("");
   // F-003 (security audit 004) — consent-modal state. When the
   // backend returns 409 reason=link_consent_required, we capture the
   // pending exchange + link token + masked hint and render the modal.

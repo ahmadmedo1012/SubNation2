@@ -68,7 +68,9 @@ describe("statusLabel", () => {
     expect(statusLabel("completed")).toBe("مكتمل");
     expect(statusLabel("delivered")).toBe("مكتمل");
     expect(statusLabel("failed")).toBe("فشل");
-    expect(statusLabel("refunded")).toBe("مسترجع");
+    // R111-F2 N2: unified on the استرداد root (order-detail already said
+    // «تم الاسترداد») — the old استرجاع-root label «مسترجع» is gone.
+    expect(statusLabel("refunded")).toBe("مُسترد");
   });
 
   it("returns the Arabic label for topup statuses", () => {

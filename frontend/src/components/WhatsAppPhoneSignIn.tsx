@@ -468,7 +468,9 @@ export function WhatsAppPhoneSignIn({
       {step === "pristine" && channelStatus === "failed" && (
         <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> غير مرتبطة حاليًا — جارٍ إصلاحها من فريق التشغيل؛
-          استخدم Google أو Telegram مؤقتًا
+          {/* R111-F2 N4: Latin brand names wrapped like WhatsApp 2 words
+              earlier in the same sentence (was bare «Google أو Telegram»). */}
+          استخدم <span lang="en">Google</span> أو <span lang="en">Telegram</span> مؤقتًا
         </p>
       )}
       {/* r95 honest hint — only when the live probe says the channel is
@@ -481,8 +483,10 @@ export function WhatsAppPhoneSignIn({
         channelStatus !== "settling" &&
         channelStatus !== "failed" && (
           <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-            قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم Google
-            / Telegram الآن
+            {/* R111-F2 N4: Google / Telegram wrapped in lang="en" like
+                WhatsApp two words earlier — same-sentence consistency. */}
+            قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم{" "}
+            <span lang="en">Google</span> / <span lang="en">Telegram</span> الآن
           </p>
         )}
       {step !== "pristine" && (
@@ -499,7 +503,11 @@ export function WhatsAppPhoneSignIn({
                   disabled={loading || settlingAuto}
                   dir="ltr"
                   enterKeyHint="done"
-                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-base outline-none focus:border-primary/50 disabled:opacity-50"
+                  /* F3-12 (R111 WCAG 1.4.11): `focus:border-primary/50`
+                  alone measured 1.70:1 vs the resting border on the dark
+                  card — the ring token at full opacity (3.76:1 dark card /
+                  5.30:1 light) carries the focus indicator contrast. */
+                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                 />
                 {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
                 bg keeps the WhatsApp brand green; the label rides the
@@ -578,7 +586,11 @@ export function WhatsAppPhoneSignIn({
                   disabled={loading}
                   dir="ltr"
                   enterKeyHint="done"
-                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 disabled:opacity-50"
+                  /* F3-12 (R111 WCAG 1.4.11): same fix as the phone field
+                  above — a real 3.76:1+ ring instead of the 1.70:1 border
+                  tint. (tracking-widest here is Latin digits only — the
+                  global letter-spacing guard zeroes it for Arabic.) */
+                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                   autoFocus
                 />
                 {typeof navigator !== "undefined" &&
@@ -679,12 +691,12 @@ export function WhatsAppPhoneSignIn({
             ) : settling.wake ? (
               <>
                 ما زالت خدمة <span lang="en">WhatsApp</span> تستيقظ من السكون — أعد المحاولة أو
-                استخدم Google / Telegram
+                استخدم <span lang="en">Google</span> / <span lang="en">Telegram</span>
               </>
             ) : (
               <>
-                ما زالت قناة <span lang="en">WhatsApp</span> قيد التهيئة — أعد المحاولة أو استخدم
-                Google / Telegram
+                ما زالت قناة <span lang="en">WhatsApp</span> قيد التهيئة — أعد المحاولة أو استخدم{" "}
+                <span lang="en">Google</span> / <span lang="en">Telegram</span>
               </>
             )}
           </p>

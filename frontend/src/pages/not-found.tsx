@@ -27,7 +27,10 @@ export default function NotFound() {
           <div className="absolute inset-4 rounded-full bg-primary/6 border border-primary/12" />
           <div className="relative flex flex-col items-center">
             <Compass className="w-10 h-10 text-primary/40 mb-1" />
-            <span className="text-4xl font-black text-primary/25 tracking-tighter">٤٠٤</span>
+            {/* R111-F2 C1: Latin digits — the site-wide numeral convention
+                (utils.ts -u-nu-latn pins, Arabic-Indic input conversion).
+                Was the only shipped Arabic-Indic string in frontend/src. */}
+            <span className="text-4xl font-black text-primary/25 tracking-tighter">404</span>
           </div>
         </div>
 

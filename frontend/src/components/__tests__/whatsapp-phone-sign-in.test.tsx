@@ -269,6 +269,12 @@ describe("honest provider hints under the pristine button (96-F2 §1.3E + 97-F5 
     expect(hint).toBeInTheDocument();
     expect(hint.textContent).toContain("جارٍ إصلاحها من فريق التشغيل");
     expect(hint.textContent).toContain("استخدم Google أو Telegram");
+    // R111-F2 N4: the Latin provider names are wrapped in lang="en"
+    // exactly like WhatsApp two words earlier in the same sentence
+    // (screen readers stop spelling them with Arabic phonemes).
+    expect([...hint.querySelectorAll('span[lang="en"]')].map((s) => s.textContent)).toEqual(
+      expect.arrayContaining(["Google", "Telegram"]),
+    );
     // Muted info styling (NOT the destructive error style) + never an alert.
     expect(hint.className).toContain("text-muted-foreground");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

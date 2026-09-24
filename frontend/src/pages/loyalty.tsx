@@ -207,7 +207,10 @@ export default function LoyaltyPage() {
         // IDEMPOTENCY_IN_FLIGHT means the same-key conversion is still
         // executing server-side and the retry MUST replay it (keep the key).
         if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") clearStoredConvertKey();
-        throw new Error(result?.error || "فشلت العملية");
+        // R111-F2 Q1: the vague «فشلت العملية» fallback is below the
+        // app's error-copy bar — calm + actionable, matching the
+        // page-banner phrasing family («تعذّر … — حاول مرة أخرى»).
+        throw new Error(result?.error || "تعذّر إتمام العملية — حاول مرة أخرى");
       }
       toast({ title: "تم التحويل", description: result.message });
       // 99-M4: success is terminal — the next conversion mints a fresh key.
@@ -220,7 +223,10 @@ export default function LoyaltyPage() {
       queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
       fetchData();
     } catch (err: unknown) {
-      const message = err instanceof Error && err.message ? err.message : "فشلت العملية";
+      // R111-F2 Q1 (same family as the throw above): actionable fallback
+      // instead of the vague «فشلت العملية».
+      const message =
+        err instanceof Error && err.message ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى";
       // Inline + persistent (cleared on the next attempt) — the toast
       // alone expired after 4 s, losing the failure on a money action.
       setConvertError(message);
@@ -504,8 +510,18 @@ export default function LoyaltyPage() {
                 <ArrowUpLeft className="w-4 h-4 shrink-0 text-primary" />
                 <span>
                   تحتاج إلى{" "}
-                  <span className="font-bold text-foreground">{100 - data.points} نقطة</span> إضافية
-                  للوصول للحد الأدنى (100 نقطة)
+                  {/* R111-F2 C2: tier remainder is ANY number — a frozen
+                      «نقطة» was wrong for 3-10 (should be «نقاط»). Routed
+                      through the shared formatCount plural engine like the
+                      20+ other count sites (utils.ts:49). */}
+                  <span className="font-bold text-foreground">
+                    {formatCount(100 - data.points, {
+                      few: "نقاط",
+                      many: "نقطة",
+                      other: "نقطة",
+                    })}
+                  </span>{" "}
+                  إضافية للوصول للحد الأدنى (100 نقطة)
                 </span>
               </div>
             ) : (

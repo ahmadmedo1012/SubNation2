@@ -284,7 +284,14 @@ export default function HomePage() {
     }
   }, [search, category, sort, availableOnly]);
 
-  const { data: stats } = useGetCatalogStats({
+  // R111-F1 G2 (P3): the stats widgets (hero side column + mobile strip)
+  // had NO loading state — a late /catalog-stats success popped the
+  // chips into the hero (CLS) and a failure removed them silently.
+  // `isPending` now renders chip-shaped skeletons; an error hides the
+  // strip DELIBERATELY (decorative secondary data — an error card
+  // inside the hero would be noise; the catalog below carries the
+  // page's honest error + retry).
+  const { data: stats, isPending: statsPending } = useGetCatalogStats({
     query: {
       queryKey: getGetCatalogStatsQueryKey(),
       staleTime: 10 * 60 * 1000, // 10 minutes for stats
@@ -317,7 +324,12 @@ export default function HomePage() {
   // The orders route now supports ?limit= — ask for exactly what we show.
   // The params object is part of the query key, so the profile/orders
   // full list stays cached separately.
-  const { data: recentOrders = [] } = useListOrders(
+  const {
+    data: recentOrders = [],
+    isPending: ordersPending,
+    isError: ordersError,
+    refetch: refetchOrders,
+  } = useListOrders(
     { limit: 4 },
     {
       query: { enabled: !!token, queryKey: getListOrdersQueryKey({ limit: 4 }) },
@@ -434,60 +446,101 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Recent orders strip */}
-            {latestOrders.length > 0 && (
-              <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm shadow-black/10">
-                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
-                  <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                    <Clock className="w-3.5 h-3.5" />
-                    آخر الطلبات
-                  </div>
-                  <Link href="/orders">
-                    <button className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring">
-                      عرض الكل
-                      <ChevronLeft className="w-3 h-3" />
-                    </button>
-                  </Link>
+            {/* Recent orders strip — R111-F1 G3 (P3): a 4-row
+                mini-skeleton while pending (the strip used to pop in
+                below the hero with zero loading state — CLS) and an
+                honest compact error row with retry on failure (an
+                outage no longer reads as "no orders"). */}
+            {ordersPending ? (
+              <div
+                aria-hidden="true"
+                className="bg-card border border-border/45 rounded-2xl overflow-hidden shadow-sm shadow-black/10"
+              >
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/25">
+                  <div className="w-3.5 h-3.5 rounded-full skeleton-shimmer" />
+                  <div className="h-3 w-20 skeleton-shimmer rounded" />
                 </div>
                 <div className="divide-y divide-border/15">
-                  {latestOrders.map((order) => (
-                    <Link key={order.id} href={`/orders/${order.order_code}`}>
-                      <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
-                        <div className="w-8 h-8 rounded-xl bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/25">
-                          {order.product_image_url ? (
-                            <img
-                              src={order.product_image_url}
-                              alt={order.product_name}
-                              loading="lazy"
-                              decoding="async"
-                              className="w-full h-full object-contain p-1"
-                            />
-                          ) : (
-                            <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold truncate group-hover:text-primary-text transition-colors duration-150">
-                            {order.product_name}
-                          </div>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <OrderStatusIcon status={order.status} />
-                            <span
-                              className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}
-                            >
-                              {statusLabel(order.status)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-xs font-black tabular-nums shrink-0">
-                          {formatCurrency(order.amount)}
-                        </div>
-                        <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-text transition-colors shrink-0" />
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-3 min-h-[52px]">
+                      <div className="w-8 h-8 rounded-xl bg-muted/50 skeleton-shimmer shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 skeleton-shimmer rounded w-1/3" />
+                        <div className="h-2.5 skeleton-shimmer rounded w-1/4" />
                       </div>
-                    </Link>
+                      <div className="h-3 w-12 skeleton-shimmer rounded" />
+                    </div>
                   ))}
                 </div>
               </div>
+            ) : ordersError ? (
+              <div className="bg-card border border-status-error/18 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 float-in">
+                <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                  <WifiOff className="w-4 h-4 text-status-error/60 shrink-0" />
+                  تعذّر تحميل آخر الطلبات
+                </div>
+                <button
+                  onClick={() => refetchOrders()}
+                  className="text-xs font-bold text-primary-text border border-primary/25 px-3.5 py-1.5 rounded-lg hover:bg-primary/8 transition-colors press-spring shrink-0"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            ) : (
+              latestOrders.length > 0 && (
+                <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm shadow-black/10">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
+                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+                      <Clock className="w-3.5 h-3.5" />
+                      آخر الطلبات
+                    </div>
+                    <Link href="/orders">
+                      <button className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring">
+                        عرض الكل
+                        <ChevronLeft className="w-3 h-3" />
+                      </button>
+                    </Link>
+                  </div>
+                  <div className="divide-y divide-border/15">
+                    {latestOrders.map((order) => (
+                      <Link key={order.id} href={`/orders/${order.order_code}`}>
+                        <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
+                          <div className="w-8 h-8 rounded-xl bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/25">
+                            {order.product_image_url ? (
+                              <img
+                                src={order.product_image_url}
+                                alt={order.product_name}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-contain p-1"
+                              />
+                            ) : (
+                              <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold truncate group-hover:text-primary-text transition-colors duration-150">
+                              {order.product_name}
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <OrderStatusIcon status={order.status} />
+                              <span
+                                className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}
+                              >
+                                {statusLabel(order.status)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs font-black tabular-nums shrink-0">
+                            {formatCurrency(order.amount)}
+                          </div>
+                          <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-text transition-colors shrink-0" />
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )
             )}
           </div>
         ) : (
@@ -605,8 +658,11 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Stats column — desktop only */}
-                {stats && (
+                {/* Stats column — desktop only — R111-F1 G2 (P3):
+                    chip-shaped skeletons while the first fetch is pending
+                    (no pop-in CLS); an error hides the column (decorative
+                    data — documented deliberate degrade, see the query). */}
+                {stats ? (
                   <div className="hidden sm:flex flex-col gap-2 shrink-0">
                     {[
                       {
@@ -659,46 +715,75 @@ export default function HomePage() {
                       </div>
                     ))}
                   </div>
-                )}
+                ) : statsPending ? (
+                  <div className="hidden sm:flex flex-col gap-2 shrink-0" aria-hidden="true">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-muted/30 border border-border/40 rounded-2xl px-4 py-3 min-w-[116px]"
+                      >
+                        <div className="h-7 w-14 skeleton-shimmer rounded mb-1.5" />
+                        <div className="h-3 w-24 skeleton-shimmer rounded" />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
         )}
 
-        {/* Mobile stats strip (guest) */}
-        {!token && stats && (
-          <div className="sm:hidden grid grid-cols-3 gap-2 mb-5">
-            {[
-              {
-                label: formatCount(stats.available_products, {
-                  one: "منتج",
-                  two: "منتجان",
-                  few: "منتجات",
-                  many: "منتجاً",
-                  other: "منتج",
-                }),
-                value: stats.available_products,
-                color: "text-status-success",
-              },
-              {
-                label: "أقل سعر",
-                value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
-                color: "text-primary-text",
-              },
-              { label: "بالمخزون", value: stats.total_units, color: "text-status-info" },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className="bg-card border border-border/45 rounded-2xl p-3 text-center"
-              >
-                <div className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}>
-                  {s.value}
+        {/* Mobile stats strip (guest) — R111-F1 G2: the same
+            skeleton-while-pending / hide-on-error contract as the
+            desktop column above (identical geometry, no CLS). */}
+        {!token &&
+          (stats ? (
+            <div className="sm:hidden grid grid-cols-3 gap-2 mb-5">
+              {[
+                {
+                  label: formatCount(stats.available_products, {
+                    one: "منتج",
+                    two: "منتجان",
+                    few: "منتجات",
+                    many: "منتجاً",
+                    other: "منتج",
+                  }),
+                  value: stats.available_products,
+                  color: "text-status-success",
+                },
+                {
+                  label: "أقل سعر",
+                  value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
+                  color: "text-primary-text",
+                },
+                { label: "بالمخزون", value: stats.total_units, color: "text-status-info" },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="bg-card border border-border/45 rounded-2xl p-3 text-center"
+                >
+                  <div
+                    className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}
+                  >
+                    {s.value}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{s.label}</div>
                 </div>
-                <div className="text-[10px] text-muted-foreground">{s.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          ) : statsPending ? (
+            <div className="sm:hidden grid grid-cols-3 gap-2 mb-5" aria-hidden="true">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-card border border-border/45 rounded-2xl p-3 text-center"
+                >
+                  <div className="h-5 w-10 mx-auto skeleton-shimmer rounded mb-1" />
+                  <div className="h-2.5 w-14 mx-auto skeleton-shimmer rounded" />
+                </div>
+              ))}
+            </div>
+          ) : null)}
 
         {/* ── Filters ──────────────────────────────────────── */}
         {/* 96-F5 (R96-M08): the sticky offset tracks the Navbar's real

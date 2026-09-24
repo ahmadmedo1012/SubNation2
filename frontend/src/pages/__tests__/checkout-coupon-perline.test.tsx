@@ -60,7 +60,12 @@ vi.mock("@/hooks/use-toast", () => ({
 /** Live-catalog mirror of the seeded cart — the mount-time re-quote
  *  (R98-A3 F5, tested in checkout-pricing-reconcile.test.tsx) must stay
  *  SILENT here so these tests isolate the coupon math. */
-function liveProductFor(line: { productId: number; variantId: number; price: number; sale: number | null }) {
+function liveProductFor(line: {
+  productId: number;
+  variantId: number;
+  price: number;
+  sale: number | null;
+}) {
   return {
     id: line.productId,
     slug: null,
@@ -148,7 +153,10 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
 });
 
 /** Per-coupon validate behavior: (order_amount) → Response-like. */
-const validateHandlers = new Map<string, (orderAmount: number) => { ok: boolean; json: () => unknown }>();
+const validateHandlers = new Map<
+  string,
+  (orderAmount: number) => { ok: boolean; json: () => unknown }
+>();
 const balanceStub = { wallet: 1_000_000 };
 
 function fixedCoupon(code: string, value: number) {
@@ -190,7 +198,7 @@ function renderPage() {
 }
 
 async function clickConfirm() {
-  const btn = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+  const btn = await screen.findByRole("button", { name: /إتمام الطلب/ });
   await waitFor(() => expect(btn).toBeEnabled());
   fireEvent.click(btn);
 }
@@ -239,7 +247,7 @@ describe("CheckoutPage — per-line coupon pre-flight (98-F2 / R98-A3 F1 P1)", (
     };
     expect(callBody.order_amount).toBe(25);
     // No coupon applied → the CTA sells the plain total.
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     expect(cta.textContent).toContain("75.00 د.ل");
 
     // Confirm-time pre-flight (the code is still in the field): rejected
@@ -283,7 +291,7 @@ describe("CheckoutPage — per-line coupon pre-flight (98-F2 / R98-A3 F1 P1)", (
       expect(screen.queryByText(/رصيد المحفظة غير كافٍ/)).not.toBeInTheDocument(),
     );
     // CTA carries the honest number.
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     expect(cta.textContent).toContain("45.00 د.ل");
 
     // The per-unit loop semantics are untouched: 3 unit orders, each
@@ -316,7 +324,8 @@ describe("CheckoutPage — per-line coupon pre-flight (98-F2 / R98-A3 F1 P1)", (
     const validateCalls = fetchMock.mock.calls.filter(([u]) => u === "/api/coupons/validate");
     expect(validateCalls).toHaveLength(2);
     const amounts = validateCalls.map(
-      ([, init]) => (JSON.parse(String(init?.body ?? "{}")) as { order_amount: number }).order_amount,
+      ([, init]) =>
+        (JSON.parse(String(init?.body ?? "{}")) as { order_amount: number }).order_amount,
     );
     expect(amounts).toEqual(expect.arrayContaining([25, 60]));
 
@@ -325,7 +334,7 @@ describe("CheckoutPage — per-line coupon pre-flight (98-F2 / R98-A3 F1 P1)", (
     const totalRow = screen.getByText("الإجمالي بعد الكوبون").closest("div")!;
     expect(within(totalRow).getByText("80.00 د.ل")).toBeInTheDocument();
     expect(screen.getByText("110.00 د.ل")).toBeInTheDocument(); // subtotal
-    const cta = await screen.findByRole("button", { name: /تأكيد الطلب/ });
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
     expect(cta.textContent).toContain("80.00 د.ل");
   });
 

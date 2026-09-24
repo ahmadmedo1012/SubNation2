@@ -264,7 +264,8 @@ export default function SupportPage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // R111-F2 Q1: calm + actionable fallback (was the vague «فشلت العملية»).
+        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى",
         variant: "destructive",
       });
     } finally {
@@ -294,7 +295,8 @@ export default function SupportPage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // R111-F2 Q1 (same family as handleCreate above).
+        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى",
         variant: "destructive",
       });
     } finally {
