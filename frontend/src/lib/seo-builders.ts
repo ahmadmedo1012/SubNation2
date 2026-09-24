@@ -59,6 +59,15 @@ export interface ProductLdInput {
   category?: string | null;
   isActive?: boolean;
   /**
+   * R111 (D2-F2): the REAL deliverable-stock signal from the product
+   * DTO — the same `is_available` the page's buy button gates on
+   * (stock_count > 0). When false the Offer asserts OutOfStock even
+   * for an is_active product (the live catalog: 45/45 active products
+   * with zero deliverable stock all asserted InStock while the UI said
+   * «نفد المخزون» — a rich-results honesty violation Google penalizes).
+   */
+  isAvailable?: boolean;
+  /**
    * Optional long-form description (300-800 words). When present it
    * replaces `description` in the LD payload — Google rewards
    * substantive Product structured data and surfaces richer snippets.
@@ -116,7 +125,9 @@ export function buildProductLd(p: ProductLdInput) {
       priceValidUntil,
       url: productUrl,
       availability:
-        p.isActive === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+        p.isActive === false || p.isAvailable === false
+          ? "https://schema.org/OutOfStock"
+          : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
     },
   };

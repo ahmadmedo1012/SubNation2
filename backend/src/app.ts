@@ -10,7 +10,7 @@ import path from "node:path";
 import pinoHttp from "pino-http";
 import * as Sentry from "@sentry/node";
 import { ZodError } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, productsTable } from "@workspace/db";
 import { getCorrelationId } from "./lib/correlation";
 import { bodyParserRecovery } from "./lib/body-parser-recovery";
@@ -948,23 +948,33 @@ if (frontendDist) {
   );
 
   // ── A7 (round-94): dynamic share-card OG for link unfurlers ──────────
-  // (SHARE_BOT_UA lifted to the exported isShareBotUserAgent below so
-  // server.ts's boot gate can gate the SAME bot set — single source.)
+  // (The bot predicate lives in the exported isUnfurlerUserAgent /
+  // isIndexerUserAgent below; server.ts's boot gate gates the SAME
+  // unfurler set — single source.)
   //
   // The SPA fallback below serves the STATIC index.html for every GET —
   // so WhatsApp/Facebook/Telegram/Slack unfurlers (which do NOT run JS)
   // saw the generic site title/description/image for EVERY product link.
   // Product shares are the #1 organic channel in Libya; the card is now
-  // real per-product data. Only bot UAs on /product/* get this — humans
-  // always get the SPA. Any failure falls through to the SPA fallback
-  // (share cards degrade gracefully, the page itself never breaks).
+  // real per-product data. Only UNFURLER bot UAs on /product/* get this
+  // — humans AND indexing crawlers always get the SPA. Any failure falls
+  // through to the SPA fallback (share cards degrade gracefully, the
+  // page itself never breaks).
   app.use(async (req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
       return;
     }
     const match = /^\/product\/([^/]+)\/?$/.exec(req.path);
-    if (!match || !isShareBotUserAgent(String(req.headers["user-agent"] ?? ""))) {
+    const ua = String(req.headers["user-agent"] ?? "");
+    // D2-F1 (R111): UNFURLERS ONLY. The R104 predicate also matched
+    // googlebot/bingbot/yandexbot/…, so every crawl of /product/* got
+    // this ~1KB JS-less card — no JSON-LD, no SPA boot → all
+    // Product/FAQ/Breadcrumb structured data was invisible to Google.
+    // Indexing crawlers now fall through to the SPA shell below; the
+    // explicit isIndexerUserAgent exclusion keeps the split safe even
+    // if a token is ever (mistakenly) added to both lists.
+    if (!match || isIndexerUserAgent(ua) || !isUnfurlerUserAgent(ua)) {
       next();
       return;
     }
@@ -980,7 +990,17 @@ if (frontendDist) {
           isActive: productsTable.isActive,
         })
         .from(productsTable)
-        .where(numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId))
+        .where(
+          and(
+            numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId),
+            // D2-F4 (R111): mirror the detail-route WHERE — an archived
+            // row can never render a share card, even if a PATCH flips
+            // is_active=true back on it (the PATCH-side guard is a
+            // sibling fix; live dump today: archived ⇒ is_active=false,
+            // so this is latent-hardening, not a live leak).
+            eq(productsTable.isArchived, false),
+          ),
+        )
         .limit(1);
       if (!product || !product.isActive) {
         next();
@@ -1107,14 +1127,51 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 });
 
 /**
- * R104 (AG6-2): the share-card unfurler-bot predicate, shared with
- * server.ts's boot gate so the gated bot set can never drift from the
- * set the OG-card route actually serves (DB-backed path).
+ * R111 (D2-F1): the R104 (AG6-2) share-bot predicate, SPLIT in two.
+ *
+ * The unified predicate matched indexing crawlers (googlebot, bingbot,
+ * yandexbot, duckduckbot, baiduspider) alongside unfurlers, so every
+ * crawl of /product/* received the ~1KB no-JS OG card instead of the
+ * SPA shell — no JSON-LD (Product/FAQ/Breadcrumb), no renderable
+ * content: all structured data on the money pages was invisible to
+ * Google (its Web Rendering Service fetches the same URL and used to
+ * get the same card). The two bot classes want OPPOSITE responses:
+ *
+ *   (a) UNFURLERS — chat/social link-preview fetchers that never
+ *       execute JS. They alone get the DB-backed OG share card.
+ *   (b) INDEXERS — search-engine crawlers that render JS (Googlebot
+ *       via WRS) or index raw HTML. They get the normal SPA shell.
+ *
+ * Both regexes are case-insensitive over the raw User-Agent.
+ * The unfurler list stays a STRICT allowlist — nothing gets the card
+ * unless it is a known link-preview fetcher. The indexer list exists
+ * so the card middleware can EXCLUDE crawlers explicitly (belt and
+ * suspenders against future list drift); its tokens are chosen to
+ * never match a normal browser UA — verified against real strings:
+ * Googlebot Smartphone is
+ * "… (Linux; Android 6.0.1…) … Chrome/120 … Mobile Safari/537.36
+ * (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" —
+ * matched by `googlebot`, while ordinary Chrome/Safari/Firefox UAs
+ * contain none of these tokens.
+ *
+ * server.ts's boot gate imports the UNFURLER half so the gated set
+ * can never drift from the set the OG-card route actually serves
+ * (the DB-backed path) — single source, unchanged contract.
  */
-export function isShareBotUserAgent(userAgent: string): boolean {
-  return /facebookexternalhit|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|embedly|quora link preview|outbrain|vkshare|vkrobot|showyoubot|googlebot|bingbot|yandexbot|duckduckbot|baiduspider|citizensinspector/i.test(
+
+/** (a) Link-unfurler bots — the ONLY user agents served the OG card. */
+export function isUnfurlerUserAgent(userAgent: string): boolean {
+  return /facebookexternalhit|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|embedly|quora link preview|outbrain|vkshare|vkrobot|showyoubot|citizensinspector/i.test(
     userAgent,
   );
+}
+
+/**
+ * (b) Indexing crawlers — always served the SPA shell (the OG card
+ * would hide every product page from their index).
+ */
+export function isIndexerUserAgent(userAgent: string): boolean {
+  return /googlebot|bingbot|yandexbot|duckduckbot|baiduspider|applebot|petalbot/i.test(userAgent);
 }
 
 export default app;

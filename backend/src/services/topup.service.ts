@@ -223,6 +223,18 @@ export class TopupService {
     // operators can tap ✅ on both nearly simultaneously. Approving both
     // credits the wallet 2× for one real transfer. (Empty/null references
     // carry no dedup signal and are allowed.)
+    //
+    // B4-R1 (R111, round-111 B4 audit): blank references are now a CLOSED
+    // class — POST /api/wallet/topups REQUIRES a non-blank payment_reference
+    // for mobile_transfer at CREATION, so every new pending row carries a
+    // dedup signal and the battery in this transaction (exact-ref check +
+    // V1-M9 partial unique + composite soft-dedup) plus the route's
+    // creation-time same-receipt guard closes the "two approvable ref-less
+    // pendings" window. APPROVAL deliberately keeps accepting blank refs: the live
+    // table holds pre-fix blank-ref rows (2 pending as of 2026-09-24) whose
+    // operators must still be able to review them — enforcing the
+    // requirement here would strand real customer money in un-approvable
+    // limbo. Do NOT add a ref requirement to this method.
     const ref = (topup.paymentReference ?? "").trim();
 
     // B2-04: whether THIS approve actually awarded the referral bonus —

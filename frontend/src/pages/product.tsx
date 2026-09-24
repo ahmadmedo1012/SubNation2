@@ -661,6 +661,10 @@ export default function ProductPage() {
               price: seoPrice,
               category: product.category,
               isActive: product.is_active ?? true,
+              // D2-F2 (R111): thread the REAL stock signal — the same
+              // is_available the buy button gates on — so the Offer LD
+              // asserts OutOfStock when the UI says «نفد المخزون».
+              isAvailable: product.is_available,
             }),
             buildBreadcrumbLd([
               { name: "الرئيسية", href: "/" },

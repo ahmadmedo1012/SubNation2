@@ -9,7 +9,7 @@ import { pool } from "@workspace/db";
 import * as Sentry from "@sentry/node";
 import { createServer, type Server } from "http";
 import express from "express";
-import app, { isShareBotUserAgent } from "./app";
+import app, { isUnfurlerUserAgent } from "./app";
 import { bootMigrations } from "./lib/boot-migrations";
 import { instrumentDbPool } from "./lib/db-instrumentation";
 import { assertEncryptionKeyConfigured } from "./lib/encryption";
@@ -95,7 +95,13 @@ function isBootGatedRequest(req: {
   if (p === "/sitemap.xml") return true;
   if (p.startsWith("/product/")) {
     const ua = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : "";
-    if (isShareBotUserAgent(ua)) return true;
+    // D2-F1 (R111): the gated set mirrors the SPLIT card predicate —
+    // only the UNFURLER half is DB-backed (the OG share card), so only
+    // those requests wait for boot. Indexing crawlers (Googlebot and
+    // friends) now ride the SPA shell — a pure filesystem read that
+    // PASSES the gate instantly instead of eating a 503 through every
+    // cold boot.
+    if (isUnfurlerUserAgent(ua)) return true;
   }
   return false;
 }
