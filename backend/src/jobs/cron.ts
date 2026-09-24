@@ -10,6 +10,7 @@ import { pruneExpiredSessions } from "./session-prune";
 import { pruneStaleAdminSessions } from "../lib/admin-session";
 import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { pruneOldNotifications } from "./notifications-retention";
+import { pruneStaleLoginAttempts, pruneOldAuditLogs } from "./auth-audit-retention";
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -192,6 +193,44 @@ export function initCronJobs(): CronJobsHandle {
           "Notifications retention failed",
         );
         captureSchedulerFailure("notifications_retention", err, {
+          cron_expression: "0 5 * * *",
+        });
+      }
+      // R111 (B1-2): login_attempts retention — rows idle > 7d are dead
+      // counters (any live lockout decision reads a RECENT window); the
+      // table was unbounded before (one immortal row per failed auth,
+      // including probes for nonexistent usernames). Same independent
+      // try/catch + per-job Sentry tag pattern as the prunes above.
+      try {
+        const attemptsRemoved = await pruneStaleLoginAttempts();
+        if (attemptsRemoved > 0)
+          logger.info(
+            { category: "login_attempts.retention", removed: attemptsRemoved },
+            `Pruned ${attemptsRemoved} stale login_attempt row(s)`,
+          );
+      } catch (err) {
+        logger.error(
+          { err, category: "login_attempts.retention" },
+          "login_attempts retention failed",
+        );
+        captureSchedulerFailure("login_attempts_retention", err, {
+          cron_expression: "0 5 * * *",
+        });
+      }
+      // R111 (B6-05): audit_logs retention — the last unbounded growth
+      // table (live-confirmed by T3). 180d; COMPLIANCE.md documents the
+      // window. The money trail itself lives forever in orders +
+      // wallet_ledger + topups — this is the META trail only.
+      try {
+        const auditRemoved = await pruneOldAuditLogs();
+        if (auditRemoved > 0)
+          logger.info(
+            { category: "audit_logs.retention", removed: auditRemoved },
+            `Pruned ${auditRemoved} audit row(s) older than 180d`,
+          );
+      } catch (err) {
+        logger.error({ err, category: "audit_logs.retention" }, "audit_logs retention failed");
+        captureSchedulerFailure("audit_logs_retention", err, {
           cron_expression: "0 5 * * *",
         });
       }

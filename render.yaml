@@ -86,10 +86,16 @@ services:
         sync: true
       - key: FRONTEND_ORIGINS
         sync: false
-      # Required when the browser origin differs from the Render API origin.
-      # Secure is enforced automatically in production.
+      # B1-5 (R111, audit B1): the subnation.ly frontend now proxies to the
+      # backend through the SAME origin (Vercel rewrite / Reverse proxy),
+      # so "none" is no longer needed — and it re-armed the ambient-cookie
+      # CSRF class (incl. admin_token) on every blueprint re-apply. "lax"
+      # matches the Coolify env (deploy/env.compose.example) and keeps
+      # top-level navigations + same-site flows working. Only flip back to
+      # "none" if the browser origin genuinely diverges from the API origin
+      # again (then also re-add the CORS credentials wiring).
       - key: AUTH_COOKIE_SAMESITE
-        value: "none"
+        value: "lax"
       # Absolute origin used to build deep-links inside admin alerts and
       # copilot/enrichment/forecast panel references. Same value as APP_URL;
       # kept separate so alert links survive an APP_URL change.

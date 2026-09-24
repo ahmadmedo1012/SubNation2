@@ -39,6 +39,7 @@ import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { pruneOldNotifications } from "./notifications-retention";
+import { pruneStaleLoginAttempts, pruneOldAuditLogs } from "./auth-audit-retention";
 
 /**
  * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at
@@ -118,6 +119,12 @@ export function runBootOneShots(): void {
     ["idempotency-retention", pruneOldIdempotencyKeys],
     // AUD103-1-F2 (r103): notifications had no retention anywhere.
     ["notifications-retention", pruneOldNotifications],
+    // R111 (B1-2 + B6-05): the last two unbounded tables — login_attempts
+    // (idle > 7d) and audit_logs (> 180d). Same boot-catch-up rationale as
+    // every sibling retention above (a suspended instance misses the
+    // 05:00 slot; the boot one-shot closes the gap).
+    ["login-attempts-retention", pruneStaleLoginAttempts],
+    ["audit-logs-retention", pruneOldAuditLogs],
     ["coupon-sweep", checkExpiringCoupons],
     ["stock-sweep", runStockSweep],
     // R102: unsold units under archived products are invisible to every
@@ -131,6 +138,6 @@ export function runBootOneShots(): void {
   ]);
   logger.info(
     { category: "monitoring" },
-    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup)",
+    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup, loginAttemptsRetention, auditLogsRetention)",
   );
 }

@@ -69,7 +69,7 @@
 | `VITE_RELEASE_SHA` | ✖ | — | Dockerfile resolves `GIT_SHA ?? RENDER_GIT_COMMIT` (r107) |
 | `VITE_GA_TRACKING_ID` / `VITE_GSC_VERIFICATION` | ✖ | loader off / no tag | |
 | `VITE_GOOGLE_CLIENT_ID` / `VITE_FIREBASE_*` (9 vars) | ✖ | provider hidden | public-by-design web config |
-| `VITE_OPENWA_DOCS_URL` | ✖ | built-in Render gateway URL (r107) | admin deep-link only; set to the new gateway origin after it migrates |
+| `VITE_OPENWA_DOCS_URL` | ✖ | gateway docs deep-link (admin surfaces) | admin deep-link only; the built-in Render URL dies with the Oracle cutover — set to the new gateway origin (or a static page) when it migrates |
 
 ## 4. openwa gateway (compose service 2)
 

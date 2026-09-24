@@ -31,15 +31,52 @@ import { getRedisClient, trackRedisOp, withRedisCommandTimeout } from "./redis-c
 interface MemoryEntry<T> {
   value: T;
   expiresAt: number;
+  /** Approximate byte cost (JSON length) — feeds the byte budget below. */
+  byteSize: number;
 }
 
 const MEMORY_LIMIT = 5_000;
+/**
+ * B6-02 (R111, audit B6): total byte budget for the in-memory LRU. The
+ * 512 MB Render/Oracle container cannot let 5,000 full-catalog payloads
+ * (~100-300 KB each) accumulate — 0.5-1.5 GB would OOM the process. The
+ * entry-count cap stays (cheap, first line of defense); the byte budget
+ * is the second line: after every insert, evict oldest-touched entries
+ * until the tracked total fits. 12 MB is ~40 catalog pages or thousands
+ * of small objects — far above the legitimate working set (bounded
+ * catalog keys + sitemap + alerting dedup).
+ */
+const MEMORY_BYTE_BUDGET = 12 * 1024 * 1024;
 const memory = new Map<string, MemoryEntry<unknown>>();
+let memoryBytes = 0;
+
+/** Cheap conservative size estimate: JSON length when feasible, else a
+ * flat floor (covers small objects without a stringify round-trip for
+ * primitives). Strings dominate real payloads; the stringify cost on
+ * set is acceptable vs. an OOM. */
+function estimateByteSize(value: unknown): number {
+  try {
+    const raw = JSON.stringify(value);
+    return raw ? raw.length * 2 + 64 : 64;
+  } catch {
+    return 4096;
+  }
+}
+
+function evictOne(): boolean {
+  const oldest = memory.keys().next();
+  if (oldest.done) return false;
+  const entry = memory.get(oldest.value);
+  if (entry) memoryBytes -= entry.byteSize;
+  memory.delete(oldest.value);
+  return true;
+}
 
 function memoryGet<T>(key: string): T | null {
   const entry = memory.get(key);
   if (!entry) return null;
   if (entry.expiresAt > 0 && Date.now() >= entry.expiresAt) {
+    memoryBytes -= entry.byteSize;
     memory.delete(key);
     return null;
   }
@@ -50,19 +87,29 @@ function memoryGet<T>(key: string): T | null {
 }
 
 function memorySet<T>(key: string, value: T, ttlSec: number): void {
+  // Replace-in-place: charge only the delta.
+  const previous = memory.get(key);
+  if (previous) memoryBytes -= previous.byteSize;
   if (memory.size >= MEMORY_LIMIT) {
-    // Evict oldest insertion (Map iteration order = insertion order).
-    const oldest = memory.keys().next();
-    if (!oldest.done) memory.delete(oldest.value);
+    evictOne();
   }
-  memory.set(key, {
-    value,
-    expiresAt: ttlSec > 0 ? Date.now() + ttlSec * 1000 : 0,
-  });
+  const byteSize = estimateByteSize(value);
+  // B6-02 byte budget: evict oldest-touched until the new total fits.
+  // A single value larger than the whole budget is stored alone (it
+  // evicts everything else) — pathological but bounded.
+  while (memoryBytes + byteSize > MEMORY_BYTE_BUDGET && memory.size > 0) {
+    if (!evictOne()) break;
+  }
+  memory.set(key, { value, expiresAt: ttlSec > 0 ? Date.now() + ttlSec * 1000 : 0, byteSize });
+  memoryBytes += byteSize;
 }
 
 function memoryDelete(key: string): void {
-  memory.delete(key);
+  const entry = memory.get(key);
+  if (entry) {
+    memoryBytes -= entry.byteSize;
+    memory.delete(key);
+  }
 }
 
 // ── Public surface ───────────────────────────────────────────────────────────

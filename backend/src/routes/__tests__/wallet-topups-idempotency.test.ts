@@ -141,12 +141,20 @@ describe("POST /api/wallet/topups — idempotency middleware mounted (96-F1 M2)"
       const { id: userId, token } = await seedUser();
       const key = { "Idempotency-Key": "topup idem key 0001" };
 
-      const first = await postTopup(url, token, topupBody(), key);
+      // R111 fix (B4-R1 test fallout): build the body ONCE. topupBody()
+      // mints a unique payment_reference per call (the duplicate-receipt
+      // guard needs distinct receipts across INTENTS), but a same-key
+      // retry must carry the IDENTICAL body — the middleware's replay
+      // hash check (correctly) rejects a reused key with a changed body
+      // as IDEMPOTENCY_KEY_REUSE. Two fresh topupBody() calls here used
+      // to silently differ (only by the receipt) and 409'd the retry.
+      const body = topupBody();
+      const first = await postTopup(url, token, body, key);
       expect(first.status).toBe(201);
       const firstId = (first.body as { id: number }).id;
 
       // Network-level retry: same key, same body → replay, not a second row.
-      const retry = await postTopup(url, token, topupBody(), key);
+      const retry = await postTopup(url, token, body, key);
       expect(retry.status).toBe(201);
       expect(retry.headers.get("Idempotent-Replayed")).toBe("true");
       expect((retry.body as { id: number }).id).toBe(firstId);

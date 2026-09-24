@@ -58,6 +58,12 @@ vi.mock("../session-prune", () => ({ pruneExpiredSessions: vi.fn(async () => 0) 
 vi.mock("../../lib/admin-session", () => ({ pruneStaleAdminSessions: vi.fn(async () => 0) }));
 vi.mock("../idempotency-retention", () => ({ pruneOldIdempotencyKeys: vi.fn(async () => 0) }));
 vi.mock("../notifications-retention", () => ({ pruneOldNotifications: vi.fn(async () => 0) }));
+// R111 (B1-2/B6-05): the two newest 05:00-slot prunes — mocked at the
+// module boundary like every sibling (unit under test = cron wiring).
+vi.mock("../auth-audit-retention", () => ({
+  pruneStaleLoginAttempts: vi.fn(async () => 0),
+  pruneOldAuditLogs: vi.fn(async () => 0),
+}));
 vi.mock("../security-advisories", () => ({ checkAdminTotpAdvisory: vi.fn(async () => undefined) }));
 vi.mock("../../lib/sentry", () => ({ captureSchedulerFailure: vi.fn() }));
 
@@ -65,6 +71,7 @@ import { initCronJobs } from "../cron";
 import { pruneExpiredSessions } from "../session-prune";
 import { pruneStaleAdminSessions } from "../../lib/admin-session";
 import { pruneOldNotifications } from "../notifications-retention";
+import { pruneStaleLoginAttempts, pruneOldAuditLogs } from "../auth-audit-retention";
 import { captureSchedulerFailure } from "../../lib/sentry";
 
 /**
@@ -77,7 +84,10 @@ const PINNED_INVENTORY: ReadonlyArray<[string, string]> = [
   ["0 0 * * *", "1  — admin-alert retention (unread→read 14d, read→delete 30d)"],
   ["0 0 * * *", "1c — idempotency_keys retention (48h)"],
   ["5 0 * * *", "1a — TOTP security advisory"],
-  ["0 5 * * *", "1b — user-session + admin-session + notifications prune"],
+  [
+    "0 5 * * *",
+    "1b — user-session + admin-session + notifications + login-attempts + audit-logs prune",
+  ],
   ["30 3 * * *", "5  — risk_events retention (90d unlabeled / 97d labeled)"],
   ["15 2 * * *", "6  — inventory demand forecast runner (worker-tier gated)"],
   ["35 3 * * *", "7  — forecast retention + capture-rate (worker-tier gated)"],
@@ -133,9 +143,36 @@ describe("R110-H — cron.ts registration inventory (the P2 pin)", () => {
 
     expect(pruneStaleAdminSessions).toHaveBeenCalledTimes(1);
     expect(pruneOldNotifications).toHaveBeenCalledTimes(1);
+    // R111: the slot's two newest prunes also ran (and their failures
+    // would carry their OWN Sentry tags — pinned in the next test).
+    expect(pruneStaleLoginAttempts).toHaveBeenCalledTimes(1);
+    expect(pruneOldAuditLogs).toHaveBeenCalledTimes(1);
     expect(captureSchedulerFailure).toHaveBeenCalledWith("session_prune", expect.any(Error), {
       cron_expression: "0 5 * * *",
     });
+    expect(captureSchedulerFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("05:00 slot: an audit-logs retention failure does NOT skip the other prunes and is tagged audit_logs_retention (R111)", async () => {
+    vi.mocked(pruneOldAuditLogs).mockRejectedValueOnce(new Error("audit blip"));
+    const handle = initCronJobs();
+    handle.stop();
+    const slot = scheduleCalls.find((c) => c.expression === "0 5 * * *");
+    expect(slot).toBeDefined();
+
+    await expect((slot!.handler as () => Promise<void>)()).resolves.toBeUndefined();
+
+    expect(pruneExpiredSessions).toHaveBeenCalledTimes(1);
+    expect(pruneStaleAdminSessions).toHaveBeenCalledTimes(1);
+    expect(pruneOldNotifications).toHaveBeenCalledTimes(1);
+    expect(pruneStaleLoginAttempts).toHaveBeenCalledTimes(1);
+    expect(captureSchedulerFailure).toHaveBeenCalledWith(
+      "audit_logs_retention",
+      expect.any(Error),
+      {
+        cron_expression: "0 5 * * *",
+      },
+    );
     expect(captureSchedulerFailure).toHaveBeenCalledTimes(1);
   });
 

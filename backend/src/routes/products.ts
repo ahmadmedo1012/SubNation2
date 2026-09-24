@@ -217,13 +217,22 @@ router.get("/", catalogCache, async (req, res) => {
     available_only === "true",
   ]);
 
-  const result = await withCatalogCache("list", cacheKey, 30, async () => {
+  // B6-02 (R111, audit B6): the search key space is UNBOUNDED — every
+  // unique ?search= mints a fresh LRU entry holding the FULL list payload
+  // (~100-300 KB each), and the 5,000-entry LRU could hold 0.5-1.5 GB on
+  // a 512 MB container via an unauthenticated route (self-DoS). The
+  // no-search key space is bounded by construction (category slug ×
+  // 4-value sort whitelist × available_only), so ONLY that shape is
+  // cached. Search requests always run live — the ILIKE + LIMIT 500
+  // query measured 6.5 ms on live data volumes, well within budget.
+  const hasSearch = typeof search === "string" && search.trim().length > 0;
+  const loader = async () => {
     // Build SQL filter conditions — pushdown to the database.
     const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
     if (typeof category === "string" && category.trim()) {
       conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
     }
-    if (typeof search === "string" && search.trim()) {
+    if (hasSearch) {
       conditions.push(sql`${productsTable.name} ILIKE ${"%" + search.trim() + "%"}`);
     }
 
@@ -342,7 +351,9 @@ router.get("/", catalogCache, async (req, res) => {
     });
 
     return products;
-  });
+  };
+
+  const result = hasSearch ? await loader() : await withCatalogCache("list", cacheKey, 30, loader);
 
   return res.json(result);
 });
