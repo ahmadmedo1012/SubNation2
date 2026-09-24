@@ -150,4 +150,50 @@ describe("startOtp — session_not_ready maps to whatsapp_not_paired", () => {
 
     expect(result).toEqual({ ok: false, reason: "whatsapp_not_paired" });
   });
+
+  // B5-2 (R111): the FULL openwa.service → whatsapp-otp.service chain —
+  // a session in a BOOT state (initializing/created) during the gateway's
+  // 3-25 s cold-boot window rides the R102 gateway_waking contract (503
+  // + Retry-After 30 + FE auto-retry) instead of the scary not-paired
+  // copy. This is the chain test for the taxonomy pinned (transport
+  // mocked) in whatsapp-otp-gateway-waking.test.ts.
+  it.each(["initializing", "created"])(
+    "session %s during gateway cold-boot maps to gateway_waking + retryAfterSec 30 (B5-2)",
+    async (sessionStatus) => {
+      vi.doMock("@workspace/db", () => ({
+        db: {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          }),
+        },
+        referralEventsTable: {},
+        usersTable: {},
+        whatsappOtpsTable: {},
+      }));
+
+      installFetchMock((url) => {
+        // ensureSession resolves the session (and nudges a `created`
+        // one via POST /start — any 2xx shape satisfies the nudge).
+        if (url.endsWith("/api/sessions/subnation-otp")) {
+          return jsonResponse({ id: "sess_1", name: "subnation-otp", status: sessionStatus });
+        }
+        return jsonResponse({ ok: true });
+      });
+
+      const mod = await import("../openwa.service");
+      mod.__resetWhatsAppGatewayCacheForTests();
+      const svc = await import("../whatsapp-otp.service");
+
+      const result = await svc.startOtp({
+        rawPhone: "0913456789",
+        purpose: "registration",
+      });
+
+      expect(result).toEqual({ ok: false, reason: "gateway_waking", retryAfterSec: 30 });
+    },
+  );
 });

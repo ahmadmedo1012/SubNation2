@@ -27,6 +27,14 @@ describe("normalizeLibyanPhone — international prefix forms (96-F1 §3.2)", ()
     ["218943456789", "943456789"],
     // 00 + 218 + trunk-prefixed local (double-form paste).
     ["002180913456789", "913456789"],
+    // B5-6 (R111): Arabic-Indic digits fold to ASCII BEFORE validation
+    // (defense-in-depth — the SPA already converts on the client).
+    ["٠٩١٣٤٥٦٧٨٩", "913456789"],
+    ["٩١٣٤٥٦٧٨٩", "913456789"],
+    ["+٢١٨ ٩١ ٣٤٥ ٦٧٨٩", "913456789"],
+    ["٠٠٢١٨٩١٣٤٥٦٧٨٩", "913456789"],
+    // Mixed ASCII + Arabic-Indic paste (partially converted client).
+    ["091٣٤٥٦٧٨٩", "913456789"],
   ])("normalizes %s → %s", (raw, expected) => {
     expect(normalizeLibyanPhone(raw)).toBe(expected);
   });
@@ -40,7 +48,11 @@ describe("normalizeLibyanPhone — international prefix forms (96-F1 §3.2)", ()
     ["21891345678", "truncated international (11 digits)"],
     ["123456789", "valid length, non-Libyan prefix"],
     ["09334567890", "trunk + 10 digits"],
-    ["٠٩١٣٤٥٦٧٨٩", "Arabic-Indic digits are NOT \\d — stripped to empty"],
+    // B5-6 (R111): Arabic-Indic digits now FOLD to ASCII — a folded
+    // phone must still pass the SAME prefix/length validation (a
+    // non-Libyan prefix or wrong length in ٠-٩ stays a rejection).
+    ["١٢٣٤٥٦٧٨٩", "Arabic-Indic digits, valid length, non-Libyan prefix"],
+    ["٠٩١٣٤٥٦٧٨", "Arabic-Indic digits, truncated (8 digits)"],
   ])("rejects %s (%s)", (raw) => {
     expect(normalizeLibyanPhone(raw)).toBeNull();
   });

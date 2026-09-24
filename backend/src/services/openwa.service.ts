@@ -446,9 +446,15 @@ async function recordReadySince(session: SessionRecord): Promise<number> {
       // restore — never dispatch in the very first seconds even though
       // the pre-sleep epoch was fully settled (cheap insurance; the
       // OTP path's bounded settle-wait rides it out).
-      const adoptedReadySince = Math.max(
-        marker.readySince,
-        Date.now() - (POST_LINK_SETTLE_MS - RESTORE_RESIDUAL_SETTLE_MS),
+      // B5-3 (R111): CLAMPED to now. An operator-tuned SETTLE_MS below
+      // the 5 s residual used to make the floor arithmetic
+      // (now - (SETTLE - 5000)) compute a FUTURE readySince — the gate
+      // then counted the window down from a timestamp that had not
+      // happened yet.
+      const residualFloorMs = Math.max(0, POST_LINK_SETTLE_MS - RESTORE_RESIDUAL_SETTLE_MS);
+      const adoptedReadySince = Math.min(
+        Date.now(),
+        Math.max(marker.readySince, Date.now() - residualFloorMs),
       );
       sessionReadySince.set(gateKey, adoptedReadySince);
       if (marker.warmed) {
@@ -564,6 +570,10 @@ async function runWarmupCycle(): Promise<void> {
     if (epoch) {
       writeEpochMarker(session.id, { epoch, readySince, warmed: true });
     }
+    // B5-5 (R111): a delivered self-check is a real send through the
+    // full path — feed the watch a healthy observation (resets any
+    // stale unhealthy streak from the settling window).
+    observeWhatsAppChannel({ configured: true, status: "ready" });
     logger.info(
       { category: "whatsapp.gateway", sessionId: session.id, gateKey },
       "[whatsapp-otp] warm-up self-check delivered — OTP dispatch enabled for this session",
@@ -573,6 +583,12 @@ async function runWarmupCycle(): Promise<void> {
       { category: "whatsapp.gateway", sessionId: session.id, reason: result.reason },
       "[whatsapp-otp] warm-up self-check failed — dispatch stays gated until the next cycle",
     );
+    // B5-5 (R111): a failing warm-up self-check is the sharpest
+    // "ready-for-probe, dead-for-send" signal there is — the session
+    // reports ready (probes look healthy) yet nothing can be delivered.
+    // Feed the watch so a persistently failing warm-up escalates on the
+    // same 15-minute streak as any other channel death.
+    observeWhatsAppChannel({ configured: true, status: sendFailureWatchStatus(result) });
   }
 }
 
@@ -801,6 +817,17 @@ async function ensureSession(
   const settled = remainingMs === 0;
   const warmed = opts.skipWarmupGate === true || isWarmupOk(session);
   if (!settled || !warmed) {
+    // B5-1 (R111): idempotent re-arm of the one-shot warm-up. The ONLY
+    // pre-R111 re-schedule site was recordReadySince's first-observation
+    // branch, whose `known !== undefined` early-return meant that once
+    // the one-shot timer had fired and its self-check transiently
+    // failed, NO later attempt could ever re-schedule it — with
+    // WHATSAPP_OTP_OPERATOR_E164 set, every subsequent OTP answered
+    // session_settling until process restart (permanent on an
+    // always-on host; only a Render sleep/self-heal cleared it).
+    // scheduleInitialWarmup no-ops while a warm-up is pending or the
+    // epoch is already warm, so this is a pure re-arm on the send path.
+    scheduleInitialWarmup(sessionGateKey(session), readySince);
     return {
       ok: false,
       reason: "session_settling",
@@ -907,6 +934,33 @@ export function maskChatId(chatId: string): string {
   return `${digits.slice(0, 5)}…${digits.slice(-4)}${domain}`;
 }
 
+/**
+ * B5-5 (R111): map a send-path failure onto the channel-watch status.
+ * Same taxonomy the pre-send ensureSession branch has always fed
+ * (settling is HEALTHY — a working channel inside its post-link window;
+ * the raw lifecycle status names not-ready; not_found is its own token;
+ * null = gateway unreachable), extended for wire-level send failures the
+ * gateway answers AFTER the session was already resolved ready — the
+ * "ready for probe, dead for send" shape — which name the HTTP verdict
+ * (send_5xx / send_409 / …) so the alert token is honest.
+ */
+function sendFailureWatchStatus(result: Extract<SendResult, { ok: false }>): string | null {
+  switch (result.reason) {
+    case "session_settling":
+      return "settling";
+    case "session_not_ready":
+      return result.sessionStatus ?? null;
+    case "session_not_found":
+      return "not_found";
+    case "request_failed":
+      return null; // gateway unreachable
+    case "non_ok_status":
+      return `send_${result.status ?? 0}`;
+    default:
+      return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public send
 // ─────────────────────────────────────────────────────────────────────────────
@@ -922,9 +976,18 @@ const SEND_RETRY_BACKOFF_MS: readonly number[] = [1_500, 4_000];
 function isRetryableSendFailure(result: SendResult): boolean {
   if (result.ok) return false;
   if (result.reason === "request_failed") return true; // network error / timeout
+  if (result.reason !== "non_ok_status") return false;
   // 5xx from a ready session = transient gateway flap (free-tier cold
   // start included). 4xx (400/404/…) is a definitive rejection.
-  return result.reason === "non_ok_status" && (result.status ?? 0) >= 500;
+  if ((result.status ?? 0) >= 500) return true;
+  // B5-4 (R111): a 409 is the gateway's "session_not_ready at send
+  // time" answer ({ error: "session_not_ready" } — openwa index.ts)
+  // when the session flips off `ready` BETWEEN our ensureSession check
+  // and the dispatch (cold-boot restore, mid-boot reconnect). It is a
+  // flap, not a rejection: the ensureSession re-check between attempts
+  // re-resolves/nudges the session, and a persistent flap surfaces the
+  // honest not-ready/settling verdict from the recheck itself.
+  return result.status === 409;
 }
 
 /**
@@ -1043,15 +1106,9 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     // old 60 s watcher timer). session_settling is healthy (a WORKING
     // channel inside its post-link window); session_not_ready carries
     // the raw lifecycle status; everything else is "unreachable".
-    const failureStatus =
-      session.reason === "session_settling"
-        ? "settling"
-        : session.reason === "session_not_ready"
-          ? (session.sessionStatus ?? null)
-          : session.reason === "session_not_found"
-            ? "not_found"
-            : null;
-    observeWhatsAppChannel({ configured: true, status: failureStatus });
+    // B5-5 (R111): the inline taxonomy moved into
+    // sendFailureWatchStatus (shared with the post-send feed below).
+    observeWhatsAppChannel({ configured: true, status: sendFailureWatchStatus(session) });
     return session;
   }
 
@@ -1071,7 +1128,22 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     return { ok: false, reason: "recipient_not_on_whatsapp" };
   }
 
-  return sendTextWithRetry(config, session.id, chatId, text);
+  const result = await sendTextWithRetry(config, session.id, chatId, text);
+  // B5-5 (R111): the send-path OUTCOME feeds the channel-death watch.
+  // Until now only pre-send ensureSession failures did, so (a) a channel
+  // that went unhealthy on probes but kept DELIVERING OTPs sat on a
+  // stale unhealthy streak — success never reset it — and (b) a session
+  // that probed `ready` but failed every actual send ("ready for probe,
+  // dead for send") never alerted. A delivered send is the strongest
+  // healthy observation; an exhausted send failure is the sharpest
+  // dead-for-send one. recipient_not_on_whatsapp deliberately returns
+  // ABOVE this — it is a client-side condition (wrong number), not
+  // channel health, and must never start a death-watch streak.
+  observeWhatsAppChannel({
+    configured: true,
+    status: result.ok ? "ready" : sendFailureWatchStatus(result),
+  });
+  return result;
 }
 
 /** Probe used by `/api/auth/providers` and admin diagnostics. */

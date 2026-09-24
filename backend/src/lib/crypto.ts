@@ -86,8 +86,24 @@ export function generateOrderCode(): string {
 
 export const LIBYAN_PHONE_PREFIXES = ["91", "92", "93", "94"];
 
+/**
+ * B5-6 (R111): fold Arabic-Indic digits (٠-٩, U+0660-U+0669) to ASCII
+ * 0-9 before validation. Libyans paste phone numbers copied from Arabic
+ * UIs; the SPA already converts on the client, but the server accepts
+ * them too as defense-in-depth — a stale client, a direct API caller, or
+ * a support-forwarded number must not hit «رقم الهاتف غير صالح» for a
+ * perfectly valid phone. (Before: \D stripped them as noise → the
+ * digit string came out empty/truncated.)
+ */
+function foldArabicIndicDigits(raw: string): string {
+  if (!/[\u0660-\u0669]/.test(raw)) return raw; // fast path — nothing to fold
+  return raw.replace(/[\u0660-\u0669]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x0660 + 0x0030),
+  );
+}
+
 export function normalizeLibyanPhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
+  const digits = foldArabicIndicDigits(raw).replace(/\D/g, "");
   // 96-F1 (R96-A4 §3.2): accept the international paste forms Libyans
   // actually copy from contacts / WhatsApp profiles. After the
   // digit-strip, shed the international prefix chain BEFORE the

@@ -96,3 +96,73 @@ describe("startOtp — gateway cold-wake taxonomy (R102, pinned r103)", () => {
     expect(result).toEqual({ ok: false, reason: "delivery_failed" });
   });
 });
+
+// ─── B5-2 (R111): gateway cold-boot honesty — initializing/created ride the
+// gateway_waking verdict instead of the scary whatsapp_not_paired copy ────────
+
+describe("startOtp — session boot states map to gateway_waking (B5-2, pinned R111)", () => {
+  it.each(["initializing", "created"])(
+    "session_not_ready with sessionStatus %s (gateway cold-boot window) → gateway_waking + retryAfterSec 30",
+    async (sessionStatus) => {
+      vi.doMock("@workspace/db", () => emptyRecentOtpsDb());
+      vi.doMock("../openwa.service", () => ({
+        buildChatId: (phone: string) => `218${phone}@c.us`,
+        sendWhatsAppMessage: vi.fn().mockResolvedValue({
+          ok: false,
+          reason: "session_not_ready",
+          sessionStatus,
+        }),
+      }));
+
+      const svc = await import("../whatsapp-otp.service");
+      const result = await svc.startOtp({ rawPhone: "0913456789", purpose: "registration" });
+
+      // The R102 cold-wake contract (503 + Retry-After 30 + the frontend
+      // auto-retry) — NOT the r95 whatsapp_not_paired copy that turned a
+      // routine 3-25 s gateway boot into a manual re-tap.
+      expect(result).toEqual({ ok: false, reason: "gateway_waking", retryAfterSec: 30 });
+    },
+  );
+
+  it.each(["qr_ready", "disconnected", "failed", "authenticating"])(
+    "session_not_ready with sessionStatus %s stays whatsapp_not_paired (r95 honesty, no Retry-After)",
+    async (sessionStatus) => {
+      vi.doMock("@workspace/db", () => emptyRecentOtpsDb());
+      vi.doMock("../openwa.service", () => ({
+        buildChatId: (phone: string) => `218${phone}@c.us`,
+        sendWhatsAppMessage: vi.fn().mockResolvedValue({
+          ok: false,
+          reason: "session_not_ready",
+          sessionStatus,
+        }),
+      }));
+
+      const svc = await import("../whatsapp-otp.service");
+      const result = await svc.startOtp({ rawPhone: "0913456789", purpose: "registration" });
+
+      // A real operator action (re-pair / QR scan) is pending — keep the
+      // honest not-paired verdict; authenticating rides with qr_ready
+      // (an operator scan is in progress, not a service boot).
+      expect(result).toEqual({ ok: false, reason: "whatsapp_not_paired" });
+    },
+  );
+
+  it("non_ok_status 409 (mid-send session flap, retries exhausted) → gateway_waking + retryAfterSec 30 (B5-4)", async () => {
+    vi.doMock("@workspace/db", () => emptyRecentOtpsDb());
+    vi.doMock("../openwa.service", () => ({
+      buildChatId: (phone: string) => `218${phone}@c.us`,
+      sendWhatsAppMessage: vi.fn().mockResolvedValue({
+        ok: false,
+        reason: "non_ok_status",
+        status: 409,
+      }),
+    }));
+
+    const svc = await import("../whatsapp-otp.service");
+    const result = await svc.startOtp({ rawPhone: "0913456789", purpose: "registration" });
+
+    // The gateway's session_not_ready-at-send-time flap is a WAKE shape,
+    // not a hard 502 — the frontend's auto-retry rides it.
+    expect(result).toEqual({ ok: false, reason: "gateway_waking", retryAfterSec: 30 });
+  });
+});

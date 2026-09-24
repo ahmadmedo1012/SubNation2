@@ -217,7 +217,19 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     // and the client can auto-retry instead of burning a resend.
     const isGatewayDisabled =
       send.reason === "not_configured" || send.reason === "session_not_found";
-    const isNotPaired = send.reason === "session_not_ready";
+    // B5-2 (R111): `initializing`/`created` are the gateway BOOTING the
+    // session — the 3-25 s cold-boot window (session registered
+    // initializing ~3 s in, ready at 10-25 s), not a pairing problem.
+    // Mapping them onto the R102 gateway_waking semantics (503 +
+    // Retry-After 30 + the frontend auto-retry) turns a routine gateway
+    // boot from a scary manual re-tap («قناة WhatsApp غير مربوطة») into a
+    // ridden-out wake. disconnected/failed/qr_ready stay honest
+    // whatsapp_not_paired — and so does authenticating (an operator scan
+    // is genuinely pending, same class as qr_ready).
+    const isGatewayBooting =
+      send.reason === "session_not_ready" &&
+      (send.sessionStatus === "initializing" || send.sessionStatus === "created");
+    const isNotPaired = send.reason === "session_not_ready" && !isGatewayBooting;
     const isSettling = send.reason === "session_settling";
     const isRecipientMissing = send.reason === "recipient_not_on_whatsapp";
     // R102 (cold-wake): the RETRYABLE wire-failure shape — network
@@ -227,9 +239,16 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     // mid-boot after an idle sleep — a definitive-looking 502 forced the
     // user to manually re-tap (which then succeeded once awake). 4xx
     // rejections stay `delivery_failed` — those are NOT a wake shape.
+    // B5-4 (R111): a 409 mid-send flap joins the retryable shape — the
+    // gateway's session_not_ready-at-send-time answer when the session
+    // flips off ready between our check and the dispatch; the transport
+    // already retried it 3×, and the honest verdict is "waking, retry
+    // later", not a generic 502. B5-2's booting states ride the same
+    // verdict.
     const isGatewayWaking =
       send.reason === "request_failed" ||
-      (send.reason === "non_ok_status" && (send.status ?? 0) >= 500);
+      (send.reason === "non_ok_status" && ((send.status ?? 0) >= 500 || send.status === 409)) ||
+      isGatewayBooting;
     const failureReason = isGatewayDisabled
       ? "gateway_disabled"
       : isNotPaired

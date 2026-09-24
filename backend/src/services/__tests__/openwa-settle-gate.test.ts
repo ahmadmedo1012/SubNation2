@@ -439,7 +439,7 @@ describe("send retries — network/5xx only, never 4xx (96-F1 §1.3D)", () => {
     expect(sends).toBe(3);
   });
 
-  it("NEVER retries a 4xx — a single attempt, definitive verdict", async () => {
+  it("NEVER retries a definitive 4xx (400) — a single attempt, definitive verdict", async () => {
     let sends = 0;
     installFetchMock({
       onSendText: () => {
@@ -452,6 +452,51 @@ describe("send retries — network/5xx only, never 4xx (96-F1 §1.3D)", () => {
     const result = await mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
     expect(result).toEqual({ ok: false, reason: "non_ok_status", status: 400 });
     expect(sends).toBe(1);
+  });
+
+  // B5-4 (R111): 409 is the ONE 4xx exception — the gateway's
+  // "session_not_ready at send time" flap (session flipped off ready
+  // between our ensureSession check and the dispatch). It rides the
+  // same 1.5 s → 4 s backoff + ensureSession-recheck loop as 5xx.
+  it("retries a 409 mid-send flap and succeeds once the session settles again (B5-4)", async () => {
+    let sends = 0;
+    installFetchMock({
+      onSendText: () => {
+        sends += 1;
+        return sends === 1
+          ? new Response("session_not_ready", { status: 409 })
+          : jsonResponse({ success: true });
+      },
+    });
+    const mod = await importOpenwa();
+
+    vi.useFakeTimers();
+    const sendPromise = mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
+    await vi.advanceTimersByTimeAsync(1_500);
+    const result = await sendPromise;
+
+    expect(result).toEqual({ ok: true });
+    expect(sends).toBe(2); // pre-B5-4: a single 409 attempt → non_ok_status
+  });
+
+  it("a PERSISTENT 409 flap exhausts into the typed non_ok_status(409) verdict after 3 attempts (B5-4)", async () => {
+    let sends = 0;
+    installFetchMock({
+      onSendText: () => {
+        sends += 1;
+        return new Response("session_not_ready", { status: 409 });
+      },
+    });
+    const mod = await importOpenwa();
+
+    vi.useFakeTimers();
+    const sendPromise = mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
+    await vi.advanceTimersByTimeAsync(1_500);
+    await vi.advanceTimersByTimeAsync(4_000);
+    const result = await sendPromise;
+
+    expect(result).toEqual({ ok: false, reason: "non_ok_status", status: 409 });
+    expect(sends).toBe(3);
   });
 });
 
@@ -692,5 +737,147 @@ describe("settle gate — pairing-epoch re-arm (97-F3 / R97-WA-01)", () => {
     expect(setCalls).toHaveLength(1);
     expect(setCalls[0]!.key).toBe(`openwa:ready-since:${SESSION_ID}`);
     expect(mod.__whatsappSettleGateTest.getObservedEpoch(SESSION_ID)).toBe("");
+  });
+});
+
+// ─── B5-1 (R111): warm-up failure latch — idempotent re-arm on the send path ──
+
+describe("warm-up failure latch — one transient failure must not gate dispatch until restart (B5-1)", () => {
+  // Distinct from the operator number so self-check texts and OTP
+  // dispatches are unambiguously separable (re-pair suite precedent).
+  const OTP_RECIPIENT = "218914460503@c.us";
+
+  it("a FAILED one-shot warm-up re-arms on the next OTP attempt and delivers (no latch)", async () => {
+    process.env.WHATSAPP_OTP_OPERATOR_E164 = OPERATOR_E164;
+    // The warm-up self-check fails on its first cycle (500 — retried and
+    // exhausted), then succeeds when re-armed. OTP sends always succeed.
+    let warmupCycles = 0;
+    const mock = installFetchMock({
+      onSendText: (call) => {
+        const body = JSON.parse(String(call.init?.body ?? "{}")) as { chatId?: string };
+        if (body.chatId === `${OPERATOR_E164}@c.us`) {
+          warmupCycles += 1;
+          return warmupCycles <= 3
+            ? new Response("warmup failed", { status: 500 })
+            : jsonResponse({ success: true });
+        }
+        return jsonResponse({ success: true });
+      },
+    });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    // First OTP attempt: settle=0 → settled but not warm; the one-shot
+    // warm-up fires during the bounded wait and its self-check FAILS
+    // (3 retried attempts) → dispatch stays gated for THIS request.
+    const first = mod.sendWhatsAppMessage(OTP_RECIPIENT, "otp-1");
+    await vi.advanceTimersByTimeAsync(10_000); // 10 s warm-up-pending estimate
+    const firstResult = await first;
+    expect(firstResult).toMatchObject({ ok: false, reason: "session_settling" });
+
+    // THE LATCH (pre-B5-1): recordReadySince's `known !== undefined`
+    // early-return meant the failed one-shot could never be re-scheduled
+    // — every later OTP answered session_settling until process restart.
+    // Post-B5-1 the gated ensureSession re-arms it (idempotently — a
+    // no-op while pending): the re-armed cycle delivers…
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    // …so the SECOND OTP attempt rides the wake and lands.
+    const second = mod.sendWhatsAppMessage(OTP_RECIPIENT, "otp-2");
+    await vi.advanceTimersByTimeAsync(12_000);
+    const secondResult = await second;
+
+    expect(secondResult).toEqual({ ok: true });
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID)).toBe(true);
+    // Exactly 3 failed self-check attempts + 1 delivered re-arm — one
+    // failed cycle, one re-armed cycle, nothing more.
+    const warmupTexts = mock.sendTextCalls.filter((c) => {
+      const body = JSON.parse(String(c.init?.body ?? "{}")) as { chatId?: string };
+      return body.chatId === `${OPERATOR_E164}@c.us`;
+    });
+    expect(warmupTexts).toHaveLength(4);
+    // And exactly two OTP dispatches (otp-1 was gated, otp-2 delivered).
+    const otpTexts = mock.sendTextCalls.filter((c) => {
+      const body = JSON.parse(String(c.init?.body ?? "{}")) as { chatId?: string };
+      return body.chatId === OTP_RECIPIENT;
+    });
+    expect(otpTexts).toHaveLength(1);
+  });
+
+  it("the re-arm is idempotent — a gated request runs at most the initial one-shot + ONE re-armed cycle, never a timer pile-up (B5-1)", async () => {
+    process.env.WHATSAPP_OTP_OPERATOR_E164 = OPERATOR_E164;
+    let warmupSends = 0;
+    installFetchMock({
+      onSendText: (call) => {
+        const body = JSON.parse(String(call.init?.body ?? "{}")) as { chatId?: string };
+        if (body.chatId === `${OPERATOR_E164}@c.us`) {
+          warmupSends += 1;
+          return new Response("warmup still failing", { status: 500 });
+        }
+        return jsonResponse({ success: true });
+      },
+    });
+    const mod = await importOpenwa();
+    vi.useFakeTimers();
+
+    // Three gated OTP attempts in a row against a channel whose warm-up
+    // keeps failing. Per request there are exactly TWO ensureSession
+    // calls (the initial check + the bounded-wait recheck) → at most the
+    // initial one-shot cycle + ONE re-armed cycle = 6 self-check sends
+    // (3 transport attempts each). The pending-guard inside
+    // scheduleInitialWarmup is what keeps concurrent gated attempts from
+    // stacking cycles — a runaway here would blow far past 6/request.
+    for (let i = 0; i < 3; i++) {
+      const before = warmupSends;
+      const send = mod.sendWhatsAppMessage(OTP_RECIPIENT, `otp-${i + 1}`);
+      await vi.advanceTimersByTimeAsync(20_000); // bounded wait + one full retry cycle
+      const result = await send;
+      expect(result).toMatchObject({ ok: false, reason: "session_settling" });
+      expect(warmupSends - before).toBe(6); // 2 cycles × 3 attempts — bounded
+    }
+
+    expect(mod.__whatsappSettleGateTest.isDispatchReady(SESSION_ID)).toBe(false);
+  });
+});
+
+// ─── B5-3 (R111): restore-residual floor clamp ────────────────────────────────
+
+describe("restore-residual adoption — never a FUTURE readySince (B5-3)", () => {
+  it("SETTLE_MS below the 5 s residual floor adopts a readySince ≤ now (clamped, not future)", async () => {
+    // 2 s settle window < RESTORE_RESIDUAL_SETTLE_MS (5 s): the floor
+    // arithmetic used to compute now - (2000 - 5000) = now + 3000 — a
+    // FUTURE timestamp the window counted down from.
+    process.env.WHATSAPP_OTP_SETTLE_MS = "2000";
+    const epoch = "2026-09-20T06:15:00.000Z";
+    const markerReadySince = Date.now() - 60_000; // pre-sleep epoch, 60 s old
+    installFetchMock({ lastReadyAt: epoch });
+    const epochStore = await import("../../lib/whatsapp-epoch-store");
+    const readMock = vi.mocked(epochStore.readEpochMarker);
+    readMock.mockResolvedValue({ epoch, readySince: markerReadySince, warmed: false });
+    const mod = await importOpenwa();
+    try {
+      vi.useFakeTimers();
+      const sendPromise = mod.sendWhatsAppMessage("218913456789@c.us", "code-1");
+      // Let the async chain run up to (but not past) the bounded settle
+      // wait, so the ADOPTED timestamp is already recorded.
+      for (let i = 0; i < 4; i++) {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      }
+
+      const adopted = mod.__whatsappSettleGateTest.getReadySince(SESSION_ID, epoch);
+      expect(adopted).toBeDefined();
+      // B5-3: the clamp — never in the future (pre-fix: now + 3000).
+      expect(adopted!).toBeLessThanOrEqual(Date.now());
+      // …and never older than the marker it adopted.
+      expect(adopted!).toBeGreaterThanOrEqual(markerReadySince);
+
+      // The 2 s window then elapses inside the bounded wait → dispatch.
+      await vi.advanceTimersByTimeAsync(2_100);
+      await expect(sendPromise).resolves.toEqual({ ok: true });
+    } finally {
+      readMock.mockReset();
+      readMock.mockImplementation(async () => null);
+    }
   });
 });
