@@ -104,12 +104,16 @@ function renderPage() {
 }
 
 /** Toggles the desktop row checkbox for an order code. The desktop
- *  table renders before the mobile card list, so index 0 is the td. */
+ *  table renders before the mobile card list, so index 0 is the td.
+ *  F3-08 (R111): the select toggle is now named «تحديد الطلب … للإجراء
+ *  الجماعي» — target it by name (the row also carries the F3-02
+ *  keyboard expand toggle, so an unscoped getByRole("button") would
+ *  match both). */
 function selectRow(orderCode: string) {
   const cell = screen.getAllByText(orderCode)[0];
   const row = cell.closest("tr");
   if (!row) throw new Error(`desktop row for ${orderCode} not found`);
-  fireEvent.click(within(row).getByRole("button"));
+  fireEvent.click(within(row).getByRole("button", { name: /للإجراء الجماعي/ }));
 }
 
 /** Selects both orders, opens the bulk-status dropdown and clicks the
@@ -151,7 +155,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     renderPage();
 
     const dialog = await openBulkConfirm("مسترجع");
-    expect(dialog.getByText(/سيتم إرجاع المبالغ للمستخدمين/)).toBeInTheDocument();
+    expect(dialog.getByText(/سيتم استرداد المبالغ للمستخدمين/)).toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
 

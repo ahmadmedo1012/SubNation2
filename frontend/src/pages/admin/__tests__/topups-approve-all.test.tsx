@@ -175,12 +175,23 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     // Busy: the modal confirm AND the header trigger are disabled…
+    // F3-03 (R111): the modal now rides AppDialog/Radix, which marks the
+    // page behind the open dialog aria-hidden — role queries (correctly)
+    // exclude the background, so only the modal's confirm button is in
+    // the a11y tree. The header trigger behind the overlay is asserted
+    // via text queries, which are not accessibility-tree-filtered.
     const busyButtons = screen.getAllByRole("button", { name: /جاري 0\/3/ });
-    expect(busyButtons).toHaveLength(2);
+    expect(busyButtons).toHaveLength(1);
     for (const btn of busyButtons) expect(btn).toBeDisabled();
+    const busyTriggers = screen
+      .getAllByText("جاري 0/3...")
+      .map((el) => el.closest("button"))
+      .filter((b): b is HTMLButtonElement => b instanceof HTMLButtonElement);
+    expect(busyTriggers).toHaveLength(2); // modal confirm + header trigger
+    for (const btn of busyTriggers) expect(btn.disabled).toBe(true);
 
     // …and hammering them again starts no second loop.
-    for (const btn of busyButtons) fireEvent.click(btn);
+    for (const btn of [...busyButtons, ...busyTriggers]) fireEvent.click(btn);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Live progress counter renders (modal subtitle/button + trigger).

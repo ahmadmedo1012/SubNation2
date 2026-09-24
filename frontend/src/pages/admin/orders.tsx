@@ -262,7 +262,7 @@ export default function AdminOrdersPage() {
     const selectedRows = allOrders.filter((o) => selectedIds.has(o.id));
     const totalRefund = selectedRows.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
     const confirmMessage = isRefund
-      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم إرجاع المبالغ للمستخدمين (إجمالي ${formatCurrency(totalRefund)}).`
+      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم استرداد المبالغ للمستخدمين (إجمالي ${formatCurrency(totalRefund)}).`
       : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
     const confirmed = await confirm({
       title: isRefund ? "استرجاع جماعي للطلبات" : "تغيير الحالة الجماعي",
@@ -935,8 +935,14 @@ export default function AdminOrdersPage() {
                           announce the header↔cell relation on vertical
                           sweeps instead of a bare "خلية". */}
                       <th scope="col" className="px-4 py-3 w-8">
+                        {/* F3-08 (R111 WCAG 1.1.1 + 4.1.2): the icon-only
+                            select-all carried no accessible name and no
+                            state — the input to the bulk-refund money
+                            action was visual-only. */}
                         <button
                           onClick={toggleSelectAll}
+                          aria-label="تحديد كل الطلبات المعروضة للإجراء الجماعي"
+                          aria-pressed={allFilteredSelected}
                           className="text-muted-foreground hover:text-primary transition-colors"
                         >
                           {allFilteredSelected ? (
@@ -996,11 +1002,17 @@ export default function AdminOrdersPage() {
                             }`}
                           >
                             <td className="px-4 py-2.5">
+                              {/* F3-08 (R111): name + aria-pressed on the
+                                  row selector (was an icon-only button —
+                                  the selection state feeding the bulk
+                                  refund was visual-only). */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggleSelect(order.id);
                                 }}
+                                aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
+                                aria-pressed={isSelected}
                                 className="text-muted-foreground hover:text-primary transition-colors"
                               >
                                 {isSelected ? (
@@ -1062,15 +1074,32 @@ export default function AdminOrdersPage() {
                             >
                               {order.created_at ? formatDate(order.created_at) : "—"}
                             </td>
-                            <td
-                              className="px-4 py-2.5 text-muted-foreground group-hover:text-muted-foreground transition-colors"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`}
-                              />
+                            {/* F3-02 (R111 WCAG 2.1.1): the toggle is now a
+                                real <button> (Enter/Space work natively) with
+                                aria-expanded + a state-aware accessible name;
+                                the other cells keep their onClick for the
+                                mouse-affordance of tapping anywhere on the
+                                row. stopPropagation keeps a click on the
+                                chevron from double-firing the td handler. */}
+                            <td className="px-4 py-2.5 text-muted-foreground transition-colors">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedRow(expandedRow === order.id ? null : order.id);
+                                }}
+                                aria-expanded={expandedRow === order.id}
+                                aria-label={
+                                  expandedRow === order.id
+                                    ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
+                                    : `عرض بيانات تسليم الطلب ${order.order_code}`
+                                }
+                                className="p-1.5 -m-1 rounded-lg text-muted-foreground group-hover:text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`}
+                                />
+                              </button>
                             </td>
                           </tr>
                           {expandedRow === order.id && (
@@ -1149,11 +1178,15 @@ export default function AdminOrdersPage() {
                     onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
                   >
                     <div className="flex items-start gap-2 mb-2">
+                      {/* F3-08 (R111): same name + aria-pressed fix as the
+                          desktop row selector. */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleSelect(order.id);
                         }}
+                        aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
+                        aria-pressed={isSelected}
                         className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
                       >
                         {isSelected ? (
@@ -1179,7 +1212,26 @@ export default function AdminOrdersPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2">
+                    {/* F3-02 (R111 WCAG 2.1.1): the mobile card was a
+                        mouse-only onClick div — the meta row is now the
+                        keyboard-reachable expand toggle (real <button>,
+                        Enter/Space native, aria-expanded + state-aware
+                        name, chevron affordance). The card keeps its
+                        onClick so taps anywhere still expand. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedRow(expandedRow === order.id ? null : order.id);
+                      }}
+                      aria-expanded={expandedRow === order.id}
+                      aria-label={
+                        expandedRow === order.id
+                          ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
+                          : `عرض بيانات تسليم الطلب ${order.order_code}`
+                      }
+                      className="w-full flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
+                    >
                       <span className="font-mono">{order.order_code}</span>
                       {order.created_at && (
                         <>
@@ -1187,7 +1239,10 @@ export default function AdminOrdersPage() {
                           <span>{formatDate(order.created_at)}</span>
                         </>
                       )}
-                    </div>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 ms-auto transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`}
+                      />
+                    </button>
                     {expandedRow === order.id &&
                       (order.delivered_email || order.delivered_password) && (
                         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">

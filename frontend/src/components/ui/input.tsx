@@ -18,7 +18,15 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
           "placeholder:text-muted-foreground",
           "hover:border-border/80",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:border-primary/45",
+          // F3-01 (R111 WCAG 1.4.11): the focus ring was `ring-primary/60`
+          // — a 60%-alpha brand wash measuring 2.03:1 (dark) / 2.92:1
+          // (light) against the page background, below the 3:1 non-text
+          // contrast floor for the focus indicator itself. Full-opacity
+          // `ring-ring` (the same token the global :focus-visible outline
+          // rides) measures 3.96:1 dark / 4.82-5.30:1 light. The border
+          // tint stays as a secondary cue only — the ring carries the
+          // contrast requirement.
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:border-primary/45",
           "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
           className,
         )}

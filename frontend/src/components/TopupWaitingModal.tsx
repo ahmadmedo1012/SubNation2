@@ -1,4 +1,10 @@
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+// F3-04 (R111 WCAG 4.1.2): each body's heading is now a real
+// DialogTitle (Radix wires aria-labelledby on the DialogContent) —
+// screen readers used to announce an unnamed "dialog" at the money
+// moment. aria-describedby is explicitly undefined: the bodies carry
+// their own live-region semantics (role=status / role=alert) and there
+// is no separate DialogDescription to point at.
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -131,6 +137,7 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
     >
       <DialogContent
         className="max-w-md p-0 overflow-hidden bg-card border-border/55 sm:rounded-2xl"
+        aria-describedby={undefined}
         // Don't let backdrop / esc close the modal while we're still waiting —
         // it would feel like we lost the request. After approval/rejection or
         // the cosmetic timer elapses, full keyboard/backdrop close is allowed.
@@ -219,9 +226,9 @@ function WaitingBody({
         </div>
       </div>
 
-      <h2 className="text-lg font-black mb-1.5">
+      <DialogTitle className="text-lg font-black mb-1.5">
         {timedOut ? "ما زلنا نراجع طلبك" : "تم استلام طلب الشحن"}
-      </h2>
+      </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
         {timedOut
           ? "قد تستغرق المراجعة وقتاً أطول قليلاً. سنخبرك فور اعتماد الطلب."
@@ -274,7 +281,9 @@ function ApprovedBody({
         <CheckCircle2 className="w-10 h-10 text-status-success" />
         <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
       </div>
-      <h2 className="text-lg font-black mb-1.5 text-status-success">تمت إضافة الرصيد</h2>
+      <DialogTitle className="text-lg font-black mb-1.5 text-status-success">
+        تمت إضافة الرصيد
+      </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
 
       <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
@@ -340,7 +349,9 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>
-      <h2 className="text-lg font-black mb-1.5 text-status-error">تم رفض الطلب</h2>
+      <DialogTitle className="text-lg font-black mb-1.5 text-status-error">
+        تم رفض الطلب
+      </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">
         {adminNote ? "السبب الموضّح من الإدارة:" : "تواصل مع الدعم إذا كنت ترى أن هذا خطأ."}
       </p>

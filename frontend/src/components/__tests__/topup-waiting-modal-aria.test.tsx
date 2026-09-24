@@ -16,7 +16,7 @@
  * status is driven by the mocked topups list.
  */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
@@ -98,5 +98,35 @@ describe("TopupWaitingModal — decision states are announced (96-F6 / R96 A6 #3
     // No decision region while waiting.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("TopupWaitingModal — the dialog is NAMED per state (F3-04 / R111, WCAG 4.1.2)", () => {
+  // Each body's heading is a real DialogTitle, so Radix wires
+  // aria-labelledby on the DialogContent — screen readers announce
+  // «تم استلام طلب الشحن، حوار» instead of an unnamed "dialog".
+  it.each([
+    ["pending", "تم استلام طلب الشحن"],
+    ["approved", "تمت إضافة الرصيد"],
+    ["rejected", "تم رفض الطلب"],
+  ] as const)(
+    "the %s state exposes its heading as the dialog's accessible name",
+    (status, name) => {
+      renderModal({ ...BASE, status });
+      expect(screen.getByRole("dialog", { name })).toBeInTheDocument();
+    },
+  );
+
+  it("the timed-out waiting copy renames the dialog too", () => {
+    vi.useFakeTimers();
+    try {
+      renderModal({ ...BASE, status: "pending" });
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(screen.getByRole("dialog", { name: "ما زلنا نراجع طلبك" })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -44,7 +45,6 @@ import {
   Square,
   User,
   WifiOff,
-  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -123,8 +123,17 @@ function TopupCardSkeleton() {
 }
 
 // Reject modal
+// F3-03 (R111 WCAG 4.1.2 + 2.4.3): this was a hand-rolled `fixed` div —
+// no role="dialog"/aria-modal, no focus trap (Tab walked out into the
+// page behind the money modal), no focus return, ESC handled only from
+// inside the textarea. It now rides the shared AppDialog shell (Radix):
+// focus trap + return, ESC/backdrop guarded while the reject POST is in
+// flight via `dismissable`, and a real DialogTitle names the dialog.
+// Form logic (note state, ⌘/Ctrl+Enter submit, guarded dismiss) and the
+// Arabic copy are preserved as-is.
 function RejectModal({
   topup,
+  open,
   onConfirm,
   onCancel,
   loading,
@@ -143,75 +152,42 @@ function RejectModal({
     status: string;
     payment_network?: string;
     created_at?: string;
-  };
+  } | null;
+  open: boolean;
   onConfirm: (note: string) => void;
   onCancel: () => void;
   loading: boolean;
 }) {
   const [note, setNote] = useState("");
 
+  // The old modal unmounted on close (fresh note each open). AppDialog
+  // stays mounted so Radix owns the close animation + focus return —
+  // so the note resets on open instead.
+  useEffect(() => {
+    if (open) setNote("");
+  }, [open]);
+
   return (
-    <div
-      className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      // 94-C2 (A2 P3-7): backdrop click while the reject POST is in
-      // flight must NOT dismiss the modal (a stray tap mid-money-action
-      // left the request running with no visible surface).
-      onClick={(e) => e.target === e.currentTarget && !loading && onCancel()}
-    >
-      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-black text-sm">تأكيد الرفض</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              <span className="font-mono font-bold text-foreground">
-                {formatCurrency(topup.amount)}
-              </span>{" "}
-              · {displayUserName(userFromRow(topup))}
-            </p>
-          </div>
-          <button
-            onClick={() => !loading && onCancel()}
-            disabled={loading}
-            aria-label="إغلاق"
-            className="p-1.5 rounded-lg hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="mb-4">
-          <label
-            htmlFor="topups-f1-28266"
-            className="text-xs font-bold text-muted-foreground block mb-1.5"
-          >
-            سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
-          </label>
-          <textarea
-            id="topups-f1-28266"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
-            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
-            dir="rtl"
-            autoFocus
-            onKeyDown={(e) => {
-              // 94-C2 (A2 P3-7): ESC while the request is in flight keeps
-              // the modal open (guarded dismiss — same as the backdrop).
-              if (e.key === "Escape" && !loading) onCancel();
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
-            }}
-          />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
-            للتأكيد ·
-            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
-              Esc
-            </kbd>{" "}
-            للإلغاء
-          </p>
-        </div>
-
-        <div className="flex gap-2.5">
+    <AppDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
+      title="تأكيد الرفض"
+      description={
+        topup ? (
+          <>
+            <span className="font-mono font-bold text-foreground">
+              {formatCurrency(topup.amount)}
+            </span>{" "}
+            · {displayUserName(userFromRow(topup))}
+          </>
+        ) : undefined
+      }
+      dismissable={!loading}
+      size="sm"
+      footer={
+        <>
           <Button
             variant="outline"
             className="flex-1 h-9 active:scale-[0.97]"
@@ -228,16 +204,57 @@ function RejectModal({
             <XCircle className="w-3.5 h-3.5 ml-1.5" />
             {loading ? "جارٍ الرفض..." : "تأكيد الرفض"}
           </Button>
+        </>
+      }
+    >
+      <AppDialogBody>
+        <div>
+          <label
+            htmlFor="topups-f1-28266"
+            className="text-xs font-bold text-muted-foreground block mb-1.5"
+          >
+            سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
+          </label>
+          <textarea
+            id="topups-f1-28266"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
+            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
+            dir="rtl"
+            autoFocus
+            onKeyDown={(e) => {
+              // ESC is handled by Radix (guarded by `dismissable` while
+              // the request is in flight — the 94-C2 guarded-dismiss
+              // contract). Only the submit shortcut stays field-local.
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
+            }}
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
+            للتأكيد ·
+            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
+              Esc
+            </kbd>{" "}
+            للإلغاء
+          </p>
         </div>
-      </div>
-    </div>
+      </AppDialogBody>
+    </AppDialog>
   );
 }
 
 // Bulk action confirmation modal
+// F3-03 (R111 WCAG 4.1.2 + 2.4.3): same hand-rolled-overlay retirement as
+// RejectModal above — Radix focus trap/return, aria-modal, real DialogTitle,
+// and ESC/backdrop guarded while the sequential money loop runs
+// (`dismissable`). The live "جاري done/total" counter is additionally a
+// role=status region so the per-item progress reaches screen readers while
+// the loop runs (the old subtitle swap was visual-only).
 function BulkConfirmModal({
   action,
   count,
+  open,
   onConfirm,
   onCancel,
   loading,
@@ -245,6 +262,7 @@ function BulkConfirmModal({
 }: {
   action: "approve" | "reject";
   count: number;
+  open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   loading: boolean;
@@ -252,34 +270,17 @@ function BulkConfirmModal({
   progress?: { done: number; total: number } | null;
 }) {
   return (
-    <div
-      className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      // Backdrop click while loading would strand the in-flight money
-      // loop with no visible progress — the cancel button is disabled
-      // for the same reason.
-      onClick={(e) => e.target === e.currentTarget && !loading && onCancel()}
-    >
-      <div className="bg-card border border-border rounded-t-2xl sm:rounded-2xl p-5 w-full max-w-sm shadow-2xl animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-black text-sm">
-              {action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {loading && progress
-                ? `جاري ${progress.done}/${progress.total}...`
-                : `${count} طلب سيتم معالجته`}
-            </p>
-          </div>
-          <button
-            onClick={onCancel}
-            className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex gap-2.5">
+    <AppDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
+      title={action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
+      description={`${count} طلب سيتم معالجته`}
+      dismissable={!loading}
+      size="sm"
+      footer={
+        <>
           <Button
             variant="outline"
             className="flex-1 h-9 active:scale-[0.97]"
@@ -305,9 +306,22 @@ function BulkConfirmModal({
                   ? "موافقة"
                   : "رفض"}
           </Button>
+        </>
+      }
+    >
+      <AppDialogBody className="p-0">
+        {/* Live progress (aria-live via role=status) — announced per item
+            while the money loop runs; hidden when idle so the static count
+            line under the title carries the summary. */}
+        <div
+          role="status"
+          aria-live="polite"
+          className="px-5 pt-3 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
+        >
+          {loading && progress ? `جاري ${progress.done}/${progress.total}...` : ""}
         </div>
-      </div>
-    </div>
+      </AppDialogBody>
+    </AppDialog>
   );
 }
 
@@ -797,33 +811,38 @@ export default function AdminTopupsPage() {
 
   return (
     <AdminLayout onRefresh={() => refetch()} badges={{ pendingTopups: pendingCount }}>
-      {/* Reject modal */}
-      {rejectTarget && (
-        <RejectModal
-          topup={rejectTarget}
-          onConfirm={handleReject}
-          onCancel={() => {
-            setRejectTarget(null);
-            setProcessingId(null);
-          }}
-          loading={processingId === rejectTarget.id}
-        />
-      )}
+      {/* Reject modal — F3-03 (R111): always mounted, Radix owns the
+          open/close lifecycle (focus trap + return + close animation);
+          `open` is driven by rejectTarget exactly like the old
+          conditional render. */}
+      <RejectModal
+        topup={rejectTarget}
+        open={!!rejectTarget}
+        onConfirm={handleReject}
+        onCancel={() => {
+          setRejectTarget(null);
+          setProcessingId(null);
+        }}
+        loading={!!rejectTarget && processingId === rejectTarget.id}
+      />
 
       {/* Bulk action confirmation modal — also backs the approveAll
           flow (B5-01: replaced its raw window.confirm). */}
-      {bulkAction && (
-        <BulkConfirmModal
-          action={bulkAction === "approveAll" ? "approve" : bulkAction}
-          count={bulkAction === "approveAll" ? pendingCount : selectedPendingCount}
-          onConfirm={() =>
-            bulkAction === "approveAll" ? void approveAll() : void handleBulkAction(bulkAction)
-          }
-          onCancel={() => setBulkAction(null)}
-          loading={bulkAction === "approveAll" ? isApproveAllBusy : isBulkProcessing}
-          progress={bulkAction === "approveAll" ? approveAllProgress : null}
-        />
-      )}
+      <BulkConfirmModal
+        open={bulkAction !== null}
+        action={bulkAction === "approveAll" ? "approve" : (bulkAction ?? "approve")}
+        count={bulkAction === "approveAll" ? pendingCount : selectedPendingCount}
+        onConfirm={() =>
+          bulkAction === "approveAll"
+            ? void approveAll()
+            : bulkAction === "approve" || bulkAction === "reject"
+              ? void handleBulkAction(bulkAction)
+              : undefined
+        }
+        onCancel={() => setBulkAction(null)}
+        loading={bulkAction === "approveAll" ? isApproveAllBusy : isBulkProcessing}
+        progress={bulkAction === "approveAll" ? approveAllProgress : null}
+      />
 
       <div className="space-y-5">
         {/* Header */}
