@@ -98,13 +98,26 @@ function seoHeadInject(): Plugin {
 
 /**
  * Inject <link rel="preload"> for the critical Readex Pro woff2 fonts
- * (Arabic + Latin, weight 400 — the LCP-text faces).
+ * (Arabic 400/700 + Latin 400 — the LCP-text faces).
  *
  * Why preload: the browser only discovers @font-face rules AFTER it has
  * parsed the index CSS bundle. Without a preload, the woff2 fetch waits
  * on the CSS download + parse (~50-100 ms on mobile). Preload makes the
  * browser start the woff2 fetch in parallel with the CSS, shaving
  * ~10-30 ms off LCP for Arabic-text LCP elements (most of the homepage).
+ *
+ * F4-F4 (R111): the Arabic 700 face joined the preload set. The guest
+ * hero h1 (text-fluid-3xl font-black — font-weight 900) renders with
+ * the 700 woff2: Readex Pro ships no 900 face, so the browser resolves
+ * 900 to the closest registered weight BELOW it (700). With only the
+ * 400s preloaded, the LCP headline text paid a full extra RTT (CSS
+ * parse → @font-face discovery → fetch) before its final paint on
+ * network-bound visits (−150-350 ms expected LCP when network-bound).
+ * font-display stays `swap` (set by every @fontsource face CSS) — the
+ * preload only removes the fetch discovery latency, never the swap
+ * semantics. Latin-700 is deliberately NOT preloaded: no Latin text
+ * above the fold renders heavier than 400 on the guest hero, and
+ * every extra preload competes for the same first-paint bandwidth.
  *
  * Why per-build: @fontsource's woff2 files are emitted with content
  * hashes (`readex-pro-arabic-400-normal-De1vYjJZ.woff2`). The hash
@@ -123,9 +136,13 @@ function fontPreloadInject(): Plugin {
         const bundle = ctx.bundle;
         if (!bundle) return html;
 
-        // Find the Arabic-400 + Latin-400 woff2 files by name pattern.
+        // Find the LCP-text woff2 files by name pattern: Arabic 400
+        // (body text), Latin 400 (Latin glyphs), Arabic 700 (the
+        // font-black hero headline's actual face — F4-F4).
         const woff2 = Object.keys(bundle).filter((name) =>
-          /readex-pro-(arabic|latin)-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(name),
+          /readex-pro-arabic-(400|700)-normal-[A-Za-z0-9_-]+\.woff2$|readex-pro-latin-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(
+            name,
+          ),
         );
 
         if (woff2.length === 0) return html;

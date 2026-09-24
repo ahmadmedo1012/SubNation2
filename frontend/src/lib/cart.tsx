@@ -23,10 +23,7 @@ export interface LocalCartItem {
   quantity: number;
 }
 
-interface CartContextValue {
-  items: LocalCartItem[];
-  itemCount: number;
-  totalLYD: number;
+interface CartCommandsValue {
   addItem: (item: Omit<LocalCartItem, "quantity"> & { quantity?: number }) => void;
   removeItem: (productId: number, variantId?: number | null) => void;
   updateQuantity: (productId: number, quantity: number, variantId?: number | null) => void;
@@ -42,8 +39,21 @@ interface CartContextValue {
     variantId?: number | null,
   ) => void;
   clear: () => void;
+}
+
+interface CartStateValue {
+  items: LocalCartItem[];
+  itemCount: number;
+  totalLYD: number;
   isLoaded: boolean;
 }
+
+/** Legacy combined shape (R98-03 consumers): commands + state in one
+ * object. `useCart()` still returns exactly this interface — existing
+ * consumers (Navbar, cart, checkout, product pages, all tests) are
+ * untouched; only the RENDER SCOPE behind it changed (see the split
+ * rationale below). */
+interface CartContextValue extends CartCommandsValue, CartStateValue {}
 
 /** Storage key bump: v1 items lack variantId/variantLabel — the loader
  * (CartProvider) migrates them on read so old carts keep working. */
@@ -61,7 +71,37 @@ function lineKey(i: Pick<LocalCartItem, "productId" | "variantId">): string {
 // accepted) turned the per-unit checkout loop into a self-DoS.
 export const MAX_LINE_QUANTITY = 99;
 
-const CartContext = createContext<CartContextValue | null>(null);
+// ── R111-F4-F1 (P2): context split — commands vs state ────────────────────
+//
+// The single wide context (even memoized, R98-03) changed identity on
+// EVERY cart mutation, so every subscriber re-rendered on every tap.
+// The money-critical add-to-cart tap on the home grid re-rendered ALL
+// 45 ProductCards + the Navbar (80-200ms INP on low-end Android) even
+// though a card reads NO cart state — only the addItem command.
+//
+// Split into TWO contexts sharing one provider:
+//   • CartCommandsContext — the mutation callbacks. Every callback is
+//     useCallback([])-stable, so the memoized commands value keeps its
+//     identity FOR THE LIFETIME OF THE PROVIDER: subscribing to it
+//     never re-renders anything on a cart mutation. ProductCard (and
+//     any other command-only consumer) rides this one.
+//   • CartStateContext — items/itemCount/totalLYD/isLoaded. Changes
+//     identity exactly when the cart data (or load phase) changes —
+//     same trigger as the old single context value.
+//
+// Render scope, before → after (an add-to-cart tap on the catalog):
+//   45 ProductCards + Navbar  →  Navbar only. The badge count (a
+//   state read) still updates live; the cards' buttons still work —
+//   commands never change identity.
+//
+// Semantics preserved EXACTLY: same localStorage persistence, same
+// cross-tab re-sync, same v1→v2 migration, same {}-key behavior, and
+// `useCart()` keeps returning the SAME combined interface with the
+// SAME identity contract pinned by cart-sync-hardening (stable across
+// data-less re-renders, new identity on data change) — it is now the
+// memoized merge of the two values.
+const CartCommandsContext = createContext<CartCommandsValue | null>(null);
+const CartStateContext = createContext<CartStateValue | null>(null);
 
 function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;
@@ -286,43 +326,58 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const totalLYD = roundToCents(items.reduce((sum, i) => sum + effectivePrice(i) * i.quantity, 0));
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  // R98-03 (r98 frontend-deep §2 — P3): the context value is memoized.
-  // The inline object allocated a fresh identity on every provider
-  // render, so every memoized consumer (ProductCard grid, Navbar,
-  // MobileNav) re-rendered on ANY provider render — most visibly on
-  // every add-to-cart tap. All action callbacks are useCallback-stable
-  // (deps []), so the identity now changes only when the cart data
-  // (items/counts/totals) or load phase actually changes.
-  const contextValue = useMemo(
-    () => ({
-      items,
-      itemCount,
-      totalLYD,
-      addItem,
-      removeItem,
-      updateQuantity,
-      reconcileLine,
-      clear,
-      isLoaded,
-    }),
-    [
-      items,
-      itemCount,
-      totalLYD,
-      addItem,
-      removeItem,
-      updateQuantity,
-      reconcileLine,
-      clear,
-      isLoaded,
-    ],
+  // R98-03 (r98 frontend-deep §2 — P3) + R111-F4-F1: both context values
+  // are memoized. All action callbacks are useCallback-stable (deps []),
+  // so the COMMANDS value keeps one identity for the provider's entire
+  // lifetime — a commands-only subscriber (ProductCard) is immune to
+  // cart mutations. The STATE value mints a new identity exactly when
+  // items/counts/totals or the load phase change (the same moments the
+  // old single value changed).
+  const commandsValue = useMemo(
+    () => ({ addItem, removeItem, updateQuantity, reconcileLine, clear }),
+    [addItem, removeItem, updateQuantity, reconcileLine, clear],
   );
 
-  return <CartContext.Provider value={contextValue}>{children}</CartContext.Provider>;
+  const stateValue = useMemo(
+    () => ({ items, itemCount, totalLYD, isLoaded }),
+    [items, itemCount, totalLYD, isLoaded],
+  );
+
+  return (
+    <CartCommandsContext.Provider value={commandsValue}>
+      <CartStateContext.Provider value={stateValue}>{children}</CartStateContext.Provider>
+    </CartCommandsContext.Provider>
+  );
 }
 
-export function useCart(): CartContextValue {
-  const ctx = useContext(CartContext);
+/** Commands-only subscription (R111-F4-F1). For components whose cart
+ * interaction is purely mutational — ProductCard's «أضف للسلة» never
+ * reads live cart state, so riding the commands context means an
+ * add-to-cart tap anywhere on the page costs ZERO card re-renders.
+ * Identity is provider-lifetime-stable, so this hook NEVER causes a
+ * re-render on its own. */
+export function useCartCommands(): CartCommandsValue {
+  const ctx = useContext(CartCommandsContext);
   if (!ctx) throw new Error("useCart must be used within <CartProvider>");
   return ctx;
+}
+
+/** State-only subscription (R111-F4-F1) — items/count/totals/isLoaded
+ * without pulling the commands into the dependency shape. Re-renders
+ * exactly when cart data changes. */
+export function useCartState(): CartStateValue {
+  const ctx = useContext(CartStateContext);
+  if (!ctx) throw new Error("useCart must be used within <CartProvider>");
+  return ctx;
+}
+
+/** Combined subscription (legacy + still the default for page-level
+ * consumers): the R98-03 interface, now assembled from the two split
+ * contexts. The merge is memoized per consumer, so the pinned identity
+ * contract holds — stable across data-less re-renders, a new identity
+ * exactly when the cart data changes (commands never change). */
+export function useCart(): CartContextValue {
+  const commands = useCartCommands();
+  const state = useCartState();
+  return useMemo(() => ({ ...state, ...commands }), [state, commands]);
 }

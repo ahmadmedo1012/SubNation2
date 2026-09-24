@@ -2,7 +2,7 @@ import { memo, useRef } from "react";
 import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useCart } from "@/lib/cart";
+import { useCartCommands } from "@/lib/cart";
 import {
   AlertTriangle,
   AppWindow,
@@ -210,7 +210,14 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const unavailable = !product.is_available;
   const staggerClass = STAGGER[Math.min(index, 8)] ?? "";
   const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
-  const { addItem } = useCart();
+  // R111-F4-F1 (P2): commands-only cart subscription. The card reads NO
+  // live cart state (no is-in-cart flag — the CTA label never changes),
+  // so it rides CartCommandsContext, whose value identity is stable for
+  // the provider's lifetime. An add-to-cart tap on ANY card therefore
+  // re-renders ZERO of the 45 mounted cards (the old wide useCart()
+  // subscription re-rendered the whole grid on every tap — 80-200ms
+  // INP on the money tap). The toast is the live feedback instead.
+  const { addItem } = useCartCommands();
   const { toast } = useToast();
 
   // ── Add to cart ─────────────────────────────────────────────

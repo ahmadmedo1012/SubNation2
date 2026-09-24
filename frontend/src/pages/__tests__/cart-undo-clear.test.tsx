@@ -29,8 +29,13 @@ vi.mock("sonner", () => ({
   toast: (...args: unknown[]) => sonnerToastMock(...args),
 }));
 
+// R111-F2 copy pins: the auth state is hoisted + mutable so one render
+// helper can pin BOTH summary CTAs — the authed checkout entry and the
+// guest login entry.
+const authState = vi.hoisted(() => ({ token: null as string | null }));
+
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ token: null }),
+  useAuth: () => ({ token: authState.token }),
 }));
 
 const toastSpy = vi.fn();
@@ -167,6 +172,40 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
     const priceCluster = container.querySelector(".items-baseline");
     expect(priceCluster).toBeInstanceOf(HTMLElement);
     expect(priceCluster!.className).toContain("flex-wrap");
+  });
+});
+
+describe("CartPage — summary CTA copy (R111-F2 N1 + N6)", () => {
+  beforeEach(() => {
+    sonnerToastMock.mockReset();
+    toastSpy.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
+    authState.token = null;
+  });
+
+  it("authed: the checkout entry CTA reads «إتمام الطلب» (the destination page's own name)", async () => {
+    authState.token = "t";
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    const cta = screen.getByRole("button", { name: "إتمام الطلب" });
+    // Destination is the checkout funnel (unifying the CTA verb with
+    // checkout.tsx's h1; kills the old «متابعة الشراء» /«متابعة التسوق»
+    // near-duplicate pair on one screen).
+    expect(cta.closest("a")).toHaveAttribute("href", "/checkout");
+    expect(screen.queryByText("متابعة الشراء")).not.toBeInTheDocument();
+  });
+
+  it("guest: the login entry CTA reads «سجّل دخولك للشراء» (shadda + pronoun, app-standard)", async () => {
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    const cta = screen.getByRole("button", { name: "سجّل دخولك للشراء" });
+    expect(cta.closest("a")).toHaveAttribute("href", "/login?redirect=/checkout");
+    expect(screen.queryByText("سجل دخول للشراء")).not.toBeInTheDocument();
   });
 });
 

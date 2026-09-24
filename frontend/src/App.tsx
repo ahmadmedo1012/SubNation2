@@ -266,6 +266,21 @@ export function isRetryableQueryError(error: unknown): boolean {
 // .catch-ed (stale-chunk 404s after a deploy are the known case) and
 // prefetchQuery swallows query errors internally — a failed
 // head-start just means home fetches on mount exactly as before.
+//
+// ── R111-F4-F3 (P3): the catalog prefetch is HOME-ROUTE-ONLY ────────
+//
+// The {}-params key the head-start seeds is consumed by the home
+// route alone — every other entry path (WhatsApp product deep-links,
+// the dominant storefront traffic; category pages with their own
+// params keys; /cart, /wallet, /login…) paid the full-catalog fetch
+// (~4.7KB gz + ~53KB JSON.parse on the main thread) for a cache entry
+// it would never read, contending with the actually-needed route
+// chunk + data. The prefetch now fires only when the INITIAL path at
+// module-eval time is the home route; every other boot skips leg (b)
+// entirely (leg (a), the tiny home chunk warm-up, stays for any
+// non-admin boot — deep-linked visitors tapping the logo get the
+// warm chunk, and the home page itself fetches on mount exactly as it
+// did before the 96-F3 head-start existed).
 function startBootHeadStart(): void {
   if (typeof window === "undefined") return;
 
@@ -283,6 +298,12 @@ function startBootHeadStart(): void {
     // Stale-chunk / offline — the lazyWithRetry route handles its own
     // recovery when it actually mounts.
   });
+
+  // R111-F4-F3: leg (b) is gated to home-route boots (see
+  // isHomeBootPath). Everything past this point — the seeded key, the
+  // raw fetch, the staleTime — is byte-identical to the pre-gate
+  // head-start.
+  if (!isHomeBootPath(bootPath, routerBase)) return;
 
   // (b) products head-start. NOTE the `{}` argument: home always
   // builds its params as an object (`const params: Record<string,
@@ -322,6 +343,26 @@ function startBootHeadStart(): void {
 // tests (MODE === "test") so module imports in vitest stay inert.
 if (typeof window !== "undefined" && import.meta.env.MODE !== "test") {
   startBootHeadStart();
+}
+
+/**
+ * R111-F4-F3 (P3): pure predicate for the head-start home-route gate.
+ * TRUE only when the module-eval pathname is the home route — the sole
+ * consumer of the {}-params products key the catalog prefetch seeds.
+ * Exported for the gating regression test (same pattern as
+ * shapeForRoute above): every non-home entry path (WhatsApp product
+ * deep-links — the dominant storefront traffic; category/cart/wallet/
+ * login boots) must skip the full-catalog prefetch (~4.7KB gz +
+ * ~53KB parse) it would never read.
+ *
+ * `routerBase` is BASE_URL with its trailing slash stripped (the same
+ * normalization WouterRouter uses), so the home route is
+ * `${routerBase}/`; the bare "/" comparison covers the default
+ * deployment (BASE_URL = "/" → routerBase = "" → both clauses are
+ * "/") and any bare-path edge.
+ */
+export function isHomeBootPath(pathname: string, routerBase: string): boolean {
+  return pathname === `${routerBase}/` || pathname === "/";
 }
 
 function AdminProtectedRoutes() {

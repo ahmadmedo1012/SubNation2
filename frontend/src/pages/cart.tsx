@@ -318,13 +318,19 @@ export default function CartPage() {
             {token ? (
               <Link href="/checkout">
                 <Button className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12">
-                  متابعة الشراء
+                  {/* R111-F2 N1: «إتمام الطلب» — the destination page's own
+                      name (checkout.tsx h1), replacing «متابعة الشراء» which
+                      sat right above the ghost «متابعة التسوق» as a
+                      near-duplicate label pair on one screen. */}
+                  إتمام الطلب
                 </Button>
               </Link>
             ) : (
               <Link href="/login?redirect=/checkout">
                 <Button className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12">
-                  سجل دخول للشراء
+                  {/* R111-F2 N6: shadda + pronoun — matches the app-standard
+                      «سجّل» family (login.tsx, errors.ts). */}
+                  سجّل دخولك للشراء
                 </Button>
               </Link>
             )}

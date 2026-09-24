@@ -23,7 +23,11 @@ import { ProductCard } from "@/components/ProductCard";
 
 const addItemMock = vi.fn();
 vi.mock("@/lib/cart", () => ({
+  // R111-F4-F1: ProductCard subscribes to the commands context only —
+  // the mock provides both hooks so either wiring passes, but the
+  // card's add-to-cart path is exercised through useCartCommands.
   useCart: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
+  useCartCommands: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
 }));
 
 const toastMock = vi.fn();
