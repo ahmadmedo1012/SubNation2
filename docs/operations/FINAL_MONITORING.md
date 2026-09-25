@@ -102,8 +102,9 @@ breakdown), `/healthz/neon`, `/healthz/redis`, `/healthz/worker`,
 
 **Never add self-pings, cron-wakes, or any periodic artificial request.**
 Free-tier economics: the r109-era PG-lease heartbeat alone kept Neon compute
-awake 24/7 = **720 h/mo against a ~192 h free allowance**
-(`deploy/env.compose.example:36-37`, `render.yaml:337`) — the Neon-killer
+awake 24/7 = **720 h/mo ≈ 180 CU-h, against a 100 CU-h/project/month Free
+allowance**
+(`deploy/env.compose.example:36-38`, `render.yaml:337`) — the Neon-killer
 lesson. The old 10-minute keep-alive self-ping of `/api/healthz` + the openwa
 gateway was deleted for exactly this reason (`cron.ts:257-265` comment).
 `SINGLE_INSTANCE_MODE=true` exists precisely to keep idle Neon coordination

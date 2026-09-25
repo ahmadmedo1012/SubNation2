@@ -1,22 +1,25 @@
 # Disaster Recovery Runbook — SubNation
 
-> **Render-era document (written 2026-09 against the pre-migration stack).**
-> The Render/Vercel procedures below are the LEGACY ROLLBACK PATH — valid
-> until the Phase-6 deletion, kept per mission §63. Post-migration recovery
-> for the Oracle/Coolify stack: `docs/deployment/MIGRATION_RUNBOOK.md`
-> Phase 6 + `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12 (rollback),
-> §13 (backup/restore), §14 (troubleshooting).
+> **THE disaster-recovery source of truth for the current (Oracle/Coolify)
+> stack.** The Render/Vercel procedures are the LEGACY ROLLBACK PATH —
+> clearly marked below and kept until the Phase-6 deletion. Current-stack
+> recovery procedure map: `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md`
+> (decision matrix) + `docs/deployment/FINAL_RESTORE_DRILL.md` (the drill)
+> + `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12-§14.
 
-**Scope:** the live Render service `srv-d7vv91tckfvc73evnccg` (web canonical at `https://subnation.ly`) backed by Neon Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned in the current free-tier deployment (an optional Redis tier exists only on paper — see `OPERATIONS_RUNBOOK.md` §5). This runbook is platform-specific.
+**Scope (current stack):** the Coolify deployment on the Oracle VM (canonical
+at `https://subnation.ly` / `https://www.subnation.ly`) backed by Neon
+Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned
+(anywhere — the optional Redis tier on paper is retired; see
+`NEON_IDLE_ECONOMICS.md` §7).
 
 ## RTO / RPO targets
 
 | System                                 | RTO                                             | RPO                                                                               |
 | -------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore from Neon branch history) | **≤ 24 h** (with daily off-site backup; **≤ 60 s** on Neon paid tier with PITR)   |
+| Neon Postgres (auth, orders, products) | **≤ 30 min** (restore latest dump into a fresh project/branch — `FINAL_RESTORE_DRILL.md`) | **≤ 24 h** (nightly off-VM dump; Neon Free's own history window is only ~6 h — see §1 below) |
 | Application code                       | < 5 min                                         | 0 — git is source of truth                                                        |
-| Render service config                  | < 15 min                                        | 0 — `render.yaml` is checked in                                                   |
-| Sentry / observability                 | n/a                                             | n/a — best-effort capture; loss of error events does not affect product behaviour |
+| Stack definition                       | < 30 min | 0 — `docker-compose.yml` + Coolify docs are checked in (re-provision from `COOLIFY_FINAL_SETUP.md`) |
 
 > No Redis RTO row: no Redis service is provisioned (2026-09-20 free-tier
 > round). If an optional Redis is ever attached, its loss would only reset
@@ -24,12 +27,18 @@
 
 ## Backup inventory
 
-### 1. Neon branch history (in-place restore)
+### 1. Neon restore history (in-place point-in-time restore)
 
-Free tier: 7-day branch history. Launch tier: configurable up to 14 days.  
-Access: https://console.neon.tech/app/projects → SubNation → Branches → main → Restore.
+**Neon Free plan: ~6-hour history window** (point-in-time restore capped at
+1 GB-month of changes; scheduled backups are NOT available on Free).
+Launch tier: up to 7 days. Access:
+https://console.neon.tech/app/projects → SubNation → Branches → main → Restore.
 
-**This is the fastest restore path** — no external upload, no `pg_restore`. Pick a timestamp within the retention window and Neon spins up a new branch from that point.
+Verify the current allowance at execution time — https://neon.com/docs
+("Restore history" / plans page). Because the Free window is only hours,
+the **nightly off-VM `pg_dump` (§2 below) is the PRIMARY recovery
+mechanism**; Neon's own history is a convenience for very recent mistakes
+only.
 
 ### 2. Off-site `pg_dump` backups (this repo)
 
@@ -117,49 +126,57 @@ image would widen the blast radius), and a host-level job keeps taking
 backups while the app container is down or redeploying — exactly when you
 want them.
 
-### One-time install (on the VM, as root)
+### One-time install (on the VM, as `ubuntu`)
+
+Host prerequisites (Node 22 + Corepack pnpm + `postgresql-client-17`):
+**`ORACLE_FINAL_SETUP.md` §9** — the backup chain needs exactly those and
+`backup-preflight.sh` verifies them. This block only wires the cron.
 
 ```bash
-# Repo convention for the VM host: /opt/subnation (the Coolify doc builds
-# from git and fixes no host-side path; any path works — pass it to the
-# wrapper as its first argument).
-git clone https://github.com/ahmadmedo1012/SubNation2 /opt/subnation
-cd /opt/subnation && pnpm install --frozen-lockfile
-apt install -y postgresql-client # provides pg_dump
+# Repo convention on the VM (the command book uses the same path):
+git clone https://github.com/ahmadmedo1012/SubNation2 /home/ubuntu/SubNation2
+cd /home/ubuntu/SubNation2 && pnpm install --frozen-lockfile
 
-# env file (root-only readable; nothing below ever prints its values)
-install -m 600 /dev/null /opt/subnation/.env
-cat >> /opt/subnation/.env <<'EOF'
+# env file (600, owner-only readable; nothing below ever prints its values)
+install -m 600 /dev/null /home/ubuntu/SubNation2/.env
+cat >> /home/ubuntu/SubNation2/.env <<'EOF'
 DATABASE_URL=postgresql://...?sslmode=require
 BACKUP_DIR=/var/backups/subnation
 BACKUP_KEEP=14
 # optional off-VM copy: BACKUP_PRESIGNED_PUT_URL=https://... (see below)
 EOF
 
+# backup dir writable by the ubuntu user (the cron runs unprivileged):
+sudo mkdir -p /var/backups/subnation && sudo chown ubuntu:ubuntu /var/backups/subnation
+
+# log file writable by the ubuntu user (else the wrapper falls back to
+# <repo>/backups/backup-cron.log — also fine):
+sudo touch /var/log/subnation-backup.log && sudo chown ubuntu:ubuntu /var/log/subnation-backup.log
+
 # smoke-test once before scheduling — expect a "✓ backup complete" line
-/opt/subnation/scripts/backup-cron.sh /opt/subnation
+/home/ubuntu/SubNation2/scripts/backup-cron.sh /home/ubuntu/SubNation2
 ```
 
 Set `BACKUP_DIR` explicitly as above: run through pnpm, the script's
 `./backups` default resolves relative to the `scripts/` package dir
 (`scripts/backups/`), not the repo root.
 
-### Crontab (root, `crontab -e`)
+### Crontab (the `ubuntu` user, `crontab -e`) — THE one documented schedule
 
 ```cron
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-30 4 * * * /opt/subnation/scripts/backup-cron.sh /opt/subnation >> /var/log/subnation-backup.log 2>&1
+15 3 * * * /home/ubuntu/SubNation2/scripts/backup-cron.sh /home/ubuntu/SubNation2 >> /var/log/subnation-backup.log 2>&1
 ```
 
-- `30 4 * * *` — daily 04:30 UTC: low-traffic window for the .ly audience;
-  the dump runs for minutes and does not affect the Neon autosuspend
-  economics (`COOLIFY_ORACLE_MIGRATION.md` §9).
+- `15 3 * * *` — daily 03:15 UTC: quiet window for the .ly audience, and
+  deliberately BETWEEN the app's own in-process cron slots (02:15 … 05:00;
+  04:30 is the auth_activity retention slot — see
+  `LOGGING_AND_RETENTION_FINAL.md`), so the dump never overlaps a retention
+  batch. This is the single documented schedule — every doc that mentions
+  the nightly backup references this line.
 - The `PATH=` line matters — cron's default PATH is minimal and pnpm/node
-  usually live outside it; adjust to the output of `command -v pnpm`.
-- The redirect sends the full run transcript to the same file as the
-  one-line ledger (`/var/log/subnation-backup.log`; when `/var/log` is not
-  writable — non-root install — the wrapper falls back to
-  `<REPO_DIR>/backups/backup-cron.log`, or honours `BACKUP_CRON_LOG`).
+  usually live outside it; adjust to the output of `command -v pnpm`
+  (`ORACLE_FINAL_SETUP.md` §9 explains the trap).
 
 ### Retention policy
 

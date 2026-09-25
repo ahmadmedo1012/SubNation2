@@ -62,7 +62,9 @@ The blueprint is `render.yaml` (checked in, frozen):
 
 The old pre-r108 scheduler behavior — the PG-lease heartbeat (25 s refresh
 against Neon, 24/7) — is **the Neon-killer (B6-01)**: it kept Neon compute
-awake ~720 h/month against the ~192 h free allowance and accounted for 92.4%
+awake ~720 h/month against the then-applicable ~192 h free allowance (Neon
+Free is 100 CU-h/project/month today — `NEON_IDLE_ECONOMICS.md` §1) and
+accounted for 92.4%
 of all UPDATEs on the live DB. The fix **ships in code**
 (`SINGLE_INSTANCE_MODE`, r108) — there is no Render-side configuration that
 reproduces it safely.

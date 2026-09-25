@@ -56,7 +56,8 @@ grants a **synthetic in-process leadership** — `isLeader` is true for the
 whole process lifetime and `release()` is a no-op. There is **no leader
 election, no PG-lease heartbeat, zero periodic Neon coordination queries**,
 so idle Neon autosuspend is preserved (the 25 s lease refresh alone would
-have kept Neon compute awake 24/7 ≈ 720 h/mo against Neon Free's ~192 h
+have kept Neon compute awake 24/7 ≈ 720 h/mo ≈ 180 CU-h, against Neon
+Free's 100 CU-h/project/month
 allowance). Every cron, the 60 s alerting evaluator and the boot one-shots
 run ungated in-process. `DISABLE_WEB_SCHEDULERS=true` remains the hard
 off-switch and takes precedence over single-instance mode.

@@ -77,7 +77,11 @@ VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_APP_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_OPENWA_DOCS_URL=        # admin WhatsApp deep-link — default dies with Render; set it
+VITE_OPENWA_DOCS_URL=        # admin WhatsApp docs deep-link — LEAVE EMPTY in
+                             # the default topology (the gateway is internal;
+                             # the admin page degrades to a plain hint). Set a
+                             # restricted dashboard hostname only if you
+                             # expose one.
 ```
 
 **CRITICAL — leave `VITE_API_BASE_URL`, `VITE_SOCKET_URL`, `VITE_API_URL`
@@ -135,6 +139,12 @@ Emergency fallback (Coolify builder broken): redeploy this resource as a
 registry image `ghcr.io/ahmadmedo1012/subnation2:sha-<short>` — private
 package, so the VM needs a one-time `docker login ghcr.io` with a
 `read:packages` PAT. Same env, same pinning rule.
+**PENDING (r113):** the `subnation2` GHCR package does not exist yet — the
+repo's `docker.yml` workflow has never run (it triggers manually / on `v*`
+tags, and GitHub Actions is currently billing-suspended). One manual
+`workflow_dispatch` run after Actions is restored publishes the first
+sha-tagged image; until then the only rollback path is redeploy-from-git
+(the primary path anyway).
 
 ## 3. Resource 2 — OpenWA (registry image, sha-pinned)
 

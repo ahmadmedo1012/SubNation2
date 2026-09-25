@@ -113,7 +113,8 @@ commit `39bedf4`; `SINGLE_INSTANCE_MODE` in `1bca23d`):
   the FK re-arms a proven money-path break.
 - **The Neon-killer comes back with it.** `SINGLE_INSTANCE_MODE` did not exist
   before r108 — pre-r108 code ALWAYS runs the 25 s PG-lease heartbeat against
-  Neon (144 q/h ≈ 720 awake-h/mo vs the ~192 h free allowance; B6-01 proved it
+  Neon (144 q/h ≈ 720 awake-h/mo ≈ 180 CU-h, vs the 100 CU-h/project/month
+  Free allowance; B6-01 proved it
   live at 92.4% of all UPDATEs). That is the exact economics the migration
   exists to escape.
 

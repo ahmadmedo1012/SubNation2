@@ -73,43 +73,51 @@ old origin also had a valid cert, so nothing changes at the edge.
   misbehaves, this is the first switch to flip off.
 - **Minimum TLS version: 1.2.** Do not lower it.
 
-## 5. Cutover checklist (exact order)
+## 5. Cutover sequence (exact order — the safe two-stage TLS path)
 
 Preconditions: old origin still alive (the rollback path), Phase-0 Neon
 backup taken (`MIGRATION_RUNBOOK.md`), both Coolify resources green
 (`COOLIFY_FINAL_SETUP.md` §8).
 
-- [ ] VM IP confirmed (Oracle console — not from memory or stale DNS)
-- [ ] VM reachable on 80/443 — Oracle Security List AND host iptables AND
-      ufw (all three layers; the classic Oracle trap)
-- [ ] `./scripts/dns-cutover-check.sh subnation.ly <VM_IP>` → **READY**
-      (NOT READY = fix first; no DNS edits while anything is red)
-- [ ] TTL lowered (300 s or less) BEFORE the switch — on the CURRENT
-      records (it matters while DNS-only; proxied records re-resolve at
-      Cloudflare's edge quickly). Keep it low through the soak for a fast
-      rollback path.
-- [ ] Coolify TLS ready — the script's certificate check proves it (see
-      the pre-issuance note below)
-- [ ] application smoke-tested via `--resolve` (the script does this:
-      healthz + SPA + socket.io handshake with the production Host pinned
-      to the VM IP — e.g. `curl --resolve subnation.ly:443:<VM_IP>
-      https://subnation.ly/api/healthz`)
-- [ ] ONLY THEN switch the A record in Cloudflare (apex A → `<VM_IP>`,
-      proxied/orange; the `www` CNAME is unchanged — it follows the apex)
-- [ ] verify `https://subnation.ly/api/healthz` → 200, plus a login and a
-      catalog page (products render with images)
-- [ ] watch logs 30 min (Coolify: subnation + openwa log panes; error
-      rate, OTP sends, socket handshakes)
+The order exists because of one hard dependency: **Let's Encrypt must issue
+the origin certificate BEFORE Cloudflare's Full (strict) validates it**, and
+HTTP-01 validation requires the hostname to actually resolve to this VM.
+Hence grey-cloud first, orange second:
 
-**Pre-issuance note (how TLS is green BEFORE the switch):** Let's Encrypt
-HTTP-01 validation must reach the VM, so the hostname has to resolve to the
-VM at least once before the certificate exists. Cleanest sequence: flip the
-apex A record to `<VM_IP>` **DNS-only (grey)** → watch the Coolify/Traefik
-logs until the LE certificate issues (~1 min) → re-run dns-cutover-check
-(READY) → then enable the orange proxy. Alternative: switch straight to
-orange and accept a ~1-2 min 526 window while Traefik issues through the
-proxy. The test-domain rehearsal (`MIGRATION_RUNBOOK.md` Phase 4) proves
-the ACME path beforehand without touching the production record.
+- [ ] 1. VM IP confirmed (Oracle console — not from memory or stale DNS)
+- [ ] 2. VM reachable on 80/443 — Oracle Security List AND host iptables AND
+      ufw (all three layers; the classic Oracle trap)
+- [ ] 3. `./scripts/dns-cutover-check.sh subnation.ly <VM_IP>` → **READY**
+      (NOT READY = fix first; no DNS edits while anything is red)
+- [ ] 4. TTL lowered (300 s or less) on the CURRENT records — keep it low
+      through the soak for a fast rollback path
+- [ ] 5. **Stage 1 — grey cloud for certificate issuance:** flip the apex A
+      record to `<VM_IP>` **DNS-only (grey)**. Watch the Coolify/Traefik
+      logs until the Let's Encrypt certificate issues (~1 min); re-run
+      `dns-cutover-check.sh` → **READY** (it verifies origin TLS with the
+      production Host pinned to the VM IP — `curl --resolve` proves the
+      app answers healthz + SPA + the socket.io handshake on the new origin)
+- [ ] 6. **Stage 2 — enable the proxy:** switch the A record to
+      **proxied (orange)**; `www` CNAME → apex stays proxied/orange
+- [ ] 7. Cloudflare SSL mode = **Full (strict)** (it must never be set to
+      Flexible — §3); verify `https://subnation.ly` serves with no browser
+      warnings on both apex and www
+- [ ] 8. Verify the full surface through Cloudflare:
+      WebSocket upgrade in the browser Network tab (`101 Switching
+      Protocols` on `/socket.io/`), a login + a catalog page (products
+      render with images), AND no accidental API caching:
+      `curl -sI https://subnation.ly/api/products | grep -i cf-cache-status`
+      → expect `DYNAMIC` (anything else = a bad cache rule — fix before
+      continuing; §4). Then watch logs 30 min (Coolify: subnation + openwa
+      log panes; error rate, OTP sends, socket handshakes)
+
+**The alternative (one-step, orange immediately)** trades safety for speed:
+you skip stage 1 and accept a ~1-2 min window of Cloudflare **526** errors
+while Traefik issues the certificate through the proxy. It is acceptable
+only for a zero-traffic maintenance moment; the two-stage path above is the
+default because it never serves a hard error. The test-domain rehearsal
+(`MIGRATION_RUNBOOK.md` Phase 4) proves the ACME path beforehand without
+touching the production record.
 
 ## 6. Rollback
 

@@ -98,7 +98,7 @@ logging:
 | `auth_activity` | **90 d** | daily cron `04:30 UTC` + boot one-shot | `jobs/cron.ts:388-414` |
 | `risk_events` | 90 d unlabeled / 97 d labeled grace | daily cron `03:30 UTC` | `jobs/cron.ts:273-299` |
 | forecast / enrichment artifacts | 90 d | daily cron `03:35` / `04:00 UTC` (worker-tier gated, dormant here) | `jobs/cron.ts:325-386` |
-| DB backups (on-VM) | newest **14** dumps (`--keep`, `BACKUP_KEEP`) — only exact `subnation-<ISO>.sql.gz` names pruned, only after a fully successful run | host cron `30 4 * * *` → `scripts/backup-cron.sh` | `docs/DISASTER_RECOVERY.md` §Automated backups |
+| DB backups (on-VM) | newest **14** dumps (`--keep`, `BACKUP_KEEP`) — only exact `subnation-<ISO>.sql.gz` names pruned, only after a fully successful run | host cron `15 3 * * *` (03:15 UTC — deliberately NOT 04:30, which is the in-app auth_activity retention slot) → `scripts/backup-cron.sh` | `docs/DISASTER_RECOVERY.md` §Automated backups |
 | Docker logs (both services) | **10 MB × 3 files** per service | json-file rotation (§3 above) | `docker-compose.yml:113-117,174-178` |
 | Off-VM backup copies | lifecycle rule on the bucket (e.g. daily 30 d) — operator-owned | not managed by this repo | `docs/DISASTER_RECOVERY.md` §Off-VM copy |
 

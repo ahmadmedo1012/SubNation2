@@ -6,13 +6,21 @@
 
 ## 1. The problem this design solves (the Neon-killer lesson)
 
-Neon free tier allows ~192 compute-hours/month (an always-on 0.25 CU × 30
-days ≈ 180-190 h). The r109 B6 audit **proved live** that the pre-r108
+Neon's Free plan allows **100 CU-hours per project per month** (Neon official
+docs at the time of writing, 2026-09 — an always-on 0.25 CU compute would
+burn ~180 CU-h/month, so always-on is NOT affordable on Free anymore:
+autosuspend is mandatory economics, not an optimization). The r109 B6 audit
+**proved live** that the pre-r108
 scheduler topology burned Neon 24/7: the PG-lease leadership refresher alone
 issued **92.4% of all UPDATE traffic** on the database — a heartbeat every
-few seconds, around the clock ≈ 720 h/month of kept-awake compute. Autosuspend
+few seconds, around the clock ≈ 720 h/month of kept-awake compute (≈180
+CU-h/mo at 0.25 CU — nearly double the entire Free budget, on ONE query
+class). Autosuspend
 never triggered because the lease never went idle. That build is still what
-production runs until the cutover; the fix ships with the first r112 boot.
+the suspended Render deployment last ran; the fix ships with the first
+post-cutover boot. (Figures to re-verify at execution time:
+https://neon.com/pricing — an earlier 2025 announcement listed 50 CU-h;
+the current documented allowance is 100 CU-h/project/month.)
 
 ## 2. What `SINGLE_INSTANCE_MODE=true` means (proven from source)
 

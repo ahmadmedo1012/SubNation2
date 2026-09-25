@@ -29,7 +29,11 @@
 #     3. Emergency  = SubNation also publishes
 #                     ghcr.io/ahmadmedo1012/subnation2:sha-<short> — a
 #                     prebuilt fallback if the Coolify builder is broken.
-#                     Same pinning rule.
+#                     Same pinning rule. (r113 honesty note: that GHCR
+#                     package is NOT published yet — the docker.yml
+#                     workflow needs one manual run once GitHub Actions
+#                     billing is restored; until then redeploy-from-git is
+#                     the only path.)
 #
 #   LOCAL / bare-VM docker compose (THIS file):
 #     Variant A (default) builds both from local checkouts — requires

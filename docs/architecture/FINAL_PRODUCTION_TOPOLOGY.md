@@ -115,7 +115,7 @@ Neon is the only persistent state.
 
 | Asset | Backed up? | Truth |
 |---|---|---|
-| Neon logical dump | **YES** | nightly `scripts/backup-cron.sh` on the VM host cron (04:30 UTC, keep 14) + optional off-VM presigned PUT (`BACKUP_PRESIGNED_PUT_URL`) — the off-VM copy is the PRIMARY recovery mechanism |
+| Neon logical dump | **YES** | nightly `scripts/backup-cron.sh` on the VM host cron (03:15 UTC, keep 14) + optional off-VM presigned PUT (`BACKUP_PRESIGNED_PUT_URL`) — the off-VM copy is the PRIMARY recovery mechanism |
 | VM config / OS | no | re-provisionable from `ORACLE_FINAL_SETUP.md` in ~1 h |
 | Coolify config | no | re-creatable from `COOLIFY_FINAL_SETUP.md` + git |
 | openwa `/data` volume | no | re-pairable via QR in minutes (Neon blobs restore first) |
@@ -133,8 +133,10 @@ is the real safety net.
   suggestion: there is no leader election in this mode, so a second replica
   double-runs every cron (retention, alerting, sweeps). Vertical scaling only.
 - **ONE openwa instance.** The WhatsApp single-gateway rule (§2) — full stop.
-- **Vertical only** on the VM: more Ampere OCPUs/RAM (Always Free ceiling
-  4 OCPU / 24 GB; reference shape 2/12, minimum 2/6).
+- **Vertical only** on the VM: more Ampere OCPUs/RAM — but the Always Free
+  A1 allowance is **2 OCPU / 12 GB total** since 2026-06-15 (the earlier
+  4 OCPU / 24 GB ceiling was cut; re-verify on Oracle's Always Free page at
+  provision time). The production shape IS the ceiling: 2/12.
 - **Neon is external and scales independently** — tier upgrades (PITR, compute)
   never touch this topology.
 

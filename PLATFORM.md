@@ -23,26 +23,40 @@
 > `docs/free-tier-optimization-2026-09-20.md` / `docs/final-audit-2026-09-20.md`.
 > Deploy IDs and commit refs below are historical records, kept as-is.
 
-## Production URLs (as of 2026-09-20)
+## Production URLs — **HISTORICAL SNAPSHOT (2026-09-20), ALL RETIRED/SUSPENDED**
 
-- Frontend (Vercel): https://subnation-seven.vercel.app — **LIVE**
+> **r113 label: LEGACY / ROLLBACK ONLY — NOT CURRENT PRODUCTION.** Every URL
+> below is from the Render/Vercel era and is DOWN (Render billing-suspended
+> since ~2026-09-11; the Vercel mirror drifted and its integration fails on
+> every push — removal is an operator action,
+> `docs/deployment/FINAL_OPERATOR_INPUTS.md` §account-level cleanup). The
+> current production target is Oracle Cloud ARM64 + Coolify + Docker + Neon:
+> `docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`. Values kept verbatim as
+> the rollback reference they document.
+
+- Frontend (Vercel): https://subnation-seven.vercel.app — **LEGACY MIRROR,
+  STALE** (was "live" in the 2026-09-20 snapshot; the split stack is retired)
 - Frontend (custom domain): https://subnation.ly and https://www.subnation.ly —
-  Cloudflare → Render direct (see runbook). Cold-start: the first request
-  after an idle sleep pays a ~10-20 s boot; static/SPA shell passes the
-  boot gate instantly (R104) and the frontend retries API calls.
-- Backend (Render): https://subnation2.onrender.com — free tier, sleeps
-  after ~15 min idle BY DESIGN (operator billing gate resolved; verify
-  current state in the Render dashboard — this doc is a dated snapshot)
-- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — free tier,
-  same sleep-by-design posture (wakes on real OTP/admin traffic)
+  currently 503 (origin suspended); the domain is the CANONICAL production
+  identity and moves to the Oracle VM at cutover
+  (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md`)
+- Backend (Render): https://subnation2.onrender.com — LEGACY, billing-suspended
+- OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — LEGACY,
+  billing-suspended (the gateway now ships as
+  `ghcr.io/ahmadmedo1012/openwa:sha-<short>` on the same VM)
 - Neon Database: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
-  (project `calm-art-99771185`) — live
+  (project `calm-art-99771185`) — live (external, unchanged by the migration)
 
-## Deployment
+## Deployment — LEGACY (the 2026-09-20 stack; current target: Oracle/Coolify)
 
-- Frontend: Vercel (auto-deploy on push to main)
-- Backend: Render (`srv-d7vv91tckfvc73evnccg`, region oregon, plan free)
+- Frontend: Vercel (auto-deploy on push to main) — **retired split-stack
+  mirror**; the SPA now ships from the same origin as the API
+- Backend: Render (`srv-d7vv91tckfvc73evnccg`, region oregon, plan free) —
+  **billing-suspended rollback path**
+  (`docs/deployment/RENDER_LEGACY_FALLBACK.md`)
 - Last successful deploy: `dep-dac6e3n10e5c73bei34g` (commit `8878fd3`)
+  (historical record)
+- Current deployment: `docs/deployment/COOLIFY_FINAL_SETUP.md`
 
 ## CORS Origins (allow-listed on backend)
 

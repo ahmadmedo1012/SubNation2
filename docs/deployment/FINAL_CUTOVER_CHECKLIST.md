@@ -9,14 +9,22 @@
 - [ ] Source gates green at the release SHA: typecheck, lint 0 errors,
       **backend 1447 + frontend 635 + openwa 103 = 2185 tests**, OpenAPI
       route gate, migration drift, production build, gitleaks 0
-      (all recorded at R112 HEAD; re-run via `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL)
+      (re-verified locally at the r113 HEAD — see the commit message;
+      re-run via `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL).
+      NOTE: the red ✗ on GitHub pushes is the Actions billing suspension
+      (`FINAL_OPERATOR_INPUTS.md` §account-level cleanup), not a code
+      regression — restore Actions or run the suite locally per command book
 - [ ] Secrets generated on the VM: `scripts/generate-production-secrets.sh`;
       values in password manager + encrypted offline backup
       (`docs/deployment/SECRET_HANDLING_FINAL.md`)
 - [ ] Filled `.env` passes `validate-production-env.ts --strict` (exit 0)
-      and `scripts/final-cutover-preflight.sh .env` (exit 0)
-- [ ] Oracle VM ready: `ORACLE_FINAL_SETUP.md` §10 VM READY checklist
-      (aarch64, docker, 2-layer firewall 22/80/443-only, fail2ban, swap)
+      and `scripts/final-cutover-preflight.sh .env` exits 0 with
+      **PREFLIGHT CLEAR (OpenWA: PASSED)** — sections A-I, the OpenWA
+      gate included; "CLEAR WITH OPENWA SKIPPED" is NOT sufficient here
+      (it means the stack was not up when it ran)
+- [ ] Oracle VM ready: `ORACLE_FINAL_SETUP.md` §11 VM READY checklist
+      (aarch64, docker, 2-layer firewall 22/80/443-only, fail2ban, swap,
+      host tooling: Node/pnpm/pg_dump per §9)
 - [ ] Docker ready: `docker-verify.sh --arm64` printed
       **ARM64 VERIFIED** + all 10 gates passed
 - [ ] Coolify ready: `COOLIFY_FINAL_SETUP.md` checklist complete

@@ -9,7 +9,7 @@
 
 | Input | What exactly | Goes into |
 |---|---|---|
-| VM provisioning | An Always-Free-eligible Ampere A1 VM: **aarch64**, min 2 OCPU / 6 GB RAM, 50 GB boot volume, Ubuntu 24.04, your SSH public key | Oracle console — full walk-through: `docs/deployment/ORACLE_FINAL_SETUP.md` §1 |
+| VM provisioning | An Always-Free-eligible Ampere A1 VM: **aarch64**, **2 OCPU / 12 GB RAM** (the full current Always Free A1 allowance — cut from 4/24 on 2026-06-15), 50 GB boot volume, Ubuntu 24.04, your SSH public key | Oracle console — full walk-through: `docs/deployment/ORACLE_FINAL_SETUP.md` §1 |
 | VM public IP | The reserved public IPv4 of that VM | Cloudflare A record + `scripts/dns-cutover-check.sh <domain> <ip>` |
 | SSH access | The key pair for `ubuntu@<ip>` (agent never holds it) | every ORACLE step |
 
@@ -51,6 +51,18 @@
 | Inventory data | Load real stock via the admin bulk-upload (45 active products currently hold **1 deliverable unit** — netflix-premium) | `docs/operations/FINAL_INVENTORY_LOADING.md` |
 | Backup target (recommended) | A B2/R2/S3 bucket + one presigned PUT URL so backups leave the VM | `docs/DISASTER_RECOVERY.md` + `scripts/backup-preflight.sh` §5 |
 | First on-VM restore drill | The sandbox drill passed (2026-09-25); re-run once on the VM for tooling parity | `docs/deployment/FINAL_RESTORE_DRILL.md` |
+
+## ACCOUNT-LEVEL GITHUB CLEANUP (r113 — discovered live; account-level, so no repo token can do it)
+
+These make the repository LOOK unhealthy or attract noise but live at the
+GitHub **account** level, outside the repositories:
+
+| Item | What exactly | How |
+|---|---|---|
+| **Failing Vercel integration** | The Vercel GitHub App is still installed and `vercel[bot]` creates a failing "Production" deployment on EVERY push to main (verified 2026-09-25 at `ff8ac51`: "Deployment has failed") — legacy noise from the retired split stack | Vercel dashboard → the SubNation project → Settings → Git → **Disconnect** the repo (or delete the project); alternatively GitHub → Settings → Applications → Installed GitHub Apps → Vercel → Configure → remove `SubNation2` |
+| Supabase Preview integration | The Supabase GitHub App also creates preview-branch checks per PR — green but unused (the stack runs Neon, not Supabase) | Same path: GitHub → Settings → Applications → Supabase → remove `SubNation2` (keep if you actually want preview DBs) |
+| **GitHub Actions billing** | Actions is billing-suspended ("recent account payments have failed or your spending limit needs to be increased") — every CI run since r111 fails at job-start; the red ✗ on recent commits is THIS, not a code regression (verified 2026-09-25) | GitHub → Settings → Billing & plans → restore Actions minutes / raise the spending limit; CI then re-runs green on the next push |
+| First `subnation2` GHCR image | After Actions is restored: run the `Docker Image (multi-arch)` workflow once (workflow_dispatch) so the emergency-fallback image `ghcr.io/ahmadmedo1012/subnation2:sha-<short>` actually exists | GitHub → SubNation2 → Actions → "Docker Image (multi-arch)" → Run workflow |
 
 ## What is deliberately NOT requested
 

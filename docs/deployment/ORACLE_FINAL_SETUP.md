@@ -19,7 +19,7 @@
 | Setting | Value | Why |
 |---|---|---|
 | Shape | `VM.Standard.A1.Flex` (Ampere A1, aarch64) | Always Free ARM64 compute |
-| OCPU / RAM | **min 2 OCPU + 6 GB** (reference: 2/12 per migration doc §1; free ceiling 4/24) | Coolify control plane ~1.5–2 GB + Docker daemon + VM-side Node/Vite builds (~1.5–2 GB transient/deploy) + both app containers (~0.3–0.5 GB idle) + OS ~0.5 GB |
+| OCPU / RAM | **2 OCPU / 12 GB** — the full current Always Free A1 allowance (the pre-2026-06 4 OCPU/24 GB ceiling was cut on 2026-06-15; re-verify on Oracle's Always Free page at provision time) | Coolify control plane ~1.5–2 GB + Docker daemon + Coolify's in-Docker builds (~1.5–2 GB transient/deploy) + both app containers (~0.3–0.5 GB idle) + OS ~0.5 GB; 6 GB boots but leaves no headroom for builds |
 | Boot volume | 50 GB | OS + images/layers + Coolify `/data` + capped logs (≤30 MB/service) + nightly dumps; free allowance is 200 GB total |
 | Image | Canonical Ubuntu 24.04 LTS, aarch64 | Matches every command below (`noble`); 22.04 also works |
 
@@ -66,7 +66,8 @@ swapon --show    # expect: /swapfile  file  4G  0B  -2
 free -h          # expect: Swap: 4.0Gi
 ```
 
-(4 GB suits the 6 GB minimum shape; the 12 GB reference shape uses 2 GB — `COOLIFY_ORACLE_MIGRATION.md` §4.4.)
+(4 GB suits the 12 GB shape with build headroom to spare; the historical
+6 GB-minimum shape used 2 GB — `COOLIFY_ORACLE_MIGRATION.md` §4.4.)
 
 ## 5. Docker (official apt repo, arm64)
 
@@ -190,7 +191,59 @@ layers (§6.2 + §6.1), or restrict its Security-List source to your IP and put 
 dashboard on a direct-DNS subdomain (Settings → FQDN, grey cloud — migration doc §4.5).
 Deploying the stack: `MIGRATION_RUNBOOK.md` Phase 3+.
 
-## 9. Health checks (after each phase; ALL before §10)
+## 9. Host tooling — Node.js, pnpm, PostgreSQL client (r113)
+
+The app stack runs in Docker and needs NOTHING from this section. The host
+tooling below is required by the **backup chain** (`backup-cron.sh` runs
+`pnpm` + `pg_dump`; `restore-drill-check.sh` runs `psql`) and by
+`scripts/final-cutover-preflight.sh`, which checks for them explicitly.
+Before r113 this was an implicit prerequisite — now it is explicit.
+
+```bash
+# Node.js 22 LTS (arm64) from NodeSource — matches the version the app's
+# engines/Dockerfile pin (node:22):
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version && npm --version
+
+# pnpm via Corepack (the project's packageManager pin — pnpm@10):
+sudo corepack enable
+corepack prepare pnpm@10.17.0 --activate   # matches package.json packageManager
+pnpm --version
+
+# pg_dump / psql — Neon runs PostgreSQL 17; Ubuntu noble ships only 16 in
+# its default repos, so use the PGDG apt repo for postgresql-client-17
+# (backup-db.ts aborts on a major-version mismatch):
+sudo apt-get install -y curl ca-certificates
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  https://www.postgresql.org/media/keys/ACCC4CF8.asc
+sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+  https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+  > /etc/apt/sources.list.d/pgdg.list'
+sudo apt-get update
+sudo apt-get install -y postgresql-client-17
+
+# git is preinstalled on Oracle's Ubuntu images; pin the convention:
+git --version
+```
+
+**cron PATH warning (why backups fail at 03:15 but work interactively):**
+cron's default PATH is `/usr/bin:/bin` — `node`/`pnpm` (installed under
+`/usr/bin` via NodeSource, but Corepack shims may live elsewhere) and any
+locally-installed binaries are invisible to it. The crontab line in
+`DISASTER_RECOVERY.md` §Automated backups therefore starts with an explicit
+`PATH=` line — keep it, and adjust it to the output of `command -v pnpm`.
+
+Verify (this is exactly what `backup-preflight.sh` checks):
+
+```bash
+pg_dump --version    # pg_dump (PostgreSQL) 17.x or newer
+psql --version       # psql 17.x or newer
+pnpm --version       # 10.x (Corepack-managed)
+```
+
+## 10. Health checks (after each phase; ALL before §11)
 
 ```bash
 uname -m                          # aarch64                      (§1–2)
@@ -205,13 +258,14 @@ sudo ss -tlnp                     # expected-listeners table §6.3          (§6
 systemctl status docker fail2ban --no-pager  # both active (running)        (§5,§7)
 ```
 
-## 10. VM READY checklist
+## 11. VM READY checklist
 
 - [ ] `uname -m` → aarch64; Ubuntu 24.04 (noble); rebooted after `full-upgrade`
 - [ ] SSH: key-only + root login disabled (`sshd -T` shows both `no`); new login verified
 - [ ] fail2ban active, sshd jail enabled (`fail2ban-client status sshd`)
 - [ ] 4G `/swapfile` active, in `/etc/fstab`, `vm.swappiness=10` persisted
 - [ ] Docker from docker.com apt repo; `hello-world` OK; `ubuntu` in `docker` group
+- [ ] Host tooling installed (§9): Node 22 + Corepack pnpm 10 + `pg_dump`/`psql` 17 (`backup-preflight.sh` PASS)
 - [ ] Security List: stateful 22/80/443 only (8000 rule deleted post-wizard)
 - [ ] Host iptables: ACCEPTs before the shipped REJECT + `netfilter-persistent save`; ufw 22/80/443
 - [ ] `sudo ss -tlnp` matches §6.3 — nothing public beyond 22/80/443

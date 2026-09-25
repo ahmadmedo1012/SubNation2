@@ -347,8 +347,9 @@ worker-heartbeat alert is inert by design; an external probe covers that gap.
 `deploy/env.compose.example`).** The single-container topology has no second
 instance to arbitrate, so the R107-era PG-lease heartbeat (25 s refresh /
 60 s TTL) bought nothing while keeping Neon's compute awake 24/7 — **144
-coordination queries/hour ≈ 720 awake-h/mo against Neon Free's ~192 h
-allowance** (DISASTER_RECOVERY.md records this exact failure already burning
+coordination queries/hour ≈ 720 awake-h/mo ≈ 180 CU-h, against Neon Free's
+100 CU-h/project/month allowance
+**(DISASTER_RECOVERY.md records this exact failure already burning
 the allowance once). In single-instance mode the scheduler runs ungated
 in-process: no leader election, no lease heartbeat, ZERO periodic Neon
 coordulation queries — **idle Neon autosuspend is preserved** and the only

@@ -27,10 +27,14 @@ pnpm --filter @workspace/api-server run build
 # secret scan (same engine/version CI pins)
 # gitleaks 8.27.2, config .gitleaks.toml — 0 findings at R112 HEAD
 
-# environment validator (negative control: example file FAILS with 9 placeholder
-# errors; your filled .env must exit 0):
+# environment validator (negative control: the example file FAILS with 9
+# placeholder errors and exit 1; your filled .env must exit 0).
+# NOTE: paths resolve relative to the scripts package (pnpm exec runs there)
+# — hence the ../ prefix, or pass an absolute path:
 pnpm --filter @workspace/scripts exec tsx src/validate-production-env.ts \
-  --file <your.env> --profile compose --strict
+  --file ../deploy/env.compose.example --profile compose --strict   # → 9 errors, exit 1
+pnpm --filter @workspace/scripts exec tsx src/validate-production-env.ts \
+  --file ../.env --profile compose --strict                         # your filled file → exit 0
 ```
 
 ## ORACLE (the VM — first boot)
@@ -38,10 +42,12 @@ pnpm --filter @workspace/scripts exec tsx src/validate-production-env.ts \
 ```bash
 ssh ubuntu@<OPERATOR_INPUT_VM_IP>
 sudo apt update && sudo apt full-upgrade -y
-# …then follow: docs/deployment/ORACLE_FINAL_SETUP.md §2-§8 (sshd hardening,
-#    swap, docker, the TWO-layer firewall contract, fail2ban, Coolify install)
+# …then follow: docs/deployment/ORACLE_FINAL_SETUP.md §2-§11 (sshd hardening,
+#    swap, docker, the TWO-layer firewall contract, fail2ban, Coolify install,
+#    AND §9 host tooling: Node.js + Corepack/pnpm + postgresql-client-17 —
+#    required later by the backup chain and docker-verify)
 
-# phase health checks (§9 of the same doc):
+# phase health checks (§10 of the same doc):
 uname -m            # aarch64
 free -h && df -h && swapon --show
 docker run --rm hello-world          # arm64 pull works
@@ -52,7 +58,10 @@ ss -tlnp             # only 22/80/443/8000(coolify setup) + docker bridge listen
 ## DOCKER (verify the images on the VM — BEFORE any DNS change)
 
 ```bash
-cd /home/z/my-project   # wherever the repo lives on the VM
+# repo convention on the VM (docs/DISASTER_RECOVERY.md §Automated backups):
+# a plain clone under the ubuntu home — any path works, just stay consistent.
+git clone https://github.com/ahmadmedo1012/SubNation2 /home/ubuntu/SubNation2
+cd /home/ubuntu/SubNation2
 git pull --ff-only
 
 # fill the runtime env (never committed):
@@ -61,12 +70,13 @@ vi .env                   # paste real values; secrets only ever via this file
 ./scripts/generate-production-secrets.sh   # generates the five (see SECRET_HANDLING_FINAL.md)
 
 # THE verification harness (10 gates: build, boot, healthz, SPA, Socket.IO,
-# inspect, compose config, openwa, restart, graceful drain):
-DATABASE_URL=… SESSION_SECRET=… ENCRYPTION_KEY=… ADMIN_JWT_SECRET=… \
-  ./scripts/docker-verify.sh --arm64
+# inspect, compose config, openwa, restart, graceful drain). It loads .env
+# itself (values never printed) and fails loudly if a required variable is
+# missing — never pass secrets on the command line or via shell history:
+./scripts/docker-verify.sh --arm64
 # → must print: ARM64 VERIFIED  AND  ALL §15 GATES PASSED
 
-# the full preflight (sections A-H; exit 0 = clear):
+# the full preflight (sections A-I; exit 0 = clear):
 ./scripts/final-cutover-preflight.sh .env
 ```
 
@@ -88,7 +98,8 @@ pnpm --filter @workspace/scripts run backup --keep 14
 # backup preflight:
 ./scripts/backup-preflight.sh .env
 
-# install the nightly cron (docs/DISASTER_RECOVERY.md §Automated backups):
+# install the nightly backup cron (docs/DISASTER_RECOVERY.md §Automated backups —
+# THE one documented schedule: 03:15 UTC, ubuntu's crontab):
 crontab -e
 # 15 3 * * * /home/ubuntu/SubNation2/scripts/backup-cron.sh /home/ubuntu/SubNation2 >> /var/log/subnation-backup.log 2>&1
 
