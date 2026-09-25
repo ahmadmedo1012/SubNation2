@@ -31,13 +31,26 @@
 #       drain test).
 #
 # Usage:
-#   ./scripts/docker-verify.sh            # gates 1, 3-7, 9, 10 (+8 when openwa is up)
-#   ./scripts/docker-verify.sh --arm64    # also cross-build arm64 via buildx
+#   ./scripts/docker-verify.sh [--arm64] [--env-file <ENV_FILE>]
+#     gates 1, 3-7, 9, 10 (+8 when openwa is up); --arm64 adds gate 2
 #
-# Requires: docker (with the buildx + compose plugins) and a reachable
-# DATABASE_URL (Neon works). Gate 7 additionally needs $ROOT_DIR/.env
-# (cp deploy/env.compose.example .env). Pass secrets via env vars — the
-# script reads what the app reads.
+# ENVIRONMENT MODEL (r113): the harness loads the SAME .env file the
+# documented workflow fills (cp deploy/env.compose.example .env) — same
+# safe KEY=VALUE parser as scripts/final-cutover-preflight.sh: values are
+# never printed, PATH is never overridden, and variables already present
+# in the real environment WIN over the file (so you can point DATABASE_URL
+# at a scratch DB without editing .env). The container then receives the
+# FULL production runtime set (APP_URL, APP_ORIGINS, SINGLE_INSTANCE_MODE,
+# WHATSAPP_OTP_*, optional integrations — everything the app reads), so the
+# verification models the real production environment instead of a stripped
+# dev one. REQUIRED after loading: DATABASE_URL, SESSION_SECRET,
+# ENCRYPTION_KEY, ADMIN_JWT_SECRET, APP_URL, APP_ORIGINS — the harness
+# fails loudly naming exactly what is missing; it never silently
+# substitutes defaults for production requirements.
+#
+# Requires: docker (with the buildx + compose plugins), a reachable
+# DATABASE_URL (Neon works), and the required env above (file or exported).
+# Gate 7 additionally needs the env file to exist (it usually already does).
 #
 # Host port: the verify container binds 127.0.0.1:3000 by default. Override
 # with SUBNATION_VERIFY_PORT when the compose stack already owns 3000 (e.g.
@@ -54,6 +67,92 @@ OPENWA_HEALTH_URL="http://127.0.0.1:${OPENWA_VERIFY_PORT:-3001}/healthz"
 BASE_URL="http://127.0.0.1:${HOST_PORT}"
 FAILURES=0
 SKIPS=0
+
+# ── r113: safe env-file loading (the documented .env IS the input) ──────────
+# Same contract as scripts/final-cutover-preflight.sh: parse KEY=VALUE lines
+# without sourcing, never print values, never touch PATH, only export the
+# known application keys, and ONLY when the variable is not already set in
+# the real environment (environment wins — same precedence as compose).
+ENV_FILE=""
+ARM64_REQUESTED=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --arm64)    ARM64_REQUESTED=1 ;;
+    --env-file) [[ $# -ge 2 ]] || { echo "✗ --env-file needs a path argument" >&2; exit 64; }
+                ENV_FILE="$2"; shift ;;
+    *)          echo "✗ unknown argument: $1 (usage: $0 [--arm64] [--env-file <ENV_FILE>])" >&2; exit 64 ;;
+  esac
+  shift
+done
+if [[ -z "$ENV_FILE" && -f "$ROOT_DIR/.env" ]]; then ENV_FILE="$ROOT_DIR/.env"; fi
+# Every runtime variable the production container reads (deploy/
+# env.compose.example is the template; ENVIRONMENT_MATRIX.md the matrix).
+# Anything in this list that ends up SET (file or environment) is passed to
+# the verify container — nothing else ever is.
+RUNTIME_VARS=(
+  DATABASE_URL SESSION_SECRET ENCRYPTION_KEY ADMIN_JWT_SECRET
+  APP_URL APP_ORIGINS APP_ORIGIN AUTH_COOKIE_SAMESITE
+  SINGLE_INSTANCE_MODE DISABLE_WEB_SCHEDULERS DISABLE_BOOT_MIGRATIONS
+  WHATSAPP_OTP_BASE_URL WHATSAPP_OTP_API_KEY WHATSAPP_OTP_SESSION
+  WHATSAPP_OTP_AUTO_CREATE_SESSION WHATSAPP_OTP_SETTLE_MS
+  OPENWA_API_KEY PERSISTENCE_URL OPENWA_CREDENTIALS_KEY
+  ALERTING_ENABLED TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID DISCORD_WEBHOOK_URL
+  GENERIC_ALERT_WEBHOOK_URL SENTRY_DSN SENTRY_TRACES_SAMPLE_RATE
+  COPILOT_PROVIDER COPILOT_API_KEY COPILOT_MODEL COPILOT_BASE_URL
+  FIREBASE_AUTH_ENABLED FIREBASE_SERVICE_ACCOUNT_JSON METRICS_ADMIN_TOKEN
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS
+)
+if [[ -n "$ENV_FILE" ]]; then
+  [[ -f "$ENV_FILE" ]] || { echo "✗ env file not found: $ENV_FILE" >&2; exit 64; }
+  echo "→ loading env file (values never printed): $ENV_FILE"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in ''|'#'*) continue ;; *=*) ;; *) continue ;; esac
+    key=${line%%=*}; value=${line#*=}
+    case "$key" in ''|*[!A-Za-z0-9_]*|[0-9]*|PATH) continue ;; esac
+    # strip ONE pair of matching surrounding quotes, compose-style
+    case "$value" in '"'*'"') value=${value#\"}; value=${value%\"} ;; "'"*'"') value=${value#\'}; value=${value%\'} ;; esac
+    # only known keys; the real environment keeps precedence
+    for known in "${RUNTIME_VARS[@]}"; do
+      if [[ "$key" == "$known" && -z "${!key:-}" ]]; then
+        export "$key=$value"
+        break
+      fi
+    done
+  done <"$ENV_FILE"
+else
+  echo "→ no env file found (pass --env-file <path>, or create .env at the repo root: cp deploy/env.compose.example .env)"
+  echo "  falling back to the current environment only"
+fi
+
+# ── r113: explicit required-vs-optional validation ───────────────────────
+MISSING=()
+for req in DATABASE_URL SESSION_SECRET ENCRYPTION_KEY ADMIN_JWT_SECRET APP_URL APP_ORIGINS; do
+  [[ -n "${!req:-}" ]] || MISSING+=("$req")
+done
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  echo "✗ missing REQUIRED production variables: ${MISSING[*]}" >&2
+  echo "  Fill them in the env file (deploy/env.compose.example is the template) or export them." >&2
+  echo "  The harness never substitutes defaults for production requirements." >&2
+  exit 64
+fi
+echo "→ required production variables present (values never printed): DATABASE_URL SESSION_SECRET ENCRYPTION_KEY ADMIN_JWT_SECRET APP_URL APP_ORIGINS"
+
+# Collect the passthrough set: every known runtime var that is currently set.
+ENV_PASS=()
+for v in "${RUNTIME_VARS[@]}"; do
+  [[ -n "${!v:-}" ]] && ENV_PASS+=("-e" "$v")
+done
+NUM_RUNTIME=$(( ${#ENV_PASS[@]} / 2 ))
+echo "→ passing ${NUM_RUNTIME} production runtime variables to the verify container (values never printed)"
+
+# Single-instance warning: if another app instance (compose stack / Coolify)
+# is already running against the same DATABASE_URL, its crons double-run
+# while this harness is up. Run the harness BEFORE starting the stack.
+if [[ "${SINGLE_INSTANCE_MODE:-}" == "true" ]]; then
+  echo "→ SINGLE_INSTANCE_MODE=true — if the Coolify/compose stack is ALREADY running"
+  echo "  against the same DATABASE_URL, stop it first: single-instance schedulers"
+  echo "  double-run every cron while both containers are up."
+fi
 # R112 (§8): explicit, unambiguous ARM64 verdict. One of:
 #   not-run | verified | failed
 # The final summary prints "ARM64 VERIFIED" / "ARM64 NOT VERIFIED"
@@ -65,11 +164,6 @@ ok()   { printf '\033[1;32m   PASS: %s\033[0m\n' "$1"; }
 fail() { printf '\033[1;31m   FAIL: %s\033[0m\n' "$1"; FAILURES=$((FAILURES+1)); }
 skip() { printf '\033[1;33m   SKIP: %s\033[0m\n' "$1"; SKIPS=$((SKIPS+1)); }
 
-: "${DATABASE_URL:?DATABASE_URL must be set (Neon connection string)}"
-: "${SESSION_SECRET:?SESSION_SECRET must be set (32+ chars)}"
-: "${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set (64 hex chars)}"
-: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set (differs from SESSION_SECRET)}"
-
 cd "$ROOT_DIR"
 
 # ── 1. Native build ─────────────────────────────────────────────────────────
@@ -80,7 +174,7 @@ docker build \
   && ok "native build" || fail "native build"
 
 # ── 2. Optional arm64 cross-build ───────────────────────────────────────────
-if [[ "${1:-}" == "--arm64" ]]; then
+if [[ "$ARM64_REQUESTED" == "1" ]]; then
   step "2/10 Cross-build linux/arm64 (QEMU — the Oracle Ampere target)"
   if docker buildx build \
     --platform linux/arm64 \
@@ -104,9 +198,7 @@ docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 # --log-driver/--log-opt mirror the compose log-rotation policy (10 MB × 3
 # files) so gate 6 can assert the runtime actually honors them.
 if ! docker run -d --name "$CONTAINER_NAME" \
-  -e DATABASE_URL -e SESSION_SECRET -e ENCRYPTION_KEY -e ADMIN_JWT_SECRET \
-  -e APP_URL="${APP_URL:-}" \
-  -e APP_ORIGINS="${APP_ORIGINS:-https://subnation.ly,https://www.subnation.ly}" \
+  "${ENV_PASS[@]}" \
   --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
   -p "127.0.0.1:${HOST_PORT}:8080" \
   "$IMAGE_TAG" >/dev/null; then

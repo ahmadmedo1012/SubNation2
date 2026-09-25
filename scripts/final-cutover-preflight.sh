@@ -15,6 +15,8 @@
 #   F. image / build / git SHA (release identity)
 #   G. Cloudflare input format
 #   H. backup prerequisites
+#   I. OpenWA gateway health (r113: production OTP dependency — never a
+#      silent skip; see the gate's three-way verdict)
 #
 # Usage:
 #   ./scripts/final-cutover-preflight.sh [ENV_FILE]
@@ -255,9 +257,83 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
+step "I. OpenWA gateway health (the production OTP dependency)"
+# r113 (§7): a production cutover REQUIRES a healthy OpenWA — a generic/local
+# run (stack deliberately not up yet) may skip, but only LOUDLY, and the
+# final summary restates the verdict. Three-way outcome, never silent:
+#   PASSED  — an openwa container reports (healthy), or the compose loopback
+#             port answers /healthz 200
+#   FAILED  — the gateway exists on this host but is down/unhealthy
+#   SKIPPED — no openwa container and no listener: the stack is not up HERE
+OPENWA_VERDICT="SKIPPED"
+OPENWA_CONTAINERS=""
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  OPENWA_CONTAINERS="$(docker ps -a --format '{{.Names}}|{{.Status}}' 2>/dev/null | grep -i openwa || true)"
+fi
+if [ -n "$OPENWA_CONTAINERS" ]; then
+  inf "openwa container(s) on this host:"
+  printf '%s\n' "$OPENWA_CONTAINERS" | sed 's/^/     /'
+  OWA_HEALTHY=0; OWA_RUNNING=0; OWA_DOWN=0
+  printf '%s\n' "$OPENWA_CONTAINERS" | while IFS='|' read -r cname cstatus; do
+    [ -n "$cname" ] || continue
+    case "$cstatus" in
+      Up*"(healthy)") printf '%s\n' "healthy|$cname" ;;
+      Up*)            printf '%s\n' "running|$cname" ;;
+      *)              printf '%s\n' "down|$cname|$cstatus" ;;
+    esac
+  done > /tmp/.preflight-openwa.$$
+  while IFS='|' read -r state cname extra; do
+    case "$state" in
+      healthy) OWA_HEALTHY=$((OWA_HEALTHY+1)) ;;
+      running) OWA_RUNNING=$((OWA_RUNNING+1)) ;;
+      down)    bad "openwa container '$cname' is NOT running: $extra" ;;
+    esac
+  done </tmp/.preflight-openwa.$$
+  rm -f /tmp/.preflight-openwa.$$
+  if [ "$OWA_HEALTHY" -ge 1 ]; then
+    ok "OpenWA gate PASSED — container reports (healthy) (image HEALTHCHECK probes /healthz)"
+    OPENWA_VERDICT="PASSED"
+  elif [ "$OWA_RUNNING" -ge 1 ]; then
+    # up, but the 30s-interval HEALTHCHECK has not reported yet — inspect once
+    OWA_NAME="$(printf '%s\n' "$OPENWA_CONTAINERS" | head -1 | cut -d'|' -f1)"
+    OWA_STATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$OWA_NAME" 2>/dev/null || echo '?')"
+    if [ "$OWA_STATE" = "healthy" ]; then
+      ok "OpenWA gate PASSED — docker health state: healthy"
+      OPENWA_VERDICT="PASSED"
+    else
+      bad "OpenWA gate FAILED — container up but docker health state: ${OWA_STATE} (may still be in start_period — re-run in a minute; if it stays unhealthy: docker logs ${OWA_NAME})"
+      OPENWA_VERDICT="FAILED"
+    fi
+  else
+    bad "OpenWA gate FAILED — every openwa container on this host is down"
+    OPENWA_VERDICT="FAILED"
+  fi
+else
+  # no container — try the compose-published loopback port (127.0.0.1:3001)
+  OPENWA_PORT_PROBE="http://127.0.0.1:${OPENWA_VERIFY_PORT:-3001}/healthz"
+  OWA_RC=0
+  OWA_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$OPENWA_PORT_PROBE")" || OWA_RC=$?
+  if [ "$OWA_RC" = "0" ] && [ "$OWA_CODE" = "200" ]; then
+    ok "OpenWA gate PASSED — $OPENWA_PORT_PROBE answered 200"
+    OPENWA_VERDICT="PASSED"
+  elif [ "$OWA_RC" = "7" ]; then
+    skip "OpenWA gate SKIPPED — no openwa container on this host and nothing listening on $OPENWA_PORT_PROBE (stack not up HERE)"
+    warn "A PRODUCTION cutover run must show this gate as PASSED — bring the Coolify stack up and re-run before touching DNS"
+  else
+    bad "OpenWA gate FAILED — something listens on $OPENWA_PORT_PROBE but answers HTTP ${OWA_CODE:-none} (curl rc ${OWA_RC})"
+    OPENWA_VERDICT="FAILED"
+  fi
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════
 printf '\n'
+if [ "$FAILURES" -eq 0 ] && [ "$OPENWA_VERDICT" = "PASSED" ]; then
+  printf '\033[1;32mPREFLIGHT CLEAR (OpenWA: PASSED)\033[0m — %d skipped (informational). Next: docker-verify.sh, private smoke test, then the operator DNS cutover.\n' "$SKIPS"
+  exit 0
+fi
 if [ "$FAILURES" -eq 0 ]; then
-  printf '\033[1;32mPREFLIGHT CLEAR\033[0m — %d skipped (informational). Next: docker-verify.sh, private smoke test, then the operator DNS cutover.\n' "$SKIPS"
+  printf '\033[1;33mPREFLIGHT CLEAR WITH OPENWA SKIPPED\033[0m — %d skipped (informational). OpenWA was NOT verified (stack not up on this machine): this is acceptable for an early environment check ONLY.\n' "$SKIPS"
+  printf 'A production cutover run must end with: PREFLIGHT CLEAR (OpenWA: PASSED).\n'
   exit 0
 fi
 printf '\033[1;31mPREFLIGHT: %s BLOCKER(S)\033[0m — resolve every red line above before the DNS cutover.\n' "$FAILURES"

@@ -108,6 +108,7 @@ cat <<'EOF'
 #   1. Store these in your password manager + the encrypted offline backup
 #      (docs/deployment/SECRET_HANDLING_FINAL.md §offline backup).
 #   2. Fill .env on the VM / Coolify env screens from the stored copy.
-#   3. Verify shapes: tsx scripts/src/validate-production-env.ts --file .env --strict
+#   3. Verify shapes: pnpm --filter @workspace/scripts exec tsx \\
+#      src/validate-production-env.ts --file ../.env --profile compose --strict
 #   4. This script does NOT rotate anything that already exists in production.
 EOF
