@@ -183,6 +183,17 @@ DASHBOARD_SESSION_SECRET=<32+ chars>
 Interval 30 s, timeout 5 s, retries 3 — mirrors the Dockerfile/compose healthchecks
 (Coolify reads the image HEALTHCHECK by default; enter these if the panel asks).
 
+**What `docker ps` will show on the VM** — Coolify's own control-plane
+containers (`coolify-db` Postgres, `coolify-redis`, the Traefik proxy, and
+in some installs `soketi`/`coolify-realtime`) run alongside your TWO app
+resources (`subnation`, `openwa`). Those control-plane containers are
+Coolify's plumbing, not the application stack: the app's Postgres is
+**Neon (external)** and the app defines **no Redis of its own** — the
+`coolify-redis` container is Coolify's internal queue, NOT an app Redis and
+NOT a violation of the no-app-Redis architecture rule. Never point
+`DATABASE_URL` at `coolify-db`; the app database has always been and stays
+the external Neon project.
+
 ## 5. Deployment order
 
 Either order works. OpenWA is the OTP dependency, but SubNation's OTP path is

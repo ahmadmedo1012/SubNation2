@@ -126,8 +126,8 @@ cache (60 s TTL), generation-scoped catalog LRU (5000 entries).
 | Consumer | Idle RSS (est.) | Notes |
 |---|---|---|
 | Ubuntu + Docker daemon | ~0.6-1.0 GB | |
-| Coolify (all containers incl. Traefik/Postgres/Soketi) | ~0.8-1.2 GB | Coolify's own stack |
-| subnation (Node 22, pnpm runtime) | ~250-400 MB | measured on Render free 512 MB with headroom |
+| Coolify (all containers incl. Traefik/Postgres/Redis/Soketi) | ~0.8-1.2 GB | Coolify's own control-plane (its internal DB/queue) — NOT the app stack; the app's Postgres is Neon (external) and the no-app-Redis rule is unaffected by Coolify's plumbing |
+| subnation (Node 22, pnpm runtime) | ~250-400 MB | measured on Render free 512 MB with headroom (pre-migration evidence; re-verify on the Oracle A1 at first boot) |
 | openwa (Node 22 + Baileys) | ~150-300 MB | no browser process by design |
 | Build spike (Coolify Git builds) | ~1.5-2 GB, 2-4 min | transient; cache makes it rare |
 | Headroom for bursts | ~7-8 GB | generous for a store of this scale |
