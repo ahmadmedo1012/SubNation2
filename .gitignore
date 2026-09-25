@@ -128,3 +128,8 @@ PageSpeed*.json
 # Real secrets NEVER live in this repo — these are the values the
 # operator pasted from their local generation into the Render UI.
 .secrets/
+
+# (r112) backup output directory (backup-db.ts / backup-cron.sh / backup-preflight.sh
+# write here when run without an explicit BACKUP_DIR). *.sql.gz is already
+# ignored above; this covers the directory + ledger/log files inside it.
+backups/

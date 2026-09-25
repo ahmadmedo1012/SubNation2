@@ -8,12 +8,37 @@
 #   subnation — Express API + Socket.IO + the built SPA, single origin,
 #               port 8080 (from THIS repository's Dockerfile)
 #   openwa    — WhatsApp Baileys gateway, port 2785
-#               (from a sibling clone of github.com/ahmadmedo1012/openwa,
-#               or a prebuilt image — see the two variants below)
+#
+# ── R112: THE AUTHORITATIVE PRODUCTION STRATEGY (final cutover) ────────────
+#
+#   PRODUCTION (Oracle VM + Coolify) — do NOT use this file's defaults there:
+#
+#     1. SubNation  = a Coolify resource that builds THIS repository from
+#                     Git (Dockerfile at the repo root). Coolify supplies
+#                     GIT_SHA as a build arg; every deploy is traceable to
+#                     an exact commit, and rollback = redeploy an older
+#                     commit. See docs/deployment/COOLIFY_FINAL_SETUP.md.
+#     2. OpenWA     = a SEPARATE Coolify service running the IMMUTABLE GHCR
+#                     image  ghcr.io/ahmadmedo1012/openwa:sha-<short>
+#                     (multi-arch amd64+arm64, published per commit by the
+#                     openwa repo's docker.yml). The production deployment
+#                     must NOT depend on a sibling ../openwa clone — that
+#                     is a LOCAL-ONLY convenience (Variant A below).
+#                     Pin an exact sha-<short> tag; :latest/:main float and
+#                     are dev-only.
+#     3. Emergency  = SubNation also publishes
+#                     ghcr.io/ahmadmedo1012/subnation2:sha-<short> — a
+#                     prebuilt fallback if the Coolify builder is broken.
+#                     Same pinning rule.
+#
+#   LOCAL / bare-VM docker compose (THIS file):
+#     Variant A (default) builds both from local checkouts — requires
+#     `git clone https://github.com/ahmadmedo1012/openwa ../openwa`.
+#     Variant B (commented in each service) pins the prebuilt GHCR images.
 #
 # Neon PostgreSQL stays EXTERNAL (DATABASE_URL). Redis stays UNSET — the
-# app degrades to its in-memory/PG-lease fallbacks by design (single
-# container does not need it).
+# app runs SINGLE_INSTANCE_MODE=true (R108): no leader election, no lease
+# heartbeat, all jobs in-process. One replica ONLY.
 #
 # USAGE (local / bare VM):
 #   1. cp deploy/env.compose.example .env      # fill secrets

@@ -51,12 +51,13 @@
  */
 
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { createGzip } from "node:zlib";
+import { Writable } from "node:stream";
+import { createGzip, createGunzip } from "node:zlib";
 
 // (r110) The exact filename pattern this script generates — the retention
 // prune matches against this and NOTHING else, so a hand-dropped
@@ -295,6 +296,43 @@ async function main() {
   const elapsedMs = Date.now() - start;
   console.log(
     `✓ wrote ${(stats.size / 1024 / 1024).toFixed(2)} MB in ${(elapsedMs / 1000).toFixed(1)}s`,
+  );
+
+  // (r112 §17) Gzip integrity verification: re-read the artifact and push it
+  // through a full gunzip pass — Node's zlib verifies the stored CRC32 and
+  // ISO-3309 trailer during decompression, so a torn write (disk filled at
+  // the trailer, truncated fsync, bit rot) fails HERE with exit 1 + artifact
+  // removal instead of being discovered on restore day. A backup is not
+  // "successful" until it has been proven decompressible.
+  const verifyStart = Date.now();
+  let verifiedBytes = 0;
+  // A counting Writable sink. (R112 debugging note: an async-generator sink
+  // with `yield` makes the pipeline promise NEVER settle — Node exits with
+  // an unsettled top-level await and the post-verification code silently
+  // never runs. A Writable sink has no such failure mode.)
+  const countSink = new Writable({
+    write(chunk: Buffer, _enc, cb: (err?: Error | null) => void) {
+      verifiedBytes += chunk.byteLength;
+      cb();
+    },
+  });
+  try {
+    await pipeline(createReadStream(filepath), createGunzip(), countSink);
+  } catch (err) {
+    await fail(
+      `✗ gzip integrity check FAILED (artifact corrupt): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  if (verifiedBytes === 0) {
+    await fail("✗ gzip integrity check failed: gunzip produced 0 bytes (empty dump)");
+  }
+  console.log(
+    `✓ gzip integrity verified: ${verifiedBytes.toLocaleString()} decompressed bytes in ${(
+      (Date.now() - verifyStart) /
+      1000
+    ).toFixed(1)}s`,
   );
 
   // ── Optional upload via presigned PUT URL ──
