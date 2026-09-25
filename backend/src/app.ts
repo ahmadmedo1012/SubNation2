@@ -84,14 +84,15 @@ const csrfAllowedOrigins = (() => {
 
 // ── SEC-92-01 boot assertion (round-92 B1 security audit) ────────────────────
 //
-// Production cookies ship SameSite=None (render.yaml sets
-// AUTH_COOKIE_SAMESITE=none so the Vercel-hosted SPA can call the API
-// cross-site), which means the browser attaches auth_token/admin_token
-// to ANY cross-site request. The Origin/Referer gate built by
-// createCsrfGate() below is therefore the ONLY CSRF barrier — and it is
-// keyed off this allow-list. An empty list in production is not a
-// degraded mode, it is a silent full CSRF exposure on wallet/orders/
-// admin surfaces.
+// Historical context: during the Vercel→Render split, production cookies
+// shipped SameSite=None (render.yaml set AUTH_COOKIE_SAMESITE=none so the
+// Vercel-hosted SPA could call the API cross-site) — the browser attached
+// auth_token/admin_token to ANY cross-site request, so the Origin/Referer
+// gate built by createCsrfGate() below was the ONLY CSRF barrier, keyed
+// off this allow-list. On today's single-origin deployment the cookie is
+// SameSite=lax — the gate stays as the CSRF barrier (defense in depth):
+// an empty allow-list in production would still be a silent full CSRF
+// exposure on wallet/orders/admin surfaces.
 //
 // Env-var loss at this operator is a DEMONSTRATED failure mode (round-5:
 // a Render API PUT wiped DATABASE_URL and took the deploy down), so we
@@ -292,8 +293,8 @@ app.set("trust proxy", 1);
 app.set("etag", "strong");
 
 // ── Cloudflare-aware client-IP resolution ──────────────────────────────────
-// When the request flows through Cloudflare (→ Render → app), Express's
-// `trust proxy = 1` resolves req.ip to Cloudflare's edge IP, not the
+// When the request flows through Cloudflare (→ Coolify's Traefik → app),
+// Express's `trust proxy = 1` resolves req.ip to the edge IP, not the
 // real client. cloudflareClientIp() reads the CF-Connecting-IP header
 // (which only Cloudflare can set) and overrides req.ip transparently.
 //
@@ -315,9 +316,12 @@ app.use(cloudflareClientIp);
 // Skips /api/healthz/* so Render's own probes (which always hit the onrender
 // hostname internally) never get a 301. Production-only.
 const CANONICAL_HOST = "subnation.ly";
-// subnation2.onrender.com is the API origin for the Vercel split deployment;
-// it must remain reachable instead of redirecting API and Socket.IO traffic
-// to the frontend origin.
+// subnation2.onrender.com was the API origin of the retired Vercel→Render
+// split — in that era it had to stay unredirected so API and Socket.IO
+// traffic kept working. The split is gone (Render suspended, rollback-only):
+// the hostname stays OUT of LEGACY_HOSTS so a Render rollback (if ever
+// exercised) keeps working — its health probes hit the onrender hostname
+// and must never receive a 301.
 const LEGACY_HOSTS = new Set(["www.subnation.ly"]);
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== "production") return next();

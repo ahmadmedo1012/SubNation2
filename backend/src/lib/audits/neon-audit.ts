@@ -183,9 +183,9 @@ export interface NeonAuditFindings {
  * Options accepted by the three orchestration entry points below.
  *
  * `toolName` is configurable so the runner can record either
- * `query_render_postgres` (current — Postgres is Render-managed Neon) or a
- * future dedicated Neon_MCP tool without forcing a downstream code change.
- * The default matches the production wiring in `scripts/inspect.ts`.
+ * `query_render_postgres` (the legacy name from the Render-managed Neon
+ * era) or a future dedicated Neon_MCP tool without forcing a downstream
+ * code change. The default matches the production wiring in `scripts/inspect.ts`.
  */
 export interface NeonAuditOptions {
   recorder: McpInvocationRecorder;

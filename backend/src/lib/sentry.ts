@@ -197,9 +197,10 @@ interface ProcessTags extends Record<string, string> {
 }
 
 /**
- * Read Render's standard environment variables (and reasonable
- * fallbacks) into a tag bag. These attach to EVERY Sentry event via
- * Sentry.setTags() at init time — no per-call boilerplate needed.
+ * Read the hosting platform's standard environment variables (Render's
+ * RENDER_* set — read as a legacy fallback since the Render era — plus
+ * reasonable fallbacks) into a tag bag. These attach to EVERY Sentry event
+ * via Sentry.setTags() at init time — no per-call boilerplate needed.
  */
 function readProcessTags(): ProcessTags {
   return {
@@ -229,7 +230,7 @@ const NOISY_PATHS = ["/api/healthz", "/api/metrics", "/health", "/api/cwv"];
  * probabilistically sample.
  *
  * Skip rules (return 0):
- *   - /api/healthz         — Render edge probes every 30 s
+ *   - /api/healthz         — Docker/coolify health probes every 30 s
  *   - /api/metrics         — Prometheus scrape
  *   - /health              — Docker / k8s liveness
  *   - /api/cwv             — Core Web Vitals beacon (high frequency)
@@ -301,7 +302,7 @@ export async function initSentry(): Promise<ReturnType<typeof Sentry.init> | und
   if (!process.env.SENTRY_DSN) {
     console.warn(
       "[sentry] NOT initialized — SENTRY_DSN env var is unset. " +
-        "Backend Sentry capture is DISABLED. Set SENTRY_DSN in Render Dashboard → Environment.",
+        "Backend Sentry capture is DISABLED. Set SENTRY_DSN in the service environment (Coolify env / .env).",
     );
     return undefined;
   }

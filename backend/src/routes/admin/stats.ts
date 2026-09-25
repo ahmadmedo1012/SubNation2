@@ -9,9 +9,10 @@ const router = Router();
 // ── Day boundaries in Libya wall-clock time ──────────────────────────────────
 // Libya = Africa/Tripoli = fixed UTC+2 (no DST since 2013). All "today"/chart
 // buckets must align three layers that previously disagreed (server-local
-// midnight = UTC on Render; SQL DATE() truncation in the session TZ; and
-// UTC-based toISOString keys) — flipping the dashboard's "today" at 02:00
-// local. Everything below computes Tripoli calendar days explicitly.
+// midnight — historically UTC on the Render deployment, now fixed by the
+// container's TZ; SQL DATE() truncation in the session TZ; and UTC-based
+// toISOString keys) — flipping the dashboard's "today" at 02:00 local.
+// Everything below computes Tripoli calendar days explicitly.
 const TRIPOLI_OFFSET_MS = 2 * 60 * 60 * 1000;
 
 /** UTC instant of Tripoli midnight for the day containing `now`. */

@@ -25,10 +25,11 @@ const router = Router();
  *   stale-while-revalidate=<window> — edge can serve stale up to this window
  *                                     while revalidating in the background
  *
- * Render's edge honours s-maxage. For routes that change rarely (catalog),
- * 60s edge cache + 300s SWR collapses ~80% of read traffic from Postgres at
- * the cost of at most 60s staleness. Flash-sale countdown gets a tighter
- * 30/60 because the visible countdown ticks faster.
+ * The CDN edge (Cloudflare, proxied) honours s-maxage. For routes that
+ * change rarely (catalog), 60s edge cache + 300s SWR collapses ~80% of
+ * read traffic from Postgres at the cost of at most 60s staleness.
+ * Flash-sale countdown gets a tighter 30/60 because the visible countdown
+ * ticks faster.
  */
 function cacheable(maxSec: number, swrSec: number) {
   return (_req: Request, res: Response, next: NextFunction) => {

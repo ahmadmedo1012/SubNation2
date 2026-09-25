@@ -1,11 +1,13 @@
 /**
  * Runtime API configuration for split deployments.
  *
- * The frontend historically used relative `/api` requests because Render
- * served the SPA and Express from one origin. Vercel serves the SPA now, so
- * those legacy calls must be resolved to the Render origin as well. Keeping
- * this compatibility layer at the browser boundary lets older feature code
- * continue to use relative API paths without silently calling Vercel itself.
+ * The frontend historically used relative `/api` requests because one
+ * origin served both the SPA and Express (the pre-split Render era). During
+ * the Vercel→Render split the SPA lived on a different origin, so those
+ * legacy calls had to be resolved to the API origin. The split stack is
+ * RETIRED (single-origin production: the build-time vars stay EMPTY and
+ * every call is relative again) — this compatibility layer remains so older
+ * feature code keeps working unchanged on any deployment shape.
  */
 
 function normalizeOrigin(value: unknown): string {

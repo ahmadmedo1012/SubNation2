@@ -6,7 +6,7 @@ import { cacheWrap } from "./cache";
  *
  * WHY: the catalog is read-heavy and public, yet every page view and
  * crawler hit reached Postgres (list = 4 queries, stats = 4, flash-sale
- * = 1, detail = 6). On a Render free instance backed by a 0.25 CU Neon
+ * = 1, detail = 6). On a single container backed by a 0.25 CU Neon
  * compute, that repetition is pure waste — the client already tolerates
  * MORE staleness than this cache adds (React Query staleTime 3 min for
  * the list, 10 min for stats; edge s-maxage=60 on the same routes).
@@ -29,8 +29,9 @@ import { cacheWrap } from "./cache";
  *     this helper.
  *
  * Single-instance note: the generation counter is in-process — correct
- * for the current single-web-instance topology (Render free = 1
- * instance). If a second instance ever appears, the 30-60 s TTL bounds
+ * for the current single-container topology (one app replica on
+ * Coolify; SINGLE_INSTANCE_MODE=true). If a second instance ever
+ * appears, the 30-60 s TTL bounds
  * cross-instance staleness; wire cacheWrap's Redis layer (already
  * built) for cross-instance generation bumps at that point.
  */

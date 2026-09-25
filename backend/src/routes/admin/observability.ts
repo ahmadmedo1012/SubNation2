@@ -116,17 +116,20 @@ router.get("/alerts/recent", requireAdmin, async (_req, res) => {
 });
 
 /**
- * Deploys feed. The Phase 1 master-execution-plan calls for a Render_MCP
- * proxy here, but the MCP must be invoked from a privileged backend with the
- * Render API key. Until that key is provisioned, return an empty list with
- * `pendingMcpProxy:true` so the dashboard widget can render a friendly
- * placeholder.
+ * Deploys feed. HISTORICAL NOTE: the Phase-1 master-execution-plan called
+ * for a Render_MCP proxy here; that plan is RETIRED (Render is the legacy
+ * rollback path, not production — an MCP proxy wired to it can never be the
+ * production deploys feed). The endpoint stays as an honest placeholder so
+ * the dashboard widget renders a stable "pending" state instead of an
+ * error. If/when a deploy-history integration is wanted for the Coolify
+ * era (Coolify API / GHCR package events), build it as a deliberate
+ * feature — do NOT provision a Render API key for this.
  */
 router.get("/deploys/recent", requireAdmin, (_req, res) => {
   res.json({
     deploys: [],
     pendingMcpProxy: true,
-    note: "Render_MCP proxy not yet wired — provision RENDER_API_KEY and replace this stub with a list_deploys call.",
+    note: "Deploys feed not wired in this topology (the Render_MCP plan is retired). Redeploy history lives in Coolify's own deploy list; the app's release identity is /api/healthz .version (GIT_SHA).",
     lastKnownGoodAt: null,
     stale: false,
   });

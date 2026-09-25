@@ -9,8 +9,11 @@
  *   BACKUP_PRESIGNED_PUT_URL=https://... pnpm tsx scripts/src/backup-db.ts
  *
  * Requirements:
- *   - `pg_dump` on PATH (Render's Node base image has it; locally
- *     `apt install postgresql-client` or `brew install libpq`).
+ *   - `pg_dump` on PATH (the Oracle VM host gets it via §9 of
+ *     ORACLE_FINAL_SETUP.md — postgresql-client-17; locally `apt install
+ *     postgresql-client` or `brew install libpq`). The app runtime image
+ *     deliberately has NO pg_dump — backups run from the host, not the
+ *     container (docs/DISASTER_RECOVERY.md §Automated backups).
  *   - DATABASE_URL set (the same value the app uses).
  *
  * Output:

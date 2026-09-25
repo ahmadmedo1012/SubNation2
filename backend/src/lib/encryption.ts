@@ -48,8 +48,9 @@ export function assertEncryptionKeyConfigured(): void {
   if (!raw) {
     throw new Error(
       "ENCRYPTION_KEY environment variable is required (exactly 32 bytes of hex / 64 hex " +
-        "chars for AES-256-GCM). Set it in your host's environment (e.g. Render Dashboard → " +
-        "Environment → ENCRYPTION_KEY, sync:false) and generate it with `openssl rand -hex 32`. " +
+        "chars for AES-256-GCM). Set it in your host's environment (the Coolify env panel / " +
+        "compose .env; legacy Render: Dashboard → Environment → ENCRYPTION_KEY, sync:false) " +
+        "and generate it with `openssl rand -hex 32`. " +
         "Without it every encrypted-field write fails with 500 and every read silently returns " +
         "null — this must fail at boot, not at first use (F8, round-98).",
     );

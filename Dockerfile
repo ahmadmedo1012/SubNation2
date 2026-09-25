@@ -33,19 +33,22 @@ COPY . .
 # Vite build-time env injection.
 #
 # Vite replaces `import.meta.env.VITE_*` references in source code at BUILD
-# time, not at runtime. Render's Docker builds run inside a fresh container
-# where service-level `envVars` from render.yaml are NOT automatically in the
-# shell environment — they have to be declared as `ARG` here, then re-exposed
-# as `ENV` so `pnpm run build` can read them.
+# time, not at runtime. Docker builds run inside a fresh container where
+# service-level environment variables (Coolify env / compose .env) are NOT
+# automatically in the shell environment — they have to be declared as `ARG`
+# here, then re-exposed as `ENV` so `pnpm run build` can read them.
 #
 # Without this block, `import.meta.env.VITE_SENTRY_DSN` resolved to `undefined`
 # in the production bundle and `Sentry.init({ dsn: undefined })` was a silent
 # no-op. Same problem affected every VITE_* var: Firebase config, Google
 # client ID, app origin, etc.
 #
-# IMPORTANT: keep this list in sync with the `VITE_*` keys in render.yaml.
+# IMPORTANT: keep this list in sync with the VITE_* build args in
+# docker-compose.yml (the compose/local path) and the Coolify build-args
+# panel (the production path — docs/deployment/COOLIFY_FINAL_SETUP.md §2.2).
+# render.yaml is a FROZEN legacy rollback file — do not add new keys there.
 # Adding a new VITE_* env var without listing it here means production code
-# will see `undefined` even though render.yaml has the value set.
+# will see `undefined` even though the platform has the value set.
 # -----------------------------------------------------------------------------
 ARG VITE_SENTRY_DSN=""
 ARG VITE_API_URL=""
@@ -76,7 +79,10 @@ ARG VITE_FIREBASE_STORAGE_BUCKET=""
 ARG VITE_FIREBASE_MESSAGING_SENDER_ID=""
 ARG VITE_GSC_VERIFICATION=""
 # R107 (migration): gateway docs deep-link override for the admin
-# WhatsApp page. Empty default = the built-in Render URL (current prod).
+# WhatsApp page. Empty default = NO link (the header degrades to a plain
+# hint — the baked-in onrender.com URL died with the Render split). Set it
+# only if you expose a restricted gateway dashboard hostname; in the
+# default production topology the gateway is internal and this stays empty.
 ARG VITE_OPENWA_DOCS_URL=""
 # Render injects RENDER_GIT_COMMIT automatically; we surface it to Vite as
 # VITE_RELEASE_SHA so Sentry's release tag matches uploaded source maps.
@@ -108,10 +114,12 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 
 # R104 (AG12-1): build ONLY. The root `pnpm run build` chains
 # lint + typecheck BEFORE the actual build — duplicating the CI quality
-# job inside the paid-by-minutes Render pipeline (build minutes are a
-# shared 500/mo free-tier budget). CI (.github/workflows/ci.yml) and
-# the deploy gate already own those gates; a manual deploy of a red-CI
-# commit is the operator's explicit override.
+# job inside the platform build (Render build minutes used to be a shared
+# 500/mo free-tier budget; on Coolify the builder runs on the VM's own
+# CPU, where a double build just wastes deploy minutes).
+# CI (.github/workflows/ci.yml) and the deploy gate already own those
+# gates; a manual deploy of a red-CI commit is the operator's explicit
+# override.
 #
 # R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
 # reliance on Dockerfile ENV substitution) so GIT_SHA wins over

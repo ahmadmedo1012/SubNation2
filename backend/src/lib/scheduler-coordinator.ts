@@ -33,9 +33,13 @@
  * cron locally) and the acquisition retry loop restarts — so if the NEW
  * leader dies, this instance takes over again instead of staying dark.
  *
- * Migration path to a dedicated worker:
- *   1. Provision the `subnation-worker` Render service (apply the
- *      blueprint).
+ * Migration path to a dedicated worker (RETIRED — kept for history; the
+ * final architecture runs all jobs in-process under
+ * SINGLE_INSTANCE_MODE=true, r108+; do NOT provision a worker tier
+ * without unsetting that flag first):
+ *   1. Provision a `subnation-worker` service (the old Render blueprint
+ *      shape; any platform works — the contract is just a second
+ *      process running backend/src/worker.ts).
  *   2. Set `DISABLE_WEB_SCHEDULERS=true` on the web service's env.
  *   3. Web tier stops running schedulers; worker takes over the lock on
  *      its first boot.

@@ -14,8 +14,8 @@
  *   - Dark-launch gate: ALERTING_ENABLED=false logs `outcome:"would-dispatch"`
  *     and returns without making outbound calls.
  *
- * No-Redis production shape (REDIS_URL unset — the current Render deployment;
- * F1, round-98 98-F5):
+ * No-Redis production shape (REDIS_URL unset — the current production
+ * topology, single container on Coolify; F1, round-98 98-F5):
  *   - Dedup falls back to a BOUNDED in-process store (128 keys, same 300 s
  *     TTL, FIFO eviction — mirrors lib/telegram-replay.ts's capped-store
  *     pattern) so the single-instance shape keeps the 5-minute dedup

@@ -8,7 +8,8 @@ const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
   throw new Error(
-    "DATABASE_URL is not set. Add it in your host's environment (e.g. Render Dashboard → Environment → " +
+    "DATABASE_URL is not set. Add it in your host's environment (the Coolify env panel / " +
+      "compose .env — or on the legacy Render path: Dashboard → Environment → " +
       "DATABASE_URL with your Neon connection string). If you use a Blueprint with sync: false for this key, " +
       "the value is never read from render.yaml—you must set it on the service manually.",
   );

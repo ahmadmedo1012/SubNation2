@@ -3669,8 +3669,9 @@ components:
       name: auth_token
       description: |
         User session — httpOnly cookie set by the auth routes (Google /
-        Telegram / WhatsApp-OTP sign-in). SameSite=None in production so
-        the Vercel-hosted SPA can call the API cross-site. Primary
+        Telegram / WhatsApp-OTP sign-in). SameSite=lax in production
+        (single-origin deployment — the backend serves the SPA itself;
+        the historical split-era SameSite=None is retired). Primary
         mechanism for browser clients.
     bearerAuth:
       type: http

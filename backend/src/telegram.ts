@@ -311,7 +311,7 @@ export async function diagnosticPing(): Promise<{
       delivered: false,
       attempts: 0,
       errorMessage: null,
-      hint: "اضبط TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في إعدادات Render، ثم أعد النشر.",
+      hint: "اضبط TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID في بيئة الخدمة (Coolify أو ملف .env)، ثم أعد النشر.",
     };
   }
   const text = [

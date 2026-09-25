@@ -45,7 +45,8 @@ export const JWT_SECRET: string = sessionSecret;
  *
  * Deployment runbook for rotation:
  *   1. Generate a new value: `openssl rand -base64 64 | tr -d '\n'`
- *   2. Set it in Render dashboard as ADMIN_JWT_SECRET (sync: false).
+ *   2. Set it as ADMIN_JWT_SECRET in the service environment (Coolify
+ *     env / compose .env; Render Dashboard on the legacy rollback path).
  *   3. Re-deploy. Existing admin sessions become unverifiable; admins re-log
  *     in. Plan a brief admin-logout window.
  */
@@ -74,7 +75,8 @@ function resolveAdminSecret(): string {
   if (isProduction) {
     throw new Error(
       "ADMIN_JWT_SECRET environment variable is required in production. " +
-        "Set it in your host's environment (e.g. Render Dashboard → Environment → " +
+        "Set it in your host's environment (the Coolify env panel / compose " +
+        ".env; legacy Render: Dashboard → Environment → " +
         "ADMIN_JWT_SECRET, sync:false). It MUST be ≥ 32 chars AND distinct from " +
         "SESSION_SECRET. Generate with `openssl rand -base64 64 | tr -d '\\n'`. " +
         "Per security audit Finding F-001, deriving the admin secret from the " +

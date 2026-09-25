@@ -247,8 +247,8 @@ export function formatDateShort(dateStr: string): string {
  * input value ("2026-09-07T23:59") into a true UTC ISO string.
  *
  * Why: `<input type="datetime-local">` values carry NO timezone. Sending
- * them raw makes the server (UTC on Render) interpret the operator's
- * LOCAL wall-clock as UTC — a coupon created in Libya (UTC+2/+3) with
+ * them raw makes the server (UTC — pinned by the container's TZ) interpret
+ * the operator's LOCAL wall-clock as UTC — a coupon created in Libya (UTC+2/+3) with
  * "ينتهي 23:59" then stays redeemable until 01:59/02:59 next day, hours
  * after the operator believes it ended (the storefront countdown shows
  * the TRUE end, so customers keep buying under a "finished" discount).
