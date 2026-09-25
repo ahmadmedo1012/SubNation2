@@ -67,6 +67,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
+          # R112: the action defaults to gitleaks 8.24.3, which IGNORES
+          # unscoped top-level [[allowlists]] (empirically verified — see
+          # the mechanism matrix in .gitleaks.toml). 8.27+ propagates
+          # global allowlists correctly. Pin the version so the gate is
+          # reproducible and the config's full allowlist set engages.
+          GITLEAKS_VERSION: "8.27.2"
           # Action is MIT-licensed; this opts out of the (paid) Pro tier prompts.
           GITLEAKS_LICENSE: "MIT"
           # Always emit a SARIF report — even when no leaks found — so the

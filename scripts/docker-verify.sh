@@ -54,6 +54,11 @@ OPENWA_HEALTH_URL="http://127.0.0.1:${OPENWA_VERIFY_PORT:-3001}/healthz"
 BASE_URL="http://127.0.0.1:${HOST_PORT}"
 FAILURES=0
 SKIPS=0
+# R112 (§8): explicit, unambiguous ARM64 verdict. One of:
+#   not-run | verified | failed
+# The final summary prints "ARM64 VERIFIED" / "ARM64 NOT VERIFIED"
+# from this state — never a mixed or silent result.
+ARM64_STATE="not-run"
 
 step() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m   PASS: %s\033[0m\n' "$1"; }
@@ -77,11 +82,18 @@ docker build \
 # ── 2. Optional arm64 cross-build ───────────────────────────────────────────
 if [[ "${1:-}" == "--arm64" ]]; then
   step "2/10 Cross-build linux/arm64 (QEMU — the Oracle Ampere target)"
-  docker buildx build \
+  if docker buildx build \
     --platform linux/arm64 \
     --build-arg GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo verify)" \
-    -t "$IMAGE_TAG-arm64" --load . \
-    && ok "arm64 build" || fail "arm64 build (see notes: this proves the pnpm/argon2 natives on arm64)"
+    -t "$IMAGE_TAG-arm64" --load .; then
+    ok "arm64 build (proves the pnpm/argon2 natives on arm64)"
+    ARM64_STATE="verified"
+  else
+    # QEMU/binfmt absence, emulated compile failure, buildx errors — every
+    # flavor lands here. Never report success when the cross-build failed.
+    fail "arm64 build (see output above; on apt hosts: docker run --privileged --rm tonistiigi/binfmt --install arm64 installs the emulator)"
+    ARM64_STATE="failed"
+  fi
 else
   step "2/10 arm64 cross-build SKIPPED (pass --arm64 to enable)"
 fi
@@ -295,6 +307,20 @@ echo "   drain took ${DRAIN_S}s, container exit code: $EXIT_CODE"
   || fail "exit code $EXIT_CODE (137=SIGKILL: drain budget exceeded; anything else: crash on shutdown)"
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
+printf '\n'
+# ── R112 (§8): the unambiguous ARM64 verdict — printed in EVERY outcome, so
+# a human reading only the last lines of a log can never mistake the state.
+case "$ARM64_STATE" in
+  verified)
+    printf '\033[1;32mARM64 VERIFIED\033[0m — linux/arm64 image built successfully on this machine (gate 2).\n'
+    ;;
+  failed)
+    printf '\033[1;31mARM64 NOT VERIFIED\033[0m — the linux/arm64 cross-build FAILED (gate 2). Do not deploy to Oracle Ampere until this passes.\n'
+    ;;
+  *)
+    printf '\033[1;33mARM64 NOT VERIFIED\033[0m — the arm64 gate was not requested; run \\`%s --arm64\\` to verify the Oracle Ampere target.\n' "$0"
+    ;;
+esac
 printf '\n'
 if [[ "$FAILURES" -eq 0 && "$SKIPS" -eq 0 ]]; then
   printf '\033[1;32mALL §15 GATES PASSED (10/10)\033[0m — container behaviors are now VERIFIED on this machine/arch.\n'

@@ -85,6 +85,21 @@ description = "SubNation SESSION_SECRET (≥32 chars, signs customer JWTs)"
 regex = '''SESSION_SECRET\s*=\s*['"]?[A-Za-z0-9+/=_-]{32,}['"]?'''
 tags = ["subnation", "session", "secret"]
 severity = "critical"
+# R112: rule-level allowlists are honored by EVERY gitleaks ≥8.18
+# (unscoped top-level [[allowlists]], which gitleaks-action's default
+# 8.24.3 binary ignores — see the allowlist matrix in the comments
+# below). These cover the two benign match classes for this rule:
+#   1. The r107 compose-template placeholder spelling, quoted verbatim
+#      in the validate-production-env.ts docstring to document the
+#      "placeholder passes the length rules" trap (34 chars ≥ 32).
+#   2. The config/env.example dev-template spelling (belt & suspenders
+#      on top of the top-level path allowlist).
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    '''SESSION_SECRET=replace-with-random-64-char-secret''',
+    '''SESSION_SECRET=replace-with-a-long-random-production-secret''',
+  ]
 
 [[rules]]
 id = "admin-jwt-secret"
@@ -95,6 +110,15 @@ description = "SubNation ADMIN_JWT_SECRET (≥32 chars, signs admin JWTs)"
 regex = '''ADMIN_JWT_SECRET\s*=\s*['"]?[A-Za-z0-9+/=_-]{32,}['"]?'''
 tags = ["subnation", "admin", "jwt", "secret"]
 severity = "critical"
+# R112: csrf-gate.test.ts sets a spaced synthetic secret
+# ("aaaa bbbb cccc …", 39 chars) to exercise the boot-time length
+# validation — a fixture, never a credential.
+  [rules.allowlist]
+  paths = ['''backend/src/__tests__/csrf-gate\.test\.ts''']
+  regexTarget = "match"
+  regexes = [
+    '''ADMIN_JWT_SECRET=replace-with-different-long-random-admin-secret''',
+  ]
 
 [[rules]]
 id = "encryption-key"
@@ -104,12 +128,40 @@ description = "SubNation ENCRYPTION_KEY (AES-256-GCM, exactly 64 hex chars)"
 regex = '''ENCRYPTION_KEY\s*=\s*['"]?[a-f0-9]{64}['"]?'''
 tags = ["subnation", "encryption", "aes", "key"]
 severity = "critical"
+# R112: the canonical throwaway hex (00112233…ddeeff) is required to be
+# EXACTLY 64 chars by the boot length validation — it appears in
+# backend/src/test/env.ts (the vitest bootstrap, committed since r93)
+# and in the boot-assert test that proves the validation itself.
+  [rules.allowlist]
+  paths = [
+    '''backend/src/test/env\.ts''',
+    '''backend/src/lib/__tests__/encryption-boot-assert\.test\.ts''',
+  ]
+  regexTarget = "match"
+  regexes = [
+    '''ENCRYPTION_KEY=replace-with-64-hex-characters''',
+    '''00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff''',
+  ]
 
 # ── Allowlists ──────────────────────────────────────────────────────────────
 #
 # `[[allowlists]]` is an array-of-tables: each entry filters out one class
 # of false-positive (paths, regexes, commit hashes, etc.). Earlier entries
 # do not "shadow" later ones — gitleaks evaluates all of them.
+#
+# ── R112 allowlist mechanism matrix (empirically verified) ─────────────────
+# gitleaks-action@v2.3.9 defaults to gitleaks 8.24.3, and top-level
+# [[allowlists]] have version-dependent holes:
+#   mechanism                            | 8.18–8.26 | 8.27+
+#   ------------------------------------+-----------+-------
+#   rule-level [rules.allowlist]         |    OK     |  OK
+#   top-level + targetRules + paths      |    OK     |  OK
+#   top-level unscoped (paths/regexes)   |  IGNORED  |  OK
+#   top-level + targetRules + regexes    |  IGNORED  |  IGNORED
+# ci.yml pins GITLEAKS_VERSION=8.27.2, so unscoped entries engage in CI;
+# the entries below this comment additionally hold under 8.24.x (local
+# runs, action default drift) — belt and suspenders. Never rely on the
+# two IGNORED cells for a suppression you actually need.
 
 # Path-based exclusions: this config file itself, lockfile, env example,
 # generated docs, node_modules.
@@ -170,6 +222,37 @@ regexes = [
   '''SESSION_SECRET\s*=\s*['"]?replace-with-a-long-random-production-secret['"]?''',
   '''ADMIN_JWT_SECRET\s*=\s*['"]?replace-with-a-different-long-random-admin-secret['"]?''',
   '''ENCRYPTION_KEY\s*=\s*['"]?replace-with-64-hex-characters['"]?''',
+]
+
+# ── R112: test fixtures matched by DEFAULT (built-in) rules ────────────────
+# Empirically verified on gitleaks 8.18.4 / 8.24.3 / 8.27.2: the default
+# rules `generic-api-key` and `jwt` carry EMBEDDED allowlists and refuse
+# targetRules-scoped suppressions in every version, and rule-level
+# allowlists are impossible for extended rules. The ONLY working
+# suppression for them is UNSCOPED top-level paths — honored by 8.27+
+# (the version ci.yml pins via GITLEAKS_VERSION). Scope is deliberately
+# FILE-EXACT, not directory-wide: a future real secret committed into a
+# NEW test file must still fail the gate.
+[[allowlists]]
+description = "Test fixtures — synthetic Idempotency-Key headers (client request IDs, not credentials), the canonical throwaway ENCRYPTION_KEY, and the copilot scanner's own fixture corpus"
+paths = [
+  '''backend/src/routes/__tests__/wallet-topups-idempotency\.test\.ts''',
+  '''backend/src/routes/__tests__/orders-idempotency-route\.test\.ts''',
+  '''backend/src/routes/__tests__/loyalty-durable-idempotency\.test\.ts''',
+  '''backend/src/test/env\.ts''',
+  '''backend/src/lib/__tests__/encryption-boot-assert\.test\.ts''',
+  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
+]
+
+# Belt & suspenders for 8.24.x (the gitleaks-action default): aws-access-
+# token has NO embedded allowlist, so this targetRules+paths entry still
+# suppresses it there. On 8.27+ the unscoped entry above already covers
+# the same file; keeping both is harmless (gitleaks evaluates all lists).
+[[allowlists]]
+description = "secret-scan.test.ts embeds AWS-docs-style + JWT fixtures on purpose — it is the corpus that proves the copilot secret scanner works"
+targetRules = ["aws-access-token", "jwt"]
+paths = [
+  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
 ]
 
 # False-positive regex allowlist: the `gcp-api-key` default rule is greedy
