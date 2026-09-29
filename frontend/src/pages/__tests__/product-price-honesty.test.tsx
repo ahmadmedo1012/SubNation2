@@ -267,17 +267,13 @@ describe("ProductPage — pre-buy live re-quote (R115-I1 / A7 P2-2)", () => {
     // Live catalog: the 3-month option reverted to its base price.
     getProductMock.mockResolvedValueOnce({
       ...VARIANT_PRODUCT,
-      variants: VARIANT_PRODUCT.variants.map((v) =>
-        v.id === 2 ? { ...v, sale_price: null } : v,
-      ),
+      variants: VARIANT_PRODUCT.variants.map((v) => (v.id === 2 ? { ...v, sale_price: null } : v)),
     });
 
     await clickBuy();
 
     expect(createOrderMock).not.toHaveBeenCalled();
-    expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "تحديث السعر" }),
-    );
+    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: "تحديث السعر" }));
     expect(refetchMock).toHaveBeenCalled();
   });
 
@@ -296,9 +292,7 @@ describe("ProductPage — pre-buy live re-quote (R115-I1 / A7 P2-2)", () => {
     await clickBuy();
 
     expect(createOrderMock).not.toHaveBeenCalled();
-    expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "تحديث السعر" }),
-    );
+    expect(toastSpy).toHaveBeenCalledWith(expect.objectContaining({ title: "تحديث السعر" }));
   });
 
   it("FAILS OPEN on a re-quote fetch error: the buy proceeds with the displayed price", async () => {
@@ -318,9 +312,7 @@ describe("ProductPage — pre-buy live re-quote (R115-I1 / A7 P2-2)", () => {
     // server re-prices the order on its side regardless.
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
     expect(createOrderMock.mock.calls[0][0]).toEqual({ product_id: SIMPLE_PRODUCT.id });
-    expect(toastSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ title: "تحديث السعر" }),
-    );
+    expect(toastSpy).not.toHaveBeenCalledWith(expect.objectContaining({ title: "تحديث السعر" }));
     // The success screen is up with its money receipt (charged amount).
     expect(await screen.findByText("تم الشراء بنجاح!")).toBeInTheDocument();
     expect(screen.getByText("المبلغ المخصوم")).toBeInTheDocument();

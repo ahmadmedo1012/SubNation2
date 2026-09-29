@@ -30,7 +30,11 @@ import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminProductsPage from "@/pages/admin/products";
-import { useCreateProduct, useListAdminProducts, useUpdateProduct } from "@workspace/api-client-react";
+import {
+  useCreateProduct,
+  useListAdminProducts,
+  useUpdateProduct,
+} from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
   useListAdminProducts: vi.fn(),
@@ -183,7 +187,11 @@ describe("AdminProductsPage — honest bulk-archive summaries (A2 P2-8)", () => 
     fetchMock.mockImplementation(async (input: unknown) => {
       const url = String(input);
       if (url === "/api/admin/products/2") {
-        return resLike({ ok: false, status: 409, body: { error: "لا يمكن أرشفة منتج بمبيعات نشطة" } });
+        return resLike({
+          ok: false,
+          status: 409,
+          body: { error: "لا يمكن أرشفة منتج بمبيعات نشطة" },
+        });
       }
       return resLike({ ok: true });
     });
@@ -277,16 +285,14 @@ describe("AdminProductsPage — honest one-way-door archive + #new deep link (R1
     // the door is final from the UI and restoration requires direct
     // intervention (the list endpoint filters is_archived=false and no
     // restore path exists anywhere in the repo).
-    expect(within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/)).toBeInTheDocument();
     expect(
-      within(dialog as HTMLElement).getByText(/تتطلب تدخلاً مباشراً/),
+      within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/),
     ).toBeInTheDocument();
+    expect(within(dialog as HTMLElement).getByText(/تتطلب تدخلاً مباشراً/)).toBeInTheDocument();
 
     // Cancel — nothing is deleted (the copy test must stay side-effect-free).
     fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "إلغاء" }));
-    await waitFor(() =>
-      expect(screen.queryByText("أرشفة المنتج؟")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("أرشفة المنتج؟")).not.toBeInTheDocument());
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -298,7 +304,9 @@ describe("AdminProductsPage — honest one-way-door archive + #new deep link (R1
     const title = await screen.findByText("أرشفة المنتجات المحددة؟");
     const dialog = title.closest('[role="alertdialog"]');
     if (!dialog) throw new Error("bulk confirm dialog not rendered");
-    expect(within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/)).toBeInTheDocument();
+    expect(
+      within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/),
+    ).toBeInTheDocument();
 
     fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "إلغاء" }));
   });
@@ -319,9 +327,7 @@ describe("AdminProductsPage — honest one-way-door archive + #new deep link (R1
 
     // Closing the form keeps it closed (no sticky #new state).
     fireEvent.click(screen.getByRole("button", { name: "إلغاء" }));
-    await waitFor(() =>
-      expect(screen.queryByText("إضافة منتج جديد")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("إضافة منتج جديد")).not.toBeInTheDocument());
   });
 
   it("a plain visit (no hash) keeps the create form closed", async () => {

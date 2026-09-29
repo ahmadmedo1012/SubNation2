@@ -434,86 +434,88 @@ export default function AdminTicketsPage() {
               </div>
             ) : (
               <>
-              {visibleTickets.map((t, i) => {
-                const isActive = selected?.id === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => openTicket(t.id)}
-                    className={`float-in stagger-${Math.min(i + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 hover:shadow-md group ${isActive ? "border-primary/40 bg-primary/4 shadow-sm shadow-primary/5" : "border-border/60 hover:border-border"}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {t.status === "open" && (
-                            <span className="w-2 h-2 rounded-full bg-status-info shrink-0 animate-pulse" />
-                          )}
-                          <span className="font-bold text-sm truncate leading-snug flex-1">
-                            {t.title}
-                          </span>
-                          {(t.last_reply_at || t.created_at) && (
-                            <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">
-                              {formatRelativeTime(t.last_reply_at ?? t.created_at)}
+                {visibleTickets.map((t, i) => {
+                  const isActive = selected?.id === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => openTicket(t.id)}
+                      className={`float-in stagger-${Math.min(i + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 hover:shadow-md group ${isActive ? "border-primary/40 bg-primary/4 shadow-sm shadow-primary/5" : "border-border/60 hover:border-border"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {t.status === "open" && (
+                              <span className="w-2 h-2 rounded-full bg-status-info shrink-0 animate-pulse" />
+                            )}
+                            <span className="font-bold text-sm truncate leading-snug flex-1">
+                              {t.title}
                             </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {displayUserName(userFromRow(t))}
-                          </span>
-                          {t.category && (
-                            <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
-                              {CATEGORIES[t.category] ?? t.category}
+                            {(t.last_reply_at || t.created_at) && (
+                              <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">
+                                {formatRelativeTime(t.last_reply_at ?? t.created_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {displayUserName(userFromRow(t))}
                             </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          {/* 93-C7 / C-UX2 (A12 B1): canonical tone + label
+                            {t.category && (
+                              <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
+                                {CATEGORIES[t.category] ?? t.category}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            {/* 93-C7 / C-UX2 (A12 B1): canonical tone + label
                               from the shared maps — same pill the detail
                               pane and the storefront use. */}
-                          <StatusBadge
-                            variant={STATUS_TONE[t.status as SemanticStatus] ?? UNKNOWN_STATUS_TONE}
-                            size="sm"
-                          >
-                            {statusLabel(t.status)}
-                          </StatusBadge>
-                          <span className="text-xs text-muted-foreground">
-                            {t.reply_count} ردود
-                          </span>
+                            <StatusBadge
+                              variant={
+                                STATUS_TONE[t.status as SemanticStatus] ?? UNKNOWN_STATUS_TONE
+                              }
+                              size="sm"
+                            >
+                              {statusLabel(t.status)}
+                            </StatusBadge>
+                            <span className="text-xs text-muted-foreground">
+                              {t.reply_count} ردود
+                            </span>
+                          </div>
                         </div>
+                        <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-muted-foreground transition-colors" />
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-muted-foreground transition-colors" />
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
 
-              {/* 94-C2 (A2 P1-1): "load more" appends the next page of
+                {/* 94-C2 (A2 P1-1): "load more" appends the next page of
                   the frozen `?page=N+1&limit=` contract in place — the
                   support queue's history past the silent 100-row cap
                   becomes reachable. The button hides once a short page
                   arrives. */}
-              {ticketsHasMore && (
-                <div className="flex justify-center pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5"
-                    disabled={loadingMoreTickets}
-                    onClick={() => void loadMoreTickets()}
-                  >
-                    {loadingMoreTickets ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
+                {ticketsHasMore && (
+                  <div className="flex justify-center pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-1.5"
+                      disabled={loadingMoreTickets}
+                      onClick={() => void loadMoreTickets()}
+                    >
+                      {loadingMoreTickets ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>

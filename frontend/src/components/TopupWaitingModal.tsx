@@ -352,9 +352,7 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>
-      <DialogTitle className="text-lg font-bold mb-1.5 text-status-error">
-        تم رفض الطلب
-      </DialogTitle>
+      <DialogTitle className="text-lg font-bold mb-1.5 text-status-error">تم رفض الطلب</DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">
         {adminNote ? "السبب الموضّح من الإدارة:" : "تواصل مع الدعم إذا كنت ترى أن هذا خطأ."}
       </p>

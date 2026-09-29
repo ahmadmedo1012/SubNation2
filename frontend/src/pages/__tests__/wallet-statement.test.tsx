@@ -160,8 +160,7 @@ describe("WalletPage — the wallet STATEMENT (R115, A8 P2)", () => {
 
     // The date column uses the shared formatter on created_at.
     expect(
-      screen.getAllByText(`· ${formatDate(new Date("2026-09-29T10:00:00Z").toISOString())}`)
-        .length,
+      screen.getAllByText(`· ${formatDate(new Date("2026-09-29T10:00:00Z").toISOString())}`).length,
     ).toBe(4);
 
     // The empty state must NOT be present alongside rows.

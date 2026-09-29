@@ -189,8 +189,7 @@ describe("LoyaltyPage — the POINTS HISTORY (R115, A8 P2)", () => {
 
     // Date column via the shared formatter.
     expect(
-      screen.getAllByText(`· ${formatDate(new Date("2026-09-29T10:00:00Z").toISOString())}`)
-        .length,
+      screen.getAllByText(`· ${formatDate(new Date("2026-09-29T10:00:00Z").toISOString())}`).length,
     ).toBe(4);
 
     expect(screen.queryByText("لا توجد حركات نقاط بعد")).not.toBeInTheDocument();
@@ -254,9 +253,7 @@ describe("LoyaltyPage — conversion gates + tiers driven by API values (R115, A
 
     // Non-multiple → inline multiples message.
     fireEvent.change(input, { target: { value: "75" } });
-    expect(
-      await screen.findByText(/يجب أن تكون النقاط من مضاعفات 50/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/يجب أن تكون النقاط من مضاعفات 50/)).toBeInTheDocument();
     expect(screen.queryByText(/ستحصل على/)).not.toBeInTheDocument();
 
     // A valid multiple → the live preview returns (50 pts → 1.00 د.ل at 50:1).
@@ -318,8 +315,6 @@ describe("LoyaltyPage — conversion gates + tiers driven by API values (R115, A
     expect(screen.getAllByText("مزايا قريباً").length).toBe(2);
     expect(screen.queryByText("مزايا إضافية")).not.toBeInTheDocument();
     expect(screen.queryByText("أولوية الدعم")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/المستويات مؤشرات تقدّم في هذه المرحلة/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/المستويات مؤشرات تقدّم في هذه المرحلة/)).toBeInTheDocument();
   });
 });

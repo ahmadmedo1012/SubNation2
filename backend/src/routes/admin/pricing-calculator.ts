@@ -252,10 +252,12 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
   const breakEvenPrice = costLyd != null ? round2(costLyd) : null;
   // Safe minimum: price at which contribution stays ≥ 0 including the full
   // program stack (loyalty liability + referred acquisition cost):
-  //   p×(1−f)×(1−c) − cost − p×(1−f)×(1−c)/100 − referral ≥ 0
-  //   p × (1−f)×(1−c)×(1−1/POINTS_PER_LYD) ≥ cost + referral
-  const netUnitFactor =
-    (1 - flashPct / 100) * (1 - worstCaseCouponPct / 100) * (1 - 1 / POINTS_PER_LYD);
+  //   p × (1−capPct/100) × (1−1/POINTS_PER_LYD) ≥ cost + referral
+  // R115-R1 P2 FIX: the worst stack prices at (1−cap) of list — its flash
+  // and coupon components are NOT independent factors. The old
+  // (1−f)(1−(cap−f)) form over-stated survival whenever 0 < f < cap and
+  // printed loss-making prices as safe (consistent with worstCasePrice).
+  const netUnitFactor = (1 - capPct / 100) * (1 - 1 / POINTS_PER_LYD);
   const safeMinPrice =
     costLyd != null && netUnitFactor > 0
       ? round2((costLyd + referralCostLyd) / netUnitFactor)
@@ -334,7 +336,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       message_ar: "هذا الخيار غير نشط حالياً — لا يمكن شراؤه حتى يُفعَّل.",
     });
   }
-  if (couponInfo && couponInfo.valid && couponInfo.type === "percentage" && couponInfo.value > 50) {
+  if (couponInfo && couponInfo.valid && couponInfo.type === "percentage" && couponInfo.value > Math.max(50, capPct)) {
     warnings.push({
       severity: "low_margin",
       code: "aggressive_coupon",

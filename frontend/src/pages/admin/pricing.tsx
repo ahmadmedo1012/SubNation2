@@ -783,8 +783,8 @@ export default function AdminPricingPage() {
             </Button>
             <p className="basis-full text-3xs text-muted-foreground">
               حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «معاينة التغييرات» تعرض الأثر المتوقع دون
-              تعديل أي سعر، و«إعادة احتساب أسعار الكتالوج» هي التي تعيد تسعير كل الباقات من
-              تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
+              تعديل أي سعر، و«إعادة احتساب أسعار الكتالوج» هي التي تعيد تسعير كل الباقات من تكاليفها
+              بالقاعدة الحالية وتُحدّث أسعار العرض.
             </p>
           </div>
         </div>
@@ -946,7 +946,9 @@ export default function AdminPricingPage() {
                 <select
                   id="pricing-calc-variant"
                   value={variantId === "" ? "" : String(variantId)}
-                  onChange={(e) => setVariantId(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) =>
+                    setVariantId(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
                   disabled={selectedVariants.length === 0}
                 >
@@ -1083,7 +1085,9 @@ export default function AdminPricingPage() {
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">{RISK_STATE_LABEL[result.risk_state]}</span>
+                      <span className="font-bold text-sm">
+                        {RISK_STATE_LABEL[result.risk_state]}
+                      </span>
                       {result.inputs.variant_label && (
                         <span className="text-3xs font-semibold opacity-80 truncate">
                           {result.inputs.variant_label}
@@ -1251,7 +1255,9 @@ export default function AdminPricingPage() {
                       </span>
                     </div>
                     <div className="flex justify-between py-1">
-                      <span className="text-muted-foreground">الحد الأدنى الآمن (شامل الولاء والإحالة)</span>
+                      <span className="text-muted-foreground">
+                        الحد الأدنى الآمن (شامل الولاء والإحالة)
+                      </span>
                       <span className="tabular-nums font-bold" dir="ltr">
                         {result.guardrails.safe_min_price_incl_program == null
                           ? "—"

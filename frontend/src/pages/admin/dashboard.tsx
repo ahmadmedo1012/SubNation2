@@ -547,333 +547,321 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <div className="xl:col-span-3 space-y-5 float-in stagger-7">
-              {/* Revenue + Orders chart */}
-              <div className="bg-card border border-border/60 rounded-2xl p-5">
-                <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
-                  <div>
-                    <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                        <span className="w-3 h-0.5 bg-primary rounded inline-block" />
-                        الإيرادات
-                      </span>
-                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                        <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
-                        الطلبات
-                      </span>
-                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                        <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
+                {/* Revenue + Orders chart */}
+                <div className="bg-card border border-border/60 rounded-2xl p-5">
+                  <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+                    <div>
+                      <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                          <span className="w-3 h-0.5 bg-primary rounded inline-block" />
+                          الإيرادات
+                        </span>
+                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                          <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
+                          الطلبات
+                        </span>
+                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                          <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
+                          الخصومات
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Granularity picker */}
+                      <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                        {GRANULARITY_OPTIONS.map((g) => (
+                          <button
+                            key={g.value}
+                            onClick={() => setGranularity(g.value)}
+                            className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
+                              granularity === g.value
+                                ? "bg-card shadow-sm text-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {g.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Period picker */}
+                      <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                        {PERIOD_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.days}
+                            onClick={() => onChangeDays(opt.days)}
+                            className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
+                              chartDays === opt.days
+                                ? "bg-card shadow-sm text-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Export chart data */}
+                      <button
+                        onClick={() => exportChartCSV(displayData, chartDays)}
+                        className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                        title="تصدير بيانات المخطط CSV"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {chartLoading ? (
+                    <div className="h-40 skeleton-shimmer rounded-lg" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={160}>
+                      <AreaChart
+                        data={displayData}
+                        margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={chart.primary} stopOpacity={0.2} />
+                            <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={chart.success} stopOpacity={0.2} />
+                            <stop offset="95%" stopColor={chart.success} stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={chart.warning} stopOpacity={0.15} />
+                            <stop offset="95%" stopColor={chart.warning} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          // Round-3 (8-e §1.4): daily buckets carry the raw
+                          // backend ISO key ("2026-09-06") — unlocalized and
+                          // inconsistent with the Arabic month names the same
+                          // axis shows in weekly/monthly mode. Format it.
+                          tickFormatter={(value: string) => {
+                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                            return Number.isNaN(d.getTime())
+                              ? value
+                              : d.toLocaleDateString("ar-LY", {
+                                  month: "short",
+                                  day: "numeric",
+                                  timeZone: "UTC",
+                                });
+                          }}
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          name="الإيرادات"
+                          stroke={chart.primary}
+                          fill="url(#revGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="orders"
+                          name="الطلبات"
+                          stroke={chart.success}
+                          fill="url(#ordGrad)"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="discounts"
+                          name="الخصومات"
+                          stroke={chart.warning}
+                          fill="url(#discGrad)"
+                          strokeWidth={1.5}
+                          dot={false}
+                          activeDot={{ r: 3 }}
+                          strokeDasharray="4 2"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                {/* Discounts & Coupon Orders chart */}
+                <div className="bg-card border border-border/60 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
+                      <p className="text-3xs text-muted-foreground mt-0.5">
+                        قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-3xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
                         الخصومات
                       </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
+                        طلبات بكوبون
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Granularity picker */}
-                    <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                      {GRANULARITY_OPTIONS.map((g) => (
-                        <button
-                          key={g.value}
-                          onClick={() => setGranularity(g.value)}
-                          className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
-                            granularity === g.value
-                              ? "bg-card shadow-sm text-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {g.label}
-                        </button>
-                      ))}
+                  {chartLoading ? (
+                    <div className="h-28 skeleton-shimmer rounded-lg" />
+                  ) : displayData.every(
+                      (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
+                    ) ? (
+                    <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
+                      لا يوجد استخدام كوبونات في هذه الفترة
                     </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart
+                        data={displayData}
+                        margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          // Round-3 (8-e §1.4): daily buckets carry the raw
+                          // backend ISO key ("2026-09-06") — unlocalized and
+                          // inconsistent with the Arabic month names the same
+                          // axis shows in weekly/monthly mode. Format it.
+                          tickFormatter={(value: string) => {
+                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                            return Number.isNaN(d.getTime())
+                              ? value
+                              : d.toLocaleDateString("ar-LY", {
+                                  month: "short",
+                                  day: "numeric",
+                                  timeZone: "UTC",
+                                });
+                          }}
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Bar
+                          dataKey="discounts"
+                          name="الخصومات"
+                          fill={chart.warning}
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={24}
+                          fillOpacity={0.8}
+                        />
+                        <Bar
+                          dataKey="coupon_orders"
+                          name="طلبات بكوبون"
+                          fill={chart.success}
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={24}
+                          fillOpacity={0.6}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
 
-                    {/* Period picker */}
-                    <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                      {PERIOD_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.days}
-                          onClick={() => onChangeDays(opt.days)}
-                          className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
-                            chartDays === opt.days
-                              ? "bg-card shadow-sm text-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                {/* New users chart */}
+                <div className="bg-card border border-border/60 rounded-2xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
+                        {granularity === "daily"
+                          ? "يومي"
+                          : granularity === "weekly"
+                            ? "أسبوعي"
+                            : "شهري"}{" "}
+                        · آخر {chartDays} يوم
+                      </span>
+                      <button
+                        onClick={() => {
+                          const usersData = displayData.map((d) => [d.date, d.users]);
+                          const csv = [["التاريخ", "المستخدمون الجدد"], ...usersData]
+                            .map((r) => r.join(","))
+                            .join("\n");
+                          const blob = new Blob(["\uFEFF" + csv], {
+                            type: "text/csv;charset=utf-8;",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `users_${chartDays}d.csv`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-muted-foreground"
+                        title="تصدير CSV"
+                      >
+                        <Download className="w-3 h-3" />
+                      </button>
                     </div>
-
-                    {/* Export chart data */}
-                    <button
-                      onClick={() => exportChartCSV(displayData, chartDays)}
-                      className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
-                      title="تصدير بيانات المخطط CSV"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
                   </div>
+                  {chartLoading ? (
+                    <div className="h-28 skeleton-shimmer rounded-lg" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <BarChart
+                        data={displayData}
+                        margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
+                        <XAxis
+                          dataKey="date"
+                          // Round-3 (8-e §1.4): daily buckets carry the raw
+                          // backend ISO key ("2026-09-06") — unlocalized and
+                          // inconsistent with the Arabic month names the same
+                          // axis shows in weekly/monthly mode. Format it.
+                          tickFormatter={(value: string) => {
+                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                            return Number.isNaN(d.getTime())
+                              ? value
+                              : d.toLocaleDateString("ar-LY", {
+                                  month: "short",
+                                  day: "numeric",
+                                  timeZone: "UTC",
+                                });
+                          }}
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: chart.muted }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Bar
+                          dataKey="users"
+                          name="مستخدمون جدد"
+                          fill={chart.info}
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={28}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
-                {chartLoading ? (
-                  <div className="h-40 skeleton-shimmer rounded-lg" />
-                ) : (
-                  <ResponsiveContainer width="100%" height={160}>
-                    <AreaChart
-                      data={displayData}
-                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={chart.primary} stopOpacity={0.2} />
-                          <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={chart.success} stopOpacity={0.2} />
-                          <stop offset="95%" stopColor={chart.success} stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={chart.warning} stopOpacity={0.15} />
-                          <stop offset="95%" stopColor={chart.warning} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={chart.grid}
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        // Round-3 (8-e §1.4): daily buckets carry the raw
-                        // backend ISO key ("2026-09-06") — unlocalized and
-                        // inconsistent with the Arabic month names the same
-                        // axis shows in weekly/monthly mode. Format it.
-                        tickFormatter={(value: string) => {
-                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                          return Number.isNaN(d.getTime())
-                            ? value
-                            : d.toLocaleDateString("ar-LY", {
-                                month: "short",
-                                day: "numeric",
-                                timeZone: "UTC",
-                              });
-                        }}
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        name="الإيرادات"
-                        stroke={chart.primary}
-                        fill="url(#revGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="orders"
-                        name="الطلبات"
-                        stroke={chart.success}
-                        fill="url(#ordGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="discounts"
-                        name="الخصومات"
-                        stroke={chart.warning}
-                        fill="url(#discGrad)"
-                        strokeWidth={1.5}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                        strokeDasharray="4 2"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-
-              {/* Discounts & Coupon Orders chart */}
-              <div className="bg-card border border-border/60 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
-                    <p className="text-3xs text-muted-foreground mt-0.5">
-                      قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-3xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
-                      الخصومات
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
-                      طلبات بكوبون
-                    </span>
-                  </div>
-                </div>
-                {chartLoading ? (
-                  <div className="h-28 skeleton-shimmer rounded-lg" />
-                ) : displayData.every(
-                    (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
-                  ) ? (
-                  <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
-                    لا يوجد استخدام كوبونات في هذه الفترة
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={120}>
-                    <BarChart
-                      data={displayData}
-                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={chart.grid}
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        // Round-3 (8-e §1.4): daily buckets carry the raw
-                        // backend ISO key ("2026-09-06") — unlocalized and
-                        // inconsistent with the Arabic month names the same
-                        // axis shows in weekly/monthly mode. Format it.
-                        tickFormatter={(value: string) => {
-                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                          return Number.isNaN(d.getTime())
-                            ? value
-                            : d.toLocaleDateString("ar-LY", {
-                                month: "short",
-                                day: "numeric",
-                                timeZone: "UTC",
-                              });
-                        }}
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Bar
-                        dataKey="discounts"
-                        name="الخصومات"
-                        fill={chart.warning}
-                        radius={[3, 3, 0, 0]}
-                        maxBarSize={24}
-                        fillOpacity={0.8}
-                      />
-                      <Bar
-                        dataKey="coupon_orders"
-                        name="طلبات بكوبون"
-                        fill={chart.success}
-                        radius={[3, 3, 0, 0]}
-                        maxBarSize={24}
-                        fillOpacity={0.6}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-
-              {/* New users chart */}
-              <div className="bg-card border border-border/60 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
-                      {granularity === "daily"
-                        ? "يومي"
-                        : granularity === "weekly"
-                          ? "أسبوعي"
-                          : "شهري"}{" "}
-                      · آخر {chartDays} يوم
-                    </span>
-                    <button
-                      onClick={() => {
-                        const usersData = displayData.map((d) => [d.date, d.users]);
-                        const csv = [["التاريخ", "المستخدمون الجدد"], ...usersData]
-                          .map((r) => r.join(","))
-                          .join("\n");
-                        const blob = new Blob(["\uFEFF" + csv], {
-                          type: "text/csv;charset=utf-8;",
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `users_${chartDays}d.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-muted-foreground"
-                      title="تصدير CSV"
-                    >
-                      <Download className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-                {chartLoading ? (
-                  <div className="h-28 skeleton-shimmer rounded-lg" />
-                ) : (
-                  <ResponsiveContainer width="100%" height={120}>
-                    <BarChart
-                      data={displayData}
-                      margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={chart.grid}
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        // Round-3 (8-e §1.4): daily buckets carry the raw
-                        // backend ISO key ("2026-09-06") — unlocalized and
-                        // inconsistent with the Arabic month names the same
-                        // axis shows in weekly/monthly mode. Format it.
-                        tickFormatter={(value: string) => {
-                          const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                          return Number.isNaN(d.getTime())
-                            ? value
-                            : d.toLocaleDateString("ar-LY", {
-                                month: "short",
-                                day: "numeric",
-                                timeZone: "UTC",
-                              });
-                        }}
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: chart.muted }}
-                        axisLine={false}
-                        tickLine={false}
-                        allowDecimals={false}
-                      />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Bar
-                        dataKey="users"
-                        name="مستخدمون جدد"
-                        fill={chart.info}
-                        radius={[3, 3, 0, 0]}
-                        maxBarSize={28}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
               </div>
             ))}
 

@@ -10,11 +10,7 @@ import { toast as sonnerToast } from "sonner";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
-import {
-  getGetWalletQueryKey,
-  useGetWallet,
-  type WalletInfo,
-} from "@workspace/api-client-react";
+import { getGetWalletQueryKey, useGetWallet, type WalletInfo } from "@workspace/api-client-react";
 
 function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;

@@ -1157,8 +1157,8 @@ export default function WalletPage() {
                         (this line, TopupWaitingModal, support FAQ) — the
                         old «30 دقيقة» here vs «ثوانٍ» in the waiting modal
                         contradicted each other on the same money flow. */}
-                    أقدم طلب: {formatRelativeTime(oldestPending)} — عادة خلال دقائق، وبحد
-                    أقصى 30 دقيقة خلال ساعات العمل.
+                    أقدم طلب: {formatRelativeTime(oldestPending)} — عادة خلال دقائق، وبحد أقصى 30
+                    دقيقة خلال ساعات العمل.
                   </p>
                 )}
               </div>

@@ -36,7 +36,10 @@ function resLike(body: unknown) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => resLike([])));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => resLike([])),
+  );
 });
 
 afterEach(() => {
@@ -55,9 +58,7 @@ describe("SupportPage FAQ — the referral answer matches policy B (R115 A8 P1)"
     // (not getBy) so the mount fetches settle inside act() — the support
     // page loads the ticket list on mount and a synchronous assert raced
     // its state update.
-    expect(
-      await screen.findByText("هل أحصل على مكافأة عند دعوة أصدقائي؟"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("هل أحصل على مكافأة عند دعوة أصدقائي؟")).toBeInTheDocument();
 
     // The answer states the approval trigger and BOTH sides' rewards.
     expect(screen.getByText(/عندما يعتمد فريقنا أول شحن/)).toBeInTheDocument();

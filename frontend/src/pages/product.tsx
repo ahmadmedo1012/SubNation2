@@ -538,7 +538,9 @@ export default function ProductPage() {
       const chargedAmount =
         typeof order?.amount === "number"
           ? order.amount
-          : (couponResult ? couponResult.final_amount : quotedBasePrice);
+          : couponResult
+            ? couponResult.final_amount
+            : quotedBasePrice;
       setPurchaseSummary({ charged: chargedAmount, balanceAfter: null });
       setOrderResult(order);
       // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
@@ -1738,7 +1740,11 @@ function CtaBlock({
 
 function RecommendationsSection({ numericId }: { numericId: number }) {
   const [, navigate] = useLocation();
-  const { data: recommendations = [], isLoading, isError } = useGetProductRecommendations(numericId, {
+  const {
+    data: recommendations = [],
+    isLoading,
+    isError,
+  } = useGetProductRecommendations(numericId, {
     query: {
       queryKey: getGetProductRecommendationsQueryKey(numericId),
       enabled: !!numericId,

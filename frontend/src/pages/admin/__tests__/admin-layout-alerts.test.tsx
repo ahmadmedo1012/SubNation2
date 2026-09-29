@@ -70,8 +70,7 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
     headers: {
-      get: (name: string) =>
-        name.toLowerCase() === "content-type" ? "application/json" : null,
+      get: (name: string) => (name.toLowerCase() === "content-type" ? "application/json" : null),
     },
   } as unknown as Response;
 }
@@ -262,7 +261,9 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
 
   it("an admin WITHOUT the finance scope never polls stats (the nav item is finance-scoped)", async () => {
     authState.finance = false;
-    fetchMock.mockImplementation(routeFetch({ stats: () => resLike({ body: { pending_topups: 9 } }) }));
+    fetchMock.mockImplementation(
+      routeFetch({ stats: () => resLike({ body: { pending_topups: 9 } }) }),
+    );
 
     renderLayout();
 

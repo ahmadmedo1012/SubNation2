@@ -84,7 +84,10 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => resLike({ providers: [] })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => resLike({ providers: [] })),
+  );
 });
 
 afterEach(() => {

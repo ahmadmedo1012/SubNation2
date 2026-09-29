@@ -129,9 +129,7 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                 <StatusBadge variant={meta.tone} size="xs" icon={meta.icon}>
                   {meta.label}
                 </StatusBadge>
-                <span className="font-mono text-2xs text-muted-foreground">
-                  {e.action_class}
-                </span>
+                <span className="font-mono text-2xs text-muted-foreground">{e.action_class}</span>
                 {/* 94-C2 (A2 colors): raw amber-400 → the --status-warning
                     token (same meaning, AA-safe on both themes). */}
                 {e.risk_tier === "high" && (

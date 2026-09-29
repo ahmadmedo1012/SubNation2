@@ -145,9 +145,7 @@ export default function LoginPage() {
                     ? `سجّل دخولك لإكمال شراء «${intent.productName}»`
                     : "سجّل دخولك لإكمال عملية الشراء"}
                 </p>
-                <p className="text-2xs text-primary-text/75 mt-0.5">
-                  ثوانٍ معدودة بدون كلمة مرور
-                </p>
+                <p className="text-2xs text-primary-text/75 mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
               </div>
             </div>
           ) : (

@@ -275,9 +275,7 @@ export default function ReferralsPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
             <WifiOff className="w-8 h-8 text-status-error/70" />
           </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">
-            تعذّر تحميل بيانات الإحالات
-          </p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل بيانات الإحالات</p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
           </p>
@@ -407,8 +405,8 @@ export default function ReferralsPage() {
                 <span className="font-bold text-status-warning">
                   {overview.points_rate.points_per_referral} نقطة
                 </span>{" "}
-                عن كل إحالة ناجحة (تُقيد عند اعتماد أول شحن لصديقك) — قابلة للتحويل إلى
-                رصيد في المحفظة
+                عن كل إحالة ناجحة (تُقيد عند اعتماد أول شحن لصديقك) — قابلة للتحويل إلى رصيد في
+                المحفظة
               </p>
             </div>
           )}

@@ -1279,6 +1279,10 @@ export async function applyPointsLedgerStage(
   // Opening-balance corrections: one row per user whose balance predates
   // the ledger. NO fabricated history (A11's decision): the opening row
   // anchors Σdeltas = balance; per-event history starts from now.
+  // R115-R1 P0 FIX: zero-point users are EXCLUDED — chk_points_ledger_
+  // delta_nonzero forbids delta 0, and every never-earned signup would
+  // otherwise abort the whole INSERT...SELECT (SQLSTATE 23514 → critical
+  // boot failure). Their first earned point writes their first row.
   await execute(sql`
     INSERT INTO points_ledger
       (user_id, type, points_delta, points_before, points_after,
@@ -1287,7 +1291,8 @@ export async function applyPointsLedgerStage(
            'opening_balance',
            'R115 ledger introduction: opening balance (pre-ledger history not reconstructed)'
     FROM users u
-    WHERE NOT EXISTS (SELECT 1 FROM points_ledger pl WHERE pl.user_id = u.id)
+    WHERE u.loyalty_points <> 0
+      AND NOT EXISTS (SELECT 1 FROM points_ledger pl WHERE pl.user_id = u.id)
   `);
   logger.info(
     { category: "storage" },

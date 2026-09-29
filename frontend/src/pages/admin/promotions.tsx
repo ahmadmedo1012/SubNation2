@@ -362,9 +362,7 @@ export default function AdminPromotionsPage() {
                   {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
                       letter-spacing severs Arabic letter connections
                       (A11 §8, rule documented in layout.tsx). */}
-                  <div className="text-3xs text-muted-foreground font-bold mb-1">
-                    معاينة سريعة
-                  </div>
+                  <div className="text-3xs text-muted-foreground font-bold mb-1">معاينة سريعة</div>
                   <div className="text-xs text-foreground/90 leading-relaxed">
                     منتج بسعر <span className="font-mono font-bold">10.00 د.ل</span> سيُعرض بـ{" "}
                     <span className="font-mono font-bold text-primary">

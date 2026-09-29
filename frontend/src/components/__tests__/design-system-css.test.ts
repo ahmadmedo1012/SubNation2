@@ -90,7 +90,9 @@ describe("index.css — pb-safe single definition with fallback (A3 P2-6)", () =
   });
 
   it("the surviving definition carries an env() fallback", () => {
-    expect(cssText).toMatch(/\.pb-safe\s*\{\s*padding-bottom:\s*env\(safe-area-inset-bottom,\s*20px\);/);
+    expect(cssText).toMatch(
+      /\.pb-safe\s*\{\s*padding-bottom:\s*env\(safe-area-inset-bottom,\s*20px\);/,
+    );
   });
 });
 

@@ -239,8 +239,7 @@ export default function LoyaltyPage() {
     gold: 2000,
     platinum: 5000,
   };
-  const tierThresholds: Record<string, number> = data?.tier_thresholds ??
-    TIER_THRESHOLDS_FALLBACK;
+  const tierThresholds: Record<string, number> = data?.tier_thresholds ?? TIER_THRESHOLDS_FALLBACK;
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -384,7 +383,11 @@ export default function LoyaltyPage() {
     { icon: <Share2 className="w-4 h-4 text-primary" />, step: "1", text: "شارك رابط الإحالة" },
     { icon: <Users className="w-4 h-4 text-primary" />, step: "2", text: "صديقك يسجل حسابه" },
     /* R115 (policy B): اعتماد — a rejected first topup never credits. */
-    { icon: <Wallet className="w-4 h-4 text-primary" />, step: "3", text: "يُعتمد أول شحن للمحفظة" },
+    {
+      icon: <Wallet className="w-4 h-4 text-primary" />,
+      step: "3",
+      text: "يُعتمد أول شحن للمحفظة",
+    },
   ];
 
   return (
@@ -646,9 +649,7 @@ export default function LoyaltyPage() {
                     onChange={(e) => setConvertPoints(e.target.value)}
                     dir="ltr"
                     aria-invalid={convertValidation !== null}
-                    aria-describedby={
-                      convertValidation ? "convert-input-validation" : undefined
-                    }
+                    aria-describedby={convertValidation ? "convert-input-validation" : undefined}
                     className="text-left h-11"
                   />
                   {/* R115 (A8 #10): persistent inline WHY-invalid text —
@@ -748,10 +749,7 @@ export default function LoyaltyPage() {
             {historyLoading ? (
               <div className="space-y-2.5">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-3 bg-muted/20 rounded-xl"
-                  >
+                  <div key={i} className="flex items-center gap-3 p-3 bg-muted/20 rounded-xl">
                     <div className="w-7 h-7 rounded-lg bg-muted skeleton-shimmer shrink-0" />
                     <div className="flex-1 space-y-2">
                       <div className="h-3.5 bg-muted skeleton-shimmer rounded-full w-2/5" />

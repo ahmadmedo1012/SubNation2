@@ -450,9 +450,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.users.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">
-                  المستخدمون
-                </div>
+                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">المستخدمون</div>
                 {results.users.map((u, i) => {
                   const flatIdx = results.orders.length + i;
                   return (
@@ -485,9 +483,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.products.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">
-                  المنتجات
-                </div>
+                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">المنتجات</div>
                 {results.products.map((p, i) => {
                   const flatIdx = results.orders.length + results.users.length + i;
                   return (
@@ -775,9 +771,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             </div>
             <div>
               <div className="font-bold text-xs leading-none">SubNation</div>
-              <div className="text-3xs text-muted-foreground leading-none mt-0.5">
-                لوحة الإدارة
-              </div>
+              <div className="text-3xs text-muted-foreground leading-none mt-0.5">لوحة الإدارة</div>
             </div>
           </div>
         ) : (
@@ -819,9 +813,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
                       `uppercase tracking-widest` — letter-spacing severs
                       Arabic letter connections; uppercase is a no-op on
                       Arabic and only added visual noise. */}
-                  <span className="text-3xs font-bold text-muted-foreground">
-                    {section.label}
-                  </span>
+                  <span className="text-3xs font-bold text-muted-foreground">{section.label}</span>
                 </div>
               )}
               {collapsed && <div className="h-px bg-border/40 mb-2" />}

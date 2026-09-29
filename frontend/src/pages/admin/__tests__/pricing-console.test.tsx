@@ -376,7 +376,9 @@ describe("AdminPricingPage — variant-aware calculator console (R115)", () => {
     expect(badge.closest("[data-risk-state]")?.getAttribute("data-risk-state")).toBe("LOSS");
     // The WHY text rides WITH the badge (and repeats in the warnings
     // list below — both carry the backend's Arabic wording).
-    expect(screen.getAllByText(/ستبيع بأقل من سعر التكلفة بمقدار 20\.00 د\.ل/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/ستبيع بأقل من سعر التكلفة بمقدار 20\.00 د\.ل/).length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByText(/خسارة مباشرة/).length).toBeGreaterThan(0);
 
     // Worst-case block: deepest allowed stack + contribution rows.
@@ -543,9 +545,7 @@ describe("AdminPricingPage — max_total_discount_pct config (policy 7)", () => 
     expect(save).toBeDisabled();
 
     fireEvent.change(capInput, { target: { value: "5" } });
-    expect(screen.getByRole("alert").textContent).toBe(
-      "سقف الخصم يجب أن يكون بين 10 و 95",
-    );
+    expect(screen.getByRole("alert").textContent).toBe("سقف الخصم يجب أن يكون بين 10 و 95");
     expect(save).toBeDisabled();
 
     fireEvent.change(capInput, { target: { value: "99" } });

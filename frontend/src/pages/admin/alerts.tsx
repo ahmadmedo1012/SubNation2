@@ -328,8 +328,7 @@ export default function AdminAlertsPage() {
       return r.json().catch(() => null);
     },
     onSuccess: () => invalidateAll(),
-    onError: (err) =>
-      toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err))),
+    onError: (err) => toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err))),
   });
 
   const deleteAll = useMutation({
@@ -348,8 +347,7 @@ export default function AdminAlertsPage() {
       setConfirmDeleteAll(false);
       invalidateAll();
     },
-    onError: (err) =>
-      toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err))),
+    onError: (err) => toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err))),
   });
 
   const alerts = data?.pages.flatMap((p) => p.alerts) ?? [];
@@ -590,9 +588,7 @@ export default function AdminAlertsPage() {
                   {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
                       letter-spacing severs Arabic letter connections
                       (A11 §8, rule documented in layout.tsx). */}
-                  <span className="text-2xs font-bold text-muted-foreground">
-                    {group.label}
-                  </span>
+                  <span className="text-2xs font-bold text-muted-foreground">{group.label}</span>
                   <div className="flex-1 h-px bg-border/40" />
                   <span className="text-3xs text-muted-foreground">{group.items.length}</span>
                 </div>
@@ -692,7 +688,8 @@ export default function AdminAlertsPage() {
             <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
               <Inbox className="w-3.5 h-3.5" />
               <span>
-                عرض {formatCount(alerts.length, {
+                عرض{" "}
+                {formatCount(alerts.length, {
                   zero: "تنبيهات",
                   one: "تنبيه",
                   two: "تنبيهان",

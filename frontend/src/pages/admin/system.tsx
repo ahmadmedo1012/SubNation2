@@ -1305,9 +1305,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     <div className="flex items-center gap-2 mb-3">
                       <Wifi className="w-4 h-4 text-cyan-400" />
                       <h3 className="text-sm font-bold">Socket.IO</h3>
-                      <span className="text-3xs text-muted-foreground mr-auto">
-                        واجهات لحظية
-                      </span>
+                      <span className="text-3xs text-muted-foreground mr-auto">واجهات لحظية</span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -1421,9 +1419,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
                       >
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-3xs text-muted-foreground font-bold">
-                            {label}
-                          </span>
+                          <span className="text-3xs text-muted-foreground font-bold">{label}</span>
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
                               tone === "ok"
@@ -1439,9 +1435,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         >
                           {display}
                         </div>
-                        <div className="text-3xs text-muted-foreground mt-1">
-                          {samples} عيّنة
-                        </div>
+                        <div className="text-3xs text-muted-foreground mt-1">{samples} عيّنة</div>
                       </div>
                     );
                   })}
@@ -1472,11 +1466,7 @@ export default function AdminSystemPage(): ReactElement | null {
                           <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={chart.grid}
-                        vertical={false}
-                      />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
                       <Tooltip
                         contentStyle={{
                           background: chart.tooltipBg,

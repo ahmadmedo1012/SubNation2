@@ -112,9 +112,8 @@ export default function RegisterPage() {
                   عند أول شحن معتمد عبر كود إحالة تحصل أنت وصديقك على مكافآت
                 </p>
                 <p className="text-2xs text-status-success mt-0.5 leading-relaxed">
-                  تحصل أنت على <span className="font-bold">{formatCurrency(5)}</span> رصيد،
-                  ويحصل صديقك على <span className="font-bold">50 نقطة</span> عند اعتماد أول
-                  شحن لك
+                  تحصل أنت على <span className="font-bold">{formatCurrency(5)}</span> رصيد، ويحصل
+                  صديقك على <span className="font-bold">50 نقطة</span> عند اعتماد أول شحن لك
                 </p>
               </div>
             </div>
@@ -128,8 +127,8 @@ export default function RegisterPage() {
                   (نقاط قابلة للتحويل إلى رصيد). R115 (policy B): «اعتماد»
                   added — a rejected first topup never credits. */}
               <span>
-                ادعُ صديقاً واحصل على <span className="font-bold">50 نقطة ولاء</span> عند اعتماد
-                أول شحن له — قابلة للتحويل إلى رصيد
+                ادعُ صديقاً واحصل على <span className="font-bold">50 نقطة ولاء</span> عند اعتماد أول
+                شحن له — قابلة للتحويل إلى رصيد
               </span>
             </div>
           )}

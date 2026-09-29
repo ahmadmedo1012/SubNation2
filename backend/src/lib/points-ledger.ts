@@ -187,10 +187,30 @@ export async function remainingAwardForOrder(
       if (row.referenceType === "order" && row.referenceId === orderId) {
         alreadyRevoked += -row.pointsDelta;
       } else {
-        // Another order's reversal — consume from ITS source.
+        // Another order's reversal — consume from ITS source...
         const key = `order:${row.referenceId}`;
+        let consumed = false;
         for (const entry of queue) {
-          if (entry[0] === key) entry[1] = Math.max(0, entry[1] + row.pointsDelta);
+          if (entry[0] === key) {
+            entry[1] = Math.max(0, entry[1] + row.pointsDelta);
+            consumed = true;
+          }
+        }
+        // ...unless that order PREDATES the ledger (no award entry — the
+        // legacy floor(amount) revoke drew from the oldest pool). R115-R1
+        // P3 fix: consume from the FRONT (FIFO, like a conversion) so the
+        // debit is not silently dropped — otherwise interleaved conversions
+        // leave later orders' remainders overstated and "precise" mode
+        // over-revokes.
+        if (!consumed) {
+          let toSpend = -row.pointsDelta;
+          while (toSpend > 0 && queue.length > 0) {
+            const head = queue[0];
+            const take = Math.min(head[1], toSpend);
+            head[1] -= take;
+            toSpend -= take;
+            if (head[1] === 0) queue.shift();
+          }
         }
       }
     } else if (row.type === "correction" && row.pointsDelta > 0) {

@@ -118,7 +118,8 @@ function describeSaveError(err: unknown): string {
   const data = (err as { data?: { error?: string; message?: string } | null })?.data;
   const raw = data?.error ?? data?.message;
   if (typeof raw === "string" && raw.trim() && ARABIC_SCRIPT_RE.test(raw)) return raw;
-  const direct = (err as { error?: string; message?: string } | null)?.error ??
+  const direct =
+    (err as { error?: string; message?: string } | null)?.error ??
     (err as { message?: string } | null)?.message;
   if (typeof direct === "string" && direct.trim() && ARABIC_SCRIPT_RE.test(direct)) return direct;
   return "";
@@ -696,9 +697,7 @@ export default function AdminUsersPage() {
                   <stat.icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
                 <div>
-                  <div className={`font-bold text-sm tabular-nums ${stat.color}`}>
-                    {stat.value}
-                  </div>
+                  <div className={`font-bold text-sm tabular-nums ${stat.color}`}>{stat.value}</div>
                   <div className="text-3xs text-muted-foreground leading-tight mt-0.5">
                     {stat.label}
                   </div>
