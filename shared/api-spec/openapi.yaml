@@ -915,6 +915,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /wallet/ledger:
+    get:
+      operationId: getWalletLedger
+      tags: [wallet]
+      summary: Wallet statement — every LYD movement from wallet_ledger (R115)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: Newest-first ledger entries (topup, purchase, refund, adjustment, referral_credit)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    type: { type: string, enum: [topup, purchase, refund, adjustment, referral_credit] }
+                    type_label: { type: string, description: Arabic label }
+                    amount: { type: number }
+                    balance_after: { type: number }
+                    reference_type: { type: [string, "null"] }
+                    description: { type: [string, "null"] }
+                    created_at: { type: string, format: date-time }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /wallet/topups:
     get:
       operationId: listTopups
@@ -1447,6 +1485,48 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Points/balance changed concurrently (CONFLICT — retry with fresh state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /loyalty/ledger:
+    get:
+      operationId: getLoyaltyLedger
+      tags: [loyalty]
+      summary: Points history — every point movement attributed (R115)
+      description: |
+        The user-facing points_ledger view: purchase awards, referral
+        credits, conversions out, refund reversals, admin corrections —
+        newest first. Makes the balance explainable ("why do I have
+        exactly 750 points?" is a list).
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: Newest-first points_ledger entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    type: { type: string, enum: [purchase_award, refund_reversal, referral_credit, conversion_out, admin_set, correction] }
+                    type_label: { type: string, description: Arabic label }
+                    points_delta: { type: integer }
+                    points_after: { type: integer }
+                    lyd_credited: { type: [number, "null"] }
+                    created_at: { type: string, format: date-time }
+        "401":
+          description: Not authenticated
           content:
             application/json:
               schema:
@@ -2790,6 +2870,60 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Variant referenced by orders — deactivate instead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/pricing/calculate:
+    post:
+      operationId: adminPricingCalculate
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Variant-aware economics simulator (requireAdmin; R115 rewrite)
+      description: |
+        Read-only profit/margin simulation of the REAL sellable unit.
+        variant_id mode uses the variant's stored price (what checkout
+        charges) + its USD cost converted at the config rate; product_id
+        mode uses the product's CHEAPEST active variant (labeled);
+        manual mode takes explicit list_price_lyd + cost_lyd. Uses the
+        SAME discount stack as checkout (computePricing), models loyalty
+        liability (floor(final) points at 100:1) and the referral
+        acquisition cost (welcome 5 LYD + referrer 0.50 LYD, granted on
+        the referee's first approved topup), and returns SAFE / WATCH /
+        THIN / LOSS risk states with explained warnings, the worst-case
+        cap-bounded stack, break-even, and the program-inclusive safe
+        minimum price.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id: { type: integer }
+                variant_id: { type: integer, description: The sellable unit (preferred input) }
+                price: { type: number, description: Manual sandbox list price (LYD) }
+                cost_price: { type: number, description: Manual sandbox cost (LYD) }
+                coupon_code: { type: string }
+                simulate_referred: { type: boolean }
+      responses:
+        "200":
+          description: Full economics (margins, worst case, guardrails, risk state)
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: No usable input / negative price
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Unknown variant/product/no active variants
           content:
             application/json:
               schema:
@@ -5067,9 +5201,17 @@ components:
         markup_percent:
           type: number
           description: Gross margin percent on cost (default 100 = cost × 2).
+        max_total_discount_pct:
+          type: number
+          description: |
+            R115: hard cap on the COMBINED transactional discount
+            (flash % + coupon % vs list). Default 50 — the no-loss line
+            at the catalog's uniform 100% markup. Enforced in the shared
+            pricing pipeline; a coupon past the cap is rejected with a
+            clean total_discount_cap reason.
         updated_at:
           type: string
-      required: [usd_to_lyd, markup_percent]
+      required: [usd_to_lyd, markup_percent, max_total_discount_pct]
 
     UpdatePricingConfigBody:
       type: object
@@ -5082,6 +5224,11 @@ components:
           type: number
           minimum: 0
           maximum: 10000
+        max_total_discount_pct:
+          type: number
+          minimum: 10
+          maximum: 95
+          description: R115 combined flash+coupon discount cap (default 50).
 
     RecomputeResult:
       type: object
@@ -5238,26 +5385,26 @@ components:
           minimum: 0
           maximum: 10000000
           description: |
-            Direct-update path (no ledger). Integer in [0, 10,000,000] —
-            the cap exists because points convert to wallet credit via
-            /loyalty/convert-points (100 pts/LYD).
-        loyalty_tier:
-          type: string
-          enum: [bronze, silver, gold, platinum]
+            R115: the edit is attributed — mutation + points_ledger
+            admin_set row commit in ONE transaction; a note (reason) is
+            REQUIRED (400 when missing); the finance scope is REQUIRED.
+            Integer in [0, 10,000,000] — the cap exists because points
+            convert to wallet credit via /loyalty/convert-points
+            (100 pts/LYD).
         note:
           type: string
           description: |
             Operator note recorded on the wallet_ledger row for the
-            adjustment. REQUIRED by the backend whenever
-            wallet_adjustment or wallet_balance is sent: a missing or
-            too-short note (trimmed length < 3 chars) is rejected
-            with 400 INVALID_DATA before any mutation (round-94
-            A8-09 — the note is the human-readable audit-trail
-            content that makes an incident review of a wallet
-            mutation possible). Optional for loyalty-only edits,
-            where it is ignored. Kept schema-optional because OpenAPI
-            cannot express the conditional requirement. Trimmed and
-            capped at 500 chars on the ledger row.
+            adjustment and on the points_ledger admin_set row for loyalty
+            edits. REQUIRED by the backend whenever wallet_adjustment,
+            wallet_balance, OR loyalty_points is sent (R115 extended the
+            rule to loyalty — the audit trail must explain WHY). Kept
+            schema-optional because OpenAPI cannot express the conditional
+            requirement. Trimmed and capped at 500 chars.
+          
+            loyalty_tier is NO LONGER EDITABLE (R115): tiers derive
+            strictly from net qualifying spend; sending loyalty_tier is
+            rejected with 400 INVALID_DATA.
       minProperties: 1
 
     # 200 body of PATCH /admin/users/{id} — the current post-edit state

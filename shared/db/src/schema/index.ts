@@ -19,6 +19,7 @@ export * from "./inventory_forecasts";
 export * from "./login_attempts";
 export * from "./notifications";
 export * from "./orders";
+export * from "./points_ledger";
 export * from "./products";
 export * from "./product-variants";
 export * from "./provider-fulfillments";

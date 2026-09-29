@@ -8,6 +8,8 @@ import { writeAuditLog } from "../../lib/audit";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { requirePermission } from "../../lib/permissions";
+import { POINTS_PER_REFERRAL } from "../../lib/loyalty-policy";
+import { insertPointsLedgerEntry } from "../../lib/points-ledger";
 
 const router = Router();
 
@@ -34,9 +36,8 @@ router.get("/referrals", requireAdmin, async (req, res) => {
 
   // Round-3 (8-c §2.6): the three list/aggregate queries were sequential;
   // they share nothing but the (optional) status filter — run concurrently.
-  // The `50` literals below duplicate lib/loyalty-tiers POINTS_PER_REFERRAL;
-  // inlined into SQL because the constant lives in TypeScript (parameterize
-  // here if the rate ever becomes per-referral configurable).
+  // R115: the points_earned / total_points literals are parameterized from
+  // lib/loyalty-policy POINTS_PER_REFERRAL — one source of truth.
   const [rowsRaw, topReferrersRaw, statsRaw] = await Promise.all([
     db.execute(sql`
       SELECT
@@ -47,7 +48,7 @@ router.get("/referrals", requireAdmin, async (req, res) => {
         r.phone  AS referrer_phone,
         r.id     AS referrer_id,
         e.phone  AS referee_phone,
-        50       AS points_earned
+        ${POINTS_PER_REFERRAL} AS points_earned
       FROM referral_events re
       JOIN users r ON r.id = re.referrer_id
       JOIN users e ON e.id = re.referee_id
@@ -72,7 +73,7 @@ router.get("/referrals", requireAdmin, async (req, res) => {
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE status = 'credited') AS credited,
         COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
-        COUNT(*) FILTER (WHERE status = 'credited') * 50 AS total_points
+        COUNT(*) FILTER (WHERE status = 'credited') * ${POINTS_PER_REFERRAL} AS total_points
       FROM referral_events
     `),
   ]);
@@ -89,7 +90,7 @@ router.get("/referrals", requireAdmin, async (req, res) => {
     referrer_phone: r.referrer_phone as string,
     referrer_id: Number(r.referrer_id),
     referee_phone: r.referee_phone as string,
-    points_earned: r.status === "credited" ? 50 : 0,
+    points_earned: r.status === "credited" ? POINTS_PER_REFERRAL : 0,
   }));
 
   if (searchStr) {
@@ -151,11 +152,14 @@ router.post(
         .status(400)
         .json(createErrorResponse("تم منح النقاط مسبقاً", ErrorCode.INVALID_DATA));
 
-    const POINTS = 50;
+    const POINTS = POINTS_PER_REFERRAL;
     // Status flip is guarded at the UPDATE level (WHERE status='pending') and
     // runs in a transaction with the points grant: two concurrent credits
     // serialize on the row lock and the second matches 0 rows → 409, instead
     // of double-granting the referrer's points.
+    // R115: the grant is attributed in points_ledger (same tx, reference =
+    // the referral_event row the guarded flip won) — the constant comes
+    // from lib/loyalty-policy, no more local literals.
     let credited = false;
     try {
       await db.transaction(async (tx) => {
@@ -166,10 +170,25 @@ router.post(
           .returning({ id: referralEventsTable.id });
         if (flipped.length !== 1) return; // lost the race — already credited
 
-        await tx
+        const [refUpdated] = await tx
           .update(usersTable)
           .set({ loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS}` })
-          .where(eq(usersTable.id, event.referrerId));
+          .where(eq(usersTable.id, event.referrerId))
+          .returning({ loyaltyPoints: usersTable.loyaltyPoints });
+        if (refUpdated) {
+          await insertPointsLedgerEntry(
+            {
+              userId: event.referrerId,
+              type: "referral_credit",
+              pointsDelta: POINTS,
+              pointsBefore: refUpdated.loyaltyPoints - POINTS,
+              pointsAfter: refUpdated.loyaltyPoints,
+              referenceId: flipped[0].id,
+              referenceType: "referral_event",
+            },
+            tx as unknown as typeof db,
+          );
+        }
         credited = true;
       });
     } catch {

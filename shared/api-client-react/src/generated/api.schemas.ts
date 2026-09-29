@@ -1258,6 +1258,13 @@ export interface PricingConfig {
   usd_to_lyd: number;
   /** Gross margin percent on cost (default 100 = cost × 2). */
   markup_percent: number;
+  /** R115: hard cap on the COMBINED transactional discount
+(flash % + coupon % vs list). Default 50 — the no-loss line
+at the catalog's uniform 100% markup. Enforced in the shared
+pricing pipeline; a coupon past the cap is rejected with a
+clean total_discount_cap reason.
+ */
+  max_total_discount_pct: number;
   updated_at?: string;
 }
 
@@ -1272,6 +1279,12 @@ export interface UpdatePricingConfigBody {
    * @maximum 10000
    */
   markup_percent?: number;
+  /**
+   * R115 combined flash+coupon discount cap (default 50).
+   * @minimum 10
+   * @maximum 95
+   */
+  max_total_discount_pct?: number;
 }
 
 export interface RecomputeResult {
@@ -1373,16 +1386,6 @@ export interface AdminUser {
   created_at: string;
 }
 
-export type UpdateAdminUserBodyLoyaltyTier =
-  (typeof UpdateAdminUserBodyLoyaltyTier)[keyof typeof UpdateAdminUserBodyLoyaltyTier];
-
-export const UpdateAdminUserBodyLoyaltyTier = {
-  bronze: "bronze",
-  silver: "silver",
-  gold: "gold",
-  platinum: "platinum",
-} as const;
-
 export interface UpdateAdminUserBody {
   /** Relative delta applied to wallet_balance via AdjustmentService
 (transaction + wallet_ledger type=adjustment). Rejected with
@@ -1395,18 +1398,28 @@ Ignored when wallet_adjustment is also present.
  */
   wallet_balance?: number;
   /**
-   * Direct-update path (no ledger). Integer in [0, 10,000,000] —
-the cap exists because points convert to wallet credit via
-/loyalty/convert-points (100 pts/LYD).
+   * R115: the edit is attributed — mutation + points_ledger
+admin_set row commit in ONE transaction; a note (reason) is
+REQUIRED (400 when missing); the finance scope is REQUIRED.
+Integer in [0, 10,000,000] — the cap exists because points
+convert to wallet credit via /loyalty/convert-points
+(100 pts/LYD).
 
    * @minimum 0
    * @maximum 10000000
    */
   loyalty_points?: number;
-  loyalty_tier?: UpdateAdminUserBodyLoyaltyTier;
-  /** Free-form note recorded on the wallet_ledger row when a
-wallet field is supplied (defaults to "Admin adjustment" /
-"Admin balance set").
+  /** Operator note recorded on the wallet_ledger row for the
+adjustment and on the points_ledger admin_set row for loyalty
+edits. REQUIRED by the backend whenever wallet_adjustment,
+wallet_balance, OR loyalty_points is sent (R115 extended the
+rule to loyalty — the audit trail must explain WHY). Kept
+schema-optional because OpenAPI cannot express the conditional
+requirement. Trimmed and capped at 500 chars.
+
+loyalty_tier is NO LONGER EDITABLE (R115): tiers derive
+strictly from net qualifying spend; sending loyalty_tier is
+rejected with 400 INVALID_DATA.
  */
   note?: string;
 }
@@ -2012,9 +2025,74 @@ Clamped server-side to [1, 200].
   limit?: number;
 };
 
+export type GetWalletLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+};
+
+export type GetWalletLedger200ItemType =
+  (typeof GetWalletLedger200ItemType)[keyof typeof GetWalletLedger200ItemType];
+
+export const GetWalletLedger200ItemType = {
+  topup: "topup",
+  purchase: "purchase",
+  refund: "refund",
+  adjustment: "adjustment",
+  referral_credit: "referral_credit",
+} as const;
+
+export type GetWalletLedger200Item = {
+  id?: number;
+  type?: GetWalletLedger200ItemType;
+  /** Arabic label */
+  type_label?: string;
+  amount?: number;
+  balance_after?: number;
+  /** @nullable */
+  reference_type?: string | null;
+  /** @nullable */
+  description?: string | null;
+  created_at?: string;
+};
+
 export type GetCart200 = {
   items: CartItem[];
   total: number;
+};
+
+export type GetLoyaltyLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+};
+
+export type GetLoyaltyLedger200ItemType =
+  (typeof GetLoyaltyLedger200ItemType)[keyof typeof GetLoyaltyLedger200ItemType];
+
+export const GetLoyaltyLedger200ItemType = {
+  purchase_award: "purchase_award",
+  refund_reversal: "refund_reversal",
+  referral_credit: "referral_credit",
+  conversion_out: "conversion_out",
+  admin_set: "admin_set",
+  correction: "correction",
+} as const;
+
+export type GetLoyaltyLedger200Item = {
+  id?: number;
+  type?: GetLoyaltyLedger200ItemType;
+  /** Arabic label */
+  type_label?: string;
+  points_delta?: number;
+  points_after?: number;
+  /** @nullable */
+  lyd_credited?: number | null;
+  created_at?: string;
 };
 
 export type ListAdminOrdersParams = {
@@ -2109,6 +2187,20 @@ rows only, ≤200 newest first.
  */
   search?: string | null;
 };
+
+export type AdminPricingCalculateBody = {
+  product_id?: number;
+  /** The sellable unit (preferred input) */
+  variant_id?: number;
+  /** Manual sandbox list price (LYD) */
+  price?: number;
+  /** Manual sandbox cost (LYD) */
+  cost_price?: number;
+  coupon_code?: string;
+  simulate_referred?: boolean;
+};
+
+export type AdminPricingCalculate200 = { [key: string]: unknown };
 
 export type ListAdminUsersParams = {
   /**

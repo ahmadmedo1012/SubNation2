@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, referralEventsTable } from "@workspace/db";
+import { db, usersTable, referralEventsTable, pointsLedgerTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { idempotency } from "../middlewares/idempotency";
@@ -11,7 +11,8 @@ import {
   isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
-import { POINTS_PER_LYD, POINTS_PER_REFERRAL, TIER_THRESHOLDS } from "../lib/loyalty-tiers";
+import { POINTS_PER_LYD, POINTS_PER_REFERRAL, TIER_THRESHOLDS, nextTier } from "../lib/loyalty-policy";
+import { insertPointsLedgerEntry } from "../lib/points-ledger";
 
 /** Internal control-flow error for transactional conflicts. */
 class ConflictError extends Error {}
@@ -27,20 +28,10 @@ router.use((_req, res, next) => {
   next();
 });
 
-// Single source of truth moved to lib/loyalty-tiers (services import from
-// there; this route re-exports for backward compatibility).
-import { computeTier as _computeTier } from "../lib/loyalty-tiers";
-void _computeTier;
-
-function computeNextTier(spend: number): { tier: string; label: string; remaining: number } | null {
-  if (spend < TIER_THRESHOLDS.silver)
-    return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - spend };
-  if (spend < TIER_THRESHOLDS.gold)
-    return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - spend };
-  if (spend < TIER_THRESHOLDS.platinum)
-    return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - spend };
-  return null;
-}
+// Single source of truth lives in lib/loyalty-policy (R115: tiers +
+// earn/redeem/referral/welcome policy + formulas — including nextTier,
+// used by the GET below).
+void 0;
 
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
@@ -64,7 +55,7 @@ router.get("/", requireUser, async (req, res) => {
   const creditedCount = referrals.filter((r) => r.status === "credited").length;
   const pendingCount = referrals.filter((r) => r.status === "pending").length;
 
-  const nextTier = computeNextTier(parseFloat(String(user.lifetimeSpend)));
+  const nextTierInfo = nextTier(parseFloat(String(user.lifetimeSpend)));
 
   return res.json({
     points: user.loyaltyPoints,
@@ -77,7 +68,7 @@ router.get("/", requireUser, async (req, res) => {
     referrals_credited: creditedCount,
     referrals_pending: pendingCount,
     points_value_lyd: (user.loyaltyPoints / POINTS_PER_LYD).toFixed(2),
-    next_tier: nextTier,
+    next_tier: nextTierInfo,
     tier_thresholds: TIER_THRESHOLDS,
     points_rate: { points_per_referral: POINTS_PER_REFERRAL, points_per_lyd: POINTS_PER_LYD },
   });
@@ -203,7 +194,9 @@ router.post(
 
         // Ledger parity with every other balance mutation (Constitution §I):
         // without this row the credit is unreconstructable from wallet_ledger.
-        await insertLedgerEntry(
+        // R115: the returned id links the points_ledger conversion_out row to
+        // the wallet credit it produced (rate pinned in-row via lyd_credited).
+        const walletLedgerRowId = await insertLedgerEntry(
           {
             userId,
             type: "adjustment",
@@ -212,6 +205,21 @@ router.post(
             balanceAfter: String(newBalance),
             referenceType: "loyalty_conversion",
             description: `تحويل ${pointsToConvert} نقطة ولاء إلى رصيد`,
+          },
+          tx as unknown as typeof db,
+        );
+
+        // R115 (Part 8): attribute the points side of the conversion.
+        await insertPointsLedgerEntry(
+          {
+            userId,
+            type: "conversion_out",
+            pointsDelta: -pointsToConvert,
+            pointsBefore: user.loyaltyPoints,
+            pointsAfter: newPoints,
+            lydCredited: lydValue,
+            referenceId: walletLedgerRowId || undefined,
+            referenceType: "wallet_ledger",
           },
           tx as unknown as typeof db,
         );
@@ -259,6 +267,45 @@ router.post(
     }
   },
 );
+
+// R115 (Part 8): the user-facing POINTS HISTORY — every point movement
+// attributed (purchase awards, referral credits, conversions out, refund
+// reversals, admin corrections), newest first. The balance is finally
+// explainable in the UI: "why do I have exactly 750 points?" is a list.
+const POINTS_TYPE_LABELS: Record<string, string> = {
+  purchase_award: "نقاط شراء",
+  refund_reversal: "استرداد نقاط",
+  referral_credit: "نقاط إحالة",
+  conversion_out: "تحويل إلى رصيد",
+  admin_set: "تسوية إدارية",
+  correction: "تسوية",
+};
+
+router.get("/ledger", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
+
+  const limitRaw = Number(req.query.limit ?? 100);
+  const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
+
+  const entries = await db
+    .select()
+    .from(pointsLedgerTable)
+    .where(eq(pointsLedgerTable.userId, userId))
+    .orderBy(desc(pointsLedgerTable.createdAt), desc(pointsLedgerTable.id))
+    .limit(limit);
+
+  return res.json(
+    entries.map((e) => ({
+      id: e.id,
+      type: e.type,
+      type_label: POINTS_TYPE_LABELS[e.type] ?? e.type,
+      points_delta: e.pointsDelta,
+      points_after: e.pointsAfter,
+      lyd_credited: e.lydCredited != null ? parseFloat(String(e.lydCredited)) : null,
+      created_at: e.createdAt.toISOString(),
+    })),
+  );
+});
 
 router.get("/referrals", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;

@@ -66,6 +66,18 @@ export const ordersTable = pgTable(
     deliveredUsageTerms: text("delivered_usage_terms"),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     couponCode: varchar("coupon_code", { length: 50 }),
+    /**
+     * R115 (V1-M22): first-class refund reconciliation. Previously a
+     * refund was only reconstructable by joining wallet_ledger (type
+     * 'refund', reference_id = order id) — refunded_at/amount/by now live
+     * on the order itself, written by RefundService in the same tx as the
+     * status flip. refund_amount <= amount is DB-enforced; partial refunds
+     * are not a product concept yet (full refunds only) but the column is
+     * sized for them.
+     */
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+    refundAmount: numeric("refund_amount", { precision: 10, scale: 2 }),
+    refundedByAdminId: integer("refunded_by_admin_id"),
     // R97-DB-03 (D3 closure, round-97 F7): the live DB column is
     // NOT NULL DEFAULT 0.00 (created that way by migrate.ts boot SQL);
     // the schema TS was the lenient twin — drizzle-kit generate would

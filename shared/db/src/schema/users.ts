@@ -45,6 +45,15 @@ export const usersTable = pgTable(
     referredBy: integer("referred_by").references((): AnyPgColumn => usersTable.id, {
       onDelete: "set null",
     }),
+    /**
+     * R115 (welcome-bonus policy B): true once the referred user has
+     * received the WELCOME_BONUS_LYD wallet credit. All channels grant it
+     * on the FIRST APPROVED TOPUP (topup.service, same tx as the referrer
+     * credit) — this flag is the exactly-once guard. Pre-R115 referred
+     * users who already got the instant credit are backfilled true by
+     * V1-M21 (their wallet_ledger referral_signup row is the evidence).
+     */
+    welcomeBonusGranted: boolean("welcome_bonus_granted").notNull().default(false),
     onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     onboardingStep: integer("onboarding_step").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

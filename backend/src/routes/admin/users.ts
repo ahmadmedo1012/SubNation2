@@ -9,6 +9,7 @@ import { idempotency } from "../../middlewares/idempotency";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempotency";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
+import { insertPointsLedgerEntry } from "../../lib/points-ledger";
 
 const router = Router();
 
@@ -149,22 +150,33 @@ router.patch(
     const { wallet_balance, wallet_adjustment, loyalty_points, loyalty_tier, note } =
       req.body ?? {};
 
-    // ── Loyalty path: guarded (optimistic-lock) UPDATE — 93-A1 S6 ──────
+    // ── Loyalty path — R115: attributed, transactional, finance-gated ──
     //
-    // S6/93-A2: this used to be an absolute `SET loyalty_points = X` with
-    // no predicate on prior state, racing the referral award's ATOMIC
-    // `loyaltyPoints = loyaltyPoints + 50` (topup.service) — an admin edit
-    // built from a stale read silently erased a concurrently-credited
-    // award. Points are LYD-convertible money (100:1 via /loyalty/
-    // convert-points), so this is the compare-and-set the wallet side
-    // already has (AdjustmentService). 0 flipped rows → 409, the admin
-    // re-reads and retries.
-    //
-    // Ordering note: the loyalty guard runs BEFORE the wallet adjustment
-    // on purpose. A 409 here leaves ZERO mutations applied; had it run
-    // after, a wallet adjustment could commit and then the loyalty 409
-    // would leave a partially-applied PATCH (a retry would double-credit
-    // the wallet — the idempotency middleware does not cache non-2xx).
+    // History: an absolute `SET loyalty_points = X` (93-A1 S6 added the
+    // CAS), then still a bare autocommit UPDATE with no durable record —
+    // audit rows logged the field NAME only, and a wallet-branch failure
+    // after it left the mutation unattributed (R115-A1 P1). Now:
+    //   - the mutation + its points_ledger admin_set row commit in ONE tx
+    //   - the audit row carries before/after VALUES (not just the field)
+    //   - a reason (note) is mandatory — same rule as wallet edits
+    //   - the `finance` scope is required — points are LYD-convertible
+    //     money (100:1), the same B1-3 rationale as the wallet branch
+    //   - loyalty_tier is NO LONGER EDITABLE: tiers derive strictly from
+    //     net qualifying spend (R115 Part 11) — checkout/refund write
+    //     computeTier(lifetimeSpend) and would silently clobber any
+    //     manual value, the exact "unexplained tier/spend mismatch" the
+    //     final policy forbids.
+
+    if (loyalty_tier !== undefined) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "مستوى الولاء مشتق تلقائياً من الإنفاق الصافي ولا يُعدّل يدوياً — عدّل الإنفاق أو راجع سياسة المستويات",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
 
     // M5 — loyalty_points was bounded only by `>= 0`: a compromised or
     // fat-fingered admin could set 1e15 points, which the user then
@@ -174,34 +186,54 @@ router.patch(
     // a nation-state money-printer. Ints only: fractional points would
     // corrupt the convert-points math.
     const MAX_ADMIN_SET_LOYALTY_POINTS = 10_000_000;
-    const loyaltySet: Record<string, unknown> = {};
-    if (
-      typeof loyalty_points === "number" &&
-      Number.isInteger(loyalty_points) &&
-      loyalty_points >= 0 &&
-      loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
-    ) {
-      loyaltySet.loyaltyPoints = loyalty_points;
-    } else if (loyalty_points !== undefined) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse(
-            "نقاط الولاء يجب أن تكون عدداً صحيحاً بين 0 و 10,000,000",
-            ErrorCode.INVALID_DATA,
-          ),
-        );
-    }
-    if (
-      typeof loyalty_tier === "string" &&
-      ["bronze", "silver", "gold", "platinum"].includes(loyalty_tier)
-    ) {
-      loyaltySet.loyaltyTier = loyalty_tier;
-    }
+    let loyaltyApplied: { before: number; after: number } | null = null;
+    if (loyalty_points !== undefined) {
+      if (
+        !(
+          typeof loyalty_points === "number" &&
+          Number.isInteger(loyalty_points) &&
+          loyalty_points >= 0 &&
+          loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
+        )
+      ) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "نقاط الولاء يجب أن تكون عدداً صحيحاً بين 0 و 10,000,000",
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
+      // R115: points are convertible money — same finance gate as the
+      // wallet branch below (a users-scoped admin could previously mint
+      // them; R115-A1 P2).
+      const actingPermsLoyalty = (req as AdminAuthenticatedRequest).adminPermissions ?? [];
+      if (!hasPermission(actingPermsLoyalty, PERMISSION_SCOPES.FINANCE)) {
+        return res
+          .status(403)
+          .json(
+            createErrorResponse(
+              "تعديل نقاط الولاء يتطلب صلاحية «المعاملات المالية» (finance)",
+              ErrorCode.FORBIDDEN,
+            ),
+          );
+      }
+      // R115: mandatory reason — the audit trail must explain WHY the
+      // balance changed (wallet-branch parity, A8-09).
+      if (typeof note !== "string" || note.trim().length < 3) {
+        return res
+          .status(400)
+          .json(
+            createErrorResponse(
+              "سبب التعديل (note) مطلوب لتعديل نقاط الولاء — 3 أحرف على الأقل",
+              ErrorCode.INVALID_DATA,
+            ),
+          );
+      }
 
-    if (Object.keys(loyaltySet).length > 0) {
       const [currentRow] = await db
-        .select({ loyaltyPoints: usersTable.loyaltyPoints, loyaltyTier: usersTable.loyaltyTier })
+        .select({ loyaltyPoints: usersTable.loyaltyPoints })
         .from(usersTable)
         .where(eq(usersTable.id, id))
         .limit(1);
@@ -209,35 +241,51 @@ router.patch(
         return res.status(404).json(createErrorResponse("المستخدم غير موجود", ErrorCode.NOT_FOUND));
       }
 
-      // Guard on the pre-read values for every column this UPDATE touches
-      // (points always; tier only when it is part of the write set).
-      const guardConditions = [
-        eq(usersTable.id, id),
-        eq(usersTable.loyaltyPoints, currentRow.loyaltyPoints),
-      ];
-      if (loyaltySet.loyaltyTier !== undefined) {
-        guardConditions.push(eq(usersTable.loyaltyTier, currentRow.loyaltyTier));
-      }
-
-      const flipped = await db
-        .update(usersTable)
-        .set(loyaltySet)
-        .where(and(...guardConditions))
-        .returning({ id: usersTable.id });
-
-      if (flipped.length === 0) {
-        // Concurrent mutation between our read and our write (referral
-        // award, refund reversal, another admin) — the absolute edit was
-        // built on stale state. Retry-safe: nothing was applied.
-        return res
-          .status(409)
-          .json(
-            createErrorResponse(
-              "نقاط الولاء تغيّرت أثناء التعديل (عملية متزامنة) — حدّث الصفحة وأعد المحاولة",
-              ErrorCode.CONFLICT,
-              { reason: "loyalty_concurrent_modification" },
-            ),
-          );
+      const before = currentRow.loyaltyPoints;
+      const delta = loyalty_points - before;
+      if (delta !== 0) {
+        try {
+          await db.transaction(async (tx) => {
+            // S6/93-A2 CAS discipline preserved: guard on the pre-read
+            // value so a concurrent award/refund forces a 409 retry
+            // instead of being silently erased.
+            const flipped = await tx
+              .update(usersTable)
+              .set({ loyaltyPoints: loyalty_points })
+              .where(and(eq(usersTable.id, id), eq(usersTable.loyaltyPoints, before)))
+              .returning({ id: usersTable.id });
+            if (flipped.length === 0) {
+              throw new Error("LOYALTY_CONCURRENT_MODIFICATION");
+            }
+            // R115 (Part 8): the durable record — same tx as the mutation.
+            await insertPointsLedgerEntry(
+              {
+                userId: id,
+                type: "admin_set",
+                pointsDelta: delta,
+                pointsBefore: before,
+                pointsAfter: loyalty_points,
+                actorAdminId: adminId,
+                reason: note.trim().slice(0, 500),
+              },
+              tx as unknown as typeof db,
+            );
+          });
+          loyaltyApplied = { before, after: loyalty_points };
+        } catch (err) {
+          if (err instanceof Error && err.message === "LOYALTY_CONCURRENT_MODIFICATION") {
+            return res
+              .status(409)
+              .json(
+                createErrorResponse(
+                  "نقاط الولاء تغيّرت أثناء التعديل (عملية متزامنة) — حدّث الصفحة وأعد المحاولة",
+                  ErrorCode.CONFLICT,
+                  { reason: "loyalty_concurrent_modification" },
+                ),
+              );
+          }
+          throw err;
+        }
       }
     }
 
@@ -325,7 +373,7 @@ router.patch(
       }
     }
 
-    if (!walletResult && Object.keys(loyaltySet).length === 0) {
+    if (!walletResult && !loyaltyApplied) {
       return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
     }
 
@@ -338,10 +386,19 @@ router.patch(
     }
 
     void writeAuditLog(req, "user.update", "user", id, {
-      fields_changed: [...(walletResult ? ["walletBalance"] : []), ...Object.keys(loyaltySet)],
-      // F-004 — record the actual amount on the audit row so the trail
-      // is reconstructable without joining the ledger.
+      fields_changed: [
+        ...(walletResult ? ["walletBalance"] : []),
+        ...(loyaltyApplied ? ["loyaltyPoints"] : []),
+      ],
+      // F-004 — record the actual values on the audit row so the trail
+      // is reconstructable without joining the ledgers. R115: the loyalty
+      // values ride here too (previously only the field NAME was logged —
+      // R115-A1 P1); the authoritative record is the same-tx points_ledger
+      // admin_set row, this is the secondary operator-facing trail.
       ...(walletResult ? { wallet_balance_after: walletResult.walletBalance } : {}),
+      ...(loyaltyApplied
+        ? { loyalty_points_before: loyaltyApplied.before, loyalty_points_after: loyaltyApplied.after }
+        : {}),
     });
 
     return res.json({

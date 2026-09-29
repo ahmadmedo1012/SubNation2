@@ -12,7 +12,7 @@ import {
 } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { loyaltyRouter } from "../loyalty";
-import { POINTS_PER_LYD, TIER_THRESHOLDS } from "../../lib/loyalty-tiers";
+import { POINTS_PER_LYD, TIER_THRESHOLDS } from "../../lib/loyalty-policy";
 
 /**
  * Integration tests for the loyalty API (r4-2d / testing-audit gap #1).

@@ -53,7 +53,12 @@ import {
 import { and, eq, gt, sql } from "drizzle-orm";
 import { logAdminAlert, type AlertType } from "../jobs/alertLogger";
 import { insertLedgerEntry } from "../lib/ledger";
-import { computeTier } from "../lib/loyalty-tiers";
+import { computeTier } from "../lib/loyalty-policy";
+import {
+  findRefundReversal,
+  insertPointsLedgerEntry,
+  remainingAwardForOrder,
+} from "../lib/points-ledger";
 import { getFulfillmentProvider } from "./providers/registry";
 
 /**
@@ -172,10 +177,39 @@ export class RefundService {
       const balanceBefore = parseFloat(String(user.walletBalance));
       const balanceAfter = +(balanceBefore + amount).toFixed(2);
 
-      // Loyalty reversal — mirror of checkout.service award: refunded money
-      // must not keep its points, lifetime spend, or tier. Floor at zero so a
-      // partially-spent balance can't go negative.
-      const pointsToRevoke = Math.min(Math.floor(amount), user.loyaltyPoints);
+      // R115 (Part 9): PRECISE reversal — revoke exactly the unspent
+      // remainder of THIS order's award, never points from other sources.
+      //
+      // remainingAwardForOrder replays the user's points_ledger as a FIFO
+      // source pool: conversions spend the OLDEST points first, so the
+      // order's own award is "still in the pool" only to the extent the
+      // user did not convert it away. Three outcomes:
+      //   precise:true  → revoke min(remaining, balance)
+      //   precise:false + award row (post-admin-rebalance) → bounded cap:
+      //                     revoke min(awarded − alreadyRevoked, balance)
+      //   no award row (pre-V1-M21 order) → legacy frozen formula
+      //                     floor(orders.amount) — derivable from the row
+      // Spent points are NOT clawed back from the wallet (converted value
+      // is gone money — admin-gated business cost, documented in
+      // docs/loyalty/FINAL_LOYALTY_POLICY.md). Unrelated points (referral,
+      // welcome, admin grants) are untouchable by construction.
+      const awardRow = await remainingAwardForOrder(order.userId, orderId, tx as unknown as typeof db);
+      const priorReversal = await findRefundReversal(orderId, tx as unknown as typeof db);
+      const alreadyRevoked = priorReversal ? -priorReversal.pointsDelta : 0;
+      let awardRemainder: number;
+      if (awardRow.precise) {
+        awardRemainder = awardRow.remaining;
+      } else if (awardRow.remaining > 0 || alreadyRevoked > 0) {
+        // Award row exists but attribution was broken by a later admin
+        // rebalance — bounded cap semantics.
+        awardRemainder = awardRow.remaining;
+      } else {
+        // No award row at all — pre-ledger order: the frozen historical
+        // formula, derivable from orders.amount itself.
+        awardRemainder = Math.max(0, Math.floor(amount) - alreadyRevoked);
+      }
+      const pointsToRevoke = Math.min(awardRemainder, user.loyaltyPoints);
+      const pointsBeforeReversal = user.loyaltyPoints;
       const newPoints = user.loyaltyPoints - pointsToRevoke;
       const newLifetimeSpend = +Math.max(
         0,
@@ -221,9 +255,16 @@ export class RefundService {
       // Status flip: completed → refunded. Status-guarded so concurrent
       // refunds from two admins serialize cleanly — second one sees
       // rowsAffected=0 and the whole tx rolls back; user is credited once.
+      // R115 (V1-M22): the flip also writes the first-class refund
+      // reconciliation columns (refunded_at / refund_amount / refunded_by).
       const statusFlipped = await tx
         .update(ordersTable)
-        .set({ status: "refunded" })
+        .set({
+          status: "refunded",
+          refundedAt: new Date(),
+          refundAmount: String(amount),
+          refundedByAdminId: adminId,
+        })
         .where(and(eq(ordersTable.id, orderId), eq(ordersTable.status, "completed")))
         .returning({ id: ordersTable.id });
       if (statusFlipped.length !== 1) {
@@ -295,6 +336,28 @@ export class RefundService {
           ? `Refund for order ${order.orderCode}: ${(note ?? "").trim().slice(0, 400)}`
           : `Refund for order ${order.orderCode}`;
 
+      // R115 (Part 8/9): attribute the reversal in points_ledger — same
+      // tx, referencing THIS order. delta is strictly negative; a zero
+      // revoke (award already fully spent) writes NO row (the ledger's
+      // delta<>0 CHECK) — the orders.refund_* columns then carry the
+      // story. The partial UNIQUE (refund_reversal, order) makes a double
+      // reversal structurally impossible even if two refunds raced past
+      // the status guard.
+      if (pointsToRevoke > 0) {
+        await insertPointsLedgerEntry(
+          {
+            userId: order.userId,
+            type: "refund_reversal",
+            pointsDelta: -pointsToRevoke,
+            pointsBefore: pointsBeforeReversal,
+            pointsAfter: newPoints,
+            referenceId: orderId,
+            referenceType: "order",
+          },
+          tx as unknown as typeof db,
+        );
+      }
+
       await insertLedgerEntry(
         {
           userId: order.userId,
@@ -309,11 +372,11 @@ export class RefundService {
         tx as unknown as typeof db,
       );
 
-      // Audit-trail breadcrumb for who did it. `adminId` reaches the
-      // ledger via referenceId-on-adjustments elsewhere; refunds use
-      // referenceId for the order (more useful for reconciliation), so
-      // adminId rides the audit log layer at the route level instead.
-      void adminId;
+      // Audit-trail breadcrumb for who did it. R115: adminId is now also
+      // persisted first-class on the order (orders.refunded_by_admin_id,
+      // V1-M22); refunds keep referenceId = orderId here (more useful for
+      // reconciliation) and the audit log layer at the route level stays
+      // the secondary trail.
 
       return {
         orderId,

@@ -1,0 +1,94 @@
+import {
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { usersTable } from "./users";
+
+/**
+ * points_ledger — append-only loyalty attribution ledger (R115, Part 8).
+ *
+ * users.loyalty_points stays the cached balance (speed); this table makes
+ * every point mutation reconstructable: "why does this user have exactly
+ * 750 points?" is a SELECT away, and reconciliation is
+ *   loyalty_points == points_after of the user's latest row
+ *   (and Σ points_delta over all rows).
+ *
+ * Sources (one row per mutation, same transaction as the balance write):
+ *   purchase_award   reference order          checkout.service
+ *   refund_reversal  reference order          refund.service (exact
+ *                     unrevoked remainder of that order's award — never
+ *                     points from other sources)
+ *   referral_credit  reference referral_event topup.service / admin credit
+ *   conversion_out   reference wallet_ledger  routes/loyalty convert-points
+ *                     (lyd_credited pins the rate in-row)
+ *   admin_set        actor + reason           admin users PATCH (delta
+ *                     against the prior balance — reason mandatory)
+ *   correction       reason                   R115 opening balances only
+ *
+ * Structural guards (V1-M21):
+ *   CHECK (points_after = points_before + points_delta)
+ *   CHECK (points_delta <> 0)
+ *   CHECK (points_before >= 0 AND points_after >= 0)
+ *   partial UNIQUE (type, reference_id) WHERE reference_id IS NOT NULL
+ *     → one award/reversal/credit per source row (double-grant impossible)
+ *   CHECK reason present for admin_set/correction
+ *
+ * Retention: NEVER delete from this table (audit trail; excluded from all
+ * retention jobs — same class as wallet_ledger).
+ */
+export const pointsLedgerTypeEnum = pgEnum("points_ledger_type", [
+  "purchase_award",
+  "refund_reversal",
+  "referral_credit",
+  "conversion_out",
+  "admin_set",
+  "correction",
+]);
+
+export const pointsLedgerTable = pgTable(
+  "points_ledger",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    type: pointsLedgerTypeEnum("type").notNull(),
+    /** Signed delta: positive = earned, negative = revoked/spent. */
+    pointsDelta: integer("points_delta").notNull(),
+    pointsBefore: integer("points_before").notNull(),
+    pointsAfter: integer("points_after").notNull(),
+    /** Present only for conversion_out — the LYD credit this conversion
+     * yielded at the then-current rate (rate pinned in-row, so a future
+     * POINTS_PER_LYD change never rewrites history). */
+    lydCredited: numeric("lyd_credited", { precision: 10, scale: 2 }),
+    referenceId: integer("reference_id"),
+    referenceType: varchar("reference_type", { length: 50 }),
+    /** Who performed an admin_set (admin user id). NULL for user actions. */
+    actorAdminId: integer("actor_admin_id"),
+    /** Mandatory for admin_set / correction (DB-enforced). */
+    reason: varchar("reason", { length: 500 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index("idx_points_ledger_user").on(t.userId),
+    typeIdx: index("idx_points_ledger_type").on(t.type),
+    userCreatedIdx: index("idx_points_ledger_user_created").on(t.userId, t.createdAt),
+    // Structural exactly-once per source: one purchase_award / one
+    // refund_reversal per order, one referral_credit per referral_event,
+    // one conversion_out per wallet_ledger row. admin_set / correction
+    // carry reference_id NULL and are exempt.
+    sourceUnique: index("uniq_points_ledger_type_reference")
+      .on(t.type, t.referenceId)
+      .where(sql`reference_id IS NOT NULL`),
+  }),
+);
+
+export type PointsLedgerEntry = typeof pointsLedgerTable.$inferSelect;

@@ -5,6 +5,7 @@ import {
   adminUsersTable,
   db,
   initTestDb,
+  pointsLedgerTable,
   resetTestDb,
   usersTable,
   walletLedgerTable,
@@ -184,12 +185,15 @@ beforeEach(async () => {
 });
 
 describe("PATCH /api/admin/users/:id — loyalty happy paths (S6 guard, no race)", () => {
-  it("sets loyalty_points; tier and wallet untouched", async () => {
+  it("sets loyalty_points; tier and wallet untouched — and the admin_set delta lands in points_ledger (R115)", async () => {
     const userId = await seedUser({ loyaltyPoints: 100 });
     const token = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {
-      const { status, body } = await patchUser(url, token, userId, { loyalty_points: 250 });
+      const { status, body } = await patchUser(url, token, userId, {
+        loyalty_points: 250,
+        note: "تسوية نقاط تجريبية",
+      });
       expect(status).toBe(200);
       expect(body.loyalty_points).toBe(250);
 
@@ -197,24 +201,57 @@ describe("PATCH /api/admin/users/:id — loyalty happy paths (S6 guard, no race)
       expect(row.loyaltyPoints).toBe(250);
       expect(row.loyaltyTier).toBe("bronze");
       expect(String(row.walletBalance)).toBe("0.00");
+
+      // R115: the mutation is attributed — one admin_set row, delta +150,
+      // before/after pinned, reason recorded.
+      const entries = await db
+        .select()
+        .from(pointsLedgerTable)
+        .where(eq(pointsLedgerTable.userId, userId));
+      expect(entries).toHaveLength(1);
+      expect(entries[0].type).toBe("admin_set");
+      expect(entries[0].pointsDelta).toBe(150);
+      expect(entries[0].pointsBefore).toBe(100);
+      expect(entries[0].pointsAfter).toBe(250);
+      expect(entries[0].reason).toBe("تسوية نقاط تجريبية");
     } finally {
       close();
     }
   });
 
-  it("sets a valid loyalty_tier alongside points", async () => {
+  it("R115: loyalty_points WITHOUT a note → 400 (the audit trail must explain WHY), nothing applied", async () => {
     const userId = await seedUser({ loyaltyPoints: 100 });
     const token = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {
-      const { status } = await patchUser(url, token, userId, {
+      const { status } = await patchUser(url, token, userId, { loyalty_points: 250 });
+      expect(status).toBe(400);
+      expect((await getUser(userId)).loyaltyPoints).toBe(100);
+      const entries = await db
+        .select()
+        .from(pointsLedgerTable)
+        .where(eq(pointsLedgerTable.userId, userId));
+      expect(entries).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("R115: loyalty_tier is derived (net spend) — any tier edit is rejected with 400, nothing applied", async () => {
+    const userId = await seedUser({ loyaltyPoints: 100 });
+    const token = await seedAdmin();
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status, body } = await patchUser(url, token, userId, {
         loyalty_points: 120,
         loyalty_tier: "gold",
+        note: "محاولة تعيين مستوى يدوي",
       });
-      expect(status).toBe(200);
+      expect(status).toBe(400);
+      expect(body.code).toBe("INVALID_DATA");
       const row = await getUser(userId);
-      expect(row.loyaltyPoints).toBe(120);
-      expect(row.loyaltyTier).toBe("gold");
+      expect(row.loyaltyPoints).toBe(100); // not applied either
+      expect(row.loyaltyTier).toBe("bronze");
     } finally {
       close();
     }
@@ -277,7 +314,10 @@ describe("PATCH /api/admin/users/:id — loyalty happy paths (S6 guard, no race)
     const token = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {
-      const { status } = await patchUser(url, token, 999_999, { loyalty_points: 10 });
+      const { status } = await patchUser(url, token, 999_999, {
+        loyalty_points: 10,
+        note: "مستخدم غير موجود",
+      });
       expect(status).toBe(404);
     } finally {
       close();
@@ -326,14 +366,23 @@ describe("PATCH /api/admin/users/:id — B1-3 wallet mutations require the finan
     }
   });
 
-  it("loyalty edits stay available to a users-only admin (the users-scope surface is unchanged)", async () => {
+  it("R115: loyalty edits now require finance too (points are convertible money — parity with the wallet branch)", async () => {
     const userId = await seedUser({ loyaltyPoints: 100 });
-    const token = await seedAdmin(["users"]);
+    const token = await seedAdmin(["users"]); // the OLD mount scope alone
     const { url, close } = await listen(buildApp());
     try {
-      const { status, body } = await patchUser(url, token, userId, { loyalty_points: 250 });
-      expect(status).toBe(200);
-      expect(body.loyalty_points).toBe(250);
+      const { status, body } = await patchUser(url, token, userId, {
+        loyalty_points: 250,
+        note: "محاولة تعديل نقاط بدون صلاحية",
+      });
+      expect(status).toBe(403);
+      expect(body.code).toBe("FORBIDDEN");
+      expect((await getUser(userId)).loyaltyPoints).toBe(100); // untouched
+      const entries = await db
+        .select()
+        .from(pointsLedgerTable)
+        .where(eq(pointsLedgerTable.userId, userId));
+      expect(entries).toHaveLength(0);
     } finally {
       close();
     }
@@ -424,11 +473,17 @@ describe("PATCH /api/admin/users/:id — the S6 race (concurrent referral award)
     const { url, close } = await listen(buildApp());
     try {
       injectConcurrentLoyaltyAward(userId, 50);
-      const raced = await patchUser(url, token, userId, { loyalty_points: 200 });
+      const raced = await patchUser(url, token, userId, {
+        loyalty_points: 200,
+        note: "إعادة تعيين بعد سباق",
+      });
       expect(raced.status).toBe(409);
 
       // Admin refreshes (sees 150), retries — guard matches now.
-      const retried = await patchUser(url, token, userId, { loyalty_points: 200 });
+      const retried = await patchUser(url, token, userId, {
+        loyalty_points: 200,
+        note: "إعادة تعيين بعد سباق",
+      });
       expect(retried.status).toBe(200);
       expect((await getUser(userId)).loyaltyPoints).toBe(200);
     } finally {
@@ -436,15 +491,19 @@ describe("PATCH /api/admin/users/:id — the S6 race (concurrent referral award)
     }
   });
 
-  it("tier-only edit is guarded on the points pre-read too (conservative compare-and-set)", async () => {
+  it("R115: tier-only edits are 400 (derived) — rejected before ANY user read, so nothing can race", async () => {
     const userId = await seedUser({ loyaltyPoints: 100, loyaltyTier: "bronze" });
     const token = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {
-      injectConcurrentLoyaltyAward(userId, 50);
-      const { status } = await patchUser(url, token, userId, { loyalty_tier: "silver" });
-      expect(status).toBe(409);
-      expect((await getUser(userId)).loyaltyTier).toBe("bronze"); // not applied
+      const { status } = await patchUser(url, token, userId, {
+        loyalty_tier: "silver",
+        note: "محاولة مستوى يدوي",
+      });
+      expect(status).toBe(400); // tiers are derived — rejected before any read
+      const row = await getUser(userId);
+      expect(row.loyaltyTier).toBe("bronze"); // not applied
+      expect(row.loyaltyPoints).toBe(100); // untouched (the award hook never fired — no read happened)
     } finally {
       close();
     }

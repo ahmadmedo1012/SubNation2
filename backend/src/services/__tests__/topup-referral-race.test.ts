@@ -66,6 +66,12 @@ async function seedReferralSetup() {
   const referee = await makeUser({
     walletBalance: "0.00",
     referredBy: referrer.id,
+    // R115: mark the welcome bonus as already granted so THIS suite stays
+    // focused on the referral-credit race mechanics (the referee's wallet
+    // ends at exactly the topup amount). The welcome-bonus policy itself
+    // (grant-on-first-approved-topup, guarded flip) has its own dedicated
+    // tests in referral-welcome-policy.test.ts.
+    welcomeBonusGranted: true,
   });
   const [event] = await db
     .insert(referralEventsTable)

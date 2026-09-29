@@ -1154,6 +1154,207 @@ export async function applyIdempotencyDropOrderFkStage(
   );
 }
 
+// ── V1-M21 (R115): points_ledger + users.welcome_bonus_granted ────────────
+// + users.loyalty_points >= 0 CHECK.
+//
+// Loyalty attribution ledger (audit finding A1-P2: 4 of 6 point-mutation
+// sites left no durable record; the balance was unauditable). Append-only,
+// same-transaction inserts at every writer. Structural guards:
+//   points_after = points_before + points_delta (arithmetic integrity)
+//   points_delta <> 0, both balances >= 0
+//   partial UNIQUE (type, reference_id) WHERE reference_id IS NOT NULL
+//     → exactly one purchase_award / refund_reversal per order, one
+//     referral_credit per referral_event, one conversion_out per
+//     wallet_ledger row (double-grant structurally impossible)
+//   reason required for admin_set / correction
+//
+// users.welcome_bonus_granted: the exactly-once guard for the R115 unified
+// welcome-bonus policy (grant on FIRST APPROVED TOPUP, all channels).
+// Backfill: referred users whose wallet_ledger already carries a
+// referral_signup credit got the bonus pre-R115 → flag them true so the
+// topup path never double-pays.
+//
+// users CHECK loyalty_points >= 0: probe-gated (V1-M9 discipline — alert +
+// skip, never break boot on legacy dirt; live recon 2026-09-29: 0 negative
+// balances). The CHECK joins the same constraint family V1-M9 built for
+// the money tables — points are LYD-convertible at 100:1, so a negative
+// balance is money creation.
+export async function applyPointsLedgerStage(execute: SqlExecutor = defaultExecutor): Promise<void> {
+  await execute(sql`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'points_ledger_type') THEN
+        CREATE TYPE points_ledger_type AS ENUM (
+          'purchase_award', 'refund_reversal', 'referral_credit',
+          'conversion_out', 'admin_set', 'correction'
+        );
+      END IF;
+    END $$;
+  `);
+  await execute(sql`
+    CREATE TABLE IF NOT EXISTS points_ledger (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type points_ledger_type NOT NULL,
+      points_delta INTEGER NOT NULL,
+      points_before INTEGER NOT NULL,
+      points_after INTEGER NOT NULL,
+      lyd_credited NUMERIC(10,2),
+      reference_id INTEGER,
+      reference_type VARCHAR(50),
+      actor_admin_id INTEGER,
+      reason VARCHAR(500),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT chk_points_ledger_arithmetic
+        CHECK (points_after = points_before + points_delta),
+      CONSTRAINT chk_points_ledger_delta_nonzero
+        CHECK (points_delta <> 0),
+      CONSTRAINT chk_points_ledger_balances_nonneg
+        CHECK (points_before >= 0 AND points_after >= 0),
+      CONSTRAINT chk_points_ledger_reason_for_manual
+        CHECK (type NOT IN ('admin_set', 'correction') OR reason IS NOT NULL)
+    );
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_points_ledger_user ON points_ledger (user_id);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_points_ledger_type ON points_ledger (type);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_points_ledger_user_created
+      ON points_ledger (user_id, created_at);
+  `);
+  await execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_points_ledger_type_reference
+      ON points_ledger (type, reference_id)
+      WHERE reference_id IS NOT NULL;
+  `);
+  // users.welcome_bonus_granted + backfill from the pre-R115 evidence.
+  await execute(sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_bonus_granted
+      BOOLEAN NOT NULL DEFAULT false;
+  `);
+  await execute(sql`
+    UPDATE users u
+    SET welcome_bonus_granted = true
+    WHERE u.referred_by IS NOT NULL
+      AND NOT u.welcome_bonus_granted
+      AND EXISTS (
+        SELECT 1 FROM wallet_ledger l
+        WHERE l.user_id = u.id
+          AND l.type = 'referral_credit'
+          AND l.reference_type = 'referral_signup'
+      );
+  `);
+  // loyalty_points >= 0 — probe-gated (V1-M9 discipline).
+  const negRows = extractRows(
+    await execute(sql`
+      SELECT COUNT(*)::int AS n FROM users WHERE loyalty_points < 0
+    `),
+  );
+  const negCount = Number(negRows[0]?.n ?? 0);
+  if (negCount > 0) {
+    recordConstraintSkip("db:constraint:chk_users_loyalty_points_nonneg");
+    logger.error(
+      { category: "storage", negative: negCount },
+      "V1-M21 SKIPPED users CHECK: negative loyalty_points rows exist — reconcile manually, then reboot to apply",
+    );
+  } else {
+    await execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'users'::regclass
+            AND conname = 'chk_users_loyalty_points_nonneg'
+        ) THEN
+          ALTER TABLE users
+            ADD CONSTRAINT chk_users_loyalty_points_nonneg
+            CHECK (loyalty_points >= 0);
+        END IF;
+      END $$;
+    `);
+  }
+  // Opening-balance corrections: one row per user whose balance predates
+  // the ledger. NO fabricated history (A11's decision): the opening row
+  // anchors Σdeltas = balance; per-event history starts from now.
+  await execute(sql`
+    INSERT INTO points_ledger
+      (user_id, type, points_delta, points_before, points_after,
+       reference_type, reason)
+    SELECT u.id, 'correction', u.loyalty_points, 0, u.loyalty_points,
+           'opening_balance',
+           'R115 ledger introduction: opening balance (pre-ledger history not reconstructed)'
+    FROM users u
+    WHERE NOT EXISTS (SELECT 1 FROM points_ledger pl WHERE pl.user_id = u.id)
+  `);
+  logger.info(
+    { category: "storage" },
+    "V1-M21: points_ledger + welcome_bonus_granted + loyalty_points CHECK (idempotent)",
+  );
+}
+
+// ── V1-M22 (R115): orders refund reconciliation columns ────────────────────
+// refunded_at / refund_amount / refunded_by_admin_id, written by
+// RefundService in the same transaction as the status flip. Backfills the
+// live refunded orders from wallet_ledger (type='refund', reference_id =
+// order id) — the evidence that has always existed, now surfaced on the
+// row it describes. refunded_by stays NULL for the backfill (pre-R115
+// refunds did not record the admin).
+export async function applyOrdersRefundColumnsStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS refund_amount NUMERIC(10,2),
+      ADD COLUMN IF NOT EXISTS refunded_by_admin_id INTEGER;
+  `);
+  const badRows = extractRows(
+    await execute(sql`
+      SELECT COUNT(*)::int AS n FROM orders
+      WHERE refund_amount IS NOT NULL AND (refund_amount <= 0 OR refund_amount > amount)
+    `),
+  );
+  const badCount = Number(badRows[0]?.n ?? 0);
+  if (badCount > 0) {
+    recordConstraintSkip("db:constraint:chk_orders_refund_amount_range");
+    logger.error(
+      { category: "storage", bad: badCount },
+      "V1-M22 SKIPPED orders CHECK: refund_amount rows outside (0, amount] — reconcile manually, then reboot to apply",
+    );
+  } else {
+    await execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'orders'::regclass
+            AND conname = 'chk_orders_refund_amount_range'
+        ) THEN
+          ALTER TABLE orders
+            ADD CONSTRAINT chk_orders_refund_amount_range
+            CHECK (refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount));
+        END IF;
+      END $$;
+    `);
+  }
+  // Backfill from wallet_ledger evidence (idempotent via refunded_at IS NULL).
+  await execute(sql`
+    UPDATE orders o
+    SET refunded_at = l.created_at,
+        refund_amount = l.amount
+    FROM wallet_ledger l
+    WHERE l.type = 'refund'
+      AND l.reference_type = 'order'
+      AND l.reference_id = o.id
+      AND o.status = 'refunded'
+      AND o.refunded_at IS NULL
+  `);
+  logger.info(
+    { category: "storage" },
+    "V1-M22: orders refund columns + backfill (idempotent)",
+  );
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -2942,6 +3143,18 @@ export async function runMigrations() {
     // BEFORE the first post-cutover topup; idempotent + probe-gated. See
     // applyIdempotencyDropOrderFkStage docs.
     await applyIdempotencyDropOrderFkStage();
+
+    // ── V1-M21 (R115, loyalty economics): points_ledger + ──
+    // users.welcome_bonus_granted + users.loyalty_points >= 0 CHECK.
+    // Append-only attribution ledger — every point mutation becomes
+    // reconstructable; structural exactly-once per source. Probe-gated
+    // CHECK follows the V1-M9 discipline. See applyPointsLedgerStage docs.
+    await applyPointsLedgerStage();
+
+    // ── V1-M22 (R115, refund reconciliation): orders.refunded_at / ──
+    // refund_amount / refunded_by_admin_id + backfill from wallet_ledger.
+    // Idempotent + probe-gated. See applyOrdersRefundColumnsStage docs.
+    await applyOrdersRefundColumnsStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

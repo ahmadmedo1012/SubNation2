@@ -137,9 +137,6 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "get", path: "/api/admin/settings/auth", category: "admin-gap" },
   { method: "patch", path: "/api/admin/settings/auth/{id}", category: "admin-gap" },
 
-  // admin-gap — pricing margin calculator (B3 B.1)
-  { method: "post", path: "/api/admin/pricing/calculate", category: "admin-gap" },
-
   // admin-gap — risk/anomaly detection family (B3 B.2: 10 ops)
   { method: "get", path: "/api/admin/risk/events", category: "admin-gap" },
   { method: "get", path: "/api/admin/risk/events/{id}", category: "admin-gap" },

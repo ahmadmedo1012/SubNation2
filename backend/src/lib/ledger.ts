@@ -24,22 +24,30 @@ export interface LedgerEntryParams {
  * atomically with the surrounding balance mutation. Errors propagate so the
  * caller's transaction rolls back — the ledger is the source of truth and
  * MUST not silently fail.
+ *
+ * R115: returns the inserted row's id so cross-ledger references can link
+ * to it (points_ledger conversion_out → the wallet credit it produced).
+ * Callers that ignore the return are unaffected.
  */
 export async function insertLedgerEntry(
   params: LedgerEntryParams,
   client: DbOrTx = db,
-): Promise<void> {
+): Promise<number> {
   try {
-    await client.insert(walletLedgerTable).values({
-      userId: params.userId,
-      type: params.type,
-      amount: params.amount,
-      balanceBefore: params.balanceBefore,
-      balanceAfter: params.balanceAfter,
-      referenceId: params.referenceId ?? null,
-      referenceType: params.referenceType ?? null,
-      description: params.description ?? null,
-    });
+    const [row] = await client
+      .insert(walletLedgerTable)
+      .values({
+        userId: params.userId,
+        type: params.type,
+        amount: params.amount,
+        balanceBefore: params.balanceBefore,
+        balanceAfter: params.balanceAfter,
+        referenceId: params.referenceId ?? null,
+        referenceType: params.referenceType ?? null,
+        description: params.description ?? null,
+      })
+      .returning({ id: walletLedgerTable.id });
+    return row?.id ?? 0;
   } catch (err) {
     logger.error({ err, params }, "Failed to insert wallet ledger entry");
     throw err;
@@ -47,10 +55,17 @@ export async function insertLedgerEntry(
 }
 
 /**
- * Ledger row for the 5 LYD signup bonus granted to referred new users.
- * Every path that inserts a user with `walletBalance: "5.00"` MUST call
- * this inside the same transaction, otherwise the balance is not
- * reconstructable from wallet_ledger (Constitution Principle I).
+ * RETIRED (R115 welcome-bonus policy B) — kept for its historical rows.
+ *
+ * Pre-R115, referred signups received an instant 5.00 LYD wallet credit
+ * and this helper wrote the matching referral_credit ledger row
+ * (reference_type='referral_signup'). Those rows remain meaningful: the
+ * V1-M21 backfill uses them as the evidence for marking
+ * users.welcome_bonus_granted = true on pre-R115 recipients, so the
+ * topup-path grant never double-pays them.
+ *
+ * New grants (first approved topup, all channels) write their ledger row
+ * directly in topup.service.ts with reference_type='welcome_bonus'.
  */
 export async function insertReferralSignupLedger(client: DbOrTx, userId: number): Promise<void> {
   await insertLedgerEntry(

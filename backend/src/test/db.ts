@@ -48,6 +48,8 @@ CREATE TYPE order_status AS ENUM ('pending','completed','failed','refunded');
 CREATE TYPE ledger_entry_type AS ENUM ('topup','purchase','refund','adjustment','referral_credit');
 CREATE TYPE topup_status AS ENUM ('pending','approved','rejected');
 CREATE TYPE coupon_type AS ENUM ('percentage','fixed');
+-- V1-M21 (R115): loyalty attribution ledger type.
+CREATE TYPE points_ledger_type AS ENUM ('purchase_award','refund_reversal','referral_credit','conversion_out','admin_set','correction');
 
 CREATE TABLE users (
   id serial PRIMARY KEY,
@@ -67,10 +69,16 @@ CREATE TABLE users (
   -- V1-M9 (B8-03): money invariants, mirrored from applyMoneyConstraintStage
   CONSTRAINT chk_users_wallet_balance_nonneg CHECK (wallet_balance >= 0),
   loyalty_points integer NOT NULL DEFAULT 0,
+  -- V1-M21 (R115): points are LYD-convertible money (100:1) — same
+  -- non-negativity family as the wallet constraint above.
+  CONSTRAINT chk_users_loyalty_points_nonneg CHECK (loyalty_points >= 0),
   loyalty_tier varchar(50) NOT NULL DEFAULT 'bronze',
   lifetime_spend numeric(10,2) NOT NULL DEFAULT '0.00',
   referral_code varchar(20) UNIQUE,
   referred_by integer REFERENCES users(id),
+  -- V1-M21 (R115): exactly-once guard for the welcome-bonus grant
+  -- (policy B — first approved topup, all channels).
+  welcome_bonus_granted boolean NOT NULL DEFAULT false,
   onboarded_at timestamptz,
   onboarding_step integer NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -155,12 +163,45 @@ CREATE TABLE orders (
   delivered_at timestamptz,
   coupon_code varchar(50),
   discount_amount numeric(10,2) DEFAULT '0.00',
+  -- V1-M22 (R115): first-class refund reconciliation columns.
+  refunded_at timestamptz,
+  refund_amount numeric(10,2),
+  refunded_by_admin_id integer,
+  CONSTRAINT chk_orders_refund_amount_range CHECK (refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount)),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 -- V1-M16 (R98-DB-01): live-only in boot SQL until round-98 — mirrored so
 -- the harness matches production's post-boot shape.
 CREATE INDEX idx_orders_variant ON orders (variant_id);
+
+-- V1-M21 (R115): points_ledger — append-only loyalty attribution.
+-- Same constraint set as the boot stage (migrate.ts applyPointsLedgerStage):
+-- arithmetic integrity, non-negative balances, non-zero deltas, reason
+-- for manual types, and the structural exactly-once partial UNIQUE.
+CREATE TABLE points_ledger (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type points_ledger_type NOT NULL,
+  points_delta integer NOT NULL,
+  points_before integer NOT NULL,
+  points_after integer NOT NULL,
+  lyd_credited numeric(10,2),
+  reference_id integer,
+  reference_type varchar(50),
+  actor_admin_id integer,
+  reason varchar(500),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chk_points_ledger_arithmetic CHECK (points_after = points_before + points_delta),
+  CONSTRAINT chk_points_ledger_delta_nonzero CHECK (points_delta <> 0),
+  CONSTRAINT chk_points_ledger_balances_nonneg CHECK (points_before >= 0 AND points_after >= 0),
+  CONSTRAINT chk_points_ledger_reason_for_manual CHECK (type NOT IN ('admin_set','correction') OR reason IS NOT NULL)
+);
+CREATE INDEX idx_points_ledger_user ON points_ledger (user_id);
+CREATE INDEX idx_points_ledger_type ON points_ledger (type);
+CREATE INDEX idx_points_ledger_user_created ON points_ledger (user_id, created_at);
+CREATE UNIQUE INDEX uniq_points_ledger_type_reference
+  ON points_ledger (type, reference_id) WHERE reference_id IS NOT NULL;
 
 -- V1-M18 (R102, provider-readiness): fulfillment relation — one row per
 -- attempt per order. Mirrored so purchase tests certify the provider
@@ -260,6 +301,15 @@ CREATE TABLE flash_sales (
   ends_at timestamptz NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- system_settings (prod parity): pricing-config overrides (rate, markup,
+-- R115 max_total_discount_pct) + any other key/value rows. savePricingConfig
+-- writes here in tests that exercise the real DB path.
+CREATE TABLE system_settings (
+  key varchar(100) PRIMARY KEY,
+  value text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE cart_items (

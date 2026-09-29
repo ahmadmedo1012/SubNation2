@@ -13,7 +13,6 @@ import {
   maskPhone,
 } from "../lib/account-link-consent";
 import { logger } from "../lib/logger";
-import { insertReferralSignupLedger } from "../lib/ledger";
 
 export class FirebaseAuthError extends Error {
   constructor(
@@ -473,13 +472,13 @@ export async function resolveFirebaseSession(
         lastAuthAt: now,
         referralCode: generateReferralCode(),
         referredBy: referredById,
-        walletBalance: referredById ? "5.00" : "0.00",
+        // R115 (welcome-bonus policy B): NO instant credit at signup — the
+        // referred user's welcome bonus lands on their FIRST APPROVED
+        // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
+        // Uniform across Google / WhatsApp / Telegram.
+        walletBalance: "0.00",
       })
       .returning();
-
-    if (referredById && referredById !== u.id) {
-      await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
-    }
 
     return [u];
   });

@@ -6,7 +6,7 @@ import { db, initTestDb, resetTestDb, usersTable, walletLedgerTable } from "../.
 import { signUserToken } from "../../lib/jwt";
 import { __resetIdempotencyTableProbeForTests } from "../../lib/idempotency";
 import { loyaltyRouter } from "../loyalty";
-import { POINTS_PER_LYD } from "../../lib/loyalty-tiers";
+import { POINTS_PER_LYD } from "../../lib/loyalty-policy";
 
 /**
  * R102 (loyalty durable guard) — convert-points transactional idempotency.

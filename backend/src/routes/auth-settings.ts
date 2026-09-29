@@ -43,7 +43,6 @@ import {
   getWhatsAppGatewayReadiness,
   isWhatsAppGatewayConfigured,
 } from "../services/openwa.service";
-import { insertReferralSignupLedger } from "../lib/ledger";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 import { getConfiguredOrigins } from "../lib/origins";
 
@@ -346,41 +345,29 @@ authProviderPublicRouter.get("/providers", async (_req, res) => {
  * Find or create the user record for the verified Telegram identity.
  * Mirrors the linkage semantics of services/firebase-auth.service.ts:
  *   1. Match by `telegram_id` (existing Telegram-linked account).
- *   2. Otherwise insert a fresh user with `telegram_id` set, applying
- *      the referral bonus exactly like the Firebase path (see the
- *      REFERRAL_SIGNUP_BONUS_REQUIRES_PHONE_VERIFICATION gate below
- *      for the Telegram-flow hardening added in round-93).
+ *   2. Otherwise insert a fresh user with `telegram_id` set. Referral
+ *      signup bonuses are granted on the first approved topup —
+ *      uniformly with every other channel (R115 policy B, see below).
  */
 
 /**
- * F-16 / 93-A2 P1-3 (round-93) — referral signup-bonus hardening.
+ * R115 (welcome-bonus policy B) — superscedes the F-16 / 93-A2 P1-3 gate.
  *
- * ⚠️ OPERATOR NOTICE — deliberate business-rule change, trivially
- * revertible. Read this before touching the referral economics.
+ * History: the instant 5.00 LYD referee credit was once granted at
+ * signup (farmable on free Telegram accounts — 93-A2 P1-3), then gated
+ * behind phone verification for Telegram ONLY (F-16), which silently
+ * broke the promise for every Telegram referred signup — the deferred
+ * credit was never implemented (the "C1 follow-up").
  *
- * The instant 5.00 LYD wallet credit to the REFEREE used to be granted
- * at Telegram signup purely for supplying any valid referral code —
- * with no phone verification, no payment, no order. Free Telegram
- * accounts (phone is the `tg_<id>` placeholder) made this farmable at
- * scale: ~960 signups/day/IP ⇒ ~4,800 LYD/day of spendable balance
- * against real product inventory (93-A2 money-path audit, P1-3).
- *
- * Gate: the bonus is now credited ONLY when the account carries a
- * verified phone (users.phone_verified). A fresh Telegram signup never
- * does, so the referee's bonus is effectively DEFERRED — the referral
- * relationship (users.referred_by + referral_events row) is still
- * recorded in full, so the existing topup-approval hook
- * (services/topup.service.ts — referral_events pending→credited) can
- * award the referee's 5 LYD there later, mirroring how the referrer's
- * 50 points are already topup-gated. Wallet/ledger parity is preserved:
- * no balance ⇒ no referral_credit ledger row.
- *
- * TO REVERT (restore the instant bonus): set this constant to false.
- * TO COMPLETE the deferral (credit on first approved topup): award the
- * referee's 5 LYD inside topup.service's approve() transaction, keyed
- * on the referral_events flip — flagged for the C1 follow-up.
+ * Policy now (all channels — Google, WhatsApp, Telegram alike):
+ *   signup records the relationship (users.referred_by + a pending
+ *   referral_events row) and grants NOTHING; the FIRST APPROVED TOPUP
+ * grants the referee's WELCOME_BONUS_LYD wallet credit AND the
+ * referrer's POINTS_PER_REFERRAL in one transaction
+ * (services/topup.service.ts), guarded exactly-once by
+ * users.welcome_bonus_granted. Abuse economics: a farmed account must
+ * now pass a manually-approved paid topup before any credit lands.
  */
-const REFERRAL_SIGNUP_BONUS_REQUIRES_PHONE_VERIFICATION = true;
 
 async function findOrCreateTelegramUser(
   fields: TelegramAuthFields,
@@ -427,17 +414,9 @@ async function findOrCreateTelegramUser(
 
   const displayName = [fields.first_name, fields.last_name].filter(Boolean).join(" ").trim();
 
-  // F-16 / 93-A2 P1-3: Telegram widget/WebApp payloads never carry a
-  // verified phone — the account's phone is the `tg_<id>` placeholder
-  // until the user completes a WhatsApp OTP verification in the profile
-  // flow. Expressing the gate through this boolean keeps the policy
-  // honest: if Telegram signup ever gains phone verification, wiring it
-  // here re-enables the instant bonus without touching the ledger code.
-  const phoneVerifiedAtSignup = false;
-
-  const grantInstantReferralBonus =
-    referredById !== undefined &&
-    (!REFERRAL_SIGNUP_BONUS_REQUIRES_PHONE_VERIFICATION || phoneVerifiedAtSignup);
+  // R115 (policy B): no instant grant on ANY channel — the referral
+  // relationship is recorded here; the welcome credit + referrer points
+  // both land on the first approved topup (topup.service.ts).
 
   const [created] = await db.transaction(async (tx) => {
     const [u] = await tx
@@ -452,18 +431,10 @@ async function findOrCreateTelegramUser(
         authProvider: "telegram",
         referralCode: generateReferralCode(),
         referredBy: referredById,
-        walletBalance: grantInstantReferralBonus ? "5.00" : "0.00",
+        walletBalance: "0.00",
         lastAuthAt: now,
       })
       .returning();
-
-    // Ledger parity (Constitution Principle I): the referral_credit row
-    // must exist iff the balance it reconstructs was granted. Deferred
-    // bonus ⇒ no balance ⇒ no ledger row — a future credit-on-topup
-    // implementation writes both together in the approve() tx.
-    if (grantInstantReferralBonus) {
-      await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
-    }
 
     return [u];
   });

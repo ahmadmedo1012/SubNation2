@@ -792,6 +792,32 @@ export const GetWalletResponse = zod.object({
 });
 
 /**
+ * @summary Wallet statement — every LYD movement from wallet_ledger (R115)
+ */
+export const getWalletLedgerQueryLimitDefault = 100;
+export const getWalletLedgerQueryLimitMax = 200;
+
+export const GetWalletLedgerQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(getWalletLedgerQueryLimitMax)
+    .default(getWalletLedgerQueryLimitDefault),
+});
+
+export const GetWalletLedgerResponseItem = zod.object({
+  id: zod.number().optional(),
+  type: zod.enum(["topup", "purchase", "refund", "adjustment", "referral_credit"]).optional(),
+  type_label: zod.string().optional().describe("Arabic label"),
+  amount: zod.number().optional(),
+  balance_after: zod.number().optional(),
+  reference_type: zod.string().nullish(),
+  description: zod.string().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+export const GetWalletLedgerResponse = zod.array(GetWalletLedgerResponseItem);
+
+/**
  * @summary List user's top-up requests
  */
 export const ListTopupsResponseItem = zod.object({
@@ -1180,6 +1206,45 @@ export const ConvertPointsResponse = zod.object({
   new_balance: zod.number(),
   message: zod.string().describe("Arabic success message with the converted amount."),
 });
+
+/**
+ * The user-facing points_ledger view: purchase awards, referral
+credits, conversions out, refund reversals, admin corrections —
+newest first. Makes the balance explainable ("why do I have
+exactly 750 points?" is a list).
+
+ * @summary Points history — every point movement attributed (R115)
+ */
+export const getLoyaltyLedgerQueryLimitDefault = 100;
+export const getLoyaltyLedgerQueryLimitMax = 200;
+
+export const GetLoyaltyLedgerQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(getLoyaltyLedgerQueryLimitMax)
+    .default(getLoyaltyLedgerQueryLimitDefault),
+});
+
+export const GetLoyaltyLedgerResponseItem = zod.object({
+  id: zod.number().optional(),
+  type: zod
+    .enum([
+      "purchase_award",
+      "refund_reversal",
+      "referral_credit",
+      "conversion_out",
+      "admin_set",
+      "correction",
+    ])
+    .optional(),
+  type_label: zod.string().optional().describe("Arabic label"),
+  points_delta: zod.number().optional(),
+  points_after: zod.number().optional(),
+  lyd_credited: zod.number().nullish(),
+  created_at: zod.coerce.date().optional(),
+});
+export const GetLoyaltyLedgerResponse = zod.array(GetLoyaltyLedgerResponseItem);
 
 /**
  * @summary List the current user's referral events (≤200, newest first)
@@ -2056,11 +2121,43 @@ export const DeleteProductVariantResponse = zod.object({
 });
 
 /**
+ * Read-only profit/margin simulation of the REAL sellable unit.
+variant_id mode uses the variant's stored price (what checkout
+charges) + its USD cost converted at the config rate; product_id
+mode uses the product's CHEAPEST active variant (labeled);
+manual mode takes explicit list_price_lyd + cost_lyd. Uses the
+SAME discount stack as checkout (computePricing), models loyalty
+liability (floor(final) points at 100:1) and the referral
+acquisition cost (welcome 5 LYD + referrer 0.50 LYD, granted on
+the referee's first approved topup), and returns SAFE / WATCH /
+THIN / LOSS risk states with explained warnings, the worst-case
+cap-bounded stack, break-even, and the program-inclusive safe
+minimum price.
+
+ * @summary Variant-aware economics simulator (requireAdmin; R115 rewrite)
+ */
+export const AdminPricingCalculateBody = zod.object({
+  product_id: zod.number().optional(),
+  variant_id: zod.number().optional().describe("The sellable unit (preferred input)"),
+  price: zod.number().optional().describe("Manual sandbox list price (LYD)"),
+  cost_price: zod.number().optional().describe("Manual sandbox cost (LYD)"),
+  coupon_code: zod.string().optional(),
+  simulate_referred: zod.boolean().optional(),
+});
+
+export const AdminPricingCalculateResponse = zod.object({}).passthrough();
+
+/**
  * @summary Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
  */
 export const GetAdminPricingConfigResponse = zod.object({
   usd_to_lyd: zod.number().describe("Exchange rate — LYD per 1 USD (default 10)."),
   markup_percent: zod.number().describe("Gross margin percent on cost (default 100 = cost × 2)."),
+  max_total_discount_pct: zod
+    .number()
+    .describe(
+      "R115: hard cap on the COMBINED transactional discount\n(flash % + coupon % vs list). Default 50 — the no-loss line\nat the catalog's uniform 100% markup. Enforced in the shared\npricing pipeline; a coupon past the cap is rejected with a\nclean total_discount_cap reason.\n",
+    ),
   updated_at: zod.string().optional(),
 });
 
@@ -2073,6 +2170,9 @@ export const updateAdminPricingConfigBodyUsdToLydMax = 1000;
 export const updateAdminPricingConfigBodyMarkupPercentMin = 0;
 export const updateAdminPricingConfigBodyMarkupPercentMax = 10000;
 
+export const updateAdminPricingConfigBodyMaxTotalDiscountPctMin = 10;
+export const updateAdminPricingConfigBodyMaxTotalDiscountPctMax = 95;
+
 export const UpdateAdminPricingConfigBody = zod.object({
   usd_to_lyd: zod
     .number()
@@ -2084,11 +2184,22 @@ export const UpdateAdminPricingConfigBody = zod.object({
     .min(updateAdminPricingConfigBodyMarkupPercentMin)
     .max(updateAdminPricingConfigBodyMarkupPercentMax)
     .optional(),
+  max_total_discount_pct: zod
+    .number()
+    .min(updateAdminPricingConfigBodyMaxTotalDiscountPctMin)
+    .max(updateAdminPricingConfigBodyMaxTotalDiscountPctMax)
+    .optional()
+    .describe("R115 combined flash+coupon discount cap (default 50)."),
 });
 
 export const UpdateAdminPricingConfigResponse = zod.object({
   usd_to_lyd: zod.number().describe("Exchange rate — LYD per 1 USD (default 10)."),
   markup_percent: zod.number().describe("Gross margin percent on cost (default 100 = cost × 2)."),
+  max_total_discount_pct: zod
+    .number()
+    .describe(
+      "R115: hard cap on the COMBINED transactional discount\n(flash % + coupon % vs list). Default 50 — the no-loss line\nat the catalog's uniform 100% markup. Enforced in the shared\npricing pipeline; a coupon past the cap is rejected with a\nclean total_discount_cap reason.\n",
+    ),
   updated_at: zod.string().optional(),
 });
 
@@ -2215,14 +2326,13 @@ export const UpdateAdminUserBody = zod.object({
     .max(updateAdminUserBodyLoyaltyPointsMax)
     .optional()
     .describe(
-      "Direct-update path (no ledger). Integer in [0, 10,000,000] —\nthe cap exists because points convert to wallet credit via\n\/loyalty\/convert-points (100 pts\/LYD).\n",
+      "R115: the edit is attributed — mutation + points_ledger\nadmin_set row commit in ONE transaction; a note (reason) is\nREQUIRED (400 when missing); the finance scope is REQUIRED.\nInteger in [0, 10,000,000] — the cap exists because points\nconvert to wallet credit via \/loyalty\/convert-points\n(100 pts\/LYD).\n",
     ),
-  loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]).optional(),
   note: zod
     .string()
     .optional()
     .describe(
-      "Operator note recorded on the wallet_ledger row for the\nadjustment. REQUIRED by the backend whenever\nwallet_adjustment or wallet_balance is sent: a missing or\ntoo-short note (trimmed length < 3 chars) is rejected\nwith 400 INVALID_DATA before any mutation (round-94\nA8-09 — the note is the human-readable audit-trail\ncontent that makes an incident review of a wallet\nmutation possible). Optional for loyalty-only edits,\nwhere it is ignored. Kept schema-optional because OpenAPI\ncannot express the conditional requirement. Trimmed and\ncapped at 500 chars on the ledger row.\n",
+      "Operator note recorded on the wallet_ledger row for the\nadjustment and on the points_ledger admin_set row for loyalty\nedits. REQUIRED by the backend whenever wallet_adjustment,\nwallet_balance, OR loyalty_points is sent (R115 extended the\nrule to loyalty — the audit trail must explain WHY). Kept\nschema-optional because OpenAPI cannot express the conditional\nrequirement. Trimmed and capped at 500 chars.\n\nloyalty_tier is NO LONGER EDITABLE (R115): tiers derive\nstrictly from net qualifying spend; sending loyalty_tier is\nrejected with 400 INVALID_DATA.\n",
     ),
 });
 

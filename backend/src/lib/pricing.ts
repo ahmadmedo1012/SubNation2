@@ -14,6 +14,8 @@
  *                    percentage : basePrice × value/100
  *                    fixed      : min(value, basePrice)
  *                  )
+ *     → [R115 cap] flash% + coupon% (vs list) ≤ max_total_discount_pct
+ *                  — else the coupon is rejected: total_discount_cap
  *     → finalPrice = basePrice − discountAmount   (clamped to ≥0 by min())
  *
  * The pipeline is read-only (does not mutate flash_sales / coupons /
@@ -29,6 +31,7 @@
 
 import { couponsTable, db, flashSalesTable } from "@workspace/db";
 import { and, eq, gt } from "drizzle-orm";
+import { getPricingConfig } from "./pricing-config";
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -40,7 +43,8 @@ export type CouponInvalidReason =
   | "expired"
   | "max_uses_reached"
   | "below_min_order"
-  | "invalid_value";
+  | "invalid_value"
+  | "total_discount_cap";
 
 export interface AppliedFlashSale {
   id: number;
@@ -133,6 +137,11 @@ export async function applyFlashSale(listPrice: number): Promise<FlashSaleStage>
 interface CouponInput {
   code: string;
   basePrice: number;
+  /** R115 (Part 14): for the combined-discount cap — the pre-flash list
+   * price and the flash discount percent, so the coupon can be evaluated
+   * against the TOTAL stack, not just its own slice. */
+  listPrice: number;
+  flashDiscountPct: number;
 }
 
 async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | InvalidCoupon> {
@@ -200,6 +209,28 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
 
   const appliedAmount = computeCouponDiscount(row.type as CouponType, value, input.basePrice);
 
+  // R115 (Part 14): promotion-stacking guardrail. The coupon is valid on
+  // its own, but flash + coupon TOGETHER may exceed the configured cap
+  // (pricing.max_total_discount_pct, default 50% — the no-loss line at
+  // the live catalog's uniform 100% markup). Reject with a clean reason
+  // the route surfaces as 400 — never a silent clamp (money semantics)
+  // and never a checkout-money-gate 500 (the F8 class). Loyalty/referral
+  // liabilities are deliberately NOT part of this cap: they are program
+  // costs, not transactional discounts (see docs/pricing/PRICING_ECONOMICS.md).
+  const { maxTotalDiscountPct } = await getPricingConfig();
+  const combinedDiscountPct =
+    input.listPrice > 0
+      ? input.flashDiscountPct + (appliedAmount / input.listPrice) * 100
+      : 0;
+  if (combinedDiscountPct > maxTotalDiscountPct + 1e-9) {
+    return {
+      code,
+      reason: "total_discount_cap",
+      reasonAr: `الخصم المجمّع (تخفيضات + كوبون) سيبلغ ${combinedDiscountPct.toFixed(0)}% ويتجاوز الحد الأقصى المسموح ${maxTotalDiscountPct}% — استخدم أحدهما فقط`,
+      record: row,
+    };
+  }
+
   return {
     record: row,
     code: row.code,
@@ -228,7 +259,12 @@ export async function computePricing(input: ComputePricingInput): Promise<Pricin
   let coupon: AppliedCoupon | InvalidCoupon | null = null;
   let discountAmount = 0;
   if (input.couponCode && input.couponCode.trim()) {
-    coupon = await resolveCoupon({ code: input.couponCode, basePrice });
+    coupon = await resolveCoupon({
+      code: input.couponCode,
+      basePrice,
+      listPrice: input.listPrice,
+      flashDiscountPct: flashSale?.discountPercent ?? 0,
+    });
     if (isAppliedCoupon(coupon)) discountAmount = coupon.appliedAmount;
   }
 

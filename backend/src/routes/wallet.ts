@@ -1,5 +1,12 @@
 import { CreateTopupBody } from "@workspace/api-zod";
-import { db, ordersTable, productsTable, usersTable, walletTopupsTable } from "@workspace/db";
+import {
+  db,
+  ordersTable,
+  productsTable,
+  usersTable,
+  walletLedgerTable,
+  walletTopupsTable,
+} from "@workspace/db";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { logger } from "../lib/logger";
@@ -147,6 +154,47 @@ router.get("/topups", requireUser, async (req, res) => {
     .limit(200);
 
   return res.json(topups.map(formatTopup));
+});
+
+// R115 (A8 P2): the user-facing wallet STATEMENT — every LYD movement
+// (topups, purchases, refunds, loyalty conversions, referral credits)
+// from wallet_ledger, newest first. Previously the wallet page showed
+// only topup REQUESTS: a refund credit or a welcome bonus was invisible
+// as a transaction ("where did my balance come from?" was unanswerable
+// in the UI). Read-only, no-store (per-user money state).
+const LEDGER_TYPE_LABELS: Record<string, string> = {
+  topup: "شحن محفظة",
+  purchase: "شراء",
+  refund: "استرداد",
+  adjustment: "تسوية رصيد",
+  referral_credit: "مكافأة إحالة",
+};
+
+router.get("/ledger", requireUser, async (req, res) => {
+  const { userId } = req as AuthenticatedRequest;
+
+  const limitRaw = Number(req.query.limit ?? 100);
+  const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
+
+  const entries = await db
+    .select()
+    .from(walletLedgerTable)
+    .where(eq(walletLedgerTable.userId, userId))
+    .orderBy(desc(walletLedgerTable.createdAt), desc(walletLedgerTable.id))
+    .limit(limit);
+
+  return res.json(
+    entries.map((e) => ({
+      id: e.id,
+      type: e.type,
+      type_label: LEDGER_TYPE_LABELS[e.type] ?? e.type,
+      amount: parseFloat(String(e.amount)),
+      balance_after: parseFloat(String(e.balanceAfter)),
+      reference_type: e.referenceType,
+      description: e.description,
+      created_at: e.createdAt.toISOString(),
+    })),
+  );
 });
 
 // F1 (round-94 A4): soft-block guard on the topup-submission money

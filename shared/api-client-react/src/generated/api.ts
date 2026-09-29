@@ -63,6 +63,8 @@ import type {
   AdminInventoryHealthReport,
   AdminLoginBody,
   AdminOrder,
+  AdminPricingCalculate200,
+  AdminPricingCalculateBody,
   AdminProduct,
   AdminProductVariant,
   AdminStats,
@@ -108,6 +110,10 @@ import type {
   ErrorResponse,
   FlashSaleResponse,
   GetCart200,
+  GetLoyaltyLedger200Item,
+  GetLoyaltyLedgerParams,
+  GetWalletLedger200Item,
+  GetWalletLedgerParams,
   HealthStatus,
   IdempotencyConflictResponse,
   ListAdminFlashSales200,
@@ -1810,6 +1816,87 @@ export function useGetWallet<
 }
 
 /**
+ * @summary Wallet statement — every LYD movement from wallet_ledger (R115)
+ */
+export const getGetWalletLedgerUrl = (params?: GetWalletLedgerParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/wallet/ledger?${stringifiedParams}`
+    : `/api/wallet/ledger`;
+};
+
+export const getWalletLedger = async (
+  params?: GetWalletLedgerParams,
+  options?: RequestInit,
+): Promise<GetWalletLedger200Item[]> => {
+  return customFetch<GetWalletLedger200Item[]>(getGetWalletLedgerUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetWalletLedgerQueryKey = (params?: GetWalletLedgerParams) => {
+  return [`/api/wallet/ledger`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetWalletLedgerQueryOptions = <
+  TData = Awaited<ReturnType<typeof getWalletLedger>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetWalletLedgerParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getWalletLedger>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetWalletLedgerQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWalletLedger>>> = ({ signal }) =>
+    getWalletLedger(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getWalletLedger>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetWalletLedgerQueryResult = NonNullable<Awaited<ReturnType<typeof getWalletLedger>>>;
+export type GetWalletLedgerQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Wallet statement — every LYD movement from wallet_ledger (R115)
+ */
+
+export function useGetWalletLedger<
+  TData = Awaited<ReturnType<typeof getWalletLedger>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetWalletLedgerParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getWalletLedger>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetWalletLedgerQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary List user's top-up requests
  */
 export const getListTopupsUrl = () => {
@@ -2831,6 +2918,92 @@ export const useConvertPoints = <TError = ErrorType<ErrorResponse>, TContext = u
 > => {
   return useMutation(getConvertPointsMutationOptions(options));
 };
+
+/**
+ * The user-facing points_ledger view: purchase awards, referral
+credits, conversions out, refund reversals, admin corrections —
+newest first. Makes the balance explainable ("why do I have
+exactly 750 points?" is a list).
+
+ * @summary Points history — every point movement attributed (R115)
+ */
+export const getGetLoyaltyLedgerUrl = (params?: GetLoyaltyLedgerParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/loyalty/ledger?${stringifiedParams}`
+    : `/api/loyalty/ledger`;
+};
+
+export const getLoyaltyLedger = async (
+  params?: GetLoyaltyLedgerParams,
+  options?: RequestInit,
+): Promise<GetLoyaltyLedger200Item[]> => {
+  return customFetch<GetLoyaltyLedger200Item[]>(getGetLoyaltyLedgerUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetLoyaltyLedgerQueryKey = (params?: GetLoyaltyLedgerParams) => {
+  return [`/api/loyalty/ledger`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetLoyaltyLedgerQueryOptions = <
+  TData = Awaited<ReturnType<typeof getLoyaltyLedger>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetLoyaltyLedgerParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getLoyaltyLedger>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetLoyaltyLedgerQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLoyaltyLedger>>> = ({ signal }) =>
+    getLoyaltyLedger(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getLoyaltyLedger>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetLoyaltyLedgerQueryResult = NonNullable<Awaited<ReturnType<typeof getLoyaltyLedger>>>;
+export type GetLoyaltyLedgerQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Points history — every point movement attributed (R115)
+ */
+
+export function useGetLoyaltyLedger<
+  TData = Awaited<ReturnType<typeof getLoyaltyLedger>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetLoyaltyLedgerParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getLoyaltyLedger>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetLoyaltyLedgerQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List the current user's referral events (≤200, newest first)
@@ -4982,6 +5155,103 @@ export const useDeleteProductVariant = <
   TContext
 > => {
   return useMutation(getDeleteProductVariantMutationOptions(options));
+};
+
+/**
+ * Read-only profit/margin simulation of the REAL sellable unit.
+variant_id mode uses the variant's stored price (what checkout
+charges) + its USD cost converted at the config rate; product_id
+mode uses the product's CHEAPEST active variant (labeled);
+manual mode takes explicit list_price_lyd + cost_lyd. Uses the
+SAME discount stack as checkout (computePricing), models loyalty
+liability (floor(final) points at 100:1) and the referral
+acquisition cost (welcome 5 LYD + referrer 0.50 LYD, granted on
+the referee's first approved topup), and returns SAFE / WATCH /
+THIN / LOSS risk states with explained warnings, the worst-case
+cap-bounded stack, break-even, and the program-inclusive safe
+minimum price.
+
+ * @summary Variant-aware economics simulator (requireAdmin; R115 rewrite)
+ */
+export const getAdminPricingCalculateUrl = () => {
+  return `/api/admin/pricing/calculate`;
+};
+
+export const adminPricingCalculate = async (
+  adminPricingCalculateBody: AdminPricingCalculateBody,
+  options?: RequestInit,
+): Promise<AdminPricingCalculate200> => {
+  return customFetch<AdminPricingCalculate200>(getAdminPricingCalculateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(adminPricingCalculateBody),
+  });
+};
+
+export const getAdminPricingCalculateMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminPricingCalculate>>,
+    TError,
+    { data: BodyType<AdminPricingCalculateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminPricingCalculate>>,
+  TError,
+  { data: BodyType<AdminPricingCalculateBody> },
+  TContext
+> => {
+  const mutationKey = ["adminPricingCalculate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminPricingCalculate>>,
+    { data: BodyType<AdminPricingCalculateBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminPricingCalculate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminPricingCalculateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminPricingCalculate>>
+>;
+export type AdminPricingCalculateMutationBody = BodyType<AdminPricingCalculateBody>;
+export type AdminPricingCalculateMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Variant-aware economics simulator (requireAdmin; R115 rewrite)
+ */
+export const useAdminPricingCalculate = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminPricingCalculate>>,
+    TError,
+    { data: BodyType<AdminPricingCalculateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof adminPricingCalculate>>,
+  TError,
+  { data: BodyType<AdminPricingCalculateBody> },
+  TContext
+> => {
+  return useMutation(getAdminPricingCalculateMutationOptions(options));
 };
 
 /**

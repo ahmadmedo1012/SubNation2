@@ -52,6 +52,7 @@ vi.mock("@workspace/db", () => ({
 
 import {
   DEFAULT_MARKUP_PERCENT,
+  DEFAULT_MAX_TOTAL_DISCOUNT_PCT,
   DEFAULT_USD_TO_LYD,
   __resetPricingConfigCache,
   computeRetailLYD,
@@ -70,7 +71,7 @@ afterEach(() => {
   __resetPricingConfigCache();
 });
 
-const DEFAULTS = { usdToLyd: DEFAULT_USD_TO_LYD, markupPercent: DEFAULT_MARKUP_PERCENT };
+const DEFAULTS = { usdToLyd: DEFAULT_USD_TO_LYD, markupPercent: DEFAULT_MARKUP_PERCENT, maxTotalDiscountPct: DEFAULT_MAX_TOTAL_DISCOUNT_PCT };
 
 // ── The official rule (operator directive) ──────────────────────────────────
 
@@ -99,14 +100,14 @@ describe("computeRetailLYD — cost × 2 × 10", () => {
   });
 
   it("honors a non-default markup", () => {
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 0 })).toBe(50); // 0% markup
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 50 })).toBe(75); // 50% markup
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 300 })).toBe(200); // 4× cost
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 0, maxTotalDiscountPct: 50 })).toBe(50); // 0% markup
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 50, maxTotalDiscountPct: 50 })).toBe(75); // 50% markup
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 300, maxTotalDiscountPct: 50 })).toBe(200); // 4× cost
   });
 
   it("honors a non-default exchange rate", () => {
-    expect(computeRetailLYD(5, { usdToLyd: 5, markupPercent: 100 })).toBe(50);
-    expect(computeRetailLYD(5, { usdToLyd: 4.8, markupPercent: 100 })).toBe(48);
+    expect(computeRetailLYD(5, { usdToLyd: 5, markupPercent: 100, maxTotalDiscountPct: 50 })).toBe(50);
+    expect(computeRetailLYD(5, { usdToLyd: 4.8, markupPercent: 100, maxTotalDiscountPct: 50 })).toBe(48);
   });
 
   it("rounds to cents (half-up Math.round idiom)", () => {
@@ -129,21 +130,21 @@ describe("computeRetailUSD — the pre-conversion selling price", () => {
 describe("getPricingConfig", () => {
   it("falls back to the compiled defaults when settings are absent", async () => {
     const config = await getPricingConfig();
-    expect(config).toEqual({ usdToLyd: 10, markupPercent: 100 });
+    expect(config).toEqual({ usdToLyd: 10, markupPercent: 100, maxTotalDiscountPct: 50 });
   });
 
   it("reads overrides from system_settings", async () => {
     settingsRows.set("pricing.usd_to_lyd", "4.85");
     settingsRows.set("pricing.markup_percent", "80");
     const config = await getPricingConfig();
-    expect(config).toEqual({ usdToLyd: 4.85, markupPercent: 80 });
+    expect(config).toEqual({ usdToLyd: 4.85, markupPercent: 80, maxTotalDiscountPct: 50 });
   });
 
   it("ignores invalid stored values (non-numeric / non-positive)", async () => {
     settingsRows.set("pricing.usd_to_lyd", "not-a-number");
     settingsRows.set("pricing.markup_percent", "-5");
     const config = await getPricingConfig();
-    expect(config).toEqual({ usdToLyd: 10, markupPercent: 100 });
+    expect(config).toEqual({ usdToLyd: 10, markupPercent: 100, maxTotalDiscountPct: 50 });
   });
 
   it("serves the in-process cache within its TTL (one settings read per window)", async () => {
@@ -160,7 +161,7 @@ describe("getPricingConfig", () => {
 describe("savePricingConfig", () => {
   it("persists a partial patch on top of the current config", async () => {
     const next = await savePricingConfig({ usdToLyd: 4.9 });
-    expect(next).toEqual({ usdToLyd: 4.9, markupPercent: 100 });
+    expect(next).toEqual({ usdToLyd: 4.9, markupPercent: 100, maxTotalDiscountPct: 50 });
     // and the cache is warmed — reads see it immediately
     expect((await getPricingConfig()).usdToLyd).toBe(4.9);
   });

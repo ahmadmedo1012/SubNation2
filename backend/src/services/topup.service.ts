@@ -1,7 +1,8 @@
 import { db, referralEventsTable, usersTable, walletTopupsTable } from "@workspace/db";
 import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
-import { POINTS_PER_REFERRAL } from "../lib/loyalty-tiers";
+import { POINTS_PER_REFERRAL, WELCOME_BONUS_LYD } from "../lib/loyalty-policy";
+import { insertPointsLedgerEntry } from "../lib/points-ledger";
 import { roundLyd } from "../lib/money";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
@@ -241,6 +242,7 @@ export class TopupService {
     // drives the post-tx referrer notification (previously fired on every
     // approve of a referred user's topup, even with no award).
     let referralCredited = false;
+    let welcomeGranted = false;
 
     try {
       await db.transaction(async (tx) => {
@@ -379,7 +381,11 @@ export class TopupService {
           // The same shape is used in checkout.service.ts:122 for the
           // purchase debit; this fix brings topup approval into parity.
           const [freshUser] = await tx
-            .select({ walletBalance: usersTable.walletBalance })
+            .select({
+              walletBalance: usersTable.walletBalance,
+              referredBy: usersTable.referredBy,
+              welcomeBonusGranted: usersTable.welcomeBonusGranted,
+            })
             .from(usersTable)
             .where(eq(usersTable.id, user.id))
             .limit(1);
@@ -455,14 +461,72 @@ export class TopupService {
                   // Atomic SQL increment — prevents lost-update race when two
                   // concurrent topups for distinct referees share the same
                   // referrer. Same pattern as admin/referrals.ts:115.
-                  await tx
+                  // R115: the award is attributed in points_ledger (same tx,
+                  // reference = the referral_event row the guarded flip won).
+                  const [refUpdated] = await tx
                     .update(usersTable)
                     .set({
                       loyaltyPoints: sql`${usersTable.loyaltyPoints} + ${POINTS_PER_REFERRAL}`,
                     })
-                    .where(eq(usersTable.id, referrer.id));
+                    .where(eq(usersTable.id, referrer.id))
+                    .returning({ loyaltyPoints: usersTable.loyaltyPoints });
+                  if (refUpdated) {
+                    await insertPointsLedgerEntry(
+                      {
+                        userId: referrer.id,
+                        type: "referral_credit",
+                        pointsDelta: POINTS_PER_REFERRAL,
+                        pointsBefore: refUpdated.loyaltyPoints - POINTS_PER_REFERRAL,
+                        pointsAfter: refUpdated.loyaltyPoints,
+                        referenceId: flippedReferral[0].id,
+                        referenceType: "referral_event",
+                      },
+                      tx as unknown as typeof db,
+                    );
+                  }
                 }
               }
+            }
+          }
+
+          // R115 (welcome-bonus policy B): the referred user's
+          // WELCOME_BONUS_LYD wallet credit lands on the FIRST APPROVED
+          // TOPUP — all channels uniformly (previously Google/WhatsApp
+          // paid instantly at signup and Telegram never paid). The
+          // guarded flip (WHERE welcome_bonus_granted = false) is
+          // exactly-once under concurrency; V1-M21 backfilled the flag
+          // for pre-R115 recipients so nobody is double-paid.
+          if (freshUser.referredBy && !freshUser.welcomeBonusGranted) {
+            const [welcomeUpdated] = await tx
+              .update(usersTable)
+              .set({
+                walletBalance: sql`(${usersTable.walletBalance} + ${WELCOME_BONUS_LYD})`,
+                welcomeBonusGranted: true,
+              })
+              .where(
+                and(
+                  eq(usersTable.id, user.id),
+                  eq(usersTable.welcomeBonusGranted, false),
+                ),
+              )
+              .returning({ walletBalance: usersTable.walletBalance });
+            if (welcomeUpdated) {
+              welcomeGranted = true;
+              const balanceAfterWelcome = parseFloat(String(welcomeUpdated.walletBalance));
+              const balanceBeforeWelcome = +(balanceAfterWelcome - WELCOME_BONUS_LYD).toFixed(2);
+              await insertLedgerEntry(
+                {
+                  userId: user.id,
+                  type: "referral_credit",
+                  amount: WELCOME_BONUS_LYD.toFixed(2),
+                  balanceBefore: String(balanceBeforeWelcome),
+                  balanceAfter: String(balanceAfterWelcome),
+                  referenceId: topup.id,
+                  referenceType: "welcome_bonus",
+                  description: "مكافأة ترحيبية — أول شحن معتمد (كود إحالة)",
+                },
+                tx as unknown as typeof db,
+              );
             }
           }
         }
@@ -499,11 +563,22 @@ export class TopupService {
           await createNotification(
             referrer.id,
             "loyalty",
-            "حصلت على 50 نقطة من إحالة!",
+            `حصلت على ${POINTS_PER_REFERRAL} نقطة من إحالة!`,
             "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن",
             "/loyalty",
           );
         }
+      }
+      // R115: the referee learns their welcome credit landed with this
+      // topup (policy B — granted above in the same tx).
+      if (welcomeGranted) {
+        await createNotification(
+          user.id,
+          "loyalty",
+          `وصلتك مكافأة الترحيب ${WELCOME_BONUS_LYD.toFixed(2)} د.ل`,
+          "أُضيفت مكافأة كود الإحالة إلى محفظتك مع أول شحن معتمد",
+          "/wallet",
+        );
       }
       notifyTopupApproved({
         phone: user.phone,

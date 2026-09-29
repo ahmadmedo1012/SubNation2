@@ -30,7 +30,6 @@ import {
   verifyOtp as verifyOtpPure,
 } from "../lib/whatsapp-otp";
 import { buildChatId, sendWhatsAppMessage } from "./openwa.service";
-import { insertReferralSignupLedger } from "../lib/ledger";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -544,13 +543,14 @@ async function findOrCreateWhatsAppUser(
         authProvider: "whatsapp_phone",
         referralCode: generateReferralCode(),
         referredBy: referredById,
-        walletBalance: referredById ? "5.00" : "0.00",
+        // R115 (welcome-bonus policy B): NO instant credit at signup — the
+        // referred user's welcome bonus lands on their FIRST APPROVED
+        // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
+        // Uniform across Google / WhatsApp / Telegram.
+        walletBalance: "0.00",
         lastAuthAt: now,
       })
       .returning();
-
-    // Ledger parity for the signup bonus (Constitution §I).
-    if (referredById) await insertReferralSignupLedger(tx as unknown as typeof db, u.id);
 
     // F2 (round-94 A4): the referral EVENT row, in the same tx as the
     // user it refers. Telegram (auth-settings.ts) and Firebase

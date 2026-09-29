@@ -36,15 +36,22 @@ router.get("/pricing/config", async (_req, res) => {
   return res.json({
     usd_to_lyd: config.usdToLyd,
     markup_percent: config.markupPercent,
+    max_total_discount_pct: config.maxTotalDiscountPct,
   });
 });
 
 // ── PUT /pricing/config ────────────────────────────────────────────────────
 router.put("/pricing/config", async (req, res) => {
-  const body = (req.body ?? {}) as { usd_to_lyd?: number; markup_percent?: number };
-  const patch: { usdToLyd?: number; markupPercent?: number } = {};
+  const body = (req.body ?? {}) as {
+    usd_to_lyd?: number;
+    markup_percent?: number;
+    max_total_discount_pct?: number;
+  };
+  const patch: { usdToLyd?: number; markupPercent?: number; maxTotalDiscountPct?: number } = {};
   if (body.usd_to_lyd !== undefined) patch.usdToLyd = round2(Number(body.usd_to_lyd));
   if (body.markup_percent !== undefined) patch.markupPercent = round2(Number(body.markup_percent));
+  if (body.max_total_discount_pct !== undefined)
+    patch.maxTotalDiscountPct = round2(Number(body.max_total_discount_pct));
 
   if (Object.keys(patch).length === 0)
     return res.status(400).json(createErrorResponse("لا توجد تغييرات", ErrorCode.INVALID_DATA));
@@ -59,15 +66,20 @@ router.put("/pricing/config", async (req, res) => {
     return res.json({
       usd_to_lyd: config.usdToLyd,
       markup_percent: config.markupPercent,
+      max_total_discount_pct: config.maxTotalDiscountPct,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message === "INVALID_USD_TO_LYD" || message === "INVALID_MARKUP_PERCENT") {
+    if (
+      message === "INVALID_USD_TO_LYD" ||
+      message === "INVALID_MARKUP_PERCENT" ||
+      message === "INVALID_MAX_TOTAL_DISCOUNT_PCT"
+    ) {
       return res
         .status(400)
         .json(
           createErrorResponse(
-            "قيمة خارج النطاق المسموح (سعر الصرف 0.1–1000، الهامش 0–10000%)",
+            "قيمة خارج النطاق المسموح (سعر الصرف 0.1–1000، الهامش 0–10000%، سقف الخصم المجمّع 10–95%)",
             ErrorCode.INVALID_DATA,
           ),
         );
@@ -79,6 +91,13 @@ router.put("/pricing/config", async (req, res) => {
 // ── POST /pricing/recompute ────────────────────────────────────────────────
 router.post("/pricing/recompute", async (req, res) => {
   const config = await getPricingConfig();
+  // R115 (Part 15): dry-run mode — preview the impact (counts + a
+  // BEFORE→AFTER sample per variant) WITHOUT touching a single row. The
+  // destructive confirm in the UI can finally show the operator what
+  // they are about to approve.
+  const dryRun = ["true", "1", "yes"].includes(
+    String(req.query.dry_run ?? "").trim().toLowerCase(),
+  );
 
   // Recompute every ACTIVE variant whose stored price no longer matches the
   // engine output. Variant costs are untouched; only price_lyd moves — and
@@ -105,14 +124,44 @@ router.post("/pricing/recompute", async (req, res) => {
     })
     .filter((c) => c.computed !== c.current);
 
+  if (dryRun) {
+    return res.json({
+      dry_run: true,
+      variants_drifted: changes.length,
+      products_affected: new Set(changes.map((c) => c.productId)).size,
+      sample: changes.slice(0, 25).map((c) => ({
+        variant_id: c.id,
+        product_id: c.productId,
+        price_before: c.current,
+        price_after: c.computed,
+        delta: round2(c.computed - c.current),
+      })),
+      usd_to_lyd: config.usdToLyd,
+      markup_percent: config.markupPercent,
+      note: "معاينة فقط — لم يُعدّل أي سعر. أعد النداء بدون dry_run للتطبيق الفعلي.",
+    });
+  }
+
   let variantsUpdated = 0;
+  // R115: per-variant BEFORE/AFTER values ride the audit row — the old
+  // prices are unrecoverable after the bulk write; now the trail keeps
+  // them (A5 P1-1: "one confirmed tap rewrites 263 prices with no record
+  // of what they were").
+  const appliedChanges: Array<{
+    variant_id: number;
+    before: number;
+    after: number;
+  }> = [];
   for (const c of changes) {
     const [updated] = await db
       .update(productVariantsTable)
       .set({ priceLyd: String(c.computed) })
       .where(eq(productVariantsTable.id, c.id))
       .returning({ id: productVariantsTable.id });
-    if (updated) variantsUpdated += 1;
+    if (updated) {
+      variantsUpdated += 1;
+      appliedChanges.push({ variant_id: c.id, before: c.current, after: c.computed });
+    }
   }
 
   // Refresh every product's display price (= MIN active variant price) in
@@ -139,6 +188,7 @@ router.post("/pricing/recompute", async (req, res) => {
     markup_percent: config.markupPercent,
     variants_updated: variantsUpdated,
     products_updated: productsUpdatedCount,
+    changes: appliedChanges.slice(0, 100),
   });
 
   bumpCatalogCache();

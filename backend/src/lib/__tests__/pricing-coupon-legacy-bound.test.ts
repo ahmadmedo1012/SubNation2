@@ -90,16 +90,27 @@ describe("F8 (round-98 A3): legacy percentage coupons with value >= 100 are reje
     expect(result.finalPrice).toBe(24);
   });
 
-  it("fixed-type coupons are unaffected by the percentage bound (pre-existing min() semantics)", async () => {
+  it("fixed-type coupons: within the cap they apply; a 100%-of-price fixed coupon trips the R115 combined-discount cap (clean rejection, not a checkout 500)", async () => {
     await seedCoupon({ code: "FIX150", type: "fixed", value: "150.00" });
+    await seedCoupon({ code: "FIX10", type: "fixed", value: "10.00" });
 
-    const result = await computePricing({ listPrice: 30, couponCode: "FIX150" });
+    // Within the cap: 10 off a 30 item = 33% combined → valid, applies.
+    const within = await computePricing({ listPrice: 30, couponCode: "FIX10" });
+    expect(isInvalidCoupon(within.coupon)).toBe(false);
+    expect(within.discountAmount).toBe(10);
+    expect(within.finalPrice).toBe(20);
 
-    // fixed: min(150, 30) = 30 → final 0 — unchanged computeCouponDiscount
-    // semantics; the checkout INVALID_PRICE gate keeps guarding this class.
-    expect(isInvalidCoupon(result.coupon)).toBe(false);
-    expect(result.discountAmount).toBe(30);
-    expect(result.finalPrice).toBe(0);
+    // Over the cap: fixed min(150, 30) = 30 → 100% of the list price —
+    // far past the default 50% combined-discount cap (R115 Part 14). The
+    // coupon layer now rejects it with a clean total_discount_cap reason
+    // instead of letting finalPrice=0 reach the checkout money gate
+    // (INVALID_PRICE — the 500 class the F8 fix rejected for percentages).
+    const over = await computePricing({ listPrice: 30, couponCode: "FIX150" });
+    expect(isInvalidCoupon(over.coupon)).toBe(true);
+    if (over.coupon && isInvalidCoupon(over.coupon)) {
+      expect(over.coupon.reason).toBe("total_discount_cap");
+    }
+    expect(over.finalPrice).toBe(30);
   });
 
   it("end-to-end: checkout with a legacy 150% coupon fails as a clean INVALID_COUPON, not a 500 INVALID_PRICE", async () => {

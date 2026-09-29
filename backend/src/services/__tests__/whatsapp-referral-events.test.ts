@@ -80,7 +80,7 @@ async function seedOtp(phone: string) {
 }
 
 describe("F2: WhatsApp signup with referral code creates the referral event", () => {
-  it("referred WhatsApp signup → user + 5 LYD bonus + ledger + referral_events row (pending)", async () => {
+  it("referred WhatsApp signup → relationship recorded, NO instant bonus (R115 policy B: welcome credit lands on first approved topup)", async () => {
     const [referrer] = await db
       .insert(usersTable)
       .values({ phone: nextPhone(), referralCode: "REFWATEST" })
@@ -99,10 +99,16 @@ describe("F2: WhatsApp signup with referral code creates the referral event", ()
     if (!result.ok) throw new Error("expected success");
     expect(result.isNewUser).toBe(true);
     expect(result.user.referredBy).toBe(referrer.id);
-    expect(parseFloat(String(result.user.walletBalance))).toBe(5);
+    // R115 (policy B): signup grants NOTHING — the 5 LYD welcome credit
+    // + the referrer's 50 points both land when the referee's FIRST topup
+    // is approved (topup.service.ts, guarded by users.welcome_bonus_granted).
+    // This kills the farm vector (instant spendable credit for free
+    // accounts) and unifies the channels (Telegram used to get nothing).
+    expect(parseFloat(String(result.user.walletBalance))).toBe(0);
+    expect(result.user.welcomeBonusGranted).toBe(false);
 
     // The event row the approve() consumer requires — previously absent
-    // on this channel (the F2 bug).
+    // on this channel (the F2 bug). Still created at signup, still pending.
     const [event] = await db
       .select()
       .from(referralEventsTable)
@@ -111,14 +117,12 @@ describe("F2: WhatsApp signup with referral code creates the referral event", ()
     expect(event.referrerId).toBe(referrer.id);
     expect(event.status).toBe("pending");
 
-    // Signup-bonus ledger parity (pre-existing, must not regress).
+    // No ledger rows at signup — wallet/ledger parity (no balance ⇒ no row).
     const ledger = await db
       .select()
       .from(walletLedgerTable)
       .where(eq(walletLedgerTable.userId, result.user.id));
-    expect(ledger).toHaveLength(1);
-    expect(ledger[0].type).toBe("referral_credit");
-    expect(parseFloat(String(ledger[0].amount))).toBe(5);
+    expect(ledger).toHaveLength(0);
   });
 
   it("non-referred WhatsApp signup → no event row, no bonus", async () => {

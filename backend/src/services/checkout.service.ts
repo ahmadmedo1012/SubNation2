@@ -23,7 +23,8 @@ import {
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
-import { computeTier } from "../lib/loyalty-tiers";
+import { computeTier, purchaseAwardPoints } from "../lib/loyalty-policy";
+import { insertPointsLedgerEntry } from "../lib/points-ledger";
 import { toNumber } from "../lib/numeric";
 import { getFulfillmentProvider } from "./providers/registry";
 
@@ -417,12 +418,17 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       const claimedUnit = fulfillment.unit;
 
       const newLifetimeSpend = +(toNumber(user.lifetimeSpend) + finalPrice).toFixed(2);
+      // R115: the award formula lives in lib/loyalty-policy (single source)
+      // and the mutation is attributed in points_ledger below — same tx.
+      const awardPoints = purchaseAwardPoints(finalPrice);
+      const pointsBeforeAward = user.loyaltyPoints;
+      const pointsAfterAward = user.loyaltyPoints + awardPoints;
       const [updatedUser] = await tx
         .update(usersTable)
         .set({
           walletBalance: String(newBalance),
           lifetimeSpend: String(newLifetimeSpend),
-          loyaltyPoints: user.loyaltyPoints + Math.floor(finalPrice),
+          loyaltyPoints: pointsAfterAward,
           loyaltyTier: computeTier(newLifetimeSpend),
         })
         // r4 money-integrity M3: extend the optimistic lock beyond
@@ -572,6 +578,26 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         },
         tx as unknown as typeof db,
       );
+
+      // R115 (Part 8): attribute the purchase award in points_ledger —
+      // same tx, referencing THIS order. The partial UNIQUE
+      // (type='purchase_award', reference_id=order) makes a double award
+      // for one order structurally impossible, and refund.service reads
+      // exactly this row to reverse the precise remainder.
+      if (awardPoints > 0) {
+        await insertPointsLedgerEntry(
+          {
+            userId,
+            type: "purchase_award",
+            pointsDelta: awardPoints,
+            pointsBefore: pointsBeforeAward,
+            pointsAfter: pointsAfterAward,
+            referenceId: o.id,
+            referenceType: "order",
+          },
+          tx as unknown as typeof db,
+        );
+      }
 
       // F10 (round-94 A4): claim the idempotency key in the SAME
       // transaction — after the order + ledger so the claim, the charge,

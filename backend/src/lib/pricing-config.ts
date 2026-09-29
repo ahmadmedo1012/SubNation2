@@ -44,6 +44,22 @@ export const DEFAULT_MARKUP_PERCENT = 100;
 export const SETTING_KEY_USD_TO_LYD = "pricing.usd_to_lyd";
 export const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
 
+/**
+ * R115 (Part 14): hard cap on the COMBINED transactional discount
+ * (flash sale % + coupon % expressed against the list price). Enforced in
+ * lib/pricing.ts at the single choke point — a coupon that would push the
+ * stack past the cap is rejected with a clean reason (never a 500).
+ * Default 50 = the mathematical no-loss line for the live catalog's
+ * uniform 100%-markup economics (list = 2×cost ⇒ half off = cost). At any
+ * discount ABOVE the cap the sale is guaranteed loss-making before loyalty
+ * liability is even considered. Loyalty/referral/welcome are NOT counted
+ * here — they are program liabilities, not transactional discounts
+ * (never confuse the two; the calculator models them separately).
+ * Bounds: 10–95 (a cap <10 makes coupons unusable; >95 approaches free).
+ */
+export const DEFAULT_MAX_TOTAL_DISCOUNT_PCT = 50;
+export const SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT = "pricing.max_total_discount_pct";
+
 /** In-process cache lifetime — matches the catalog's 60s edge window. */
 const SETTINGS_TTL_MS = 60_000;
 
@@ -52,6 +68,8 @@ export interface PricingConfig {
   usdToLyd: number;
   /** Gross margin percent applied on cost. e.g. 100 (=> cost × 2) */
   markupPercent: number;
+  /** R115: max combined flash+coupon discount % (see DEFAULT_MAX_TOTAL_DISCOUNT_PCT). */
+  maxTotalDiscountPct: number;
 }
 
 // ── Pure math (unit-testable without a database) ───────────────────────────
@@ -108,9 +126,10 @@ export async function getPricingConfig(): Promise<PricingConfig> {
     let config: PricingConfig = {
       usdToLyd: DEFAULT_USD_TO_LYD,
       markupPercent: DEFAULT_MARKUP_PERCENT,
+      maxTotalDiscountPct: DEFAULT_MAX_TOTAL_DISCOUNT_PCT,
     };
     try {
-      const [rateRow, markupRow] = await Promise.all([
+      const [rateRow, markupRow, capRow] = await Promise.all([
         db
           .select({ value: systemSettingsTable.value })
           .from(systemSettingsTable)
@@ -121,11 +140,18 @@ export async function getPricingConfig(): Promise<PricingConfig> {
           .from(systemSettingsTable)
           .where(eq(systemSettingsTable.key, SETTING_KEY_MARKUP_PERCENT))
           .limit(1),
+        db
+          .select({ value: systemSettingsTable.value })
+          .from(systemSettingsTable)
+          .where(eq(systemSettingsTable.key, SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT))
+          .limit(1),
       ]);
       const rate = parsePositiveNumber(JSON.parse(rateRow[0]?.value ?? "null"));
       const markup = parsePositiveNumber(JSON.parse(markupRow[0]?.value ?? "null"));
+      const cap = parsePositiveNumber(JSON.parse(capRow[0]?.value ?? "null"));
       if (rate !== null) config = { ...config, usdToLyd: rate };
       if (markup !== null) config = { ...config, markupPercent: markup };
+      if (cap !== null && cap >= 10 && cap <= 95) config = { ...config, maxTotalDiscountPct: cap };
     } catch {
       // fall back to defaults — see docblock.
     }
@@ -146,7 +172,7 @@ export async function getPricingConfig(): Promise<PricingConfig> {
  * sane bounds (rate 0.1–1000; markup 0–10,000%).
  */
 export async function savePricingConfig(
-  patch: Partial<Pick<PricingConfig, "usdToLyd" | "markupPercent">>,
+  patch: Partial<Pick<PricingConfig, "usdToLyd" | "markupPercent" | "maxTotalDiscountPct">>,
 ): Promise<PricingConfig> {
   const current = await getPricingConfig();
   const next: PricingConfig = { ...current };
@@ -167,6 +193,16 @@ export async function savePricingConfig(
     }
     next.markupPercent = round2(patch.markupPercent);
   }
+  if (patch.maxTotalDiscountPct !== undefined) {
+    if (
+      !Number.isFinite(patch.maxTotalDiscountPct) ||
+      patch.maxTotalDiscountPct < 10 ||
+      patch.maxTotalDiscountPct > 95
+    ) {
+      throw new Error("INVALID_MAX_TOTAL_DISCOUNT_PCT");
+    }
+    next.maxTotalDiscountPct = round2(patch.maxTotalDiscountPct);
+  }
 
   await db
     .insert(systemSettingsTable)
@@ -181,6 +217,16 @@ export async function savePricingConfig(
     .onConflictDoUpdate({
       target: systemSettingsTable.key,
       set: { value: JSON.stringify(next.markupPercent), updatedAt: new Date() },
+    });
+  await db
+    .insert(systemSettingsTable)
+    .values({
+      key: SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT,
+      value: JSON.stringify(next.maxTotalDiscountPct),
+    })
+    .onConflictDoUpdate({
+      target: systemSettingsTable.key,
+      set: { value: JSON.stringify(next.maxTotalDiscountPct), updatedAt: new Date() },
     });
 
   cache = { config: next, expiresAt: Date.now() + SETTINGS_TTL_MS };
