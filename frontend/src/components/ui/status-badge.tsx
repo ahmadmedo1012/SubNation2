@@ -36,8 +36,8 @@ const statusBadgeVariants = cva(
         purple: "bg-status-purple/12 text-status-purple border-status-purple/28",
       },
       size: {
-        xs: "text-[10px] px-1.5 py-0.5 [&_svg]:w-2.5 [&_svg]:h-2.5",
-        sm: "text-[11px] px-2 py-0.5 [&_svg]:w-3 [&_svg]:h-3",
+        xs: "text-3xs px-1.5 py-0.5 [&_svg]:w-2.5 [&_svg]:h-2.5",
+        sm: "text-2xs px-2 py-0.5 [&_svg]:w-3 [&_svg]:h-3",
         md: "text-xs px-2.5 py-1 [&_svg]:w-3.5 [&_svg]:h-3.5",
       },
     },

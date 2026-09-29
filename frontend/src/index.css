@@ -66,12 +66,6 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
-  --color-chart-1: hsl(var(--chart-1));
-  --color-chart-2: hsl(var(--chart-2));
-  --color-chart-3: hsl(var(--chart-3));
-  --color-chart-4: hsl(var(--chart-4));
-  --color-chart-5: hsl(var(--chart-5));
-
   /* Category accents — exposed as Tailwind colors so a card can write
      `bg-cat-streaming/10 text-cat-streaming border-cat-streaming/25`
      instead of repeating raw hsl(var(--cat-…) / 0.x) at every site. */
@@ -115,6 +109,13 @@
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
 
+  /* Micro-type (R115-A6 #4): the two sub-xs sizes the app had hardcoded
+     ~320× as arbitrary values. 2xs/3xs keep the 10px readability floor
+     (8/9px literals are killed, not tokenized) and set font-size only —
+     same computed behavior as the text-[Npx] arbitraries they replace. */
+  --text-2xs: 11px;
+  --text-3xs: 10px;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -123,18 +124,23 @@
 
 /* ── DARK MODE (default) ──────────────────────────────── */
 :root {
+  /* R115-A6 #14: color-scheme per theme — UA widgets (native selects,
+     autofill, scrollbars where not overridden) follow the active theme
+     instead of staying light-on-dark. */
+  color-scheme: dark;
+
   --button-outline: rgba(255, 255, 255, 0.1);
   --opaque-button-border-intensity: 9;
 
   --elevate-1: rgba(255, 255, 255, 0.04);
   --elevate-2: rgba(255, 255, 255, 0.09);
 
-  /* Elevation layers for surface system */
+  /* Elevation layers for surface system. R115-A6 #10: --surface-raised
+     and --surface-float removed — zero consumers (kept: base/card/
+     overlay, all three consumed by --background/--card/--popover). */
   --surface-base: 220 22% 5%;
   --surface-card: 220 20% 8%;
-  --surface-raised: 220 20% 10%;
   --surface-overlay: 220 20% 12%;
-  --surface-float: 220 20% 14%;
 
   /* ── Category accents — single source of truth ────────────────────
      Used by ProductCard.tsx and any future category-themed surface.
@@ -209,12 +215,6 @@
   --input: 215 20% 16%;
   --ring: 348 80% 48%;
 
-  --chart-1: 348 80% 48%;
-  --chart-2: 215 20% 18%;
-  --chart-3: 210 40% 98%;
-  --chart-4: 215 20% 60%;
-  --chart-5: 0 80% 58%;
-
   /* Round-3 (8-e §6): "Inter" was a phantom font — never installed or
      @font-face'd anywhere; production rendered Readex Pro for everything
      (correct by accident) while dev machines with Inter installed showed
@@ -273,20 +273,21 @@
 
 /* ── LIGHT MODE ──────────────────────────────────────── */
 .light {
+  color-scheme: light;
+
   --button-outline: rgba(0, 0, 0, 0.1);
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.06);
 
   /* Light-mode surface ladder. Without these, every consumer of
-     hsl(var(--surface-card/raised/overlay/float)) inherits the dark
-     values from :root — collapsing the whole elevation system into
-     near-black on a light background. Mirrors the dark-mode ladder
-     with progressively warmer near-whites. */
+     hsl(var(--surface-card/overlay)) inherits the dark values from
+     :root — collapsing the whole elevation system into near-black on
+     a light background. Mirrors the dark-mode ladder with progressively
+     warmer near-whites. (R115-A6 #10: raised/float removed — 0
+     consumers, same as in :root.) */
   --surface-base: 220 20% 96%;
   --surface-card: 0 0% 100%;
-  --surface-raised: 220 16% 98%;
   --surface-overlay: 0 0% 100%;
-  --surface-float: 220 14% 99%;
 
   /* Light-mode-tuned category accents — saturated mid-tones that
      keep readable contrast on white surfaces. */
@@ -465,19 +466,6 @@
   }
 }
 
-@keyframes flash-banner-sweep {
-  0%,
-  100% {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  40%,
-  60% {
-    transform: translateX(-100%);
-    opacity: 0.15;
-  }
-}
-
 @keyframes page-in {
   from {
     opacity: 0;
@@ -508,17 +496,6 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
   }
 }
 
@@ -617,17 +594,6 @@
   }
 }
 
-/* Gradient border flow */
-@keyframes border-flow {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
 /* Number pop emphasis */
 @keyframes num-pop {
   0% {
@@ -638,17 +604,6 @@
   }
   100% {
     transform: scale(1);
-  }
-}
-
-/* Subtle text glow pulse */
-@keyframes text-glow-pulse {
-  0%,
-  100% {
-    text-shadow: 0 0 0 transparent;
-  }
-  50% {
-    text-shadow: 0 0 14px hsl(var(--primary) / 0.38);
   }
 }
 
@@ -687,22 +642,6 @@
   }
 }
 
-/* Premium brand-tinted glow pulse — CTA + logo halo. Composited
-   (transform + opacity only) so it stays at 60fps on low-end mobile.
-   Distinct from `cta-glow` (a denser ring on hover-only buttons) —
-   this is a softer, broader halo for resting hero / logo states. */
-@keyframes glow-pulse {
-  0%,
-  100% {
-    opacity: 0.32;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.55;
-    transform: scale(1.08);
-  }
-}
-
 /* ── UTILITY LAYER ───────────────────────────────────── */
 @layer utilities {
   /* Skeleton loading (GPU Optimized).
@@ -728,17 +667,6 @@
       transparent
     );
     animation: shimmer 1.6s infinite;
-  }
-
-  /* Flash banner sweep */
-  .flash-banner-glow {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      hsl(var(--primary) / 0.1) 50%,
-      transparent 100%
-    );
-    animation: flash-banner-sweep 4s ease-in-out infinite;
   }
 
   /* Scrollbar suppression */
@@ -790,16 +718,6 @@
   .card-enter {
     animation: card-enter 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  .card-enter-delay-1 {
-    animation-delay: 0.04s;
-  }
-  .card-enter-delay-2 {
-    animation-delay: 0.08s;
-  }
-  .card-enter-delay-3 {
-    animation-delay: 0.12s;
-  }
-
   /* Stagger delay helpers (safe-area helpers live in the dedicated
      safe-area section near .touch-target — one definition each;
      the stray duplicate .pb-safe here is what P2-6 removed). */
@@ -896,15 +814,6 @@
     will-change: transform;
   }
 
-  /* Card shine-on-hover */
-  .shine-sweep {
-    position: absolute;
-    inset: 0;
-    transform: translateX(-120%) skewX(-14deg);
-    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.07), transparent);
-    pointer-events: none;
-    z-index: 10;
-  }
   .group:hover .shine-trigger {
     animation: shine 0.7s ease-out;
   }
@@ -967,76 +876,14 @@
     animation: num-pop 0.42s cubic-bezier(0.34, 1.6, 0.64, 1) both;
   }
 
-  /* Text glow */
-  .text-glow {
-    animation: text-glow-pulse 3s ease-in-out infinite;
-  }
-
   /* Pulse dot */
   .pulse-dot {
     animation: pulse-dot 1.6s ease-in-out infinite;
   }
 
-  /* Brand glow halo — for hero CTAs and brand-mark resting state.
-     The element this is applied to should have `position: relative`
-     and `isolation: isolate`; the halo renders behind it via z-[-1].
-     `pointer-events: none` keeps it from stealing clicks. */
-  .glow-halo {
-    position: relative;
-    isolation: isolate;
-  }
-  .glow-halo::before {
-    content: "";
-    position: absolute;
-    inset: -8px;
-    border-radius: inherit;
-    background: radial-gradient(circle at center, hsl(var(--primary) / 0.45), transparent 70%);
-    filter: blur(12px);
-    opacity: 0.32;
-    pointer-events: none;
-    z-index: -1;
-    animation: glow-pulse 3.6s ease-in-out infinite;
-    will-change: transform, opacity;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .glow-halo::before {
-      animation: none;
-    }
-  }
-
   /* Tab indicator */
   .tab-slide-in {
     animation: tab-slide-in 0.24s cubic-bezier(0.34, 1.4, 0.64, 1) both;
-  }
-
-  /* Glass surface — for overlays, floating elements */
-  .surface-glass {
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    background-color: hsl(var(--card) / 0.88);
-  }
-
-  /* Gradient border card */
-  .gradient-border {
-    position: relative;
-  }
-  .gradient-border::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--primary) / 0.55),
-      transparent 50%,
-      hsl(var(--primary) / 0.22)
-    );
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.28s ease;
-  }
-  .gradient-border:hover::before {
-    opacity: 1;
   }
 
   /* Keyboard focus ring — keyboard-only (never on mouse click).
@@ -1050,7 +897,6 @@
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
-    border-radius: 5px;
   }
 
   /* Tap highlight suppression */
@@ -1145,22 +991,6 @@
   }
 
   /* Surface elevation helpers */
-  .toggle-elevate::before,
-  .toggle-elevate-2::before {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0px;
-    border-radius: inherit;
-    z-index: -1;
-  }
-  .toggle-elevate.toggle-elevated::before {
-    background-color: var(--elevate-2);
-  }
-  .border.toggle-elevate::before {
-    inset: -1px;
-  }
-
   .hover-elevate:not(.no-default-hover-elevate),
   .active-elevate:not(.no-default-active-elevate),
   .hover-elevate-2:not(.no-default-hover-elevate),
@@ -1224,9 +1054,6 @@
   }
   .pt-safe {
     padding-top: env(safe-area-inset-top, 20px);
-  }
-  .pb-safe-4 {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
   }
 
   /* ── Mobile-only layout utilities ──────────────────────────────────
@@ -1305,13 +1132,13 @@
 }
 
 /* ── REDUCED MOTION ───────────────────────────────────
- * Global kill-switch covers ALL 20+ keyframes + every transition in one
+ * Global kill-switch covers ALL keyframes + every transition in one
  * wildcard (no per-animation maintenance). Entrance animations
  * (float-in / reveal-up / page-in / card-enter / slide-*) start at
  * opacity:0 — finishing them in ~0ms (rather than cancelling) lands the
  * element at its final visible frame, so reduced-motion users still SEE
- * the content. Infinite loops (blob-drift / cta-glow / *-pulse / shine /
- * text-glow) are pinned to a single iteration so nothing keeps moving. */
+ * the content. Infinite loops (blob-drift / cta-glow / *-pulse / shine)
+ * are pinned to a single iteration so nothing keeps moving. */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
@@ -1510,43 +1337,50 @@
   --toast-accent: var(--primary);
 }
 
-/* Success — emerald */
+/* Status variants (R115-A6 P1): accents ride the SAME theme-aware
+   --status-* tokens StatusBadge/banners use (the F3-06 class) instead
+   of byte-for-byte copies of the dark-mode values. Custom properties
+   cascade, so in light mode --status-* resolve to the AA-darkened
+   28%-lightness values — the accent strip + icon bubble clear 3:1
+   (4.5:1 as text) automatically, with no .light overrides needed for
+   --toast-accent/border-color. Border + glow tints compose from the
+   same token (relative-color for the tuned lightness variants). */
 [data-sonner-toast][data-type="success"][data-styled="true"].premium-toast {
-  --toast-accent: 152 65% 50%;
-  border-color: hsl(152 65% 50% / 0.28);
+  --toast-accent: var(--status-success);
+  border-color: hsl(var(--status-success) / 0.28);
   box-shadow:
-    0 1px 0 0 hsl(152 65% 80% / 0.08) inset,
-    0 16px 38px -10px hsl(152 65% 30% / 0.45),
+    0 1px 0 0 hsl(from hsl(var(--status-success)) h s 80% / 0.08) inset,
+    0 16px 38px -10px hsl(from hsl(var(--status-success)) h s 30% / 0.45),
     0 4px 12px -4px hsl(0 0% 0% / 0.3);
 }
 
 /* Error / destructive — red */
 [data-sonner-toast][data-type="error"][data-styled="true"].premium-toast {
-  --toast-accent: 0 80% 62%;
-  border-color: hsl(0 80% 62% / 0.3);
+  --toast-accent: var(--status-error);
+  border-color: hsl(var(--status-error) / 0.3);
   box-shadow:
-    0 1px 0 0 hsl(0 80% 80% / 0.08) inset,
-    0 16px 38px -10px hsl(0 80% 32% / 0.5),
+    0 1px 0 0 hsl(from hsl(var(--status-error)) h s 80% / 0.08) inset,
+    0 16px 38px -10px hsl(from hsl(var(--status-error)) h s 32% / 0.5),
     0 4px 12px -4px hsl(0 0% 0% / 0.32);
 }
 
 /* Warning — amber */
 [data-sonner-toast][data-type="warning"][data-styled="true"].premium-toast {
-  --toast-accent: 38 92% 56%;
-  border-color: hsl(38 92% 56% / 0.3);
+  --toast-accent: var(--status-warning);
+  border-color: hsl(var(--status-warning) / 0.3);
   box-shadow:
-    0 1px 0 0 hsl(38 92% 76% / 0.08) inset,
-    0 16px 38px -10px hsl(38 92% 30% / 0.45),
+    0 1px 0 0 hsl(from hsl(var(--status-warning)) h s 76% / 0.08) inset,
+    0 16px 38px -10px hsl(from hsl(var(--status-warning)) h s 30% / 0.45),
     0 4px 12px -4px hsl(0 0% 0% / 0.3);
 }
 
 /* Info — sky blue */
 [data-sonner-toast][data-type="info"][data-styled="true"].premium-toast {
-  --toast-accent: 211 90% 58%;
-  border-color: hsl(211 90% 58% / 0.3);
+  --toast-accent: var(--status-info);
+  border-color: hsl(var(--status-info) / 0.3);
   box-shadow:
-    0 1px 0 0 hsl(211 90% 80% / 0.08) inset,
-    0 16px 38px -10px hsl(211 90% 30% / 0.45),
+    0 1px 0 0 hsl(from hsl(var(--status-info)) h s 80% / 0.08) inset,
+    0 16px 38px -10px hsl(from hsl(var(--status-info)) h s 30% / 0.45),
     0 4px 12px -4px hsl(0 0% 0% / 0.3);
 }
 
@@ -1564,28 +1398,31 @@
     0 10px 28px -8px hsl(220 30% 20% / 0.16),
     0 2px 6px -2px hsl(220 30% 20% / 0.08);
 }
+/* Glow tints follow the (light-mode) status tokens; the L 35→28
+   shift at 22% alpha is imperceptible but keeps every literal in the
+   toast system sourced from a theme token. */
 .light [data-sonner-toast][data-type="success"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
-    0 12px 30px -8px hsl(152 65% 35% / 0.22),
+    0 12px 30px -8px hsl(var(--status-success) / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
 .light [data-sonner-toast][data-type="error"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
-    0 12px 30px -8px hsl(0 80% 40% / 0.22),
+    0 12px 30px -8px hsl(var(--status-error) / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
 .light [data-sonner-toast][data-type="warning"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
-    0 12px 30px -8px hsl(38 92% 35% / 0.22),
+    0 12px 30px -8px hsl(var(--status-warning) / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
 .light [data-sonner-toast][data-type="info"][data-styled="true"].premium-toast {
   box-shadow:
     0 1px 0 0 hsl(0 0% 100%) inset,
-    0 12px 30px -8px hsl(211 90% 35% / 0.22),
+    0 12px 30px -8px hsl(var(--status-info) / 0.22),
     0 2px 6px -2px hsl(0 0% 0% / 0.08);
 }
 

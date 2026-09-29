@@ -88,12 +88,18 @@ export function computeTier(lifetimeSpend: number): LoyaltyTier {
   return "bronze";
 }
 
-export function nextTier(lifetimeSpend: number): { tier: LoyaltyTier; label: string; remaining: number } | null {
+export function nextTier(
+  lifetimeSpend: number,
+): { tier: LoyaltyTier; label: string; remaining: number } | null {
   if (lifetimeSpend < TIER_THRESHOLDS.silver)
     return { tier: "silver", label: "فضي", remaining: TIER_THRESHOLDS.silver - lifetimeSpend };
   if (lifetimeSpend < TIER_THRESHOLDS.gold)
     return { tier: "gold", label: "ذهبي", remaining: TIER_THRESHOLDS.gold - lifetimeSpend };
   if (lifetimeSpend < TIER_THRESHOLDS.platinum)
-    return { tier: "platinum", label: "بلاتيني", remaining: TIER_THRESHOLDS.platinum - lifetimeSpend };
+    return {
+      tier: "platinum",
+      label: "بلاتيني",
+      remaining: TIER_THRESHOLDS.platinum - lifetimeSpend,
+    };
   return null;
 }

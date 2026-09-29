@@ -15,7 +15,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           // top of that, giving the user three distinct visual states
           // (idle / hover / focus) without changing the height.
           "input-premium flex h-10 w-full rounded-xl border border-input/80 bg-card/60 px-3 py-1 text-base shadow-sm",
-          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+          "file:border-0 file:bg-transparent file:text-sm file:font-semibold file:text-foreground",
           "placeholder:text-muted-foreground",
           "hover:border-border/80",
           // F3-01 (R111 WCAG 1.4.11): the focus ring was `ring-primary/60`

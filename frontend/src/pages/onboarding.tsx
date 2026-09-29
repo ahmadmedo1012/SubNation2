@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useOnScreen } from "@/hooks/use-on-screen";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
@@ -32,6 +33,8 @@ export function OnboardingPage() {
   const [, navigate] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
   const [completing, setCompleting] = useState(false);
+  // R115-A10: pause the ambient blobs when the card scrolls away.
+  const glow = useOnScreen<HTMLDivElement>();
   const { data: user } = useGetMe({
     query: {
       enabled: !!token,
@@ -76,12 +79,19 @@ export function OnboardingPage() {
 
   return (
     <div
+      ref={glow.ref}
       className="min-h-[100dvh] bg-background flex items-center justify-center p-4 relative overflow-hidden"
       dir="rtl"
     >
       {/* Ambient glow layers — match the auth pages for visual continuity. */}
-      <div className="absolute top-[-10%] right-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift" />
-      <div className="absolute bottom-[-5%] left-[10%] w-64 h-64 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow" />
+      <div
+        className="absolute top-[-10%] right-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift"
+        style={glow.style}
+      />
+      <div
+        className="absolute bottom-[-5%] left-[10%] w-64 h-64 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow"
+        style={glow.style}
+      />
       <div className="absolute inset-0 dot-grid opacity-20 pointer-events-none" />
 
       <div className="relative w-full max-w-md">
@@ -104,7 +114,7 @@ export function OnboardingPage() {
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/12 border border-primary/22 mx-auto">
                   <Sparkles className="w-6 h-6 text-primary" />
                 </div>
-                <h1 className="text-2xl font-black leading-tight">
+                <h1 className="text-2xl font-bold leading-tight">
                   مرحباً بك في <span className="text-gradient-animated">SubNation</span>
                 </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -143,7 +153,7 @@ export function OnboardingPage() {
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-status-success/12 border border-status-success/22 mx-auto">
                   <ShoppingBag className="w-6 h-6 text-status-success" />
                 </div>
-                <h2 className="text-xl font-black">جاهز للبدء</h2>
+                <h2 className="text-xl font-bold">جاهز للبدء</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة الملف الشخصي.
                 </p>
@@ -179,7 +189,7 @@ export function OnboardingPage() {
           )}
         </div>
 
-        <p className="text-center text-[11px] text-muted-foreground mt-4">
+        <p className="text-center text-2xs text-muted-foreground mt-4">
           يمكنك تخطّي هذه الشاشة في أي وقت من{" "}
           <button
             type="button"

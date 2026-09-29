@@ -19,13 +19,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  couponsTable,
-  db,
-  flashSalesTable,
-  initTestDb,
-  resetTestDb,
-} from "../../test/db";
+import { couponsTable, db, flashSalesTable, initTestDb, resetTestDb } from "../../test/db";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../pricing";
 import { __resetPricingConfigCache, savePricingConfig } from "../pricing-config";
 import {
@@ -257,19 +251,22 @@ describe("R115 property-based invariants (fast-check)", () => {
   it("P4: ledger arithmetic — after = before + delta and balances ≥ 0 for arbitrary mutation chains", async () => {
     const fc = await import("fast-check");
     fc.assert(
-      fc.property(fc.array(fc.integer({ min: -500, max: 500 }), { minLength: 0, maxLength: 50 }), (deltas) => {
-        let balance = 0;
-        for (const d of deltas) {
-          // The DB CHECK replays: reject any mutation that would break the
-          // invariant (this is exactly what chk_points_ledger_* enforce).
-          const next = balance + d;
-          if (next < 0 || d === 0) continue; // rejected by the CHECKs
-          expect(next).toBe(balance + d); // arithmetic identity
-          expect(next).toBeGreaterThanOrEqual(0); // non-negativity
-          balance = next;
-        }
-        expect(balance).toBeGreaterThanOrEqual(0);
-      }),
+      fc.property(
+        fc.array(fc.integer({ min: -500, max: 500 }), { minLength: 0, maxLength: 50 }),
+        (deltas) => {
+          let balance = 0;
+          for (const d of deltas) {
+            // The DB CHECK replays: reject any mutation that would break the
+            // invariant (this is exactly what chk_points_ledger_* enforce).
+            const next = balance + d;
+            if (next < 0 || d === 0) continue; // rejected by the CHECKs
+            expect(next).toBe(balance + d); // arithmetic identity
+            expect(next).toBeGreaterThanOrEqual(0); // non-negativity
+            balance = next;
+          }
+          expect(balance).toBeGreaterThanOrEqual(0);
+        },
+      ),
       { numRuns: 100 },
     );
   });

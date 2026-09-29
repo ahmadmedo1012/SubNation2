@@ -11,7 +11,12 @@ import {
   isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
-import { POINTS_PER_LYD, POINTS_PER_REFERRAL, TIER_THRESHOLDS, nextTier } from "../lib/loyalty-policy";
+import {
+  POINTS_PER_LYD,
+  POINTS_PER_REFERRAL,
+  TIER_THRESHOLDS,
+  nextTier,
+} from "../lib/loyalty-policy";
 import { insertPointsLedgerEntry } from "../lib/points-ledger";
 
 /** Internal control-flow error for transactional conflicts. */

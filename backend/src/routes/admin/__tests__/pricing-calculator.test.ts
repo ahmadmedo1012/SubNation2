@@ -156,7 +156,9 @@ describe("R115 variant-aware pricing calculator", () => {
       const loss = await calc(url, { price: 100, cost_price: 120 });
       expect(loss.body.risk_state).toBe("LOSS");
       expect(
-        (loss.body.warnings as Array<{ code: string }>).some((w) => w.code === "loss_on_transaction"),
+        (loss.body.warnings as Array<{ code: string }>).some(
+          (w) => w.code === "loss_on_transaction",
+        ),
       ).toBe(true);
 
       const watch = await calc(url, { price: 100, cost_price: 88 });
@@ -177,7 +179,9 @@ describe("R115 variant-aware pricing calculator", () => {
       expect(body.referral_cost).toMatchObject({ total_referral_cost_lyd: 5.5 });
       // gross 50 − loyalty 1 − referral 5.5 = 43.5
       expect(body.margins).toMatchObject({ referral_adjusted_lyd: 43.5 });
-      expect(String((body.referral_cost as { trigger: string }).trigger)).toContain("first approved topup");
+      expect(String((body.referral_cost as { trigger: string }).trigger)).toContain(
+        "first approved topup",
+      );
     } finally {
       close();
     }
@@ -191,10 +195,9 @@ describe("R115 variant-aware pricing calculator", () => {
       expect(body.worst_case).toMatchObject({ combined_discount_pct: 50, price: 50, gross_lyd: 0 });
       expect(body.guardrails).toMatchObject({ break_even_price: 50, max_safe_discount_pct: 50 });
       // safe min incl. program: p×0.5×0.99 ≥ 50 + 5.5 → 55.5/0.495 ≈ 112.12
-      expect((body.guardrails as { safe_min_price_incl_program: number }).safe_min_price_incl_program).toBeCloseTo(
-        112.12,
-        1,
-      );
+      expect(
+        (body.guardrails as { safe_min_price_incl_program: number }).safe_min_price_incl_program,
+      ).toBeCloseTo(112.12, 1);
     } finally {
       close();
     }

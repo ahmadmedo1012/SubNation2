@@ -117,13 +117,15 @@ describe("ProductCard — add-to-cart double-tap lock (96-F4 / R96 A2 P1-7)", ()
 });
 
 describe("ProductCard — badge/نفد polish (96-F4 / R96 A6 #11 + #12)", () => {
-  it("category badge is text-[10px] font-semibold (was 9px bold)", () => {
+  it("category badge is text-3xs font-semibold (was 9px bold)", () => {
     const { container } = renderCard(AVAILABLE_PRODUCT);
     // The badge is the pill next to the card title — «بث مباشر» is the
     // streaming category label.
     const badge = screen.getByText("بث مباشر");
-    expect(badge.className).toContain("text-[10px]");
+    expect(badge.className).toContain("text-3xs");
     expect(badge.className).toContain("font-semibold");
+    // Guards keep referencing the RAW pre-token literals — the point is
+    // that the sub-10px / heavier-weight regressions never come back.
     expect(badge.className).not.toContain("text-[9px]");
     expect(badge.className).not.toContain("font-bold");
   });

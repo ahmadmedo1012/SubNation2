@@ -219,9 +219,7 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
   // costs, not transactional discounts (see docs/pricing/PRICING_ECONOMICS.md).
   const { maxTotalDiscountPct } = await getPricingConfig();
   const combinedDiscountPct =
-    input.listPrice > 0
-      ? input.flashDiscountPct + (appliedAmount / input.listPrice) * 100
-      : 0;
+    input.listPrice > 0 ? input.flashDiscountPct + (appliedAmount / input.listPrice) * 100 : 0;
   if (combinedDiscountPct > maxTotalDiscountPct + 1e-9) {
     return {
       code,

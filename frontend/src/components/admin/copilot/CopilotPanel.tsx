@@ -913,7 +913,7 @@ export function CopilotPanel() {
                 </div>
                 <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
                   {conversations.length === 0 && (
-                    <div className="text-[11px] text-muted-foreground text-center py-4">
+                    <div className="text-2xs text-muted-foreground text-center py-4">
                       لا توجد محادثات بعد
                     </div>
                   )}
@@ -933,8 +933,8 @@ export function CopilotPanel() {
                     >
                       <MessageSquare className="w-3 h-3 shrink-0 mt-0.5 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate leading-tight">{c.title}</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                        <div className="font-semibold truncate leading-tight">{c.title}</div>
+                        <div className="text-3xs text-muted-foreground mt-0.5">
                           {c.turns.length} رسالة
                         </div>
                       </div>
@@ -976,7 +976,7 @@ export function CopilotPanel() {
                       {phaseBadge.label}
                     </StatusBadge>
                   </div>
-                  <div className="text-[10px] text-muted-foreground truncate">{current.title}</div>
+                  <div className="text-3xs text-muted-foreground truncate">{current.title}</div>
                 </div>
                 <button
                   onClick={startNewConversation}
@@ -1070,7 +1070,7 @@ export function CopilotPanel() {
                         <Send className="w-4 h-4 rtl:-scale-x-100" />
                       </button>
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground px-1">
+                    <div className="mt-2 flex items-center justify-between text-3xs text-muted-foreground px-1">
                       <span>يتذكر آخر {MEMORY_TURNS_SENT} رسائل في هذه المحادثة</span>
                       <span className="flex items-center gap-2">
                         <kbd className="font-mono bg-muted border border-border/50 px-1 py-0.5 rounded">
@@ -1111,7 +1111,7 @@ function EmptyState({ flags, onPick }: { flags: PhaseFlags; onPick: (s: string) 
         </div>
       </div>
       <div className="space-y-2">
-        <div className="text-[11px] text-muted-foreground font-bold pr-1">أمثلة سريعة</div>
+        <div className="text-2xs text-muted-foreground font-bold pr-1">أمثلة سريعة</div>
         {ASK_SUGGESTIONS.map((s) => (
           <SuggestionRow key={s} text={s} onPick={onPick} />
         ))}
@@ -1173,7 +1173,7 @@ function TurnView({
       {turn.loading && (
         <div className="space-y-1 pr-1">
           {(turn.progress ?? []).map((line, i) => (
-            <div key={i} className="text-[11px] text-muted-foreground font-mono leading-5">
+            <div key={i} className="text-2xs text-muted-foreground font-mono leading-5">
               {line}
             </div>
           ))}
@@ -1190,7 +1190,7 @@ function TurnView({
           <span className="flex-1">{turn.error}</span>
           <button
             onClick={onRetry}
-            className="text-[11px] hover:underline shrink-0 flex items-center gap-1"
+            className="text-2xs hover:underline shrink-0 flex items-center gap-1"
             title="إعادة المحاولة"
           >
             <RefreshCw className="w-3 h-3" /> إعادة
@@ -1280,14 +1280,14 @@ export function AskAnswer({
         </button>
       </div>
       {toolUses.length > 0 && (
-        <details className="text-[11px] text-muted-foreground">
+        <details className="text-2xs text-muted-foreground">
           <summary className="cursor-pointer hover:text-foreground transition-colors flex items-center gap-1">
             <Sparkles className="w-3 h-3" />
             مصدر البيانات ({toolUses.length})
           </summary>
           <div className="mt-1.5 space-y-1 pr-3 border-r-2 border-primary/20">
             {toolUses.map((tu, i) => (
-              <div key={i} className="font-mono leading-5 text-[10px]">
+              <div key={i} className="font-mono leading-5 text-3xs">
                 <span className="text-primary">{tu.name}</span>(
                 <span className="text-muted-foreground">{Object.keys(tu.input).length} args</span>)
               </div>
@@ -1338,18 +1338,18 @@ function DirectExecutionBadge({ item }: { item: DirectExecution }) {
       <div className="flex-1 min-w-0">
         <div className="font-bold">{ok ? "تم التنفيذ" : "فشل التنفيذ"}</div>
         {ok && isReq && (
-          <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all">
+          <div className="text-2xs text-muted-foreground mt-0.5 font-mono break-all">
             {data.method} {data.path} · {data.status}
           </div>
         )}
         {ok && !isReq && data.productName && (
-          <div className="text-[11px] text-muted-foreground mt-0.5">
+          <div className="text-2xs text-muted-foreground mt-0.5">
             <span className="font-mono">{item.tool}</span> · {data.productName} (#{data.productId})
             {fields && ` · ${fields}`}
             {stockChange && ` · مخزون: ${stockChange}`}
           </div>
         )}
-        {!ok && <div className="text-[11px] mt-0.5 break-words">{item.summary}</div>}
+        {!ok && <div className="text-2xs mt-0.5 break-words">{item.summary}</div>}
       </div>
     </div>
   );
@@ -1391,7 +1391,7 @@ function PreviewCard({
 
   return (
     <div className="border border-border rounded-2xl rounded-tr-md bg-muted/20 shadow-sm overflow-hidden">
-      <div className="px-3 py-2 border-b border-border/60 flex items-center gap-2 text-[11px] bg-muted/30">
+      <div className="px-3 py-2 border-b border-border/60 flex items-center gap-2 text-2xs bg-muted/30">
         <span className={`font-bold ${isHighRisk ? "text-status-warning" : "text-primary"}`}>
           معاينة — {preview.action_class}
         </span>
@@ -1412,7 +1412,7 @@ function PreviewCard({
         )}
 
         {preview.payload.side_effects.length > 0 && (
-          <ul className="text-[11px] text-status-warning list-disc pr-4 space-y-0.5">
+          <ul className="text-2xs text-status-warning list-disc pr-4 space-y-0.5">
             {preview.payload.side_effects.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
@@ -1422,7 +1422,7 @@ function PreviewCard({
         {preview.payload.validation_warnings.map((w, i) => (
           <div
             key={i}
-            className="text-[11px] text-destructive bg-destructive/10 border border-destructive/30 rounded-lg px-2 py-1"
+            className="text-2xs text-destructive bg-destructive/10 border border-destructive/30 rounded-lg px-2 py-1"
           >
             {w.message}
           </div>
@@ -1513,16 +1513,16 @@ function ChangeDiff({ change }: { change: PreviewChange }) {
   };
   return (
     <div className="border border-border/40 rounded-lg bg-background/50 overflow-hidden">
-      <div className="px-2 py-1 text-[11px] font-bold text-muted-foreground border-b border-border/40 bg-muted/20">
+      <div className="px-2 py-1 text-2xs font-bold text-muted-foreground border-b border-border/40 bg-muted/20">
         {change.field}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border/40">
         <div className="bg-destructive/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
-          <div className="text-[10px] text-muted-foreground mb-0.5">قبل</div>
+          <div className="text-3xs text-muted-foreground mb-0.5">قبل</div>
           {fmt(change.before)}
         </div>
         <div className="bg-status-success/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
-          <div className="text-[10px] text-muted-foreground mb-0.5">بعد</div>
+          <div className="text-3xs text-muted-foreground mb-0.5">بعد</div>
           {fmt(change.after)}
         </div>
       </div>
@@ -1548,7 +1548,7 @@ function MarkdownLite({ text }: { text: string }) {
             <pre
               key={i}
               dir="ltr"
-              className="text-[11px] font-mono bg-background/60 border border-border rounded-lg p-2 overflow-x-auto whitespace-pre"
+              className="text-2xs font-mono bg-background/60 border border-border rounded-lg p-2 overflow-x-auto whitespace-pre"
             >
               {code}
             </pre>
@@ -1619,7 +1619,7 @@ function InlineMd({ text }: { text: string }) {
             <code
               key={i}
               dir="ltr"
-              className="px-1 py-0.5 rounded bg-background/70 border border-border/40 text-[11px] font-mono"
+              className="px-1 py-0.5 rounded bg-background/70 border border-border/40 text-2xs font-mono"
             >
               {t.value}
             </code>

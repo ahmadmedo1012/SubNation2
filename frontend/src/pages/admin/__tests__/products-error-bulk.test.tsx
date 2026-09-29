@@ -30,7 +30,7 @@ import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminProductsPage from "@/pages/admin/products";
-import { useListAdminProducts } from "@workspace/api-client-react";
+import { useCreateProduct, useListAdminProducts, useUpdateProduct } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
   useListAdminProducts: vi.fn(),
@@ -237,5 +237,97 @@ describe("AdminProductsPage — honest bulk-archive summaries (A2 P2-8)", () => 
     const toastArg = toastMock.mock.calls[0][0];
     expect(toastArg.title).toBe("✓ تمت الأرشفة 2 منتجات");
     expect(toastArg.variant).toBe("success");
+  });
+});
+
+describe("AdminProductsPage — honest one-way-door archive + #new deep link (R115 A9)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProductsResult(PRODUCTS);
+    // The create editor needs live mutation stubs when it opens (the
+    // #new deep-link test renders the create form — its submit button
+    // reads createMutation.isPending / updateMutation.isPending).
+    (useCreateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useUpdateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("the single-archive confirm names the one-way door (no restore exists — UI or API)", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "أرشفة Netflix 1M" }));
+    const title = await screen.findByText("أرشفة المنتج؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("archive confirm dialog not rendered");
+
+    // R115 (A9 P1): the old «يُخفى من المتجر وتبقى بياناته ومبيعاته»
+    // implied recoverability that does not exist — the copy now states
+    // the door is final from the UI and restoration requires direct
+    // intervention (the list endpoint filters is_archived=false and no
+    // restore path exists anywhere in the repo).
+    expect(within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/)).toBeInTheDocument();
+    expect(
+      within(dialog as HTMLElement).getByText(/تتطلب تدخلاً مباشراً/),
+    ).toBeInTheDocument();
+
+    // Cancel — nothing is deleted (the copy test must stay side-effect-free).
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "إلغاء" }));
+    await waitFor(() =>
+      expect(screen.queryByText("أرشفة المنتج؟")).not.toBeInTheDocument(),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("the same one-way-door honesty rides the BULK archive confirm", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
+    fireEvent.click(screen.getByRole("button", { name: "أرشفة" }));
+    const title = await screen.findByText("أرشفة المنتجات المحددة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("bulk confirm dialog not rendered");
+    expect(within(dialog as HTMLElement).getByText(/الأرشفة نهائية من الواجهة/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "إلغاء" }));
+  });
+
+  it("the #new deep link (layout context action) opens the create editor and consumes the hash", async () => {
+    // The layout's «إضافة منتج جديد» context action links to
+    // /admin/products#new — the page used to read ?search only, so the
+    // link landed on a closed form.
+    window.history.replaceState({}, "", "/admin/products#new");
+
+    renderPage();
+
+    await screen.findAllByText("Netflix 1M");
+    expect(screen.getByText("إضافة منتج جديد")).toBeInTheDocument();
+    // The hash is consumed so a refresh doesn't reopen the form after
+    // the operator closes it.
+    expect(window.location.hash).toBe("");
+
+    // Closing the form keeps it closed (no sticky #new state).
+    fireEvent.click(screen.getByRole("button", { name: "إلغاء" }));
+    await waitFor(() =>
+      expect(screen.queryByText("إضافة منتج جديد")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("a plain visit (no hash) keeps the create form closed", async () => {
+    renderPage();
+
+    await screen.findAllByText("Netflix 1M");
+    expect(screen.queryByText("إضافة منتج جديد")).not.toBeInTheDocument();
   });
 });

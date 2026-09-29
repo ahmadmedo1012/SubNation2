@@ -503,12 +503,7 @@ export class TopupService {
                 walletBalance: sql`(${usersTable.walletBalance} + ${WELCOME_BONUS_LYD})`,
                 welcomeBonusGranted: true,
               })
-              .where(
-                and(
-                  eq(usersTable.id, user.id),
-                  eq(usersTable.welcomeBonusGranted, false),
-                ),
-              )
+              .where(and(eq(usersTable.id, user.id), eq(usersTable.welcomeBonusGranted, false)))
               .returning({ walletBalance: usersTable.walletBalance });
             if (welcomeUpdated) {
               welcomeGranted = true;

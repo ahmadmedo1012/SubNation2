@@ -29,6 +29,17 @@ vi.mock("sonner", () => ({
   toast: (...args: unknown[]) => sonnerToastMock(...args),
 }));
 
+// R115-I1 (A7 P3-4): cart.tsx now reads the wallet-balance chip from
+// useGetWallet — mocked at the hook boundary (this suite renders without
+// a QueryClientProvider; the chip's data path is pinned in the dedicated
+// describe below, everything else sees "probe not answered" → no chip).
+const walletMock = vi.hoisted(() => ({ data: undefined as { balance: number } | undefined }));
+
+vi.mock("@workspace/api-client-react", () => ({
+  useGetWallet: () => ({ data: walletMock.data, isLoading: false, isError: false }),
+  getGetWalletQueryKey: () => ["/api/wallet"],
+}));
+
 // R111-F2 copy pins: the auth state is hoisted + mutable so one render
 // helper can pin BOTH summary CTAs — the authed checkout entry and the
 // guest login entry.
@@ -182,6 +193,7 @@ describe("CartPage — summary CTA copy (R111-F2 N1 + N6)", () => {
     localStorage.clear();
     sessionStorage.clear();
     authState.token = null;
+    walletMock.data = undefined;
   });
 
   it("authed: the checkout entry CTA reads «إتمام الطلب» (the destination page's own name)", async () => {
@@ -215,6 +227,7 @@ describe("CartPage — destructive clear goes through useConfirm (96-F4 / R96 A2
     toastSpy.mockReset();
     localStorage.clear();
     sessionStorage.clear();
+    walletMock.data = undefined;
   });
 
   it("«إفراغ السلة» requires an explicit destructive confirm before wiping", async () => {
@@ -267,5 +280,75 @@ describe("CartPage — destructive clear goes through useConfirm (96-F4 / R96 A2
     const clear = screen.getByRole("button", { name: "إفراغ السلة" });
     expect(clear.className).toContain("min-h-11");
     expect(clear.className).not.toContain("min-h-8");
+  });
+});
+
+describe("CartPage — per-line totals + wallet chip (R115-I1 / A7 P3-4)", () => {
+  beforeEach(() => {
+    sonnerToastMock.mockReset();
+    toastSpy.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
+    authState.token = null;
+    walletMock.data = undefined;
+  });
+
+  it("a qty>1 line shows «N × unit = line total» (checkout-parity arithmetic)", async () => {
+    // salePriceLYD 49 × qty 3 → «3 × 49.00 د.ل = 147.00 د.ل».
+    seedCart(3);
+    renderPage();
+    await findRow();
+
+    expect(
+      screen.getByText((_, el) => {
+        // `===` already yields a boolean — the trailing `?? false` was a
+        // no-constant-binary-expression eslint error (left side can never
+        // be nullish).
+        return el?.textContent === "3 × 49.00 د.ل = 147.00 د.ل";
+      }),
+    ).toBeInTheDocument();
+    // The grand total is the same arithmetic at basket level (the line
+    // total span + the summary total span both read 147.00).
+    expect(screen.getAllByText("147.00 د.ل").length).toBe(2);
+  });
+
+  it("a qty=1 line shows no arithmetic row (unit price IS the line total)", async () => {
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/×/)).not.toBeInTheDocument();
+    // Unit price (line) + grand total (summary) — both 49.00 for qty 1.
+    expect(screen.getAllByText("49.00 د.ل").length).toBe(2);
+  });
+
+  it("the summary shows the wallet balance chip when the wallet probe answered (authed)", async () => {
+    authState.token = "t";
+    walletMock.data = { balance: 200 };
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.getByText("رصيدك 200.00 د.ل")).toBeInTheDocument();
+  });
+
+  it("no fabricated balance: the chip is absent while the probe has not answered (or failed)", async () => {
+    authState.token = "t";
+    walletMock.data = undefined;
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/رصيدك/)).not.toBeInTheDocument();
+  });
+
+  it("guests see no wallet chip (the query is disabled without a token)", async () => {
+    authState.token = null;
+    walletMock.data = { balance: 500 };
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/رصيدك/)).not.toBeInTheDocument();
   });
 });

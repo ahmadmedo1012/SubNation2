@@ -372,7 +372,7 @@ export default function AdminAlertsPage() {
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black">صندوق التنبيهات</h1>
+            <h1 className="text-xl font-bold">صندوق التنبيهات</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               سجل تنبيهات النظام — المخزون، الكوبونات، والأحداث المهمة
             </p>
@@ -415,17 +415,17 @@ export default function AdminAlertsPage() {
             {alerts.length > 0 &&
               (confirmDeleteAll ? (
                 <div className="flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 rounded-lg px-2.5 py-1.5">
-                  <span className="text-xs text-destructive font-medium">تأكيد حذف الكل؟</span>
+                  <span className="text-xs text-destructive font-semibold">تأكيد حذف الكل؟</span>
                   <button
                     onClick={() => deleteAll.mutate()}
                     disabled={deleteAll.isPending}
-                    className="text-[11px] font-black text-destructive hover:text-destructive/80 transition-colors px-1"
+                    className="text-2xs font-bold text-destructive hover:text-destructive/80 transition-colors px-1"
                   >
                     نعم
                   </button>
                   <button
                     onClick={() => setConfirmDeleteAll(false)}
-                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1"
+                    className="text-2xs text-muted-foreground hover:text-foreground transition-colors px-1"
                   >
                     لا
                   </button>
@@ -471,7 +471,7 @@ export default function AdminAlertsPage() {
                     <m.icon className="w-3 h-3" />
                     {m.label}
                     <span
-                      className={`text-[10px] px-1 rounded-full font-black ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}
+                      className={`text-3xs px-1 rounded-full font-bold ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}
                     >
                       {s.count}
                     </span>
@@ -494,7 +494,7 @@ export default function AdminAlertsPage() {
               <button
                 key={tab.value}
                 onClick={() => setFilter(tab.value)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap shrink-0 ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap shrink-0 ${
                   filter === tab.value
                     ? "bg-card text-foreground shadow-sm font-bold"
                     : "text-muted-foreground hover:text-foreground"
@@ -503,7 +503,7 @@ export default function AdminAlertsPage() {
                 {tab.label}
                 {cnt > 0 && (
                   <span
-                    className={`text-[10px] font-black px-1.5 py-px rounded-full ${
+                    className={`text-3xs font-bold px-1.5 py-px rounded-full ${
                       filter === tab.value
                         ? "bg-primary/15 text-primary"
                         : "bg-muted/60 text-muted-foreground"
@@ -549,7 +549,7 @@ export default function AdminAlertsPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل التنبيهات</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل التنبيهات</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
             </p>
@@ -590,11 +590,11 @@ export default function AdminAlertsPage() {
                   {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
                       letter-spacing severs Arabic letter connections
                       (A11 §8, rule documented in layout.tsx). */}
-                  <span className="text-[11px] font-bold text-muted-foreground">
+                  <span className="text-2xs font-bold text-muted-foreground">
                     {group.label}
                   </span>
                   <div className="flex-1 h-px bg-border/40" />
-                  <span className="text-[10px] text-muted-foreground">{group.items.length}</span>
+                  <span className="text-3xs text-muted-foreground">{group.items.length}</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -627,12 +627,12 @@ export default function AdminAlertsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-sm leading-snug ${alert.isRead ? "font-medium text-foreground/70" : "font-bold"}`}
+                              className={`text-sm leading-snug ${alert.isRead ? "font-semibold text-foreground/70" : "font-bold"}`}
                             >
                               {alert.title}
                             </span>
                             <span
-                              className={`text-[10px] px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}
+                              className={`text-3xs px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}
                             >
                               {meta.label}
                             </span>
@@ -644,7 +644,7 @@ export default function AdminAlertsPage() {
                           )}
                           <div className="mt-1">
                             <span
-                              className="text-[11px] text-muted-foreground"
+                              className="text-2xs text-muted-foreground"
                               title={formatDate(alert.createdAt)}
                             >
                               {formatRelativeTime(alert.createdAt)}

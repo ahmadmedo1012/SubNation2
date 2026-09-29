@@ -7,7 +7,13 @@ import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
 import { CopilotPanel } from "@/components/admin/copilot/CopilotPanel";
 import { useQuery } from "@tanstack/react-query";
-import type { AdminOrder, AdminProduct, AdminUser } from "@workspace/api-client-react";
+import {
+  getGetAdminStatsQueryKey,
+  useGetAdminStats,
+  type AdminOrder,
+  type AdminProduct,
+  type AdminUser,
+} from "@workspace/api-client-react";
 import {
   Activity,
   Bell,
@@ -136,7 +142,7 @@ function NavItem({
       <Link href={item.href} onClick={onNavigate}>
         <div
           className={`
-            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium
+            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold
             transition-all duration-150 group
             ${
               active
@@ -152,13 +158,13 @@ function NavItem({
           {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
           {!collapsed && badge ? (
             <span
-              className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}
+              className={`text-3xs font-bold px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}
             >
               {badge}
             </span>
           ) : null}
           {collapsed && badge ? (
-            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
+            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
               {badge > 9 ? "9+" : badge}
             </span>
           ) : null}
@@ -395,7 +401,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             aria-activedescendant={total > 0 ? `global-search-option-${safeActive}` : undefined}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
           />
-          <kbd className="text-[10px] font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
+          <kbd className="text-3xs font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
             esc
           </kbd>
         </div>
@@ -411,7 +417,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.orders.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">الطلبات</div>
+                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">الطلبات</div>
                 {results.orders.map((o, i) => (
                   <button
                     key={o.id}
@@ -429,12 +435,12 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                       <ShoppingBag className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{o.product_name}</div>
+                      <div className="text-sm font-semibold truncate">{o.product_name}</div>
                       <div className="text-xs text-muted-foreground font-mono">
                         {o.order_code} · {displayUserName(userFromRow(o))}
                       </div>
                     </div>
-                    <span className="font-black text-primary text-xs tabular-nums shrink-0">
+                    <span className="font-bold text-primary text-xs tabular-nums shrink-0">
                       {formatCurrency(o.amount)}
                     </span>
                   </button>
@@ -444,7 +450,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.users.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
+                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">
                   المستخدمون
                 </div>
                 {results.users.map((u, i) => {
@@ -479,7 +485,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
             {results.products.length > 0 && (
               <div className="p-2">
-                <div className="px-3 py-1 text-[10px] font-bold text-muted-foreground">
+                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">
                   المنتجات
                 </div>
                 {results.products.map((p, i) => {
@@ -511,7 +517,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{p.name}</div>
+                        <div className="text-sm font-semibold truncate">{p.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {formatCurrency(p.price)} · {p.stock_count} وحدة
                         </div>
@@ -537,7 +543,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         {/* 96-F7 (R96 M13): hidden below sm — the ↑↓/↵/esc/⌘K promises
             are keyboard-only and dead weight on touch devices (no
             hardware keyboard to fulfill them; the backdrop tap closes). */}
-        <div className="hidden sm:flex px-4 py-2 border-t border-border bg-muted/10 items-center gap-4 text-[10px] text-muted-foreground">
+        <div className="hidden sm:flex px-4 py-2 border-t border-border bg-muted/10 items-center gap-4 text-3xs text-muted-foreground">
           <span>
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">↑↓</kbd>{" "}
             تنقّل
@@ -615,8 +621,35 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     staleTime: 15_000,
   });
 
+  // R115 (A9 P2): the money-queue badge (pending topups) used to be
+  // passed ONLY by the pages that loaded it (dashboard/topups) — it
+  // blinked out on every other admin page while approvals waited. The
+  // layout now subscribes to the SERVER count itself: the generated
+  // useGetAdminStats hook rides the SAME TanStack key as the
+  // dashboard's instance (dedup + the admin-room socket's
+  // ["/api/admin/stats"] invalidation refreshes the badge on every
+  // topup approve/reject), gated on the finance scope — the topups nav
+  // item is finance-scoped, so there is no badge to render without it
+  // and no reason to poll. A query error = unknown (never a lying 0):
+  // mergedBadges falls back to whatever the current page passed.
+  const canSeeFinanceBadge = hasAdminPermission("finance");
+  const { data: layoutStats } = useGetAdminStats({
+    query: {
+      queryKey: getGetAdminStatsQueryKey(),
+      enabled: !!adminToken && canSeeFinanceBadge,
+      refetchInterval: 300_000,
+      refetchIntervalInBackground: false,
+    },
+    request: { headers },
+  });
+
   const mergedBadges = {
     ...badges,
+    // R115 (A9 P2): the layout's own SERVER-sourced count wins over the
+    // page-passed one (the topups page used to pass its loaded-row
+    // count — a partial that disagreed with the dashboard's server
+    // number); the page-passed value stays as the error fallback.
+    pendingTopups: layoutStats?.pending_topups ?? badges?.pendingTopups ?? 0,
     unreadAlerts: alertCountData?.count ?? badges?.unreadAlerts ?? 0,
   };
 
@@ -741,8 +774,8 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               <Shield className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
-              <div className="font-black text-xs leading-none">SubNation</div>
-              <div className="text-[10px] text-muted-foreground leading-none mt-0.5">
+              <div className="font-bold text-xs leading-none">SubNation</div>
+              <div className="text-3xs text-muted-foreground leading-none mt-0.5">
                 لوحة الإدارة
               </div>
             </div>
@@ -751,7 +784,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center relative shadow-sm shadow-primary/30">
             <Shield className="w-3.5 h-3.5 text-white" />
             {totalBadges > 0 && (
-              <span className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
                 {totalBadges > 9 ? "9+" : totalBadges}
               </span>
             )}
@@ -786,7 +819,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
                       `uppercase tracking-widest` — letter-spacing severs
                       Arabic letter connections; uppercase is a no-op on
                       Arabic and only added visual noise. */}
-                  <span className="text-[10px] font-bold text-muted-foreground">
+                  <span className="text-3xs font-bold text-muted-foreground">
                     {section.label}
                   </span>
                 </div>
@@ -820,18 +853,18 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         {!collapsed && (
           <button
             onClick={() => setShowSearch(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group press-spring"
+            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group press-spring"
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 text-right">بحث سريع</span>
-            <kbd className="text-[10px] font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">
+            <kbd className="text-3xs font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">
               ⌘K
             </kbd>
           </button>
         )}
         <button
           onClick={adminLogout}
-          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 press-spring ${collapsed ? "justify-center" : ""}`}
+          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 press-spring ${collapsed ? "justify-center" : ""}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
           {!collapsed && <span>خروج</span>}
@@ -885,7 +918,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             {!mobileOpen && totalBadges > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-[8px] font-black rounded-full flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
                 {totalBadges > 9 ? "9+" : totalBadges}
               </span>
             )}
@@ -900,7 +933,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           >
             <Search className="w-3 h-3" />
             <span>بحث...</span>
-            <kbd className="text-[10px] font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
+            <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
               ⌘K
             </kbd>
           </button>

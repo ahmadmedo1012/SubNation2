@@ -303,7 +303,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         className="flex flex-col flex-1"
       >
         {product.discount_percent && !unavailable && (
-          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-3xs font-bold px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
             <Tag className="w-2 h-2" />
             {product.discount_percent}%
           </div>
@@ -311,7 +311,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         {unavailable && (
           <div
-            className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/70 text-[10px] font-bold px-2 py-0.5 rounded-full"
+            className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/70 text-3xs font-bold px-2 py-0.5 rounded-full"
             aria-hidden="true"
           >
             <Lock className="w-2.5 h-2.5" /> نفد
@@ -403,14 +403,14 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                  2-up mobile grid (connected glyphs lose ح/ج/خ distinction
                  above ~40yo) — 10px + semibold keeps the badge compact
                  while staying legible. */
-              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
+              className={`text-3xs font-semibold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
             >
               {categoryLabel(product.category)}
             </span>
           </div>
 
           {product.description && (
-            <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed mb-2.5">
+            <p className="text-muted-foreground text-2xs line-clamp-2 leading-relaxed mb-2.5">
               {product.description}
             </p>
           )}
@@ -418,13 +418,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto">
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {product.price_from && (
-                <span className="text-[10px] font-semibold text-muted-foreground">تبدأ من</span>
+                <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>
               )}
-              <span className="font-black text-foreground text-[17px] leading-none tabular-nums">
+              <span className="font-bold text-foreground text-[17px] leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </span>
               {product.sale_price && (
-                <span className="text-muted-foreground text-[10px] line-through tabular-nums">
+                <span className="text-muted-foreground text-3xs line-through tabular-nums">
                   {formatCurrency(product.price)}
                 </span>
               )}
@@ -433,7 +433,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             {product.is_available ? (
               product.variants && product.variants.length > 1 ? (
                 <span
-                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
+                  className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
                 >
                   {product.variants.length} باقات
                 </span>
@@ -448,7 +448,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 </StatusBadge>
               ) : (
                 <div
-                  className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
+                  className={`flex items-center gap-0.5 text-3xs font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
                 >
                   {product.stock_count > 99 ? "+99" : product.stock_count}
                 </div>
@@ -457,7 +457,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               /* 96-F4 (R96 A6 #12): full-opacity muted token — the /80
                  variant measured ≈4.14:1 on the light card, failing AA
                  for a 10px status text. */
-              <span className="text-[10px] font-bold text-muted-foreground">نفد</span>
+              <span className="text-3xs font-bold text-muted-foreground">نفد</span>
             )}
           </div>
         </div>
@@ -472,7 +472,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         <button
           type="button"
           onClick={handleAddToCart}
-          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/25 transition-all cursor-pointer"
+          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-bold shadow-lg shadow-primary/25 transition-all cursor-pointer"
         >
           <ShoppingCart className="w-3.5 h-3.5" />
           أضف للسلة
@@ -497,7 +497,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           <button
             type="button"
             onClick={handleAddToCart}
-            className="mx-3 mb-3 min-h-11 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-black shadow-lg shadow-primary/35 transition-all cursor-pointer"
+            className="mx-3 mb-3 min-h-11 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-bold shadow-lg shadow-primary/35 transition-all cursor-pointer"
           >
             <ShoppingCart className="w-3.5 h-3.5" />
             أضف للسلة

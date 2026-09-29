@@ -23,7 +23,7 @@ function tabFromHash(hash: string): Tab {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-base font-black text-foreground border-r-2 border-primary pr-3">
+      <h2 className="text-base font-bold text-foreground border-r-2 border-primary pr-3">
         {title}
       </h2>
       <div className="text-sm text-muted-foreground leading-7 space-y-2">{children}</div>
@@ -225,7 +225,7 @@ export default function TermsPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-black mb-1">المعلومات القانونية</h1>
+        <h1 className="text-2xl font-bold mb-1">المعلومات القانونية</h1>
         <p className="text-sm text-muted-foreground">SubNation — سوق الاشتراكات الرقمية في ليبيا</p>
       </div>
 
@@ -235,7 +235,7 @@ export default function TermsPage() {
           <button
             key={id}
             onClick={() => handleTabClick(id)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
               tab === id
                 ? "bg-card shadow-sm text-foreground font-bold"
                 : "text-muted-foreground hover:text-foreground"

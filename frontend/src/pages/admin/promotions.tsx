@@ -269,7 +269,7 @@ export default function AdminPromotionsPage() {
               <Zap className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-black text-lg">العروض السريعة</h1>
+              <h1 className="font-bold text-lg">العروض السريعة</h1>
               <p className="text-xs text-muted-foreground">
                 عرض واحد نشط في كل وقت — يطبَّق على المتجر بأكمله
               </p>
@@ -301,7 +301,7 @@ export default function AdminPromotionsPage() {
             onSubmit={handleCreate}
             className="bg-card border border-border/55 rounded-2xl p-5 space-y-4"
           >
-            <h2 className="font-black text-sm flex items-center gap-2">
+            <h2 className="font-bold text-sm flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" /> إنشاء عرض جديد
             </h2>
 
@@ -332,7 +332,7 @@ export default function AdminPromotionsPage() {
                   required
                   dir="ltr"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-3xs text-muted-foreground mt-1">
                   الحد الأقصى 95% — يحمي من بيع المنتج مجاناً عند تجمع الكوبونات.
                 </p>
               </div>
@@ -347,7 +347,7 @@ export default function AdminPromotionsPage() {
                   required
                   dir="ltr"
                 />
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-3xs text-muted-foreground mt-1">
                   يجب أن يكون بعد 5 دقائق من الآن على الأقل، وأقل من 30 يوماً.
                 </p>
               </div>
@@ -362,7 +362,7 @@ export default function AdminPromotionsPage() {
                   {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
                       letter-spacing severs Arabic letter connections
                       (A11 §8, rule documented in layout.tsx). */}
-                  <div className="text-[10px] text-muted-foreground font-bold mb-1">
+                  <div className="text-3xs text-muted-foreground font-bold mb-1">
                     معاينة سريعة
                   </div>
                   <div className="text-xs text-foreground/90 leading-relaxed">
@@ -407,7 +407,7 @@ export default function AdminPromotionsPage() {
         <div className="space-y-2">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-bold">السجل</h2>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-3xs text-muted-foreground">
               {sales.length} {sales.length === 1 ? "عرض" : "عروض"}
             </span>
           </div>
@@ -425,7 +425,7 @@ export default function AdminPromotionsPage() {
               <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
                 <WifiOff className="w-7 h-7 text-status-error/70" />
               </div>
-              <p className="font-black text-sm mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
+              <p className="font-bold text-sm mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
               <p className="text-xs text-muted-foreground mb-5 max-w-xs mx-auto leading-relaxed">
                 {loadError}
               </p>
@@ -465,17 +465,17 @@ export default function AdminPromotionsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-sm truncate">{s.title}</h3>
                         {s.is_currently_active && (
-                          <span className="text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-3xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                             <CheckCircle className="w-2.5 h-2.5" /> نشط
                           </span>
                         )}
                         {expired && s.is_active && (
-                          <span className="text-[10px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/25 px-1.5 py-0.5 rounded-full">
+                          <span className="text-3xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/25 px-1.5 py-0.5 rounded-full">
                             منتهٍ — في انتظار التنظيف التلقائي
                           </span>
                         )}
                         {!s.is_active && (
-                          <span className="text-[10px] font-bold bg-muted/40 text-muted-foreground border border-border px-1.5 py-0.5 rounded-full">
+                          <span className="text-3xs font-bold bg-muted/40 text-muted-foreground border border-border px-1.5 py-0.5 rounded-full">
                             متوقف
                           </span>
                         )}
@@ -498,7 +498,7 @@ export default function AdminPromotionsPage() {
                             ? `انتهى ${formatRelativeTime(s.ends_at)}`
                             : `ينتهي ${formatRelativeTime(s.ends_at)}`}
                         </span>
-                        <span className="text-[10px] opacity-60">#{s.id}</span>
+                        <span className="text-3xs opacity-60">#{s.id}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -539,7 +539,7 @@ export default function AdminPromotionsPage() {
           )}
         </div>
 
-        <p className="text-[10px] text-muted-foreground text-center pt-2">
+        <p className="text-3xs text-muted-foreground text-center pt-2">
           تطبَّق الخصومات تلقائياً على جميع المنتجات في المتجر. تنتهي العروض تلقائياً بعد وقت
           الانتهاء؛ خدمة التنظيف الخلفية تُحدّث الحالة كل 5 دقائق.
         </p>

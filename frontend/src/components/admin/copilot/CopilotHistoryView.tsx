@@ -129,15 +129,15 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                 <StatusBadge variant={meta.tone} size="xs" icon={meta.icon}>
                   {meta.label}
                 </StatusBadge>
-                <span className="font-mono text-[11px] text-muted-foreground">
+                <span className="font-mono text-2xs text-muted-foreground">
                   {e.action_class}
                 </span>
                 {/* 94-C2 (A2 colors): raw amber-400 → the --status-warning
                     token (same meaning, AA-safe on both themes). */}
                 {e.risk_tier === "high" && (
-                  <span className="text-[10px] text-status-warning">عالي</span>
+                  <span className="text-3xs text-status-warning">عالي</span>
                 )}
-                <span className="mr-auto text-[10px] text-muted-foreground">
+                <span className="mr-auto text-3xs text-muted-foreground">
                   {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
                       engines without ar-LY data fall back to the "ar"
                       root and emit Arabic-Indic numerals otherwise. */}
@@ -146,10 +146,10 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
               </div>
               <div className="text-xs leading-5">{oneLine}</div>
               {e.failure_reason && (
-                <div className="text-[11px] text-muted-foreground">السبب: {e.failure_reason}</div>
+                <div className="text-2xs text-muted-foreground">السبب: {e.failure_reason}</div>
               )}
               {e.tool_name && (
-                <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+                <div className="text-3xs text-muted-foreground font-mono flex items-center gap-1">
                   <ExternalLink className="w-2.5 h-2.5" />
                   {e.tool_name}
                 </div>

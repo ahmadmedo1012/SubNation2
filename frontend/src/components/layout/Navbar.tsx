@@ -78,7 +78,7 @@ export function Navbar() {
       <Link href={path}>
         <div
           className={`
-          relative px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150
+          relative px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150
           ${
             active
               ? "text-primary-text font-bold"
@@ -105,7 +105,7 @@ export function Navbar() {
       data-navbar-header="1"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
       className={`
-      sticky top-0 z-50 transition-all duration-300
+      sticky top-0 z-50
       ${
         scrolled
           ? "bg-card/95 backdrop-blur-3xl border-b border-border/70 shadow-md shadow-black/20"
@@ -211,7 +211,7 @@ export function Navbar() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="press-spring transition-all font-medium rounded-xl h-9"
+                  className="press-spring transition-all font-semibold rounded-xl h-9"
                 >
                   دخول
                 </Button>
@@ -290,7 +290,7 @@ export function Navbar() {
                    inline-end physical corner (LEFT in RTL, like
                    NotificationBell's -left-0.5) and the same 9+ cap, so
                    the two unread indicators read as one system. */
-                <span className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-black tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                <span className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
                   {itemCount > 9 ? "9+" : itemCount}
                 </span>
               )}
@@ -304,13 +304,13 @@ export function Navbar() {
         <div className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in">
           <Link
             href="/"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
           >
             الكتالوج
           </Link>
           <Link
             href="/login"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-medium hover:bg-secondary/60 transition-colors min-h-[48px]"
+            className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
           >
             تسجيل الدخول
           </Link>

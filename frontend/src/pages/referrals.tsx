@@ -229,14 +229,16 @@ export default function ReferralsPage() {
     {
       icon: Wallet,
       step: "3",
-      text: "يُتم أول شحن للمحفظة",
+      /* R115 (policy B / A8 #18): اعتماد — a rejected first topup never
+         credits; the row stays pending until an APPROVED topup lands. */
+      text: "يُعتمد أول شحن لصديقك",
       color: "text-status-success",
       bg: "bg-status-success/10 border-status-success/15",
     },
     {
       icon: Gift,
       step: "4",
-      text: "تحصل على نقاط فورية",
+      text: "تُقيد مكافأة النقاط",
       color: "text-status-warning",
       bg: "bg-status-warning/10 border-status-warning/15",
     },
@@ -261,7 +263,7 @@ export default function ReferralsPage() {
           <Users className="w-4.5 h-4.5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-black">برنامج الإحالة</h1>
+          <h1 className="text-xl font-bold">برنامج الإحالة</h1>
           <p className="text-xs text-muted-foreground">ادعُ أصدقاءك واكسب نقاطاً</p>
         </div>
       </div>
@@ -273,7 +275,7 @@ export default function ReferralsPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
             <WifiOff className="w-8 h-8 text-status-error/70" />
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">
             تعذّر تحميل بيانات الإحالات
           </p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
@@ -332,8 +334,8 @@ export default function ReferralsPage() {
                 >
                   <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
                 </div>
-                <div className={`text-2xl font-black tabular-nums ${s.color}`}>{s.value}</div>
-                <div className="text-xs text-muted-foreground mt-0.5 font-medium">{s.label}</div>
+                <div className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-muted-foreground mt-0.5 font-semibold">{s.label}</div>
               </div>
             ))}
           </div>
@@ -357,7 +359,7 @@ export default function ReferralsPage() {
                   ) : (
                     <div
                       dir="ltr"
-                      className="font-mono text-2xl font-black tracking-[0.2em] text-foreground truncate max-w-full"
+                      className="font-mono text-2xl font-bold tracking-[0.2em] text-foreground truncate max-w-full"
                     >
                       {overview?.referral_code ?? "—"}
                     </div>
@@ -402,10 +404,11 @@ export default function ReferralsPage() {
               </div>
               <p className="text-sm text-foreground/80 leading-snug">
                 تحصل على{" "}
-                <span className="font-black text-status-warning">
+                <span className="font-bold text-status-warning">
                   {overview.points_rate.points_per_referral} نقطة
                 </span>{" "}
-                عند كل إحالة ناجحة — قابلة للتحويل إلى رصيد في المحفظة
+                عن كل إحالة ناجحة (تُقيد عند اعتماد أول شحن لصديقك) — قابلة للتحويل إلى
+                رصيد في المحفظة
               </p>
             </div>
           )}
@@ -414,7 +417,7 @@ export default function ReferralsPage() {
           <div className="bg-card border border-border/50 rounded-2xl p-5 mb-4 float-in stagger-6">
             <div className="flex items-center gap-2 mb-4">
               <Trophy className="w-4 h-4 text-primary" />
-              <h2 className="font-black text-sm">كيف يعمل البرنامج؟</h2>
+              <h2 className="font-bold text-sm">كيف يعمل البرنامج؟</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {STEPS.map((s) => (
@@ -427,10 +430,10 @@ export default function ReferralsPage() {
                   >
                     <s.icon className={`w-4 h-4 ${s.color}`} />
                   </div>
-                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-black flex items-center justify-center">
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-3xs font-bold flex items-center justify-center">
                     {s.step}
                   </span>
-                  <p className="text-xs text-foreground/75 font-medium leading-snug">{s.text}</p>
+                  <p className="text-xs text-foreground/75 font-semibold leading-snug">{s.text}</p>
                 </div>
               ))}
             </div>
@@ -441,7 +444,7 @@ export default function ReferralsPage() {
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40">
               <div className="flex items-center gap-2">
                 <Users className="w-3.5 h-3.5 text-muted-foreground" />
-                <h2 className="font-black text-sm">سجل الإحالات</h2>
+                <h2 className="font-bold text-sm">سجل الإحالات</h2>
               </div>
               {events.length > 0 && (
                 <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full font-bold">
@@ -464,7 +467,7 @@ export default function ReferralsPage() {
                     <Users className="w-7 h-7 opacity-20" />
                   </div>
                 </div>
-                <p className="text-sm font-bold text-foreground/50 mb-1">لا توجد إحالات بعد</p>
+                <p className="text-sm font-bold text-foreground/70 mb-1">لا توجد إحالات بعد</p>
                 <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
                   شارك رابطك مع أصدقائك وابدأ في كسب النقاط
                 </p>
@@ -508,7 +511,7 @@ export default function ReferralsPage() {
                       {/* Status / Points */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {credited ? (
-                          <span className="text-xs font-black text-status-warning bg-status-warning/10 border border-status-warning/20 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-bold text-status-warning bg-status-warning/10 border border-status-warning/20 px-2 py-0.5 rounded-full">
                             +{ev.points_earned} نقطة
                           </span>
                         ) : (

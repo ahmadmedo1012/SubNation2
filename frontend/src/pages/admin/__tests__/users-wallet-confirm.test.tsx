@@ -341,23 +341,78 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     renderPage();
 
     const dialog = await openEditModal();
-    // Wallet input left EMPTY → loyalty-only PATCH, no money dialog.
+    // R115: a points CHANGE (100 → 150) with a valid note is a
+    // loyalty-only PATCH — still no money-confirm dialog (the wallet
+    // preview confirm covers WALLET mutations), and the note rides the
+    // body (the backend 400s a points edit without one).
+    const pointsInput = within(dialog).getByDisplayValue("100");
+    fireEvent.change(pointsInput, { target: { value: "150" } });
+    fireEvent.change(noteInput(dialog), { target: { value: "تسوية نقاط يدوية" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("تأكيد تعديل المحفظة")).not.toBeInTheDocument();
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
     expect(body).toMatchObject({
-      loyalty_points: 100,
+      loyalty_points: 150,
+      note: "تسوية نقاط يدوية",
     });
-    // (r110) the note is NOT sent for loyalty-only saves — the
-    // backend requires (and reads) it only on the wallet path.
-    expect(body.note).toBeUndefined();
+    // R115: loyalty_tier is NEVER sent — the backend 400s any tier edit
+    // (tiers derive from net spend, Part 11).
+    expect(body.loyalty_tier).toBeUndefined();
+  });
+
+  // R115: the form pre-fills the current points balance — an untouched
+  // form is NOT a save. The old behavior shipped the unchanged
+  // loyalty_points value on every PATCH; the backend now demands a note
+  // + finance scope for it (and 400s an empty body «لا توجد تعديلات»).
+  it("an untouched form (no wallet, unchanged points) never reaches the PATCH — honest «لا توجد تعديلات»", async () => {
+    renderPage();
+
+    const dialog = await openEditModal();
+    // Wallet left EMPTY, points left at the pre-filled 100.
+    fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock.mock.calls[0][0]).toMatchObject({
+      title: "لا توجد تعديلات",
+      variant: "destructive",
+    });
+  });
+
+  // R115: a points change without a note is a guaranteed 400 — the same
+  // two-layer gate the wallet path has (disabled submit + save-path
+  // guard for programmatic/novalidate submits).
+  it("a points change with a <3-char note never reaches the PATCH (two-layer gate)", async () => {
+    renderPage();
+    const dialog = await openEditModal();
+
+    const pointsInput = within(dialog).getByDisplayValue("100");
+    fireEvent.change(pointsInput, { target: { value: "150" } });
+    const save = within(dialog).getByRole("button", { name: "حفظ" });
+    // Layer 1 — empty note: the submit button is disabled.
+    expect(save).toBeDisabled();
+
+    // Layer 2 — the save-path guard: destructive toast, no PATCH.
+    fireEvent.submit(document.getElementById("user-edit-form") as HTMLFormElement);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    expect(toastMock.mock.calls[0][0]).toMatchObject({
+      title: "سبب التعديل مطلوب",
+      variant: "destructive",
+    });
+
+    // A valid note re-opens the submit path.
+    fireEvent.change(noteInput(dialog), { target: { value: "تسوية نقاط يدوية" } });
+    expect(save).toBeEnabled();
   });
 
   // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5" from
   // surviving programmatic submits — the save path clamps loyalty_points
   // to ≥0 so a negative value can never reach the PATCH (r94 P3-13).
+  // R115: the clamp result (0 ≠ 100) is a points CHANGE — a valid note
+  // now rides the body too.
   it("a NEGATIVE loyalty_points value is clamped to 0 at the save path (96-F7 M14)", async () => {
     fetchMock.mockResolvedValue(resLike({ body: { id: 16, loyalty_points: 0 } }));
     renderPage();
@@ -366,6 +421,7 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     // Wallet left EMPTY → loyalty-only PATCH, no money confirm dialog.
     const pointsInput = within(dialog).getByDisplayValue("100");
     fireEvent.change(pointsInput, { target: { value: "-5" } });
+    fireEvent.change(noteInput(dialog), { target: { value: "تصفير نقاط بالخطأ" } });
 
     // Direct submit dispatch bypasses the browser's min=0 constraint
     // validation (jsdom blocks the click path) — the SAVE-PATH clamp is
@@ -374,7 +430,7 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
-    expect(body).toMatchObject({ loyalty_points: 0 });
+    expect(body).toMatchObject({ loyalty_points: 0, note: "تصفير نقاط بالخطأ" });
     expect(body.loyalty_points).not.toBe(-5);
   });
 

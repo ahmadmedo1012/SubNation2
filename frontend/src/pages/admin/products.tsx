@@ -167,9 +167,17 @@ function InlineStockEdit({
           if (e.key === "Escape") onDone();
         }}
         autoFocus
+        /* R115 (A9 P3-7): the edit is an ABSOLUTE SET (POST set-count),
+           not a +N increment — a "+5" mental model silently replaces
+           the whole count. The title/aria-label carry the semantics
+           (the value is prefilled with the current total, so a
+           placeholder would never render). */
+        title="العدد الكلي للوحدات — تعيين مطلق وليس إضافة (أدخل الرقم النهائي)"
+        aria-label="العدد الكلي للوحدات (تعيين مطلق)"
+        placeholder="الكل"
         /* 96-F7 (R96 M8): h-9 input (was w-16 h-6 — a 24px touch target
            for a money-adjacent field). */
-        className="w-16 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
+        className="w-20 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
       />
       {/* 96-F7 (R96 M8): the save/cancel controls are now ≥36px tall
          with Arabic TEXT labels («حفظ»/«إلغاء») + gap-2 — the old p-0.5
@@ -232,6 +240,29 @@ export default function AdminProductsPage() {
   // 93-C7 / C-UX3 (A12 F-04): styled confirm for the destructive bulk
   // archive (window.confirm broke theme/RTL and named no count context).
   const { confirm, ConfirmDialog } = useConfirm();
+
+  // R115 (A9 P1 / A9 #6): the layout's context action links to
+  // /admin/products#new (layout.tsx CONTEXT_ACTIONS) — the page used to
+  // read ?search only, so the link landed on a closed form. Honor the
+  // hash: open the create editor (fresh session) and consume the hash
+  // so a refresh doesn't reopen it after the operator closes the form.
+  const openCreateFromHash = () => {
+    if (window.location.hash !== "#new") return;
+    setShowForm(true);
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM });
+    // 98-F7 (R98-05): fresh create session starts pristine.
+    setFormBaseline({ ...EMPTY_FORM });
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  };
+  useEffect(() => {
+    openCreateFromHash();
+    // Same-page clicks (already on /admin/products, tapping the
+    // context action again) don't remount — listen for the hash change
+    // too.
+    window.addEventListener("hashchange", openCreateFromHash);
+    return () => window.removeEventListener("hashchange", openCreateFromHash);
+  }, []);
 
   const headers = useAdminHeaders();
 
@@ -330,10 +361,14 @@ export default function AdminProductsPage() {
   // other card actions, and a 4px thumb slip turned «إلغاء» into an
   // archiving (terminal in this UI). The dialog names the product so
   // the operator knows exactly what is being archived.
+  // R115 (A9 P1): the copy is now HONEST about the one-way door — the
+  // list endpoint filters is_archived=false and NO restore path exists
+  // anywhere (UI or API); the old «تبقى بياناته ومبيعاته» wording
+  // implied recoverability that does not exist.
   const archiveProduct = async (product: AdminProduct) => {
     const confirmed = await confirm({
       title: "أرشفة المنتج؟",
-      description: `سيتم أرشفة «${product.name}» — يُخفى من المتجر وتبقى بياناته ومبيعاته.`,
+      description: `سيتم أرشفة «${product.name}» — الأرشفة نهائية من الواجهة: بيانات المنتج ومبيعاته تبقى في السجل، لكنه يُخفى من المتجر ومن قائمة المنتجات، واستعادته تتطلب تدخلاً مباشراً.`,
       confirmLabel: "أرشفة",
       destructive: true,
     });
@@ -464,9 +499,10 @@ export default function AdminProductsPage() {
     if (!selectedIds.size) return;
     // 93-C7 / C-UX3: shared styled confirm — native window.confirm left
     // the operator with English browser chrome and no count context.
+    // R115 (A9 P1): same one-way-door honesty as the single archive.
     const confirmed = await confirm({
       title: "أرشفة المنتجات المحددة؟",
-      description: `سيتم أرشفة ${selectedIds.size} منتج — تُخفى من المتجر وتبقى بياناتها ومبيعاتها.`,
+      description: `سيتم أرشفة ${selectedIds.size} منتج — الأرشفة نهائية من الواجهة: بياناتها ومبيعاتها تبقى في السجل، لكنها تُخفى من المتجر ومن قائمة المنتجات، واستعادتها تتطلب تدخلاً مباشراً.`,
       confirmLabel: "أرشفة",
       destructive: true,
     });
@@ -545,7 +581,7 @@ export default function AdminProductsPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-black mb-0.5">المنتجات</h1>
+            <h1 className="text-xl font-bold mb-0.5">المنتجات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>{products.length} منتج في الكتالوج</span>
               {lowStockCount > 0 && (
@@ -630,10 +666,10 @@ export default function AdminProductsPage() {
           <div className="bg-card border border-primary/20 rounded-2xl overflow-hidden shadow-lg shadow-primary/5">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/15">
               <div>
-                <h2 className="font-black text-sm">
+                <h2 className="font-bold text-sm">
                   {editingId ? "تعديل المنتج" : "إضافة منتج جديد"}
                 </h2>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-3xs text-muted-foreground mt-0.5">
                   <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded">
                     ⌘S
                   </kbd>{" "}
@@ -688,7 +724,7 @@ export default function AdminProductsPage() {
                   سعر التكلفة (د.ل)
                   {/* 96-F7 (R96 A6 #11): 9px → 10px — functional hint
                       text, not decoration. */}
-                  <span className="text-[10px] font-normal text-muted-foreground/70">
+                  <span className="text-3xs font-normal text-muted-foreground/70">
                     اختياري — للإدارة فقط، لا يظهر للمستخدم
                   </span>
                 </Label>
@@ -702,7 +738,7 @@ export default function AdminProductsPage() {
                   placeholder="0.00"
                 />
                 {form.price && form.cost_price && (
-                  <p className="text-[10px] mt-1 text-muted-foreground">
+                  <p className="text-3xs mt-1 text-muted-foreground">
                     {(() => {
                       const p = parseFloat(form.price);
                       const c = parseFloat(form.cost_price);
@@ -770,12 +806,12 @@ export default function AdminProductsPage() {
                       />
                       <div
                         style={{ display: "none" }}
-                        className="absolute inset-0 items-center justify-center text-[10px] font-bold text-destructive text-center px-1"
+                        className="absolute inset-0 items-center justify-center text-3xs font-bold text-destructive text-center px-1"
                       >
                         رابط غير صالح
                       </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    <p className="text-2xs text-muted-foreground leading-relaxed">
                       معاينة كما ستظهر في البطاقة. استخدم صورة شفافة (PNG/SVG) عالية الدقة لأفضل
                       نتيجة.
                     </p>
@@ -884,7 +920,7 @@ export default function AdminProductsPage() {
               <button
                 key={c.value}
                 onClick={() => setCategoryFilter(c.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                   categoryFilter === c.value
                     ? "bg-card shadow-sm text-foreground font-bold"
                     : "text-muted-foreground hover:text-foreground"
@@ -945,7 +981,7 @@ export default function AdminProductsPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المنتجات</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المنتجات</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
             </p>
@@ -1011,7 +1047,7 @@ export default function AdminProductsPage() {
                             }}
                           />
                         ) : (
-                          <span className="text-base font-black opacity-70">
+                          <span className="text-base font-bold opacity-70">
                             {product.name.charAt(0).toUpperCase()}
                           </span>
                         )}
@@ -1041,7 +1077,7 @@ export default function AdminProductsPage() {
                     {/* Stats bar — inline stock edit */}
                     <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
                       <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <span className="font-black text-primary tabular-nums">
+                        <span className="font-bold text-primary tabular-nums">
                           {formatCurrency(product.price)}
                         </span>
                         {/* catalog-recon: variant-count badge — the display
@@ -1053,7 +1089,7 @@ export default function AdminProductsPage() {
                             return (
                               <span
                                 title="لا باقات — اضغط «الباقات» لإضافة باقة"
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
+                                className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
                               >
                                 بلا باقات
                               </span>
@@ -1061,7 +1097,7 @@ export default function AdminProductsPage() {
                           return (
                             <span
                               title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
+                              className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
                             >
                               {formatCount(count, {
                                 one: "باقة",
@@ -1089,7 +1125,7 @@ export default function AdminProductsPage() {
                               /* 96-F7 (R96 A6 #11): 9px → 10px — a
                                   functional money hint (margin %), not
                                   decoration. */
-                              className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
+                              className={`text-3xs font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
                               title={`تكلفة: ${formatCurrency(cp)} / هامش: ${formatCurrency(margin)}`}
                             >
                               {margin >= 0 ? "+" : ""}
@@ -1114,7 +1150,9 @@ export default function AdminProductsPage() {
                             className={`font-bold tabular-nums hover:underline decoration-dashed underline-offset-2 transition-colors ${
                               product.stock_count === 0 ? "text-orange-400" : "text-emerald-400"
                             }`}
-                            title="انقر لتعديل المخزون"
+                            /* R115 (A9 P3-7): the inline edit is an absolute
+                               SET, not +N — say so on the trigger too. */
+                            title="انقر لتعديل المخزون — تعيين العدد الكلي (وليس إضافة)"
                           >
                             {product.stock_count} وحدة
                           </button>

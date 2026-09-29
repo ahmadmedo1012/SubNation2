@@ -57,6 +57,10 @@ const PRODUCT = {
 
 vi.mock("@workspace/api-client-react", () => ({
   createOrder: (...args: unknown[]) => createOrderMock(...(args as [])),
+  // R115-I1 (A7 P2-2): the pre-buy re-quote — pinned to the SAME price so
+  // these key-lifecycle tests exercise the unchanged-price proceed path
+  // (the abort/fail-open branches are covered in product-price-honesty).
+  getProduct: () => Promise.resolve(PRODUCT),
   getMe: () => getMeMock(),
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],

@@ -38,7 +38,8 @@ const CATEGORIES = [
  *
  * IMPORTANT: every item here is grounded in actual product behaviour
  * (wallet ledger, topup approvals, instant credentials delivery, the
- * 5 LYD welcome bonus on referred signup, etc.). Do NOT fabricate
+ * 5 LYD welcome bonus on the referred user's first APPROVED topup —
+ * R115 policy B, etc.). Do NOT fabricate
  * answers — Google can downgrade FAQ rich-results that don't match
  * the rendered page content. Update both the Q&A objects AND any UI
  * copy that asserts the same fact when policies change.
@@ -92,7 +93,7 @@ const SUPPORT_FAQ: FaqItem[] = [
   {
     question: "هل أحصل على مكافأة عند دعوة أصدقائي؟",
     answer:
-      "نعم. لكل صديق ينضم عبر رابط إحالتك ويكمل أول شحنة، تحصل على نقاط ولاء قابلة للتحويل لرصيد. كما يحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته فور التسجيل.",
+      "نعم. عندما يعتمد فريقنا أول شحن لصديقٍ انضم عبر رمز إحالتك، تحصل أنت على نقاط ولاء قابلة للتحويل لرصيد، ويحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته في الوقت نفسه.",
   },
   {
     question: "كيف أتواصل مع الدعم؟",
@@ -356,11 +357,11 @@ export default function SupportPage() {
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black leading-tight break-words">
+              <h1 className="text-xl font-bold leading-tight break-words">
                 {selectedTicket ? selectedTicket.title : "الدعم الفني"}
               </h1>
               {!selectedTicket && openCount > 0 && (
-                <span className="text-[11px] font-black bg-status-info/12 text-status-info border border-status-info/25 px-2 py-0.5 rounded-full">
+                <span className="text-2xs font-bold bg-status-info/12 text-status-info border border-status-info/25 px-2 py-0.5 rounded-full">
                   {formatCount(openCount, {
                     one: "مفتوحة",
                     two: "مفتوحتان",
@@ -420,13 +421,13 @@ export default function SupportPage() {
           {/* Ticket meta */}
           <div className="flex items-center gap-2 px-5 py-3 border-b border-border/25 bg-muted/8 flex-wrap">
             <span
-              className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border font-bold ${STATUS_CONFIG[selectedTicket.status]?.color} ${STATUS_CONFIG[selectedTicket.status]?.border}`}
+              className={`inline-flex items-center gap-1 text-2xs px-2 py-1 rounded-full border font-bold ${STATUS_CONFIG[selectedTicket.status]?.color} ${STATUS_CONFIG[selectedTicket.status]?.border}`}
             >
               {STATUS_CONFIG[selectedTicket.status]?.icon}
               {STATUS_CONFIG[selectedTicket.status]?.label}
             </span>
             {selectedTicket.category && (
-              <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/40 px-2 py-1 rounded-full flex items-center gap-1">
+              <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/40 px-2 py-1 rounded-full flex items-center gap-1">
                 {categoryIcon(selectedTicket.category)} {categoryLabel(selectedTicket.category)}
               </span>
             )}
@@ -462,7 +463,7 @@ export default function SupportPage() {
                   <div className="w-12 h-12 rounded-2xl bg-muted/40 border border-border/30 flex items-center justify-center mb-3">
                     <MessageSquare className="w-5 h-5 opacity-20" />
                   </div>
-                  <p className="text-sm font-medium">لا توجد رسائل بعد</p>
+                  <p className="text-sm font-semibold">لا توجد رسائل بعد</p>
                   <p className="text-xs text-muted-foreground mt-1">اكتب ردك أدناه لبدء المحادثة</p>
                 </div>
               ) : (
@@ -493,7 +494,7 @@ export default function SupportPage() {
                         className={`max-w-[78%] flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
                       >
                         {!isUser && (
-                          <span className="text-[11px] font-bold text-primary/80 px-1">
+                          <span className="text-2xs font-bold text-primary/80 px-1">
                             فريق الدعم
                           </span>
                         )}
@@ -510,7 +511,7 @@ export default function SupportPage() {
                           {r.message}
                         </div>
                         <div
-                          className={`flex items-center gap-1 text-[10px] text-muted-foreground px-1 ${isUser ? "flex-row-reverse" : ""}`}
+                          className={`flex items-center gap-1 text-3xs text-muted-foreground px-1 ${isUser ? "flex-row-reverse" : ""}`}
                         >
                           <Clock className="w-2.5 h-2.5" />
                           <span title={formatDate(r.created_at)}>
@@ -547,7 +548,7 @@ export default function SupportPage() {
                      round-trip error. */
                   maxLength={4000}
                   enterKeyHint="send"
-                  className="flex-1 h-11 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 transition-all"
+                  className="flex-1 h-11 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 transition-all"
                   dir="rtl"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -584,7 +585,7 @@ export default function SupportPage() {
             <div className="w-7 h-7 rounded-lg bg-primary/12 border border-primary/20 flex items-center justify-center">
               <Plus className="w-3.5 h-3.5 text-primary" />
             </div>
-            <h2 className="font-black text-sm">تذكرة دعم جديدة</h2>
+            <h2 className="font-bold text-sm">تذكرة دعم جديدة</h2>
           </div>
 
           <form onSubmit={handleCreate} className="p-5 space-y-4">
@@ -642,7 +643,7 @@ export default function SupportPage() {
                 placeholder="وصف مختصر للمشكلة..."
                 required
                 maxLength={255}
-                className="h-10 rounded-xl border-border/50 focus:border-primary/40 focus:ring-2 focus:ring-primary/12 bg-card transition-all"
+                className="h-10 rounded-xl border-border/50 focus:border-primary/40 bg-card transition-all"
               />
             </div>
 
@@ -664,7 +665,7 @@ export default function SupportPage() {
                 /* 96-F6 (R96 A1 #3 / A6 #10): 16px on mobile kills the
                    iOS focus-zoom (the shared Input does the same via its
                    own text-base; this raw textarea had text-sm). */
-                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground"
+                className="w-full bg-card border border-border/50 rounded-xl px-3.5 py-3 text-base md:text-sm focus:border-primary/40 resize-none leading-relaxed transition-all hover:border-border/80 placeholder:text-muted-foreground"
                 dir="rtl"
               />
             </div>
@@ -721,7 +722,7 @@ export default function SupportPage() {
             <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-4">
               <WifiOff className="w-6 h-6 text-status-error/70" />
             </div>
-            <p className="font-black text-sm mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
+            <p className="font-bold text-sm mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
             <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
               حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
             </p>
@@ -779,17 +780,17 @@ export default function SupportPage() {
 
                       <div className="flex items-center gap-2 flex-wrap mb-2">
                         <span
-                          className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-bold ${s.color} ${s.border}`}
+                          className={`inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full border font-bold ${s.color} ${s.border}`}
                         >
                           {s.icon}
                           {s.label}
                         </span>
                         {t.category && (
-                          <span className="text-[11px] text-muted-foreground bg-muted/30 border border-border/35 px-2 py-0.5 rounded-full">
+                          <span className="text-2xs text-muted-foreground bg-muted/30 border border-border/35 px-2 py-0.5 rounded-full">
                             {categoryIcon(t.category)} {categoryLabel(t.category)}
                           </span>
                         )}
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-2xs text-muted-foreground">
                           {formatRelativeTime(t.created_at)}
                         </span>
                       </div>
@@ -825,7 +826,7 @@ export default function SupportPage() {
       */}
       {!selectedTicket && (
         <section className="mt-10 mb-6">
-          <h2 className="text-base font-black mb-3 flex items-center gap-2 border-r-2 border-primary pr-3">
+          <h2 className="text-base font-bold mb-3 flex items-center gap-2 border-r-2 border-primary pr-3">
             الأسئلة الشائعة
           </h2>
           <p className="text-xs text-muted-foreground mb-4">

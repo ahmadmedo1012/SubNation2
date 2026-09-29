@@ -19,6 +19,7 @@ import {
   getGetWalletQueryKey,
   getListOrdersQueryKey,
   getMe,
+  getProduct,
   type CreateOrderBody,
   type Product,
   type User,
@@ -47,7 +48,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 
 // Category-tinted hero gradients on the product page. Ride the shared
 // --cat-* tokens (defined in index.css, exposed to Tailwind via @theme)
@@ -168,6 +169,13 @@ function buyIntentFingerprint(
   return `${productId}|${effectivePrice ?? ""}|${(couponCode ?? "").trim().toUpperCase()}|${variantId ?? ""}`;
 }
 
+/** R115-I1 (A7 P2-2): cent-exact price equality for the pre-buy
+ * re-quote — floating-point sums must never turn an unchanged price
+ * into a spurious "price changed" abort. */
+function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
 function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
   try {
     const raw = localStorage.getItem(buyIntentKeyId(productId));
@@ -225,7 +233,7 @@ function CopyField({
       <div className="min-w-0 flex-1">
         {/* 96-F4 (R96 A6 #1): no uppercase/tracking-wider on Arabic labels —
             letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
-        <div className="text-[10px] text-muted-foreground font-bold mb-0.5">{label}</div>
+        <div className="text-3xs text-muted-foreground font-bold mb-0.5">{label}</div>
         {/* 96-F4 (R96 A2 P1-5): the credential VALUE lives in a NON-button
             selectable element (select-text + break-all) — the old markup
             trapped it inside the copy <button> (unselectable on iOS) and
@@ -270,6 +278,14 @@ export default function ProductPage() {
   const { toast } = useToast();
   const { addItem } = useCart();
   const [orderResult, setOrderResult] = useState<any>(null);
+  // R115-I1 (A7 P3-8): the buy-success money receipt — the charged amount
+  // + the post-charge wallet balance. balanceAfter stays null until the
+  // cache:"no-store" /me refresh lands: a STALE pre-purchase balance
+  // must never be presented as "remaining" on the success screen.
+  const [purchaseSummary, setPurchaseSummary] = useState<{
+    charged: number;
+    balanceAfter: number | null;
+  } | null>(null);
   const [error, setError] = useState("");
   const [couponInput, setCouponInput] = useState("");
   const [couponValidating, setCouponValidating] = useState(false);
@@ -436,33 +452,94 @@ export default function ProductPage() {
 
   const handleBuyIntent = async () => {
     if (!product || buyPending) return;
-    const body: CreateOrderBody = { product_id: product.id };
-    if (selectedVariant) body.variant_id = selectedVariant.id;
-    if (couponResult?.code) body.coupon_code = couponResult.code;
-    // 97-F5 (F-02): mint-or-reuse the intent key BEFORE the request — a
-    // stored key still inside its TTL and matching the current price /
-    // coupon fingerprint is replayed verbatim (network-failure retry →
-    // server replay instead of a second charge). The variant id rides
-    // the fingerprint so switching options mints a fresh intent.
-    const fingerprint = buyIntentFingerprint(
-      product.id,
-      selectedVariant
-        ? (selectedVariant.sale_price ?? selectedVariant.price)
-        : (product.sale_price ?? product.price),
-      couponResult?.code,
-      selectedVariant?.id ?? undefined,
-    );
-    const intentKey = loadBuyIntentKey(product.id, fingerprint) ?? generateIdempotencyKey();
-    persistBuyIntentKey(product.id, fingerprint, intentKey);
     setBuyPending(true);
     setError("");
     try {
+      // ── R115-I1 (A7 P2-2): live pre-buy re-quote ──────────────────────
+      // The page's price snapshot can be arbitrarily old (staleTime 60 s
+      // + refetchOnWindowFocus disabled): a flash sale that ended (or
+      // started) between page-open and the buy tap had the shopper
+      // approve one number while the server charged the live one — the
+      // exact defect class checkout's 98-F2 mount re-quote closed for
+      // the cart; the single-buy path now re-quotes right before the
+      // charge. Contract (mirrors 98-F2):
+      //   • fetch failure → FAIL-OPEN: proceed with the displayed price
+      //     (the server stays the charge authority and re-prices the
+      //     order anyway);
+      //   • live effective price ≠ displayed (or the selected option
+      //     no longer exists) → ABORT before any key is minted or any
+      //     charge is attempted, refresh the page's product data, void
+      //     the coupon (its math was computed against the stale base)
+      //     and tell the shopper honestly.
+      const quotedVariantId = selectedVariant?.id ?? null;
+      const quotedBasePrice = selectedVariant
+        ? (selectedVariant.sale_price ?? selectedVariant.price)
+        : (product.sale_price ?? product.price);
+      try {
+        const live = await getProduct(product.id);
+        const liveVariant =
+          quotedVariantId != null
+            ? (live.variants ?? []).find((v) => v.id === quotedVariantId)
+            : undefined;
+        const livePrice =
+          quotedVariantId != null
+            ? liveVariant
+              ? (liveVariant.sale_price ?? liveVariant.price)
+              : null
+            : (live.sale_price ?? live.price);
+        if (livePrice == null || toCents(livePrice) !== toCents(quotedBasePrice)) {
+          // Abort — no intent key was minted yet (the fingerprint below
+          // never ran), so the next tap on the refreshed numbers is a
+          // genuinely new intent by construction.
+          try {
+            void refetchProduct();
+          } catch {
+            // best-effort UI refresh — the toast still explains the abort
+          }
+          couponGenerationRef.current += 1;
+          setCouponResult(null);
+          setCouponError("");
+          toast({
+            title: "تحديث السعر",
+            description: "تغيّر السعر منذ فتحت الصفحة — عُرض السعر المحدّث، راجعه ثم أعد الشراء.",
+          });
+          return;
+        }
+      } catch {
+        // Fail-open (98-F2 contract): the displayed price stands; the
+        // server re-prices the order on its side regardless.
+      }
+      const body: CreateOrderBody = { product_id: product.id };
+      if (selectedVariant) body.variant_id = selectedVariant.id;
+      if (couponResult?.code) body.coupon_code = couponResult.code;
+      // 97-F5 (F-02): mint-or-reuse the intent key BEFORE the request — a
+      // stored key still inside its TTL and matching the current price /
+      // coupon fingerprint is replayed verbatim (network-failure retry →
+      // server replay instead of a second charge). The variant id rides
+      // the fingerprint so switching options mints a fresh intent.
+      const fingerprint = buyIntentFingerprint(
+        product.id,
+        quotedBasePrice,
+        couponResult?.code,
+        selectedVariant?.id ?? undefined,
+      );
+      const intentKey = loadBuyIntentKey(product.id, fingerprint) ?? generateIdempotencyKey();
+      persistBuyIntentKey(product.id, fingerprint, intentKey);
       const order = await createOrder(body, {
         headers: { "Idempotency-Key": intentKey },
       });
       // Success — the intent is terminally resolved; the next buy mints
       // a fresh key (and nothing stale can swallow it later).
       clearBuyIntentKey(product.id);
+      // R115-I1 (A7 P3-8): seed the success screen's money receipt. The
+      // charged amount prefers the server's own figure (order.amount);
+      // the theoretical fallback (displayed base, or the coupon final
+      // when one is applied) is only for degenerate/legacy payloads.
+      const chargedAmount =
+        typeof order?.amount === "number"
+          ? order.amount
+          : (couponResult ? couponResult.final_amount : quotedBasePrice);
+      setPurchaseSummary({ charged: chargedAmount, balanceAfter: null });
       setOrderResult(order);
       // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
       // /api/auth/me can be answered from the browser HTTP cache
@@ -475,6 +552,12 @@ export default function ProductPage() {
         try {
           const freshUser = await getMe({ cache: "no-store" });
           queryClient.setQueryData(getGetMeQueryKey(), freshUser);
+          // R115-I1 (A7 P3-8): the fresh post-charge balance completes the
+          // success screen's receipt («رصيدك المتبقي») — only the
+          // no-store response may populate it (never the stale cache).
+          if (typeof freshUser?.wallet_balance === "number") {
+            setPurchaseSummary({ charged: chargedAmount, balanceAfter: freshUser.wallet_balance });
+          }
         } catch {
           queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         }
@@ -801,7 +884,7 @@ export default function ProductPage() {
                 <CheckCircle className="w-9 h-9 text-status-success" />
               </div>
             </div>
-            <h1 className="text-xl font-black mb-1.5">تم الشراء بنجاح!</h1>
+            <h1 className="text-xl font-bold mb-1.5">تم الشراء بنجاح!</h1>
             <p className="text-muted-foreground text-sm">
               رقم الطلب:{" "}
               <button
@@ -816,6 +899,28 @@ export default function ProductPage() {
           </div>
 
           <div className="p-5 space-y-4">
+            {/* R115-I1 (A7 P3-8): money receipt — what was charged and
+                what's left in the wallet. The charged amount comes from
+                the order itself; the remaining balance appears the
+                moment the post-charge /me refresh lands (never a stale
+                pre-purchase number). */}
+            <div className="bg-muted/20 border border-border/50 rounded-xl divide-y divide-border/30">
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="text-xs font-bold text-muted-foreground">المبلغ المخصوم</span>
+                <span className="font-bold text-sm tabular-nums text-foreground">
+                  {formatCurrency(purchaseSummary?.charged ?? orderResult.amount ?? 0)}
+                </span>
+              </div>
+              {purchaseSummary?.balanceAfter != null && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-xs font-bold text-muted-foreground">رصيدك المتبقي</span>
+                  <span className="font-bold text-sm tabular-nums text-status-success">
+                    {formatCurrency(purchaseSummary.balanceAfter)}
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* Credentials box */}
             {(orderResult.delivered_email || orderResult.delivered_password) && (
               <div className="bg-muted/20 border border-border/50 rounded-xl overflow-hidden">
@@ -943,7 +1048,7 @@ export default function ProductPage() {
           >
             <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
               <span
-                className={`text-5xl sm:text-6xl font-black select-none drop-shadow-lg ${initialColorClass}`}
+                className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
               >
                 {(product.name || "؟")[0]}
               </span>
@@ -952,11 +1057,11 @@ export default function ProductPage() {
 
           {/* Top badges — z-[3] keeps them above the z-[2] fallback layer
               (same stacking discipline as ProductCard's media area). */}
-          <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/8">
+          <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-2xs font-bold px-2.5 py-1 rounded-full border border-white/8">
             {categoryLabel(product.category)}
           </div>
           {product.discount_percent && (
-            <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-black px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
+            <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
               <Tag className="w-3 h-3" />
               خصم {product.discount_percent}%
             </div>
@@ -969,7 +1074,7 @@ export default function ProductPage() {
         <div className="p-5 space-y-4">
           {/* Title */}
           <div>
-            <h1 className="text-fluid-2xl font-black mb-1.5 leading-tight tracking-tight">
+            <h1 className="text-fluid-2xl font-bold mb-1.5 leading-tight tracking-tight">
               {product.name}
             </h1>
             {product.description && (
@@ -1024,12 +1129,19 @@ export default function ProductPage() {
           {/* Price + stock */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
             <div className="flex-1">
-              <div className="text-3xl font-black text-primary leading-none tabular-nums">
+              <div className="text-3xl font-bold text-primary leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </div>
-              {product.sale_price && (
+              {/* R115-I1 (A7 P2-1): the strike follows the EFFECTIVE
+                  selection exactly like the duration pills below — the
+                  SELECTED variant's base price when a variant is picked.
+                  product.price is the MIN variant price (backend
+                  contract), so the old strike showed «كان 25 د.ل → الآن
+                  80 د.ل» nonsense during flash sales on any
+                  non-cheapest option. */}
+              {(selectedVariant ? selectedVariant.sale_price : product.sale_price) != null && (
                 <div className="text-muted-foreground text-sm line-through mt-1.5 tabular-nums">
-                  {formatCurrency(product.price)}
+                  {formatCurrency(selectedVariant ? selectedVariant.price : product.price)}
                 </div>
               )}
             </div>
@@ -1085,10 +1197,10 @@ export default function ProductPage() {
                 className="flex flex-col items-center gap-1 p-2.5 bg-muted/15 border border-border/35 rounded-xl text-center transition-colors hover:bg-muted/25 hover:border-border/55"
               >
                 <item.icon className="w-4 h-4 text-muted-foreground mb-0.5" />
-                <span className="text-[11px] font-bold text-foreground leading-tight">
+                <span className="text-2xs font-bold text-foreground leading-tight">
                   {item.label}
                 </span>
-                <span className="text-[10px] text-muted-foreground leading-tight">{item.desc}</span>
+                <span className="text-3xs text-muted-foreground leading-tight">{item.desc}</span>
               </div>
             ))}
           </div>
@@ -1326,7 +1438,7 @@ function CouponField({
         >
           <div className="flex items-center gap-1.5 text-status-success">
             <CheckCircle className="w-3 h-3 shrink-0" />
-            <span dir="ltr" className="font-mono font-black">
+            <span dir="ltr" className="font-mono font-bold">
               {couponResult.code}
             </span>
             <span>
@@ -1337,7 +1449,7 @@ function CouponField({
               خصم
             </span>
           </div>
-          <span className="font-black text-status-success">
+          <span className="font-bold text-status-success">
             −{formatCurrency(couponResult.discount_amount)}
           </span>
         </div>
@@ -1406,17 +1518,20 @@ function CtaBlock({
       <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
         {compact && (
           <div className="flex-1 text-right">
-            <div className="font-black text-primary text-xl tabular-nums">
+            <div className="font-bold text-primary text-xl tabular-nums">
               {formatCurrency(displayPrice)}
             </div>
-            <div className="text-xs text-muted-foreground">سجل الدخول للشراء</div>
+            <div className="text-xs text-muted-foreground">سجّل دخولك للشراء</div>
           </div>
         )}
         <Button
           onClick={onLogin}
           className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
         >
-          {compact ? "سجل للشراء" : "تسجيل الدخول للشراء"}
+          {/* R115-I1 (A7 P3-12): the app-standard «سجّل دخولك» form
+              (cart.tsx:333 + login.tsx family) — the shadda-less
+              «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
+          {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
         </Button>
       </div>
     );
@@ -1437,10 +1552,10 @@ function CtaBlock({
       return (
         <div className="flex items-center gap-3">
           <div className="flex-1 text-right">
-            <div className="font-black text-muted-foreground text-xl tabular-nums line-through">
+            <div className="font-bold text-muted-foreground text-xl tabular-nums line-through">
               {formatCurrency(displayPrice)}
             </div>
-            <div className="text-[11px] text-muted-foreground/80 flex items-center gap-1 mt-0.5">
+            <div className="text-2xs text-muted-foreground/90 flex items-center gap-1 mt-0.5">
               <Lock className="w-3 h-3" aria-hidden="true" /> نفد المخزون
             </div>
           </div>
@@ -1501,7 +1616,7 @@ function CtaBlock({
         {!compact && couponField}
         {compact && (
           <div className="flex-1 text-right">
-            <div className="font-black text-primary text-xl tabular-nums">
+            <div className="font-bold text-primary text-xl tabular-nums">
               {formatCurrency(displayPrice)}
             </div>
             <div className="text-xs text-muted-foreground">جارٍ التحقق من رصيدك…</div>
@@ -1526,7 +1641,7 @@ function CtaBlock({
         {compact ? (
           <>
             <div className="flex-1 text-right">
-              <div className="font-black text-primary text-xl tabular-nums">
+              <div className="font-bold text-primary text-xl tabular-nums">
                 {formatCurrency(displayPrice)}
               </div>
               <div className="text-xs text-destructive/75">
@@ -1553,7 +1668,7 @@ function CtaBlock({
               </div>
               <div className="flex items-center justify-between gap-2 px-4 py-3 bg-primary/8 border border-primary/20 rounded-xl col-span-2">
                 <span className="text-muted-foreground">تحتاج إضافة</span>
-                <span className="font-black text-primary-text tabular-nums">
+                <span className="font-bold text-primary-text tabular-nums">
                   {formatCurrency(shortfall)}
                 </span>
               </div>
@@ -1576,7 +1691,7 @@ function CtaBlock({
       {!compact && couponField}
       {compact && (
         <div className="flex-1 text-right">
-          <div className="font-black text-primary text-xl tabular-nums">
+          <div className="font-bold text-primary text-xl tabular-nums">
             {formatCurrency(displayPrice)}
           </div>
           <div className="text-xs text-status-success">رصيد كافٍ ✓</div>
@@ -1589,7 +1704,7 @@ function CtaBlock({
       >
         <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2`} />
         {isPending
-          ? "جارٍ المعالجة..."
+          ? "جارٍ المعالجة…"
           : compact
             ? "اشترِ"
             : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
@@ -1623,19 +1738,28 @@ function CtaBlock({
 
 function RecommendationsSection({ numericId }: { numericId: number }) {
   const [, navigate] = useLocation();
-  const { data: recommendations = [], isLoading } = useGetProductRecommendations(numericId, {
+  const { data: recommendations = [], isLoading, isError } = useGetProductRecommendations(numericId, {
     query: {
       queryKey: getGetProductRecommendationsQueryKey(numericId),
       enabled: !!numericId,
       staleTime: 5 * 60 * 1000,
+      // R115-I1 (A7 P3-9): one genuine retry for transient failures — a
+      // single blip used to kill the section silently on attempt #1.
+      retry: 1,
     },
   });
 
-  if (!isLoading && recommendations.length === 0) return null;
+  // R115-I1 (A7 P3-9): hide DELIBERATELY on a definitive failure (after
+  // the retry above) or an empty payload. The recommendations rail is
+  // decorative cross-sell — an error card inside the purchase funnel
+  // is noise, and the product itself (already on screen, with its own
+  // error/retry states) carries the page's honest surfaces. The retry
+  // is what keeps this from being a silent vanish.
+  if (isError || (!isLoading && recommendations.length === 0)) return null;
 
   return (
     <div className="mt-8 space-y-4">
-      <h3 className="text-lg font-black pr-1">قد يعجبك أيضاً</h3>
+      <h3 className="text-lg font-bold pr-1">قد يعجبك أيضاً</h3>
       <div className="grid grid-cols-2 gap-3">
         {isLoading
           ? Array.from({ length: 2 }).map((_, i) => (
@@ -1651,7 +1775,11 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
               </div>
             ))
           : recommendations.map((r) => (
-              <a
+              /* R115-I1 (A7 P3-9): wouter <Link> instead of a raw <a href> —
+                 the anchor did a FULL page reload (SPA state lost: cart
+                 context, auth boot, scroll restoration) while every
+                 other product surface navigates client-side. */
+              <Link
                 key={r.id}
                 href={`/product/${r.id}`}
                 onClick={() => window.scrollTo(0, 0)}
@@ -1665,24 +1793,39 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                       loading="lazy"
                       decoding="async"
                       className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+                      /* R115-I1 (A7 P3-9): ProductCard-parity fallback — a
+                         dead enrichment URL swaps to the initial-letter
+                         tile instead of painting the browser's
+                         broken-image glyph inside the recommendation. */
+                      onError={(e) => {
+                        const el = e.target as HTMLImageElement;
+                        el.style.display = "none";
+                        const fallback = el.nextElementSibling as HTMLElement | null;
+                        if (fallback) fallback.style.display = "flex";
+                      }}
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
-                        <span className="text-xl font-black text-muted-foreground/55">
-                          {(r.name || "؟")[0]}
-                        </span>
-                      </div>
+                  ) : null}
+                  {/* Always-mounted fallback tile (hidden while an image
+                      URL exists) so onError above can reveal it without
+                      a re-render — the same idiom as the hero image. */}
+                  <div
+                    style={{ display: r.image_url ? "none" : "flex" }}
+                    className="w-full h-full items-center justify-center"
+                  >
+                    <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
+                      <span className="text-xl font-bold text-muted-foreground/55">
+                        {(r.name || "؟")[0]}
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </div>
                 <div>
                   <h4 className="text-sm font-bold truncate mb-1">{r.name}</h4>
-                  <div className="text-primary-text font-black tabular-nums">
+                  <div className="text-primary-text font-bold tabular-nums">
                     {formatCurrency(r.price)}
                   </div>
                 </div>
-              </a>
+              </Link>
             ))}
       </div>
     </div>
@@ -1800,13 +1943,13 @@ function VariantSelector({
                   {v.duration_label ?? v.plan_label ?? v.label}
                 </span>
                 <span
-                  className={`text-[13px] font-black tabular-nums leading-none ${
+                  className={`text-[13px] font-bold tabular-nums leading-none ${
                     isSelected ? "text-primary" : "text-foreground/75"
                   }`}
                 >
                   {formatCurrency(eff)}
                   {v.sale_price != null && (
-                    <span className="ms-1.5 text-[10px] font-normal text-muted-foreground line-through">
+                    <span className="ms-1.5 text-3xs font-normal text-muted-foreground line-through">
                       {formatCurrency(v.price)}
                     </span>
                   )}

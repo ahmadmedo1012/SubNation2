@@ -3,6 +3,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useOnScreen } from "@/hooks/use-on-screen";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
@@ -23,6 +24,7 @@ import {
   Unlink,
   User,
   Wallet,
+  WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -76,12 +78,28 @@ export default function ProfilePage() {
     if (!token) navigate("/login");
   }, [token, navigate]);
 
-  const { data: userData, isLoading } = useGetMe({
+  // R115 (A8 #4): the me-query failure branch — the identity card used
+  // to render as `user ? card : null`: a failed /auth/me (retry:false)
+  // silently vanished balance, points, referral code and tier with NO
+  // error state and NO retry — the exact "money-datum silent vanish"
+  // pattern 93-C5/F-05 fixed on wallet/loyalty/referrals/orders (see
+  // wallet.tsx:~806). Outage ≠ empty: honest error card + retry.
+  const {
+    data: userData,
+    isLoading,
+    isError: meError,
+    refetch: refetchMe,
+  } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
   const user = userData as MeUser | undefined;
+
+  // R115-A10: pause the identity card's drifting blob when the card
+  // leaves the viewport (enabled re-arms the observer once /me lands
+  // and the card mounts — the ref is null on the first effect run).
+  const tierGlow = useOnScreen<HTMLDivElement>(!!user);
 
   // Fetch linked providers. Round-3 (8-f §6): no abort + a stale-response
   // race — a slow response from a previous token could land after a
@@ -181,7 +199,7 @@ export default function ProfilePage() {
           <User className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-black">حسابي</h1>
+          <h1 className="text-xl font-bold">حسابي</h1>
           <p className="text-xs text-muted-foreground">إدارة بيانات ومعلومات حسابك</p>
         </div>
       </div>
@@ -190,17 +208,42 @@ export default function ProfilePage() {
         {/* ── User identity card ──────────────────────────────── */}
         {isLoading ? (
           <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
+        ) : meError ? (
+          /* R115 (A8 #4): a failed /auth/me probe must not quietly remove
+             the identity card — same error-card idiom as the wallet
+             balance card (93-C5 / F-05). */
+          <div className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <WifiOff className="w-6 h-6 text-status-error/70" />
+            </div>
+            <p className="font-bold text-base mb-1.5 text-foreground/80">
+              تعذّر تحميل بيانات حسابك
+            </p>
+            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
+              حدث خطأ في الاتصال — رصيدك ونقاطك سليمة، أعد المحاولة لعرضهما
+            </p>
+            <Button
+              onClick={() => void refetchMe()}
+              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl"
+            >
+              إعادة المحاولة
+            </Button>
+          </div>
         ) : user ? (
           <div
+            ref={tierGlow.ref}
             className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-lg shadow-black/8 ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
           >
             <div className="absolute inset-0 dot-grid opacity-25 pointer-events-none" />
-            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/7 blur-2xl pointer-events-none blob-drift" />
+            <div
+              className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/7 blur-2xl pointer-events-none blob-drift"
+              style={tierGlow.style}
+            />
 
             <div className="relative flex items-start gap-4">
               {/* Avatar */}
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/8 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
-                <span className="text-2xl font-black text-primary select-none">
+                <span className="text-2xl font-bold text-primary select-none">
                   {/* Prefer first character of display_name (Telegram /
                       Google users). Fall back to last 2 phone digits
                       for legacy phone-only accounts. Avoid the literal
@@ -218,7 +261,7 @@ export default function ProfilePage() {
                 {/* Tier badge */}
                 <div className="mb-2">
                   <span
-                    className={`text-[11px] font-black px-2.5 py-1 rounded-full border ${tierColor(tier)} bg-current/8 border-current/18`}
+                    className={`text-2xs font-bold px-2.5 py-1 rounded-full border ${tierColor(tier)} bg-current/8 border-current/18`}
                     style={{ color: "inherit" }}
                   >
                     <span className={tierColor(tier)}>{tierLabel(tier)}</span>
@@ -249,18 +292,18 @@ export default function ProfilePage() {
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">
+                    <div className="text-3xs text-muted-foreground mb-0.5 font-semibold">
                       الرصيد
                     </div>
-                    <div className="font-black text-sm text-primary tabular-nums">
+                    <div className="font-bold text-sm text-primary tabular-nums">
                       {formatCurrency(user.wallet_balance ?? 0)}
                     </div>
                   </div>
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">
-                    <div className="text-[10px] text-muted-foreground mb-0.5 font-medium">
+                    <div className="text-3xs text-muted-foreground mb-0.5 font-semibold">
                       النقاط
                     </div>
-                    <div className="font-black text-sm text-status-warning tabular-nums flex items-center gap-1">
+                    <div className="font-bold text-sm text-status-warning tabular-nums flex items-center gap-1">
                       <Star className="w-3 h-3" />
                       {user.loyalty_points ?? 0}
                     </div>
@@ -273,10 +316,10 @@ export default function ProfilePage() {
             {user.referral_code && (
               <div className="relative mt-4 pt-3.5 border-t border-border/20 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] text-muted-foreground font-medium mb-0.5">
+                  <div className="text-3xs text-muted-foreground font-semibold mb-0.5">
                     رمز الإحالة
                   </div>
-                  <div dir="ltr" className="font-mono font-black tracking-widest text-sm text-left">
+                  <div dir="ltr" className="font-mono font-bold tracking-widest text-sm text-left">
                     {user.referral_code}
                   </div>
                 </div>
@@ -344,7 +387,7 @@ export default function ProfilePage() {
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
               <LinkIcon className="w-3.5 h-3.5 text-primary" />
             </div>
-            <h2 className="font-black">الحسابات المرتبطة</h2>
+            <h2 className="font-bold">الحسابات المرتبطة</h2>
           </div>
 
           <div className="space-y-3">
@@ -374,13 +417,13 @@ export default function ProfilePage() {
                     )}
                     <div>
                       <div className="text-xs font-bold">{providerDisplayName(id.provider)}</div>
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-3xs text-muted-foreground">
                         {id.email || id.phone || id.providerUid}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="text-[10px] bg-status-success/10 text-status-success px-2 py-0.5 rounded-full font-bold">
+                    <div className="text-3xs bg-status-success/10 text-status-success px-2 py-0.5 rounded-full font-bold">
                       نشط
                     </div>
                     {/* 96-F6 (R96 A2 P2-8): unlink was a 24px unlabeled icon
@@ -415,10 +458,10 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-2.5 min-w-0">
                   <AlertCircle className="w-4 h-4 text-status-error shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-black text-status-error mb-0.5">
+                    <p className="text-xs font-bold text-status-error mb-0.5">
                       تعذّر تحميل الحسابات المرتبطة
                     </p>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    <p className="text-3xs text-muted-foreground leading-relaxed">
                       حدث خطأ في الاتصال — حساباتك المرتبطة سليمة، أعد المحاولة لعرضها.
                     </p>
                   </div>
@@ -441,8 +484,8 @@ export default function ProfilePage() {
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <div className="text-xs font-black text-primary mb-1">حماية حسابك</div>
-                      <div className="text-[10px] text-muted-foreground leading-relaxed">
+                      <div className="text-xs font-bold text-primary mb-1">حماية حسابك</div>
+                      <div className="text-3xs text-muted-foreground leading-relaxed">
                         اربط حسابك بطريقة دخول إضافية (Google، رقم الهاتف، أو Telegram) لتسهيل
                         الوصول وحماية حسابك إذا فقدت إحدى الطرق.
                       </div>
@@ -486,7 +529,7 @@ export default function ProfilePage() {
               removed — letter-spacing breaks Arabic letter joining (the
               header text «خيارات الحساب» is Arabic; the classes were a
               Latin design-system carry-over). */}
-          <h2 className="font-black text-xs text-muted-foreground mb-3">خيارات الحساب</h2>
+          <h2 className="font-bold text-xs text-muted-foreground mb-3">خيارات الحساب</h2>
           <Button
             variant="outline"
             onClick={() => {

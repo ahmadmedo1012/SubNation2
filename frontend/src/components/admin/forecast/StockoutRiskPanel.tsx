@@ -142,7 +142,7 @@ export function StockoutRiskPanel() {
       <header className="flex items-center gap-2 px-4 py-3 border-b border-border/40 bg-gradient-to-l from-status-warning/5 to-transparent">
         <ShieldAlert className="w-4 h-4 text-status-warning" />
         <h2 className="text-sm font-bold flex-1">خطر النفاد</h2>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {data.last_successful_run_at
             ? /* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits. */
               `آخر تحديث: ${new Date(data.last_successful_run_at).toLocaleString("ar-LY-u-nu-latn", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
@@ -160,7 +160,7 @@ export function StockoutRiskPanel() {
 
       {(isStale || isCalibrating) && (
         <div
-          className={`flex items-start gap-2 px-4 py-2 text-[11px] bg-status-warning/10 text-status-warning border-b border-border/40`}
+          className={`flex items-start gap-2 px-4 py-2 text-2xs bg-status-warning/10 text-status-warning border-b border-border/40`}
         >
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
@@ -228,7 +228,7 @@ function RiskRow({ row }: { row: AtRiskRow }) {
               {conf.label}
             </StatusBadge>
           </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+          <div className="text-2xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
             <span className="flex items-center gap-1">
               <Package className="w-3 h-3" />
               المخزون:{" "}
@@ -337,7 +337,7 @@ function ExplainDrawer({
 function KV({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-border/30 rounded-lg bg-background/50 px-2 py-1">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-3xs text-muted-foreground">{label}</div>
       <div dir="ltr" className="font-mono text-sm font-bold mt-0.5">
         {value}
       </div>

@@ -329,9 +329,9 @@ export default function AdminTicketsPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-black">تذاكر الدعم</h1>
+              <h1 className="text-xl font-bold">تذاكر الدعم</h1>
               {pendingCount > 0 && (
-                <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-black px-2.5 py-1 rounded-full">
+                <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-bold px-2.5 py-1 rounded-full">
                   {pendingCount} نشطة
                 </span>
               )}
@@ -349,7 +349,7 @@ export default function AdminTicketsPage() {
                 <button
                   key={s.value}
                   onClick={() => setStatusFilter(s.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {s.label}
                 </button>
@@ -364,7 +364,7 @@ export default function AdminTicketsPage() {
             <button
               key={c.value}
               onClick={() => setCategoryFilter(c.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                 categoryFilter === c.value
                   ? "bg-primary/10 border-primary/30 text-primary font-bold"
                   : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/60"
@@ -415,7 +415,7 @@ export default function AdminTicketsPage() {
                 <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
                   <WifiOff className="w-8 h-8 text-status-error/70" />
                 </div>
-                <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
+                <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
                 <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
                   حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
                 </p>
@@ -452,7 +452,7 @@ export default function AdminTicketsPage() {
                             {t.title}
                           </span>
                           {(t.last_reply_at || t.created_at) && (
-                            <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                            <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">
                               {formatRelativeTime(t.last_reply_at ?? t.created_at)}
                             </span>
                           )}
@@ -462,7 +462,7 @@ export default function AdminTicketsPage() {
                             {displayUserName(userFromRow(t))}
                           </span>
                           {t.category && (
-                            <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
+                            <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/40 px-1.5 py-0.5 rounded-md">
                               {CATEGORIES[t.category] ?? t.category}
                             </span>
                           )}
@@ -530,7 +530,7 @@ export default function AdminTicketsPage() {
                   >
                     <ChevronLeft className="w-3.5 h-3.5 rotate-180" /> العودة
                   </button>
-                  <h2 className="font-black text-sm truncate mb-1">{selected.title}</h2>
+                  <h2 className="font-bold text-sm truncate mb-1">{selected.title}</h2>
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <User className="w-3 h-3" />
@@ -556,7 +556,7 @@ export default function AdminTicketsPage() {
                     <button
                       onClick={() => handleStatus(selected.id, "closed")}
                       disabled={statusBusy === selected.id}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {statusBusy === selected.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -569,7 +569,7 @@ export default function AdminTicketsPage() {
                     <button
                       onClick={() => handleStatus(selected.id, "open")}
                       disabled={statusBusy === selected.id}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/15 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {statusBusy === selected.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -625,7 +625,7 @@ export default function AdminTicketsPage() {
                             <p className="text-sm leading-relaxed">{r.message}</p>
                           </div>
                           <div
-                            className={`flex items-center gap-1 text-[10px] text-muted-foreground ${isAdmin ? "flex-row-reverse" : ""}`}
+                            className={`flex items-center gap-1 text-3xs text-muted-foreground ${isAdmin ? "flex-row-reverse" : ""}`}
                           >
                             <Clock className="w-2.5 h-2.5" />
                             <span>{formatDate(r.created_at)}</span>

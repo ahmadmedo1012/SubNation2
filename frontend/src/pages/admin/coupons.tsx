@@ -314,7 +314,7 @@ export default function AdminCouponsPage() {
               <Tag className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-black">الكوبونات والخصومات</h1>
+              <h1 className="text-lg font-bold">الكوبونات والخصومات</h1>
               <p className="text-xs text-muted-foreground">إنشاء وإدارة أكواد الخصم</p>
             </div>
           </div>
@@ -330,15 +330,15 @@ export default function AdminCouponsPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-1">
-            <div className="text-2xl font-black text-foreground tabular-nums">{coupons.length}</div>
+            <div className="text-2xl font-bold text-foreground tabular-nums">{coupons.length}</div>
             <div className="text-xs text-muted-foreground mt-0.5">إجمالي الكوبونات</div>
           </div>
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-2">
-            <div className="text-2xl font-black text-emerald-400 tabular-nums">{activeCount}</div>
+            <div className="text-2xl font-bold text-emerald-400 tabular-nums">{activeCount}</div>
             <div className="text-xs text-muted-foreground mt-0.5">نشطة</div>
           </div>
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-3">
-            <div className="text-2xl font-black text-primary tabular-nums">{totalUsed}</div>
+            <div className="text-2xl font-bold text-primary tabular-nums">{totalUsed}</div>
             <div className="text-xs text-muted-foreground mt-0.5">مرات الاستخدام</div>
           </div>
         </div>
@@ -501,7 +501,7 @@ export default function AdminCouponsPage() {
               {/* 93-C7 / C-UX4: honest hint — the naive local value is
                   converted to UTC on save; without it operators assumed
                   the server shared their wall-clock. */}
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 يُحوَّل تلقائياً إلى التوقيت العالمي (UTC) عند الحفظ — ينتهي في نفس اللحظة التي
                 تحددها هنا.
               </p>
@@ -584,7 +584,7 @@ export default function AdminCouponsPage() {
                       >
                         {/* Code + description */}
                         <div>
-                          <div className="font-mono font-black text-sm tracking-wider text-foreground">
+                          <div className="font-mono font-bold text-sm tracking-wider text-foreground">
                             {coupon.code}
                           </div>
                           {coupon.description && (
@@ -595,7 +595,7 @@ export default function AdminCouponsPage() {
                         </div>
 
                         {/* Value */}
-                        <div className="flex items-center gap-1 font-black text-primary text-sm">
+                        <div className="flex items-center gap-1 font-bold text-primary text-sm">
                           {coupon.type === "percentage" ? (
                             <>
                               <Percent className="w-3 h-3" />

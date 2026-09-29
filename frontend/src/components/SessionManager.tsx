@@ -92,7 +92,7 @@ export function SessionManager() {
         <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
           <Smartphone className="w-3.5 h-3.5 text-primary-text" />
         </div>
-        <h2 className="font-black">الأجهزة النشطة</h2>
+        <h2 className="font-bold">الأجهزة النشطة</h2>
       </div>
 
       {loading ? (
@@ -112,12 +112,12 @@ export function SessionManager() {
             >
               <div className="min-w-0">
                 <p className="font-bold text-sm truncate">{session.device}</p>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-3xs text-muted-foreground">
                   آخر نشاط: {new Date(session.lastActive).toLocaleDateString("ar-LY")}
                 </p>
               </div>
               {session.current && (
-                <span className="text-[10px] bg-primary/15 text-primary-text border border-primary/25 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
+                <span className="text-3xs bg-primary/15 text-primary-text border border-primary/25 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
                   الحالي
                 </span>
               )}

@@ -3,6 +3,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import { useOnScreen } from "@/hooks/use-on-screen";
 import { formatCurrency } from "@/lib/utils";
 import { CheckCircle, Gift } from "lucide-react";
 import { useMemo } from "react";
@@ -31,12 +32,23 @@ function readReferralFromUrl(): string {
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
   const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
+  // R115-A10: pause the ambient blobs when the auth card scrolls away.
+  const glow = useOnScreen<HTMLDivElement>();
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background">
+    <div
+      ref={glow.ref}
+      className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background"
+    >
       {/* Ambient background glows */}
-      <div className="absolute top-[-10%] left-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift" />
-      <div className="absolute bottom-[-5%] right-[10%] w-64 h-64 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow" />
+      <div
+        className="absolute top-[-10%] left-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift"
+        style={glow.style}
+      />
+      <div
+        className="absolute bottom-[-5%] right-[10%] w-64 h-64 bg-primary/4 rounded-full blur-[60px] pointer-events-none blob-drift-slow"
+        style={glow.style}
+      />
       <div className="absolute inset-0 dot-grid opacity-20 pointer-events-none" />
 
       <div className="relative w-full max-w-sm">
@@ -52,7 +64,7 @@ export default function RegisterPage() {
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <Link
             href="/login"
-            className="py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             تسجيل الدخول
           </Link>
@@ -87,21 +99,22 @@ export default function RegisterPage() {
                     {referral}
                   </span>
                 </p>
-                {/* R94-A1 #6 (P2): the welcome bonus is credited AT SIGNUP
-                    (Google/WhatsApp — backend firebase-auth.service.ts:476 /
-                    whatsapp-otp.service.ts:402), NOT "عند الشحن الأول" as
-                    the old copy claimed — a referred buyer completing
-                    signup never saw the promised topup trigger and assumed
-                    the bonus was lost. Wording now matches support.tsx's
-                    FAQ (فور التسجيل). */}
-                {/* 96-F6 (R96 A6 #18 + #12): formatCurrency(5) — the
-                    hardcoded «5 د.ل» violated the money convention
-                    (2 decimals + thousands grouping, single-sourced in
-                    lib/utils.ts); the /80 opacity also failed AA
-                    (≈4.0:1) on small text in light mode. */}
-                <p className="text-[11px] text-status-success mt-0.5">
-                  ستُضاف مكافأة ترحيب <span className="font-bold">{formatCurrency(5)}</span> إلى
-                  محفظتك فور إتمام التسجيل
+                {/* R115 (welcome-bonus policy B, A8 P1): the promise used
+                    to say the 5 LYD lands «فور إتمام التسجيل» — true only
+                    for Google/WhatsApp referrals pre-R115 and NEVER for
+                    Telegram. Unified policy: the referred user's welcome
+                    credit + the referrer's points BOTH land when the
+                    friend's FIRST topup is APPROVED (topup.service.ts —
+                    manual approval is the fraud gate), on every channel.
+                    The banner now states the trigger honestly; the detail
+                    line names each side's reward. */}
+                <p className="text-2xs text-status-success mt-0.5">
+                  عند أول شحن معتمد عبر كود إحالة تحصل أنت وصديقك على مكافآت
+                </p>
+                <p className="text-2xs text-status-success mt-0.5 leading-relaxed">
+                  تحصل أنت على <span className="font-bold">{formatCurrency(5)}</span> رصيد،
+                  ويحصل صديقك على <span className="font-bold">50 نقطة</span> عند اعتماد أول
+                  شحن لك
                 </p>
               </div>
             </div>
@@ -110,12 +123,13 @@ export default function RegisterPage() {
               <Gift className="w-3.5 h-3.5 shrink-0" />
               {/* R94-A1 #6 (P2): the REFERRER earns 50 loyalty points
                   (POINTS_PER_REFERRAL = 50 ≙ 0.50 د.ل, credited when the
-                  friend completes a first topup — topup.service.ts:353),
+                  friend's first topup is APPROVED — topup.service.ts),
                   NOT 5 د.ل. Unified with referrals.tsx / loyalty.tsx
-                  (نقاط قابلة للتحويل إلى رصيد). */}
+                  (نقاط قابلة للتحويل إلى رصيد). R115 (policy B): «اعتماد»
+                  added — a rejected first topup never credits. */}
               <span>
-                ادعُ صديقاً واحصل على <span className="font-bold">50 نقطة ولاء</span> عند أول شحن له
-                — قابلة للتحويل إلى رصيد
+                ادعُ صديقاً واحصل على <span className="font-bold">50 نقطة ولاء</span> عند اعتماد
+                أول شحن له — قابلة للتحويل إلى رصيد
               </span>
             </div>
           )}

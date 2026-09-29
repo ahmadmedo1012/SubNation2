@@ -100,9 +100,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       .where(eq(productVariantsTable.id, body.variant_id))
       .limit(1);
     if (!v) {
-      return res
-        .status(404)
-        .json(createErrorResponse("الخيار غير موجود", ErrorCode.NOT_FOUND));
+      return res.status(404).json(createErrorResponse("الخيار غير موجود", ErrorCode.NOT_FOUND));
     }
     variantId = v.id;
     productId = v.productId;
@@ -140,12 +138,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
     if (!v) {
       return res
         .status(404)
-        .json(
-          createErrorResponse(
-            "لا يوجد منتج أو خيارات نشطة بهذا المعرف",
-            ErrorCode.NOT_FOUND,
-          ),
-        );
+        .json(createErrorResponse("لا يوجد منتج أو خيارات نشطة بهذا المعرف", ErrorCode.NOT_FOUND));
     }
     variantId = v.id;
     productId = body.product_id;
@@ -253,9 +246,7 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       ? +(worstCaseGross - pointsLiabilityLyd(purchaseAwardPoints(worstCasePrice))).toFixed(4)
       : null;
   const worstCaseReferred =
-    worstCaseContribution != null
-      ? +(worstCaseContribution - referralCostLyd).toFixed(4)
-      : null;
+    worstCaseContribution != null ? +(worstCaseContribution - referralCostLyd).toFixed(4) : null;
 
   // Break-even price: finalPrice where gross = 0 (cost recovery).
   const breakEvenPrice = costLyd != null ? round2(costLyd) : null;
@@ -263,16 +254,15 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
   // program stack (loyalty liability + referred acquisition cost):
   //   p×(1−f)×(1−c) − cost − p×(1−f)×(1−c)/100 − referral ≥ 0
   //   p × (1−f)×(1−c)×(1−1/POINTS_PER_LYD) ≥ cost + referral
-  const netUnitFactor = (1 - flashPct / 100) * (1 - worstCaseCouponPct / 100) * (1 - 1 / POINTS_PER_LYD);
+  const netUnitFactor =
+    (1 - flashPct / 100) * (1 - worstCaseCouponPct / 100) * (1 - 1 / POINTS_PER_LYD);
   const safeMinPrice =
     costLyd != null && netUnitFactor > 0
       ? round2((costLyd + referralCostLyd) / netUnitFactor)
       : null;
   // Max safe discount % at the CURRENT list price (vs cost, before program costs):
   const maxSafeDiscountPct =
-    costLyd != null && listPrice > 0
-      ? +((1 - costLyd / listPrice) * 100).toFixed(1)
-      : null;
+    costLyd != null && listPrice > 0 ? +((1 - costLyd / listPrice) * 100).toFixed(1) : null;
 
   // ── Risk state (explained, never vague) ─────────────────────────────────
   let riskState: RiskState = "SAFE";
@@ -333,7 +323,8 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
     warnings.push({
       severity: "info",
       code: "cheapest_variant_used",
-      message_ar: "تمت المحاكاة على أرخص خيار نشط للمنتج — اختر خياراً محدداً (variant_id) لمحاكاة سعره الفعلي عند الدفع.",
+      message_ar:
+        "تمت المحاكاة على أرخص خيار نشط للمنتج — اختر خياراً محدداً (variant_id) لمحاكاة سعره الفعلي عند الدفع.",
     });
   }
   if (variantId != null && !variantActive && priceSource === "variant") {

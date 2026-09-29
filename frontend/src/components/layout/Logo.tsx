@@ -59,7 +59,7 @@ export function Logo({ size = "md", showText = true, className }: LogoProps) {
       </div>
 
       {showText && (
-        <span className={cn("font-black tracking-tight leading-none", textSizes[size])}>
+        <span className={cn("font-bold tracking-tight leading-none", textSizes[size])}>
           Sub<span className="text-primary-text">Nation</span>
         </span>
       )}

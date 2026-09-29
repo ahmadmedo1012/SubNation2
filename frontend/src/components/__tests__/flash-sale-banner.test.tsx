@@ -159,7 +159,7 @@ describe("FlashSaleBanner — countdown honesty + timer hard-stop (flash-sales p
 
     for (const unit of ["س", "د", "ث"]) {
       const label = screen.getByText(unit, { selector: "span" });
-      expect(label.className).toContain("text-[10px]");
+      expect(label.className).toContain("text-3xs");
       expect(label.className).not.toContain("text-[7px]");
     }
   });

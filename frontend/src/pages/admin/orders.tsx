@@ -512,7 +512,7 @@ export default function AdminOrdersPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black mb-0.5">الطلبات</h1>
+            <h1 className="text-xl font-bold mb-0.5">الطلبات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {/* 94-C2 (A2 P1-1): honest count. «إجمالاً» is only true
                   when the whole result set provably fits one page; an
@@ -612,28 +612,28 @@ export default function AdminOrdersPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {/* Total revenue */}
                   <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-1.5">
                       <TrendingUp className="w-3 h-3" />
                       إجمالي الإيرادات
                     </div>
-                    <div className="font-black text-base tabular-nums text-primary">
+                    <div className="font-bold text-base tabular-nums text-primary">
                       {formatCurrency(totalRevenueAll)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                    <div className="text-3xs text-muted-foreground mt-0.5">
                       {formatCount(allOrders.length, ORDER_COUNT_FORMS)}
                     </div>
                   </div>
 
                   {/* Total discounts */}
                   <div className="bg-emerald-500/5 rounded-2xl p-3 border border-emerald-500/15">
-                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/80 mb-1.5">
+                    <div className="flex items-center gap-1.5 text-2xs text-emerald-400/80 mb-1.5">
                       <BadgePercent className="w-3 h-3" />
                       إجمالي الخصومات
                     </div>
-                    <div className="font-black text-base tabular-nums text-emerald-400">
+                    <div className="font-bold text-base tabular-nums text-emerald-400">
                       {formatCurrency(totalDiscounts)}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                    <div className="text-3xs text-muted-foreground mt-0.5">
                       {totalRevenueAll + totalDiscounts > 0
                         ? `${(((totalDiscounts || 0) / ((totalRevenueAll || 0) + (totalDiscounts || 0))) * 100).toFixed(1)}% من المبيعات`
                         : "—"}
@@ -642,12 +642,12 @@ export default function AdminOrdersPage() {
 
                   {/* Orders with coupons */}
                   <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-1.5">
                       <Ticket className="w-3 h-3" />
                       طلبات بكوبون
                     </div>
-                    <div className="font-black text-base tabular-nums">{couponOrders.length}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                    <div className="font-bold text-base tabular-nums">{couponOrders.length}</div>
+                    <div className="text-3xs text-muted-foreground mt-0.5">
                       {allOrders.length > 0
                         ? `${(((couponOrders.length || 0) / allOrders.length) * 100).toFixed(0)}% من الكل`
                         : "—"}
@@ -656,21 +656,21 @@ export default function AdminOrdersPage() {
 
                   {/* Unique coupons */}
                   <div className="bg-muted/20 rounded-2xl p-3 border border-border/40">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mb-1.5">
+                    <div className="flex items-center gap-1.5 text-2xs text-muted-foreground mb-1.5">
                       <Tag className="w-3 h-3" />
                       كوبونات مستخدمة
                     </div>
-                    <div className="font-black text-base tabular-nums">
+                    <div className="font-bold text-base tabular-nums">
                       {Object.keys(couponMap).length}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">كود فريد</div>
+                    <div className="text-3xs text-muted-foreground mt-0.5">كود فريد</div>
                   </div>
                 </div>
 
                 {/* Top coupons table */}
                 {topCoupons.length > 0 && (
                   <div>
-                    <p className="text-[11px] font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <p className="text-2xs font-bold text-muted-foreground mb-2 flex items-center gap-1.5">
                       <Tag className="w-3 h-3" />
                       أكثر الكوبونات استخداماً
                     </p>
@@ -680,10 +680,10 @@ export default function AdminOrdersPage() {
                         const barWidth = maxUses > 0 ? (c.uses / maxUses) * 100 : 0;
                         return (
                           <div key={c.code} className="flex items-center gap-3 group">
-                            <span className="text-[10px] font-black text-muted-foreground w-4 shrink-0 text-center">
+                            <span className="text-3xs font-bold text-muted-foreground w-4 shrink-0 text-center">
                               {i + 1}
                             </span>
-                            <span className="font-mono font-black text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
+                            <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
                               {c.code}
                             </span>
                             <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -719,7 +719,7 @@ export default function AdminOrdersPage() {
                     الإيرادات" silently describe a slice. The dashboard
                     KPI reads /admin/stats — the server-side truth. */}
                 {!knownTotal && (
-                  <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/30 mt-1">
+                  <p className="text-3xs text-muted-foreground pt-1 border-t border-border/30 mt-1">
                     الإحصاءات تعكس الطلبات المعروضة (
                     {formatCount(allOrders.length, ORDER_COUNT_FORMS)}) — الإجماليات الكاملة في لوحة
                     التحكم
@@ -763,7 +763,7 @@ export default function AdminOrdersPage() {
                         <button
                           key={s.value}
                           onClick={() => applyBulkStatus(s.value)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium hover:bg-muted/40 transition-colors text-right ${s.color}`}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-muted/40 transition-colors text-right ${s.color}`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.color.replace("text-", "bg-")}`}
@@ -806,7 +806,7 @@ export default function AdminOrdersPage() {
                 <button
                   key={s.value}
                   onClick={() => setStatusFilter(s.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                     active
                       ? "bg-card shadow-sm text-foreground font-bold"
                       : "text-muted-foreground hover:text-foreground"
@@ -815,7 +815,7 @@ export default function AdminOrdersPage() {
                   {s.label}
                   {count > 0 && (
                     <span
-                      className={`text-[10px] font-black px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
+                      className={`text-3xs font-bold px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
                     >
                       {count}
                     </span>
@@ -832,7 +832,7 @@ export default function AdminOrdersPage() {
               <button
                 key={dr.days}
                 onClick={() => setDateRange(dr.days)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                   dateRange === dr.days
                     ? "bg-card shadow-sm text-foreground font-bold"
                     : "text-muted-foreground hover:text-foreground"
@@ -892,7 +892,7 @@ export default function AdminOrdersPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
             </p>
@@ -905,24 +905,71 @@ export default function AdminOrdersPage() {
             </Button>
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={ShoppingBag}
-            title="لا توجد طلبات"
-            action={
-              search || statusFilter || dateRange > 0 ? (
-                <button
-                  onClick={() => {
-                    setSearch("");
-                    setStatusFilter("");
-                    setDateRange(0);
-                  }}
-                  className="text-xs text-primary hover:underline mt-1"
+          hasNextPage ? (
+            /* R115 (A9 P2): zero matches over PARTIAL data — the status
+               and date tabs filter CLIENT-SIDE over the accumulated
+               pages, so a tab can read «لا توجد طلبات» while matching
+               rows sit on unloaded pages (hasNextPage=true). The hard
+               empty state was a false claim; keep the load-more visible
+               + the honest incompleteness hint instead. */
+            <div className="text-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
+              <ShoppingBag className="w-10 h-10 mx-auto opacity-20" />
+              <p className="text-sm font-bold text-foreground/80">
+                لا طلبات مطابقة ضمن الصفحات المحمّلة
+              </p>
+              <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
+              <div className="flex justify-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5"
+                  disabled={isFetchingNextPage || isLoading}
+                  onClick={() => void fetchNextPage()}
                 >
-                  مسح الفلاتر
-                </button>
-              ) : undefined
-            }
-          />
+                  {isFetchingNextPage ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                    </>
+                  )}
+                </Button>
+                {(search || statusFilter || dateRange > 0) && (
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("");
+                      setDateRange(0);
+                    }}
+                    className="text-xs text-primary hover:underline mt-1.5"
+                  >
+                    مسح الفلاتر
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={ShoppingBag}
+              title="لا توجد طلبات"
+              action={
+                search || statusFilter || dateRange > 0 ? (
+                  <button
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("");
+                      setDateRange(0);
+                    }}
+                    className="text-xs text-primary hover:underline mt-1"
+                  >
+                    مسح الفلاتر
+                  </button>
+                ) : undefined
+              }
+            />
+          )
         ) : (
           <>
             {/* Desktop table */}
@@ -954,37 +1001,37 @@ export default function AdminOrdersPage() {
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         رقم الطلب
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المستخدم
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المنتج
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المبلغ
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         الحالة
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         التاريخ
                       </th>
@@ -1039,7 +1086,7 @@ export default function AdminOrdersPage() {
                               {displayUserName(userFromRow(order))}
                             </td>
                             <td
-                              className="px-4 py-2.5 font-medium text-sm max-w-40 truncate"
+                              className="px-4 py-2.5 font-semibold text-sm max-w-40 truncate"
                               onClick={() =>
                                 setExpandedRow(expandedRow === order.id ? null : order.id)
                               }
@@ -1047,7 +1094,7 @@ export default function AdminOrdersPage() {
                               {order.product_name}
                             </td>
                             <td
-                              className="px-4 py-2.5 font-black text-primary text-sm tabular-nums"
+                              className="px-4 py-2.5 font-bold text-primary text-sm tabular-nums"
                               onClick={() =>
                                 setExpandedRow(expandedRow === order.id ? null : order.id)
                               }
@@ -1061,7 +1108,7 @@ export default function AdminOrdersPage() {
                               }
                             >
                               <span
-                                className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                                className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${statusColor(order.status)}`}
                               >
                                 {statusLabel(order.status)}
                               </span>
@@ -1202,11 +1249,11 @@ export default function AdminOrdersPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="font-black text-primary tabular-nums">
+                        <div className="font-bold text-primary tabular-nums">
                           {formatCurrency(order.amount)}
                         </div>
                         <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 inline-block ${statusColor(order.status)}`}
+                          className={`text-2xs font-bold px-2 py-0.5 rounded-full border mt-1 inline-block ${statusColor(order.status)}`}
                         >
                           {statusLabel(order.status)}
                         </span>
@@ -1230,7 +1277,7 @@ export default function AdminOrdersPage() {
                           ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
                           : `عرض بيانات تسليم الطلب ${order.order_code}`
                       }
-                      className="w-full flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
+                      className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
                     >
                       <span className="font-mono">{order.order_code}</span>
                       {order.created_at && (

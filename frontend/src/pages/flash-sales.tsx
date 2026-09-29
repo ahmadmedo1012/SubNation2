@@ -97,14 +97,14 @@ function FlashCard({
                 className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
               />
             ) : (
-              <span className="text-5xl font-black text-primary/20 select-none">
+              <span className="text-5xl font-bold text-primary/20 select-none">
                 {(product.name ?? "?")[0]}
               </span>
             )}
           </div>
 
           {isDeal && (
-            <div className="absolute top-3 right-3 bg-status-error text-white text-[11px] font-black px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
+            <div className="absolute top-3 right-3 bg-status-error text-white text-2xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
               {/* 93-C8 (A11 §5): U+2212 minus to match product.tsx's
                   discount rendering (was an ASCII hyphen). */}
               <Tag className="w-3 h-3" />−{discount}%
@@ -112,7 +112,7 @@ function FlashCard({
           )}
 
           {!expired && (
-            <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-[11px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
+            <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
               <Clock className="w-3 h-3 text-status-warning" />
               {timeLabel}
             </div>
@@ -126,11 +126,11 @@ function FlashCard({
                 maps it through categoryLabel(). */}
             {product.category ? categoryLabel(product.category) : "عروض"}
           </div>
-          <div className="font-black text-sm leading-snug mb-2.5 truncate group-hover:text-primary transition-colors">
+          <div className="font-bold text-sm leading-snug mb-2.5 truncate group-hover:text-primary transition-colors">
             {product.name}
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="font-black text-lg text-primary tabular-nums">
+            <span className="font-bold text-lg text-primary tabular-nums">
               {formatCurrency(salePrice)}
             </span>
             {isDeal && (
@@ -208,7 +208,7 @@ export default function FlashSalesPage() {
             <Flame className="w-8 h-8 text-status-error" />
           </div>
         </div>
-        <h1 className="text-3xl font-black mb-2">عروض فلاش 🔥</h1>
+        <h1 className="text-3xl font-bold mb-2">عروض فلاش 🔥</h1>
         <p className="text-muted-foreground font-bold text-sm">
           {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}
         </p>
@@ -234,7 +234,7 @@ export default function FlashSalesPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
             <WifiOff className="w-8 h-8 text-status-error/70" />
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
           </p>
@@ -250,7 +250,7 @@ export default function FlashSalesPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">
             <Sparkles className="w-8 h-8 opacity-25" />
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">لا عرض نشط حالياً</p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">لا عرض نشط حالياً</p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             تابعنا أو راجع الكتالوج — العروض تعود قريباً!
           </p>

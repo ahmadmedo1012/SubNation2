@@ -11,6 +11,7 @@ import {
   ShoppingBag,
   Sparkles,
   Tag,
+  Undo2,
   WifiOff,
   XCircle,
 } from "lucide-react";
@@ -37,8 +38,13 @@ const STAGGER = [
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "completed") return <CheckCircle className="w-3.5 h-3.5 text-status-success" />;
-  if (status === "failed" || status === "refunded")
-    return <XCircle className="w-3.5 h-3.5 text-status-error" />;
+  // R115-I1 (A8 P2-3): refunded is NOT a failure — the money came back.
+  // The old red XCircle on a refunded row (while its status pill is BLUE
+  // status-info via statusColor) read as a failed purchase; the calm
+  // info tone + undo glyph now match the pill (utils.ts statusLabel
+  // «مُسترد» / statusColor status-info).
+  if (status === "refunded") return <Undo2 className="w-3.5 h-3.5 text-status-info" />;
+  if (status === "failed") return <XCircle className="w-3.5 h-3.5 text-status-error" />;
   return <Clock className="w-3.5 h-3.5 text-status-warning" />;
 }
 
@@ -50,8 +56,11 @@ function statusAccentBorder(status: string): string {
   // user (i.e. everyone). One system now: physical border-r-* on BOTH,
   // matching support.tsx's ticket-card idiom (border-r-[3px] +
   // border-r-blue-500/55).
+  // R115-I1 (A8 P2-3): refunded carries the info accent — matches the
+  // pill + icon instead of the error red it used to share with failed.
   if (status === "completed") return "border-r-status-success/55";
-  if (status === "failed" || status === "refunded") return "border-r-status-error/55";
+  if (status === "refunded") return "border-r-status-info/55";
+  if (status === "failed") return "border-r-status-error/55";
   return "border-r-status-warning/45";
 }
 
@@ -107,7 +116,7 @@ function FilterChip({
     >
       <Icon className="w-3 h-3" />
       <span>{label}</span>
-      <span className={`tabular-nums font-black ${active ? "" : "opacity-60"}`}>{count}</span>
+      <span className={`tabular-nums font-bold ${active ? "" : "opacity-60"}`}>{count}</span>
     </button>
   );
 }
@@ -179,7 +188,7 @@ export default function OrdersPage() {
             <ShoppingBag className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-black leading-tight">طلباتي</h1>
+            <h1 className="text-2xl font-bold leading-tight">طلباتي</h1>
             <p className="text-sm text-muted-foreground">سجل مشترياتك ومتابعة حالتها</p>
           </div>
         </div>
@@ -240,7 +249,7 @@ export default function OrdersPage() {
               active={filter === "failed"}
               onClick={() => setFilter("failed")}
               icon={XCircle}
-              label="فشل / مسترجع"
+              label="فشل / مُسترد"
               count={failed.length}
               tone="error"
             />
@@ -264,7 +273,7 @@ export default function OrdersPage() {
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
             <WifiOff className="w-8 h-8 text-status-error/70" />
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
           </p>
@@ -284,7 +293,7 @@ export default function OrdersPage() {
               <Package className="w-9 h-9 opacity-25" />
             </div>
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">لا توجد طلبات بعد</p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">لا توجد طلبات بعد</p>
           <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
             ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي
           </p>
@@ -341,7 +350,7 @@ export default function OrdersPage() {
                           className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (
-                        <span className="text-xl font-black text-primary/50 select-none">
+                        <span className="text-xl font-bold text-primary/50 select-none">
                           {(order.product_name ?? "؟")[0]}
                         </span>
                       )}
@@ -355,19 +364,30 @@ export default function OrdersPage() {
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span
                           dir="ltr"
-                          className="font-mono text-[11px] bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30"
+                          className="font-mono text-2xs bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30"
                         >
                           {order.order_code}
                         </span>
                         {order.created_at && (
-                          <span className="text-[11px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {formatDateShort(order.created_at)}
                           </span>
                         )}
                         {(order as { coupon_code?: string }).coupon_code && (
-                          <span className="flex items-center gap-0.5 text-[10px] font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
+                          <span className="flex items-center gap-0.5 text-3xs font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
                             <Tag className="w-2.5 h-2.5" />
                             <span dir="ltr">{(order as { coupon_code?: string }).coupon_code}</span>
+                          </span>
+                        )}
+                        {/* R115-I1 (A8 P2-3c): the refund receipt on the row —
+                            RefundService credits the FULL orders.amount
+                            back to the wallet (terminal-state guarded), so
+                            the amount IS available on the row. Info tone,
+                            never error red: the money came back. */}
+                        {order.status === "refunded" && (
+                          <span className="flex items-center gap-0.5 text-3xs font-bold text-status-info bg-status-info/10 border border-status-info/22 px-1.5 py-0.5 rounded-full whitespace-nowrap tabular-nums">
+                            <Undo2 className="w-2.5 h-2.5" />
+                            استُرد {formatCurrency(order.amount)} إلى محفظتك
                           </span>
                         )}
                       </div>
@@ -377,18 +397,18 @@ export default function OrdersPage() {
                     <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
                       <div className="text-right min-w-0">
                         {((order as { discount_amount?: number }).discount_amount ?? 0) > 0 && (
-                          <div className="text-[10px] text-muted-foreground line-through tabular-nums">
+                          <div className="text-3xs text-muted-foreground line-through tabular-nums">
                             {formatCurrency(
                               (order.amount ?? 0) +
                                 ((order as { discount_amount?: number }).discount_amount ?? 0),
                             )}
                           </div>
                         )}
-                        <div className="font-black text-sm tabular-nums">
+                        <div className="font-bold text-sm tabular-nums">
                           {formatCurrency(order.amount)}
                         </div>
                         <div
-                          className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border mt-1 justify-end whitespace-nowrap ${statusColor(order.status)}`}
+                          className={`flex items-center gap-1 text-2xs font-bold px-2 py-0.5 rounded-full border mt-1 justify-end whitespace-nowrap ${statusColor(order.status)}`}
                         >
                           <StatusIcon status={order.status} />
                           <span>{statusLabel(order.status)}</span>

@@ -217,14 +217,14 @@ function DraftCard({
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-muted/30">
         <span className="text-sm font-bold flex-1">
           {draft.product_name}
-          <span className="text-[11px] font-normal text-muted-foreground mx-2">
+          <span className="text-2xs font-normal text-muted-foreground mx-2">
             #{draft.product_id}
           </span>
         </span>
-        <span className="text-[11px] text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+        <span className="text-2xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
           {FIELD_LABEL[draft.field_name]}
         </span>
-        <span className="text-[10px] text-muted-foreground" dir="ltr">
+        <span className="text-3xs text-muted-foreground" dir="ltr">
           {draft.input_tokens + draft.output_tokens} tok · {draft.model_id}
         </span>
       </header>
@@ -368,7 +368,7 @@ function DraftCard({
               placeholder="مثال: الوصف غير دقيق — اذكر الخطأ ليُحسَّن التوليد لاحقاً"
               className="w-full bg-background border border-border/60 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-destructive/25"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               يُحفظ السبب مع سجل المسودة لتتبّع جودة التوليد.
             </p>
           </div>

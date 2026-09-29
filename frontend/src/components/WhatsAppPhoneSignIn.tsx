@@ -438,7 +438,7 @@ export function WhatsAppPhoneSignIn({
         <button
           type="button"
           onClick={() => setStep("phone")}
-          className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm press-spring"
+          className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-semibold text-sm press-spring"
           aria-label="المتابعة عبر WhatsApp"
         >
           <MessageCircle className="w-4 h-4 text-brand-whatsapp" />
@@ -452,7 +452,7 @@ export function WhatsAppPhoneSignIn({
           hint pattern: the live probe says the channel was JUST linked
           and is inside the settle window. Never blocks the attempt. */}
       {step === "pristine" && channelStatus === "settling" && (
-        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+        <p className="text-2xs text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من
           دقيقة
         </p>
@@ -466,7 +466,7 @@ export function WhatsAppPhoneSignIn({
           user working alternatives, keep the entry mounted (the
           operator can complete re-pairing at any moment). */}
       {step === "pristine" && channelStatus === "failed" && (
-        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+        <p className="text-2xs text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> غير مرتبطة حاليًا — جارٍ إصلاحها من فريق التشغيل؛
           {/* R111-F2 N4: Latin brand names wrapped like WhatsApp 2 words
               earlier in the same sentence (was bare «Google أو Telegram»). */}
@@ -482,7 +482,7 @@ export function WhatsAppPhoneSignIn({
         channelStatus !== "ready" &&
         channelStatus !== "settling" &&
         channelStatus !== "failed" && (
-          <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+          <p className="text-2xs text-muted-foreground text-center leading-relaxed">
             {/* R111-F2 N4: Google / Telegram wrapped in lang="en" like
                 WhatsApp two words earlier — same-sentence consistency. */}
             قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم{" "}
@@ -542,7 +542,7 @@ export function WhatsAppPhoneSignIn({
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-muted-foreground text-center">
+              <p className="text-2xs text-muted-foreground text-center">
                 تُقبل أرقام ليبيانا ومدار التي تبدأ بـ 091 / 092 / 093 / 094.
               </p>
               {/* Allow the user to collapse the OTP UI back to the single
@@ -621,14 +621,14 @@ export function WhatsAppPhoneSignIn({
               Latin-digit M:SS countdown (never the code itself). */}
               {expiresAt !== null &&
                 (expiryLeft > 0 ? (
-                  <p className="text-[11px] text-muted-foreground text-center">
+                  <p className="text-2xs text-muted-foreground text-center">
                     ينتهي خلال{" "}
                     <span dir="ltr" className="tabular-nums">
                       {formatMSS(expiryLeft)}
                     </span>
                   </p>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground text-center">
+                  <p className="text-2xs text-muted-foreground text-center">
                     انتهت صلاحية الرمز — استخدم «إعادة الإرسال» للحصول على رمز جديد
                   </p>
                 ))}

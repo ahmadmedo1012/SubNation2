@@ -939,7 +939,8 @@ paths:
                   type: object
                   properties:
                     id: { type: integer }
-                    type: { type: string, enum: [topup, purchase, refund, adjustment, referral_credit] }
+                    type:
+                      { type: string, enum: [topup, purchase, refund, adjustment, referral_credit] }
                     type_label: { type: string, description: Arabic label }
                     amount: { type: number }
                     balance_after: { type: number }
@@ -1519,7 +1520,19 @@ paths:
                   type: object
                   properties:
                     id: { type: integer }
-                    type: { type: string, enum: [purchase_award, refund_reversal, referral_credit, conversion_out, admin_set, correction] }
+                    type:
+                      {
+                        type: string,
+                        enum:
+                          [
+                            purchase_award,
+                            refund_reversal,
+                            referral_credit,
+                            conversion_out,
+                            admin_set,
+                            correction,
+                          ],
+                      }
                     type_label: { type: string, description: Arabic label }
                     points_delta: { type: integer }
                     points_after: { type: integer }
@@ -5401,7 +5414,7 @@ components:
             rule to loyalty — the audit trail must explain WHY). Kept
             schema-optional because OpenAPI cannot express the conditional
             requirement. Trimmed and capped at 500 chars.
-          
+
             loyalty_tier is NO LONGER EDITABLE (R115): tiers derive
             strictly from net qualifying spend; sending loyalty_tier is
             rejected with 400 INVALID_DATA.

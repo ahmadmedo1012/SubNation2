@@ -27,11 +27,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/pages/admin/layout";
 
+// R115 (A9 P2): the pendingTopups badge tests flip the finance scope —
+// the auth mock reads from hoisted mutable state (default: every
+// scope granted, matching the pre-existing tests).
+const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
+
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     adminToken: "test-admin-token",
     adminLogout: vi.fn(),
-    hasAdminPermission: () => true,
+    hasAdminPermission: (scope: string) => authState[scope] !== false,
   }),
 }));
 
@@ -49,7 +54,26 @@ vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
-  return { ok, status, json: () => Promise.resolve(body) } as unknown as Response;
+  // R115: the layout's stats subscription rides the REAL generated
+  // useGetAdminStats hook — i.e. the real customFetch, which parses via
+  // .text() + JSON.parse and infers the response type from the
+  // content-type header (a bare {ok,status,json()} stub throws "Cannot
+  // read properties of undefined (reading 'get')" inside customFetch,
+  // and a headerless stub makes customFetch return the RAW STRING —
+  // layoutStats.pending_topups would be undefined and the badge never
+  // render). The stub therefore carries text() + a faithful
+  // application/json content-type, exactly what Express res.json()
+  // sends in production (the raw-fetch badge calls only use .json()).
+  return {
+    ok,
+    status,
+    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "content-type" ? "application/json" : null,
+    },
+  } as unknown as Response;
 }
 
 const fetchMock = vi.fn();
@@ -76,6 +100,7 @@ describe("AdminLayout unread-alerts badge — failures are unknown, never zero (
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     localStorage.setItem("sn_last_alert_id", "0");
+    authState.finance = true;
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -146,6 +171,110 @@ describe("AdminLayout unread-alerts badge — failures are unknown, never zero (
       expect(call).toBeDefined();
       expect((call![1] as { headers: Record<string, string> }).headers.Authorization).toBe(
         "Bearer test-admin-token",
+      );
+    });
+  });
+});
+
+/** The sidebar طلبات الشحن nav item carrying the pendingTopups badge chip. */
+async function topupsBadgeChip(): Promise<string | null> {
+  const link = await screen.findByRole("link", { name: /طلبات الشحن/ });
+  return link.textContent ?? null;
+}
+
+describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourced (R115 A9 P2)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("sn_last_alert_id", "0");
+    authState.finance = true;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.removeItem("sn_last_alert_id");
+    authState.finance = true;
+  });
+
+  /** Routes fetch: the badge endpoints + the stats endpoint the layout
+   *  itself now subscribes to (through the REAL generated client —
+   *  customFetch rides the stubbed global fetch). */
+  function routeFetch(over: { stats?: () => Response }) {
+    return vi.fn((input: unknown) => {
+      const url = String(input);
+      if (url.includes("/api/admin/stats")) {
+        return Promise.resolve(over.stats());
+      }
+      if (url.includes("/api/admin/alerts/unread-count")) {
+        return Promise.resolve(resLike({ body: { count: 0 } }));
+      }
+      if (url.includes("/api/admin/alerts/new")) {
+        return Promise.resolve(resLike({ body: { alerts: [] } }));
+      }
+      return Promise.resolve(resLike({ body: {} }));
+    });
+  }
+
+  it("renders the server count with NO page-passed badges (the layout fetches it itself)", async () => {
+    fetchMock.mockImplementation(
+      routeFetch({
+        stats: () =>
+          resLike({
+            body: {
+              total_users: 17,
+              total_orders: 5,
+              total_revenue: 241.49,
+              pending_topups: 4,
+              today_orders: 0,
+              today_revenue: 0,
+              available_stock: 120,
+              total_wallet_balance: 826,
+            },
+          }),
+      }),
+    );
+
+    // NOTE: no `badges` prop — pre-R115 the chip vanished on every page
+    // that didn't pass one (15/19 admin pages).
+    renderLayout();
+
+    await waitFor(async () => {
+      expect(await topupsBadgeChip()).toContain("4");
+    });
+  });
+
+  it("a stats failure renders NO topups chip digit (error = unknown, never 0)", async () => {
+    fetchMock.mockImplementation(
+      routeFetch({
+        stats: () => resLike({ ok: false, status: 500, body: { error: "x", code: "Y" } }),
+      }),
+    );
+
+    renderLayout();
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/admin/stats"));
+      expect(call).toBeDefined();
+    });
+    await waitFor(async () => {
+      const text = await topupsBadgeChip();
+      expect(text).not.toMatch(/\d/);
+    });
+  });
+
+  it("an admin WITHOUT the finance scope never polls stats (the nav item is finance-scoped)", async () => {
+    authState.finance = false;
+    fetchMock.mockImplementation(routeFetch({ stats: () => resLike({ body: { pending_topups: 9 } }) }));
+
+    renderLayout();
+
+    // The other badge endpoints fire; stats never does.
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/alerts/unread-count")),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/stats"))).toBe(
+        false,
       );
     });
   });

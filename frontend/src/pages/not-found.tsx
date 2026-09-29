@@ -30,13 +30,13 @@ export default function NotFound() {
             {/* R111-F2 C1: Latin digits — the site-wide numeral convention
                 (utils.ts -u-nu-latn pins, Arabic-Indic input conversion).
                 Was the only shipped Arabic-Indic string in frontend/src. */}
-            <span className="text-4xl font-black text-primary/25 tracking-tighter">404</span>
+            <span className="text-4xl font-bold text-primary/25 tracking-tighter">404</span>
           </div>
         </div>
 
         {/* Text */}
         <div>
-          <h1 className="text-2xl font-black mb-3">الصفحة غير موجودة</h1>
+          <h1 className="text-2xl font-bold mb-3">الصفحة غير موجودة</h1>
           <p className="text-muted-foreground text-sm leading-relaxed">
             يبدو أن هذه الصفحة لا وجود لها أو ربما تم نقلها.
             <br />
@@ -54,7 +54,7 @@ export default function NotFound() {
           </Link>
           <button
             onClick={() => window.history.back()}
-            className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-medium px-6 py-3 rounded-xl transition-all duration-150 w-full sm:w-auto"
+            className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-semibold px-6 py-3 rounded-xl transition-all duration-150 w-full sm:w-auto"
           >
             {/* RTL: "back" points right (unified icon-direction decision) */}
             <ArrowRight className="w-4 h-4" />
@@ -66,7 +66,7 @@ export default function NotFound() {
         {/* Quick links */}
         <div className="pt-2 border-t border-border/40">
           {/* 93-C8 (A11 §8): no letter-spacing/uppercase on Arabic. */}
-          <p className="text-[11px] font-black text-muted-foreground mb-3">روابط سريعة</p>
+          <p className="text-2xs font-bold text-muted-foreground mb-3">روابط سريعة</p>
           <div className="flex flex-wrap justify-center gap-2">
             {[
               { href: "/", label: "المتجر" },

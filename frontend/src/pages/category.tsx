@@ -19,6 +19,7 @@ import {
   Tv2,
   WifiOff,
 } from "lucide-react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { useMemo, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
@@ -148,6 +149,12 @@ export default function CategoryPage() {
     query: {
       queryKey: getListProductsQueryKey(params),
       enabled: !!meta,
+      // R115-I1 (A7 P3-3): keep the PREVIOUS category's grid as the
+      // placeholder while a sibling category chip's query loads — the
+      // same r97 F-16 fix home.tsx already has (its useListProducts at
+      // home.tsx). Without it, every sibling-category navigation flashed
+      // the 8-skeleton grid for one round-trip.
+      placeholderData: keepPreviousData,
       staleTime: 3 * 60 * 1000,
     },
   });
@@ -197,7 +204,7 @@ export default function CategoryPage() {
   if (!meta || !theme) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-7 page-in text-center">
-        <h1 className="text-2xl font-black mb-3">الفئة غير موجودة</h1>
+        <h1 className="text-2xl font-bold mb-3">الفئة غير موجودة</h1>
         <p className="text-muted-foreground mb-6">
           الفئة المطلوبة غير معروفة. يمكنك تصفّح كل المنتجات من الصفحة الرئيسية.
         </p>
@@ -249,8 +256,8 @@ export default function CategoryPage() {
               <theme.Icon className={`w-5 h-5 ${theme.chipText}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground font-medium mb-1">فئة {meta.label}</p>
-              <h1 className="text-fluid-2xl font-black leading-tight text-foreground">{meta.h1}</h1>
+              <p className="text-xs text-muted-foreground font-semibold mb-1">فئة {meta.label}</p>
+              <h1 className="text-fluid-2xl font-bold leading-tight text-foreground">{meta.h1}</h1>
             </div>
           </div>
           <p className="text-sm sm:text-[15px] text-muted-foreground leading-relaxed max-w-3xl">
@@ -263,7 +270,7 @@ export default function CategoryPage() {
       <section aria-labelledby="products-heading" className="mb-10">
         <h2
           id="products-heading"
-          className={`text-base font-black mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
+          className={`text-base font-bold mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
         >
           منتجات {meta.label}
           {!isLoading && products.length > 0 && (
@@ -314,7 +321,7 @@ export default function CategoryPage() {
       <section aria-labelledby="faq-heading" className="max-w-3xl mb-8">
         <h2
           id="faq-heading"
-          className={`text-base font-black mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
+          className={`text-base font-bold mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
         >
           الأسئلة الشائعة
         </h2>
@@ -345,9 +352,9 @@ export default function CategoryPage() {
       <section className="pt-6 border-t border-border/40">
         {/* 93-C8 (A11 §8 top-20 #8): letter-spacing disconnects
             Arabic letter joins (بـ/تـ/ثـ…) and `uppercase` is a no-op on
-            Arabic — removed; font-black at a small size keeps the label
+            Arabic — removed; font-bold at a small size keeps the label
             rhythm. */}
-        <h2 className="text-[11px] font-black text-muted-foreground mb-3">تصفّح فئات أخرى</h2>
+        <h2 className="text-2xs font-bold text-muted-foreground mb-3">تصفّح فئات أخرى</h2>
         <div className="flex flex-wrap gap-2">
           {Object.values(CATEGORY_META)
             .filter((c) => c.slug !== meta.slug)
@@ -357,7 +364,7 @@ export default function CategoryPage() {
                 <Link
                   key={c.slug}
                   href={`/category/${c.slug}`}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
                 >
                   <t.Icon className="w-3.5 h-3.5" />
                   {c.label}
@@ -366,7 +373,7 @@ export default function CategoryPage() {
             })}
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
           >
             كل المنتجات
           </button>

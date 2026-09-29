@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
+import { useChartColors } from "@/lib/chart-theme";
 import { formatRelativeTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -242,10 +243,10 @@ function MetricCard({
         >
           <Icon className={`w-4 h-4 ${color}`} />
         </div>
-        <span className="text-[10px] text-muted-foreground font-bold">{label}</span>
+        <span className="text-3xs text-muted-foreground font-bold">{label}</span>
       </div>
-      <div className="font-black text-lg leading-none tabular-nums">{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
+      <div className="font-bold text-lg leading-none tabular-nums">{value}</div>
+      {sub && <div className="text-3xs text-muted-foreground mt-1">{sub}</div>}
       {spark && spark.length >= 2 && (
         <div className="mt-2 -mx-1 opacity-70">
           <ResponsiveContainer width="100%" height={28}>
@@ -344,11 +345,11 @@ function HealthTile({
         <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] text-muted-foreground font-bold leading-none mb-1 truncate">
+        <div className="text-3xs text-muted-foreground font-bold leading-none mb-1 truncate">
           {label}
         </div>
-        <div className={`text-sm font-black tabular-nums leading-none ${meta.color}`}>{value}</div>
-        {hint && <div className="text-[9px] text-muted-foreground mt-1 truncate">{hint}</div>}
+        <div className={`text-sm font-bold tabular-nums leading-none ${meta.color}`}>{value}</div>
+        {hint && <div className="text-3xs text-muted-foreground mt-1 truncate">{hint}</div>}
       </div>
     </div>
   );
@@ -390,6 +391,9 @@ export default function AdminSystemPage(): ReactElement | null {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const headers = useAdminHeaders();
+  // R115-A6 #7: sparklines / rps chart / tooltip ride the theme tokens
+  // (see lib/chart-theme.ts) — no more theme-blind hexes.
+  const chart = useChartColors();
 
   // 93-C6 / SY-1 (A5, round-93): guarded JSON fetcher for the three
   // observability queryFns that previously did bare
@@ -651,7 +655,7 @@ export default function AdminSystemPage(): ReactElement | null {
         {/* Header — compact, single-purpose copy */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-black flex items-center gap-2">
+            <h1 className="text-xl font-bold flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
               مركز المراقبة
             </h1>
@@ -694,7 +698,7 @@ export default function AdminSystemPage(): ReactElement | null {
               <HeartPulse className="w-3.5 h-3.5 text-primary" />
               نظرة سريعة على الصحة
             </h2>
-            <span className="text-[10px] text-muted-foreground">تحديث تلقائي</span>
+            <span className="text-3xs text-muted-foreground">تحديث تلقائي</span>
           </div>
 
           {healthQ.isLoading || !health ? (
@@ -863,7 +867,7 @@ export default function AdminSystemPage(): ReactElement | null {
               </div>
               <div className="min-w-0 flex-1">
                 <p className={`font-bold text-xs ${schedMeta.color} truncate`}>{schedTitle}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{schedMessage}</p>
+                <p className="text-2xs text-muted-foreground truncate">{schedMessage}</p>
               </div>
             </div>
           )}
@@ -880,7 +884,7 @@ export default function AdminSystemPage(): ReactElement | null {
               <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
               التشخيص المتقدّم
             </h2>
-            <span className="text-[10px] text-muted-foreground">انقر لتوسيع أي قسم</span>
+            <span className="text-3xs text-muted-foreground">انقر لتوسيع أي قسم</span>
           </div>
 
           <div className="space-y-2">
@@ -900,17 +904,17 @@ export default function AdminSystemPage(): ReactElement | null {
                     <p className="text-xs text-muted-foreground">{schedMessage}</p>
                     {scheduler && (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
+                        <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
                           mode: {scheduler.mode}
                         </span>
                         {scheduler.isLeader && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                          <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
                             leader
                           </span>
                         )}
                         {scheduler.startedAt && (
                           <span
-                            className="text-[10px] text-muted-foreground"
+                            className="text-3xs text-muted-foreground"
                             title={scheduler.startedAt}
                           >
                             {/* 93-C6 / F-06: the formatter now emits its
@@ -962,7 +966,7 @@ export default function AdminSystemPage(): ReactElement | null {
                       bg="bg-blue-400/10"
                       border="border-blue-400/20"
                       spark={memorySeries}
-                      sparkColor="#3b82f6"
+                      sparkColor={chart.info}
                     />
                     <MetricCard
                       label="event-loop p99"
@@ -989,7 +993,7 @@ export default function AdminSystemPage(): ReactElement | null {
                           : "border-cyan-400/20"
                       }
                       spark={eventLoopSeries}
-                      sparkColor="#22d3ee"
+                      sparkColor={chart.info}
                     />
                     <MetricCard
                       label="الإصدار"
@@ -1005,7 +1009,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="bg-card border border-border/60 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Flag className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-[10px] text-muted-foreground font-bold">
+                      <span className="text-3xs text-muted-foreground font-bold">
                         الأعلام التشغيلية
                       </span>
                     </div>
@@ -1015,7 +1019,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         return (
                           <span
                             key={key}
-                            className={`text-[10px] px-2 py-1 rounded-lg border font-mono ${
+                            className={`text-3xs px-2 py-1 rounded-lg border font-mono ${
                               enabled
                                 ? "bg-emerald-400/8 border-emerald-400/20 text-emerald-400"
                                 : "bg-muted/30 border-border/50 text-muted-foreground"
@@ -1066,7 +1070,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     bg="bg-primary/10"
                     border="border-primary/20"
                     spark={reqRate}
-                    sparkColor="#e11d48"
+                    sparkColor={chart.primary}
                   />
                   <MetricCard
                     label="معدل الأخطاء (5xx)"
@@ -1079,7 +1083,7 @@ export default function AdminSystemPage(): ReactElement | null {
                       metrics.http.errorRate > 0.01 ? "border-red-400/20" : "border-emerald-400/20"
                     }
                     spark={errRate}
-                    sparkColor="#f87171"
+                    sparkColor={chart.error}
                   />
                   <MetricCard
                     label="زمن الاستجابة p95"
@@ -1098,7 +1102,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         : "border-cyan-400/20"
                     }
                     spark={p95Series}
-                    sparkColor="#22d3ee"
+                    sparkColor={chart.info}
                   />
                   <MetricCard
                     label="حالات الاستجابة"
@@ -1116,7 +1120,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
                     <div className="px-4 py-3 border-b border-border flex items-center gap-2">
                       <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-[10px] text-muted-foreground font-bold">
+                      <span className="text-3xs text-muted-foreground font-bold">
                         أكثر المسارات نشاطاً
                       </span>
                     </div>
@@ -1128,7 +1132,7 @@ export default function AdminSystemPage(): ReactElement | null {
                             key={`${r.method}-${r.route}`}
                             className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
                           >
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground shrink-0">
+                            <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground shrink-0">
                               {r.method}
                             </span>
                             <span className="font-mono text-xs flex-1 min-w-0 truncate" dir="ltr">
@@ -1139,7 +1143,7 @@ export default function AdminSystemPage(): ReactElement | null {
                             </span>
                             {errPct > 0 && (
                               <span
-                                className={`text-[10px] font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-yellow-400"}`}
+                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-yellow-400"}`}
                               >
                                 {errPct.toFixed(1)}% أخطاء
                               </span>
@@ -1181,7 +1185,7 @@ export default function AdminSystemPage(): ReactElement | null {
                       metrics.auth.failureRate > 0.1 ? "border-red-400/20" : "border-yellow-400/20"
                     }
                     spark={authFailRate}
-                    sparkColor="#f59e0b"
+                    sparkColor={chart.warning}
                   />
                   <MetricCard
                     label="فشل Firebase"
@@ -1237,7 +1241,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     bg="bg-primary/10"
                     border="border-primary/20"
                     spark={redisOpsRate}
-                    sparkColor="#e11d48"
+                    sparkColor={chart.primary}
                   />
                   <MetricCard
                     label="ping latency p95"
@@ -1301,24 +1305,24 @@ export default function AdminSystemPage(): ReactElement | null {
                     <div className="flex items-center gap-2 mb-3">
                       <Wifi className="w-4 h-4 text-cyan-400" />
                       <h3 className="text-sm font-bold">Socket.IO</h3>
-                      <span className="text-[10px] text-muted-foreground mr-auto">
+                      <span className="text-3xs text-muted-foreground mr-auto">
                         واجهات لحظية
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <div className="text-[10px] text-muted-foreground font-bold mb-1">
+                        <div className="text-3xs text-muted-foreground font-bold mb-1">
                           عملاء متّصلون
                         </div>
-                        <div className="font-black text-2xl text-cyan-400 tabular-nums">
+                        <div className="font-bold text-2xl text-cyan-400 tabular-nums">
                           {metrics.socket.connectedClients}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground font-bold mb-1">
+                        <div className="text-3xs text-muted-foreground font-bold mb-1">
                           إجمالي الأحداث
                         </div>
-                        <div className="font-black text-2xl tabular-nums">
+                        <div className="font-bold text-2xl tabular-nums">
                           {formatNumber(
                             Object.values(metrics.socket.eventsTotal).reduce((a, b) => a + b, 0),
                           )}
@@ -1332,7 +1336,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     <div className="flex items-center gap-2 mb-3">
                       <TimerReset className="w-4 h-4 text-emerald-400" />
                       <h3 className="text-sm font-bold">المهام الخلفية</h3>
-                      <span className="text-[10px] text-muted-foreground mr-auto">
+                      <span className="text-3xs text-muted-foreground mr-auto">
                         cron · watchers · heartbeat
                       </span>
                     </div>
@@ -1364,7 +1368,7 @@ export default function AdminSystemPage(): ReactElement | null {
                                 >
                                   {job}
                                 </span>
-                                <span className="text-[10px] text-muted-foreground shrink-0">
+                                <span className="text-3xs text-muted-foreground shrink-0">
                                   {status}
                                 </span>
                                 <span className="font-bold tabular-nums shrink-0 mr-auto">
@@ -1417,7 +1421,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
                       >
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-[10px] text-muted-foreground font-bold">
+                          <span className="text-3xs text-muted-foreground font-bold">
                             {label}
                           </span>
                           <span
@@ -1431,11 +1435,11 @@ export default function AdminSystemPage(): ReactElement | null {
                           />
                         </div>
                         <div
-                          className={`font-black text-base leading-none tabular-nums ${meta.color}`}
+                          className={`font-bold text-base leading-none tabular-nums ${meta.color}`}
                         >
                           {display}
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-1">
+                        <div className="text-3xs text-muted-foreground mt-1">
                           {samples} عيّنة
                         </div>
                       </div>
@@ -1452,7 +1456,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="flex items-center gap-2 mb-3">
                     <Activity className="w-4 h-4 text-primary" />
                     <h3 className="text-sm font-bold">معدل الطلبات (طلب/ث)</h3>
-                    <span className="text-[10px] text-muted-foreground mr-auto">
+                    <span className="text-3xs text-muted-foreground mr-auto">
                       آخر {Math.min(samples.length, 60)} عيّنة · ~
                       {Math.min(samples.length, 60) * 15}ث
                     </span>
@@ -1464,19 +1468,19 @@ export default function AdminSystemPage(): ReactElement | null {
                     >
                       <defs>
                         <linearGradient id="rpsGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#e11d48" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
+                          <stop offset="5%" stopColor={chart.primary} stopOpacity={0.25} />
+                          <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="rgba(255,255,255,0.04)"
+                        stroke={chart.grid}
                         vertical={false}
                       />
                       <Tooltip
                         contentStyle={{
-                          background: "rgb(20 20 20 / 0.95)",
-                          border: "1px solid rgb(80 80 80 / 0.4)",
+                          background: chart.tooltipBg,
+                          border: `1px solid ${chart.tooltipBorder}`,
                           borderRadius: 12,
                           fontSize: 11,
                         }}
@@ -1486,7 +1490,7 @@ export default function AdminSystemPage(): ReactElement | null {
                       <Area
                         type="monotone"
                         dataKey="rps"
-                        stroke="#e11d48"
+                        stroke={chart.primary}
                         fill="url(#rpsGrad)"
                         strokeWidth={2}
                         dot={false}
@@ -1532,12 +1536,12 @@ export default function AdminSystemPage(): ReactElement | null {
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold truncate">{alert.title}</div>
                       {alert.message && (
-                        <div className="text-[11px] text-muted-foreground truncate">
+                        <div className="text-2xs text-muted-foreground truncate">
                           {alert.message}
                         </div>
                       )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
+                    <span className="text-3xs text-muted-foreground shrink-0">
                       {formatRelativeTime(alert.createdAt)}
                     </span>
                   </div>
@@ -1565,7 +1569,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Render</div>
-                      <div className="text-[10px] text-muted-foreground">النشرات والسجلات</div>
+                      <div className="text-3xs text-muted-foreground">النشرات والسجلات</div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                   </a>
@@ -1582,7 +1586,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Sentry</div>
-                      <div className="text-[10px] text-muted-foreground">الأخطاء والتتبع</div>
+                      <div className="text-3xs text-muted-foreground">الأخطاء والتتبع</div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                   </a>
@@ -1599,7 +1603,7 @@ export default function AdminSystemPage(): ReactElement | null {
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Neon</div>
-                      <div className="text-[10px] text-muted-foreground">قاعدة البيانات</div>
+                      <div className="text-3xs text-muted-foreground">قاعدة البيانات</div>
                     </div>
                     <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                   </a>

@@ -3,6 +3,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import { useOnScreen } from "@/hooks/use-on-screen";
 import { Gift, ShieldCheck, ShoppingBag } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -71,14 +72,25 @@ export default function LoginPage() {
   const intent = useMemo(() => readLoginIntent(), []);
   const redirectTarget = useMemo(() => readRedirectTarget(), []);
   const [, navigate] = useLocation();
+  // R115-A10: pause the ambient blobs when the auth card scrolls away.
+  const glow = useOnScreen<HTMLDivElement>();
   const handleLoginSuccess = useCallback(() => {
     if (redirectTarget) navigate(redirectTarget);
   }, [redirectTarget, navigate]);
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background">
+    <div
+      ref={glow.ref}
+      className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background"
+    >
       {/* Ambient background glows */}
-      <div className="absolute top-[-10%] right-[15%] w-96 h-96 bg-primary/5 rounded-full blur-[90px] pointer-events-none blob-drift" />
-      <div className="absolute bottom-[-5%] left-[10%] w-72 h-72 bg-primary/4 rounded-full blur-[70px] pointer-events-none blob-drift-slow" />
+      <div
+        className="absolute top-[-10%] right-[15%] w-96 h-96 bg-primary/5 rounded-full blur-[90px] pointer-events-none blob-drift"
+        style={glow.style}
+      />
+      <div
+        className="absolute bottom-[-5%] left-[10%] w-72 h-72 bg-primary/4 rounded-full blur-[70px] pointer-events-none blob-drift-slow"
+        style={glow.style}
+      />
       <div className="absolute inset-0 dot-grid opacity-25 pointer-events-none" />
 
       <div className="relative w-full max-w-sm">
@@ -103,7 +115,7 @@ export default function LoginPage() {
           </button>
           <Link
             href="/register"
-            className="py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             حساب جديد
           </Link>
@@ -133,7 +145,7 @@ export default function LoginPage() {
                     ? `سجّل دخولك لإكمال شراء «${intent.productName}»`
                     : "سجّل دخولك لإكمال عملية الشراء"}
                 </p>
-                <p className="text-[11px] text-primary-text/75 mt-0.5">
+                <p className="text-2xs text-primary-text/75 mt-0.5">
                   ثوانٍ معدودة بدون كلمة مرور
                 </p>
               </div>
@@ -144,8 +156,13 @@ export default function LoginPage() {
               <ValueChip icon={ShieldCheck} label="محفظة آمنة" />
               {/* R94-A1 #6 (P2): the referrer earns 50 loyalty points
                   (≙ 0.50 د.ل at first friend topup), not 5 د.ل — honest
-                  label, unified with referrals.tsx / loyalty.tsx. */}
-              <ValueChip icon={Gift} label="50 نقطة عند الإحالة" />
+                  label, unified with referrals.tsx / loyalty.tsx.
+                  R115 (policy B, A8 #9): «عند الإحالة» implied points at
+                  signup — the award lands when the friend's FIRST topup
+                  is APPROVED (topup.service.ts). Pre-auth page: the 50 is
+                  the policy constant in copy (POINTS_PER_REFERRAL), same
+                  as register.tsx's chip. */}
+              <ValueChip icon={Gift} label="+50 نقطة عند أول شحن لصديقك" />
             </div>
           )}
 
@@ -188,7 +205,7 @@ function ValueChip({ icon: Icon, label }: { icon: typeof ShoppingBag; label: str
   return (
     <div className="flex flex-col items-center gap-1 p-2 bg-muted/25 border border-border/40 rounded-lg text-center">
       <Icon className="w-3.5 h-3.5 text-primary-text" aria-hidden="true" />
-      <span className="text-[10px] font-bold text-foreground/80 leading-tight">{label}</span>
+      <span className="text-3xs font-bold text-foreground/80 leading-tight">{label}</span>
     </div>
   );
 }

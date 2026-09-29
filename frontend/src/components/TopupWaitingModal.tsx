@@ -216,7 +216,7 @@ function WaitingBody({
             <Loader2 className="w-8 h-8 text-primary-text animate-spin" />
           ) : (
             <span
-              className="text-2xl font-black tabular-nums text-primary-text"
+              className="text-2xl font-bold tabular-nums text-primary-text"
               aria-live="polite"
               aria-atomic="true"
             >
@@ -226,19 +226,22 @@ function WaitingBody({
         </div>
       </div>
 
-      <DialogTitle className="text-lg font-black mb-1.5">
+      <DialogTitle className="text-lg font-bold mb-1.5">
         {timedOut ? "ما زلنا نراجع طلبك" : "تم استلام طلب الشحن"}
       </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+        {/* R115 (A8 #5): ONE approval SLA across every surface — this modal
+            used to promise «ثوانٍ» while the wallet page said «30 دقيقة»
+            (approval is a manual admin action; "seconds" overpromised). */}
         {timedOut
-          ? "قد تستغرق المراجعة وقتاً أطول قليلاً. سنخبرك فور اعتماد الطلب."
-          : "نتحقق الآن من إتمام التحويل. عادةً ما يكتمل خلال ثوانٍ."}
+          ? "قد تستغرق المراجعة حتى 30 دقيقة خلال ساعات العمل. سنخبرك فور اعتماد الطلب."
+          : "نتحقق الآن من إتمام التحويل. عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل."}
       </p>
 
       {amount !== undefined && (
         <div className="bg-muted/30 border border-border/45 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
           <span className="text-xs text-muted-foreground font-bold">المبلغ</span>
-          <span className="font-black text-sm tabular-nums">{formatCurrency(amount)}</span>
+          <span className="font-bold text-sm tabular-nums">{formatCurrency(amount)}</span>
         </div>
       )}
 
@@ -281,7 +284,7 @@ function ApprovedBody({
         <CheckCircle2 className="w-10 h-10 text-status-success" />
         <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
       </div>
-      <DialogTitle className="text-lg font-black mb-1.5 text-status-success">
+      <DialogTitle className="text-lg font-bold mb-1.5 text-status-success">
         تمت إضافة الرصيد
       </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
@@ -289,8 +292,8 @@ function ApprovedBody({
       <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
         {/* 96-F6 (R96 A6 #12): /80 → full token — ≈4.0:1 on white fell
             below the 4.5:1 AA floor for small text in light mode. */}
-        <div className="text-[11px] text-status-success font-bold mb-0.5">المبلغ المُضاف</div>
-        <div className="text-2xl font-black tabular-nums text-status-success">
+        <div className="text-2xs text-status-success font-bold mb-0.5">المبلغ المُضاف</div>
+        <div className="text-2xl font-bold tabular-nums text-status-success">
           + {formatCurrency(amount)}
         </div>
       </div>
@@ -301,7 +304,7 @@ function ApprovedBody({
             <Wallet className="w-3.5 h-3.5" />
             الرصيد الحالي
           </span>
-          <span className="font-black text-sm tabular-nums">{formatCurrency(balance)}</span>
+          <span className="font-bold text-sm tabular-nums">{formatCurrency(balance)}</span>
         </div>
       )}
 
@@ -322,7 +325,7 @@ function ApprovedBody({
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="w-full py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             البقاء في المحفظة
           </button>
@@ -349,7 +352,7 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>
-      <DialogTitle className="text-lg font-black mb-1.5 text-status-error">
+      <DialogTitle className="text-lg font-bold mb-1.5 text-status-error">
         تم رفض الطلب
       </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">

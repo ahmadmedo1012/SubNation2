@@ -56,7 +56,10 @@ export async function insertPointsLedgerEntry(
       reason: params.reason ?? null,
     });
   } catch (err) {
-    logger.error({ err, params: { ...params, reason: params.reason?.slice(0, 80) } }, "Failed to insert points_ledger entry");
+    logger.error(
+      { err, params: { ...params, reason: params.reason?.slice(0, 80) } },
+      "Failed to insert points_ledger entry",
+    );
     throw err;
   }
 }
@@ -154,10 +157,16 @@ export async function remainingAwardForOrder(
 
   for (const row of rows) {
     const sourceKey =
-      row.referenceType && row.referenceId != null ? `${row.referenceType}:${row.referenceId}` : `raw:${row.id}`;
+      row.referenceType && row.referenceId != null
+        ? `${row.referenceType}:${row.referenceId}`
+        : `raw:${row.id}`;
 
     if (row.type === "purchase_award" || row.type === "referral_credit") {
-      if (row.type === "purchase_award" && row.referenceType === "order" && row.referenceId === orderId) {
+      if (
+        row.type === "purchase_award" &&
+        row.referenceType === "order" &&
+        row.referenceId === orderId
+      ) {
         sawAward = true;
         awarded = row.pointsDelta;
         queue.push([awardKey, row.pointsDelta]);
@@ -206,5 +215,8 @@ export async function remainingAwardForOrder(
     return { precise: false, remaining: Math.max(0, awarded - alreadyRevoked) };
   }
   const remainingInQueue = queue.find(([k]) => k === awardKey)?.[1] ?? 0;
-  return { precise: true, remaining: Math.max(0, Math.min(remainingInQueue, awarded - alreadyRevoked)) };
+  return {
+    precise: true,
+    remaining: Math.max(0, Math.min(remainingInQueue, awarded - alreadyRevoked)),
+  };
 }

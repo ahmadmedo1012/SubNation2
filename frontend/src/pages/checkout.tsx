@@ -512,6 +512,13 @@ export default function CheckoutPage() {
   // Partial-success bookkeeping: orders that DID go through before a
   // failure — shown in the banner so the user knows what was charged.
   const [partialCount, setPartialCount] = useState(0);
+  // R115-I1 (A7 P3-5): per-unit progress for the submitting label — a
+  // 5-unit basket runs N sequential POSTs (seconds on 3G) and the
+  // spinner-only CTA read as "stuck". {current}/{total} rides the
+  // existing per-unit loop counter below.
+  const [submitProgress, setSubmitProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
   // Server-side hard cap mirrors the backend validation — protects the
   // per-unit purchase loop from a self-DoS via huge quantities (H7).
   const MAX_UNITS_PER_LINE = 99;
@@ -820,6 +827,12 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setOrderError(null);
     setPartialCount(0);
+    // R115-I1 (A7 P3-5): the honest denominator for «جارٍ المعالجة… N/M»
+    // — the SAME clamp the loop below charges (MAX_UNITS_PER_LINE).
+    setSubmitProgress({
+      current: 0,
+      total: items.reduce((sum, it) => sum + Math.min(it.quantity, MAX_UNITS_PER_LINE), 0),
+    });
     // AUD103-2-F1 (r103): sweep inert pre-r103 slot entries (hygiene,
     // off the money path).
     purgeLegacyCheckoutUnitKeys();
@@ -922,6 +935,10 @@ export default function CheckoutPage() {
             }
           }
           const body: CreateOrderBody = { product_id: it.productId };
+          // R115-I1 (A7 P3-5): reflect the unit about to be charged in
+          // the CTA label («جارٍ المعالجة… 2/3») — the counter is the
+          // existing loop's unit index, accumulated across lines.
+          setSubmitProgress((p) => (p ? { ...p, current: p.current + 1 } : p));
           // Catalog-2026-09-20: the line's SELECTED variant rides every unit
           // order — the checkout charges exactly the option the shopper
           // chose on the product page (server falls back to the cheapest
@@ -1110,10 +1127,16 @@ export default function CheckoutPage() {
       toast({ title: msg, variant: "destructive" });
     } finally {
       setSubmitting(false);
+      setSubmitProgress(null);
     }
   }
 
-  if (!token) return null;
+  // R115-I1 (A7 P3-11): guests get the checkout-shaped RouteSkeleton
+  // instead of a bare null — the redirect effect above navigates to
+  // /login on the next tick, and that white flash on the money funnel
+  // read as a blank page on slow links (same shape the cart-hydration
+  // guard below renders).
+  if (!token) return <RouteSkeleton shape="checkout" />;
 
   // R111-F1 G1 (P3): cart-hydration guard — mirrors cart.tsx:122. The
   // cart reads localStorage in a mount effect; until it flips
@@ -1135,7 +1158,7 @@ export default function CheckoutPage() {
           <ShoppingBag className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-black leading-tight">إتمام الطلب</h1>
+          <h1 className="text-2xl font-bold leading-tight">إتمام الطلب</h1>
           <p className="text-sm text-muted-foreground">راجع مشترياتك وأكمل عملية الدفع</p>
         </div>
       </div>
@@ -1147,7 +1170,7 @@ export default function CheckoutPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
             <div className="flex items-center gap-2 mb-4">
               <Lock className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-black text-base">طريقة الدفع</h2>
+              <h2 className="font-bold text-base">طريقة الدفع</h2>
             </div>
             <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/50 bg-primary/8 shadow-sm">
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary/15 text-primary">
@@ -1160,7 +1183,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   رصيدك:{" "}
-                  <span className="font-black text-foreground tabular-nums">
+                  <span className="font-bold text-foreground tabular-nums">
                     {/* 93-C5 / F-15 (A4 #8): a failed probe used to render a
                         fabricated "0.00 د.ل" here (formatBalance(null) →
                         formatCurrency(0)) while the banner below honestly
@@ -1171,7 +1194,7 @@ export default function CheckoutPage() {
                 </div>
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+            <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
               سيُخصم ثمن طلباتك من رصيد المحفظة فوراً، وتُسلَّم بيانات الحسابات مباشرة بعد الدفع.
             </p>
 
@@ -1213,8 +1236,8 @@ export default function CheckoutPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
             <div className="flex items-center gap-2 mb-3">
               <Tag className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-black text-base">كوبون خصم</h2>
-              <span className="text-[10px] text-muted-foreground font-bold">(اختياري)</span>
+              <h2 className="font-bold text-base">كوبون خصم</h2>
+              <span className="text-3xs text-muted-foreground font-bold">(اختياري)</span>
             </div>
             <div className="flex gap-2">
               <Input
@@ -1286,7 +1309,7 @@ export default function CheckoutPage() {
                 — خصم {formatCurrency(appliedCoupon.discount_amount)}
               </p>
             )}
-            <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+            <p className="text-2xs text-muted-foreground mt-2 leading-relaxed">
               يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند إتمام الطلب.
             </p>
           </div>
@@ -1301,7 +1324,7 @@ export default function CheckoutPage() {
         {/* Cart summary (right on desktop) */}
         <aside className="md:sticky md:top-20 md:self-start">
           <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
-            <h2 className="font-black text-base mb-4">ملخص الطلب</h2>
+            <h2 className="font-bold text-base mb-4">ملخص الطلب</h2>
 
             {/* 98-F2 (R98-A3 F5 / P2): live-price reconciliation
                 notices — shown ONCE after the mount re-quote. Dropped
@@ -1377,7 +1400,7 @@ export default function CheckoutPage() {
                               className="w-full h-full object-contain p-1"
                             />
                           ) : (
-                            <span className="text-xs font-black text-primary/50 select-none">
+                            <span className="text-xs font-bold text-primary/50 select-none">
                               {(it.name ?? "?")[0]}
                             </span>
                           )}
@@ -1385,15 +1408,15 @@ export default function CheckoutPage() {
                         <div className="flex-1 min-w-0">
                           <div className="font-bold truncate">{it.name}</div>
                           {it.variantLabel && (
-                            <div className="text-[10px] font-semibold text-muted-foreground/85 truncate">
+                            <div className="text-3xs font-semibold text-muted-foreground/85 truncate">
                               {it.variantLabel}
                             </div>
                           )}
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-2xs text-muted-foreground">
                             {it.quantity} × {formatCurrency(displayUnit)}
                           </div>
                         </div>
-                        <div className="font-black tabular-nums text-sm shrink-0">
+                        <div className="font-bold tabular-nums text-sm shrink-0">
                           {formatCurrency(displayTotal)}
                         </div>
                       </li>
@@ -1413,7 +1436,7 @@ export default function CheckoutPage() {
                       </span>
                     </div>
                   )}
-                  <div className="flex items-center justify-between text-base font-black pt-1">
+                  <div className="flex items-center justify-between text-base font-bold pt-1">
                     <span>{appliedCoupon ? "الإجمالي بعد الكوبون" : "الإجمالي"}</span>
                     <span className="tabular-nums text-primary-text">
                       {formatCurrency(comparisonTotal)}
@@ -1490,7 +1513,12 @@ export default function CheckoutPage() {
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      جارٍ المعالجة… ({formatCurrency(comparisonTotal)})
+                      {/* R115-I1 (A7 P3-5): unit progress «جارٍ المعالجة…
+                          2/3» for multi-unit baskets (single-unit baskets
+                          keep the plain label — 1/1 is noise). */}
+                      {submitProgress && submitProgress.total > 1
+                        ? `جارٍ المعالجة… ${submitProgress.current}/${submitProgress.total} (${formatCurrency(comparisonTotal)})`
+                        : `جارٍ المعالجة… (${formatCurrency(comparisonTotal)})`}
                     </>
                   ) : pricingRecheckInFlight ? (
                     /* 98-F2 (R98-A3 F5): the CTA is disabled while the live
@@ -1509,7 +1537,7 @@ export default function CheckoutPage() {
                     <>إتمام الطلب ({formatCurrency(totalLYD)})</>
                   )}
                 </Button>
-                <p className="text-[11px] text-muted-foreground text-center mt-3">
+                <p className="text-2xs text-muted-foreground text-center mt-3">
                   بالنقر على «إتمام الطلب» فإنك توافق على شروط الاستخدام
                 </p>
               </>

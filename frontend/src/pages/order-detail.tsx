@@ -32,6 +32,7 @@ import {
   ShoppingCart,
   Sparkles,
   Tag,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -54,7 +55,7 @@ function CopyField({
         {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed from the
             Arabic credential labels («البريد الإلكتروني»/«كلمة المرور») —
             letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
-        <div className="text-[10px] text-muted-foreground font-bold mb-0.5">{label}</div>
+        <div className="text-3xs text-muted-foreground font-bold mb-0.5">{label}</div>
         {/* dir="ltr": credentials are LTR runs — without it the bidi
             algorithm visually scrambles values ending in digits/symbols
             even though the copied text is correct.
@@ -101,7 +102,7 @@ function StatusSteps({ status }: { status: string }) {
         <div className="w-7 h-7 rounded-full flex items-center justify-center bg-status-success/15 border-2 border-status-success/45 text-status-success">
           <CheckCircle className="w-3.5 h-3.5" />
         </div>
-        <span className="text-[10px] font-bold text-status-success whitespace-nowrap">
+        <span className="text-3xs font-bold text-status-success whitespace-nowrap">
           استُلم الطلب
         </span>
       </div>
@@ -123,7 +124,7 @@ function StatusSteps({ status }: { status: string }) {
           {done ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
         </div>
         <span
-          className={`text-[10px] font-bold whitespace-nowrap ${done ? "text-status-success" : "text-muted-foreground"}`}
+          className={`text-3xs font-bold whitespace-nowrap ${done ? "text-status-success" : "text-muted-foreground"}`}
         >
           تم التسليم
         </span>
@@ -270,14 +271,18 @@ export default function OrderDetailPage() {
       <div className="space-y-3">
         {/* ── Header card ───────────────────────────────────────── */}
         <div className="bg-card border border-border/55 rounded-2xl overflow-hidden shadow-lg shadow-black/10 float-in">
-          {/* Top color bar */}
+          {/* Top color bar — R115-I1 (A8 P2-3): refunded carries the
+              status-info accent (matching the pill + the orders-list
+              treatment): the money came back, not a failure. */}
           <div
             className={`h-[3px] ${
               order.status === "completed"
                 ? "bg-gradient-to-l from-status-success/85 via-status-success/40 to-transparent"
-                : order.status === "failed" || order.status === "refunded"
-                  ? "bg-gradient-to-l from-status-error/85 via-status-error/40 to-transparent"
-                  : "bg-gradient-to-l from-status-warning/65 via-status-warning/30 to-transparent"
+                : order.status === "refunded"
+                  ? "bg-gradient-to-l from-status-info/85 via-status-info/40 to-transparent"
+                  : order.status === "failed"
+                    ? "bg-gradient-to-l from-status-error/85 via-status-error/40 to-transparent"
+                    : "bg-gradient-to-l from-status-warning/65 via-status-warning/30 to-transparent"
             }`}
           />
 
@@ -297,19 +302,19 @@ export default function OrderDetailPage() {
                   </div>
                 ) : (
                   <div className="w-12 h-12 rounded-xl bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
-                    <span className="text-xl font-black text-primary/45 select-none">
+                    <span className="text-xl font-bold text-primary/45 select-none">
                       {(order.product_name ?? "؟")[0]}
                     </span>
                   </div>
                 )}
                 <div className="min-w-0">
-                  <h1 className="font-black text-base leading-tight mb-0.5 break-words">
+                  <h1 className="font-bold text-base leading-tight mb-0.5 break-words">
                     {order.product_name}
                   </h1>
                   <button
                     onClick={copyOrderCode}
                     dir="ltr"
-                    className="flex items-center gap-1 text-muted-foreground hover:text-primary text-[11px] font-mono transition-colors group/code"
+                    className="flex items-center gap-1 text-muted-foreground hover:text-primary text-2xs font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
                     {/* 96-F4 (R96 A6 #9 / A2 P2-10): the copy affordance is
@@ -322,7 +327,7 @@ export default function OrderDetailPage() {
                 </div>
               </div>
               <span
-                className={`shrink-0 text-[11px] font-bold px-2.5 py-1.5 rounded-full border whitespace-nowrap ${statusColor(order.status ?? "")}`}
+                className={`shrink-0 text-2xs font-bold px-2.5 py-1.5 rounded-full border whitespace-nowrap ${statusColor(order.status ?? "")}`}
               >
                 {statusLabel(order.status ?? "")}
               </span>
@@ -343,11 +348,11 @@ export default function OrderDetailPage() {
               </div>
               <div className="text-right">
                 {originalAmount && (
-                  <div className="text-[11px] text-muted-foreground line-through tabular-nums">
+                  <div className="text-2xs text-muted-foreground line-through tabular-nums">
                     {formatCurrency(originalAmount)}
                   </div>
                 )}
-                <div className="font-black text-xl tabular-nums text-primary">
+                <div className="font-bold text-xl tabular-nums text-primary">
                   {formatCurrency(order.amount ?? 0)}
                 </div>
               </div>
@@ -359,7 +364,7 @@ export default function OrderDetailPage() {
                 <Tag className="w-3 h-3 shrink-0" />
                 <span>
                   كوبون{" "}
-                  <span dir="ltr" className="font-mono font-black">
+                  <span dir="ltr" className="font-mono font-bold">
                     {couponCode}
                   </span>
                 </span>
@@ -379,8 +384,8 @@ export default function OrderDetailPage() {
                 <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
               </div>
               <div>
-                <div className="font-black text-sm">بيانات الحساب</div>
-                <div className="text-[10px] text-muted-foreground">انسخ بياناتك بأمان</div>
+                <div className="font-bold text-sm">بيانات الحساب</div>
+                <div className="text-3xs text-muted-foreground">انسخ بياناتك بأمان</div>
               </div>
             </div>
             <div className="divide-y divide-border/15">
@@ -431,18 +436,54 @@ export default function OrderDetailPage() {
 
         {/* ── Failed / Refunded ──────────────────────────────────── */}
         {(order.status === "failed" || order.status === "refunded") && (
-          <div className="bg-card border border-status-error/22 rounded-2xl p-6 text-center float-in stagger-1">
-            <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-3 flex items-center justify-center">
-              <XCircle className="w-5 h-5 text-status-error" />
+          /* R115-I1 (A8 P2-3a): the refund branch gets a CALM info tone +
+             the AMOUNT — RefundService credits the full orders.amount
+             back to the wallet (terminal-state guarded, credited once),
+             so the figure is available on the order itself. The old
+             error-red card said «تم إعادة المبلغ…» while showing NO
+             amount — an unreceipted money movement. */
+          <div
+            className={`bg-card border rounded-2xl p-6 text-center float-in stagger-1 ${
+              order.status === "refunded" ? "border-status-info/22" : "border-status-error/22"
+            }`}
+          >
+            <div
+              className={`w-12 h-12 rounded-2xl border mx-auto mb-3 flex items-center justify-center ${
+                order.status === "refunded"
+                  ? "bg-status-info/8 border-status-info/22"
+                  : "bg-status-error/8 border-status-error/22"
+              }`}
+            >
+              {order.status === "refunded" ? (
+                <Undo2 className="w-5 h-5 text-status-info" />
+              ) : (
+                <XCircle className="w-5 h-5 text-status-error" />
+              )}
             </div>
-            <p className="font-bold text-sm mb-1 text-status-error">
+            <p
+              className={`font-bold text-sm mb-1 ${
+                order.status === "refunded" ? "text-status-info" : "text-status-error"
+              }`}
+            >
               {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
             </p>
-            <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+            <p className="text-xs text-muted-foreground leading-relaxed tabular-nums">
               {order.status === "refunded"
-                ? "تم إعادة المبلغ إلى محفظتك تلقائياً"
+                ? `استُرد ${formatCurrency(order.amount ?? 0)} إلى محفظتك تلقائياً`
                 : "يرجى التواصل مع الدعم الفني إن احتجت مساعدة"}
             </p>
+            {order.status === "refunded" && (
+              /* R115-I1 (A8 P2-3a, honest tail): the refund ALSO reverses
+                 the purchase-award points for this order (refund.service
+                 reclaims them, clamped at zero). The old copy said
+                 nothing — points silently vanished from /loyalty with no
+                 explanation on any page; this line closes that promise
+                 gap («خُصمت نقاط الشراء المستردة»). */
+              <p className="text-2xs text-muted-foreground/75 leading-relaxed mt-1 mb-4">
+                كما خُصمت نقاط الشراء المستردة — نقاط هذا الطلب من رصيد نقاطك.
+              </p>
+            )}
+            {order.status === "failed" && <div className="mb-4" />}
             {/*
               Promote the support link inside the failure card itself
               when the order failed. Failed/refunded is exactly the

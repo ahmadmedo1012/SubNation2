@@ -109,7 +109,7 @@ export default function StatusPage(): ReactElement {
             <Activity className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-black">حالة المنصة</h1>
+            <h1 className="text-2xl font-bold">حالة المنصة</h1>
             <p className="text-xs text-muted-foreground">
               <a href="https://subnation.ly" className="text-primary hover:underline">
                 subnation.ly

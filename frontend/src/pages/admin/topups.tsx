@@ -56,12 +56,12 @@ type AdminTopupRow = AdminTopup & { payment_method?: string; sender_account?: st
 function MethodBadge({ method }: { method: string }) {
   if (method === "lypay")
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded-full font-bold">
+      <span className="inline-flex items-center gap-1 text-3xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded-full font-bold">
         <Building2 className="w-2.5 h-2.5" /> LyPay
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full font-bold">
+    <span className="inline-flex items-center gap-1 text-3xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full font-bold">
       <Smartphone className="w-2.5 h-2.5" /> تحويل رصيد
     </span>
   );
@@ -75,7 +75,7 @@ function NetworkBadge({ net }: { net?: string | null }) {
   };
   const d = map[net] ?? { label: net, cls: "text-muted-foreground bg-muted border-border" };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-bold ${d.cls}`}>
+    <span className={`text-3xs px-1.5 py-0.5 rounded-full border font-bold ${d.cls}`}>
       {d.label}
     </span>
   );
@@ -230,7 +230,7 @@ function RejectModal({
               if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
             }}
           />
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-3xs text-muted-foreground mt-1">
             <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
             للتأكيد ·
             <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
@@ -849,9 +849,9 @@ export default function AdminTopupsPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-0.5">
-              <h1 className="text-xl font-black">طلبات الشحن</h1>
+              <h1 className="text-xl font-bold">طلبات الشحن</h1>
               {pendingCount > 0 && (
-                <span className="flex items-center gap-1 bg-yellow-400/15 text-yellow-400 border border-yellow-400/25 text-xs font-black px-2 py-0.5 rounded-full animate-pulse">
+                <span className="flex items-center gap-1 bg-yellow-400/15 text-yellow-400 border border-yellow-400/25 text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
                   <AlertTriangle className="w-3 h-3" />
                   {pendingCount} معلق
                 </span>
@@ -953,7 +953,7 @@ export default function AdminTopupsPage() {
                   <button
                     key={s.value}
                     onClick={() => setStatusFilter(s.value)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                       active
                         ? "bg-card shadow-sm text-foreground font-bold"
                         : "text-muted-foreground hover:text-foreground"
@@ -962,7 +962,7 @@ export default function AdminTopupsPage() {
                     {s.label}
                     {count > 0 && (
                       <span
-                        className={`text-[10px] font-black ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
+                        className={`text-3xs font-bold ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
                       >
                         {count}
                       </span>
@@ -1008,7 +1008,7 @@ export default function AdminTopupsPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل طلبات الشحن</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل طلبات الشحن</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
             </p>
@@ -1063,11 +1063,11 @@ export default function AdminTopupsPage() {
 
                   {/* Top row: amount + badges + date */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className="font-black text-xl tabular-nums">
+                    <span className="font-bold text-xl tabular-nums">
                       {formatCurrency(t.amount)}
                     </span>
                     <span
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${statusColor(t.status)}`}
+                      className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${statusColor(t.status)}`}
                     >
                       {statusLabel(t.status)}
                     </span>

@@ -193,7 +193,11 @@ export class RefundService {
       // is gone money — admin-gated business cost, documented in
       // docs/loyalty/FINAL_LOYALTY_POLICY.md). Unrelated points (referral,
       // welcome, admin grants) are untouchable by construction.
-      const awardRow = await remainingAwardForOrder(order.userId, orderId, tx as unknown as typeof db);
+      const awardRow = await remainingAwardForOrder(
+        order.userId,
+        orderId,
+        tx as unknown as typeof db,
+      );
       const priorReversal = await findRefundReversal(orderId, tx as unknown as typeof db);
       const alreadyRevoked = priorReversal ? -priorReversal.pointsDelta : 0;
       let awardRemainder: number;

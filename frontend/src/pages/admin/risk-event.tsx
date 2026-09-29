@@ -213,7 +213,7 @@ export default function AdminRiskEventPage() {
 
         {Object.keys(event.statistical_signals).length > 0 && (
           <Section title="إشارات إحصائية">
-            <pre className="text-[11px] font-mono bg-background/60 border border-border/40 rounded-lg p-2 overflow-x-auto">
+            <pre className="text-2xs font-mono bg-background/60 border border-border/40 rounded-lg p-2 overflow-x-auto">
               {JSON.stringify(event.statistical_signals, null, 2)}
             </pre>
           </Section>
@@ -314,7 +314,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="border border-border/40 rounded-xl bg-card/60 px-3 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-3xs text-muted-foreground">{label}</div>
       <div className={`text-sm font-bold mt-0.5 ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
@@ -333,7 +333,7 @@ function KV({
 }) {
   return (
     <div className={span2 ? "col-span-2" : ""}>
-      <div className="text-[10px] text-muted-foreground">{k}</div>
+      <div className="text-3xs text-muted-foreground">{k}</div>
       <div className={`text-xs mt-0.5 ${mono ? "font-mono break-all" : ""}`}>{v}</div>
     </div>
   );

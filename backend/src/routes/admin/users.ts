@@ -397,7 +397,10 @@ router.patch(
       // admin_set row, this is the secondary operator-facing trail.
       ...(walletResult ? { wallet_balance_after: walletResult.walletBalance } : {}),
       ...(loyaltyApplied
-        ? { loyalty_points_before: loyaltyApplied.before, loyalty_points_after: loyaltyApplied.after }
+        ? {
+            loyalty_points_before: loyaltyApplied.before,
+            loyalty_points_after: loyaltyApplied.after,
+          }
         : {}),
     });
 

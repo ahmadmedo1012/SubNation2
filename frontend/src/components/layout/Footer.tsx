@@ -33,7 +33,7 @@ export function Footer() {
         {/* Left: logo + copyright */}
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <Logo size="sm" />
-          <span className="font-medium text-center sm:text-right opacity-85">
+          <span className="font-semibold text-center sm:text-right opacity-85">
             © {new Date().getFullYear()} — سوق الاشتراكات الرقمية في ليبيا
           </span>
         </div>

@@ -258,7 +258,7 @@ export function InventoryUploadDialog({
           </summary>
           <ul
             dir="ltr"
-            className="mt-2 text-[11px] leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
+            className="mt-2 text-2xs leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
           >
             <li>
               <Mail className="w-3 h-3 inline mr-1" />
@@ -281,7 +281,7 @@ export function InventoryUploadDialog({
               <code>{`{"email":"a@x.com","password":"p"}`}</code> — JSON
             </li>
           </ul>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-2xs text-muted-foreground">
             يكتشف النظام نوع كل سطر تلقائياً. الفواصل المدعومة: <code className="font-mono">|</code>{" "}
             <code className="font-mono">,</code> <code className="font-mono">;</code>{" "}
             <code className="font-mono">tab</code>. السطور التي تبدأ بـ{" "}
@@ -329,7 +329,7 @@ export function InventoryUploadDialog({
               <button
                 type="button"
                 onClick={() => setText("")}
-                className="text-[11px] font-bold text-muted-foreground hover:text-destructive"
+                className="text-2xs font-bold text-muted-foreground hover:text-destructive"
               >
                 مسح
               </button>
@@ -379,14 +379,14 @@ export function InventoryUploadDialog({
         {parsed.entries.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-black flex items-center gap-1.5">
+              <h3 className="text-xs font-bold flex items-center gap-1.5">
                 <CheckCircle className="w-3.5 h-3.5 text-status-success" />
                 معاينة (أول {Math.min(parsed.entries.length, MAX_PREVIEW_ROWS)} من{" "}
                 {parsed.entries.length})
               </h3>
             </div>
             <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
-              <table className="w-full text-[11px]">
+              <table className="w-full text-2xs">
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
                     {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
@@ -419,7 +419,7 @@ export function InventoryUploadDialog({
               </table>
             </div>
             {parsed.entries.length > MAX_PREVIEW_ROWS && (
-              <p className="text-[11px] text-muted-foreground mt-1.5 text-center">
+              <p className="text-2xs text-muted-foreground mt-1.5 text-center">
                 + {parsed.entries.length - MAX_PREVIEW_ROWS} عنصر إضافي سيُرفع
               </p>
             )}
@@ -429,20 +429,20 @@ export function InventoryUploadDialog({
         {/* Error list */}
         {parsed.errors.length > 0 && (
           <div>
-            <h3 className="text-xs font-black flex items-center gap-1.5 mb-2 text-destructive">
+            <h3 className="text-xs font-bold flex items-center gap-1.5 mb-2 text-destructive">
               <AlertCircle className="w-3.5 h-3.5" />
               أسطر تعذّر تحليلها ({parsed.errors.length})
             </h3>
             <div className="bg-destructive/5 border border-destructive/25 rounded-xl px-3 py-2 space-y-1 max-h-32 overflow-y-auto">
               {parsed.errors.slice(0, 10).map((err, i) => (
-                <div key={i} className="text-[11px] flex items-start gap-2">
+                <div key={i} className="text-2xs flex items-start gap-2">
                   <span className="font-mono text-destructive/70 shrink-0">L{err.line}</span>
                   <span className="text-muted-foreground flex-1 truncate">{err.raw}</span>
                   <span className="text-destructive font-bold shrink-0">{err.reason}</span>
                 </div>
               ))}
               {parsed.errors.length > 10 && (
-                <div className="text-[10px] text-muted-foreground text-center pt-1">
+                <div className="text-3xs text-muted-foreground text-center pt-1">
                   + {parsed.errors.length - 10} خطأ آخر
                 </div>
               )}
@@ -484,8 +484,8 @@ function StatPill({
   return (
     <div className={`flex flex-col items-center gap-0.5 px-2 py-2 border rounded-xl ${toneCls}`}>
       <Icon className="w-3.5 h-3.5" />
-      <div className="text-base font-black tabular-nums">{value}</div>
-      <div className="text-[10px] text-muted-foreground font-medium">{label}</div>
+      <div className="text-base font-bold tabular-nums">{value}</div>
+      <div className="text-3xs text-muted-foreground font-semibold">{label}</div>
     </div>
   );
 }
@@ -509,19 +509,19 @@ function PreviewRow({
       <td className="px-2 py-1.5 text-muted-foreground font-mono">{index + 1}</td>
       <td className="px-2 py-1.5">
         {entry.kind === "credentials" ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-info/10 text-status-info border border-status-info/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-status-info/10 text-status-info border border-status-info/30 px-1.5 py-0.5 rounded">
             <Mail className="w-2.5 h-2.5" />
             حساب
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
             <Key className="w-2.5 h-2.5" />
             كود
           </span>
         )}
       </td>
       <td
-        className="px-2 py-1.5 font-mono text-[10px] text-foreground/85 truncate max-w-[180px]"
+        className="px-2 py-1.5 font-mono text-3xs text-foreground/85 truncate max-w-[180px]"
         dir="ltr"
         title={identifier}
       >
@@ -529,12 +529,12 @@ function PreviewRow({
       </td>
       <td className="px-2 py-1.5">
         {isDuplicate ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-warning/10 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-status-warning/10 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
             <AlertCircle className="w-2.5 h-2.5" />
             مكرر
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-status-success/10 text-status-success border border-status-success/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-status-success/10 text-status-success border border-status-success/30 px-1.5 py-0.5 rounded">
             <CheckCircle className="w-2.5 h-2.5" />
             جديد
           </span>

@@ -98,8 +98,8 @@ function StatCard({
       <div className={`w-8 h-8 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
         <Icon className={`w-4 h-4 ${color}`} />
       </div>
-      <div className={`text-2xl font-black tabular-nums mb-0.5 ${color}`}>{value}</div>
-      <div className="text-xs text-muted-foreground font-medium">{label}</div>
+      <div className={`text-2xl font-bold tabular-nums mb-0.5 ${color}`}>{value}</div>
+      <div className="text-xs text-muted-foreground font-semibold">{label}</div>
     </div>
   );
 }
@@ -288,7 +288,7 @@ export default function AdminReferralsPage() {
               <Gift className="w-4.5 h-4.5 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-black">برنامج الإحالة</h1>
+              <h1 className="text-lg font-bold">برنامج الإحالة</h1>
               <p className="text-xs text-muted-foreground">إدارة ومتابعة إحالات المستخدمين</p>
             </div>
           </div>
@@ -344,7 +344,7 @@ export default function AdminReferralsPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-4 float-in stagger-5">
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="w-3.5 h-3.5 text-yellow-400" />
-              <h2 className="font-black text-sm">أكثر المستخدمين إحالةً</h2>
+              <h2 className="font-bold text-sm">أكثر المستخدمين إحالةً</h2>
             </div>
             <div className="space-y-2">
               {topReferrers.map((r, i) => (
@@ -353,13 +353,13 @@ export default function AdminReferralsPage() {
                   className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 hover:bg-muted/35 transition-colors"
                 >
                   <div
-                    className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black shrink-0 ${MEDAL_COLORS[i] ?? "text-muted-foreground bg-muted/40 border-border/40"}`}
+                    className={`w-6 h-6 rounded-full border flex items-center justify-center text-2xs font-bold shrink-0 ${MEDAL_COLORS[i] ?? "text-muted-foreground bg-muted/40 border-border/40"}`}
                   >
                     {i + 1}
                   </div>
                   <span className="font-mono text-sm font-bold flex-1 truncate">{r.phone}</span>
                   <div className="flex items-center gap-3 text-xs shrink-0">
-                    <span className="text-emerald-400 font-black">{r.credited_count} ناجحة</span>
+                    <span className="text-emerald-400 font-bold">{r.credited_count} ناجحة</span>
                     <span className="text-muted-foreground">{r.total_count} إجمالي</span>
                     <span className="text-yellow-400 font-bold">{r.credited_count * 50} نقطة</span>
                   </div>
@@ -428,7 +428,7 @@ export default function AdminReferralsPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل الإحالات</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الإحالات</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
             </p>
@@ -488,11 +488,11 @@ export default function AdminReferralsPage() {
                     {/* Status */}
                     <div>
                       {credited ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           <CheckCircle className="w-2.5 h-2.5" /> ناجحة
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                        <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
                           <Clock className="w-2.5 h-2.5" /> معلقة
                         </span>
                       )}
@@ -502,7 +502,7 @@ export default function AdminReferralsPage() {
                     <div className="text-xs text-muted-foreground">
                       <div>{formatRelativeTime(row.created_at)}</div>
                       {credited && row.credited_at && (
-                        <div className="text-emerald-400/70 text-[10px] mt-0.5">
+                        <div className="text-emerald-400/70 text-3xs mt-0.5">
                           قُيِّد: {formatRelativeTime(row.credited_at)}
                         </div>
                       )}
@@ -511,7 +511,7 @@ export default function AdminReferralsPage() {
                     {/* Action */}
                     <div>
                       {credited ? (
-                        <div className="flex items-center gap-1 text-xs text-yellow-400 font-black">
+                        <div className="flex items-center gap-1 text-xs text-yellow-400 font-bold">
                           <Star className="w-3 h-3" />+{row.points_earned}
                         </div>
                       ) : (

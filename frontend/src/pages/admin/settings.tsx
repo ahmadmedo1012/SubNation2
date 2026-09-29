@@ -275,7 +275,7 @@ function ProviderCard({
               <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
               <div className="text-xs text-muted-foreground space-y-1">
                 <p className="font-bold text-blue-400">Callback URL للإعداد في لوحة المطور</p>
-                <code className="block font-mono text-[11px] bg-background/60 px-2 py-1 rounded border border-border/40 text-foreground/80 break-all">
+                <code className="block font-mono text-2xs bg-background/60 px-2 py-1 rounded border border-border/40 text-foreground/80 break-all">
                   {window.location.origin}/api/auth/{provider.id}/callback
                 </code>
               </div>
@@ -640,10 +640,10 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
             <UserCog className="w-5 h-5 text-primary" />
           </div>
           <div className="flex-1">
-            <div className="font-black text-lg">{session.display_name}</div>
+            <div className="font-bold text-lg">{session.display_name}</div>
             <div className="text-xs text-muted-foreground">@{session.username}</div>
           </div>
-          <div className="text-[10px] font-bold uppercase bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-full">
+          <div className="text-3xs font-bold uppercase bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-full">
             {session.role}
           </div>
         </div>
@@ -919,7 +919,7 @@ export default function AdminSettingsPage() {
     <AdminLayout>
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h1 className="text-2xl font-black mb-0.5">الإعدادات</h1>
+          <h1 className="text-2xl font-bold mb-0.5">الإعدادات</h1>
           <p className="text-muted-foreground text-sm">
             إعدادات النظام والتكاملات وإدارة طرق المصادقة
           </p>
@@ -931,7 +931,7 @@ export default function AdminSettingsPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${activeTab === tab.id ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${activeTab === tab.id ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
             >
               <tab.icon className="w-3.5 h-3.5" />
               {tab.label}
@@ -964,7 +964,7 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
               <span
-                className={`text-xs font-black px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
+                className={`text-xs font-bold px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
               >
                 {enabledCount}/{providers.length}
               </span>
@@ -1139,17 +1139,17 @@ export default function AdminSettingsPage() {
                             : "النظام غير مُعدّ"}
                       </div>
                       {tgTestResult.errorMessage && (
-                        <div className="font-mono text-[10px] opacity-90 break-all">
+                        <div className="font-mono text-3xs opacity-90 break-all">
                           {tgTestResult.errorMessage}
                         </div>
                       )}
                       {tgTestResult.hint && (
-                        <div className="text-[11px] opacity-90 leading-relaxed">
+                        <div className="text-2xs opacity-90 leading-relaxed">
                           {tgTestResult.hint}
                         </div>
                       )}
                       {tgTestResult.attempts > 0 && (
-                        <div className="text-[10px] opacity-75">
+                        <div className="text-3xs opacity-75">
                           عدد المحاولات: {tgTestResult.attempts}
                         </div>
                       )}
@@ -1171,7 +1171,7 @@ export default function AdminSettingsPage() {
                     </>,
                     <>
                       أرسل رسالة للبوت ثم افتح{" "}
-                      <span className="font-mono text-[10px] text-primary">
+                      <span className="font-mono text-3xs text-primary">
                         api.telegram.org/bot&#123;TOKEN&#125;/getUpdates
                       </span>{" "}
                       للحصول على Chat ID
@@ -1184,7 +1184,7 @@ export default function AdminSettingsPage() {
                     <>أعد تشغيل السيرفر</>,
                   ].map((step, i) => (
                     <li key={i} className="flex gap-2">
-                      <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                      <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-3xs font-bold shrink-0 mt-0.5">
                         {i + 1}
                       </span>
                       <span>{step}</span>
@@ -1268,7 +1268,7 @@ export default function AdminSettingsPage() {
                   >
                     <div className="flex items-center gap-2.5">
                       <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="font-medium text-sm">{item.label}</span>
+                      <span className="font-semibold text-sm">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-muted-foreground">{item.value}</span>

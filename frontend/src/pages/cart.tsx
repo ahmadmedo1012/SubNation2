@@ -5,11 +5,16 @@ import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { useCart, type LocalCartItem } from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
-import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles, Wallet } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
+import {
+  getGetWalletQueryKey,
+  useGetWallet,
+  type WalletInfo,
+} from "@workspace/api-client-react";
 
 function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;
@@ -57,6 +62,16 @@ export default function CartPage() {
   // r4-1-c org audit (docs/ux-audit-storefront.md:73 documents the
   // remnant as known-dead since rounds ago).
   const { items, isLoaded, updateQuantity, removeItem, clear, addItem } = useCart();
+
+  // R115-I1 (A7 P3-4): the wallet balance chip next to the total — the
+  // same data point checkout's summary shows («رصيدك: …»). Decorative
+  // context for the total, not a gate (checkout owns the balance gate);
+  // a failed probe just omits the chip (never fabricates 0.00).
+  const { data: wallet } = useGetWallet({
+    query: { enabled: !!token, queryKey: getGetWalletQueryKey() },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+  const walletBalance = (wallet as WalletInfo | undefined)?.balance;
 
   const total = useMemo(() => {
     return +items.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0).toFixed(2);
@@ -138,7 +153,7 @@ export default function CartPage() {
             <ShoppingCart className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-black leading-tight">سلة المشتريات</h1>
+            <h1 className="text-2xl font-bold leading-tight">سلة المشتريات</h1>
             <p className="text-sm text-muted-foreground">
               {items.length === 0
                 ? "سلتك فارغة حالياً"
@@ -174,7 +189,7 @@ export default function CartPage() {
               <ShoppingCart className="w-9 h-9 opacity-25" />
             </div>
           </div>
-          <p className="font-black text-lg mb-1.5 text-foreground/80">سلتك فارغة</p>
+          <p className="font-bold text-lg mb-1.5 text-foreground/80">سلتك فارغة</p>
           <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
             ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة
           </p>
@@ -220,7 +235,7 @@ export default function CartPage() {
                             className="w-full h-full object-contain p-1.5"
                           />
                         ) : (
-                          <span className="text-lg font-black text-primary/50 select-none">
+                          <span className="text-lg font-bold text-primary/50 select-none">
                             {(it.name ?? "?")[0]}
                           </span>
                         )}
@@ -236,7 +251,7 @@ export default function CartPage() {
                           under the product name — the shopper's mental model of
                           WHAT is in the line, not just which brand. */}
                       {it.variantLabel && (
-                        <div className="text-[11px] font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
+                        <div className="text-2xs font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
                           {it.variantLabel}
                         </div>
                       )}
@@ -244,20 +259,35 @@ export default function CartPage() {
                           keeps the trio (price / strikethrough / discount) on
                           one clean row now that the column is wide enough. */}
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mt-0.5">
-                        <span className="font-black text-sm tabular-nums text-primary-text">
+                        <span className="font-bold text-sm tabular-nums text-primary-text">
                           {formatCurrency(price)}
                         </span>
                         {it.salePriceLYD != null && it.salePriceLYD < it.priceLYD && (
-                          <span className="text-[11px] text-muted-foreground line-through tabular-nums">
+                          <span className="text-2xs text-muted-foreground line-through tabular-nums">
                             {formatCurrency(it.priceLYD)}
                           </span>
                         )}
                         {it.discountPercent != null && it.discountPercent > 0 && (
-                          <span className="text-[10px] font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
+                          <span className="text-3xs font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
                             خصم {it.discountPercent}%
                           </span>
                         )}
                       </div>
+                      {/* R115-I1 (A7 P3-4): per-line total (qty × unit) for
+                          multi-quantity lines — checkout shows this
+                          (checkout.tsx's «N × unit» + line total); the
+                          cart used to show only the unit price and the
+                          grand total, leaving the shopper to do the
+                          multiplication at the decision moment. qty-1
+                          lines need no arithmetic row (unit == line). */}
+                      {it.quantity > 1 && (
+                        <div className="text-2xs text-muted-foreground mt-0.5 tabular-nums">
+                          {it.quantity} × {formatCurrency(price)} ={" "}
+                          <span className="font-bold text-foreground/85">
+                            {formatCurrency(+(price * it.quantity).toFixed(2))}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* 96-F4 (R96 A2 P1-1): 44px stepper/trash targets with
@@ -280,7 +310,7 @@ export default function CartPage() {
                           )}
                         </button>
                         <span
-                          className="font-black text-sm tabular-nums px-2 min-w-[28px] text-center"
+                          className="font-bold text-sm tabular-nums px-2 min-w-[28px] text-center"
                           aria-label={`الكمية ${it.quantity}`}
                         >
                           {it.quantity}
@@ -311,9 +341,21 @@ export default function CartPage() {
 
           {/* Summary */}
           <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
               <span className="text-sm text-muted-foreground font-bold">المجموع</span>
-              <span className="font-black text-2xl tabular-nums">{formatCurrency(total)}</span>
+              <div className="flex items-center gap-2">
+                {/* R115-I1 (A7 P3-4): wallet balance chip — context for the
+                    total (can I cover it?) without duplicating checkout's
+                    insufficient-balance gate. Hidden when the probe hasn't
+                    answered — never a fabricated number. */}
+                {token && walletBalance != null && (
+                  <span className="flex items-center gap-1 text-2xs font-bold text-muted-foreground bg-muted/40 border border-border/50 px-2.5 py-1 rounded-full tabular-nums">
+                    <Wallet className="w-3 h-3" />
+                    رصيدك {formatCurrency(walletBalance)}
+                  </span>
+                )}
+                <span className="font-bold text-2xl tabular-nums">{formatCurrency(total)}</span>
+              </div>
             </div>
             {token ? (
               <Link href="/checkout">
@@ -347,7 +389,7 @@ export default function CartPage() {
                 the backend. The line now states the actual payment
                 behavior (instant wallet debit) instead of seeding tax
                 doubt at the payment-decision moment. */}
-            <p className="text-[11px] text-muted-foreground text-center mt-3">
+            <p className="text-2xs text-muted-foreground text-center mt-3">
               الدفع يُخصم من رصيد محفظتك فوراً — تسليم فوري بعد التأكيد
             </p>
           </div>

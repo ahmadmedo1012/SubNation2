@@ -158,7 +158,7 @@ export function AppDialog({
           {/* Header — non-scrolling */}
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div className="min-w-0 flex-1">
-              <DialogPrimitive.Title className="text-start font-black text-base leading-snug">
+              <DialogPrimitive.Title className="text-start font-bold text-base leading-snug">
                 {title}
               </DialogPrimitive.Title>
               {description && (

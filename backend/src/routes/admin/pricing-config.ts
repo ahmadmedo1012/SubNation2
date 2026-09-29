@@ -96,7 +96,9 @@ router.post("/pricing/recompute", async (req, res) => {
   // destructive confirm in the UI can finally show the operator what
   // they are about to approve.
   const dryRun = ["true", "1", "yes"].includes(
-    String(req.query.dry_run ?? "").trim().toLowerCase(),
+    String(req.query.dry_run ?? "")
+      .trim()
+      .toLowerCase(),
   );
 
   // Recompute every ACTIVE variant whose stored price no longer matches the

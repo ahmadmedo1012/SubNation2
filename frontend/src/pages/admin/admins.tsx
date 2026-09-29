@@ -155,7 +155,7 @@ export default function AdminAdminsPage() {
       <div className="space-y-5 max-w-5xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black mb-0.5">إدارة المسؤولين</h1>
+            <h1 className="text-2xl font-bold mb-0.5">إدارة المسؤولين</h1>
             <p className="text-muted-foreground text-sm">
               إنشاء وإدارة حسابات المسؤولين وصلاحياتهم
             </p>
@@ -181,7 +181,7 @@ export default function AdminAdminsPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المسؤولين</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المسؤولين</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">{loadError}</p>
             <Button
               onClick={() => reload()}
@@ -218,22 +218,22 @@ export default function AdminAdminsPage() {
                         />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-black text-base flex items-center gap-2 flex-wrap">
+                        <div className="font-bold text-base flex items-center gap-2 flex-wrap">
                           {admin.display_name}
                           {isMe && (
                             /* 94-C2 (A2 P2-10): uppercase dropped on the
                                 Arabic badges (A11 §8). */
-                            <span className="text-[9px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            <span className="text-3xs font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                               أنت
                             </span>
                           )}
                           {!admin.is_active && (
-                            <span className="text-[9px] font-bold bg-status-warning/12 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
+                            <span className="text-3xs font-bold bg-status-warning/12 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
                               معطّل
                             </span>
                           )}
                           {admin.totp_enabled && (
-                            <span className="text-[9px] font-bold uppercase bg-status-success/10 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded">
+                            <span className="text-3xs font-bold uppercase bg-status-success/10 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded">
                               2FA
                             </span>
                           )}
@@ -266,7 +266,7 @@ export default function AdminAdminsPage() {
                     {(admin.permissions ?? []).length === 0 ? (
                       <span className="text-xs text-muted-foreground">لا توجد صلاحيات ممنوحة</span>
                     ) : (admin.permissions ?? []).includes("all") ? (
-                      <span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded">
+                      <span className="text-3xs font-bold bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded">
                         جميع الصلاحيات (مسؤول رئيسي)
                       </span>
                     ) : (
@@ -275,7 +275,7 @@ export default function AdminAdminsPage() {
                         return (
                           <span
                             key={scope}
-                            className="text-[10px] font-bold bg-muted/40 text-foreground/75 border border-border/50 px-1.5 py-0.5 rounded"
+                            className="text-3xs font-bold bg-muted/40 text-foreground/75 border border-border/50 px-1.5 py-0.5 rounded"
                           >
                             {label}
                           </span>
@@ -421,7 +421,7 @@ function CreateAdminDialog({
             required
             autoComplete="new-password"
           />
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-3xs text-muted-foreground mt-1">
             8 أحرف على الأقل. سيتمكن المسؤول من تغييرها لاحقاً وتفعيل المصادقة الثنائية.
           </p>
         </div>
@@ -545,7 +545,7 @@ function EditAdminDialog({
             <ScopeCheckboxGrid scopes={scopes} selected={selectedScopes} onToggle={toggleScope} />
           )}
         </div>
-        <div className="flex items-start gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-lg text-[11px] text-muted-foreground">
+        <div className="flex items-start gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-lg text-2xs text-muted-foreground">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           لتغيير اسم المستخدم أو كلمة المرور لهذا الحساب، يجب أن يقوم المسؤول نفسه بذلك من صفحة
           "حسابي".

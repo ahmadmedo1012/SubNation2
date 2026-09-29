@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
+import { useOnScreen } from "@/hooks/use-on-screen";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -24,14 +25,18 @@ import {
 import { isValidLibyanPhone, libyanPhoneError } from "@/lib/validation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetWalletLedgerQueryKey,
   getGetWalletQueryKey,
   getListTopupsQueryKey,
   useCreateTopup,
   useGetWallet,
+  useGetWalletLedger,
   useListTopups,
+  type GetWalletLedger200Item,
 } from "@workspace/api-client-react";
 import {
   AlertCircle,
+  ArrowLeftRight,
   Building2,
   Check,
   CheckCircle,
@@ -309,7 +314,7 @@ function StepDot({
       className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground"}`}
     >
       <div
-        className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-200 shadow-sm ${
+        className={`w-6 h-6 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 transition-all duration-200 shadow-sm ${
           active
             ? "bg-primary text-white shadow-primary/30"
             : "bg-muted/50 border border-border/50 text-muted-foreground"
@@ -331,9 +336,177 @@ function StepDot({
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[11px] text-muted-foreground mb-0.5 font-medium">{label}</div>
+      <div className="text-2xs text-muted-foreground mb-0.5 font-semibold">{label}</div>
       <div className="font-bold text-sm">{value}</div>
     </div>
+  );
+}
+
+/** One wallet_ledger row as served by GET /api/wallet/ledger (R115). */
+type LedgerEntry = GetWalletLedger200Item;
+
+/**
+ * R115 (A8 P2): signed, directional display amount for a ledger row.
+ *
+ * The wallet_ledger writers store the ABSOLUTE amount for the fixed
+ * types (topup / purchase / refund / referral_credit — the direction IS
+ * the type; checkout writes String(finalPrice), refunds and topups their
+ * positive values), while `adjustment` rows carry their own sign
+ * (balanceAfter − balanceBefore, see AdjustmentService). This helper
+ * derives the display sign from the type so the statement reads as a
+ * movement list: credits with a leading «+», debits with a leading «-».
+ * The amount span renders dir="ltr" so the sign always leads the number
+ * inside the RTL layout.
+ */
+function ledgerAmountDisplay(entry: LedgerEntry): { text: string; credit: boolean } {
+  const amount = entry.amount ?? 0;
+  const abs = Math.abs(amount);
+  if (entry.type === "adjustment") {
+    return {
+      text: `${amount < 0 ? "-" : "+"}${formatCurrency(abs)}`,
+      credit: amount >= 0,
+    };
+  }
+  // Purchases are the only fixed-type debit; everything else credits
+  // the wallet (topups, refunds, referral/welcome credits).
+  const debit = entry.type === "purchase";
+  return { text: `${debit ? "-" : "+"}${formatCurrency(abs)}`, credit: !debit };
+}
+
+/**
+ * R115 (A8 P2): the user-facing wallet STATEMENT — every LYD movement
+ * from wallet_ledger (topups, purchases, refunds, loyalty conversions,
+ * referral/welcome credits), newest first.
+ *
+ * Until R115 the wallet page showed only topup REQUESTS: a refund
+ * credit, a welcome bonus or a loyalty conversion was invisible as a
+ * transaction — "where did my balance come from?" was unanswerable in
+ * the UI. This card is purely additive (the topup requests list above is
+ * untouched). Distinct LOADING / ERROR / EMPTY / ROWS branches follow
+ * the 93-C5/F-05 idiom: an outage is NEVER the «لا توجد حركات بعد»
+ * empty state.
+ */
+function WalletStatementCard({
+  entries,
+  loading,
+  error,
+  onRetry,
+}: {
+  entries: LedgerEntry[];
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <section
+      aria-labelledby="wallet-statement-heading"
+      className="bg-card border border-border/55 rounded-2xl p-5 mt-5"
+    >
+      <div className="flex items-center gap-2.5 mb-4">
+        <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />
+        <h2 id="wallet-statement-heading" className="font-bold text-sm">
+          سجل الحركات
+        </h2>
+        {entries.length > 0 && (
+          <span className="mr-auto text-xs text-muted-foreground font-semibold">
+            {formatCount(entries.length, {
+              one: "حركة",
+              two: "حركتان",
+              few: "حركات",
+              many: "حركة",
+              other: "حركة",
+            })}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        /* Statement skeleton — same shape as the topup list's, so the
+           two right-column lists feel like one family. */
+        <div className="space-y-2.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4 flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-muted skeleton-shimmer rounded-lg w-2/5" />
+                <div className="h-3 bg-muted skeleton-shimmer rounded w-1/3" />
+              </div>
+              <div className="h-5 bg-muted skeleton-shimmer rounded-full w-16 shrink-0" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        /* 93-C5 / F-05: outage ≠ "no movements yet" — a failed ledger
+           fetch must not read as an empty wallet history. */
+        <div className="text-center py-10 text-muted-foreground">
+          <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5">
+            <WifiOff className="w-5 h-5 text-status-error/70" />
+          </div>
+          <p className="font-bold text-sm mb-1 text-foreground/80">تعذّر تحميل سجل الحركات</p>
+          <p className="text-xs text-muted-foreground mb-4 leading-relaxed max-w-[240px] mx-auto">
+            حدث خطأ في الاتصال — أعد المحاولة لعرض حركات محفظتك
+          </p>
+          <Button
+            onClick={onRetry}
+            size="sm"
+            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
+          >
+            إعادة المحاولة
+          </Button>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
+            <ArrowLeftRight className="w-7 h-7 opacity-25" />
+          </div>
+          <p className="font-bold text-base mb-1.5 text-foreground/80">لا توجد حركات بعد</p>
+          <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
+            ستظهر هنا عمليات الشحن والشراء والاسترداد في محفظتك
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2.5 lg:max-h-[480px] overflow-y-auto scrollbar-none">
+          {entries.map((e, i: number) => {
+            const { text, credit } = ledgerAmountDisplay(e);
+            return (
+              <div
+                key={e.id ?? i}
+                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold mb-0.5">{e.type_label ?? e.type ?? "حركة"}</div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {typeof e.balance_after === "number" && (
+                      <span className="text-3xs text-muted-foreground tabular-nums">
+                        الرصيد بعدها: {formatCurrency(e.balance_after)}
+                      </span>
+                    )}
+                    {e.created_at && (
+                      <span className="text-3xs text-muted-foreground">
+                        · {formatDate(e.created_at)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {/* dir="ltr": the sign must lead the number inside the RTL
+                    layout; tabular-nums aligns the column of amounts. */}
+                <span
+                  dir="ltr"
+                  className={`text-xs font-bold tabular-nums shrink-0 ${
+                    credit ? "text-status-success" : "text-foreground/85"
+                  }`}
+                >
+                  {text}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -351,7 +524,7 @@ function InstructionsPanel() {
     <ol className="mt-3 mb-4 bg-muted/25 border border-border/45 rounded-xl p-3.5 space-y-2 text-xs leading-relaxed">
       {steps.map((s, i) => (
         <li key={i} className="flex items-start gap-2">
-          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-[10px] font-black flex items-center justify-center">
+          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-3xs font-bold flex items-center justify-center">
             {i + 1}
           </span>
           <span className="text-foreground/85 pt-0.5">{s}</span>
@@ -409,12 +582,12 @@ function TransferCodePanel({
         {code ? (
           <div
             dir="ltr"
-            className="font-mono font-black text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
+            className="font-mono font-bold text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
           >
             {code}
           </div>
         ) : (
-          <div className="rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/60 text-sm">
+          <div className="rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/80 text-sm">
             أدخل المبلغ لإنشاء الرمز تلقائياً
           </div>
         )}
@@ -425,7 +598,7 @@ function TransferCodePanel({
           before noticing the "copy and dial manually" hint underneath.
           Surfacing it above the action sets the right expectation up
           front: tap is the fast path, copy is the universal fallback. */}
-      <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
+      <p className="text-2xs text-muted-foreground mb-2 leading-relaxed">
         على الجوال: اضغط الزر لفتح لوحة الاتصال. على الحاسوب: انسخ الرمز وأدخله يدوياً.
       </p>
 
@@ -470,7 +643,7 @@ function PaymentReferenceField({
   return (
     <div className="mt-3">
       <Label htmlFor={id} className="text-xs font-bold text-muted-foreground mb-2 block">
-        رقم مرجع التحويل <span className="font-medium">(اختياري)</span>
+        رقم مرجع التحويل <span className="font-semibold">(اختياري)</span>
       </Label>
       <Input
         id={id}
@@ -482,9 +655,9 @@ function PaymentReferenceField({
         onChange={(e) => onChange(e.target.value)}
         dir="ltr"
         autoComplete="off"
-        className="text-left font-mono h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
+        className="text-left font-mono h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
       />
-      <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+      <p className="text-2xs text-muted-foreground mt-1.5 leading-relaxed">
         يساعد هذا المرجع فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين.
       </p>
     </div>
@@ -655,6 +828,11 @@ export default function WalletPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
+  // R115-A10: pause the balance card's drifting blob when the card
+  // leaves the viewport (enabled re-arms the observer once the wallet
+  // probe lands and the card mounts — the ref is null before that).
+  const balanceGlow = useOnScreen<HTMLDivElement>(!!wallet);
+
   const {
     data: topups = [],
     isLoading: topupsLoading,
@@ -662,6 +840,20 @@ export default function WalletPage() {
     refetch: refetchTopups,
   } = useListTopups({
     query: { enabled: !!token, queryKey: getListTopupsQueryKey() },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+
+  // R115 (A8 P2): the wallet STATEMENT — GET /api/wallet/ledger via the
+  // generated hook (the endpoint + DTOs landed in the R115 OpenAPI regen;
+  // the manual-fetch detour loyalty.tsx uses is unnecessary here — this
+  // page already rides the orval client for wallet/topups).
+  const {
+    data: ledger = [],
+    isLoading: ledgerLoading,
+    isError: ledgerError,
+    refetch: refetchLedger,
+  } = useGetWalletLedger(undefined, {
+    query: { enabled: !!token, queryKey: getGetWalletLedgerQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
 
@@ -732,6 +924,10 @@ export default function WalletPage() {
         setSenderPhoneTouched(false);
         queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        // R115: the statement below may already reflect this submit (an
+        // approval that landed between submit and response) — refresh it
+        // with the same money-cache pair.
+        queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
 
         // Open the waiting modal — replaces the old "small success toast"
         // pattern. Modal subscribes to the topups list and reacts to
@@ -837,7 +1033,7 @@ export default function WalletPage() {
           <Wallet className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-black">المحفظة</h1>
+          <h1 className="text-xl font-bold">المحفظة</h1>
           <p className="text-xs text-muted-foreground">شحن الرصيد وعرض السجل</p>
         </div>
       </div>
@@ -857,7 +1053,7 @@ export default function WalletPage() {
               <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
                 <WifiOff className="w-6 h-6 text-status-error/70" />
               </div>
-              <p className="font-black text-base mb-1.5 text-foreground/80">
+              <p className="font-bold text-base mb-1.5 text-foreground/80">
                 تعذّر تحميل رصيد المحفظة
               </p>
               <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
@@ -871,9 +1067,15 @@ export default function WalletPage() {
               </Button>
             </div>
           ) : wallet ? (
-            <div className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-4 sm:p-5 shadow-xl shadow-primary/8">
+            <div
+              ref={balanceGlow.ref}
+              className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-4 sm:p-5 shadow-xl shadow-primary/8"
+            >
               <div className="absolute inset-0 dot-grid opacity-35 pointer-events-none" />
-              <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/10 blur-3xl pointer-events-none blob-drift" />
+              <div
+                className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/10 blur-3xl pointer-events-none blob-drift"
+                style={balanceGlow.style}
+              />
               <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
 
               <div className="relative flex items-start justify-between gap-4">
@@ -882,7 +1084,7 @@ export default function WalletPage() {
                     <Wallet className="w-3.5 h-3.5" />
                     الرصيد المتاح
                   </div>
-                  <div className="text-3xl sm:text-4xl font-black tabular-nums mb-3 leading-none text-foreground num-pop break-words">
+                  <div className="text-3xl sm:text-4xl font-bold tabular-nums mb-3 leading-none text-foreground num-pop break-words">
                     {formatCurrency(wallet.balance ?? 0)}
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
@@ -899,13 +1101,13 @@ export default function WalletPage() {
                         }`}
                       />
                       <span className="text-muted-foreground text-xs">المستوى:</span>
-                      <span className={`font-black text-xs ${tierColor(tier)}`}>
+                      <span className={`font-bold text-xs ${tierColor(tier)}`}>
                         {tierLabel(tier)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 text-xs">
                       <Star className="w-3 h-3 text-status-warning" />
-                      <span className="font-black tabular-nums text-status-warning">
+                      <span className="font-bold tabular-nums text-status-warning">
                         {wallet.loyalty_points ?? 0}
                       </span>
                       <span className="text-muted-foreground">نقطة</span>
@@ -913,7 +1115,7 @@ export default function WalletPage() {
                   </div>
                 </div>
                 <div
-                  className={`shrink-0 px-3 py-2 rounded-xl border text-[11px] font-black bg-background/30 ${
+                  className={`shrink-0 px-3 py-2 rounded-xl border text-2xs font-bold bg-background/30 ${
                     tier === "bronze"
                       ? "border-amber-500/25 text-amber-600"
                       : tier === "silver"
@@ -950,9 +1152,13 @@ export default function WalletPage() {
                   قيد المراجعة (الحد الأقصى {MAX_PENDING})
                 </p>
                 {oldestPending && (
-                  <p className="text-[11px] text-status-warning mt-1">
-                    أقدم طلب: {formatRelativeTime(oldestPending)} — تُعتمد الطلبات عادةً خلال 30
-                    دقيقة.
+                  <p className="text-2xs text-status-warning mt-1">
+                    {/* R115 (A8 #5): ONE approval SLA across every surface
+                        (this line, TopupWaitingModal, support FAQ) — the
+                        old «30 دقيقة» here vs «ثوانٍ» in the waiting modal
+                        contradicted each other on the same money flow. */}
+                    أقدم طلب: {formatRelativeTime(oldestPending)} — عادة خلال دقائق، وبحد
+                    أقصى 30 دقيقة خلال ساعات العمل.
                   </p>
                 )}
               </div>
@@ -974,11 +1180,11 @@ export default function WalletPage() {
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(latestTopup.status)}`}
+                    className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(latestTopup.status)}`}
                   >
                     {statusLabel(latestTopup.status)}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-3xs text-muted-foreground">
                     {formatRelativeTime(latestTopup.created_at)}
                   </span>
                 </div>
@@ -994,7 +1200,7 @@ export default function WalletPage() {
               <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
                 <Plus className="w-3.5 h-3.5 text-primary" />
               </div>
-              <h2 className="font-black">شحن المحفظة</h2>
+              <h2 className="font-bold">شحن المحفظة</h2>
               {pendingCount > 0 && !pendingBlocked && (
                 <span className="mr-auto text-xs text-status-warning bg-status-warning/8 border border-status-warning/22 px-2 py-0.5 rounded-full">
                   {pendingCount}/{MAX_PENDING} معلق
@@ -1107,7 +1313,7 @@ export default function WalletPage() {
                         key={p}
                         type="button"
                         onClick={() => applyAmountPreset(p)}
-                        className={`flex-1 min-w-[52px] min-h-11 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                        className={`flex-1 min-w-[52px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
                           amount === String(p)
                             ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
                             : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
@@ -1148,7 +1354,7 @@ export default function WalletPage() {
                     }}
                     required
                     dir="ltr"
-                    className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 focus:ring-2 focus:ring-primary/12 bg-card"
+                    className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
                   />
                   {/* 93-C5 / F-03: optional receipt reference — arms the
                       backend's duplicate-credit dedup. */}
@@ -1255,11 +1461,11 @@ export default function WalletPage() {
                       }
                       className={`text-left pl-10 h-11 rounded-xl bg-card transition-all ${
                         senderPhoneTouched && senderPhoneErr
-                          ? "border-destructive/60 focus:ring-destructive/15"
+                          ? "border-destructive/60"
                           : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr
                             ? "border-status-success/55"
-                            : "border-border/50 focus:border-primary/45 focus:ring-primary/12"
-                      } focus:ring-2`}
+                            : "border-border/50 focus:border-primary/45"
+                      }`}
                       maxLength={10}
                     />
                     <div className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -1285,7 +1491,7 @@ export default function WalletPage() {
                       type="checkbox"
                       checked={rememberPhone}
                       onChange={(e) => setRememberPhone(e.target.checked)}
-                      className="w-4 h-4 rounded border-border/60 bg-card text-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-4 h-4 rounded border-border/60 bg-card text-primary"
                     />
                     <span className="text-xs text-muted-foreground">
                       تذكر رقم الهاتف للمرات القادمة
@@ -1339,7 +1545,7 @@ export default function WalletPage() {
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
                       <div className="min-w-0">
-                        <div className="text-[11px] text-muted-foreground mb-0.5 font-medium">
+                        <div className="text-2xs text-muted-foreground mb-0.5 font-semibold">
                           IBAN
                         </div>
                         <div dir="ltr" className="font-mono font-bold text-sm break-all text-left">
@@ -1370,7 +1576,7 @@ export default function WalletPage() {
                           key={p}
                           type="button"
                           onClick={() => applyAmountPreset(p)}
-                          className={`flex-1 min-w-[64px] min-h-11 py-2 rounded-xl text-sm font-black transition-all border press-spring ${
+                          className={`flex-1 min-w-[64px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
                             amount === String(p)
                               ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
                               : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70"
@@ -1484,9 +1690,9 @@ export default function WalletPage() {
           <div className="bg-card border border-border/55 rounded-2xl p-5 lg:sticky lg:top-20">
             <div className="flex items-center gap-2.5 mb-4">
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-black text-sm">سجل الشحن</h2>
+              <h2 className="font-bold text-sm">سجل الشحن</h2>
               {topups.length > 0 && (
-                <span className="mr-auto text-xs text-muted-foreground font-medium">
+                <span className="mr-auto text-xs text-muted-foreground font-semibold">
                   {/* R94-A1 #11 (P3): Arabic pluralization via formatCount
                       (line 680 in this file already uses it for the pending
                       counter). */}
@@ -1545,7 +1751,7 @@ export default function WalletPage() {
                 <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
                   <Clock className="w-7 h-7 opacity-25" />
                 </div>
-                <p className="font-black text-base mb-1.5 text-foreground/80">
+                <p className="font-bold text-base mb-1.5 text-foreground/80">
                   لا توجد طلبات شحن بعد
                 </p>
                 <p className="text-xs text-muted-foreground max-w-[200px] mx-auto leading-relaxed">
@@ -1574,18 +1780,18 @@ export default function WalletPage() {
                           {formatCurrency(t.amount)}
                         </span>
                         {t.payment_network && (
-                          <span className="text-[10px] text-muted-foreground font-medium">
+                          <span className="text-3xs text-muted-foreground font-semibold">
                             · {networkLabel(t.payment_network)}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(t.status)}`}
+                          className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(t.status)}`}
                         >
                           {statusLabel(t.status)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-3xs text-muted-foreground">
                           {formatDate(t.created_at)}
                         </span>
                       </div>
@@ -1597,6 +1803,17 @@ export default function WalletPage() {
           </div>
         </div>
       </div>
+
+      {/* R115 (A8 P2): the wallet STATEMENT — additive, below the topup
+          requests list. Full-width under the grid so the sticky topup
+          card keeps its behavior (a sticky card + tall sibling in one
+          column would overlap while scrolling). */}
+      <WalletStatementCard
+        entries={ledger}
+        loading={ledgerLoading}
+        error={ledgerError}
+        onRetry={() => void refetchLedger()}
+      />
 
       <div className="h-6 md:h-0" />
 

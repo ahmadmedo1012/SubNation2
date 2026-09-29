@@ -13,13 +13,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import {
-  couponsTable,
-  db,
-  flashSalesTable,
-  initTestDb,
-  resetTestDb,
-} from "../../test/db";
+import { couponsTable, db, flashSalesTable, initTestDb, resetTestDb } from "../../test/db";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../pricing";
 import {
   DEFAULT_MAX_TOTAL_DISCOUNT_PCT,
@@ -36,7 +30,11 @@ async function seedFlash(pct: number) {
   });
 }
 
-async function seedCoupon(code: string, value: string, type: "percentage" | "fixed" = "percentage") {
+async function seedCoupon(
+  code: string,
+  value: string,
+  type: "percentage" | "fixed" = "percentage",
+) {
   await db.insert(couponsTable).values({ code, type, value, isActive: true });
 }
 
@@ -124,21 +122,25 @@ describe("R115 combined-discount cap", () => {
     await savePricingConfig({ maxTotalDiscountPct: 50 });
     // Deterministic coupon per run: create a percentage coupon with value v.
     await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 1, max: 99 }), fc.integer({ min: 0, max: 95 }), async (couponPct, flashPct) => {
-        await resetTestDb();
-        __resetPricingConfigCache();
-        await savePricingConfig({ maxTotalDiscountPct: 50 });
-        if (flashPct > 0) await seedFlash(flashPct);
-        await seedCoupon(`PC${couponPct}${flashPct}`, String(couponPct));
-        const listPrice = 100;
-        const r = await computePricing({ listPrice, couponCode: `PC${couponPct}${flashPct}` });
-        if (isAppliedCoupon(r.coupon)) {
-          const combined = flashPct + (r.discountAmount / listPrice) * 100;
-          expect(combined).toBeLessThanOrEqual(50 + 1e-6);
-        }
-        // And the final price is never negative in ANY outcome.
-        expect(r.finalPrice).toBeGreaterThanOrEqual(0);
-      }),
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 99 }),
+        fc.integer({ min: 0, max: 95 }),
+        async (couponPct, flashPct) => {
+          await resetTestDb();
+          __resetPricingConfigCache();
+          await savePricingConfig({ maxTotalDiscountPct: 50 });
+          if (flashPct > 0) await seedFlash(flashPct);
+          await seedCoupon(`PC${couponPct}${flashPct}`, String(couponPct));
+          const listPrice = 100;
+          const r = await computePricing({ listPrice, couponCode: `PC${couponPct}${flashPct}` });
+          if (isAppliedCoupon(r.coupon)) {
+            const combined = flashPct + (r.discountAmount / listPrice) * 100;
+            expect(combined).toBeLessThanOrEqual(50 + 1e-6);
+          }
+          // And the final price is never negative in ANY outcome.
+          expect(r.finalPrice).toBeGreaterThanOrEqual(0);
+        },
+      ),
       { numRuns: 25 },
     );
   });

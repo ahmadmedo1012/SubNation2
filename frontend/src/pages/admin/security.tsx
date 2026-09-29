@@ -262,7 +262,7 @@ export function AdminSecurityDashboard() {
           {/* Filters */}
           <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <label htmlFor="security-f1-11119" className="text-sm font-medium">
+              <label htmlFor="security-f1-11119" className="text-sm font-semibold">
                 الإجراء:
               </label>
               <select
@@ -280,7 +280,7 @@ export function AdminSecurityDashboard() {
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <label htmlFor="security-f2-9574" className="text-sm font-medium">
+              <label htmlFor="security-f2-9574" className="text-sm font-semibold">
                 الحالة:
               </label>
               <select
@@ -307,7 +307,7 @@ export function AdminSecurityDashboard() {
                 <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
                   <WifiOff className="w-7 h-7 text-status-error/70" />
                 </div>
-                <p className="font-black text-base mb-1.5 text-foreground/80">
+                <p className="font-bold text-base mb-1.5 text-foreground/80">
                   تعذّر تحميل سجل النشاط
                 </p>
                 <p className="text-sm mb-5 max-w-xs mx-auto leading-relaxed">{activitiesError}</p>
@@ -339,7 +339,7 @@ export function AdminSecurityDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium">{actionLabel(activity.action)}</span>
+                        <span className="font-semibold">{actionLabel(activity.action)}</span>
                         <span className="text-xs text-muted-foreground">
                           {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
                             engines without ar-LY data fall back to the

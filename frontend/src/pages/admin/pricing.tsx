@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  type AdminPricingCalculateBody,
   getGetAdminPricingConfigQueryKey,
   getListAdminProductsQueryKey,
+  useAdminPricingCalculate,
   useGetAdminPricingConfig,
   useListAdminProducts,
   useRecomputeCatalogPrices,
@@ -22,15 +24,18 @@ import {
 import {
   Calculator,
   AlertTriangle,
+  Eye,
   Loader2,
   RefreshCw,
   Save,
+  Shield,
   SlidersHorizontal,
   TrendingDown,
   TrendingUp,
   Tag,
   Sparkles,
   Info,
+  X,
 } from "lucide-react";
 import { AdminLayout } from "./layout";
 
@@ -45,24 +50,44 @@ import { AdminLayout } from "./layout";
  * price) — that part NEVER mutates anything.
  *
  * Inputs (calculator):
- *   - Existing product (picker) OR custom price + cost
+ *   - Existing product (picker) → optional VARIANT selector (R115: the
+ *     real sellable unit — what checkout charges). Without a variant the
+ *     calculator simulates the product's cheapest ACTIVE variant.
+ *   - Custom price + cost (manual sandbox)
  *   - Optional coupon code
- *   - "Simulate referred buyer" toggle (subtracts welcome bonus + referrer points)
+ *   - "Simulate referred buyer" toggle (subtracts the referral
+ *     acquisition cost the API reports — never a frozen constant)
  *
- * Outputs (calculator):
+ * Outputs (calculator) — R115 (Part 15) economics console:
+ *   - Risk state badge SAFE / WATCH / THIN / LOSS with the WHY text
  *   - Pricing waterfall (list → flash sale → coupon → final)
  *   - Three margin tiers: gross / net (after loyalty) / referral-adjusted
- *   - Loss + low-margin warnings
+ *   - Worst-case block (deepest allowed stack price + gross +
+ *     contribution + referred)
+ *   - Guardrails (break-even, program-inclusive safe minimum, max safe
+ *     discount %) + the applied config line (incl. the discount cap)
+ *   - Loss / low-margin / cap warnings with Arabic explanations
  */
+
+type RiskState = "SAFE" | "WATCH" | "THIN" | "LOSS";
 
 interface CalculatorResponse {
   inputs: {
     product_id: number | null;
     product_name: string | null;
+    variant_id: number | null;
+    variant_label: string | null;
+    price_source: "variant" | "product_cheapest_variant" | "manual";
     list_price: number;
     cost_price: number | null;
+    cost_usd: number | null;
     coupon_code: string | null;
     simulate_referred: boolean;
+  };
+  config: {
+    usd_to_lyd: number;
+    markup_percent: number;
+    max_total_discount_pct: number;
   };
   flash_sale: { discount_percent: number; title: string } | null;
   coupon: {
@@ -88,6 +113,7 @@ interface CalculatorResponse {
     referrer_points: number;
     referrer_lyd_value: number;
     total_referral_cost_lyd: number;
+    trigger?: string;
   };
   margins: {
     gross_lyd: number | null;
@@ -97,11 +123,90 @@ interface CalculatorResponse {
     referral_adjusted_lyd: number | null;
     referral_adjusted_pct: number | null;
   };
+  worst_case: {
+    combined_discount_pct: number;
+    price: number;
+    gross_lyd: number | null;
+    contribution_lyd: number | null;
+    referred_contribution_lyd: number | null;
+  };
+  guardrails: {
+    break_even_price: number | null;
+    safe_min_price_incl_program: number | null;
+    max_safe_discount_pct: number | null;
+  };
+  risk_state: RiskState;
   warnings: Array<{
-    severity: "loss" | "low_margin" | "info";
+    severity: "loss" | "low_margin" | "info" | "cap";
     code: string;
     message_ar: string;
   }>;
+}
+
+/**
+ * R115 (Part 15): the recompute dry-run response — POST
+ * /api/admin/pricing/recompute?dry_run=true. Counts + a capped
+ * BEFORE→AFTER sample per drifted variant, zero writes.
+ */
+interface RecomputeDryRun {
+  dry_run: true;
+  variants_drifted: number;
+  products_affected: number;
+  sample: Array<{
+    variant_id: number;
+    product_id: number;
+    price_before: number;
+    price_after: number;
+    delta: number;
+  }>;
+  usd_to_lyd: number;
+  markup_percent: number;
+  note: string;
+}
+
+/** Arabic labels for the risk states (documented thresholds). */
+const RISK_STATE_LABEL: Record<RiskState, string> = {
+  SAFE: "آمن",
+  WATCH: "تحت المراقبة",
+  THIN: "هامش ضعيف",
+  LOSS: "خسارة",
+};
+
+// Never bare colors (A5 Part 15): each state renders WITH its warning
+// text — the tone classes below carry the color, riskExplanation()
+// supplies the WHY.
+const RISK_STATE_TONE: Record<RiskState, string> = {
+  SAFE: "border-emerald-500/40 bg-emerald-500/10 text-emerald-500",
+  WATCH: "border-amber-500/40 bg-amber-500/10 text-amber-500",
+  THIN: "border-orange-500/40 bg-orange-500/10 text-orange-500",
+  LOSS: "border-destructive/40 bg-destructive/10 text-destructive",
+};
+
+/** The WHY next to the badge — the backend's own Arabic warning when one
+ *  matches the state, the threshold explainer otherwise. */
+function riskExplanation(result: CalculatorResponse): string {
+  switch (result.risk_state) {
+    case "LOSS":
+      return (
+        result.warnings.find((w) => w.severity === "loss")?.message_ar ??
+        "البيع تحت التكلفة أو صافي الربح سالب بعد التزامات البرنامج."
+      );
+    case "THIN":
+      return (
+        result.warnings.find((w) => w.code === "thin_gross_margin")?.message_ar ??
+        "هامش الربح الإجمالي أقل من 5%."
+      );
+    case "WATCH": {
+      const noCost = result.warnings.find((w) => w.code === "no_cost_price");
+      if (noCost) return noCost.message_ar;
+      return (
+        result.warnings.find((w) => w.code === "watch_gross_margin")?.message_ar ??
+        "هامش الربح الإجمالي أقل من 15%."
+      );
+    }
+    default:
+      return "الهامش الإجمالي ضمن النطاق المريح (15% أو أكثر).";
+  }
 }
 
 function fmt(n: number | null | undefined, decimals = 2): string {
@@ -156,13 +261,13 @@ function MarginRow({
         <Icon className={`w-4 h-4 ${tone}`} />
         <div>
           <div className="text-xs font-bold">{label}</div>
-          {hint && <div className="text-[10px] text-muted-foreground">{hint}</div>}
+          {hint && <div className="text-3xs text-muted-foreground">{hint}</div>}
         </div>
       </div>
-      <div className={`tabular-nums text-sm font-black ${tone}`}>
+      <div className={`tabular-nums text-sm font-bold ${tone}`}>
         {lyd == null ? "—" : `${lyd >= 0 ? "+" : ""}${fmt(lyd)} د.ل`}
         {pct != null && (
-          <span className="text-[10px] font-normal opacity-75 ml-1">({fmt(pct, 1)}%)</span>
+          <span className="text-3xs font-normal opacity-75 ml-1">({fmt(pct, 1)}%)</span>
         )}
       </div>
     </div>
@@ -175,12 +280,15 @@ export default function AdminPricingPage() {
   const { toast } = useToast();
 
   const [productId, setProductId] = useState<number | "custom">("custom");
+  // R115 (Part 13): the variant selector — the sellable unit checkout
+  // actually charges. "" = the product's cheapest ACTIVE variant (the
+  // backend's product_id mode, labeled as such in the response).
+  const [variantId, setVariantId] = useState<number | "">("");
   const [customPrice, setCustomPrice] = useState("");
   const [customCost, setCustomCost] = useState("");
   const [couponCode, setCouponCode] = useState("");
   const [simulateReferred, setSimulateReferred] = useState(false);
   const [result, setResult] = useState<CalculatorResponse | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const headers = useAdminHeaders();
 
@@ -200,6 +308,8 @@ export default function AdminPricingPage() {
 
   const [rateInput, setRateInput] = useState("");
   const [markupInput, setMarkupInput] = useState("");
+  // R115 (policy 7): the combined flash+coupon discount cap (10–95).
+  const [capInput, setCapInput] = useState("");
 
   // Seed the inputs once from the effective rule (later refetches keep the
   // same data identity via structural sharing, so operator edits survive).
@@ -209,16 +319,23 @@ export default function AdminPricingPage() {
     configSeededRef.current = true;
     setRateInput(String(pricingConfig.usd_to_lyd));
     setMarkupInput(String(pricingConfig.markup_percent));
+    setCapInput(String(pricingConfig.max_total_discount_pct));
   }, [pricingConfig]);
 
   const rateNum = parseFloat(rateInput);
   const markupNum = parseFloat(markupInput);
+  const capNum = parseFloat(capInput);
   const rateValid = Number.isFinite(rateNum) && rateNum >= 0.1 && rateNum <= 1000;
   const markupValid = Number.isFinite(markupNum) && markupNum >= 0 && markupNum <= 10_000;
+  // Backend bounds (savePricingConfig): INVALID_MAX_TOTAL_DISCOUNT_PCT
+  // rejects anything outside 10–95.
+  const capValid = Number.isFinite(capNum) && capNum >= 10 && capNum <= 95;
   const configDirty =
     pricingConfig != null &&
-    (rateNum !== pricingConfig.usd_to_lyd || markupNum !== pricingConfig.markup_percent);
-  const canSaveConfig = configDirty && rateValid && markupValid;
+    (rateNum !== pricingConfig.usd_to_lyd ||
+      markupNum !== pricingConfig.markup_percent ||
+      capNum !== pricingConfig.max_total_discount_pct);
+  const canSaveConfig = configDirty && rateValid && markupValid && capValid;
 
   // Live formula example — falls back to the loaded rule while a field is
   // empty/invalid so the explainer never shows nonsense numbers.
@@ -239,6 +356,7 @@ export default function AdminPricingPage() {
         // variant dialog previews) — the config is cached in TanStack.
         setRateInput(String(config.usd_to_lyd));
         setMarkupInput(String(config.markup_percent));
+        setCapInput(String(config.max_total_discount_pct));
         void queryClient.invalidateQueries({ queryKey: getGetAdminPricingConfigQueryKey() });
         toast({ title: "تم حفظ إعدادات التسعير", variant: "success" });
       },
@@ -251,6 +369,16 @@ export default function AdminPricingPage() {
       },
     },
   });
+
+  // ── R115 (Part 15 / A5 P1-1): the two-step recompute ──────────────────
+  // Step 1 «معاينة التغييرات» — POST /api/admin/pricing/recompute?dry_run=true
+  // (counts + BEFORE→AFTER sample, ZERO writes). The generated
+  // useRecomputeCatalogPrices hook exists for the REAL run and is kept
+  // for it, but its codegen'd URL builder takes no query params — the
+  // dry_run flag needs a raw fetch (the documented hook surface simply
+  // can't express it yet).
+  const [dryRun, setDryRun] = useState<RecomputeDryRun | null>(null);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
 
   const recomputeMutation = useRecomputeCatalogPrices({
     request: { headers },
@@ -274,6 +402,9 @@ export default function AdminPricingPage() {
             variant: "info",
           });
         }
+        // The applied run resolves the preview — drop it so a stale
+        // BEFORE→AFTER sample can't linger next to post-write reality.
+        setDryRun(null);
       },
       onError(err: unknown) {
         toast({
@@ -285,18 +416,77 @@ export default function AdminPricingPage() {
     },
   });
 
+  const previewRecompute = async () => {
+    setDryRunLoading(true);
+    try {
+      const res = await fetch("/api/admin/pricing/recompute?dry_run=true", {
+        method: "POST",
+        headers,
+      });
+      const data = (await res.json().catch(() => null)) as
+        | (RecomputeDryRun & { error?: string; code?: string })
+        | null;
+      if (!res.ok) {
+        toast({
+          title: "تعذّرت المعاينة",
+          description: getErrorMessage(data) || "فشل طلب المعاينة",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!data || typeof data.variants_drifted !== "number" || !Array.isArray(data.sample)) {
+        toast({
+          title: "تعذّرت المعاينة",
+          description: "استجابة غير متوقعة من الخادم",
+          variant: "destructive",
+        });
+        return;
+      }
+      setDryRun(data);
+    } catch (err) {
+      toast({
+        title: "تعذّرت المعاينة",
+        description: err instanceof Error ? err.message : "تعذّر الاتصال بالخادم",
+        variant: "destructive",
+      });
+    } finally {
+      setDryRunLoading(false);
+    }
+  };
+
+  // A preview is a function of the rule — the moment the operator edits
+  // rate/markup the sample is stale. (The cap doesn't affect recompute
+  // math, so it deliberately doesn't invalidate the preview.)
+  useEffect(() => {
+    setDryRun(null);
+  }, [rateInput, markupInput]);
+
   const saveConfig = () => {
     if (!canSaveConfig) return;
     saveConfigMutation.mutate({
-      data: { usd_to_lyd: round2(rateNum), markup_percent: round2(markupNum) },
+      data: {
+        usd_to_lyd: round2(rateNum),
+        markup_percent: round2(markupNum),
+        max_total_discount_pct: round2(capNum),
+      },
     });
   };
 
+  // Step 2: the destructive confirm — now armed with the preview counts
+  // when the operator ran one (A5 P1-1: the blind bulk mutation sees its
+  // impact BEFORE approving it).
   const recomputeCatalog = async () => {
     const confirmed = await confirm({
       title: "إعادة احتساب أسعار الكتالوج؟",
-      description:
-        "سيُعاد حساب سعر كل باقة نشطة من تكلفتها بالقاعدة الحالية — بما فيها الأسعار المخصّصة يدويًا — وتُحدّث أسعار العرض تلقائيًا.",
+      description: `${
+        dryRun
+          ? dryRun.variants_drifted > 0
+            ? `المعاينة: ${dryRun.variants_drifted} باقة ستنحرف عبر ${dryRun.products_affected} ${
+                dryRun.products_affected === 1 ? "منتج" : "منتجات"
+              }. `
+            : "المعاينة: لا تغييرات — كل الأسعار مطابقة للقاعدة الحالية. "
+          : ""
+      }سيُعاد حساب سعر كل باقة نشطة من تكلفتها بالقاعدة الحالية — بما فيها الأسعار المخصّصة يدويًا — وتُحدّث أسعار العرض تلقائيًا. لا يمكن التراجع بعد التنفيذ.`,
       confirmLabel: "إعادة الاحتساب",
       destructive: true,
     });
@@ -322,52 +512,54 @@ export default function AdminPricingPage() {
     [productId, products],
   );
 
+  // R115 (Part 13): the admin products list embeds the variant rows —
+  // no second fetch needed for the selector.
+  const selectedVariants = selectedProduct?.variants ?? [];
+
   const canCalculate = useMemo(() => {
     if (productId !== "custom") return selectedProduct != null;
     return Number.isFinite(parseFloat(customPrice)) && parseFloat(customPrice) >= 0;
   }, [productId, selectedProduct, customPrice]);
 
-  async function calculate() {
-    if (!canCalculate) return;
-    setLoading(true);
-    try {
-      const body: Record<string, unknown> = {
-        coupon_code: couponCode.trim() || undefined,
-        simulate_referred: simulateReferred,
-      };
-      if (productId === "custom") {
-        body.price = parseFloat(customPrice);
-        body.cost_price = customCost ? parseFloat(customCost) : null;
-      } else {
-        body.product_id = productId;
-      }
-      const res = await fetch("/api/admin/pricing/calculate", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        // Round-4 (org §6a): getErrorMessage maps the backend `code`
-        // (INVALID_PRICE bounds, NOT_FOUND…) to Arabic.
+  // R115: the calculator rides the generated mutation hook
+  // (useAdminPricingCalculate — same customFetch + auth headers path as
+  // the config hooks). The response schema is open-ended
+  // ({[key: string]: unknown}) in the codegen, so it is cast to the
+  // page-local CalculatorResponse contract documented above.
+  const calculateMutation = useAdminPricingCalculate({
+    request: { headers },
+    mutation: {
+      onSuccess: (data) => {
+        setResult(data as unknown as CalculatorResponse);
+      },
+      onError: (err: unknown) => {
         toast({
           title: "خطأ",
-          description: getErrorMessage(data) || "فشل الحساب",
+          description: describeError(err),
           variant: "destructive",
         });
         setResult(null);
-        return;
-      }
-      setResult(data);
-    } catch (err) {
-      toast({
-        title: "خطأ",
-        description: err instanceof Error ? err.message : "تعذّر الاتصال بالخادم",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      },
+    },
+  });
+  const loading = calculateMutation.isPending;
+
+  function calculate() {
+    if (!canCalculate) return;
+    const body: AdminPricingCalculateBody = {
+      coupon_code: couponCode.trim() || undefined,
+      simulate_referred: simulateReferred,
+    };
+    if (productId === "custom") {
+      body.price = parseFloat(customPrice);
+      const c = customCost.trim();
+      if (c !== "") body.cost_price = parseFloat(c);
+    } else if (variantId !== "") {
+      body.variant_id = variantId;
+    } else {
+      body.product_id = productId;
     }
+    calculateMutation.mutate({ data: body });
   }
 
   // Auto-recalculate when any input changes — ACTUALLY debounced.
@@ -381,7 +573,7 @@ export default function AdminPricingPage() {
     if (!canCalculate) return;
     const t = setTimeout(() => calculateRef.current(), 300);
     return () => clearTimeout(t);
-  }, [productId, customPrice, customCost, couponCode, simulateReferred, canCalculate]);
+  }, [productId, variantId, customPrice, customCost, couponCode, simulateReferred, canCalculate]);
 
   if (!adminToken) return null;
 
@@ -400,7 +592,7 @@ export default function AdminPricingPage() {
             <Calculator className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-black text-lg">التسعير</h1>
+            <h1 className="font-bold text-lg">التسعير</h1>
             <p className="text-xs text-muted-foreground">
               إعدادات القاعدة العامة + حاسبة أرباح للقراءة فقط تحاكي نظام الطلبات الفعلي.
             </p>
@@ -418,8 +610,8 @@ export default function AdminPricingPage() {
                 <SlidersHorizontal className="w-4 h-4 text-primary" />
               </div>
               <div className="min-w-0">
-                <h2 className="font-black text-sm">إعدادات التسعير العامة</h2>
-                <p className="text-[10px] text-muted-foreground truncate">
+                <h2 className="font-bold text-sm">إعدادات التسعير العامة</h2>
+                <p className="text-3xs text-muted-foreground truncate">
                   القاعدة الموحّدة التي تُشتق منها أسعار الباقات من تكلفتها.
                 </p>
               </div>
@@ -450,12 +642,16 @@ export default function AdminPricingPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+              <Label
+                htmlFor="pricing-config-rate"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
                 سعر الصرف — دينار لكل دولار ($1 =)
               </Label>
               <Input
+                id="pricing-config-rate"
                 type="number"
                 min="0.1"
                 max="1000"
@@ -467,16 +663,20 @@ export default function AdminPricingPage() {
                 disabled={configLoading}
               />
               {rateInput !== "" && !rateValid && (
-                <p className="text-[10px] text-destructive font-bold mt-1" role="alert">
+                <p className="text-3xs text-destructive font-bold mt-1" role="alert">
                   سعر الصرف يجب أن يكون بين 0.1 و 1000
                 </p>
               )}
             </div>
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+              <Label
+                htmlFor="pricing-config-markup"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
                 الهامش على التكلفة (%)
               </Label>
               <Input
+                id="pricing-config-markup"
                 type="number"
                 min="0"
                 max="10000"
@@ -488,10 +688,40 @@ export default function AdminPricingPage() {
                 disabled={configLoading}
               />
               {markupInput !== "" && !markupValid && (
-                <p className="text-[10px] text-destructive font-bold mt-1" role="alert">
+                <p className="text-3xs text-destructive font-bold mt-1" role="alert">
                   الهامش يجب أن يكون بين 0 و 10000
                 </p>
               )}
+            </div>
+            <div>
+              <Label
+                htmlFor="pricing-config-cap"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
+                سقف الخصم المجمّع (%)
+              </Label>
+              <Input
+                id="pricing-config-cap"
+                type="number"
+                min="10"
+                max="95"
+                step="1"
+                value={capInput}
+                onChange={(e) => setCapInput(e.target.value)}
+                dir="ltr"
+                placeholder="50"
+                disabled={configLoading}
+              />
+              {capInput !== "" && !capValid && (
+                <p className="text-3xs text-destructive font-bold mt-1" role="alert">
+                  سقف الخصم يجب أن يكون بين 10 و 95
+                </p>
+              )}
+              {/* R115 (policy 7): the stacking guardrail explainer — one
+                  line, the break-even intuition included. */}
+              <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
+                سقف الخصم المجمّع (تخفيضات + كوبون) — 50% = خط التعادل عند هامش 100%
+              </p>
             </div>
           </div>
 
@@ -499,7 +729,7 @@ export default function AdminPricingPage() {
               effect BEFORE saving (defaults: $5 × 2 × 10 = 100 د.ل). */}
           <div className="flex items-start gap-2.5 p-3 bg-muted/20 border border-border/40 rounded-xl">
             <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-relaxed">
+            <p className="text-2xs leading-relaxed">
               <span className="font-bold">السعر = التكلفة × (1 + الهامش٪) × سعر الصرف</span>
               <span className="text-muted-foreground">
                 {" "}
@@ -522,10 +752,26 @@ export default function AdminPricingPage() {
               )}
               {saveConfigMutation.isPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
             </Button>
+            {/* Step 1 of the two-step recompute (R115): a ZERO-WRITE
+                preview — counts + a BEFORE→AFTER sample — before the
+                destructive action is even considered. */}
+            <Button
+              variant="outline"
+              onClick={() => void previewRecompute()}
+              disabled={dryRunLoading || recomputeMutation.isPending}
+              className="text-amber-500 border-amber-500/25 hover:bg-amber-500/10 active:scale-[0.97] transition-transform"
+            >
+              {dryRunLoading ? (
+                <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+              ) : (
+                <Eye className="w-4 h-4 ml-1.5" />
+              )}
+              {dryRunLoading ? "جارٍ المعاينة…" : "معاينة التغييرات"}
+            </Button>
             <Button
               variant="outline"
               onClick={() => void recomputeCatalog()}
-              disabled={recomputeMutation.isPending}
+              disabled={recomputeMutation.isPending || dryRunLoading}
               className="text-primary border-primary/25 hover:bg-primary/10 active:scale-[0.97] transition-transform"
             >
               {recomputeMutation.isPending ? (
@@ -535,28 +781,138 @@ export default function AdminPricingPage() {
               )}
               {recomputeMutation.isPending ? "جارٍ الاحتساب…" : "إعادة احتساب أسعار الكتالوج"}
             </Button>
-            <p className="basis-full text-[10px] text-muted-foreground">
-              حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «إعادة احتساب أسعار الكتالوج» هي التي تعيد
-              تسعير كل الباقات من تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
+            <p className="basis-full text-3xs text-muted-foreground">
+              حفظ الإعدادات لا يغيّر الأسعار المخزّنة — «معاينة التغييرات» تعرض الأثر المتوقع دون
+              تعديل أي سعر، و«إعادة احتساب أسعار الكتالوج» هي التي تعيد تسعير كل الباقات من
+              تكاليفها بالقاعدة الحالية وتُحدّث أسعار العرض.
             </p>
           </div>
         </div>
 
+        {/* ── R115: the dry-run preview card (Step 1 result) ─────────────
+            Counts + the capped BEFORE→AFTER sample straight from
+            POST /recompute?dry_run=true — the operator finally sees the
+            bulk mutation's impact before approving it (A5 P1-1). */}
+        {dryRun && (
+          <div className="bg-card border border-amber-500/30 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <Eye className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-bold text-sm">معاينة إعادة الاحتساب</h2>
+                  <p className="text-3xs text-muted-foreground truncate">
+                    معاينة فقط — لم يُعدّل أي سعر بعد
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDryRun(null)}
+                aria-label="إغلاق المعاينة"
+                className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {dryRun.variants_drifted > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
+                    <div className="font-bold text-lg tabular-nums text-amber-500">
+                      {dryRun.variants_drifted}
+                    </div>
+                    <div className="text-3xs text-muted-foreground">باقة سينحرف سعرها</div>
+                  </div>
+                  <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
+                    <div className="font-bold text-lg tabular-nums text-amber-500">
+                      {dryRun.products_affected}
+                    </div>
+                    <div className="text-3xs text-muted-foreground">منتجًا يتأثر</div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-border/50 rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/60 bg-muted/15 text-muted-foreground">
+                        <th className="px-3 py-2 text-right font-semibold">الباقة</th>
+                        <th className="px-3 py-2 text-right font-semibold">المنتج</th>
+                        <th className="px-3 py-2 text-left font-semibold">السعر الحالي</th>
+                        <th className="px-3 py-2 text-left font-semibold">السعر الجديد</th>
+                        <th className="px-3 py-2 text-left font-semibold">الفرق</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dryRun.sample.map((s) => (
+                        <tr key={s.variant_id} className="border-b border-border/30 last:border-0">
+                          <td className="px-3 py-2 tabular-nums" dir="ltr">
+                            #{s.variant_id}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums" dir="ltr">
+                            #{s.product_id}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums" dir="ltr">
+                            {fmt(s.price_before)} د.ل
+                          </td>
+                          <td className="px-3 py-2 tabular-nums font-bold" dir="ltr">
+                            {fmt(s.price_after)} د.ل
+                          </td>
+                          <td
+                            className={`px-3 py-2 tabular-nums font-bold ${
+                              s.delta >= 0 ? "text-emerald-500" : "text-destructive"
+                            }`}
+                            dir="ltr"
+                          >
+                            {s.delta >= 0 ? "+" : ""}
+                            {fmt(s.delta)} د.ل
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-3xs text-muted-foreground leading-relaxed">
+                  {dryRun.sample.length >= 25
+                    ? `عينة أول 25 باقة من أصل ${dryRun.variants_drifted} — `
+                    : ""}
+                  {dryRun.note} التطبيق الفعلي يتم عبر «إعادة احتساب أسعار الكتالوج» أعلاه.
+                </p>
+              </>
+            ) : (
+              <p className="text-2xs text-muted-foreground leading-relaxed">
+                كل الأسعار مطابقة للقاعدة الحالية — لا تغييرات عند التطبيق.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* ── INPUTS ─────────────────────────────────────────────── */}
           <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
-            <h2 className="font-black text-sm flex items-center gap-2">
+            <h2 className="font-bold text-sm flex items-center gap-2">
               <Tag className="w-4 h-4 text-primary" /> المدخلات
             </h2>
 
             {/* Product picker */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">المنتج</Label>
+              <Label
+                htmlFor="pricing-calc-product"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
+                المنتج
+              </Label>
               <select
+                id="pricing-calc-product"
                 value={productId === "custom" ? "custom" : String(productId)}
-                onChange={(e) =>
-                  setProductId(e.target.value === "custom" ? "custom" : Number(e.target.value))
-                }
+                onChange={(e) => {
+                  setProductId(e.target.value === "custom" ? "custom" : Number(e.target.value));
+                  // A variant choice belongs to the previous product —
+                  // always reset to the auto (cheapest-active) mode.
+                  setVariantId("");
+                }}
                 className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
               >
                 <option value="custom">— سعر مخصّص (للاختبار) —</option>
@@ -575,14 +931,58 @@ export default function AdminPricingPage() {
               </select>
             </div>
 
+            {/* R115 (Part 13): the variant selector — the sellable unit
+                checkout charges (variant.price_lyd). "" keeps the
+                product's cheapest ACTIVE variant (the old product-level
+                simulation), now labeled as such by the backend. */}
+            {productId !== "custom" && (
+              <div>
+                <Label
+                  htmlFor="pricing-calc-variant"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
+                  الباقة (الخيار الفعلي عند الدفع)
+                </Label>
+                <select
+                  id="pricing-calc-variant"
+                  value={variantId === "" ? "" : String(variantId)}
+                  onChange={(e) => setVariantId(e.target.value === "" ? "" : Number(e.target.value))}
+                  className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
+                  disabled={selectedVariants.length === 0}
+                >
+                  <option value="">تلقائي — أرخص باقة نشطة</option>
+                  {selectedVariants.map((v) => {
+                    const label =
+                      [v.plan_label, v.duration_label].filter(Boolean).join(" — ") ||
+                      `باقة #${v.id}`;
+                    return (
+                      <option key={v.id} value={v.id}>
+                        {label} — {formatCurrency(v.price_lyd)}
+                        {!v.is_active ? " (غير فعّالة)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+                {selectedVariants.length === 0 && (
+                  <p className="text-3xs text-amber-500 mt-1">
+                    لا باقات لهذا المنتج — اختر منتجًا آخر أو استخدم السعر المخصّص.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Custom price + cost (only when "custom") */}
             {productId === "custom" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="pricing-calc-price"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     السعر (د.ل)
                   </Label>
                   <Input
+                    id="pricing-calc-price"
                     type="number"
                     min="0"
                     step="0.01"
@@ -593,10 +993,14 @@ export default function AdminPricingPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="pricing-calc-cost"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     التكلفة (د.ل)
                   </Label>
                   <Input
+                    id="pricing-calc-cost"
                     type="number"
                     min="0"
                     step="0.01"
@@ -629,8 +1033,17 @@ export default function AdminPricingPage() {
             <div className="flex items-center justify-between p-3 bg-muted/20 border border-border/40 rounded-lg">
               <div>
                 <div className="text-xs font-bold">محاكاة مشتري مُحال</div>
-                <div className="text-[10px] text-muted-foreground">
-                  يحسم 5 د.ل مكافأة الترحيب + 0.50 د.ل نقاط المُحيل
+                <div className="text-3xs text-muted-foreground">
+                  {/* R115: the numbers come from the API response
+                      (result.referral_cost) — never a frozen «5 د.ل +
+                      0.50» constant; before the first calculation the
+                      hint describes the mechanics without inventing
+                      values. */}
+                  {result
+                    ? `يحسم ${fmt(result.referral_cost.welcome_bonus_lyd)} د.ل مكافأة الترحيب + ${fmt(
+                        result.referral_cost.referrer_lyd_value,
+                      )} د.ل قيمة نقاط المُحيل`
+                    : "تُخصم مكافأة الترحيب للمُحال وقيمة نقاط المُحيل من الربح"}
                 </div>
               </div>
               <Switch checked={simulateReferred} onCheckedChange={setSimulateReferred} />
@@ -643,7 +1056,7 @@ export default function AdminPricingPage() {
 
           {/* ── OUTPUTS ────────────────────────────────────────────── */}
           <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-3">
-            <h2 className="font-black text-sm flex items-center gap-2">
+            <h2 className="font-bold text-sm flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" /> النتائج
             </h2>
 
@@ -653,6 +1066,34 @@ export default function AdminPricingPage() {
               </p>
             ) : (
               <>
+                {/* R115 (Part 15): the risk state badge — NEVER a bare
+                    color: the state tone carries the color and the WHY
+                    text (backend warning when one matches, threshold
+                    explainer otherwise) rides right under it. */}
+                <div
+                  className={`flex items-start gap-2.5 p-3 border rounded-xl ${RISK_STATE_TONE[result.risk_state]}`}
+                  data-risk-state={result.risk_state}
+                >
+                  {result.risk_state === "LOSS" || result.risk_state === "THIN" ? (
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : result.risk_state === "WATCH" ? (
+                    <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                  ) : (
+                    <TrendingUp className="w-4 h-4 shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm">{RISK_STATE_LABEL[result.risk_state]}</span>
+                      {result.inputs.variant_label && (
+                        <span className="text-3xs font-semibold opacity-80 truncate">
+                          {result.inputs.variant_label}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-2xs leading-relaxed mt-0.5">{riskExplanation(result)}</p>
+                  </div>
+                </div>
+
                 {/* Pricing waterfall */}
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between py-1">
@@ -682,14 +1123,14 @@ export default function AdminPricingPage() {
                     </div>
                   )}
                   {result.coupon && !result.coupon.valid && (
-                    <div className="flex justify-between py-1 text-destructive text-[10px]">
+                    <div className="flex justify-between py-1 text-destructive text-3xs">
                       <span>⚠️ كوبون غير صالح</span>
                       <span>{result.coupon.reason_invalid}</span>
                     </div>
                   )}
                   <div className="flex justify-between py-2 border-t border-border/40 mt-2">
                     <span className="font-bold">السعر النهائي</span>
-                    <span className="tabular-nums font-black text-primary text-base">
+                    <span className="tabular-nums font-bold text-primary text-base">
                       {fmt(result.pricing.final_price)} د.ل
                     </span>
                   </div>
@@ -718,6 +1159,125 @@ export default function AdminPricingPage() {
                   )}
                 </div>
 
+                {/* R115 (Part 15): the worst-case block — the deepest
+                    discount stack the CURRENT config allows (active
+                    flash + a coupon up to the remaining cap headroom) on
+                    the same cost base. Answers "how bad can an allowed
+                    combination get?" before the operator ever creates
+                    one. */}
+                <div className="border-t border-border/40 pt-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <TrendingDown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <h3 className="text-xs font-bold">
+                      أسوأ حالة — أعمق خصم مسموح ({result.worst_case.combined_discount_pct}%)
+                    </h3>
+                  </div>
+                  <div className="space-y-1 text-2xs">
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">السعر عند السقف</span>
+                      <span className="tabular-nums font-bold" dir="ltr">
+                        {fmt(result.worst_case.price)} د.ل
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">الربح الإجمالي</span>
+                      <span
+                        className={`tabular-nums font-bold ${
+                          result.worst_case.gross_lyd == null
+                            ? "text-muted-foreground"
+                            : result.worst_case.gross_lyd < 0
+                              ? "text-destructive"
+                              : ""
+                        }`}
+                        dir="ltr"
+                      >
+                        {result.worst_case.gross_lyd == null
+                          ? "—"
+                          : `${result.worst_case.gross_lyd >= 0 ? "+" : ""}${fmt(result.worst_case.gross_lyd)} د.ل`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">المساهمة بعد نقاط الولاء</span>
+                      <span
+                        className={`tabular-nums font-bold ${
+                          result.worst_case.contribution_lyd == null
+                            ? "text-muted-foreground"
+                            : result.worst_case.contribution_lyd < 0
+                              ? "text-destructive"
+                              : ""
+                        }`}
+                        dir="ltr"
+                      >
+                        {result.worst_case.contribution_lyd == null
+                          ? "—"
+                          : `${result.worst_case.contribution_lyd >= 0 ? "+" : ""}${fmt(result.worst_case.contribution_lyd)} د.ل`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">المساهمة بعد تكلفة الإحالة</span>
+                      <span
+                        className={`tabular-nums font-bold ${
+                          result.worst_case.referred_contribution_lyd == null
+                            ? "text-muted-foreground"
+                            : result.worst_case.referred_contribution_lyd < 0
+                              ? "text-destructive"
+                              : ""
+                        }`}
+                        dir="ltr"
+                      >
+                        {result.worst_case.referred_contribution_lyd == null
+                          ? "—"
+                          : `${result.worst_case.referred_contribution_lyd >= 0 ? "+" : ""}${fmt(result.worst_case.referred_contribution_lyd)} د.ل`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* R115 (Part 15): the guardrails block — break-even,
+                    the program-inclusive safe minimum, and the max safe
+                    discount at the current price. */}
+                <div className="border-t border-border/40 pt-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <h3 className="text-xs font-bold">حدود الأمان</h3>
+                  </div>
+                  <div className="space-y-1 text-2xs">
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">سعر التعادل (التكلفة)</span>
+                      <span className="tabular-nums font-bold" dir="ltr">
+                        {result.guardrails.break_even_price == null
+                          ? "—"
+                          : `${fmt(result.guardrails.break_even_price)} د.ل`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">الحد الأدنى الآمن (شامل الولاء والإحالة)</span>
+                      <span className="tabular-nums font-bold" dir="ltr">
+                        {result.guardrails.safe_min_price_incl_program == null
+                          ? "—"
+                          : `${fmt(result.guardrails.safe_min_price_incl_program)} د.ل`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-muted-foreground">أقصى خصم آمن على السعر الحالي</span>
+                      <span className="tabular-nums font-bold" dir="ltr">
+                        {result.guardrails.max_safe_discount_pct == null
+                          ? "—"
+                          : `${fmt(result.guardrails.max_safe_discount_pct, 1)}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* R115: the applied config line — the operator sees
+                    WHICH rule produced these numbers (incl. the discount
+                    cap that bounds the worst-case above). */}
+                <p className="text-3xs text-muted-foreground border-t border-border/40 pt-2 leading-relaxed">
+                  القاعدة المطبَّقة: 1$ = {fmt(result.config.usd_to_lyd)} د.ل · هامش{" "}
+                  {fmtFactor(result.config.markup_percent)}% · سقف الخصم المجمّع{" "}
+                  {result.config.max_total_discount_pct}%
+                </p>
+
                 {/* Warnings */}
                 {result.warnings.length > 0 && (
                   <div className="border-t border-border/40 pt-3 space-y-2">
@@ -727,14 +1287,16 @@ export default function AdminPricingPage() {
                           ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : w.severity === "low_margin"
                             ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
-                            : "border-blue-500/40 bg-blue-500/10 text-blue-400";
+                            : w.severity === "cap"
+                              ? "border-violet-500/40 bg-violet-500/10 text-violet-400"
+                              : "border-blue-500/40 bg-blue-500/10 text-blue-400";
                       return (
                         <div
                           key={i}
-                          className={`flex items-start gap-2 p-2.5 border rounded-lg text-[11px] ${tone}`}
+                          className={`flex items-start gap-2 p-2.5 border rounded-lg text-2xs ${tone}`}
                         >
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                          <span className="font-medium">{w.message_ar}</span>
+                          <span className="font-semibold">{w.message_ar}</span>
                         </div>
                       );
                     })}
@@ -746,7 +1308,7 @@ export default function AdminPricingPage() {
         </div>
 
         {/* Footer note */}
-        <div className="text-[10px] text-muted-foreground text-center pt-2">
+        <div className="text-3xs text-muted-foreground text-center pt-2">
           تستخدم الحاسبة منطق نظام الطلبات الفعلي (تخفيضات + كوبونات + ولاء + إحالات). أي تغيير في
           النظام الفعلي يجب أن ينعكس هنا.
         </div>

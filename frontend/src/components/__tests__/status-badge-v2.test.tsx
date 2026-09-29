@@ -97,8 +97,8 @@ describe("StatusBadge v2 — purple variant + tone mapper + sizes (A12 §11.1)",
     const xs = statusBadgeVariants({ variant: "info", size: "xs" });
     const sm = statusBadgeVariants({ variant: "info", size: "sm" });
     const md = statusBadgeVariants({ variant: "info", size: "md" });
-    expect(xs).toContain("text-[10px]");
-    expect(sm).toContain("text-[11px]");
+    expect(xs).toContain("text-3xs");
+    expect(sm).toContain("text-2xs");
     expect(md).toContain("text-xs");
     expect(new Set([xs, sm, md]).size).toBe(3);
   });

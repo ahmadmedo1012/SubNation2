@@ -232,7 +232,9 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
         answer:
           "الاشتراكات تُسلَّم لمدتها الكاملة (شهر إلى سنة) ولا تتجدد تلقائياً. " +
           "عند انتهاء المدة تشتري التجديد الذي يناسبك من الموقع بنفس الطريقة — " +
-          "بدون أي خصومات مفاجئة.",
+          // R115-I1 (A7 P3-12): honest word — the no-auto-renewal promise is
+          // about surprise CHARGES (رسوم), not surprise discounts (خصومات).
+          "بدون أي رسوم مفاجئة.",
       },
       {
         question: "هل مزوداتكم تحتفظ بسجل نشاطي؟",

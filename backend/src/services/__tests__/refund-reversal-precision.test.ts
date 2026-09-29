@@ -50,7 +50,11 @@ async function seedCompletedOrder(opts: {
 }) {
   const [product] = await db
     .insert(productsTable)
-    .values({ name: `P${seq}`, price: opts.amount, slug: `p-${seq}-${Math.random().toString(36).slice(2, 8)}` })
+    .values({
+      name: `P${seq}`,
+      price: opts.amount,
+      slug: `p-${seq}-${Math.random().toString(36).slice(2, 8)}`,
+    })
     .returning();
   const [order] = await db
     .insert(ordersTable)
@@ -93,7 +97,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("CASE A: order earned 20, user still has all 20 → exactly 20 revoked, reversal attributed", async () => {
     const user = await makeUser({ loyaltyPoints: 20, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
 
     const result = await RefundService.refundOrder(order.id, { adminId: 7 });
     expect(result.amount).toBe(20);
@@ -113,7 +122,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("CASE B: order earned 20, user SPENT them (0 left) → revokes 0 — and never touches the wallet", async () => {
     const user = await makeUser({ loyaltyPoints: 0, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
 
     await RefundService.refundOrder(order.id, { adminId: 7 });
 
@@ -132,7 +146,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
   it("CASE C: order earned 20, user ALSO holds 50 referral points → revokes exactly 20; the referral 50 SURVIVES", async () => {
     // The referral award landed AFTER the purchase award: 20 → +50 = 70.
     const user = await makeUser({ loyaltyPoints: 20, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
     await insertPointsLedgerEntry({
       userId: user.id,
       type: "referral_credit",
@@ -142,10 +161,7 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
       referenceId: 999,
       referenceType: "referral_event",
     });
-    await db
-      .update(usersTable)
-      .set({ loyaltyPoints: 70 })
-      .where(eq(usersTable.id, user.id));
+    await db.update(usersTable).set({ loyaltyPoints: 70 }).where(eq(usersTable.id, user.id));
 
     await RefundService.refundOrder(order.id, { adminId: 7 });
 
@@ -162,7 +178,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("CASE C (the pre-R115 bug shape): order points SPENT (converted), referral points present → revokes NOTHING (referral points untouchable)", async () => {
     const user = await makeUser({ loyaltyPoints: 0, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
     // The 20 order points were CONVERTED away (the only outflow): 20 → 0.
     await insertPointsLedgerEntry({
       userId: user.id,
@@ -207,7 +228,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
   it("CASE D: points CONVERTED to wallet before refund → wallet credit untouched, only the unspent award remainder revoked", async () => {
     // Order earned 100 pts; user converted ALL 100 → wallet +1.00, points 0.
     const user = await makeUser({ loyaltyPoints: 100, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "100.00", award: 100, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "100.00",
+      award: 100,
+      withLedgerRow: true,
+    });
     await insertPointsLedgerEntry({
       userId: user.id,
       type: "conversion_out",
@@ -234,7 +260,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("PRE-LEDGER order (no purchase_award row): legacy fallback floor(amount) applies exactly", async () => {
     const user = await makeUser({ loyaltyPoints: 30, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: false });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: false,
+    });
 
     await RefundService.refundOrder(order.id, { adminId: 7 });
 
@@ -249,7 +280,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("V1-M22 columns: refunded_at + refund_amount + refunded_by_admin_id land with the flip", async () => {
     const user = await makeUser({ loyaltyPoints: 20, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
 
     await RefundService.refundOrder(order.id, { adminId: 42 });
 
@@ -262,7 +298,12 @@ describe("R115 refund reversal — per-order precision (Part 9)", () => {
 
   it("structural exactly-once: a second reversal row for the same order is impossible (partial UNIQUE)", async () => {
     const user = await makeUser({ loyaltyPoints: 20, walletBalance: "0.00" });
-    const order = await seedCompletedOrder({ userId: user.id, amount: "20.00", award: 20, withLedgerRow: true });
+    const order = await seedCompletedOrder({
+      userId: user.id,
+      amount: "20.00",
+      award: 20,
+      withLedgerRow: true,
+    });
     await RefundService.refundOrder(order.id, { adminId: 7 });
 
     // The service guard already rejects (ALREADY_REFUNDED); the DB layer is

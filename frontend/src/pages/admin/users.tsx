@@ -52,23 +52,19 @@ interface EditUserForm {
   wallet_mode: "set" | "add" | "subtract";
   wallet_value: string;
   loyalty_points: string;
-  loyalty_tier: string;
   // (r110) Backend contract (round-94 39a84be): PATCH
   // /api/admin/users/:id requires `note` (≥3 trimmed chars)
   // whenever a wallet field (wallet_adjustment / wallet_balance)
   // rides the body — the operator justification recorded on the
-  // wallet_ledger row. Only a filled-in wallet amount requires it;
-  // loyalty-only saves neither need nor send a note.
+  // wallet_ledger row.
+  // R115 (A1/A5 + backend 6caa63b): the note is now ALSO required
+  // whenever loyalty_points rides the body (points are LYD-convertible
+  // money — 100:1 — and the admin_set points_ledger row persists the
+  // reason); loyalty_tier is GONE from the form entirely (tiers derive
+  // strictly from net qualifying spend, Part 11 — the backend rejects
+  // any loyalty_tier with a 400).
   note: string;
 }
-
-const TIERS = [
-  { value: "", label: "بدون تغيير" },
-  { value: "bronze", label: "برونزي" },
-  { value: "silver", label: "فضي" },
-  { value: "gold", label: "ذهبي" },
-  { value: "platinum", label: "بلاتيني" },
-];
 
 const TIER_FILTERS = [
   { value: "", label: "الكل" },
@@ -109,6 +105,25 @@ const USER_COUNT_FORMS = {
   other: "مستخدم",
 };
 
+// R115: prefer the backend's OWN Arabic wording on save failures — the
+// users PATCH route answers with specific, actionable messages (the
+// loyalty note/scope guardrails, the derived-tier 400, points bounds,
+// the CONCURRENT points race…). getErrorMessage()'s code map collapses
+// them all into generic per-code Arabic; the raw message is the honest
+// text when it carries Arabic script (same describeError pattern as the
+// pricing page).
+const ARABIC_SCRIPT_RE = /[\u0600-\u06FF]/;
+
+function describeSaveError(err: unknown): string {
+  const data = (err as { data?: { error?: string; message?: string } | null })?.data;
+  const raw = data?.error ?? data?.message;
+  if (typeof raw === "string" && raw.trim() && ARABIC_SCRIPT_RE.test(raw)) return raw;
+  const direct = (err as { error?: string; message?: string } | null)?.error ??
+    (err as { message?: string } | null)?.message;
+  if (typeof direct === "string" && direct.trim() && ARABIC_SCRIPT_RE.test(direct)) return direct;
+  return "";
+}
+
 /**
  * Compact pill row showing which auth providers are linked to a given
  * user. Backed by the boolean flags surfaced in /api/admin/users
@@ -129,7 +144,7 @@ function ProviderBadges({ user }: { user: Record<string, unknown> }) {
       {badges.map((b) => (
         <span
           key={b.label}
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${PROVIDER_TONE_CLASS[b.tone]}`}
+          className={`text-3xs font-bold px-1.5 py-0.5 rounded-md border ${PROVIDER_TONE_CLASS[b.tone]}`}
         >
           {b.label}
         </span>
@@ -191,10 +206,9 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState<EditUserForm>({
     wallet_mode: "add",
     wallet_value: "",
-    // (r110) see EditUserForm.note — the wallet-edit reason.
+    // (r110) see EditUserForm.note — the wallet/points edit reason.
     note: "",
     loyalty_points: "",
-    loyalty_tier: "",
   });
   // 93-C6 / F-07 (A5 S-1): the wallet save is a money action — it now
   // requires an explicit confirmation with a resulting-balance
@@ -297,7 +311,6 @@ export default function AdminUsersPage() {
       // previous save must not silently justify the next adjustment.
       note: "",
       loyalty_points: String(user.loyalty_points),
-      loyalty_tier: user.loyalty_tier ?? "",
     });
   }
 
@@ -318,19 +331,38 @@ export default function AdminUsersPage() {
       });
       return;
     }
-    // (r110) Contract parity with the backend note guard
-    // (backend/src/routes/admin/users.ts, round-94 39a84be): a wallet
-    // field without a ≥3-char note is a guaranteed 400 — the R109
-    // §109-m P1 finding (the dialog never sent one, so every wallet
-    // adjust from this UI failed). The disabled submit covers the
-    // click path; this guard covers programmatic / novalidate
-    // submits (same layering as the numeric-wallet guard above) and
-    // mirrors the backend semantics exactly: required ONLY when a
-    // wallet field is present.
-    if (walletValue !== null && form.note.trim().length < 3) {
+    // R115: loyalty_points rides the body ONLY when it actually
+    // changed — the dialog pre-fills the current balance, so the old
+    // "send whatever is in the box" behavior shipped an unchanged
+    // points value on EVERY save (which the R115 backend now treats as
+    // a points edit: mandatory note + finance scope). Unchanged ⇒ not
+    // an edit ⇒ nothing to justify.
+    const currentPoints = Number(editingUser.loyalty_points ?? 0) || 0;
+    const pointsInput = form.loyalty_points.trim();
+    const nextPoints = Math.max(0, parseInt(pointsInput) || 0);
+    const pointsChanged = pointsInput !== "" && nextPoints !== currentPoints;
+    const moneyFieldPresent = walletValue !== null || pointsChanged;
+    // (r110 + R115) Contract parity with the backend note guard: a
+    // wallet field OR a points change without a ≥3-char note is a
+    // guaranteed 400 — the disabled submit covers the click path; this
+    // guard covers programmatic / novalidate submits (same layering as
+    // the numeric-wallet guard above) and mirrors the backend
+    // semantics exactly: required ONLY when money fields are present.
+    if (moneyFieldPresent && form.note.trim().length < 3) {
       toast({
         title: "سبب التعديل مطلوب",
-        description: "أدخل سببًا لتعديل المحفظة (3 أحرف على الأقل) قبل الحفظ",
+        description: "أدخل سببًا لتعديل المحفظة أو النقاط (3 أحرف على الأقل) قبل الحفظ",
+        variant: "destructive",
+      });
+      return;
+    }
+    // R115: an untouched form (no wallet amount, unchanged points) is
+    // not a save — the backend would 400 «لا توجد تعديلات»; block it
+    // client-side with the same honest wording.
+    if (!moneyFieldPresent) {
+      toast({
+        title: "لا توجد تعديلات",
+        description: "عدّل رصيد المحفظة أو نقاط الولاء قبل الحفظ",
         variant: "destructive",
       });
       return;
@@ -379,21 +411,25 @@ export default function AdminUsersPage() {
       if (form.wallet_mode === "set") body.wallet_balance = walletValue;
       else if (form.wallet_mode === "add") body.wallet_adjustment = walletValue;
       else body.wallet_adjustment = -walletValue;
-      // (r110) The note rides the PATCH exactly when a wallet field
-      // does (backend contract, round-94) — trimmed and capped at 500
-      // to mirror what AdjustmentService persists on the ledger row.
-      // Loyalty-only saves omit it (the backend ignores it there).
-      body.note = form.note.trim().slice(0, 500);
     }
-    if (form.loyalty_points !== "") {
+    if (pointsChanged) {
       // 96-F7 (R96 M14): the input's min="0" doesn't stop a typed "-5"
       // from surviving programmatic submits — the save path clamps to
       // ≥0 so a negative points value can never reach the PATCH (the
       // wallet field got this guard in round-93; points didn't — r94
       // P3-13).
-      body.loyalty_points = Math.max(0, parseInt(form.loyalty_points) || 0);
+      body.loyalty_points = nextPoints;
     }
-    if (form.loyalty_tier) body.loyalty_tier = form.loyalty_tier;
+    // (r110 + R115) The note rides the PATCH exactly when a money
+    // field does (wallet OR points) — trimmed and capped at 500 to
+    // mirror what AdjustmentService/insertPointsLedgerEntry persist on
+    // the ledger rows.
+    if (moneyFieldPresent) {
+      body.note = form.note.trim().slice(0, 500);
+    }
+    // R115: loyalty_tier is deliberately NEVER sent — the backend 400s
+    // any tier edit (tiers derive from net spend, Part 11); a 400's
+    // own Arabic message is surfaced below via describeSaveError.
     try {
       const res = await fetch(`/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
@@ -421,7 +457,11 @@ export default function AdminUsersPage() {
         // server-side and a retry must replay it. Any other rejection is
         // definitive: the intent is resolved and the next save mints fresh.
         if (data?.code !== "IDEMPOTENCY_IN_FLIGHT") saveIntentKeyRef.current = null;
-        throw new Error(getErrorMessage(data) || "خطأ");
+        // R115: prefer the backend's own Arabic message — the route's
+        // specific guardrails (loyalty note/scope/tier rejection,
+        // points bounds, CONFLICT points-race…) are the actionable text;
+        // the generic code map stays the fallback.
+        throw new Error(describeSaveError(data) || "خطأ");
       }
       toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
       // 99-M3: success is a terminal resolution — the intent key must not
@@ -437,7 +477,7 @@ export default function AdminUsersPage() {
         // 93-C6 / F-07 (SIM P1): route through getErrorMessage so the
         // response envelope (and network-level TypeErrors) surface as
         // Arabic, never silently.
-        description: getErrorMessage(err),
+        description: describeSaveError(err) || getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -447,14 +487,24 @@ export default function AdminUsersPage() {
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
 
-  // (r110) Wallet-edit note gate: the backend 400s any wallet
-  // mutation whose note is <3 trimmed chars (round-94). "Wallet field
-  // present" mirrors handleSave's parse — a non-empty wallet_value
-  // input is what puts wallet_adjustment / wallet_balance in the
-  // PATCH body — so the submit stays enabled for loyalty-only edits
-  // (note not required there, mirroring the backend semantics).
+  // (r110 + R115) Money-edit note gate: the backend 400s any wallet OR
+  // points mutation whose note is <3 trimmed chars. "Money field
+  // present" mirrors handleSave's parse — a wallet amount in the input
+  // or a points value that differs from the user's current balance is
+  // what puts wallet_*/loyalty_points in the PATCH body — so the submit
+  // stays enabled for nothing-changed states (blocked there with an
+  // honest «لا توجد تعديلات» toast instead of a silent server 400).
   const walletFieldPresent = form.wallet_value.trim() !== "";
-  const walletNoteValid = form.note.trim().length >= 3;
+  const editingPointsNow =
+    editingUser != null && form.loyalty_points.trim() !== ""
+      ? Math.max(0, parseInt(form.loyalty_points) || 0)
+      : null;
+  const pointsChangedNow =
+    editingUser != null &&
+    editingPointsNow != null &&
+    editingPointsNow !== (Number(editingUser.loyalty_points ?? 0) || 0);
+  const noteRequired = walletFieldPresent || pointsChangedNow;
+  const noteValid = form.note.trim().length >= 3;
 
   const exportUsersCSV = () => {
     const csvHeaders = [
@@ -491,7 +541,7 @@ export default function AdminUsersPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-black mb-0.5">المستخدمون</h1>
+            <h1 className="text-xl font-bold mb-0.5">المستخدمون</h1>
             {/* 94-C2 (A2 P1-1): honest count — the directory no longer
                 claims a grand total it can't know once pages are capped. */}
             <p className="text-xs text-muted-foreground">
@@ -515,7 +565,7 @@ export default function AdminUsersPage() {
             </div>
             <button
               onClick={() => setShowFilters((v) => !v)}
-              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-semibold transition-all ${
                 hasFilters || showFilters
                   ? "bg-primary/10 border-primary/30 text-primary"
                   : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
@@ -544,13 +594,13 @@ export default function AdminUsersPage() {
           <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
             <div className="flex flex-wrap gap-6">
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground mb-2">مستوى الولاء</div>
+                <div className="text-3xs font-bold text-muted-foreground mb-2">مستوى الولاء</div>
                 <div className="flex gap-1 flex-wrap">
                   {TIER_FILTERS.map((t) => (
                     <button
                       key={t.value}
                       onClick={() => setTierFilter(t.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         tierFilter === t.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
                           : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -562,13 +612,13 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div>
-                <div className="text-[10px] font-bold text-muted-foreground mb-2">الترتيب</div>
+                <div className="text-3xs font-bold text-muted-foreground mb-2">الترتيب</div>
                 <div className="flex gap-1 flex-wrap">
                   {SORT_OPTIONS.map((s) => (
                     <button
                       key={s.value}
                       onClick={() => setSortBy(s.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         sortBy === s.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
                           : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -646,10 +696,10 @@ export default function AdminUsersPage() {
                   <stat.icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
                 <div>
-                  <div className={`font-black text-sm tabular-nums ${stat.color}`}>
+                  <div className={`font-bold text-sm tabular-nums ${stat.color}`}>
                     {stat.value}
                   </div>
-                  <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                  <div className="text-3xs text-muted-foreground leading-tight mt-0.5">
                     {stat.label}
                   </div>
                 </div>
@@ -686,11 +736,12 @@ export default function AdminUsersPage() {
                 type="submit"
                 form="user-edit-form"
                 className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
-                // (r110) Contract gate: a wallet edit is submittable
-                // only with a valid (≥3 trimmed chars) note — the
-                // backend 400s otherwise (round-94). Loyalty-only
-                // saves stay enabled.
-                disabled={saving || (walletFieldPresent && !walletNoteValid)}
+                // (r110 + R115) Contract gate: a wallet OR points edit is
+                // submittable only with a valid (≥3 trimmed chars) note —
+                // the backend 400s otherwise (round-94 wallet contract,
+                // R115 points contract). A nothing-changed form stays
+                // enabled and is answered honestly at the save path.
+                disabled={saving || (noteRequired && !noteValid)}
               >
                 <CheckCircle className="w-4 h-4 ml-1.5" />
                 {saving ? "جارٍ الحفظ..." : "حفظ"}
@@ -717,8 +768,8 @@ export default function AdminUsersPage() {
                     },
                   ].map((item) => (
                     <div key={item.label} className="text-center">
-                      <div className="text-[10px] text-muted-foreground mb-0.5">{item.label}</div>
-                      <div className={`font-black text-sm tabular-nums ${item.cls}`}>
+                      <div className="text-3xs text-muted-foreground mb-0.5">{item.label}</div>
+                      <div className={`font-bold text-sm tabular-nums ${item.cls}`}>
                         {item.value}
                       </div>
                     </div>
@@ -783,21 +834,19 @@ export default function AdminUsersPage() {
                       dir="ltr"
                       className="h-10"
                     />
-                    {/* (r110) R109 §109-m P1 fix: the wallet-edit note.
-                        The backend (round-94 39a84be) rejects a wallet
-                        mutation whose note is <3 trimmed chars — this
-                        dialog never sent one, so every wallet adjust
-                        from the admin UI was a guaranteed 400. The
-                        field is always visible but only constrains the
-                        submit when a wallet amount is filled (mirrors
-                        the backend's when-required semantics); its
-                        value is recorded on the wallet_ledger row. */}
+                    {/* (r110 + R115) The money-edit note: mandatory
+                        whenever a wallet field OR a points change will
+                        ride the PATCH (both are LYD money — the wallet
+                        balance 1:1, points at 100:1 via
+                        /loyalty/convert-points); the backend rejects a
+                        missing note with a 400 and the value persists on
+                        the wallet_ledger / points_ledger rows. */}
                     <div className="mt-3">
                       <Label
                         htmlFor="user-edit-note"
                         className="mb-1.5 block text-sm font-semibold"
                       >
-                        سبب تعديل المحفظة
+                        سبب تعديل المحفظة / النقاط
                       </Label>
                       <Input
                         id="user-edit-note"
@@ -805,44 +854,69 @@ export default function AdminUsersPage() {
                         value={form.note}
                         onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                         placeholder="سبب التعديل (3 أحرف على الأقل)"
-                        // (r110) mirror the backend contract: required
-                        // + ≥3 chars when a wallet field will ride the
-                        // PATCH; 500 max (AdjustmentService slices).
-                        required={walletFieldPresent}
-                        minLength={walletFieldPresent ? 3 : undefined}
+                        // (r110 + R115) mirror the backend contract:
+                        // required + ≥3 chars when a money field will
+                        // ride the PATCH; 500 max (both ledger services
+                        // slice).
+                        required={noteRequired}
+                        minLength={noteRequired ? 3 : undefined}
                         maxLength={500}
                         className="h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                        إلزامي عند تعديل المحفظة (3 أحرف على الأقل) ويُسجَّل في سجل حركات المحفظة
+                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
+                        إلزامي عند تعديل المحفظة أو النقاط (3 أحرف على الأقل) ويُسجَّل في سجل
+                        الحركات
                       </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="mb-1.5 block text-sm font-semibold">نقاط الولاء</Label>
+                      <Label
+                        htmlFor="user-edit-points"
+                        className="mb-1.5 block text-sm font-semibold"
+                      >
+                        نقاط الولاء
+                      </Label>
                       <Input
+                        id="user-edit-points"
                         type="number"
                         min="0"
+                        step="1"
                         value={form.loyalty_points}
                         onChange={(e) => setForm((f) => ({ ...f, loyalty_points: e.target.value }))}
                         dir="ltr"
                         className="h-10"
                       />
+                      {/* R115 (A1/A5): points are LYD-convertible money
+                          (100:1) — the hint states the dinar value of
+                          the number in the box + the note/scope contract
+                          so the operator knows the rules BEFORE the
+                          400/403 ever fires. */}
+                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
+                        القيمة بالدينار: {formatCurrency((editingPointsNow ?? 0) / 100)} (كل 100
+                        نقطة = 1 د.ل عند التحويل)
+                        <br />
+                        التعديل يتطلب سببًا وصلاحية «المعاملات المالية»
+                      </p>
                     </div>
+                    {/* R115 (Part 11): the tier is DERIVED from net
+                        qualifying spend (computeTier on every
+                        purchase/refund) — the manual override select is
+                        GONE (the backend 400s any loyalty_tier); the
+                        current tier shows read-only with the derivation
+                        hint. */}
                     <div>
                       <Label className="mb-1.5 block text-sm font-semibold">المستوى</Label>
-                      <select
-                        value={form.loyalty_tier}
-                        onChange={(e) => setForm((f) => ({ ...f, loyalty_tier: e.target.value }))}
-                        className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                      >
-                        {TIERS.map((t) => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="h-10 px-3 flex items-center bg-muted/30 border border-border/60 rounded-lg">
+                        <span
+                          className={`font-bold text-sm ${tierColor(editingUser.loyalty_tier)}`}
+                        >
+                          {tierLabel(editingUser.loyalty_tier)}
+                        </span>
+                      </div>
+                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
+                        مستوى مشتق من الإنفاق الصافي — لا يُعدّل يدويًا
+                      </p>
                     </div>
                   </div>
                 </form>
@@ -881,7 +955,7 @@ export default function AdminUsersPage() {
             <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
               <WifiOff className="w-8 h-8 text-status-error/70" />
             </div>
-            <p className="font-black text-lg mb-1.5 text-foreground/80">تعذّر تحميل المستخدمين</p>
+            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المستخدمين</p>
             <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
               {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
             </p>
@@ -930,49 +1004,49 @@ export default function AdminUsersPage() {
                           sweeps instead of a bare "خلية". */}
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المستخدم
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المصدر
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         الرصيد
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         المستوى
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         النقاط
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         الإجمالي المنفق
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         الطلبات
                       </th>
                       <th
                         scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-[11px]"
+                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
                       >
                         التسجيل
                       </th>
@@ -991,7 +1065,7 @@ export default function AdminUsersPage() {
                         <td className="px-4 py-2.5">
                           <ProviderBadges user={user as unknown as Record<string, unknown>} />
                         </td>
-                        <td className="px-4 py-2.5 font-black text-primary tabular-nums">
+                        <td className="px-4 py-2.5 font-bold text-primary tabular-nums">
                           {formatCurrency(user.wallet_balance)}
                         </td>
                         <td className="px-4 py-2.5">
@@ -1067,7 +1141,7 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-black text-primary tabular-nums text-sm">
+                    <div className="font-bold text-primary tabular-nums text-sm">
                       {formatCurrency(user.wallet_balance)}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">

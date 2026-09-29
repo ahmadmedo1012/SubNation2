@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useChartColors } from "@/lib/chart-theme";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
@@ -74,7 +75,7 @@ const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
             <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
             <span className="text-muted-foreground">{p.name}</span>
           </div>
-          <span className="font-black tabular-nums">
+          <span className="font-bold tabular-nums">
             {CURRENCY_KEYS.has(p.name) ? formatCurrency(Number(p.value)) : p.value}
           </span>
         </div>
@@ -165,7 +166,7 @@ function TrendBadge({ data, dataKey }: { data: ChartDay[]; dataKey: keyof ChartD
   const up = pct >= 0;
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${up ? "text-emerald-400" : "text-red-400"}`}
+      className={`inline-flex items-center gap-0.5 text-3xs font-bold ${up ? "text-emerald-400" : "text-red-400"}`}
     >
       {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
       {Math.abs(pct)}%
@@ -204,6 +205,9 @@ export default function AdminDashboardPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  // R115-A6 #7: every series/axis/grid color rides the theme tokens
+  // (see lib/chart-theme.ts) — recharts no longer hardcodes hexes.
+  const chart = useChartColors();
   const [chartData, setChartData] = useState<ChartDay[]>([]);
   const [chartDays, setChartDays] = useState(7);
   const [chartLoading, setChartLoading] = useState(false);
@@ -292,6 +296,20 @@ export default function AdminDashboardPage() {
 
   const displayData = aggregateData(chartData, granularity);
 
+  // R115 (A9 P2): an EMPTY chart response (no error, not loading) used
+  // to make the whole charts column vanish silently — an honest empty
+  // block renders instead. The column also hides for a failed load
+  // with no stale data (the error banner above is the honest state
+  // then).
+  const chartEmpty = !chartLoading && !chartError && chartData.length === 0;
+  const showChartsColumn = chartData.length > 0 || chartLoading || chartEmpty;
+  // R115 (A5 P3-7, skipped by design): loyalty/referral liability
+  // widgets need Σ points / outstanding referral rewards — the stats
+  // endpoint does not expose them and adding one is out of scope for
+  // this round (no backend changes); summing the users list's first
+  // page would present a partial sample as a total (the 94-C2
+  // lesson). Deliberately NOT rendered.
+
   // Auto-set sensible default granularity based on period
   const onChangeDays = (days: number) => {
     setChartDays(days);
@@ -313,7 +331,7 @@ export default function AdminDashboardPage() {
           link: "/admin/orders",
           highlight: true,
           sparkKey: "revenue" as keyof ChartDay,
-          sparkColor: "#e11d48",
+          sparkColor: chart.primary,
         },
         {
           label: "طلبات الشحن المعلقة",
@@ -338,7 +356,7 @@ export default function AdminDashboardPage() {
           border: "border-emerald-400/20",
           link: "/admin/orders",
           sparkKey: "revenue" as keyof ChartDay,
-          sparkColor: "#10b981",
+          sparkColor: chart.success,
         },
         {
           label: "المستخدمون",
@@ -350,7 +368,7 @@ export default function AdminDashboardPage() {
           border: "border-blue-400/20",
           link: "/admin/users",
           sparkKey: "users" as keyof ChartDay,
-          sparkColor: "#3b82f6",
+          sparkColor: chart.info,
         },
         {
           label: "المخزون المتاح",
@@ -441,12 +459,12 @@ export default function AdminDashboardPage() {
                       <ArrowUpLeft className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
                   </div>
-                  <div className="font-black text-xl leading-none mb-0.5 tabular-nums">
+                  <div className="font-bold text-xl leading-none mb-0.5 tabular-nums">
                     {card.value}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">{card.label}</div>
+                  <div className="text-2xs text-muted-foreground">{card.label}</div>
                   {card.sub && (
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{card.sub}</div>
+                    <div className="text-3xs text-muted-foreground mt-0.5">{card.sub}</div>
                   )}
                   {/* Mini sparkline */}
                   {card.sparkKey && chartData.length >= 3 && (
@@ -465,12 +483,12 @@ export default function AdminDashboardPage() {
           <div className="flex flex-wrap items-center gap-2">
             {/* 94-C2 (A2 P2-10): uppercase/tracking dropped — the label
                 is Arabic (A11 §8). */}
-            <span className="text-[10px] text-muted-foreground font-medium hidden sm:inline">
+            <span className="text-3xs text-muted-foreground font-semibold hidden sm:inline">
               إجراءات:
             </span>
             {(stats.pending_topups ?? 0) > 0 && (
               <Link href="/admin/topups">
-                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-medium press-spring">
+                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-semibold press-spring">
                   <Clock className="w-3 h-3" /> موافقة الشحن ({stats.pending_topups})
                 </button>
               </Link>
@@ -515,23 +533,35 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           )}
-          {(chartData.length > 0 || chartLoading) && (
-            <div className="xl:col-span-3 space-y-5 float-in stagger-7">
+          {showChartsColumn &&
+            (chartEmpty ? (
+              /* R115 (A9 P2): the honest no-data-yet block — a brand-new
+                 store's dashboard no longer loses its whole charts
+                 column in silence. */
+              <div className="xl:col-span-3 bg-card border border-border/60 rounded-2xl p-10 flex flex-col items-center justify-center text-center text-muted-foreground">
+                <BarChart2 className="w-9 h-9 mb-3 opacity-20" />
+                <p className="text-sm font-bold text-foreground/80">لا توجد بيانات بعد</p>
+                <p className="text-xs mt-1 leading-relaxed">
+                  ستظهر الرسوم البيانية مع أول طلب أو تسجيل مستخدم جديد
+                </p>
+              </div>
+            ) : (
+              <div className="xl:col-span-3 space-y-5 float-in stagger-7">
               {/* Revenue + Orders chart */}
               <div className="bg-card border border-border/60 rounded-2xl p-5">
                 <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
                   <div>
                     <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
                         <span className="w-3 h-0.5 bg-primary rounded inline-block" />
                         الإيرادات
                       </span>
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
                         <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
                         الطلبات
                       </span>
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-3xs text-muted-foreground">
                         <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
                         الخصومات
                       </span>
@@ -544,7 +574,7 @@ export default function AdminDashboardPage() {
                         <button
                           key={g.value}
                           onClick={() => setGranularity(g.value)}
-                          className={`px-2 py-1 rounded text-[10px] font-bold transition-all duration-150 ${
+                          className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
                             granularity === g.value
                               ? "bg-card shadow-sm text-foreground"
                               : "text-muted-foreground hover:text-foreground"
@@ -561,7 +591,7 @@ export default function AdminDashboardPage() {
                         <button
                           key={opt.days}
                           onClick={() => onChangeDays(opt.days)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all duration-150 ${
+                          className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
                             chartDays === opt.days
                               ? "bg-card shadow-sm text-foreground"
                               : "text-muted-foreground hover:text-foreground"
@@ -592,21 +622,21 @@ export default function AdminDashboardPage() {
                     >
                       <defs>
                         <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#e11d48" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#e11d48" stopOpacity={0} />
+                          <stop offset="5%" stopColor={chart.primary} stopOpacity={0.2} />
+                          <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          <stop offset="5%" stopColor={chart.success} stopOpacity={0.2} />
+                          <stop offset="95%" stopColor={chart.success} stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                          <stop offset="5%" stopColor={chart.warning} stopOpacity={0.15} />
+                          <stop offset="95%" stopColor={chart.warning} stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="rgba(255,255,255,0.04)"
+                        stroke={chart.grid}
                         vertical={false}
                       />
                       <XAxis
@@ -625,12 +655,12 @@ export default function AdminDashboardPage() {
                                 timeZone: "UTC",
                               });
                         }}
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                       />
                       <YAxis
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                       />
@@ -639,7 +669,7 @@ export default function AdminDashboardPage() {
                         type="monotone"
                         dataKey="revenue"
                         name="الإيرادات"
-                        stroke="#e11d48"
+                        stroke={chart.primary}
                         fill="url(#revGrad)"
                         strokeWidth={2}
                         dot={false}
@@ -649,7 +679,7 @@ export default function AdminDashboardPage() {
                         type="monotone"
                         dataKey="orders"
                         name="الطلبات"
-                        stroke="#10b981"
+                        stroke={chart.success}
                         fill="url(#ordGrad)"
                         strokeWidth={2}
                         dot={false}
@@ -659,7 +689,7 @@ export default function AdminDashboardPage() {
                         type="monotone"
                         dataKey="discounts"
                         name="الخصومات"
-                        stroke="#f59e0b"
+                        stroke={chart.warning}
                         fill="url(#discGrad)"
                         strokeWidth={1.5}
                         dot={false}
@@ -676,11 +706,11 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                    <p className="text-3xs text-muted-foreground mt-0.5">
                       قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-3 text-3xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
                       الخصومات
@@ -707,7 +737,7 @@ export default function AdminDashboardPage() {
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="rgba(255,255,255,0.04)"
+                        stroke={chart.grid}
                         vertical={false}
                       />
                       <XAxis
@@ -726,12 +756,12 @@ export default function AdminDashboardPage() {
                                 timeZone: "UTC",
                               });
                         }}
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                       />
                       <YAxis
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                       />
@@ -739,7 +769,7 @@ export default function AdminDashboardPage() {
                       <Bar
                         dataKey="discounts"
                         name="الخصومات"
-                        fill="#f59e0b"
+                        fill={chart.warning}
                         radius={[3, 3, 0, 0]}
                         maxBarSize={24}
                         fillOpacity={0.8}
@@ -747,7 +777,7 @@ export default function AdminDashboardPage() {
                       <Bar
                         dataKey="coupon_orders"
                         name="طلبات بكوبون"
-                        fill="#10b981"
+                        fill={chart.success}
                         radius={[3, 3, 0, 0]}
                         maxBarSize={24}
                         fillOpacity={0.6}
@@ -762,7 +792,7 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-bold text-sm">المستخدمون الجدد</h2>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
+                    <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/60 px-2 py-0.5 rounded-full">
                       {granularity === "daily"
                         ? "يومي"
                         : granularity === "weekly"
@@ -803,7 +833,7 @@ export default function AdminDashboardPage() {
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="rgba(255,255,255,0.04)"
+                        stroke={chart.grid}
                         vertical={false}
                       />
                       <XAxis
@@ -822,12 +852,12 @@ export default function AdminDashboardPage() {
                                 timeZone: "UTC",
                               });
                         }}
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                       />
                       <YAxis
-                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                        tick={{ fontSize: 10, fill: chart.muted }}
                         axisLine={false}
                         tickLine={false}
                         allowDecimals={false}
@@ -836,7 +866,7 @@ export default function AdminDashboardPage() {
                       <Bar
                         dataKey="users"
                         name="مستخدمون جدد"
-                        fill="#3b82f6"
+                        fill={chart.info}
                         radius={[3, 3, 0, 0]}
                         maxBarSize={28}
                       />
@@ -844,12 +874,12 @@ export default function AdminDashboardPage() {
                   </ResponsiveContainer>
                 )}
               </div>
-            </div>
-          )}
+              </div>
+            ))}
 
           {/* Recent orders stream */}
           <div
-            className={`${chartData.length > 0 ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}
+            className={`${showChartsColumn ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}
           >
             <div className="sticky top-0 z-10 px-4 py-3.5 border-b border-border flex items-center justify-between bg-card/80 supports-[backdrop-filter]:bg-card/60 backdrop-blur-md">
               <div className="flex items-center gap-2">
@@ -890,27 +920,27 @@ export default function AdminDashboardPage() {
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-xs truncate">{order.product_name}</div>
+                      <div className="font-semibold text-xs truncate">{order.product_name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="font-mono text-[10px] text-muted-foreground">
+                        <span className="font-mono text-3xs text-muted-foreground">
                           {displayUserName(
                             userFromRow(order as unknown as Parameters<typeof userFromRow>[0]),
                           )}
                         </span>
                         {order.created_at && (
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-3xs text-muted-foreground">
                             {formatDate(order.created_at)}
                           </span>
                         )}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="font-black text-xs text-primary tabular-nums">
+                      <div className="font-bold text-xs text-primary tabular-nums">
                         {formatCurrency(order.amount)}
                       </div>
                       <div className="mt-0.5">
                         <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                          className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
                         >
                           {statusLabel(order.status)}
                         </span>

@@ -71,7 +71,11 @@ afterEach(() => {
   __resetPricingConfigCache();
 });
 
-const DEFAULTS = { usdToLyd: DEFAULT_USD_TO_LYD, markupPercent: DEFAULT_MARKUP_PERCENT, maxTotalDiscountPct: DEFAULT_MAX_TOTAL_DISCOUNT_PCT };
+const DEFAULTS = {
+  usdToLyd: DEFAULT_USD_TO_LYD,
+  markupPercent: DEFAULT_MARKUP_PERCENT,
+  maxTotalDiscountPct: DEFAULT_MAX_TOTAL_DISCOUNT_PCT,
+};
 
 // ── The official rule (operator directive) ──────────────────────────────────
 
@@ -100,14 +104,24 @@ describe("computeRetailLYD — cost × 2 × 10", () => {
   });
 
   it("honors a non-default markup", () => {
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 0, maxTotalDiscountPct: 50 })).toBe(50); // 0% markup
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 50, maxTotalDiscountPct: 50 })).toBe(75); // 50% markup
-    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 300, maxTotalDiscountPct: 50 })).toBe(200); // 4× cost
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 0, maxTotalDiscountPct: 50 })).toBe(
+      50,
+    ); // 0% markup
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 50, maxTotalDiscountPct: 50 })).toBe(
+      75,
+    ); // 50% markup
+    expect(computeRetailLYD(5, { usdToLyd: 10, markupPercent: 300, maxTotalDiscountPct: 50 })).toBe(
+      200,
+    ); // 4× cost
   });
 
   it("honors a non-default exchange rate", () => {
-    expect(computeRetailLYD(5, { usdToLyd: 5, markupPercent: 100, maxTotalDiscountPct: 50 })).toBe(50);
-    expect(computeRetailLYD(5, { usdToLyd: 4.8, markupPercent: 100, maxTotalDiscountPct: 50 })).toBe(48);
+    expect(computeRetailLYD(5, { usdToLyd: 5, markupPercent: 100, maxTotalDiscountPct: 50 })).toBe(
+      50,
+    );
+    expect(
+      computeRetailLYD(5, { usdToLyd: 4.8, markupPercent: 100, maxTotalDiscountPct: 50 }),
+    ).toBe(48);
   });
 
   it("rounds to cents (half-up Math.round idiom)", () => {

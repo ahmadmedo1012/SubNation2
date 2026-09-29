@@ -187,7 +187,7 @@ export function FlashSaleBanner() {
             />
           </div>
           <span
-            className={`text-[11px] sm:text-xs font-black hidden sm:inline ${
+            className={`text-2xs sm:text-xs font-bold hidden sm:inline ${
               urgent ? "text-primary-text" : "text-primary-text/80"
             }`}
           >
@@ -200,7 +200,7 @@ export function FlashSaleBanner() {
         <Link href="/flash-sales" className="flex-1 min-w-0">
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
-            <span className="text-primary-text font-black shrink-0">
+            <span className="text-primary-text font-bold shrink-0">
               {/* 93-C8 (A11 §5): «خصم N%» — the dominant site order. */}— خصم{" "}
               {flashSale.discount_percent}%
             </span>
@@ -219,13 +219,13 @@ export function FlashSaleBanner() {
               { val: timeLeft.s, label: "ث" },
             ].map((seg, i) => (
               <div key={i} className="flex items-center gap-0.5 sm:gap-1">
-                {i > 0 && <span className="font-black opacity-40 text-[10px]">:</span>}
+                {i > 0 && <span className="font-bold opacity-40 text-3xs">:</span>}
                 <div
                   className={`flex flex-col items-center min-w-[22px] sm:min-w-[26px] px-0.5 sm:px-1 py-0.5 rounded border transition-colors ${
                     urgent ? "bg-primary/15 border-primary/35" : "bg-card/60 border-border/60"
                   }`}
                 >
-                  <span className="font-black tabular-nums text-[11px] sm:text-xs leading-tight">
+                  <span className="font-bold tabular-nums text-2xs sm:text-xs leading-tight">
                     {String(seg.val).padStart(2, "0")}
                   </span>
                   {/* 94-C3 (A3 P2-11): 7px/50% was unreadable on small
@@ -235,7 +235,7 @@ export function FlashSaleBanner() {
                       countdown digits + dismiss) left the title ~116px
                       at 320px; dropping the unit labels frees ~30px for
                       the actual message (the digits stay readable). */}
-                  <span className="text-[10px] opacity-70 leading-none max-[359px]:hidden">
+                  <span className="text-3xs opacity-70 leading-none max-[359px]:hidden">
                     {seg.label}
                   </span>
                 </div>

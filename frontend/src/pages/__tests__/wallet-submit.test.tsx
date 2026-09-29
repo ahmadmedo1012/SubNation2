@@ -32,6 +32,7 @@ const mutateMock = vi.fn();
 vi.mock("@workspace/api-client-react", () => ({
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListTopupsQueryKey: () => ["/api/wallet/topups"],
+  getGetWalletLedgerQueryKey: () => ["/api/wallet/ledger"],
   useGetWallet: vi.fn(() => ({
     data: { balance: 150, loyalty_points: 0, loyalty_tier: "bronze" },
     isLoading: false,
@@ -39,6 +40,15 @@ vi.mock("@workspace/api-client-react", () => ({
     refetch: vi.fn(),
   })),
   useListTopups: vi.fn(() => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
+  // R115: the wallet statement hook (GET /api/wallet/ledger) — empty
+  // + healthy by default; the statement's own states are pinned in
+  // wallet-statement.test.tsx.
+  useGetWalletLedger: vi.fn(() => ({
     data: [],
     isLoading: false,
     isError: false,

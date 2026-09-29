@@ -91,7 +91,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
             {/* Message */}
             <div>
-              <h1 className="text-xl font-black mb-2.5 text-foreground">حدث خطأ غير متوقع</h1>
+              <h1 className="text-xl font-bold mb-2.5 text-foreground">حدث خطأ غير متوقع</h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 نعتذر، حدث خطأ في هذه الصفحة.
                 <br />
@@ -102,7 +102,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground transition-colors">
                     تفاصيل الخطأ (للمطورين)
                   </summary>
-                  <pre className="mt-2 text-[10px] text-status-error/75 bg-status-error/8 border border-status-error/15 rounded-lg p-3 overflow-auto text-left leading-relaxed">
+                  <pre className="mt-2 text-3xs text-status-error/75 bg-status-error/8 border border-status-error/15 rounded-lg p-3 overflow-auto text-left leading-relaxed">
                     {this.state.error.message}
                   </pre>
                 </details>
@@ -122,7 +122,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={() => {
                   window.location.href = "/";
                 }}
-                className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-medium px-6 py-3 rounded-xl transition-all w-full sm:w-auto"
+                className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-semibold px-6 py-3 rounded-xl transition-all w-full sm:w-auto"
               >
                 <Home className="w-4 h-4" />
                 الرئيسية

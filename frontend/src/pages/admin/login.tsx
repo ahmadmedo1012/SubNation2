@@ -178,7 +178,7 @@ export default function AdminLoginPage() {
               <Shield className="w-7 h-7 text-primary" />
             )}
           </div>
-          <h1 className="text-xl font-black">{needs2FA ? "المصادقة الثنائية" : "لوحة الإدارة"}</h1>
+          <h1 className="text-xl font-bold">{needs2FA ? "المصادقة الثنائية" : "لوحة الإدارة"}</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {needs2FA
               ? "الرجاء إدخال رمز التحقق من تطبيق Authenticator"

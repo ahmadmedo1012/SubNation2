@@ -391,7 +391,15 @@ export default function HomePage() {
             honest state that still lets the visitor browse the catalog. */}
         {token && !user && !userError ? (
           <div className="mb-5 page-in">
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15 h-[100px] sm:h-[120px] skeleton-shimmer" />
+            {/* R115-I1 (A7 P3-6): the skeleton reserves the height the
+                REAL wrapped hero occupies on mobile — the wallet/points
+                chips wrap onto a second row (~150px: py-4 ×2 + title
+                block ~50px + gap-3 + chip row ~53px), while the old
+                h-[100px] collapsed on first paint → a CLS pop when /me
+                landed. sm+ stays single-row (~120px). Measured by class
+                analysis (see A7 P3-6); min-h so a longer name can only
+                grow it, never clip. */}
+            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15 min-h-[150px] sm:min-h-[120px] skeleton-shimmer" />
           </div>
         ) : token && user ? (
           <div className="mb-5 page-in">
@@ -404,10 +412,10 @@ export default function HomePage() {
 
               <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-muted-foreground text-xs mb-0.5 font-medium">
+                  <p className="text-muted-foreground text-xs mb-0.5 font-semibold">
                     مرحباً بك مجدداً
                   </p>
-                  <h1 className="text-fluid-2xl font-black leading-tight text-gradient-animated">
+                  <h1 className="text-fluid-2xl font-bold leading-tight text-gradient-animated">
                     اشترِ اشتراكك المفضل اليوم
                   </h1>
                 </div>
@@ -418,10 +426,10 @@ export default function HomePage() {
                         <Wallet className="w-3.5 h-3.5 text-primary-text" />
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
+                        <div className="text-3xs text-muted-foreground leading-none mb-0.5 font-semibold">
                           المحفظة
                         </div>
-                        <div className="font-black text-sm tabular-nums text-foreground">
+                        <div className="font-bold text-sm tabular-nums text-foreground">
                           {formatCurrency(user.wallet_balance ?? 0)}
                         </div>
                       </div>
@@ -433,10 +441,10 @@ export default function HomePage() {
                         <Star className="w-3.5 h-3.5 text-status-warning" />
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground leading-none mb-0.5 font-medium">
+                        <div className="text-3xs text-muted-foreground leading-none mb-0.5 font-semibold">
                           النقاط
                         </div>
-                        <div className="font-black text-sm tabular-nums">
+                        <div className="font-bold text-sm tabular-nums">
                           {user.loyalty_points ?? 0}
                         </div>
                       </div>
@@ -525,13 +533,13 @@ export default function HomePage() {
                             <div className="flex items-center gap-1 mt-0.5">
                               <OrderStatusIcon status={order.status} />
                               <span
-                                className={`text-[10px] font-bold ${statusColor(order.status).split(" ")[0]}`}
+                                className={`text-3xs font-bold ${statusColor(order.status).split(" ")[0]}`}
                               >
                                 {statusLabel(order.status)}
                               </span>
                             </div>
                           </div>
-                          <div className="text-xs font-black tabular-nums shrink-0">
+                          <div className="text-xs font-bold tabular-nums shrink-0">
                             {formatCurrency(order.amount)}
                           </div>
                           <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-text transition-colors shrink-0" />
@@ -570,14 +578,14 @@ export default function HomePage() {
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-3.5">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-primary/12 text-primary-text border border-primary/25 px-2.5 py-1 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/12 text-primary-text border border-primary/25 px-2.5 py-1 rounded-full">
                       ليبيا #1
                     </span>
-                    <span className="text-[11px] text-muted-foreground font-medium">
+                    <span className="text-2xs text-muted-foreground font-semibold">
                       سوق الاشتراكات الرقمية
                     </span>
                   </div>
-                  <h1 className="text-fluid-3xl font-black mb-3 leading-[1.15] tracking-tight">
+                  <h1 className="text-fluid-3xl font-bold mb-3 leading-[1.15] tracking-tight">
                     {/*
                       Single contiguous phrase for Google's NLU. Visual
                       two-line split is achieved with `block` + a styled
@@ -616,7 +624,7 @@ export default function HomePage() {
                         <span
                           key={brand.latin}
                           aria-label={brand.ar}
-                          className={`shrink-0 text-[11px] font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
+                          className={`shrink-0 text-2xs font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
                         >
                           {/* 96-F5 (R96 A6 #16): lang="en" on the Latin label
                               so screen readers stop spelling brand names with
@@ -633,7 +641,7 @@ export default function HomePage() {
                           <span className="sr-only">{brand.ar}</span>
                         </span>
                       ))}
-                      <span className="shrink-0 text-[11px] text-muted-foreground px-1 whitespace-nowrap">
+                      <span className="shrink-0 text-2xs text-muted-foreground px-1 whitespace-nowrap">
                         وأكثر…
                       </span>
                     </div>
@@ -707,7 +715,7 @@ export default function HomePage() {
                         className={`${s.bg} border ${s.border} rounded-2xl px-4 py-3 text-right min-w-[116px] float-in stagger-${i + 1} hover:brightness-105 transition-all duration-200`}
                       >
                         <div
-                          className={`font-black text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}
+                          className={`font-bold text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}
                         >
                           {s.value}
                         </div>
@@ -763,11 +771,11 @@ export default function HomePage() {
                   className="bg-card border border-border/45 rounded-2xl p-3 text-center"
                 >
                   <div
-                    className={`font-black text-base leading-none mb-0.5 tabular-nums ${s.color}`}
+                    className={`font-bold text-base leading-none mb-0.5 tabular-nums ${s.color}`}
                   >
                     {s.value}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{s.label}</div>
+                  <div className="text-3xs text-muted-foreground">{s.label}</div>
                 </div>
               ))}
             </div>
@@ -790,7 +798,7 @@ export default function HomePage() {
             chrome height — 3.5rem (h-14) + the top safe-area inset the
             header now grows by in installed-PWA mode, so the bar tucks
             UNDER the taller header instead of sliding beneath it. */}
-        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-3 bg-background/96 backdrop-blur-2xl border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:backdrop-blur-none sm:border-0 sm:mb-6">
+        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-3 bg-background/96 border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-6">
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
             <div className="relative flex-1" ref={searchWrapRef}>
@@ -867,7 +875,7 @@ export default function HomePage() {
                 onChange={(e) => setSort(e.target.value)}
                 aria-label="ترتيب المنتجات"
                 title="ترتيب المنتجات"
-                className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
+                className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-semibold focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
                 /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
                     field — raw select rode text-sm at every breakpoint. */
               >
@@ -897,7 +905,7 @@ export default function HomePage() {
                     key={c.value}
                     onClick={() => setCategory(c.value)}
                     aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
                       active
                         ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
                         : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
@@ -911,7 +919,7 @@ export default function HomePage() {
               <button
                 onClick={() => setAvailableOnly((v) => !v)}
                 aria-pressed={availableOnly}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-180 press-spring ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
                     ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
                     : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
@@ -944,7 +952,7 @@ export default function HomePage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-medium"
+                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-semibold"
               >
                 مسح ({activeFilterCount})
               </button>

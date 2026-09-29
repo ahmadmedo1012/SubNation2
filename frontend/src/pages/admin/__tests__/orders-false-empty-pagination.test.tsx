@@ -192,6 +192,68 @@ describe("AdminOrdersPage — accumulating load-more past the 100-row cap (O-1)"
   });
 });
 
+describe("AdminOrdersPage — honest partial-empty over paged data (R115 A9 P2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("a status tab with 0 matches while more pages exist keeps load-more + the incompleteness hint — never the hard empty claim", async () => {
+    // Page 1: a FULL page of completed orders (hasNextPage=true), zero
+    // pending. The «معلق» tab used to render the hard «لا توجد طلبات»
+    // empty state while pending rows could sit on unloaded pages.
+    (listAdminOrders as unknown as Mock).mockResolvedValue(FULL_PAGE);
+
+    renderPage();
+    await screen.findAllByText("SN-1000");
+
+    fireEvent.click(screen.getByRole("button", { name: /^معلق/ }));
+
+    // The honest partial-empty state: the incompleteness hint + a
+    // VISIBLE load-more (the old empty state hid the button entirely).
+    expect(await screen.findByText("لا طلبات مطابقة ضمن الصفحات المحمّلة")).toBeInTheDocument();
+    expect(
+      screen.getByText("قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل"),
+    ).toBeInTheDocument();
+    const more = screen.getByRole("button", { name: "تحميل المزيد" });
+    expect(more).toBeInTheDocument();
+    // The hard empty claim is NOT rendered.
+    expect(screen.queryByText("لا توجد طلبات")).not.toBeInTheDocument();
+
+    // Loading the next page brings the pending rows in — the tab stops
+    // being "empty" (the code renders in both the desktop table and the
+    // mobile card list).
+    (listAdminOrders as unknown as Mock).mockResolvedValue([
+      { ...ORDER(100), id: 101, order_code: "SN-9999", status: "pending" },
+    ]);
+    fireEvent.click(more);
+    await screen.findAllByText("SN-9999");
+    expect(screen.queryByText("لا طلبات مطابقة ضمن الصفحات المحمّلة")).not.toBeInTheDocument();
+  });
+
+  it("once ALL pages are loaded, a 0-match filter shows the HARD empty state (no false incompleteness)", async () => {
+    // A SHORT page — the definite end (hasNextPage=false).
+    (listAdminOrders as unknown as Mock).mockResolvedValue([
+      ORDER(0),
+      { ...ORDER(1), id: 2, order_code: "SN-1001", status: "pending" },
+    ]);
+
+    renderPage();
+    await screen.findAllByText("SN-1000");
+
+    fireEvent.click(screen.getByRole("button", { name: /^مسترجع/ }));
+    // No refunded orders anywhere (all pages loaded) — the hard empty
+    // state is the honest answer now.
+    expect(await screen.findByText("لا توجد طلبات")).toBeInTheDocument();
+    expect(
+      screen.queryByText("قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "تحميل المزيد" })).not.toBeInTheDocument();
+  });
+});
+
 describe("AdminOrdersPage — server-side search (A2 P2-2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

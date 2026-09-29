@@ -189,7 +189,7 @@ function ProviderButton({
       disabled={loading}
       className={
         className ??
-        "w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm disabled:opacity-60 press-spring"
+        "w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-semibold text-sm disabled:opacity-60 press-spring"
       }
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon />}

@@ -163,7 +163,7 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       type="button"
       onClick={handleClick}
       disabled={loading || !botId}
-      className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-medium text-sm disabled:opacity-60 press-spring"
+      className="w-full h-11 flex items-center justify-center gap-3 border border-border/60 rounded-xl bg-card hover:bg-muted/50 hover:border-border transition-all duration-150 active:scale-[0.97] font-semibold text-sm disabled:opacity-60 press-spring"
       aria-label="المتابعة عبر Telegram"
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TelegramIcon />}

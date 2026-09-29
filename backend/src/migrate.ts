@@ -1179,7 +1179,9 @@ export async function applyIdempotencyDropOrderFkStage(
 // balances). The CHECK joins the same constraint family V1-M9 built for
 // the money tables — points are LYD-convertible at 100:1, so a negative
 // balance is money creation.
-export async function applyPointsLedgerStage(execute: SqlExecutor = defaultExecutor): Promise<void> {
+export async function applyPointsLedgerStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
   await execute(sql`
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'points_ledger_type') THEN
@@ -1349,10 +1351,7 @@ export async function applyOrdersRefundColumnsStage(
       AND o.status = 'refunded'
       AND o.refunded_at IS NULL
   `);
-  logger.info(
-    { category: "storage" },
-    "V1-M22: orders refund columns + backfill (idempotent)",
-  );
+  logger.info({ category: "storage" }, "V1-M22: orders refund columns + backfill (idempotent)");
 }
 
 export async function runMigrations() {

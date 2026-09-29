@@ -267,7 +267,7 @@ export default function AdminWhatsAppPage() {
               <Wifi className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-widest">WhatsApp OTP</span>
             </div>
-            <h2 className="text-2xl font-black tracking-tight">إدارة جلسة واتساب</h2>
+            <h2 className="text-2xl font-bold tracking-tight">إدارة جلسة واتساب</h2>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               أنشئ جلسة الإرسال، شغّلها، ثم اربط رقم واتساب الخاص بالخدمة. لا تضع مفتاح API في
               المتصفح؛ الواجهة تمرّر الطلبات عبر الخادم بشكل محمي.
@@ -373,7 +373,7 @@ export default function AdminWhatsAppPage() {
                           </StatusBadge>
                         </div>
                         <div
-                          className="text-[11px] text-muted-foreground font-mono mt-1 truncate"
+                          className="text-2xs text-muted-foreground font-mono mt-1 truncate"
                           dir="ltr"
                         >
                           {session.id}
@@ -451,7 +451,7 @@ export default function AdminWhatsAppPage() {
                         {pairCode && (
                           <div className="flex flex-wrap items-center gap-2 pt-2">
                             <code
-                              className="text-xl font-black tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2"
+                              className="text-xl font-bold tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2"
                               dir="ltr"
                             >
                               {pairCode}

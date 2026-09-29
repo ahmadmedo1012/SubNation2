@@ -211,7 +211,7 @@ export default function AdminRiskPage() {
               {dashboard.data.top_rules.map((r) => (
                 <span
                   key={r.rule}
-                  className="text-[11px] font-mono bg-muted/40 border border-border/40 rounded-lg px-2 py-1"
+                  className="text-2xs font-mono bg-muted/40 border border-border/40 rounded-lg px-2 py-1"
                 >
                   {r.rule}
                   <span className="opacity-60 mr-1.5">×{r.count}</span>
@@ -269,7 +269,7 @@ export default function AdminRiskPage() {
                 filter (next_cursor exists) — disclose the truncation
                 instead of silently cutting history. */}
             {query.data?.next_cursor && (
-              <p className="text-[11px] text-muted-foreground text-center">
+              <p className="text-2xs text-muted-foreground text-center">
                 يُعرض أحدث 100 حدث فقط لهذا الفلتر — استخدم الفلاتر لتضييق النطاق والوصول إلى
                 الأحداث الأقدم.
               </p>
@@ -328,15 +328,15 @@ export default function AdminRiskPage() {
                           </td>
                           <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
                           <td className="px-4 py-2.5 text-xs">{userLabel}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground">
+                          <td className="px-4 py-2.5 text-2xs text-muted-foreground">
                             {e.rule_fired.slice(0, 2).join(", ") || "—"}
                             {e.rule_fired.length > 2 && ` +${e.rule_fired.length - 2}`}
                           </td>
                           <td className="px-4 py-2.5 font-mono text-xs">{e.score}</td>
-                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground">
+                          <td className="px-4 py-2.5 text-2xs text-muted-foreground">
                             {e.action_taken}
                           </td>
-                          <td className="px-4 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                          <td className="px-4 py-2.5 text-2xs text-muted-foreground whitespace-nowrap">
                             <Link
                               href={`/admin/risk/events/${e.id}`}
                               className="text-primary hover:underline"
@@ -370,7 +370,7 @@ export default function AdminRiskPage() {
                       </div>
                       <div className="font-mono text-xs font-bold mb-1">{e.event_type}</div>
                       <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/30 pt-2">
+                      <div className="flex items-center justify-between text-2xs text-muted-foreground border-t border-border/30 pt-2">
                         <span>{e.action_taken}</span>
                         <span>{new Date(e.created_at).toLocaleString("ar-LY-u-nu-latn")}</span>
                       </div>
@@ -409,9 +409,9 @@ function DashCard({
   };
   return (
     <div className={`border rounded-xl p-3 ${tones[tone]}`}>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-3xs text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-0.5 ${valueColor[tone]}`}>{value}</div>
-      {hint && <div className="text-[10px] text-muted-foreground mt-1">{hint}</div>}
+      {hint && <div className="text-3xs text-muted-foreground mt-1">{hint}</div>}
     </div>
   );
 }

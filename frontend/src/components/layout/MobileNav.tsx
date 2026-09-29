@@ -135,7 +135,7 @@ export function MobileNav() {
                 {/* Label */}
                 <span
                   className={`
-                  relative z-10 text-[10px] leading-none font-semibold transition-all duration-200
+                  relative z-10 text-3xs leading-none font-semibold transition-all duration-200
                   ${active ? "text-primary-text font-bold" : "text-muted-foreground"}
                 `}
                 >

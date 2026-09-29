@@ -339,7 +339,7 @@ export function NotificationBell() {
       >
         {unread > 0 ? <BellDot className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (
-          <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-primary-foreground text-[9px] font-black rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
+          <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-primary-foreground text-3xs font-bold rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -426,7 +426,6 @@ function NotificationPanel({
         // bottom gap, in dvh so the iOS URL-bar resize can't leave
         // rows below the fold. The flex-1 body then scrolls internally.
         maxHeight: `calc(100dvh - ${headerBottom + 16}px)`,
-        zIndex: 70,
       }
     : (() => {
         const top = (anchorRect?.bottom ?? 56) + 8;
@@ -446,7 +445,6 @@ function NotificationPanel({
           left,
           width,
           maxHeight: `calc(100vh - ${top + 16}px)`,
-          zIndex: 70,
         };
       })();
 
@@ -465,7 +463,11 @@ function NotificationPanel({
       ref={panelRef}
       tabIndex={-1}
       data-notification-panel="1"
-      className="bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/35 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none"
+      /* R115 (A10 a11y tail): z-50 keeps the panel INSIDE the modal
+         layer instead of the old inline zIndex:70, which made it bleed
+         above every Radix dialog (also z-50) — DOM order (this portal
+         mounts at body end) still paints it above the Navbar. */
+      className="bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/35 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none z-50"
       style={panelStyle}
       role="dialog"
       aria-label="الإشعارات"
@@ -476,7 +478,7 @@ function NotificationPanel({
           <Bell className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="font-bold text-sm">الإشعارات</span>
           {unread > 0 && (
-            <span className="bg-primary text-primary-foreground text-[10px] font-black px-1.5 py-0.5 rounded-full leading-none">
+            <span className="bg-primary text-primary-foreground text-3xs font-bold px-1.5 py-0.5 rounded-full leading-none">
               {unread}
             </span>
           )}
@@ -575,7 +577,7 @@ function NotificationPanel({
                         {n.message}
                       </p>
                     )}
-                    <p className="text-[10px] text-muted-foreground mt-1.5 font-medium">
+                    <p className="text-3xs text-muted-foreground mt-1.5 font-semibold">
                       {formatRelativeTime(n.created_at)}
                     </p>
                   </div>
@@ -587,7 +589,7 @@ function NotificationPanel({
                       <button
                         type="button"
                         onClick={() => onAction(n, actionHref)}
-                        className={`flex min-h-11 items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-150 hover:opacity-80 active:scale-95 ${cfg.bg} ${cfg.border} ${cfg.color}`}
+                        className={`flex min-h-11 items-center gap-1.5 text-2xs font-bold px-3 py-1.5 rounded-lg border transition-all duration-150 hover:opacity-80 active:scale-95 ${cfg.bg} ${cfg.border} ${cfg.color}`}
                       >
                         {cfg.actionLabel}
                         {ActionIconComp && <ActionIconComp className="w-3 h-3" />}
@@ -600,7 +602,7 @@ function NotificationPanel({
                           e.stopPropagation();
                           onMarkRead(n.id);
                         }}
-                        className="flex min-h-11 items-center gap-1 text-[11px] text-muted-foreground hover:text-muted-foreground px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-all duration-150"
+                        className="flex min-h-11 items-center gap-1 text-2xs text-muted-foreground hover:text-muted-foreground px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-all duration-150"
                       >
                         <CheckCheck className="w-2.5 h-2.5" />
                         تحديد كمقروء
