@@ -131,6 +131,14 @@ R115 floor — **once the R115 stages have run, NEVER roll back to a
 pre-R115 binary** (R115 = `6f14bc3`; stages landed in `6caa63b`,
 boot-abort P0 fixed in `6f14bc3`):
 
+> **r115-db STATUS (2026-10-01T02:50Z): the R115 stages (V1-M18…M22) are
+> APPLIED to canonical Neon — THIS FLOOR IS IN FORCE FROM NOW ON.** The
+> only pre-R115 recovery point is the verified backup
+> `subnation_preR115_20261001T024634Z.sql.gz` (sha256 `3680136b…4d73`,
+> restore drill PASS); restoring it means recreating the database — it is
+> a disaster-recovery artifact, NOT a rollback tool (Neon never rolls
+> back; fix-forward is the only supported direction — §1).
+
 - **V1-M21 (points_ledger + `users.loyalty_points >= 0` CHECK +
   `welcome_bonus_granted`) is a live-DB FACT after the first R115 boot.**
   A pre-R115 binary boots against the wider schema (additive columns are

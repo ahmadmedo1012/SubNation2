@@ -49,6 +49,31 @@
 > stages through V1-M20) plus M21/M22 in one idempotent, advisory-locked
 > pass.
 >
+> **r115-db EXECUTION RECORD (2026-10-01, live Neon — `calm-art-99771185`
+> branch `main`, db `neondb`):** the full `runMigrations()` reconcile was
+> executed against canonical production by the release engineer at
+> **02:49:32→02:50:07Z** (before any R115 boot; legacy Render writers were
+> suspended first — see `FINAL_OPERATOR_INPUTS.md`). The live DB was at the
+> round-97 chain position (last legacy deploy `e7de0f1` 2026-09-11; no
+> fingerprint row), so **V1-M18 / M19 / M20 / M21 / M22 all first-applied
+> in one pass — 0 constraint skips** (both R115 CHECKs applied:
+> `chk_users_loyalty_points_nonneg`, `chk_orders_refund_amount_range`).
+> Side stages consolidated legacy state exactly as designed (45 duplicate
+> stock alerts merged by V1-M8; r103 redundant index dropped; V1-M17
+> NULLS NOT DISTINCT rebuild; legacy provider rows migrated to
+> `user_auth_identities`). Backfills landed with sane counts:
+> **opening balances 3** (u3=114, u16=114, u24=12 — `correction` /
+> `opening_balance`, no fabricated history), **welcome flags 0** (no
+> referred users with referral_signup credit — correct), **refund
+> backfill 2** (order 1: 60.00 @ 2026-08-26T03:31:02Z; order 4: 100.00 @
+> 2026-09-07T18:52:30Z; `refunded_by_admin_id` NULL by design). Post-state
+> verified: schema reconciliation **42/42 tables, 0 mismatches vs the
+> drizzle TS source of truth, 12 enums exact**; loyalty cached=ledger
+> 3/3; wallet cached=ledger 5/5. **No fingerprint was persisted** (the
+> executor ran the TS source via tsx — no build-time define): the first
+> production boot performs its own full no-op reconcile and writes the
+> `v2` marker. Boot therefore does NOT re-apply anything — it verifies.
+>
 > `FH-A*` references below point to the R108 mission audit specs (a
 > working-session record) — they are **not** files in this repository.
 

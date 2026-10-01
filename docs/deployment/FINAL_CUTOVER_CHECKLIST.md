@@ -39,7 +39,15 @@
       installed (`FINAL_COMMAND_BOOK.md` §NEON)
 - [ ] Restore drill completed on the VM: `restore-drill-check.sh` exit 0
       against a scratch DB (`docs/deployment/FINAL_RESTORE_DRILL.md`;
-      the 2026-09-25 sandbox drill PASSED — this box is the VM-parity rerun)
+      sandbox drills PASSED 2026-09-25 (R112) and 2026-10-01 (R115
+      pre-migration backup, Neon scratch branch, exit 0) — this box is
+      the VM-parity rerun)
+- [x] DB pre-reconciliation DONE (2026-10-01, release engineer): backup
+      `subnation_preR115_20261001T024634Z.sql.gz` verified + drill PASS;
+      R115 stages V1-M18…M22 applied to canonical Neon (0 skips, backfill
+      counts sane); schema = R115 expected (42/42, drift 0); wallet 5/5 +
+      loyalty 3/3 reconciled; legacy Render writers suspended. First
+      production boot = no-op verify reconcile + fingerprint write
 - [ ] SubNation healthy: container health=healthy, `/api/healthz` 200
 - [ ] OpenWA healthy: `/healthz` 200; WhatsApp session linked via QR
       (operator, in the gateway dashboard — never share the QR/code)

@@ -67,7 +67,7 @@ GitHub **account** level, outside the repositories:
 ## What is deliberately NOT requested
 
 - **No Redis, no worker tier** — single-instance contract (`docs/deployment/NEON_IDLE_ECONOMICS.md`).
-- **No Render API token** — Render stays a cold legacy fallback; its services stay suspended until you decide their fate (`docs/deployment/RENDER_LEGACY_FALLBACK.md`).
+- **No Render API token** — Render stays a cold legacy fallback. **r115-db event (2026-10-01):** the Oct-1 free-hours renewal AUTO-RESUMED the legacy services (they were running September's `e7de0f1` code against Neon); both writers — SubNation2 and openwa-gateway — were re-suspended via API at 02:47:50Z before the R115 database reconcile (writer quarantine + the never-two-OpenWA-gateways rule). **Keep them suspended until the 24h stability window closes** (`RENDER_LEGACY_FALLBACK.md`); do not resume the old app against the now-R115 database — see the R115 floor in `FINAL_ROLLBACK_RUNBOOK.md` §4.
 - **No Vercel token** — the SPA ships from the same origin as the API.
 - **No Cloudflare API token** for cutover — dashboard-only by design.
 - **No WhatsApp credentials to any human/agent** — the QR pairing happens on the VM, in the gateway dashboard, by you.

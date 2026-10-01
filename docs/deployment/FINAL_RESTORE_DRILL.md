@@ -94,7 +94,30 @@ drop command the check script prints on success (`restore-drill-check.sh:99`).
 | Date | Environment | Steps | Result | Operator |
 |---|---|---|---|---|
 | **2026-09-25 (R112)** | engineering sandbox → live Neon DB (dump source) + local scratch PG cluster | 1–5 above | **PASS** — details below | r112 agent |
+| **2026-10-01 (R115)** | release sandbox → live Neon (backup source) + **Neon scratch branch** `r115-restore-drill` db `drill_restore` | 1–5 above | **PASS** — details below | r115 release engineer |
 | PENDING-OPERATOR | Oracle VM (on-VM tooling proof) | 1–5 above | first ON-VM drill is a pre-cutover requirement | — |
+
+### R115 drill record (2026-10-01) — PASS
+
+- **Backup under test:** `subnation_preR115_20261001T024634Z.sql.gz`
+  (62,417 bytes) — the **pre-migration** recovery point taken at
+  02:46:34Z, immediately before the R115 reconcile (see
+  `BACKUP_METADATA.json` shipped beside it in the same download bundle;
+  sha256 `3680136b…4d73`). `pg_dump 17.11` (exact server match) exit 0,
+  `gzip -t` OK, 40 COPY blocks / 40 CREATE TABLE.
+- **Scratch target:** Neon branch (copy-on-write) on the SAME project —
+  branch `r115-restore-drill`, database `drill_restore` (name-guard
+  satisfied by construction). Production was never touched; the branch
+  was **deleted** after the drill (HTTP 200).
+- **Restore:** `zcat | psql` → exit 0 in 1m39s, **zero SQL errors**.
+- **Validation:** `restore-drill-check.sh` → **exit 0 (RESTORE DRILL
+  DATABASE VALIDATED)** — 40 tables, users 17 / admin_users 3 / products
+  59 (45 ACTIVE) / variants 263 / inventory 10 / topups 13 / orders 7 /
+  openwa_sessions queryable; FK constraints 39 restored; orphan checks
+  0; wallet cached=ledger parity 5/5 in the restored copy.
+- **Delta vs R112 drill:** validated the exact R115 pre-migration backup
+  (the recovery point the rollback floor depends on), on a Neon-native
+  scratch branch rather than a local cluster.
 
 ### R112 drill record (2026-09-25) — PASS
 
