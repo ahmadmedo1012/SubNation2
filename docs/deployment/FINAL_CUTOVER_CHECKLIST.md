@@ -1,4 +1,4 @@
-# FINAL CUTOVER CHECKLIST — executable, in order (R112)
+# FINAL CUTOVER CHECKLIST — executable, in order (R115)
 
 > Print this. Every box is executable and verifiable. Do not reorder: each
 > section's gates exist to protect the next section. Reference docs live
@@ -7,13 +7,15 @@
 ## SECTION A — PRE-CUTOVER (engineering-ready proof)
 
 - [ ] Source gates green at the release SHA: typecheck, lint 0 errors,
-      **backend 1447 + frontend 635 + openwa 103 = 2185 tests**, OpenAPI
+      **backend 1497 + frontend 703 + openwa 103 = 2303 tests**, OpenAPI
       route gate, migration drift, production build, gitleaks 0
-      (re-verified locally at the r113 HEAD — see the commit message;
-      re-run via `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL).
-      NOTE: the red ✗ on GitHub pushes is the Actions billing suspension
-      (`FINAL_OPERATOR_INPUTS.md` §account-level cleanup), not a code
-      regression — restore Actions or run the suite locally per command book
+      (re-verified locally at the R115 release SHA `6f14bc3`, 2026-10-01 —
+      see `FINAL_SIGNOFF.md`; re-run via
+      `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL).
+      NOTE: GitHub Actions is disabled on SubNation2 (billing —
+      `FINAL_OPERATOR_INPUTS.md` §account-level cleanup), so GitHub shows
+      NO CI runs for `6f14bc3`; the local run of the same CI commands is
+      the release authority
 - [ ] Secrets generated on the VM: `scripts/generate-production-secrets.sh`;
       values in password manager + encrypted offline backup
       (`docs/deployment/SECRET_HANDLING_FINAL.md`)
@@ -53,6 +55,14 @@ Coolify preview URL — NO public traffic yet)
 - [ ] Checkout (e2e dry): with test stock loaded, a test purchase credits
       the order + decrements inventory + wallet math correct —
       then refund it in admin and verify
+- [ ] Loyalty economics (R115): the test purchase writes its
+      `points_ledger` row (award) in the same transaction; the refund
+      revokes exactly the unspent award remainder; the wallet page
+      STATEMENT (`GET /wallet/ledger`) and the loyalty page POINTS HISTORY
+      (`GET /loyalty/ledger`) render the movements with Arabic labels
+- [ ] Welcome policy B (R115): a referred test account gets NOTHING at
+      signup and 5 LYD credited at its FIRST approved topup (verify on a
+      scratch account — never fabricate on real ones)
 - [ ] Socket.IO: live order/wallet updates arrive in the browser session
 - [ ] Admin: login + TOTP enrollment screen reachable + inventory upload
       dialog opens (`docs/operations/FINAL_ADMIN_TOTP_SETUP.md`)

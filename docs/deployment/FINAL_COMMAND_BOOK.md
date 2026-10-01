@@ -1,21 +1,21 @@
-# FINAL COMMAND BOOK — every command, by phase (R112)
+# FINAL COMMAND BOOK — every command, by phase (R115)
 
 > Copy/paste-only book. Every command corresponds to a real file in this
 > repository (or a standard Ubuntu/Cloudflare action). Run them in phase
 > order. Nothing here invents placeholders that hide missing work — where a
 > step needs YOUR value it says `<OPERATOR_INPUT>` explicitly.
 
-## LOCAL (engineering laptop — already executed in R112, repeatable anytime)
+## LOCAL (engineering laptop — already executed on the R115 release SHA `6f14bc3`, 2026-10-01; repeatable anytime)
 
 ```bash
 git clone https://github.com/ahmadmedo1012/SubNation2 && cd SubNation2
 pnpm install --frozen-lockfile
 
-# full source gates (all green at R112 HEAD)
+# full source gates (all green at R115 HEAD `6f14bc3`)
 pnpm run typecheck                                    # exit 0
-pnpm run lint                                         # 0 errors (85 warnings baseline)
-pnpm --filter @workspace/api-server exec vitest run   # 157 files / 1447 tests
-pnpm --filter @workspace/subnation run test:run       # 92 files / 635 tests
+pnpm run lint                                         # 0 errors (91 warnings baseline)
+pnpm --filter @workspace/api-server exec vitest run   # 162 files / 1497 tests
+pnpm --filter @workspace/subnation run test:run       # 101 files / 703 tests
 
 # contract + drift + env gates
 pnpm --filter @workspace/scripts exec tsx ../scripts/check-openapi-routes.ts
@@ -25,7 +25,8 @@ pnpm --filter @workspace/db exec drizzle-kit generate && git diff --exit-code --
 pnpm --filter @workspace/api-server run build
 
 # secret scan (same engine/version CI pins)
-# gitleaks 8.27.2, config .gitleaks.toml — 0 findings at R112 HEAD
+# gitleaks 8.27.2, config .gitleaks.toml — 0 findings at R115 HEAD `6f14bc3`
+# (166 commits / 14.22 MB, git mode)
 
 # environment validator (negative control: the example file FAILS with 9
 # placeholder errors and exit 1; your filled .env must exit 0).
@@ -137,5 +138,8 @@ Follow `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md` — decision matrix first
 (symptom → action), then: app rollback = redeploy older commit in Coolify;
 OpenWA = stop old, start pinned older sha image (**never two gateways on one
 WhatsApp session**); DNS rollback = Cloudflare A record back (TTL-bounded);
-**Neon never rolls back** (restore = DR procedure). Never roll back past
-the r108 migration state (V1-M20 / Neon-killer regression law).
+**Neon never rolls back** (restore = DR procedure). Never roll back to an
+application version incompatible with the applied migrations: once the R115
+stages (V1-M21/V1-M22) have run, the floor is the R115 migration state — and
+`6caa63b`/`3a2e2e1` are NEVER targets (V1-M21 boot-abort P0 lives there;
+fixed only in `6f14bc3`). The pre-r108 V1-M20 law still applies underneath.

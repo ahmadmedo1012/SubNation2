@@ -36,8 +36,9 @@
       dashboard: `DASHBOARD_ENABLED=1`).
 - [ ] Neon reachable FROM the VM: `DATABASE_URL` (app) and
       `PERSISTENCE_URL` (gateway sessions — same DB is fine).
-- [ ] The exact short SHA being deployed — `git rev-parse --short HEAD` (HEAD
-      at writing: `521234f`) for GIT_SHA (§2.2) + the openwa `sha-` tag (§3).
+- [ ] The exact short SHA being deployed — `git rev-parse --short HEAD` (R115
+      release: `6f14bc3`) for GIT_SHA (§2.2) + the openwa `sha-` tag (§3:
+      `sha-ba6a843`, verified multi-arch on GHCR 2026-10-01).
 
 ## 2. Resource 1 — SubNation (Git repository, Docker build pack)
 
@@ -61,7 +62,7 @@ through build args)
 
 ```
 # required for release identity:
-GIT_SHA=521234f              # the EXACT short SHA being deployed — lands in
+GIT_SHA=6f14bc3              # the EXACT short SHA being deployed — lands in
                              # /api/healthz .version, logs, Sentry release tag
 VITE_APP_ORIGIN=https://subnation.ly
 

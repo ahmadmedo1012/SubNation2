@@ -1,4 +1,4 @@
-# Final Rollback Runbook — SubNation + OpenWA (R112)
+# Final Rollback Runbook — SubNation + OpenWA (R115)
 
 > THE rollback choreography for the Oracle/Coolify production stack. Companions:
 > `COOLIFY_FINAL_SETUP.md` (deploy shape) · `CLOUDFLARE_FINAL_CUTOVER.md` (DNS)
@@ -32,6 +32,10 @@ Pre-rollback gates (all three, in order):
 
 1. **CI green on the target commit** — GitHub → Actions on that exact SHA.
    A commit whose CI is red is not a rollback target, it is a second incident.
+   **While Actions is disabled on SubNation2 (billing — still true at R115,
+   2026-10-01): substitute the local gate run** —
+   `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL on the target SHA (the
+   exact CI commands). Do NOT skip this gate because GitHub shows nothing.
 2. **Migration compatibility** — the target commit must share the same
    migration state as what is live (§4). `git diff <live-sha> <target-sha> --
    backend/src/migrate.ts shared/db/src/schema/` — empty diff = inside the
@@ -58,12 +62,17 @@ docker pull ghcr.io/ahmadmedo1012/subnation2:sha-<short>   # PRIVATE package —
 # one-time: docker login ghcr.io with a read:packages PAT
 ```
 
-Availability honesty: openwa's workflow publishes a `sha-<short>` tag on every
-push to `main`; **SubNation2's workflow is manual-dispatch / `v*`-tag only**
-(private repo, metered minutes) — a subnation2 sha-tag exists ONLY for commits
-someone ran the workflow on. Check the GHCR package page before you plan on a
-tag. In Coolify: switch the resource from Git build to the registry image,
-pin the exact tag, redeploy (`COOLIFY_FINAL_SETUP.md` §2.3 emergency path).
+Availability honesty (re-verified 2026-10-01): openwa's workflow publishes a
+`sha-<short>` tag on every push to `main` — `sha-ba6a843` is verified
+PRESENT on GHCR as a multi-arch index (linux/amd64 + linux/arm64) and CI is
+green for it. **SubNation2's workflow is manual-dispatch / `v*`-tag only**
+(metered minutes) AND Actions is currently disabled — **NO
+`subnation2` GHCR image exists for any commit**. §2 is therefore NOT
+available as a SubNation rollback path until Actions is restored and the
+workflow is dispatched once (`FINAL_OPERATOR_INPUTS.md` §account-level
+cleanup). For openwa, image rollback works today. In Coolify: switch the
+resource from Git build to the registry image, pin the exact tag, redeploy
+(`COOLIFY_FINAL_SETUP.md` §2.3 emergency path).
 §4's migration gate applies to image rollbacks identically.
 
 ## 3. DNS rollback — the Cloudflare A record
@@ -117,6 +126,34 @@ commit `39bedf4`; `SINGLE_INSTANCE_MODE` in `1bca23d`):
   Free allowance; B6-01 proved it
   live at 92.4% of all UPDATEs). That is the exact economics the migration
   exists to escape.
+
+R115 floor — **once the R115 stages have run, NEVER roll back to a
+pre-R115 binary** (R115 = `6f14bc3`; stages landed in `6caa63b`,
+boot-abort P0 fixed in `6f14bc3`):
+
+- **V1-M21 (points_ledger + `users.loyalty_points >= 0` CHECK +
+  `welcome_bonus_granted`) is a live-DB FACT after the first R115 boot.**
+  A pre-R115 binary boots against the wider schema (additive columns are
+  tolerated) but its loyalty writes BYPASS the ledger — balances mutate
+  with no ledger rows, breaking the economics-integrity invariant the R115
+  audit built — and legacy negative-deduction paths can violate the
+  non-negativity CHECK (SQLSTATE 23514 → failed writes). Welcome policy
+  also re-diverges (signup-credit vs policy-B first-topup-credit:
+  double-grant/lie risk). This is exactly the "application version
+  incompatible with the applied R115 migrations" case — prefer fix-forward.
+- **V1-M22 (orders refund columns + wallet_ledger backfill)** is additive
+  and harmless to an old binary by itself — but it never travels without
+  M21; treat the pair as one floor.
+- **Within R115, the ONLY safe same-migration-state target is `6f14bc3`
+  itself.** `6caa63b` and `3a2e2e1` carry the pre-fix V1-M21
+  opening-balance backfill that ABORTS BOOT for zero-point users (every
+  never-earned signup trips `chk_points_ledger_delta_nonzero` → SQLSTATE
+  23514 → critical → exit; reproduced by the R115-R1 reviewer in pglite
+  against the exact DDL). They are never deploy targets, forward or
+  backward.
+- **`DISABLE_BOOT_MIGRATIONS=true` does not create compatibility** — it
+  only stops an old binary from running its corpus. Use it solely to boot
+  a known-compatible binary while fixing forward.
 
 Emergency hatch: `DISABLE_BOOT_MIGRATIONS=true` skips `runMigrations()` at
 boot — it stops an old binary from running its corpus, but does NOT make that

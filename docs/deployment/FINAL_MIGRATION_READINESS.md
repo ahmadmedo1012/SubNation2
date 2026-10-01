@@ -31,6 +31,24 @@
 > in r110) upgrades this on any Docker host. The affected rows are amended
 > in place below.
 >
+> **r115 update (2026-10-01, release `6f14bc3`):** the migration corpus grew
+> by two idempotent boot stages — **V1-M21** (`points_ledger` table with
+> structural exactly-once partial UNIQUE + attributed-type CHECKs,
+> `users.welcome_bonus_granted`, `users.loyalty_points >= 0` CHECK —
+> probe-gated, skip-and-warn + reboot-to-apply on CHECK violations) and
+> **V1-M22** (orders `refunded_at` / `refund_amount` / `refunded_by_admin_id`
+> + backfill from `wallet_ledger` evidence). The drizzle journal moved to
+> **0014** (`0014_fuzzy_jazinda`); migration drift gate re-verified clean at
+> `6f14bc3` (regenerate → no tree change). The independent R115-R1 review
+> caught a **P0 in the original V1-M21 opening-balance backfill** (zero-point
+> users tripped `chk_points_ledger_delta_nonzero` → SQLSTATE 23514 → boot
+> abort); fixed in `6f14bc3` with `WHERE u.loyalty_points <> 0` — therefore
+> **`6caa63b` / `3a2e2e1` are never deploy targets** (rollback law:
+> `FINAL_ROLLBACK_RUNBOOK.md` §4 R115 floor). First R115 boot applies every
+> still-pending stage (the R112 live-DB record: 4 non-destructive pre-R115
+> stages through V1-M20) plus M21/M22 in one idempotent, advisory-locked
+> pass.
+>
 > `FH-A*` references below point to the R108 mission audit specs (a
 > working-session record) — they are **not** files in this repository.
 

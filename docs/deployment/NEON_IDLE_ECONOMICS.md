@@ -1,7 +1,10 @@
 # NEON IDLE ECONOMICS — the single-instance contract (R112, final)
 
 > Why this stack keeps Neon's free-tier compute allowance alive by default,
-> proven from code at HEAD `521234f`. This is the economics gate for the
+> proven from code at HEAD `521234f` (scheduler/economics code verified
+> UNCHANGED through the R115 release `6f14bc3` — the R112→R115 delta does
+> not touch `web-scheduler.ts`/`jobs/`/`boot-migrations.ts`). This is the
+> economics gate for the
 > cutover: if any claim here regresses, the free-tier Neon budget burns.
 
 ## 1. The problem this design solves (the Neon-killer lesson)

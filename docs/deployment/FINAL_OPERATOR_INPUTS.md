@@ -1,4 +1,4 @@
-# FINAL OPERATOR INPUTS — what ONLY the human operator provides (R112)
+# FINAL OPERATOR INPUTS — what ONLY the human operator provides (R115)
 
 > Everything engineering can prepare is prepared and on GitHub. The cutover
 > now waits exclusively on the inputs below — none of them can be supplied
@@ -61,7 +61,7 @@ GitHub **account** level, outside the repositories:
 |---|---|---|
 | **Failing Vercel integration** | The Vercel GitHub App is still installed and `vercel[bot]` creates a failing "Production" deployment on EVERY push to main (verified 2026-09-25 at `ff8ac51`: "Deployment has failed") — legacy noise from the retired split stack | Vercel dashboard → the SubNation project → Settings → Git → **Disconnect** the repo (or delete the project); alternatively GitHub → Settings → Applications → Installed GitHub Apps → Vercel → Configure → remove `SubNation2` |
 | Supabase Preview integration | The Supabase GitHub App also creates preview-branch checks per PR — green but unused (the stack runs Neon, not Supabase) | Same path: GitHub → Settings → Applications → Supabase → remove `SubNation2` (keep if you actually want preview DBs) |
-| **GitHub Actions billing** | Actions is billing-suspended ("recent account payments have failed or your spending limit needs to be increased") — every CI run since r111 fails at job-start; the red ✗ on recent commits is THIS, not a code regression (verified 2026-09-25) | GitHub → Settings → Billing & plans → restore Actions minutes / raise the spending limit; CI then re-runs green on the next push |
+| **GitHub Actions billing** | Actions is disabled on SubNation2 (billing-suspended — "recent account payments have failed or your spending limit needs to be increased"; r113 verified, still true 2026-10-01: zero CI runs exist for the R115 release `6f14bc3`) — the release gates were verified locally with the exact CI commands (`FINAL_SIGNOFF.md`) | GitHub → Settings → Billing & plans → restore Actions minutes / raise the spending limit; CI then re-runs green on the next push |
 | First `subnation2` GHCR image | After Actions is restored: run the `Docker Image (multi-arch)` workflow once (workflow_dispatch) so the emergency-fallback image `ghcr.io/ahmadmedo1012/subnation2:sha-<short>` actually exists | GitHub → SubNation2 → Actions → "Docker Image (multi-arch)" → Run workflow |
 
 ## What is deliberately NOT requested

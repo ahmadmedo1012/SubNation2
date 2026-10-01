@@ -1,6 +1,10 @@
-# Final Production Environment Contract (r112)
+# Final Production Environment Contract (r115)
 
-> FINAL. Reconciled against code at HEAD 521234f — not memory. Every variable
+> FINAL. Reconciled against code at HEAD 521234f (r112) and RE-VERIFIED
+> UNCHANGED at the R115 release `6f14bc3` (2026-10-01): a diff of the
+> R112→R115 delta over `backend/src` + `shared/` + `frontend/src` shows
+> **zero `process.env.*` / `import.meta.env.*` readers added or removed** —
+> every row below stands exactly as written. Every variable
 > below was enumerated with `rg -o "process\.env\.[A-Z_0-9]+"` over
 > `backend/src` + `shared/`, `rg -o "import\.meta\.env\.[A-Z_0-9]+"` over
 > `frontend/src`, and the same over the openwa repo's `src`. Cross-checked
