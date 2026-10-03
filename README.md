@@ -87,15 +87,38 @@ config/     env.example (fully annotated reference)
 ```bash
 pnpm install
 cp config/env.example .env      # then edit DATABASE_URL (and SESSION_SECRET for prod)
-
-pnpm run db:push                # apply the Drizzle schema
+pnpm run dev                    # boot migrations create/update the schema automatically
 pnpm run db:seed                # create the default admin + sample products
-
-pnpm run dev                    # starts API + frontend, auto-picks free ports
 ```
 
 Open the printed local URL. Ports are only _preferences_ — the runner moves to
 the next free port automatically and wires the Vite `/api` proxy for you.
+
+> **Schema note:** there is no `db:push` step. Schema changes flow exclusively
+> through the idempotent boot migrations (`backend/src/migrate.ts`) which the
+> dev server runs automatically on every cold start. The `drizzle-kit push`
+> script is intentionally not part of the workflow — it generates SQL this
+> schema rejects and can drop tables that exist only in production (see
+> `scripts/post-merge.sh` and `docs/deep-audit-2026-09-06.md`). The dev server
+> must be running (or have completed boot) before `pnpm run db:seed`, which is
+> idempotent and safe to re-run.
+
+### Local PostgreSQL (any OS with Docker)
+
+```bash
+docker run -d --name subnation-pg \
+  -e POSTGRES_USER=subnation -e POSTGRES_PASSWORD=<your-local-password> \
+  -e POSTGRES_DB=subnation \
+  -p 127.0.0.1:5432:5432 \
+  -v subnation-pg-data:/var/lib/postgresql/data \
+  postgres:16-alpine
+
+# .env
+DATABASE_URL=postgresql://subnation:<your-local-password>@127.0.0.1:5432/subnation
+```
+
+Redis is optional and unset in development — rate limiting, caching and the
+scheduler fall back to the in-process / Postgres-lease paths automatically.
 
 ---
 
