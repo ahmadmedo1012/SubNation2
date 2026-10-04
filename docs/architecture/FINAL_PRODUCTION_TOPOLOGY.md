@@ -4,8 +4,9 @@
 > which service, what fails alone, what is backed up, what can scale. Deep
 > dives: `docs/deployment/` (setup/cutover/rollback) ·
 > `docs/deployment/SECRET_HANDLING_FINAL.md` (values) ·
-> `docs/DISASTER_RECOVERY.md` (restore) · `PRODUCTION_ARCHITECTURE.md` (r107
-> canonical map this condenses).
+> `docs/DISASTER_RECOVERY.md` (restore) ·
+> `PRODUCTION_ARCHITECTURE.md` (deep engineering reference — scheduler
+> economics, schema authority, lifecycles, security, history).
 
 ## 1. The request path (browser → store)
 
