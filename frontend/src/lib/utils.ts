@@ -150,7 +150,6 @@ export function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
-
 // 93-C6 / F-06 (A5 PR-1 + A11 §4, round-93): formatRelativeTime now
 // delegates to Intl.RelativeTimeFormat so Arabic plurals are correct
 // (دقيقة واحدة / دقيقتين / 5 دقائق / 11 دقيقة) in BOTH directions.

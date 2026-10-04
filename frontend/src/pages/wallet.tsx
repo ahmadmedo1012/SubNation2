@@ -22,11 +22,7 @@ import {
   tierColor,
   tierLabel,
 } from "@/lib/utils";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-} from "@/components/ui/status-badge";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { isValidLibyanPhone, libyanPhoneError } from "@/lib/validation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -1833,7 +1829,9 @@ export default function WalletPage() {
                         {/* R116: shared StatusBadge (STATUS_TONE) replaces
                             the deprecated statusColor() — 93-C7 follow-up. */}
                         <StatusBadge
-                          variant={STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
+                          variant={
+                            STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
+                          }
                           size="xs"
                         >
                           {statusLabel(t.status)}

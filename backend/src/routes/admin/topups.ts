@@ -26,9 +26,7 @@ router.use((_req, res, next) => {
 // 500 INTERNAL_ERROR for a perfectly-formed-per-contract request. The
 // filter is schema-validated up front now: bad value → 400 INVALID_DATA.
 // Values mirror topupStatusEnum (shared/db/src/schema/wallet_topups.ts).
-const TopupStatusFilter = z
-  .enum(["pending", "approved", "rejected"])
-  .optional();
+const TopupStatusFilter = z.enum(["pending", "approved", "rejected"]).optional();
 
 // M3 — admin_note was read raw from the body: an object/array value
 // reached Postgres as "[object Object]" → 500 on a money-approval
@@ -62,9 +60,7 @@ router.get("/topups", requireAdmin, async (req, res) => {
       );
   }
   const conditions =
-    statusParse.data !== undefined
-      ? [eq(walletTopupsTable.status, statusParse.data)]
-      : [];
+    statusParse.data !== undefined ? [eq(walletTopupsTable.status, statusParse.data)] : [];
 
   // A2 (round-94): ?page=&limit= — the same clamp pattern as the admin
   // orders list. Previously the route always returned the newest 100

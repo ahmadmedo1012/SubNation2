@@ -6,10 +6,7 @@ import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
 import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
-import {
-  requireAdmin,
-  type AdminAuthenticatedRequest,
-} from "../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 import { idempotency } from "../../middlewares/idempotency";
@@ -174,7 +171,9 @@ router.get("/orders", requireAdmin, async (req, res) => {
       // also audits the reveal. RefundService still nulls the columns in
       // the refund tx, so refunded orders report has_credentials: false.
       has_credentials: !!(
-        r.order.deliveredEmail || r.order.deliveredPassword || r.order.deliveredExtraDetails
+        r.order.deliveredEmail ||
+        r.order.deliveredPassword ||
+        r.order.deliveredExtraDetails
       ),
       coupon_code: r.order.couponCode ?? null,
       discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
@@ -242,7 +241,9 @@ router.get("/orders/:id/credentials", requireAdmin, async (req, res) => {
     order_code: order.orderCode,
     status: order.status,
     has_credentials: !!(
-      order.deliveredEmail || order.deliveredPassword || order.deliveredExtraDetails
+      order.deliveredEmail ||
+      order.deliveredPassword ||
+      order.deliveredExtraDetails
     ),
     delivered_email: safeDecrypt(order.deliveredEmail),
     delivered_password: safeDecrypt(order.deliveredPassword),
@@ -491,15 +492,11 @@ router.patch(
       status === "completed"
         ? and(inArray(ordersTable.id, numIds), eq(ordersTable.status, "completed"))
         : and(inArray(ordersTable.id, numIds), inArray(ordersTable.status, ["pending", "failed"]));
-    const flippedRows = await db
-      .update(ordersTable)
-      .set({ status })
-      .where(guard)
-      .returning({
-        id: ordersTable.id,
-        userId: ordersTable.userId,
-        orderCode: ordersTable.orderCode,
-      });
+    const flippedRows = await db.update(ordersTable).set({ status }).where(guard).returning({
+      id: ordersTable.id,
+      userId: ordersTable.userId,
+      orderCode: ordersTable.orderCode,
+    });
     const updatedCount = flippedRows.length;
 
     // Distinguish WHY each missed id was skipped so the admin sees an

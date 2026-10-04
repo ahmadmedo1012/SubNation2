@@ -196,7 +196,9 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
             onContinue={onApprovedContinue}
           />
         )}
-        {status === "rejected" && <RejectedBody adminNote={topup?.admin_note ?? null} onClose={onClose} />}
+        {status === "rejected" && (
+          <RejectedBody adminNote={topup?.admin_note ?? null} onClose={onClose} />
+        )}
       </AppDialogBody>
     </AppDialog>
   );

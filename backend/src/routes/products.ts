@@ -238,7 +238,7 @@ router.get("/", catalogCache, async (req, res) => {
       // reshape the LIKE pattern (parity with the admin search sweep,
       // r103 AUD103-3-F4).
       conditions.push(
-        sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(search.trim()) + "%"}`
+        sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(search.trim()) + "%"}`,
       );
     }
 

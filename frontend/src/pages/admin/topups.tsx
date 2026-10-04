@@ -9,18 +9,8 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import {
-  copyToClipboard,
-  formatCount,
-  formatCurrency,
-  formatDate,
-  statusLabel,
-} from "@/lib/utils";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-} from "@/components/ui/status-badge";
+import { copyToClipboard, formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -803,9 +793,7 @@ export default function AdminTopupsPage() {
     } else {
       toast({
         title:
-          approvedCount > 0
-            ? `تمت الموافقة على ${approvedCount} من ${pending.length} طلب`
-            : "خطأ",
+          approvedCount > 0 ? `تمت الموافقة على ${approvedCount} من ${pending.length} طلب` : "خطأ",
         description: `نجحت ${approvedCount} · فشلت ${failures.length} — ${failures
           .map((f) => `#${f.id}: ${f.reason}`)
           .join("، ")}`,
@@ -1074,7 +1062,9 @@ export default function AdminTopupsPage() {
                     {/* R116: shared StatusBadge (STATUS_TONE) replaces the
                         deprecated statusColor() — 93-C7 follow-up. */}
                     <StatusBadge
-                      variant={STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
+                      variant={
+                        STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
+                      }
                       size="sm"
                     >
                       {statusLabel(t.status)}
@@ -1142,9 +1132,7 @@ export default function AdminTopupsPage() {
                   {t.status !== "pending" && (t.reviewed_by || t.reviewed_at) && (
                     <div className="flex items-center gap-2 text-2xs text-muted-foreground mb-3">
                       <UserCheck className="w-3 h-3 shrink-0" />
-                      {t.reviewed_by
-                        ? `أُقرّ بواسطة ${t.reviewed_by}`
-                        : "تمت المراجعة"}
+                      {t.reviewed_by ? `أُقرّ بواسطة ${t.reviewed_by}` : "تمت المراجعة"}
                       {t.reviewed_at ? ` · ${formatDate(t.reviewed_at)}` : ""}
                     </div>
                   )}

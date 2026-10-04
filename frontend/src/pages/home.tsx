@@ -2,11 +2,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-} from "@/components/ui/status-badge";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";

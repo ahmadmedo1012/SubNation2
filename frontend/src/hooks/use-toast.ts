@@ -130,7 +130,7 @@ export function toast(input: ToastInput): ToastHandle {
  */
 function helperInput(
   title: ReactNode,
-  second: ReactNode | (Omit<ToastInput, "title" | "variant">) | undefined,
+  second: ReactNode | Omit<ToastInput, "title" | "variant"> | undefined,
   variant: ToastInput["variant"],
 ): ToastInput {
   if (
@@ -139,10 +139,7 @@ function helperInput(
     !isValidElement(second) &&
     !Array.isArray(second)
   ) {
-    const { description, duration, action, id } = second as Omit<
-      ToastInput,
-      "title" | "variant"
-    >;
+    const { description, duration, action, id } = second as Omit<ToastInput, "title" | "variant">;
     return { title, description, duration, action, id, variant };
   }
   return { title, description: second, variant };

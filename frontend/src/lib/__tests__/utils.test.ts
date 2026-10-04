@@ -84,7 +84,6 @@ describe("statusLabel", () => {
   });
 });
 
-
 describe("tierLabel + tierColor", () => {
   it("returns Arabic labels for the 4 loyalty tiers", () => {
     expect(tierLabel("bronze")).toBe("برونزي");

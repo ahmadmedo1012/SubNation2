@@ -171,7 +171,10 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
 const OTP_START_LOCK_RETRY_SEC = 15;
 
 interface PoolClientLike {
-  query: (text: string, values?: readonly unknown[]) => Promise<{
+  query: (
+    text: string,
+    values?: readonly unknown[],
+  ) => Promise<{
     rows: Array<Record<string, unknown>>;
   }>;
   release: () => void;
@@ -197,10 +200,7 @@ async function resolveDbPool(): Promise<PoolLike | null> {
   return cachedPool;
 }
 
-async function withPhoneStartLock(
-  phone: string,
-  input: StartOtpInput,
-): Promise<StartOtpResult> {
+async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<StartOtpResult> {
   const pool = await resolveDbPool();
   if (pool === null) {
     // No pool (test harness / module-boundary mocks) — no cross-process

@@ -144,7 +144,9 @@ router.get("/", requireUser, async (req, res) => {
       amount: toNumber(r.order.amount),
       status: r.order.status,
       has_credentials: !!(
-        r.order.deliveredEmail || r.order.deliveredPassword || r.order.deliveredExtraDetails
+        r.order.deliveredEmail ||
+        r.order.deliveredPassword ||
+        r.order.deliveredExtraDetails
       ),
       delivered_email: null,
       delivered_password: null,

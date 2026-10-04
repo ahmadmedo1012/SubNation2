@@ -1,16 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
-import {
-  formatCount,
-  formatCurrency,
-  formatDateShort,
-  statusLabel,
-} from "@/lib/utils";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-} from "@/components/ui/status-badge";
+import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { getListOrdersQueryKey, useListOrders } from "@workspace/api-client-react";
 import {
   CheckCircle,

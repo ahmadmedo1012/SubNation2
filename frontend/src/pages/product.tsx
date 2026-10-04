@@ -1017,262 +1017,301 @@ export default function ProductPage() {
       >
         {/* ── START column (RTL first = right): media + description ── */}
         <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
-        {/* Image — max-lg:-mb-4 cancels the wrapper gap so the media stays
+          {/* Image — max-lg:-mb-4 cancels the wrapper gap so the media stays
             flush against the card body exactly like the pre-split layout. */}
-        <div
-          className={`order-1 max-lg:-mb-4 aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}
-        >
-          {/* Ambient inner glow */}
-          <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/20 pointer-events-none" />
+          <div
+            className={`order-1 max-lg:-mb-4 aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}
+          >
+            {/* Ambient inner glow */}
+            <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/20 pointer-events-none" />
 
-          {product.image_url ? (
-            <img
-              src={product.image_url}
-              alt={(() => {
-                const name = (product.name ?? "").trim();
-                const cat = categoryLabel(product.category);
-                if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";
-                const hasSub = /اشتراك/.test(name);
-                return cat && cat !== "عام"
-                  ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
-                  : name;
-              })()}
-              width={800}
-              height={800}
-              fetchPriority="high"
-              decoding="async"
-              className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
-              // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
-              // URL swaps to the initial-letter tile instead of painting the
-              // browser's broken-image glyph inside the page's largest
-              // visual element. width/height (above) already pin the box.
-              onError={(e) => {
-                const el = e.target as HTMLImageElement;
-                el.style.display = "none";
-                const fallback = el.nextElementSibling as HTMLElement | null;
-                if (fallback) fallback.style.display = "flex";
-              }}
-            />
-          ) : null}
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={(() => {
+                  const name = (product.name ?? "").trim();
+                  const cat = categoryLabel(product.category);
+                  if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";
+                  const hasSub = /اشتراك/.test(name);
+                  return cat && cat !== "عام"
+                    ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
+                    : name;
+                })()}
+                width={800}
+                height={800}
+                fetchPriority="high"
+                decoding="async"
+                className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
+                // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
+                // URL swaps to the initial-letter tile instead of painting the
+                // browser's broken-image glyph inside the page's largest
+                // visual element. width/height (above) already pin the box.
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement;
+                  el.style.display = "none";
+                  const fallback = el.nextElementSibling as HTMLElement | null;
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+            ) : null}
 
-          {/* No-image fallback — always mounted (hidden when an image URL
+            {/* No-image fallback — always mounted (hidden when an image URL
               exists) so an onError above can reveal it without a re-render,
               exactly like ProductCard's category-icon fallback. */}
-          <div
-            style={{ display: product.image_url ? "none" : "flex" }}
-            className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
-          >
-            <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
-              <span
-                className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
-              >
-                {(product.name || "؟")[0]}
-              </span>
+            <div
+              style={{ display: product.image_url ? "none" : "flex" }}
+              className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
+            >
+              <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
+                <span
+                  className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
+                >
+                  {(product.name || "؟")[0]}
+                </span>
+              </div>
             </div>
-          </div>
 
-          {/* Top badges — z-[3] keeps them above the z-[2] fallback layer
+            {/* Top badges — z-[3] keeps them above the z-[2] fallback layer
               (same stacking discipline as ProductCard's media area). */}
-          <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-2xs font-bold px-2.5 py-1 rounded-full border border-white/8">
-            {categoryLabel(product.category)}
-          </div>
-          {product.discount_percent && (
-            <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
-              <Tag className="w-3 h-3" />
-              خصم {product.discount_percent}%
+            <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-2xs font-bold px-2.5 py-1 rounded-full border border-white/8">
+              {categoryLabel(product.category)}
             </div>
-          )}
+            {product.discount_percent && (
+              <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
+                <Tag className="w-3 h-3" />
+                خصم {product.discount_percent}%
+              </div>
+            )}
 
-          {/* Fade into card body */}
-          <div className="absolute inset-x-0 bottom-0 z-[3] h-20 bg-gradient-to-t from-card to-transparent" />
-        </div>
+            {/* Fade into card body */}
+            <div className="absolute inset-x-0 bottom-0 z-[3] h-20 bg-gradient-to-t from-card to-transparent" />
+          </div>
 
-        {/* R116-S2: below lg this dissolves (max-lg:contents) so its
+          {/* R116-S2: below lg this dissolves (max-lg:contents) so its
             children join the wrapper's flex flow; at lg it is the START
             column's padded content stack (the image stays full-bleed
             above it inside the section card). */}
-        <div className="max-lg:contents lg:p-5 lg:space-y-4">
-          {/* Title */}
-          <div className="order-2 max-lg:px-5 max-lg:pt-5">
-            {/* R116-S2 (P3): dir="auto" (Latin-heavy product names were
+          <div className="max-lg:contents lg:p-5 lg:space-y-4">
+            {/* Title */}
+            <div className="order-2 max-lg:px-5 max-lg:pt-5">
+              {/* R116-S2 (P3): dir="auto" (Latin-heavy product names were
                 scrambled by the RTL base direction) + the dead
                 leading-tight/tracking-tight overrides dropped — Arabic
                 letter-spacing tears the cursive joins. */}
-            <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5">
-              {product.name}
-            </h1>
-            {product.description && (
-              <p className="text-muted-foreground leading-relaxed text-sm">{product.description}</p>
-            )}
-          </div>
+              <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5">
+                {product.name}
+              </h1>
+              {product.description && (
+                <p className="text-muted-foreground leading-relaxed text-sm">
+                  {product.description}
+                </p>
+              )}
+            </div>
 
-          {/* Long-form description (Phase 2 SEO content) — rendered ONLY
+            {/* Long-form description (Phase 2 SEO content) — rendered ONLY
               when an editor has provided one. Mirrors the value embedded
               in the Product JSON-LD so on-page text matches the
               structured data Google ingests. */}
-          {productAny?.description_long && (
-            <div className="order-3 max-lg:px-5 rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
-              {productAny.description_long}
-            </div>
-          )}
+            {productAny?.description_long && (
+              <div className="order-3 max-lg:px-5 rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
+                {productAny.description_long}
+              </div>
+            )}
 
-          {/* Feature checklist (catalog 2026-09-20) — the imported Arabic
+            {/* Feature checklist (catalog 2026-09-20) — the imported Arabic
               bullets. Rendered as a real list (a11y: listitem semantics) with
               check icons; Google reads the same text into the product's
               content signals. */}
-          {Array.isArray(productAny?.features) && productAny.features.length > 0 && (
-            <ul className="order-4 max-lg:px-5 grid sm:grid-cols-2 gap-2 list-none">
-              {productAny.features.map((feature: string) => (
-                <li
-                  key={feature}
-                  className="flex items-start gap-2 rounded-xl border border-border/40 bg-muted/10 px-3.5 py-2.5 text-sm text-foreground/85 leading-relaxed"
-                >
-                  <CheckCircle
-                    className="w-4 h-4 mt-0.5 shrink-0 text-status-success"
-                    aria-hidden="true"
-                  />
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+            {Array.isArray(productAny?.features) && productAny.features.length > 0 && (
+              <ul className="order-4 max-lg:px-5 grid sm:grid-cols-2 gap-2 list-none">
+                {productAny.features.map((feature: string) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2 rounded-xl border border-border/40 bg-muted/10 px-3.5 py-2.5 text-sm text-foreground/85 leading-relaxed"
+                  >
+                    <CheckCircle
+                      className="w-4 h-4 mt-0.5 shrink-0 text-status-success"
+                      aria-hidden="true"
+                    />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-        {/* FAQ accordion (Phase 2 SEO content). Renders only when the
+          {/* FAQ accordion (Phase 2 SEO content). Renders only when the
             product carries curated FAQ entries. The visible text mirrors
             the FAQPage JSON-LD emitted by useSeo() above — Google
             specifically requires the on-page accordion to match the
             structured data for FAQ rich results to trigger. R116-S2: at lg
             it closes the START (content) column; order-10 preserves its
             mobile position between the trust grid and the coupon field. */}
-        {productFaqs && (
-          <details className="order-10 max-lg:px-5 lg:px-5 lg:pb-5 rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
-            <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
-              <span>الأسئلة الشائعة</span>
-              <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
-            </summary>
-            <div className="border-t border-border/30 divide-y divide-border/30">
-              {productFaqs.map((faq, idx) => (
-                <details key={idx} className="group/q">
-                  <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
-                    <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
-                    <span className="flex-1">{faq.question}</span>
-                  </summary>
-                  <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
-                    {faq.answer}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </details>
-        )}
-      </section>
+          {productFaqs && (
+            <details className="order-10 max-lg:px-5 lg:px-5 lg:pb-5 rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
+              <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
+                <span>الأسئلة الشائعة</span>
+                <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
+              </summary>
+              <div className="border-t border-border/30 divide-y divide-border/30">
+                {productFaqs.map((faq, idx) => (
+                  <details key={idx} className="group/q">
+                    <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
+                      <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
+                      <span className="flex-1">{faq.question}</span>
+                    </summary>
+                    <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
+                      {faq.answer}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
 
-      {/* R116-S2: END column — at lg this is the sticky buy panel
+        {/* R116-S2: END column — at lg this is the sticky buy panel
           (selector → price → usage → error → trust → CTA); below lg it
           dissolves (max-lg:contents) so the blocks keep their exact
           pre-split mobile order via flex order-5..order-12. */}
-      <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
-        <div className="max-lg:contents lg:p-5 lg:space-y-4">
-          {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
+        <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+          <div className="max-lg:contents lg:p-5 lg:space-y-4">
+            {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
               Plan × Duration matrix rendered as grouped pills. Shown only
               when the product carries >1 active option — single-option
               products skip the selector entirely (their price block IS the
               variant). Touch targets ≥ 44px, high-contrast selected state. */}
-          {sortedVariants.length > 1 && (
-            <div className="order-5">
-              <VariantSelector
-                variants={sortedVariants}
-                selectedId={selectedVariant?.id ?? null}
-                onSelect={setSelectedVariantId}
-              />
-            </div>
-          )}
-
-          {/* Price + stock */}
-          <div className="order-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
-            <div className="flex-1">
-              <div className="text-3xl font-bold text-primary leading-none tabular-nums">
-                {formatCurrency(displayPrice)}
+            {sortedVariants.length > 1 && (
+              <div className="order-5">
+                <VariantSelector
+                  variants={sortedVariants}
+                  selectedId={selectedVariant?.id ?? null}
+                  onSelect={setSelectedVariantId}
+                />
               </div>
-              {/* R115-I1 (A7 P2-1): the strike follows the EFFECTIVE
+            )}
+
+            {/* Price + stock */}
+            <div className="order-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
+              <div className="flex-1">
+                <div className="text-3xl font-bold text-primary leading-none tabular-nums">
+                  {formatCurrency(displayPrice)}
+                </div>
+                {/* R115-I1 (A7 P2-1): the strike follows the EFFECTIVE
                   selection exactly like the duration pills below — the
                   SELECTED variant's base price when a variant is picked.
                   product.price is the MIN variant price (backend
                   contract), so the old strike showed «كان 25 د.ل → الآن
                   80 د.ل» nonsense during flash sales on any
                   non-cheapest option. */}
-              {(selectedVariant ? selectedVariant.sale_price : product.sale_price) != null && (
-                <div className="text-muted-foreground text-sm line-through mt-1.5 tabular-nums">
-                  {formatCurrency(selectedVariant ? selectedVariant.price : product.price)}
-                </div>
-              )}
-            </div>
-            <div
-              role="status"
-              aria-live="polite"
-              aria-label={
-                product.is_available ? `المنتج متوفر، الكمية ${product.stock_count}` : "نفد المخزون"
-              }
-              className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
-                product.is_available
-                  ? "bg-status-success/10 border-status-success/22 text-status-success"
-                  : "bg-muted/50 border-border/50 text-muted-foreground"
-              }`}
-            >
-              {product.is_available ? (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر (
-                  {product.stock_count})
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5" aria-hidden="true" /> نفد المخزون
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Usage terms */}
-          {product.usage_terms && (
-            <div className="order-7 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
-              <Info className="w-4 h-4 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{product.usage_terms}</span>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div
-              role="alert"
-              className="order-8 flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
-            >
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Trust signals */}
-          <div className="order-9 grid grid-cols-3 gap-2">
-            {TRUST_SIGNALS.map((item) => (
-              <div
-                key={item.label}
-                className="flex flex-col items-center gap-1 p-2.5 bg-muted/15 border border-border/35 rounded-xl text-center transition-colors hover:bg-muted/25 hover:border-border/55"
-              >
-                <item.icon className="w-4 h-4 text-muted-foreground mb-0.5" />
-                <span className="text-2xs font-bold text-foreground leading-tight">
-                  {item.label}
-                </span>
-                <span className="text-3xs text-muted-foreground leading-tight">{item.desc}</span>
+                {(selectedVariant ? selectedVariant.sale_price : product.sale_price) != null && (
+                  <div className="text-muted-foreground text-sm line-through mt-1.5 tabular-nums">
+                    {formatCurrency(selectedVariant ? selectedVariant.price : product.price)}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+              <div
+                role="status"
+                aria-live="polite"
+                aria-label={
+                  product.is_available
+                    ? `المنتج متوفر، الكمية ${product.stock_count}`
+                    : "نفد المخزون"
+                }
+                className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
+                  product.is_available
+                    ? "bg-status-success/10 border-status-success/22 text-status-success"
+                    : "bg-muted/50 border-border/50 text-muted-foreground"
+                }`}
+              >
+                {product.is_available ? (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر (
+                    {product.stock_count})
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5" aria-hidden="true" /> نفد المخزون
+                  </>
+                )}
+              </div>
+            </div>
 
-          {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
-          {token && (
-            <div className="order-11 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
-              <CouponField
+            {/* Usage terms */}
+            {product.usage_terms && (
+              <div className="order-7 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
+                <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{product.usage_terms}</span>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div
+                role="alert"
+                className="order-8 flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Trust signals */}
+            <div className="order-9 grid grid-cols-3 gap-2">
+              {TRUST_SIGNALS.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex flex-col items-center gap-1 p-2.5 bg-muted/15 border border-border/35 rounded-xl text-center transition-colors hover:bg-muted/25 hover:border-border/55"
+                >
+                  <item.icon className="w-4 h-4 text-muted-foreground mb-0.5" />
+                  <span className="text-2xs font-bold text-foreground leading-tight">
+                    {item.label}
+                  </span>
+                  <span className="text-3xs text-muted-foreground leading-tight">{item.desc}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
+            {token && (
+              <div className="order-11 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
+                <CouponField
+                  token={token}
+                  couponInput={couponInput}
+                  couponResult={couponResult}
+                  couponError={couponError}
+                  couponValidating={couponValidating}
+                  onCouponChange={setCouponInput}
+                  onCouponValidate={validateCoupon}
+                  onCouponClear={clearCoupon}
+                />
+              </div>
+            )}
+
+            {/* CTA — desktop only (mobile uses sticky bar) */}
+            <div className="order-12 hidden sm:block">
+              <CtaBlock
                 token={token}
+                product={product}
+                user={user}
+                userLoading={userLoading}
+                displayPrice={couponResult ? couponResult.final_amount : displayPrice}
+                canAfford={
+                  !!(
+                    user &&
+                    (user.wallet_balance ?? 0) >=
+                      (couponResult ? couponResult.final_amount : displayPrice)
+                  )
+                }
+                shortfall={
+                  (couponResult ? couponResult.final_amount : displayPrice) -
+                  (user?.wallet_balance ?? 0)
+                }
+                isPending={buyPending}
+                onBuy={handleBuyIntent}
+                onAddToCart={handleAddToCart}
+                onLogin={loginWithIntent}
+                onWallet={walletWithReturn}
                 couponInput={couponInput}
                 couponResult={couponResult}
                 couponError={couponError}
@@ -1282,43 +1321,8 @@ export default function ProductPage() {
                 onCouponClear={clearCoupon}
               />
             </div>
-          )}
-
-          {/* CTA — desktop only (mobile uses sticky bar) */}
-          <div className="order-12 hidden sm:block">
-            <CtaBlock
-              token={token}
-              product={product}
-              user={user}
-              userLoading={userLoading}
-              displayPrice={couponResult ? couponResult.final_amount : displayPrice}
-              canAfford={
-                !!(
-                  user &&
-                  (user.wallet_balance ?? 0) >=
-                    (couponResult ? couponResult.final_amount : displayPrice)
-                )
-              }
-              shortfall={
-                (couponResult ? couponResult.final_amount : displayPrice) -
-                (user?.wallet_balance ?? 0)
-              }
-              isPending={buyPending}
-              onBuy={handleBuyIntent}
-              onAddToCart={handleAddToCart}
-              onLogin={loginWithIntent}
-              onWallet={walletWithReturn}
-              couponInput={couponInput}
-              couponResult={couponResult}
-              couponError={couponError}
-              couponValidating={couponValidating}
-              onCouponChange={setCouponInput}
-              onCouponValidate={validateCoupon}
-              onCouponClear={clearCoupon}
-            />
           </div>
-        </div>
-      </section>
+        </section>
       </div>
 
       {/* Recommendations Section. Pass the resolved product id from

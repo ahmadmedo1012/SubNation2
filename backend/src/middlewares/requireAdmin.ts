@@ -31,11 +31,7 @@ export interface AdminAuthenticatedRequest extends Request {
   adminPermissions: string[];
 }
 
-export async function requireAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Try cookie first, fallback to Authorization header
   const token = req.cookies?.admin_token || req.headers.authorization?.replace("Bearer ", "");
 
@@ -83,12 +79,7 @@ export async function requireAdmin(
     if (process.env.NODE_ENV === "production") {
       res
         .status(401)
-        .json(
-          createErrorResponse(
-            "جلسة قديمة — أعد تسجيل الدخول",
-            ErrorCode.SESSION_EXPIRED,
-          ),
-        );
+        .json(createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));
       return;
     }
   } else {
@@ -96,12 +87,7 @@ export async function requireAdmin(
     if (!sessionValid) {
       res
         .status(401)
-        .json(
-          createErrorResponse(
-            "تم إبطال الجلسة — أعد تسجيل الدخول",
-            ErrorCode.SESSION_EXPIRED,
-          ),
-        );
+        .json(createErrorResponse("تم إبطال الجلسة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));
       return;
     }
   }
@@ -128,9 +114,7 @@ export async function requireAdmin(
   }
 
   if (!admin.isActive) {
-    res
-      .status(403)
-      .json(createErrorResponse("الحساب معطّل من قبل المسؤول", ErrorCode.FORBIDDEN));
+    res.status(403).json(createErrorResponse("الحساب معطّل من قبل المسؤول", ErrorCode.FORBIDDEN));
     return;
   }
 

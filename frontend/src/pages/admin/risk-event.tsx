@@ -175,11 +175,7 @@ export default function AdminRiskEventPage() {
           <Stat label="الإجراء" value={event.action_taken} />
           {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits (engines
               without ar-LY data fall back to Arabic-Indic numerals). */}
-          <Stat
-            label="الوقت"
-            value={formatDate(event.created_at)}
-            mono
-          />
+          <Stat label="الوقت" value={formatDate(event.created_at)} mono />
         </div>
 
         <Section title="المستخدم">

@@ -1,13 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import express, { type Express } from "express";
 import { eq, sql } from "drizzle-orm";
-import {
-  adminUsersTable,
-  db,
-  initTestDb,
-  resetTestDb,
-  riskConfigTable,
-} from "../../test/db";
+import { adminUsersTable, db, initTestDb, resetTestDb, riskConfigTable } from "../../test/db";
 import { createAdminSession } from "../../lib/admin-session";
 import { adminRiskRouter } from "../admin/risk";
 
@@ -185,7 +179,10 @@ describe("98-F3 — PUT /api/admin/risk/config nested-shape validation", () => {
     const { token } = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {
-      const ips = Array.from({ length: 10_000 }, (_, i) => `10.0.${Math.floor(i / 250)}.${i % 250}`);
+      const ips = Array.from(
+        { length: 10_000 },
+        (_, i) => `10.0.${Math.floor(i / 250)}.${i % 250}`,
+      );
       const res = await putConfig(url, token, { allowlist: { ips } });
       expect(res.status).toBe(400);
       expect(await currentConfigRow()).toBeUndefined();
@@ -194,7 +191,7 @@ describe("98-F3 — PUT /api/admin/risk/config nested-shape validation", () => {
     }
   });
 
-  it("a non-IP allowlist entry (\"not-an-ip\") → 400 (matcher integrity)", async () => {
+  it('a non-IP allowlist entry ("not-an-ip") → 400 (matcher integrity)', async () => {
     const { token } = await seedAdmin();
     const { url, close } = await listen(buildApp());
     try {

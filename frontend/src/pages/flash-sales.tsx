@@ -1,11 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
-import {
-  CATEGORY_ACCENT,
-  CATEGORY_ICON,
-  DEFAULT_ACCENT,
-} from "@/components/ProductCard";
+import { CATEGORY_ACCENT, CATEGORY_ICON, DEFAULT_ACCENT } from "@/components/ProductCard";
 import { useGetFlashSale, useListProducts, type Product } from "@workspace/api-client-react";
 import { Flame, Clock, Package, Sparkles, Tag, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

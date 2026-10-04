@@ -209,11 +209,7 @@ export class TopupService {
    * persisted on the row in the same guarded UPDATE as reviewed_at —
    * nullable so legacy + automated-gateway approvals stay valid.
    */
-  static async approve(
-    topupId: number,
-    adminNote: string | null,
-    reviewedBy?: string | null,
-  ) {
+  static async approve(topupId: number, adminNote: string | null, reviewedBy?: string | null) {
     const [topup] = await db
       .select()
       .from(walletTopupsTable)
@@ -618,11 +614,7 @@ export class TopupService {
   /**
    * Reject a pending topup. `reviewedBy` semantics mirror approve (A4-04).
    */
-  static async reject(
-    topupId: number,
-    adminNote: string | null,
-    reviewedBy?: string | null,
-  ) {
+  static async reject(topupId: number, adminNote: string | null, reviewedBy?: string | null) {
     const [topup] = await db
       .select()
       .from(walletTopupsTable)

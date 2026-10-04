@@ -130,10 +130,7 @@ describe("AuthProvider — Firebase refresher gating (A5-1)", () => {
     vi.useFakeTimers();
     setupFirebaseTokenRefreshMock.mockReset();
     setupFirebaseTokenRefreshMock.mockResolvedValue(unsubscribeMock);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(probeResponse({ authenticated: false })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(probeResponse({ authenticated: false })));
   });
 
   /**

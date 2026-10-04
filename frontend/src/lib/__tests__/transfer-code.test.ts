@@ -41,8 +41,6 @@ describe("transferCode — whole-dinar normalization (R116-S2)", () => {
   });
 
   it("encodes the USSD hash for tel: URLs", () => {
-    expect(transferCodeTelHref("*122*218913456789*25*1#")).toBe(
-      "tel:*122*218913456789*25*1%23",
-    );
+    expect(transferCodeTelHref("*122*218913456789*25*1#")).toBe("tel:*122*218913456789*25*1%23");
   });
 });

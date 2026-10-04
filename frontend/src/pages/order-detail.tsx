@@ -9,11 +9,7 @@ import {
   formatRelativeTime,
   statusLabel,
 } from "@/lib/utils";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-} from "@/components/ui/status-badge";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import {
   getGetMeQueryKey,
   getGetOrderQueryKey,

@@ -91,7 +91,9 @@ interface SeedOpts {
 }
 
 /** One user + product + order carrying credential columns. */
-async function seedOrder(opts: SeedOpts = {}): Promise<{ orderId: number; orderCode: string; userId: number }> {
+async function seedOrder(
+  opts: SeedOpts = {},
+): Promise<{ orderId: number; orderCode: string; userId: number }> {
   const { status = "completed", encrypted = true } = opts;
   const email = opts.email ?? "buyer-account@test.local";
   const password = opts.password ?? "SuperSecret123";
@@ -333,7 +335,10 @@ describe("A6-01: PATCH /api/admin/orders/bulk-status — refund requires the fin
       expect(await db.select().from(walletLedgerTable)).toHaveLength(0);
       expect(await db.select().from(notificationsTable)).toHaveLength(0);
       expect(
-        await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.status, "refunded")),
+        await db
+          .select({ id: ordersTable.id })
+          .from(ordersTable)
+          .where(eq(ordersTable.status, "refunded")),
       ).toHaveLength(0);
     } finally {
       close();
