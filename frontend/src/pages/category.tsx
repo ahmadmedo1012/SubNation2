@@ -1,4 +1,5 @@
 import { ProductCard } from "@/components/ProductCard";
+import { Button } from "@/components/ui/button";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { useSeo } from "@/hooks/useSeo";
 import { CATEGORY_META, type CategoryMeta } from "@/lib/categories";
@@ -237,7 +238,7 @@ export default function CategoryPage() {
       {/* Hero — matches home page's hero-card pattern, tinted with the
           category's specific accent so /category/streaming feels violet,
           /category/music feels emerald, etc. */}
-      <header className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-6 shadow-lg shadow-black/15 float-in">
+      <header className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-6 shadow-lg float-in">
         <div
           className={`absolute inset-0 bg-gradient-to-l ${theme.heroGradient} via-transparent to-transparent pointer-events-none`}
         />
@@ -257,10 +258,10 @@ export default function CategoryPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground font-semibold mb-1">فئة {meta.label}</p>
-              <h1 className="text-fluid-2xl font-bold leading-tight text-foreground">{meta.h1}</h1>
+              <h1 className="text-fluid-2xl font-bold text-foreground">{meta.h1}</h1>
             </div>
           </div>
-          <p className="text-sm sm:text-[15px] text-muted-foreground leading-relaxed max-w-3xl">
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-3xl">
             {meta.intro}
           </p>
         </div>
@@ -298,14 +299,15 @@ export default function CategoryPage() {
             </button>
           </div>
         ) : products.length === 0 ? (
-          <div className="bg-card border border-border/55 rounded-2xl py-12 text-center float-in">
+          <div className="bg-card border border-border/55 rounded-2xl py-12 px-4 text-center float-in">
             <p className="font-bold mb-2 text-foreground/80">لا توجد منتجات في هذه الفئة حالياً.</p>
-            <Link
-              href="/"
-              className="text-primary-text text-sm font-bold hover:text-primary transition-colors press-spring"
-            >
-              تصفّح كل المنتجات <ChevronLeft className="w-3 h-3 inline" />
-            </Link>
+            {/* R116-S1 CTA recipe: the empty state's primary conversion
+                action rides the canonical Button (was a bare text link). */}
+            <Button asChild size="lg" className="w-full sm:w-auto">
+              <Link href="/">
+                تصفّح كل المنتجات <ChevronLeft className="w-4 h-4 inline" />
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
@@ -364,7 +366,7 @@ export default function CategoryPage() {
                 <Link
                   key={c.slug}
                   href={`/category/${c.slug}`}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
                 >
                   <t.Icon className="w-3.5 h-3.5" />
                   {c.label}
@@ -373,7 +375,7 @@ export default function CategoryPage() {
             })}
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] border bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
           >
             كل المنتجات
           </button>

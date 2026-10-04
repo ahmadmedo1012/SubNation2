@@ -59,7 +59,10 @@ export function Logo({ size = "md", showText = true, className }: LogoProps) {
       </div>
 
       {showText && (
-        <span className={cn("font-bold tracking-tight leading-none", textSizes[size])}>
+        /* tracking-tight removed (R116-S1): the global Arabic
+           letter-spacing guard pins every tracking utility to 0 — the
+           class was dead weight. */
+        <span className={cn("font-bold leading-none", textSizes[size])}>
           Sub<span className="text-primary-text">Nation</span>
         </span>
       )}

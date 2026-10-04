@@ -20,6 +20,7 @@
  */
 
 import { toast as sonnerToast } from "sonner";
+import { isValidElement } from "react";
 import type { ReactNode } from "react";
 
 export interface ToastInput {
@@ -119,14 +120,39 @@ export function toast(input: ToastInput): ToastHandle {
  * using `toast({ variant: "destructive", ... })`; new code can read
  * cleaner with `toast.success(...)` etc.
  */
-toast.success = (title: ReactNode, description?: ReactNode) =>
-  toast({ title, description, variant: "success" });
-toast.error = (title: ReactNode, description?: ReactNode) =>
-  toast({ title, description, variant: "destructive" });
-toast.warning = (title: ReactNode, description?: ReactNode) =>
-  toast({ title, description, variant: "warning" });
-toast.info = (title: ReactNode, description?: ReactNode) =>
-  toast({ title, description, variant: "info" });
+/**
+ * Helper-argument normalizer (R116): the variant helpers historically
+ * took a positional `description` ReactNode, but sonner-idiomatic callers
+ * (and the A5-5 replay tests) pass sonner's own shape —
+ * `toast.error(title, { description, duration, action, id })`. Accept
+ * BOTH: a non-element object is treated as the opts bag, anything else
+ * stays the legacy positional description. No existing callsite changes.
+ */
+function helperInput(
+  title: ReactNode,
+  second: ReactNode | Omit<ToastInput, "title" | "variant"> | undefined,
+  variant: ToastInput["variant"],
+): ToastInput {
+  if (
+    second !== null &&
+    typeof second === "object" &&
+    !isValidElement(second) &&
+    !Array.isArray(second)
+  ) {
+    const { description, duration, action, id } = second as Omit<ToastInput, "title" | "variant">;
+    return { title, description, duration, action, id, variant };
+  }
+  return { title, description: second, variant };
+}
+
+toast.success = (title: ReactNode, second?: Parameters<typeof helperInput>[1]) =>
+  toast(helperInput(title, second, "success"));
+toast.error = (title: ReactNode, second?: Parameters<typeof helperInput>[1]) =>
+  toast(helperInput(title, second, "destructive"));
+toast.warning = (title: ReactNode, second?: Parameters<typeof helperInput>[1]) =>
+  toast(helperInput(title, second, "warning"));
+toast.info = (title: ReactNode, second?: Parameters<typeof helperInput>[1]) =>
+  toast(helperInput(title, second, "info"));
 
 /**
  * Hook variant — returns the same `toast` function plus a global `dismiss(id?)`.

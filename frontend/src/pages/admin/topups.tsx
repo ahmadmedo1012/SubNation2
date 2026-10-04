@@ -9,14 +9,8 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import {
-  copyToClipboard,
-  formatCount,
-  formatCurrency,
-  formatDate,
-  statusColor,
-  statusLabel,
-} from "@/lib/utils";
+import { copyToClipboard, formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -44,6 +38,7 @@ import {
   Smartphone,
   Square,
   User,
+  UserCheck,
   WifiOff,
   XCircle,
 } from "lucide-react";
@@ -346,8 +341,8 @@ function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" })
   return (
     <button
       onClick={copy}
-      title={failed ? "فشل النسخ" : "نسخ"}
-      aria-label={failed ? "فشل النسخ" : "نسخ"}
+      title={failed ? "تعذّر النسخ" : "نسخ"}
+      aria-label={failed ? "تعذّر النسخ" : "نسخ"}
       /* 93-C6 / F-07 (A5 S-6): the bare w-3 icon was a ~12px touch
          target — below any usable minimum on the 375px admin layout
          and directly adjacent to money-action rows. p-2 (the audit's
@@ -513,7 +508,7 @@ export default function AdminTopupsPage() {
       invalidate();
       const t = allTopups.find((x) => x.id === vars.id);
       toast({
-        title: "✓ تمت الموافقة",
+        title: "تمت الموافقة",
         description: t
           ? `${formatCurrency(t.amount)} لـ ${t.user_phone}`
           : "تمت الموافقة على الطلب",
@@ -708,7 +703,7 @@ export default function AdminTopupsPage() {
       toast({
         title:
           successCount > 0
-            ? `${action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي"} — ${successCount} من ${ids.length}`
+            ? `${action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي"} — ${successCount} من ${ids.length}`
             : "خطأ",
         description: `فشلت ${failures.length} من ${ids.length} — ${failures
           .map((f) => `#${f.id}: ${f.reason}`)
@@ -721,7 +716,7 @@ export default function AdminTopupsPage() {
     // after the failure toast on a total failure.
     if (successCount > 0 && failures.length === 0) {
       toast({
-        title: action === "approve" ? "✓ تمت الموافقة الجماعية" : "تم الرفض الجماعي",
+        title: action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي",
         description: `${successCount}/${ids.length} طلب تمت معالجته`,
         variant: "success",
       });
@@ -792,15 +787,13 @@ export default function AdminTopupsPage() {
     // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
     if (failures.length === 0) {
       toast({
-        title: `✓ تمت الموافقة على ${approvedCount} طلب`,
+        title: `تمت الموافقة على ${approvedCount} طلب`,
         variant: "success",
       });
     } else {
       toast({
         title:
-          approvedCount > 0
-            ? `✓ تمت الموافقة على ${approvedCount} من ${pending.length} طلب`
-            : "خطأ",
+          approvedCount > 0 ? `تمت الموافقة على ${approvedCount} من ${pending.length} طلب` : "خطأ",
         description: `نجحت ${approvedCount} · فشلت ${failures.length} — ${failures
           .map((f) => `#${f.id}: ${f.reason}`)
           .join("، ")}`,
@@ -1066,11 +1059,16 @@ export default function AdminTopupsPage() {
                     <span className="font-bold text-xl tabular-nums">
                       {formatCurrency(t.amount)}
                     </span>
-                    <span
-                      className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${statusColor(t.status)}`}
+                    {/* R116: shared StatusBadge (STATUS_TONE) replaces the
+                        deprecated statusColor() — 93-C7 follow-up. */}
+                    <StatusBadge
+                      variant={
+                        STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
+                      }
+                      size="sm"
                     >
                       {statusLabel(t.status)}
-                    </span>
+                    </StatusBadge>
                     <MethodBadge method={t.payment_method ?? "mobile_transfer"} />
                     {t.payment_method !== "lypay" && <NetworkBadge net={t.payment_network} />}
                     <span className="mr-auto text-xs text-muted-foreground tabular-nums flex items-center gap-1">
@@ -1102,7 +1100,7 @@ export default function AdminTopupsPage() {
                     {t.payment_reference && (
                       <div className="flex items-center gap-1.5 text-xs">
                         <Hash className="w-3 h-3 text-muted-foreground shrink-0" />
-                        <span className="text-muted-foreground">المرجع:</span>
+                        <span className="text-muted-foreground">رمز التحويل:</span>
                         <span className="font-mono text-xs text-foreground">
                           {t.payment_reference}
                         </span>
@@ -1126,6 +1124,16 @@ export default function AdminTopupsPage() {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/50 px-3 py-2 rounded-lg mb-3">
                       <MessageSquare className="w-3 h-3 shrink-0" />
                       {t.admin_note}
+                    </div>
+                  )}
+
+                  {/* R116 (A4-04): reviewer attribution — who acted on this
+                      topup and when (V1-M23 reviewed_by + reviewed_at). */}
+                  {t.status !== "pending" && (t.reviewed_by || t.reviewed_at) && (
+                    <div className="flex items-center gap-2 text-2xs text-muted-foreground mb-3">
+                      <UserCheck className="w-3 h-3 shrink-0" />
+                      {t.reviewed_by ? `أُقرّ بواسطة ${t.reviewed_by}` : "تمت المراجعة"}
+                      {t.reviewed_at ? ` · ${formatDate(t.reviewed_at)}` : ""}
                     </div>
                   )}
 

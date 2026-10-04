@@ -31,6 +31,14 @@ export const walletTopupsTable = pgTable(
     paymentReference: varchar("payment_reference", { length: 255 }),
     status: topupStatusEnum("status").notNull().default("pending"),
     adminNote: text("admin_note"),
+    /**
+     * A4-04 (R116): who reviewed this topup (admin username, or the
+     * Telegram actor tag for webhook approvals). Nullable — legacy rows
+     * + the automated gateway path (createApprovedTopup) have no human
+     * reviewer. Written by TopupService.approve/reject in the same
+     * guarded UPDATE as reviewed_at (V1-M23 boot migration).
+     */
+    reviewedBy: varchar("reviewed_by", { length: 100 }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

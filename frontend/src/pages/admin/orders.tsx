@@ -10,7 +10,8 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCount, formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -39,7 +40,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -47,8 +48,22 @@ import { AdminLayout } from "./layout";
 type AdminOrderRow = AdminOrder & {
   coupon_code?: string;
   discount_amount?: number;
-  delivered_extra_details?: string | null;
+  /** B6-03 (R116): the list no longer decrypts credentials — this flag
+   *  is the availability signal; the plaintext comes from
+   *  GET /api/admin/orders/:id/credentials on first reveal. */
+  has_credentials?: boolean;
 };
+
+/** GET /api/admin/orders/:id/credentials response (B6-03). */
+interface OrderCredentials {
+  id: number;
+  order_code: string;
+  status: string;
+  has_credentials: boolean;
+  delivered_email: string | null;
+  delivered_password: string | null;
+  delivered_extra_details: string | null;
+}
 
 const BULK_STATUSES = [
   { value: "completed", label: "مكتمل", color: "text-emerald-400" },
@@ -100,8 +115,8 @@ const ORDER_COUNT_FORMS = {
 // body carries (backend/src/services/refund.service.ts RefundErrorCode).
 const REFUND_FAILURE_LABELS: Record<string, string> = {
   ORDER_NOT_FOUND: "الطلب غير موجود",
-  NOT_REFUNDABLE: "الطلب غير قابل للاسترجاع",
-  ALREADY_REFUNDED: "مسترجع مسبقاً",
+  NOT_REFUNDABLE: "الطلب غير قابل للاسترداد",
+  ALREADY_REFUNDED: "مُسترد مسبقاً",
   USER_NOT_FOUND: "المستخدم غير موجود",
   CONCURRENCY_ERROR: "تعارض تزامني",
 };
@@ -189,6 +204,55 @@ export default function AdminOrdersPage() {
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  // ── B6-03 (R116): credentials-on-demand ──────────────────────────────
+  // The list no longer ships decrypted credentials. The plaintext is
+  // fetched from GET /api/admin/orders/:id/credentials the FIRST time an
+  // order's expansion is opened, then cached per order id for the page's
+  // lifetime (re-expansions are instant and never re-hit the audited
+  // endpoint). A failure is remembered too — retry spam on a dead
+  // endpoint would re-log audit rows for nothing.
+  const [credentialsCache, setCredentialsCache] = useState<Map<number, OrderCredentials>>(
+    () => new Map(),
+  );
+  const [failedCredentialIds, setFailedCredentialIds] = useState<Set<number>>(() => new Set());
+  const credentialsInFlight = useRef<Set<number>>(new Set());
+
+  const ensureOrderCredentials = useCallback(
+    async (orderId: number) => {
+      if (
+        credentialsCache.has(orderId) ||
+        failedCredentialIds.has(orderId) ||
+        credentialsInFlight.current.has(orderId)
+      ) {
+        return;
+      }
+      credentialsInFlight.current.add(orderId);
+      try {
+        const r = await fetch(`/api/admin/orders/${orderId}/credentials`, { headers });
+        if (isAdminUnauthorized(r, `/api/admin/orders/${orderId}/credentials`)) return;
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        }
+        const body = (await r.json().catch(() => null)) as OrderCredentials | null;
+        if (!body) throw new Error("bad credentials payload");
+        setCredentialsCache((prev) => new Map(prev).set(orderId, body));
+      } catch {
+        setFailedCredentialIds((prev) => new Set(prev).add(orderId));
+        toast({
+          title: "تعذّر تحميل بيانات التسليم",
+          description: "حاول فتح الطلب مرة أخرى",
+          variant: "destructive",
+        });
+      } finally {
+        credentialsInFlight.current.delete(orderId);
+      }
+    },
+    [credentialsCache, failedCredentialIds, headers, toast],
+  );
+
+  // Expanding a row with credentials triggers the one-time fetch —
+  // declared AFTER allOrders is defined (hook order is stable: this is
+  // the same position every render).
   // 94-C2 (A2 P1-1): page accumulation lives in useInfiniteQuery — no
   // local `page` state (the round-93 prev/next controls are replaced by
   // the append-in-place «تحميل المزيد» button below).
@@ -239,6 +303,20 @@ export default function AdminOrdersPage() {
   // coupon_* extra fields the generated AdminOrder type doesn't carry.
   const allOrders = (ordersPages?.pages ?? []).flat() as AdminOrderRow[];
 
+  // B6-03 (R116): expanding a row whose list entry carries the
+  // has_credentials flag triggers the one-time audited fetch. The gate
+  // conditions inside ensureOrderCredentials (cache / failed / in-flight)
+  // make repeat calls safe no-ops while allOrders identity changes per
+  // refetch.
+  useEffect(() => {
+    if (expandedRow === null) return;
+    const row = allOrders.find((o) => o.id === expandedRow);
+    if (row?.has_credentials) {
+      void ensureOrderCredentials(row.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedRow, ensureOrderCredentials]);
+
   // A single short page is the only case where the total is provably
   // known — otherwise the honest count is «عرض N» (A2 P1-1).
   const knownTotal = (ordersPages?.pages.length ?? 0) <= 1 && allOrders.length < ORDERS_PAGE_SIZE;
@@ -262,12 +340,12 @@ export default function AdminOrdersPage() {
     const selectedRows = allOrders.filter((o) => selectedIds.has(o.id));
     const totalRefund = selectedRows.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
     const confirmMessage = isRefund
-      ? `تأكيد استرجاع ${selectedIds.size} طلب؟ سيتم استرداد المبالغ للمستخدمين (إجمالي ${formatCurrency(totalRefund)}).`
+      ? `تأكيد استرداد ${selectedIds.size} طلب؟ سيتم استرداد المبالغ للمستخدمين (إجمالي ${formatCurrency(totalRefund)}).`
       : `تأكيد تغيير حالة ${selectedIds.size} طلب؟`;
     const confirmed = await confirm({
-      title: isRefund ? "استرجاع جماعي للطلبات" : "تغيير الحالة الجماعي",
+      title: isRefund ? "استرداد جماعي للطلبات" : "تغيير الحالة الجماعي",
       description: confirmMessage,
-      confirmLabel: isRefund ? "استرجاع" : "تغيير الحالة",
+      confirmLabel: isRefund ? "استرداد" : "تغيير الحالة",
       destructive: isRefund,
     });
     if (!confirmed) return;
@@ -331,7 +409,7 @@ export default function AdminOrdersPage() {
         // backend skipped refunded/missing ids — surface the gap.
         const skipped = Math.max(0, requestedCount - updated);
         toast({
-          title: isRefund ? `✓ تم استرجاع ${updated} طلب` : `✓ تم تحديث حالة ${updated} طلب`,
+          title: isRefund ? `تم استرداد ${updated} طلب` : `تم تحديث حالة ${updated} طلب`,
           description: isRefund
             ? "أُعيدت مبالغ الطلبات إلى محافظ المستخدمين"
             : `${statusLabel(status)}${skipped > 0 ? ` · تخطي ${skipped} طلب` : ""}`,
@@ -1041,6 +1119,10 @@ export default function AdminOrdersPage() {
                   <tbody>
                     {filtered.map((order, idx: number) => {
                       const isSelected = selectedIds.has(order.id);
+                      // B6-03 (R116): decrypted credentials come from the
+                      // per-order endpoint, cached on first reveal.
+                      const creds = credentialsCache.get(order.id);
+                      const credsFailed = failedCredentialIds.has(order.id);
                       return (
                         <React.Fragment key={order.id}>
                           <tr
@@ -1107,11 +1189,18 @@ export default function AdminOrdersPage() {
                                 setExpandedRow(expandedRow === order.id ? null : order.id)
                               }
                             >
-                              <span
-                                className={`text-2xs font-bold px-2 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                              {/* R116: shared StatusBadge (STATUS_TONE)
+                                  replaces the deprecated statusColor() —
+                                  93-C7 follow-up. */}
+                              <StatusBadge
+                                variant={
+                                  STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                                  UNKNOWN_STATUS_TONE
+                                }
+                                size="sm"
                               >
                                 {statusLabel(order.status)}
-                              </span>
+                              </StatusBadge>
                             </td>
                             <td
                               className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums"
@@ -1153,22 +1242,36 @@ export default function AdminOrdersPage() {
                             <tr key={`exp-${order.id}`} className="bg-muted/10">
                               <td colSpan={8} className="px-4 py-3 border-b border-border/30">
                                 <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
-                                  {order.delivered_email && (
+                                  {/* B6-03 (R116): values render from the
+                                      per-order credentials fetch (the list
+                                      no longer decrypts) — masking + copy
+                                      UX unchanged (96-F7). */}
+                                  {order.has_credentials && !creds && !credsFailed && (
+                                    <span className="text-muted-foreground">
+                                      جارٍ تحميل بيانات التسليم…
+                                    </span>
+                                  )}
+                                  {order.has_credentials && credsFailed && (
+                                    <span className="text-destructive">
+                                      تعذّر تحميل بيانات التسليم
+                                    </span>
+                                  )}
+                                  {creds?.delivered_email && (
                                     <MaskedCredential
                                       label="البريد"
-                                      value={order.delivered_email}
+                                      value={creds.delivered_email}
                                     />
                                   )}
-                                  {order.delivered_password && (
+                                  {creds?.delivered_password && (
                                     <MaskedCredential
                                       label="كلمة المرور"
-                                      value={order.delivered_password}
+                                      value={creds.delivered_password}
                                     />
                                   )}
-                                  {order.delivered_extra_details && (
+                                  {creds?.delivered_extra_details && (
                                     <div>
                                       <span className="text-muted-foreground">تفاصيل: </span>
-                                      <span>{order.delivered_extra_details}</span>
+                                      <span>{creds.delivered_extra_details}</span>
                                     </div>
                                   )}
                                   {order.coupon_code && (
@@ -1184,9 +1287,8 @@ export default function AdminOrdersPage() {
                                       )}
                                     </div>
                                   )}
-                                  {!order.delivered_email &&
-                                    !order.delivered_password &&
-                                    !order.delivered_extra_details &&
+                                  {!order.has_credentials &&
+                                    !creds?.delivered_extra_details &&
                                     !order.coupon_code && (
                                       <span className="text-muted-foreground">
                                         لا توجد بيانات تسليم
@@ -1218,6 +1320,10 @@ export default function AdminOrdersPage() {
             <div className="md:hidden space-y-2">
               {filtered.map((order) => {
                 const isSelected = selectedIds.has(order.id);
+                // B6-03 (R116): same per-order credential cache as the
+                // desktop expanded row.
+                const creds = credentialsCache.get(order.id);
+                const credsFailed = failedCredentialIds.has(order.id);
                 return (
                   <div
                     key={order.id}
@@ -1252,11 +1358,19 @@ export default function AdminOrdersPage() {
                         <div className="font-bold text-primary tabular-nums">
                           {formatCurrency(order.amount)}
                         </div>
-                        <span
-                          className={`text-2xs font-bold px-2 py-0.5 rounded-full border mt-1 inline-block ${statusColor(order.status)}`}
+                        {/* R116: shared StatusBadge (STATUS_TONE)
+                            replaces the deprecated statusColor() — 93-C7
+                            follow-up. */}
+                        <StatusBadge
+                          variant={
+                            STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                            UNKNOWN_STATUS_TONE
+                          }
+                          size="sm"
+                          className="mt-1"
                         >
                           {statusLabel(order.status)}
-                        </span>
+                        </StatusBadge>
                       </div>
                     </div>
                     {/* F3-02 (R111 WCAG 2.1.1): the mobile card was a
@@ -1291,19 +1405,33 @@ export default function AdminOrdersPage() {
                       />
                     </button>
                     {expandedRow === order.id &&
-                      (order.delivered_email || order.delivered_password) && (
+                      order.has_credentials &&
+                      (credsFailed ? (
+                        <div className="mt-2 pt-2 border-t border-border/30 text-xs text-destructive">
+                          تعذّر تحميل بيانات التسليم
+                        </div>
+                      ) : creds ? (
                         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
-                          {order.delivered_email && (
-                            <MaskedCredential label="البريد" value={order.delivered_email} />
+                          {creds.delivered_email && (
+                            <MaskedCredential label="البريد" value={creds.delivered_email} />
                           )}
-                          {order.delivered_password && (
+                          {creds.delivered_password && (
                             <MaskedCredential
                               label="كلمة المرور"
-                              value={order.delivered_password}
+                              value={creds.delivered_password}
                             />
                           )}
+                          {!creds.delivered_email && !creds.delivered_password && (
+                            <span className="text-xs text-muted-foreground">
+                              لا توجد بيانات تسليم
+                            </span>
+                          )}
                         </div>
-                      )}
+                      ) : (
+                        <div className="mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
+                          جارٍ تحميل بيانات التسليم…
+                        </div>
+                      ))}
                   </div>
                 );
               })}

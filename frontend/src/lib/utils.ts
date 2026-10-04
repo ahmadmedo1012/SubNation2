@@ -150,34 +150,6 @@ export function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
-// 93-C7 / C-UX2 (A12 §11.1 rule 6): statusColor() is DEPRECATED — it is
-// the "string-concat canonical" that competed with the StatusBadge
-// component (dual-canonical problem, A12 F-02). The 8 remaining
-// render-sites (A12 census R1-R8: pages/orders, order-detail, wallet ×2,
-// home, admin/topups, admin/dashboard, admin/orders) live in other
-// agents' files and are a documented round-93 follow-up: migrate each to
-// <StatusBadge variant={STATUS_TONE[s]}>{statusLabel(s)}</StatusBadge>,
-// then delete this function. Colors are kept EXACTLY as-is so the R-sites
-// render identically until their owner migrates.
-export function statusColor(status: string): string {
-  // Class tuples ride the shared --status-* tokens (defined in
-  // index.css and exposed to Tailwind via @theme as `status-success`,
-  // etc.). Both light and dark themes get tonally-correct colors with
-  // no per-call branching — the tokens already define light-mode
-  // values that meet AA contrast on white surfaces.
-  const colors: Record<string, string> = {
-    pending: "text-status-warning bg-status-warning/10 border-status-warning/22",
-    processing: "text-status-info bg-status-info/10 border-status-info/22",
-    completed: "text-status-success bg-status-success/10 border-status-success/22",
-    delivered: "text-status-success bg-status-success/10 border-status-success/22",
-    approved: "text-status-success bg-status-success/10 border-status-success/22",
-    failed: "text-status-error bg-status-error/10 border-status-error/22",
-    rejected: "text-status-error bg-status-error/10 border-status-error/22",
-    refunded: "text-status-info bg-status-info/10 border-status-info/22",
-  };
-  return colors[status] ?? "text-muted-foreground";
-}
-
 // 93-C6 / F-06 (A5 PR-1 + A11 §4, round-93): formatRelativeTime now
 // delegates to Intl.RelativeTimeFormat so Arabic plurals are correct
 // (دقيقة واحدة / دقيقتين / 5 دقائق / 11 دقيقة) in BOTH directions.

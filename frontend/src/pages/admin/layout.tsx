@@ -157,8 +157,12 @@ function NavItem({
           />
           {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
           {!collapsed && badge ? (
+            /* R116 (A8-07): the /20-tint pills measured 2.4:1 (active) and
+               3.5:1 (idle) — both under AA even for bold small text. The
+               solid tokens are the status-badge discipline applied here:
+               primary pill when active, warning ink pair when idle. */
             <span
-              className={`text-3xs font-bold px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary/20 text-primary" : "bg-yellow-400/20 text-yellow-400 border border-yellow-400/20"}`}
+              className={`text-3xs font-bold px-1.5 py-0.5 rounded-full shrink-0 ${active ? "bg-primary text-primary-foreground" : "bg-status-warning/15 text-status-warning border border-status-warning/30"}`}
             >
               {badge}
             </span>

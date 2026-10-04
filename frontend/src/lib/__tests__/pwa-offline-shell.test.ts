@@ -13,10 +13,13 @@ import { describe, expect, it } from "vitest";
  *      Rationale: mobile browsers evict the HTTP cache under storage
  *      pressure without touching SW caches, so the offline story
  *      previously died exactly when the JS chunks vanished.
- *   b. index.html: a static, inline-styled «لا يوجد اتصال بالإنترنت»
- *      div inside #root — hidden by default (opacity:0 + a delayed CSS
- *      reveal) so a healthy boot never flashes it; only a boot whose JS
- *      never arrives lets it appear instead of a white screen.
+ *   b. index.html: a static, inline-styled no-JS fallback div
+ *      (R116-S1: «يتطلب الموقع تشغيل JavaScript» — the neutral no-JS
+ *      copy; the old «لا يوجد اتصال بالإنترنت» misdiagnosed
+ *      blocked/broken JS as an outage) inside #root — hidden by
+ *      default (opacity:0 + a delayed CSS reveal) so a healthy boot
+ *      never flashes it; only a boot whose JS never arrives lets it
+ *      appear instead of a white screen.
  *   c. main.tsx: removes the div on successful boot (one line, before
  *      React takes over the container).
  *
@@ -56,10 +59,12 @@ describe("R98-08a — vite.config.ts runtime JS caching", () => {
 describe("R98-08b — index.html static offline fallback", () => {
   const html = read("index.html");
 
-  it("carries the Arabic no-connection div INSIDE #root", () => {
+  it("carries the Arabic no-JS div INSIDE #root (neutral JavaScript copy)", () => {
     expect(html).toMatch(
-      /<div id="root">[\s\S]*?<div id="static-offline"[^>]*>[^<]*لا يوجد اتصال بالإنترنت[^<]*<\/div>\s*<\/div>/,
+      /<div id="root">[\s\S]*?<div id="static-offline"[^>]*>[^<]*يتطلب الموقع تشغيل JavaScript[^<]*<\/div>\s*<\/div>/,
     );
+    // The misleading offline diagnosis must not come back.
+    expect(html).not.toContain("لا يوجد اتصال بالإنترنت");
   });
 
   it("is hidden by default with a DELAYED reveal (no flash on healthy boots)", () => {

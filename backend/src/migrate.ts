@@ -1359,6 +1359,28 @@ export async function applyOrdersRefundColumnsStage(
   logger.info({ category: "storage" }, "V1-M22: orders refund columns + backfill (idempotent)");
 }
 
+// ── V1-M23 (R116, A4-04): wallet_topups.reviewed_by ──────────────────────
+// Reviewer attribution — who approved/rejected each topup. The audit_logs
+// trail already carries actor ids, but the operator-facing queue is the
+// wallet_topups row itself: an incident review ("who approved this
+// duplicate transfer?") had to join the ledger through the audit log by
+// timestamp inference. reviewed_by lands on the row, written by
+// TopupService.approve/reject in the same guarded UPDATE as reviewed_at
+// (admin username, or the Telegram actor tag for webhook approvals).
+// Nullable by design: legacy rows + the automated gateway path
+// (createApprovedTopup) have no human reviewer. Purely additive —
+// ADD COLUMN IF NOT EXISTS, probe-free (idempotent by construction, the
+// V1-M21/M22 discipline with no constraint to gate).
+export async function applyTopupReviewedByStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    ALTER TABLE wallet_topups
+      ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(100);
+  `);
+  logger.info({ category: "storage" }, "V1-M23: wallet_topups.reviewed_by (idempotent)");
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -3159,6 +3181,11 @@ export async function runMigrations() {
     // refund_amount / refunded_by_admin_id + backfill from wallet_ledger.
     // Idempotent + probe-gated. See applyOrdersRefundColumnsStage docs.
     await applyOrdersRefundColumnsStage();
+
+    // ── V1-M23 (R116, A4-04): wallet_topups.reviewed_by — reviewer ──
+    // attribution on the operator-facing money queue. Idempotent
+    // (ADD COLUMN IF NOT EXISTS). See applyTopupReviewedByStage docs.
+    await applyTopupReviewedByStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

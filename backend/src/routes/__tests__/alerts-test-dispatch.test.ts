@@ -2,7 +2,14 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { adminUsersTable, db, initTestDb, resetTestDb, auditLogsTable, execTestSql } from "../../test/db";
+import {
+  adminUsersTable,
+  db,
+  initTestDb,
+  resetTestDb,
+  auditLogsTable,
+  execTestSql,
+} from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
 import { adminAlertsRouter } from "../admin/alerts";
 
@@ -23,8 +30,12 @@ import { dispatchTestAlert } from "../../services/alerting.service";
 import type { ChannelDeliveryResult } from "../../services/alerting.service";
 
 const AUDIT_DDL = `
-CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
-CREATE TABLE audit_logs (
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
+    CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS audit_logs (
   id serial PRIMARY KEY,
   actor_id integer,
   actor_type audit_actor_type NOT NULL DEFAULT 'system',

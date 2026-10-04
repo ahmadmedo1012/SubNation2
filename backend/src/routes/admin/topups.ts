@@ -7,7 +7,7 @@ import { intParam, queryString } from "../../lib/http";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { mapServiceErrorToCode } from "../../lib/service-error";
 import { idempotency } from "../../middlewares/idempotency";
-import { requireAdmin } from "../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
 
 const router = Router();
@@ -26,9 +26,7 @@ router.use((_req, res, next) => {
 // 500 INTERNAL_ERROR for a perfectly-formed-per-contract request. The
 // filter is schema-validated up front now: bad value → 400 INVALID_DATA.
 // Values mirror topupStatusEnum (shared/db/src/schema/wallet_topups.ts).
-const TopupStatusFilter = z
-  .enum(["pending", "approved", "rejected"])
-  .optional();
+const TopupStatusFilter = z.enum(["pending", "approved", "rejected"]).optional();
 
 // M3 — admin_note was read raw from the body: an object/array value
 // reached Postgres as "[object Object]" → 500 on a money-approval
@@ -62,9 +60,7 @@ router.get("/topups", requireAdmin, async (req, res) => {
       );
   }
   const conditions =
-    statusParse.data !== undefined
-      ? [eq(walletTopupsTable.status, statusParse.data)]
-      : [];
+    statusParse.data !== undefined ? [eq(walletTopupsTable.status, statusParse.data)] : [];
 
   // A2 (round-94): ?page=&limit= — the same clamp pattern as the admin
   // orders list. Previously the route always returned the newest 100
@@ -115,6 +111,10 @@ router.get("/topups", requireAdmin, async (req, res) => {
       payment_reference: r.topup.paymentReference ?? null,
       status: r.topup.status,
       admin_note: r.topup.adminNote ?? null,
+      // A4-04 (R116): reviewer attribution — surfaced on the card so an
+      // incident review reads "who approved this" off the queue itself.
+      reviewed_by: r.topup.reviewedBy ?? null,
+      reviewed_at: r.topup.reviewedAt?.toISOString() ?? null,
       created_at: r.topup.createdAt?.toISOString(),
     })),
   );
@@ -140,8 +140,14 @@ router.post(
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
-      const result = await TopupService.approve(id, adminNote);
-      void writeAuditLog(req, "topup.approve", "topup", id, { admin_note: adminNote });
+      // A4-04 (R116): the acting admin's username rides the service call —
+      // TopupService persists it on the row with reviewed_at.
+      const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
+      const result = await TopupService.approve(id, adminNote, actingUsername);
+      void writeAuditLog(req, "topup.approve", "topup", id, {
+        admin_note: adminNote,
+        reviewed_by: actingUsername,
+      });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {
@@ -173,8 +179,12 @@ router.post(
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
-      const result = await TopupService.reject(id, adminNote);
-      void writeAuditLog(req, "topup.reject", "topup", id, { admin_note: adminNote });
+      const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
+      const result = await TopupService.reject(id, adminNote, actingUsername);
+      void writeAuditLog(req, "topup.reject", "topup", id, {
+        admin_note: adminNote,
+        reviewed_by: actingUsername,
+      });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {

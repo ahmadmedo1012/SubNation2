@@ -362,15 +362,14 @@ router.get("/me", requireUser, async (req, res) => {
       .status(401)
       .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
-  // 30 s private browser cache. Concurrency win: 6 components on the
-  // page (Navbar, Footer, profile, product, home, SocketInitializer)
-  // share the same React Query queryKey so client-side they already
-  // dedupe. The browser-cache layer additionally absorbs page
-  // navigations and back-button revisits, so /api/auth/me hits the
-  // origin at most twice per minute per user under steady-state
-  // navigation. `private` keeps it out of any CDN — the response is
-  // user-specific.
-  res.set("Cache-Control", "private, max-age=30");
+  // A7-1 (R116): no-store — parity with /api/wallet (A7, round-94). The
+  // response carries the user's PII (phone, email, wallet balance via
+  // formatUser) and linked identities; the old `private, max-age=30` let
+  // a shared-device browser cache serve a stale (or post-logout) profile
+  // for up to 30 s. React Query already dedupes the 6 same-key consumers
+  // client-side, so the browser-cache layer bought little and leaked a
+  // logout edge: /me stayed cached after the cookie died.
+  res.set("Cache-Control", "no-store");
 
   return res.json({
     ...formatUser(user),
@@ -408,12 +407,13 @@ router.get("/me", requireUser, async (req, res) => {
  * exactly so the React Query cache pre-seed in lib/auth.tsx still
  * lights up the typed useGetMe queryKey with full data.
  *
- * Cache-Control: same `private, max-age=30` as /me.
+ * Cache-Control: A7-1 (R116) — no-store, same as /me (the authenticated
+ * body carries the full profile + linked identities).
  */
 router.get("/probe", async (req, res) => {
   const token = req.cookies?.auth_token || req.headers.authorization?.replace("Bearer ", "");
 
-  res.set("Cache-Control", "private, max-age=30");
+  res.set("Cache-Control", "no-store");
 
   if (!token) {
     return res.status(200).json({ authenticated: false });

@@ -24,7 +24,7 @@ import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import seoRouter from "./routes/seo";
 import { ErrorCode, createErrorResponse } from "./lib/errors";
-import { getConfiguredOrigins } from "./lib/origins";
+import { getConfiguredOrigins, warnLegacySplitOriginEnvAtBoot } from "./lib/origins";
 
 const app = express();
 
@@ -41,6 +41,11 @@ function resolveFrontendDist(): string | null {
 // ── CORS / Allowed Origins ────────────────────────────────────────────────────
 // In production restrict to APP_ORIGINS; in dev allow all origins.
 const allowedOrigins = getConfiguredOrigins();
+// A7-2 (R116): boot-time warn when split-era origin vars (the retired
+// Render/Vercel stack) ride along the single-origin Coolify shape — an
+// env block copied from an old runbook silently re-arms the cross-origin
+// cookie class. Names only; never a throw.
+warnLegacySplitOriginEnvAtBoot();
 const isProduction = process.env.NODE_ENV === "production";
 
 /**

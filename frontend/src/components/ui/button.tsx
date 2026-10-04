@@ -30,7 +30,11 @@ const buttonVariants = cva(
       size: {
         default: "min-h-9 px-4 py-2",
         sm: "min-h-8 rounded-lg px-3 text-xs",
-        lg: "min-h-11 rounded-xl px-8 text-base",
+        // R116-S1 CTA recipe: the canonical primary CTA across the
+        // storefront is `<Button size="lg" className="w-full sm:w-auto">`
+        // — 48px tall, full-width on mobile, auto on ≥sm. Pages must not
+        // hand-roll h-11/h-12 + shadow + bg-primary overrides on top of it.
+        lg: "h-12 px-8 text-base font-semibold",
         icon: "h-9 w-9 rounded-xl",
       },
     },

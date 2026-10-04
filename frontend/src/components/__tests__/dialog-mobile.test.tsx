@@ -1,21 +1,23 @@
 /**
- * 96-F5 (R96-M09 + P2-4) — legacy dialog shells on phones.
+ * 96-F5 (R96-M09 + P2-4) — the useConfirm() shell on phones.
  *
- * dialog.tsx / alert-dialog.tsx were full-bleed on mobile: `w-full` with
- * no horizontal margin (the card touched both screen edges), rounding
- * applied only ≥sm (sharp corners at 320px), and NO height cap or
- * internal scroll — a long body (TopupWaitingModal's rejected note,
- * long confirm descriptions) pushed the footer buttons below the 568px
- * fold with no way to reach them (Radix locks page scroll).
+ * R116-S2: the legacy ui/dialog.tsx was DELETED (its only consumer,
+ * TopupWaitingModal, migrated to the shared AppDialog). The dialog-half
+ * of this file's expectations was folded into
+ * topup-waiting-modal-aria.test.tsx (AppDialog mobile geometry + 44px
+ * actions); this file now pins the alert-dialog half only — it stays a
+ * separate component (binary confirmations, different purpose).
  *
- * Also pins the 44px (min-h-11) action/cancel buttons — every
- * useConfirm() confirm is a money/destructive decision and 36px was
- * under the app's own touch floor.
+ * alert-dialog.tsx used to be full-bleed on mobile: no height cap or
+ * internal scroll — a long confirm description pushed the footer
+ * buttons below the 568px fold with no way to reach them (Radix locks
+ * page scroll). Also pins the 44px (min-h-11) action/cancel buttons —
+ * every useConfirm() confirm is a money/destructive decision and 36px
+ * was under the app's own touch floor.
  */
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,31 +28,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-describe("ui/dialog — 96-F5 (R96-M09) mobile geometry", () => {
-  it("keeps 16px side margins, rounds mobile corners, caps and scrolls long content", () => {
-    render(
-      <Dialog open onOpenChange={vi.fn()}>
-        <DialogContent>
-          <DialogTitle className="sr-only">حوار</DialogTitle>
-          محتوى الحوار
-        </DialogContent>
-      </Dialog>,
-    );
-    const dialog = screen.getByRole("dialog");
-    const cls = dialog.className;
-    // Width (not max-w) so consumer max-w overrides (TopupWaitingModal's
-    // max-w-md) can't reintroduce edge-to-edge bleed.
-    expect(cls).toContain("w-[calc(100vw-2rem)]");
-    expect(cls).toContain("max-w-lg");
-    // Rounded at base; the ≥sm look is unchanged.
-    expect(cls).toContain("rounded-2xl");
-    expect(cls).toContain("sm:rounded-lg");
-    // Height cap + internal scroll mirror AppDialog's contract.
-    expect(cls).toContain("max-h-[85dvh]");
-    expect(cls).toContain("overflow-y-auto");
-  });
-});
 
 describe("ui/alert-dialog — 96-F5 (R96-M09 + P2-4) geometry + 44px actions", () => {
   function renderConfirm() {
@@ -71,7 +48,7 @@ describe("ui/alert-dialog — 96-F5 (R96-M09 + P2-4) geometry + 44px actions", (
     return screen.getByRole("alertdialog");
   }
 
-  it("content: same margins / rounding / dvh cap / internal scroll as dialog.tsx", () => {
+  it("content: same margins / rounding / dvh cap / internal scroll contract as the dialog family", () => {
     const dialog = renderConfirm();
     const cls = dialog.className;
     expect(cls).toContain("w-[calc(100vw-2rem)]");

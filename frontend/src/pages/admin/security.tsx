@@ -9,6 +9,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { Activity, CheckCircle, Download, RefreshCw, Shield, WifiOff, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AdminLayout } from "./layout";
+import { formatDate } from "@/lib/utils";
 
 interface AuthActivity {
   id: number;
@@ -344,7 +345,7 @@ export function AdminSecurityDashboard() {
                           {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
                             engines without ar-LY data fall back to the
                             "ar" root and emit Arabic-Indic numerals. */}
-                          {new Date(activity.createdAt).toLocaleString("ar-LY-u-nu-latn")}
+                          {formatDate(activity.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">{activity.identifier}</p>

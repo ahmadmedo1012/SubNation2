@@ -9,11 +9,13 @@
  *   1. MAX_PENDING=3 — three pending topups must block the submit
  *      affordance (banner + inert form card + handleSubmit guard).
  *   2. The 10,000 LYD cap (10000.01 → client-side rejection, no request).
- *   3. The 0.01 floor (0.009 → client-side rejection, no request).
- *   4. The 0.5-dinar snap — Math.min(10000, Math.max(1, round(v*2)/2)):
- *      1.3 → 1.5, 1.2 → 1, and (reality pin) 0.01 itself is NOT sent as
- *      0.01 — the snap's Math.max(1, …) clamps the SUBMITTED amount to a
- *      1 LYD floor even though the rejection message quotes 0.01.
+ *   3. The whole-dinar floor (R116-S2 P2: sub-1 LYD → client-side
+ *      rejection with «أقل مبلغ شحن هو 1 د.ل», no request — USSD codes
+ *      cannot carry fractions, so the old «0.01» claim was unreachable).
+ *   4. The whole-dinar snap — Math.min(10000, Math.max(1, Math.round(v))):
+ *      1.6 → 2, 1.4 → 1, and blur rounds in place (24.9 → 25) so the
+ *      amount always matches the USSD code the panel told the user to
+ *      dial.
  *
  * Boundary notes (read off the validators in wallet.tsx handleSubmit):
  *   - the rejection tests drive fireEvent.submit deliberately: a blur
@@ -40,6 +42,15 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListTopupsQueryKey: () => ["/api/wallet/topups"],
   getGetWalletLedgerQueryKey: () => ["/api/wallet/ledger"],
+  // R116-S2 (task 5): the wallet page mounts useSocket(me?.id) for
+  // in-page topup updates — same shared-key pattern as order-detail.
+  getGetMeQueryKey: () => ["/api/auth/me"],
+  useGetMe: vi.fn(() => ({
+    data: { id: 7, wallet_balance: 150 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   useGetWallet: vi.fn(() => ({
     data: { balance: 150, loyalty_points: 0, loyalty_tier: "bronze" },
     isLoading: false,
@@ -192,13 +203,25 @@ describe("WalletPage — MAX_PENDING=3 gate (T2: dead under the static data:[] m
 });
 
 describe("WalletPage — amount money gates (handleSubmit validators)", () => {
-  it("0.009 LYD is rejected client-side with the 0.01 floor message — no request", async () => {
+  it("sub-dinar amounts are rejected client-side with the whole-dinar floor message — no request", async () => {
     renderPage();
 
     fireEvent.change(amountField(), { target: { value: "0.009" } });
     await submitFromForm();
 
-    expect(await screen.findByText("أقل مبلغ شحن هو 0.01 د.ل")).toBeInTheDocument();
+    // R116-S2 (P2): the floor is 1 LYD — USSD codes cannot carry
+    // fractions, so the old «0.01» claim was unreachable fiction.
+    expect(await screen.findByText("أقل مبلغ شحن هو 1 د.ل")).toBeInTheDocument();
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("0.01 LYD is rejected with the same whole-dinar floor (the old snap-clamp path is gone)", async () => {
+    renderPage();
+
+    fireEvent.change(amountField(), { target: { value: "0.01" } });
+    await submitFromForm();
+
+    expect(await screen.findByText("أقل مبلغ شحن هو 1 د.ل")).toBeInTheDocument();
     expect(mutateMock).not.toHaveBeenCalled();
   });
 
@@ -225,25 +248,25 @@ describe("WalletPage — amount money gates (handleSubmit validators)", () => {
   });
 });
 
-describe("WalletPage — the 0.5-dinar snap (Math.min(10000, Math.max(1, round(v*2)/2)))", () => {
-  it("1.3 snaps UP to 1.5 — the submitted payload AND the field both carry 1.5", async () => {
+describe("WalletPage — the whole-dinar snap (Math.min(10000, Math.max(1, Math.round(v))))", () => {
+  it("1.6 snaps UP to 2 — the submitted payload AND the field both carry 2", async () => {
     renderPage();
 
-    fillValidForm("1.3");
+    fillValidForm("1.6");
     await clickSubmit();
 
     await waitFor(() => {
       expect(mutateMock).toHaveBeenCalledTimes(1);
     });
-    expect(mutateMock.mock.calls[0][0].data).toMatchObject({ amount: 1.5 });
+    expect(mutateMock.mock.calls[0][0].data).toMatchObject({ amount: 2 });
     // The normalized value is written back into the field.
-    expect(amountField().value).toBe("1.5");
+    expect(amountField().value).toBe("2");
   });
 
-  it("1.2 snaps DOWN to 1 (nearest 0.5, not ceiling)", async () => {
+  it("1.4 snaps DOWN to 1 (nearest whole dinar, not ceiling)", async () => {
     renderPage();
 
-    fillValidForm("1.2");
+    fillValidForm("1.4");
     await clickSubmit();
 
     await waitFor(() => {
@@ -252,20 +275,13 @@ describe("WalletPage — the 0.5-dinar snap (Math.min(10000, Math.max(1, round(v
     expect(mutateMock.mock.calls[0][0].data).toMatchObject({ amount: 1 });
   });
 
-  it("REALITY PIN: 0.01 passes the floor check but the snap's Math.max(1, …) submits it as 1 LYD", async () => {
-    // The floor message quotes 0.01, yet no sub-0.75 amount can ever be
-    // SENT: the normalizer clamps to a 1 LYD minimum. The backend would
-    // accept 0.01 (its own boundary pins do) — the frontend never offers
-    // it. Pinned so a future change to either side is a conscious one.
+  it("blurring a fractional field rounds it in place (24.9 → 25, matching the USSD code)", () => {
     renderPage();
 
-    fillValidForm("0.01");
-    await clickSubmit();
+    const field = amountField();
+    fireEvent.change(field, { target: { value: "24.9" } });
+    fireEvent.blur(field);
 
-    await waitFor(() => {
-      expect(mutateMock).toHaveBeenCalledTimes(1);
-    });
-    expect(mutateMock.mock.calls[0][0].data).toMatchObject({ amount: 1 });
-    expect(amountField().value).toBe("1");
+    expect(field.value).toBe("25");
   });
 });

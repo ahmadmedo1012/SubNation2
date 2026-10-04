@@ -9,6 +9,12 @@ export interface AdminAuthenticatedRequest extends Request {
   adminId: number;
   role: string;
   /**
+   * A4-04 (R116): the acting admin's username — materialized here (one
+   * extra column on the row lookup this middleware already performs) so
+   * money-review surfaces can attribute rows without a second query.
+   */
+  adminUsername: string;
+  /**
    * A8-01 (round-94): the admin_sessions row id bound to this token.
    * null for sid-less tokens (only possible outside production — see
    * the strictness note in requireAdmin).
@@ -25,11 +31,7 @@ export interface AdminAuthenticatedRequest extends Request {
   adminPermissions: string[];
 }
 
-export async function requireAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   // Try cookie first, fallback to Authorization header
   const token = req.cookies?.admin_token || req.headers.authorization?.replace("Bearer ", "");
 
@@ -77,12 +79,7 @@ export async function requireAdmin(
     if (process.env.NODE_ENV === "production") {
       res
         .status(401)
-        .json(
-          createErrorResponse(
-            "جلسة قديمة — أعد تسجيل الدخول",
-            ErrorCode.SESSION_EXPIRED,
-          ),
-        );
+        .json(createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));
       return;
     }
   } else {
@@ -90,12 +87,7 @@ export async function requireAdmin(
     if (!sessionValid) {
       res
         .status(401)
-        .json(
-          createErrorResponse(
-            "تم إبطال الجلسة — أعد تسجيل الدخول",
-            ErrorCode.SESSION_EXPIRED,
-          ),
-        );
+        .json(createErrorResponse("تم إبطال الجلسة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));
       return;
     }
   }
@@ -107,6 +99,7 @@ export async function requireAdmin(
   const [admin] = await db
     .select({
       id: adminUsersTable.id,
+      username: adminUsersTable.username,
       role: adminUsersTable.role,
       isActive: adminUsersTable.isActive,
       permissions: adminUsersTable.permissions,
@@ -121,15 +114,14 @@ export async function requireAdmin(
   }
 
   if (!admin.isActive) {
-    res
-      .status(403)
-      .json(createErrorResponse("الحساب معطّل من قبل المسؤول", ErrorCode.FORBIDDEN));
+    res.status(403).json(createErrorResponse("الحساب معطّل من قبل المسؤول", ErrorCode.FORBIDDEN));
     return;
   }
 
   const adminReq = req as AdminAuthenticatedRequest;
   adminReq.adminId = admin.id;
   adminReq.role = admin.role;
+  adminReq.adminUsername = admin.username;
   adminReq.adminSessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
   adminReq.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
   next();

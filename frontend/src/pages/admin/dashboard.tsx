@@ -2,7 +2,8 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useChartColors } from "@/lib/chart-theme";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
-import { formatCurrency, formatDate, statusColor, statusLabel } from "@/lib/utils";
+import { formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -927,11 +928,17 @@ export default function AdminDashboardPage() {
                         {formatCurrency(order.amount)}
                       </div>
                       <div className="mt-0.5">
-                        <span
-                          className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(order.status)}`}
+                        {/* R116: shared StatusBadge (STATUS_TONE) replaces
+                            the deprecated statusColor() — 93-C7 follow-up. */}
+                        <StatusBadge
+                          variant={
+                            STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                            UNKNOWN_STATUS_TONE
+                          }
+                          size="xs"
                         >
                           {statusLabel(order.status)}
-                        </span>
+                        </StatusBadge>
                       </div>
                     </div>
                   </div>

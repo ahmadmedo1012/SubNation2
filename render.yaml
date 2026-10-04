@@ -73,17 +73,14 @@ services:
         # Canonical apex + www. Pre-launch state: no legacy origin
         # compatibility — the platform is still in development.
         value: "https://subnation.ly,https://www.subnation.ly"
-      # Add the deployed Vercel origin here (or in FRONTEND_ORIGINS) before
-      # switching browser traffic to Vercel. Keep exact origins only; do not
-      # use a wildcard. These values are read by CORS, CSRF and Socket.IO.
-      # sync:true is safe here — this is a public URL (CORS allow-list), not
-      # a secret. sync:false would make the value disappear on every blueprint
-      # re-apply; the deploy hook would then see an empty origin and CORS
-      # would 403 the Vercel SPA. Keep secrets (API keys, tokens) on
-      # sync:false — those live in the Render dashboard only.
-      - key: VERCEL_FRONTEND_ORIGIN
-        value: "https://subnation-seven.vercel.app"
-        sync: true
+      # A7-2 (R116): the VERCEL_FRONTEND_ORIGIN pin is REMOVED — the
+      # Render/Vercel split stack is retired (production runs the Coolify
+      # single-origin shape: APP_ORIGINS above + the reverse-proxy /api
+      # rewrite). Re-applying this blueprint must never resurrect the
+      # split-era extra origin (and the cross-origin cookie class it
+      # re-armed). If a second browser origin is EVER genuinely needed,
+      # set it in FRONTEND_ORIGINS from the dashboard — the backend folds
+      # it into CORS/CSRF/Socket.IO and warns at boot while it is set.
       - key: FRONTEND_ORIGINS
         sync: false
       # B1-5 (R111, audit B1): the subnation.ly frontend now proxies to the

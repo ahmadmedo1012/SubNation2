@@ -41,10 +41,6 @@
   --color-card-foreground: hsl(var(--card-foreground));
   --color-card-border: hsl(var(--card-border));
 
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-popover-border: hsl(var(--popover-border));
-
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-primary-border: var(--primary-border);
@@ -94,17 +90,6 @@
   --color-brand-whatsapp: #25d366;
   --color-brand-whatsapp-ink: #054339;
 
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-primary-border: var(--sidebar-primary-border);
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-accent-border: var(--sidebar-accent-border);
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
-
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
@@ -137,7 +122,10 @@
 
   /* Elevation layers for surface system. R115-A6 #10: --surface-raised
      and --surface-float removed — zero consumers (kept: base/card/
-     overlay, all three consumed by --background/--card/--popover). */
+     overlay — consumed by --background/--card and the overlay scrim
+     gradient below. R116-S1: the dead popover and sidebar token
+     families were removed with them; the admin shell owns its own
+     chrome). */
   --surface-base: 220 22% 5%;
   --surface-card: 220 20% 8%;
   --surface-overlay: 220 20% 12%;
@@ -183,19 +171,6 @@
   --card-foreground: 210 40% 98%;
   --card-border: 215 20% 17%;
 
-  --sidebar: var(--surface-card);
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 215 20% 17%;
-  --sidebar-primary: 348 83% 47%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 215 20% 13%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 348 83% 47%;
-
-  --popover: var(--surface-overlay);
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 215 20% 18%;
-
   --primary: 348 80% 48%;
   --primary-text: 348 80% 65%;
   --primary-foreground: 0 0% 100%;
@@ -240,15 +215,8 @@
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
-  /* Computed borders */
-  --sidebar-primary-border: hsl(var(--sidebar-primary));
-  --sidebar-primary-border: hsl(
-    from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
-  );
-  --sidebar-accent-border: hsl(var(--sidebar-accent));
-  --sidebar-accent-border: hsl(
-    from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
-  );
+  /* Computed borders (R116-S1: the sidebar pair was removed with its
+     dead --sidebar-* family — zero consumers anywhere in src). */
   --primary-border: hsl(var(--primary));
   --primary-border: hsl(
     from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
@@ -309,12 +277,20 @@
      6.04:1 on white, 5.09:1 on the darkest banner tint in use (/12,
      status-badge), 4.87:1 at /15 — success: 5.90:1 / 4.98:1 (/12) /
      4.76:1 at /15 (referrals' tint, the darkest consumer). Dark theme
-     (which passes at 9.5:1) is untouched. */
+     (which passes at 9.5:1) is untouched.
+     R116-S1 (WCAG 1.4.3, same method — white-card backgrounds with the
+     token composited at /12 StatusBadge tint and /15 banner tint):
+     error 0 75% 50% measured 4.81:1 / 3.97:1 / 3.80:1, info 211 80% 48%
+     4.46:1 / 3.82:1 / 3.67:1, low-stock 22 88% 48% 3.52:1 / 3.05:1 /
+     2.94:1 — all under 4.5:1 on their own tints. Darkened values
+     measure — error 0 75% 42%: 6.39:1 / 5.23:1 / 4.95:1 — info
+     211 80% 38%: 6.48:1 / 5.43:1 / 5.18:1 — low-stock 22 88% 36%:
+     5.74:1 / 4.82:1 / 4.60:1. Dark theme untouched. */
   --status-success: 152 60% 28%;
   --status-warning: 38 90% 28%;
-  --status-error: 0 75% 50%;
-  --status-info: 211 80% 48%;
-  --status-low-stock: 22 88% 48%;
+  --status-error: 0 75% 42%;
+  --status-info: 211 80% 38%;
+  --status-low-stock: 22 88% 36%;
   --status-purple: 262 70% 45%;
 
   --background: var(--surface-base);
@@ -324,19 +300,6 @@
   --card: 0 0% 100%;
   --card-foreground: 220 20% 10%;
   --card-border: 220 13% 87%;
-
-  --sidebar: 220 16% 96%;
-  --sidebar-foreground: 220 20% 10%;
-  --sidebar-border: 220 13% 87%;
-  --sidebar-primary: 348 80% 46%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 14% 91%;
-  --sidebar-accent-foreground: 220 20% 20%;
-  --sidebar-ring: 348 80% 46%;
-
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 20% 10%;
-  --popover-border: 220 13% 87%;
 
   --primary: 348 80% 46%;
   --primary-text: 348 80% 46%;
@@ -364,6 +327,14 @@
   --shadow-md: 0px 4px 10px 0px hsl(0 0% 0% / 0.1), 0px 2px 4px -2px hsl(0 0% 0% / 0.07);
   --shadow-lg: 0px 6px 18px 0px hsl(0 0% 0% / 0.12), 0px 3px 6px -2px hsl(0 0% 0% / 0.08);
   --shadow-xl: 0px 10px 28px 0px hsl(0 0% 0% / 0.13), 0px 5px 10px -2px hsl(0 0% 0% / 0.09);
+
+  /* R116-S1 (light elevation bug, P1): --shadow-2xl was NOT redefined
+     in the light block, so every light-mode consumer of bare shadow-2xl
+     (AppDialog's overlay, the largest sheets) inherited the DARK value
+     below — 24px/52px of 60% black under a white dialog. Completes the
+     light step-down progression (lg .12 → xl .13 → 2xl .14) with the
+     same shape language as xl but larger radii. */
+  --shadow-2xl: 0px 16px 40px 0px hsl(0 0% 0% / 0.14);
 }
 
 /* ── BASE LAYER ──────────────────────────────────────── */

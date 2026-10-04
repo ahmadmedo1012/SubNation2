@@ -98,7 +98,7 @@ function seoHeadInject(): Plugin {
 
 /**
  * Inject <link rel="preload"> for the critical Readex Pro woff2 fonts
- * (Arabic 400/700 + Latin 400 — the LCP-text faces).
+ * (Arabic 400/600/700 + Latin 400 — the LCP-text faces).
  *
  * Why preload: the browser only discovers @font-face rules AFTER it has
  * parsed the index CSS bundle. Without a preload, the woff2 fetch waits
@@ -119,6 +119,16 @@ function seoHeadInject(): Plugin {
  * above the fold renders heavier than 400 on the guest hero, and
  * every extra preload competes for the same first-paint bandwidth.
  *
+ * A5-10 (R116): Arabic 600 joined the set — Navbar renders its
+ * above-the-fold labels (nav links, balance chip, section headers)
+ * at font-semibold, and every one of them paid the CSS-parse →
+ * @font-face-discovery → fetch RTT before its final paint while the
+ * 400/700 faces were already in flight. The arabic-600 woff2 ships in
+ * the bundle already (@fontsource/readex-pro/arabic-600.css is
+ * imported by index.css); this only moves its fetch earlier. Latin
+ * weights beyond 400 stay unpreloaded (no above-fold Latin text uses
+ * them).
+ *
  * Why per-build: @fontsource's woff2 files are emitted with content
  * hashes (`readex-pro-arabic-400-normal-De1vYjJZ.woff2`). The hash
  * changes whenever the font version bumps. We can't hard-code the
@@ -138,9 +148,10 @@ function fontPreloadInject(): Plugin {
 
         // Find the LCP-text woff2 files by name pattern: Arabic 400
         // (body text), Latin 400 (Latin glyphs), Arabic 700 (the
-        // font-black hero headline's actual face — F4-F4).
+        // font-black hero headline's actual face — F4-F4), Arabic 600
+        // (Navbar's above-the-fold semibold labels — A5-10).
         const woff2 = Object.keys(bundle).filter((name) =>
-          /readex-pro-arabic-(400|700)-normal-[A-Za-z0-9_-]+\.woff2$|readex-pro-latin-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(
+          /readex-pro-arabic-(400|600|700)-normal-[A-Za-z0-9_-]+\.woff2$|readex-pro-latin-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(
             name,
           ),
         );

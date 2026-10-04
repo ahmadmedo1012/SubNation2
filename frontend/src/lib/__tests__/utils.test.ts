@@ -6,7 +6,6 @@
  *
  *   - formatCurrency   — Libyan dinar formatting (د.ل) with null guards
  *   - statusLabel      — Arabic labels for every order/topup status
- *   - statusColor      — token-based class tuples (no theme branching)
  *   - tierLabel/Color  — loyalty tier labels (4-tier scale)
  *   - cn               — clsx + tailwind-merge composition
  *
@@ -28,7 +27,6 @@ import {
   formatCurrency,
   formatDate,
   formatDateShort,
-  statusColor,
   statusLabel,
   tierColor,
   tierLabel,
@@ -83,26 +81,6 @@ describe("statusLabel", () => {
     // visible until the labels map is updated.
     expect(statusLabel("custom-status")).toBe("custom-status");
     expect(statusLabel("")).toBe("");
-  });
-});
-
-describe("statusColor", () => {
-  it("returns class tuples that include token-based status classes", () => {
-    expect(statusColor("completed")).toContain("status-success");
-    expect(statusColor("approved")).toContain("status-success");
-    expect(statusColor("delivered")).toContain("status-success");
-
-    expect(statusColor("failed")).toContain("status-error");
-    expect(statusColor("rejected")).toContain("status-error");
-
-    expect(statusColor("pending")).toContain("status-warning");
-    expect(statusColor("processing")).toContain("status-info");
-    expect(statusColor("refunded")).toContain("status-info");
-  });
-
-  it("falls through to a muted-foreground class for unknown statuses", () => {
-    expect(statusColor("unknown")).toBe("text-muted-foreground");
-    expect(statusColor("")).toBe("text-muted-foreground");
   });
 });
 

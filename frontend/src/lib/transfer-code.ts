@@ -30,11 +30,22 @@ function toInternational(local: string): string {
   return `218${d}`;
 }
 
-/** Whole-dinar amount string. Returns null when the input is invalid. */
+/**
+ * Whole-dinar amount string. Returns null when the input is invalid.
+ *
+ * R116 (P2): Math.round, not Math.floor — the wallet form now snaps the
+ * typed amount to an integer at blur AND submit (USSD transfer codes
+ * can only carry whole dinars), so a fraction never legitimately
+ * reaches this generator. Rounding (rather than flooring) keeps the
+ * CODE and the SUBMITTED amount identical even if a fractional value
+ * slips through a stale pref/restore path — flooring a stray "24.9"
+ * would dial 24 while the request credits 24.9 (the original
+ * guaranteed-mismatch defect, reintroduced one layer down).
+ */
 function normalizeAmount(amount: number | string): string | null {
   const n = typeof amount === "number" ? amount : parseFloat(amount);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.floor(n).toString();
+  return Math.round(n).toString();
 }
 
 export function transferCode(

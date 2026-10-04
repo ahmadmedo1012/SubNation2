@@ -1,16 +1,19 @@
 import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
+import { z } from "zod";
 import { logger } from "../../lib/logger";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
-import { escapeLikeTerm, queryString } from "../../lib/http";
-import { requireAdmin } from "../../middlewares/requireAdmin";
+import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 import { idempotency } from "../../middlewares/idempotency";
 import { RefundError, RefundService } from "../../services/refund.service";
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
 import { runStockSweep } from "../../jobs/stockWatcher";
+import { createNotification } from "../../notify";
 
 const router = Router();
 
@@ -24,6 +27,42 @@ router.use((_req, res, next) => {
 
 // Must match the order_status pg enum (shared/db/src/schema/orders.ts).
 const ORDER_STATUS_VALUES = ["pending", "completed", "failed", "refunded"] as const;
+type OrderStatus = (typeof ORDER_STATUS_VALUES)[number];
+
+// R116 hygiene (admin/orders typed status): both the ?status= list filter
+// and the bulk-status PATCH body fed the pg-enum column through stringly
+// comparisons + `as any` downcasts. One zod enum is now the single
+// validation point — a parsed value is a member of the pg enum by
+// construction, so Postgres can never see a 22P02 from this router.
+const ORDER_STATUS_SCHEMA = z.enum(ORDER_STATUS_VALUES);
+
+// A9-1 (R116): Arabic labels for the durable order-status notification —
+// mirrors statusLabel() in frontend/src/lib/utils.ts (r111 ledger:
+// refunded rides the «استرداد» root).
+const ORDER_STATUS_NOTIFICATION_LABELS: Record<OrderStatus, string> = {
+  pending: "قيد الانتظار",
+  completed: "مكتمل",
+  failed: "فشل",
+  refunded: "تم استرداده",
+};
+
+/**
+ * A9-1 (R116): durable notification for an admin-driven status change.
+ * The socket `order-updated` emit is transient — an offline buyer never
+ * sees it — while the notifications row surfaces in NotificationBell on
+ * the next visit. createNotification is non-fatal by contract (warn +
+ * carry on), so this can never block the status change itself.
+ */
+function notifyOrderStatusChanged(userId: number, orderCode: string, status: OrderStatus) {
+  return createNotification(
+    userId,
+    "order",
+    `طلبك ${orderCode} ${ORDER_STATUS_NOTIFICATION_LABELS[status]}`,
+    undefined,
+    // Storefront order detail route (App.tsx): /orders/:orderCode.
+    `/orders/${orderCode}`,
+  );
+}
 
 /**
  * B2-F4 (R111, round-111 B2 audit): bulk-status accepted an unbounded
@@ -40,18 +79,24 @@ router.get("/orders", requireAdmin, async (req, res) => {
   // A5-03 (round-94): `?status=` feeds the order_status pg-enum column —
   // an out-of-enum value used to reach Postgres as 22P02 → 500. Validate
   // up front: bad value → 400 INVALID_DATA with the allowed values.
+  // R116: the check is the shared zod enum (typed — no `as any` cast into
+  // the column anymore).
   const statusRaw = typeof req.query.status === "string" ? req.query.status : undefined;
-  if (statusRaw !== undefined && !(ORDER_STATUS_VALUES as readonly string[]).includes(statusRaw)) {
-    return res
-      .status(400)
-      .json(
-        createErrorResponse(
-          "حالة طلب غير صالحة (المسموح: pending, completed, failed, refunded)",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
+  const conditions = [];
+  if (statusRaw !== undefined) {
+    const statusParsed = ORDER_STATUS_SCHEMA.safeParse(statusRaw);
+    if (!statusParsed.success) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "حالة طلب غير صالحة (المسموح: pending, completed, failed, refunded)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
+    conditions.push(eq(ordersTable.status, statusParsed.data));
   }
-  const conditions = statusRaw !== undefined ? [eq(ordersTable.status, statusRaw as any)] : [];
 
   // A2 (round-94): keep the limit/page clamps from the R93 pagination fix.
   const limit = Math.min(
@@ -117,23 +162,93 @@ router.get("/orders", requireAdmin, async (req, res) => {
       product_name: r.productName ?? "",
       amount: parseFloat(String(r.order.amount)),
       status: r.order.status,
-      // P0-sim (round-93 live simulation, 93-SIM-live-findings): the admin
-      // order table had the SAME asymmetry as formatOrder — decrypted
-      // password next to raw (still-encrypted) delivered_email /
-      // delivered_extra_details, so the expanded order cell showed hex
-      // ciphertext where the account email/details should be. Admins DO
-      // get to see credentials for completed orders (support/reconciliation
-      // tool); RefundService nulls the columns in the refund tx, so
-      // refunded orders show null here. safeDecrypt passes legacy
-      // plaintext through unchanged (B2-11 for auth failures).
-      delivered_email: safeDecrypt(r.order.deliveredEmail),
-      delivered_password: safeDecrypt(r.order.deliveredPassword),
-      delivered_extra_details: safeDecrypt(r.order.deliveredExtraDetails),
+      // B6-03 (R116, credentials-on-demand): the list NO LONGER decrypts
+      // the three AES-GCM credential columns — one list refresh used to
+      // run up to 600 decrypts (3 × 200 rows), and a key mismatch turned
+      // that into 600 warn lines. Rows now carry only a has_credentials
+      // boolean (any of deliveredEmail/Password/ExtraDetails non-null); the
+      // plaintext is served per-order by GET /orders/:id/credentials, which
+      // also audits the reveal. RefundService still nulls the columns in
+      // the refund tx, so refunded orders report has_credentials: false.
+      has_credentials: !!(
+        r.order.deliveredEmail ||
+        r.order.deliveredPassword ||
+        r.order.deliveredExtraDetails
+      ),
       coupon_code: r.order.couponCode ?? null,
       discount_amount: r.order.discountAmount ? parseFloat(String(r.order.discountAmount)) : 0,
       created_at: r.order.createdAt?.toISOString(),
     })),
   );
+});
+
+/**
+ * B6-03 (R116, credentials-on-demand): per-order credential reveal.
+ *
+ * The admin list route used to decrypt deliveredEmail/Password/
+ * ExtraDetails for EVERY row on every refresh (up to 600 AES-GCM
+ * decrypts + a 600-line safeDecrypt failure-warn flood per refresh under
+ * a key mismatch). The list now returns only `has_credentials`; this
+ * route is the ONLY admin surface that decrypts, and it does so for a
+ * single order — deliberately an explicit, per-order action an operator
+ * takes when a buyer asks for support/reconciliation.
+ *
+ * Contract:
+ *   - requireAdmin (the parent mount adds the `orders` permission scope)
+ *   - strict digit-exact :id validation (intParam — the sibling-route
+ *     idiom)
+ *   - 404 when the order id doesn't exist
+ *   - Cache-Control: no-store (router-level middleware — credential
+ *     material must never sit in an intermediary's cache)
+ *   - every successful reveal writes an `order.credentials_view` audit
+ *     row (who opened WHICH order's credentials — the trail B6-03 asks
+ *     for now that the list no longer blanket-decrypts)
+ *   - refunded orders return has_credentials:false + all nulls
+ *     (RefundService nulls the columns in the refund tx); safeDecrypt
+ *     passes legacy plaintext through unchanged (B2-11).
+ */
+router.get("/orders/:id/credentials", requireAdmin, async (req, res) => {
+  const id = intParam(req, "id");
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+
+  const [order] = await db
+    .select({
+      id: ordersTable.id,
+      orderCode: ordersTable.orderCode,
+      status: ordersTable.status,
+      deliveredEmail: ordersTable.deliveredEmail,
+      deliveredPassword: ordersTable.deliveredPassword,
+      deliveredExtraDetails: ordersTable.deliveredExtraDetails,
+    })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, id))
+    .limit(1);
+
+  if (!order)
+    return res.status(404).json(createErrorResponse("الطلب غير موجود", ErrorCode.NOT_FOUND));
+
+  // Awaited (not `void`): writeAuditLog never throws by contract, and
+  // awaiting keeps the audit row committed before the credential
+  // material leaves the process — deterministic for the audit-trail test.
+  await writeAuditLog(req, "order.credentials_view", "order", id, {
+    order_code: order.orderCode,
+    status: order.status,
+  });
+
+  return res.json({
+    id: order.id,
+    order_code: order.orderCode,
+    status: order.status,
+    has_credentials: !!(
+      order.deliveredEmail ||
+      order.deliveredPassword ||
+      order.deliveredExtraDetails
+    ),
+    delivered_email: safeDecrypt(order.deliveredEmail),
+    delivered_password: safeDecrypt(order.deliveredPassword),
+    delivered_extra_details: safeDecrypt(order.deliveredExtraDetails),
+  });
 });
 
 /**
@@ -166,8 +281,7 @@ router.patch(
   requireAdmin,
   idempotency({ routeKey: "admin.orders.bulk-status" }),
   async (req, res) => {
-    const { ids, status, note } = req.body ?? {};
-    const ALLOWED: readonly string[] = ORDER_STATUS_VALUES;
+    const { ids, note } = req.body ?? {};
     if (!Array.isArray(ids) || ids.length === 0)
       return res.status(400).json(createErrorResponse("ids مطلوبة", ErrorCode.INVALID_DATA));
     // B2-F4: element cap BEFORE any per-id work (dedup loop, IN(...) —
@@ -181,8 +295,13 @@ router.patch(
             ErrorCode.INVALID_DATA,
           ),
         );
-    if (!status || !ALLOWED.includes(status))
+    // R116 hygiene: zod-validated status — the parsed value is a member
+    // of the pg enum by construction (removes the stringly `as any`
+    // downcast at the UPDATE below).
+    const statusParsed = ORDER_STATUS_SCHEMA.safeParse((req.body ?? {}).status);
+    if (!statusParsed.success)
       return res.status(400).json(createErrorResponse("حالة غير صالحة", ErrorCode.INVALID_DATA));
+    const status: OrderStatus = statusParsed.data;
     // M4 — the old `.map(Number).filter(!isNaN)` silently DROPPED
     // non-numeric ids and reported them as updated. A client sending
     // ["12", 13] had both processed (string coercion), while ["abc", 13]
@@ -212,6 +331,26 @@ router.patch(
     }
 
     if (status === "refunded") {
+      // A6-01 (R116): a mass refund is a wallet-MONEY write — each id
+      // routes through RefundService (optimistic wallet credit + ledger
+      // row). The router mount gates this surface on the `orders` scope,
+      // but money writes need `finance` exactly like every other money
+      // surface (B1-3 pattern from routes/admin/users.ts:294 — topup
+      // approve/reject, wallet adjustments, loyalty edits). A
+      // scoped-to-orders admin can still view orders + change
+      // pending/failed labels; crediting wallets is the finance line.
+      // 403 (not 401): the caller IS authenticated, just under-scoped.
+      const actingPerms = (req as AdminAuthenticatedRequest).adminPermissions ?? [];
+      if (!hasPermission(actingPerms, PERMISSION_SCOPES.FINANCE)) {
+        return res
+          .status(403)
+          .json(
+            createErrorResponse(
+              "استرداد الطلبات يتطلب صلاحية «المعاملات المالية» (finance)",
+              ErrorCode.FORBIDDEN,
+            ),
+          );
+      }
       // F-005 — per-order atomic refund. We loop sequentially rather
       // than Promise.all to keep error handling clean and to avoid
       // optimistic-lock thrash if multiple refunds touch the same user.
@@ -235,6 +374,13 @@ router.patch(
             note: typeof note === "string" ? note : undefined,
           });
           successes.push(result.orderId);
+          // A9-1 (R116): durable notification — the socket emit is
+          // transient, the notifications row survives to the next visit
+          // (createNotification is non-fatal by contract).
+          const refundCode = codeById.get(result.orderId);
+          if (refundCode) {
+            await notifyOrderStatusChanged(result.userId, refundCode, status);
+          }
           // Per-refund socket notification — same shape the legacy path used.
           import("../../lib/socket")
             .then(({ emitToUser }) => {
@@ -346,15 +492,11 @@ router.patch(
       status === "completed"
         ? and(inArray(ordersTable.id, numIds), eq(ordersTable.status, "completed"))
         : and(inArray(ordersTable.id, numIds), inArray(ordersTable.status, ["pending", "failed"]));
-    const flippedRows = await db
-      .update(ordersTable)
-      .set({ status: status as any })
-      .where(guard)
-      .returning({
-        id: ordersTable.id,
-        userId: ordersTable.userId,
-        orderCode: ordersTable.orderCode,
-      });
+    const flippedRows = await db.update(ordersTable).set({ status }).where(guard).returning({
+      id: ordersTable.id,
+      userId: ordersTable.userId,
+      orderCode: ordersTable.orderCode,
+    });
     const updatedCount = flippedRows.length;
 
     // Distinguish WHY each missed id was skipped so the admin sees an
@@ -383,6 +525,9 @@ router.patch(
     const updatedOrders = flippedRows;
 
     for (const o of updatedOrders) {
+      // A9-1 (R116): durable notification alongside the transient socket
+      // emit — an offline buyer still finds out their order moved.
+      await notifyOrderStatusChanged(o.userId, o.orderCode, status);
       import("../../lib/socket")
         .then(({ emitToUser }) => {
           // F-15 (round-94 A1): order_code rides the payload — the

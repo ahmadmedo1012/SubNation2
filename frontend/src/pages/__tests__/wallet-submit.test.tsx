@@ -33,6 +33,15 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListTopupsQueryKey: () => ["/api/wallet/topups"],
   getGetWalletLedgerQueryKey: () => ["/api/wallet/ledger"],
+  // R116-S2 (task 5): the wallet page mounts useSocket(me?.id) —
+  // in-page topup updates via the shared /api/auth/me key.
+  getGetMeQueryKey: () => ["/api/auth/me"],
+  useGetMe: vi.fn(() => ({
+    data: { id: 7, wallet_balance: 150 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   useGetWallet: vi.fn(() => ({
     data: { balance: 150, loyalty_points: 0, loyalty_tier: "bronze" },
     isLoading: false,
@@ -136,8 +145,9 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
       target: { value: "0912345678" },
     });
     // The receipt reference field (93-C5 / F-03) — typed with padding to
-    // prove the trim-at-submit boundary.
-    fireEvent.change(screen.getByLabelText("رقم مرجع التحويل (اختياري)"), {
+    // prove the trim-at-submit boundary. R116-S2: unified «رمز التحويل»
+    // label (was «رقم مرجع التحويل (اختياري)").
+    fireEvent.change(screen.getByLabelText("رمز التحويل (اختياري)"), {
       target: { value: "  TRX-9  " },
     });
 

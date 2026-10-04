@@ -221,7 +221,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];
-    expect(toastArg.title).toBe("✓ تمت الموافقة على 2 من 3 طلب");
+    expect(toastArg.title).toBe("تمت الموافقة على 2 من 3 طلب");
     expect(toastArg.description).toContain("نجحت 2");
     expect(toastArg.description).toContain("فشلت 1");
     // Which topup failed, and why (the per-item failure collection).
@@ -238,7 +238,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    expect(toastMock.mock.calls[0][0].title).toBe("✓ تمت الموافقة على 3 طلب");
+    expect(toastMock.mock.calls[0][0].title).toBe("تمت الموافقة على 3 طلب");
     expect(toastMock.mock.calls[0][0].variant).toBe("success");
     // Exactly one summary toast — not one per item, not a second error toast.
     expect(toastMock).toHaveBeenCalledTimes(1);
@@ -267,7 +267,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     // …and its boolean result drives a failure state instead of a
     // false "copied" success.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "فشل النسخ" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "تعذّر النسخ" })).toBeInTheDocument(),
     );
   });
 });

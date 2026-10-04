@@ -489,7 +489,7 @@ export default function AdminProductsPage() {
     }
     if (successCount > 0 && failures.length === 0) {
       toast({
-        title: `✓ ${verb} ${successCount} ${successCount === 1 ? "منتج" : "منتجات"}`,
+        title: `${verb} ${successCount} ${successCount === 1 ? "منتج" : "منتجات"}`,
         variant: "success",
       });
     }

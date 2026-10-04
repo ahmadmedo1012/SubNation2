@@ -1,10 +1,15 @@
-// F3-04 (R111 WCAG 4.1.2): each body's heading is now a real
-// DialogTitle (Radix wires aria-labelledby on the DialogContent) —
-// screen readers used to announce an unnamed "dialog" at the money
-// moment. aria-describedby is explicitly undefined: the bodies carry
-// their own live-region semantics (role=status / role=alert) and there
-// is no separate DialogDescription to point at.
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+// F3-04 (R111 WCAG 4.1.2): the dialog's accessible name is wired by
+// AppDialog's DialogTitle (Radix aria-labelledby on the content), so
+// screen readers announce «تم استلام طلب الشحن، حوار» instead of an
+// unnamed "dialog". aria-describedby stays unset: the bodies carry
+// their own live-region semantics (role=status / role=alert).
+//
+// R116-S2 (P2/P3): the shell migrated from the legacy components/ui/dialog.tsx
+// to the shared AppDialog (size="md" — same sm:max-w-md cap; mobile
+// bottom-sheet geometry replaces the old centered card). dialog.tsx is
+// deleted; its mobile-geometry expectations are folded into this
+// component's tests (topup-waiting-modal-aria.test.tsx).
+import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -34,6 +39,14 @@ interface Props {
 
 const COUNTDOWN_SECONDS = 30;
 const POLL_INTERVAL_MS = 3_000;
+/**
+ * R116-S2 (P2): the «إغلاق والمتابعة» affordance appears once the
+ * countdown is ~10 s in (or after it fully elapses). The first seconds
+ * are deliberately locked (a sub-second dismissal reads as "the request
+ * was lost"); a FULL 30 s lock read as a frozen modal — the user had no
+ * agency while the admin review can legitimately take up to 30 minutes.
+ */
+const DISMISS_AFTER_SECONDS = 10;
 
 /**
  * Post-submit waiting screen for a wallet top-up request.
@@ -46,7 +59,12 @@ const POLL_INTERVAL_MS = 3_000;
  *   3. Polls the topups list every 3s as a fallback to socket events.
  *      The socket handler in `use-socket.ts` invalidates the same
  *      query, so an approved/rejected status normally lands within
- *      ~one render of the server flip.
+ *      ~one render of the server flip. The poll pauses when the tab is
+ *      backgrounded (refetchIntervalInBackground: false — R116-S2: a
+ *      3 s background poll fights the socket sleep-economics; the
+ *      wallet page's page-scoped useSocket catches the flip the moment
+ *      the user returns, and SessionActivityManager resyncs on
+ *      visibility).
  *   4. Auto-transitions to the success/rejection state the moment the
  *      backend status changes — never forces the user to wait the full
  *      30 seconds when approval already happened.
@@ -74,7 +92,10 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
         const match = list.find((t) => t.id === topupId);
         return match && match.status !== "pending" ? false : POLL_INTERVAL_MS;
       },
-      refetchIntervalInBackground: true,
+      // R116-S2 (P3): no background polling — a hidden tab must not keep
+      // waking the server every 3 s (socket sleep-economics). The
+      // wallet page's useSocket + the visibility resync cover the gap.
+      refetchIntervalInBackground: false,
     },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -98,6 +119,12 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
         ? "rejected"
         : "waiting";
 
+  // R116-S2 (P2): dismiss agency — locked only for the first ~10 s of
+  // the countdown (or until a decision lands). ESC / backdrop / the
+  // header close are all gated on this via AppDialog's `dismissable`.
+  const elapsed = COUNTDOWN_SECONDS - countdown;
+  const canDismiss = status !== "waiting" || timedOut || elapsed >= DISMISS_AFTER_SECONDS;
+
   // Tick the cosmetic countdown. Resets whenever the modal opens for a
   // new topupId. `startedAt` is captured per-effect so it survives the
   // 1s interval ticks without sharing state with anything else — and a
@@ -110,8 +137,8 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
     setTimedOut(false);
 
     const tick = () => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      const left = Math.max(0, COUNTDOWN_SECONDS - elapsed);
+      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+      const left = Math.max(0, COUNTDOWN_SECONDS - elapsedSec);
       setCountdown(left);
       if (left === 0) setTimedOut(true);
     };
@@ -128,30 +155,35 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
     }
   }, [status, queryClient]);
 
+  // F3-04: the accessible name follows the state — the header title is
+  // the single source (the bodies no longer render their own headings).
+  const title =
+    status === "approved"
+      ? "تمت إضافة الرصيد"
+      : status === "rejected"
+        ? "تم رفض الطلب"
+        : timedOut
+          ? "ما زلنا نراجع طلبك"
+          : "تم استلام طلب الشحن";
+
   return (
-    <Dialog
+    <AppDialog
       open={open}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
+      title={title}
+      size="md"
+      // Locked for the first ~10 s of the waiting state: AppDialog
+      // blocks ESC / backdrop / the header close while false.
+      dismissable={canDismiss}
     >
-      <DialogContent
-        className="max-w-md p-0 overflow-hidden bg-card border-border/55 sm:rounded-2xl"
-        aria-describedby={undefined}
-        // Don't let backdrop / esc close the modal while we're still waiting —
-        // it would feel like we lost the request. After approval/rejection or
-        // the cosmetic timer elapses, full keyboard/backdrop close is allowed.
-        onEscapeKeyDown={(e) => {
-          if (status === "waiting" && !timedOut) e.preventDefault();
-        }}
-        onPointerDownOutside={(e) => {
-          if (status === "waiting" && !timedOut) e.preventDefault();
-        }}
-      >
+      <AppDialogBody className="p-6">
         {status === "waiting" && (
           <WaitingBody
             countdown={countdown}
             timedOut={timedOut}
+            canDismiss={canDismiss}
             amount={topup?.amount}
             onClose={onClose}
           />
@@ -167,26 +199,28 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
         {status === "rejected" && (
           <RejectedBody adminNote={topup?.admin_note ?? null} onClose={onClose} />
         )}
-      </DialogContent>
-    </Dialog>
+      </AppDialogBody>
+    </AppDialog>
   );
 }
 
 function WaitingBody({
   countdown,
   timedOut,
+  canDismiss,
   amount,
   onClose,
 }: {
   countdown: number;
   timedOut: boolean;
+  canDismiss: boolean;
   amount?: number;
   onClose: () => void;
 }) {
   const pct = Math.max(0, Math.min(100, (countdown / COUNTDOWN_SECONDS) * 100));
 
   return (
-    <div className="p-6 text-center">
+    <div className="text-center">
       <div className="relative mx-auto mb-4 w-24 h-24 flex items-center justify-center">
         <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
           <circle
@@ -226,13 +260,12 @@ function WaitingBody({
         </div>
       </div>
 
-      <DialogTitle className="text-lg font-bold mb-1.5">
-        {timedOut ? "ما زلنا نراجع طلبك" : "تم استلام طلب الشحن"}
-      </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
         {/* R115 (A8 #5): ONE approval SLA across every surface — this modal
             used to promise «ثوانٍ» while the wallet page said «30 دقيقة»
-            (approval is a manual admin action; "seconds" overpromised). */}
+            (approval is a manual admin action; "seconds" overpromised).
+            R116-S2 (P2): the timed-out copy keeps the reassurance; the
+            10 s in, the «إغلاق والمتابعة» button below gives agency. */}
         {timedOut
           ? "قد تستغرق المراجعة حتى 30 دقيقة خلال ساعات العمل. سنخبرك فور اعتماد الطلب."
           : "نتحقق الآن من إتمام التحويل. عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل."}
@@ -250,11 +283,11 @@ function WaitingBody({
         <span>قيد المراجعة من الإدارة</span>
       </div>
 
-      {timedOut && (
+      {canDismiss && (
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 w-full py-2.5 rounded-xl bg-muted/50 border border-border/55 text-sm font-bold hover:bg-muted/70 transition-colors press-spring"
+          className="mt-5 w-full min-h-11 py-2.5 rounded-xl bg-muted/50 border border-border/55 text-sm font-bold hover:bg-muted/70 transition-colors press-spring"
         >
           إغلاق والمتابعة
         </button>
@@ -279,14 +312,11 @@ function ApprovedBody({
        waiting state's only live region (the countdown) unmounts on the
        swap, so screen readers went silent exactly at the money moment.
        role=status + aria-live=polite announces the full body on mount. */
-    <div role="status" aria-live="polite" className="p-6 text-center">
+    <div role="status" aria-live="polite" className="text-center">
       <div className="relative mx-auto mb-4 w-20 h-20 rounded-full bg-status-success/15 border border-status-success/35 flex items-center justify-center">
         <CheckCircle2 className="w-10 h-10 text-status-success" />
         <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
       </div>
-      <DialogTitle className="text-lg font-bold mb-1.5 text-status-success">
-        تمت إضافة الرصيد
-      </DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
 
       <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
@@ -318,14 +348,14 @@ function ApprovedBody({
           <button
             type="button"
             onClick={onContinue}
-            className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+            className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
           >
             متابعة الشراء
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            className="w-full min-h-11 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             البقاء في المحفظة
           </button>
@@ -334,7 +364,7 @@ function ApprovedBody({
         <button
           type="button"
           onClick={onClose}
-          className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+          className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
         >
           تم
         </button>
@@ -348,11 +378,10 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
     /* 96-F6 (R96 A6 #3 P1): the rejected state is asserted live
        (role=alert ⇒ assertive) so the refusal + admin note reach the
        screen-reader user the moment the status flips. */
-    <div role="alert" className="p-6 text-center">
+    <div role="alert" className="text-center">
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>
-      <DialogTitle className="text-lg font-bold mb-1.5 text-status-error">تم رفض الطلب</DialogTitle>
       <p className="text-sm text-muted-foreground mb-5">
         {adminNote ? "السبب الموضّح من الإدارة:" : "تواصل مع الدعم إذا كنت ترى أن هذا خطأ."}
       </p>
@@ -366,7 +395,7 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
       <button
         type="button"
         onClick={onClose}
-        className="w-full py-2.5 rounded-xl bg-muted/60 border border-border/55 text-sm font-bold hover:bg-muted/80 transition-colors press-spring"
+        className="w-full min-h-11 py-2.5 rounded-xl bg-muted/60 border border-border/55 text-sm font-bold hover:bg-muted/80 transition-colors press-spring"
       >
         إغلاق
       </button>

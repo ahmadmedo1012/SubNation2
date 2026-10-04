@@ -7,9 +7,9 @@ import {
   formatCurrency,
   formatDate,
   formatRelativeTime,
-  statusColor,
   statusLabel,
 } from "@/lib/utils";
+import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import {
   getGetMeQueryKey,
   getGetOrderQueryKey,
@@ -311,10 +311,23 @@ export default function OrderDetailPage() {
                   <h1 className="font-bold text-base leading-tight mb-0.5 break-words">
                     {order.product_name}
                   </h1>
+                  {/* R116-S2 (P2): the purchased option as a chip under the
+                      product name — the cart.tsx idiom (the API serves
+                      variant_label on the order line; null for legacy
+                      pre-variant orders). */}
+                  {order.variant_label && (
+                    <div className="text-2xs font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mb-1 inline-block leading-tight">
+                      {order.variant_label}
+                    </div>
+                  )}
                   <button
                     onClick={copyOrderCode}
                     dir="ltr"
-                    className="flex items-center gap-1 text-muted-foreground hover:text-primary text-2xs font-mono transition-colors group/code"
+                    /* R116-S2 (P2/P3): the 44px hit-area idiom with negative
+                        vertical margins (checkout.tsx:1493's error-banner
+                        close) — the tight header row keeps its rhythm
+                        while the tap target clears the touch floor. */
+                    className="flex items-center gap-1 min-h-11 px-3 -my-3 text-muted-foreground hover:text-primary text-2xs font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
                     {/* 96-F4 (R96 A6 #9 / A2 P2-10): the copy affordance is
@@ -326,11 +339,18 @@ export default function OrderDetailPage() {
                   </button>
                 </div>
               </div>
-              <span
-                className={`shrink-0 text-2xs font-bold px-2.5 py-1.5 rounded-full border whitespace-nowrap ${statusColor(order.status ?? "")}`}
+              {/* R116: shared StatusBadge (STATUS_TONE) replaces the
+                  deprecated statusColor() — 93-C7 follow-up. */}
+              <StatusBadge
+                variant={
+                  STATUS_TONE[(order.status ?? "") as keyof typeof STATUS_TONE] ??
+                  UNKNOWN_STATUS_TONE
+                }
+                size="sm"
+                className="shrink-0"
               >
                 {statusLabel(order.status ?? "")}
-              </span>
+              </StatusBadge>
             </div>
 
             {/* Progress tracker */}

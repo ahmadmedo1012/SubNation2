@@ -1882,6 +1882,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/orders/{id}/credentials:
+    get:
+      operationId: getAdminOrderCredentials
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Reveal one order's delivered credentials (requireAdmin + orders scope; audited)
+      description: |
+        B6-03 (R116, credentials-on-demand): the ONLY admin surface that
+        decrypts the delivered credential columns, for a single order —
+        an explicit, per-order reveal for support/reconciliation. Every
+        successful reveal writes an `order.credentials_view` audit row
+        (who opened WHICH order's credentials). Cache-Control: no-store.
+        404 when the order id doesn't exist. Refunded orders return
+        has_credentials:false + all nulls (RefundService nulls the
+        columns in the refund tx); safeDecrypt passes legacy plaintext
+        through unchanged.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Order id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      responses:
+        "200":
+          description: |
+            The order's decrypted credential material (or nulls when the
+            order carries none).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  order_code:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, completed, failed, refunded]
+                  has_credentials:
+                    type: boolean
+                  delivered_email:
+                    type: ["string", "null"]
+                  delivered_password:
+                    type: ["string", "null"]
+                  delivered_extra_details:
+                    type: ["string", "null"]
+                required: [id, order_code, status, has_credentials]
+        "400":
+          description: Non-integer id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing orders permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/orders/bulk-status:
     patch:
       operationId: bulkUpdateOrderStatus
@@ -4290,6 +4367,12 @@ components:
         transaction and the API gate nulls every other non-completed
         state. Encrypted-at-rest fields are decrypted at the boundary;
         usage terms are catalog text (present for completed orders).
+
+        B6-03 (R116): on the /wallet summary's recent_orders block the
+        delivered_* credential fields are ALWAYS null — that surface no
+        longer decrypts; has_credentials (boolean) carries the
+        availability signal instead. The buyer's credential surface is
+        GET /orders + /orders/{orderCode}.
       properties:
         id:
           type: integer
@@ -4312,6 +4395,12 @@ components:
         status:
           type: string
           enum: [pending, completed, failed, refunded]
+        has_credentials:
+          type: boolean
+          description: |
+            True when any delivered credential column is set (B6-03).
+            Always present on /wallet recent_orders; the storefront
+            /orders surfaces omit it (they decrypt directly).
         delivered_email:
           type: ["string", "null"]
         delivered_password:
@@ -4982,12 +5071,14 @@ components:
         status:
           type: string
           enum: [pending, completed, failed, refunded]
-        delivered_email:
-          type: ["string", "null"]
-        delivered_password:
-          type: ["string", "null"]
-        delivered_extra_details:
-          type: ["string", "null"]
+        # B6-03 (R116): the list NO LONGER decrypts the AES-GCM credential
+        # columns (the old shape decrypted 3 fields × up to 200 rows per
+        # refresh). Rows carry the availability flag; the plaintext is
+        # served per-order by GET /admin/orders/{id}/credentials, which
+        # also audits every reveal.
+        has_credentials:
+          type: boolean
+          description: True when any delivered credential column is set (refund nulls them).
         coupon_code:
           type: ["string", "null"]
         discount_amount:
@@ -5038,6 +5129,15 @@ components:
           type: string
           enum: [pending, approved, rejected]
         admin_note:
+          type: ["string", "null"]
+        # A4-04 (R116): reviewer attribution on the money queue.
+        reviewed_by:
+          type: ["string", "null"]
+          description: |
+            Who approved/rejected this topup (admin username, or the
+            Telegram actor tag for webhook approvals). Null for pending
+            rows, legacy rows, and the automated gateway path.
+        reviewed_at:
           type: ["string", "null"]
         created_at:
           type: string

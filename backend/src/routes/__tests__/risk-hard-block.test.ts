@@ -83,8 +83,12 @@ CREATE TABLE risk_config (
   updated_by integer,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE TYPE audit_actor_type AS ENUM ('user','admin','system');
-CREATE TABLE audit_logs (
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
+    CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS audit_logs (
   id serial PRIMARY KEY,
   actor_id integer,
   actor_type audit_actor_type NOT NULL DEFAULT 'system',

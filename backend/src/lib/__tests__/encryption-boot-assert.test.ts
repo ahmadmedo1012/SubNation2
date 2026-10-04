@@ -14,7 +14,12 @@
  * var, assert the throw, restore in afterEach).
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { assertEncryptionKeyConfigured, encrypt, decrypt } from "../encryption";
+import {
+  __resetEncryptionKeyCacheForTests,
+  assertEncryptionKeyConfigured,
+  encrypt,
+  decrypt,
+} from "../encryption";
 
 const ORIGINAL_KEY = process.env.ENCRYPTION_KEY;
 
@@ -24,6 +29,9 @@ afterEach(() => {
   } else {
     process.env.ENCRYPTION_KEY = ORIGINAL_KEY;
   }
+  // B6-03 (R116): the parsed key is memoized at first use — reset between
+  // scenarios so each test exercises the fresh-boot validation path.
+  __resetEncryptionKeyCacheForTests();
 });
 
 describe("assertEncryptionKeyConfigured — F8 boot fail-fast", () => {
@@ -69,6 +77,9 @@ describe("assertEncryptionKeyConfigured — F8 boot fail-fast", () => {
   });
 
   it("a key the boot rejects is also rejected by first use (no drift)", () => {
+    // B6-03 (R116): first-use re-parses after a cache reset, so the
+    // lockstep with the boot assertion still holds per boot generation.
+    __resetEncryptionKeyCacheForTests();
     process.env.ENCRYPTION_KEY = "zz".repeat(32); // decodes to 0 bytes
     expect(() => assertEncryptionKeyConfigured()).toThrow(/ENCRYPTION_KEY/);
     expect(() => encrypt("x")).toThrow(/ENCRYPTION_KEY/);

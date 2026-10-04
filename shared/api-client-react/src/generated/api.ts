@@ -109,6 +109,7 @@ import type {
   DeleteVariantResponse,
   ErrorResponse,
   FlashSaleResponse,
+  GetAdminOrderCredentials200,
   GetCart200,
   GetLoyaltyLedger200Item,
   GetLoyaltyLedgerParams,
@@ -3729,6 +3730,88 @@ export function useListAdminOrders<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListAdminOrdersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * B6-03 (R116, credentials-on-demand): the ONLY admin surface that
+decrypts the delivered credential columns, for a single order —
+an explicit, per-order reveal for support/reconciliation. Every
+successful reveal writes an `order.credentials_view` audit row
+(who opened WHICH order's credentials). Cache-Control: no-store.
+404 when the order id doesn't exist. Refunded orders return
+has_credentials:false + all nulls (RefundService nulls the
+columns in the refund tx); safeDecrypt passes legacy plaintext
+through unchanged.
+
+ * @summary Reveal one order's delivered credentials (requireAdmin + orders scope; audited)
+ */
+export const getGetAdminOrderCredentialsUrl = (id: number) => {
+  return `/api/admin/orders/${id}/credentials`;
+};
+
+export const getAdminOrderCredentials = async (
+  id: number,
+  options?: RequestInit,
+): Promise<GetAdminOrderCredentials200> => {
+  return customFetch<GetAdminOrderCredentials200>(getGetAdminOrderCredentialsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminOrderCredentialsQueryKey = (id: number) => {
+  return [`/api/admin/orders/${id}/credentials`] as const;
+};
+
+export const getGetAdminOrderCredentialsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminOrderCredentials>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminOrderCredentials>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminOrderCredentialsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminOrderCredentials>>> = ({
+    signal,
+  }) => getAdminOrderCredentials(id, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminOrderCredentials>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminOrderCredentialsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminOrderCredentials>>
+>;
+export type GetAdminOrderCredentialsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Reveal one order's delivered credentials (requireAdmin + orders scope; audited)
+ */
+
+export function useGetAdminOrderCredentials<
+  TData = Awaited<ReturnType<typeof getAdminOrderCredentials>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getAdminOrderCredentials>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminOrderCredentialsQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

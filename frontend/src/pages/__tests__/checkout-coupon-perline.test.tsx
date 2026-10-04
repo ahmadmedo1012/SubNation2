@@ -37,6 +37,10 @@ import { CartProvider } from "@/lib/cart";
 
 const createOrderMock = vi.fn();
 const getMeMock = vi.fn(async () => ({ wallet_balance: 1_000_000 }));
+// R116-S2 (P3): the page's balance now rides the mocked useGetMe (the
+// seeded /api/auth/me cache) — hoisted so the vi.mock factory below can
+// read the per-test balance (Scenario B pins a 50 د.ل balance).
+const balanceStub = vi.hoisted(() => ({ wallet: 1_000_000 }));
 const getProductMock = vi.fn();
 
 vi.mock("@workspace/api-client-react", () => ({
@@ -44,6 +48,15 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListOrdersQueryKey: () => ["/api/orders"],
+  // R116-S2 (P3): the balance rides the seeded useGetMe cache now —
+  // mirrors balanceStub so per-test balances keep their meaning
+  // (Scenario B pins a 50 د.ل balance).
+  useGetMe: vi.fn(() => ({
+    data: { id: 7, wallet_balance: balanceStub.wallet },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   getMe: (...args: unknown[]) => getMeMock(...(args as [])),
   getProduct: (...args: unknown[]) => getProductMock(...(args as [])),
 }));
@@ -157,7 +170,8 @@ const validateHandlers = new Map<
   string,
   (orderAmount: number) => { ok: boolean; json: () => unknown }
 >();
-const balanceStub = { wallet: 1_000_000 };
+// (balanceStub lives atop the file inside vi.hoisted — the vi.mock
+// factory needs it before this module's body runs.)
 
 function fixedCoupon(code: string, value: number) {
   validateHandlers.set(code, (orderAmount) => ({

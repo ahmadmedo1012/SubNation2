@@ -43,6 +43,13 @@
          subnation.ly is the PRODUCT domain regardless of hosting
          (docs/deployment/ENVIRONMENT_MATRIX.md). -->
     <meta data-rh="true" property="og:image" content="https://subnation.ly/opengraph.jpg" />
+    <!-- R116-S1: og:image dimensions + twitter:card in the static
+         no-JS baseline too — scrapers that never run JS (and WhatsApp's
+         unfurler) size the card without a headless image fetch.
+         MetaTags upserts each of these in place at runtime. -->
+    <meta data-rh="true" property="og:image:width" content="1200" />
+    <meta data-rh="true" property="og:image:height" content="630" />
+    <meta data-rh="true" name="twitter:card" content="summary_large_image" />
     <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
     <meta
       data-rh="true"
@@ -93,7 +100,7 @@
   </head>
   <body>
     <div id="root">
-      <!-- 98-F7 (R98-08b — R98-08 offline gap): static offline fallback.
+      <!-- 98-F7 (R98-08b — R98-08 offline gap): static no-JS fallback.
            A repeat offline visit after the browser evicts the HTTP cache
            (mobile storage pressure — SW caches survive, the HTTP cache
            does not) previously rendered this precached HTML with zero JS:
@@ -103,10 +110,14 @@
            a delayed CSS reveal below) so a normal online boot — main.tsx
            removes it synchronously on module evaluation, long before the
            reveal — never flashes it; only a boot whose JS truly never
-           arrives lets the reveal fire and the user sees
-           «لا يوجد اتصال بالإنترنت» instead of nothing. Inline styles +
-           the tiny <style> below: self-contained — no dependency on the
-           CSS chunk or any JS loading. -->
+           arrives lets the reveal fire. R116-S1: the copy is the neutral
+           «يتطلب الموقع تشغيل JavaScript» — without JS we cannot KNOW
+           the user is offline (the old connection-error wording also
+           fired for blocked/broken JS, which is a misleading diagnosis);
+           the service worker's own offline handling stays authoritative
+           once JS is up. Inline styles + the tiny <style> below:
+           self-contained — no dependency on the CSS chunk or any JS
+           loading. -->
       <style>
         #static-offline {
           min-height: 100dvh;
@@ -138,7 +149,7 @@
           }
         }
       </style>
-      <div id="static-offline" dir="rtl" role="status">لا يوجد اتصال بالإنترنت</div>
+      <div id="static-offline" dir="rtl" role="status">يتطلب الموقع تشغيل JavaScript</div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
