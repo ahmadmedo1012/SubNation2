@@ -121,7 +121,9 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/25 reveal-up stagger-2">
+        {/* R116-S1: bare token shadow-2xl — the shadow-black/25 color
+            override forced 25% black under the light-theme card. */}
+        <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
           <AuthErrorBanner />
 
           {/* Value-prop banner. Buy-intent variant is highest-conversion:

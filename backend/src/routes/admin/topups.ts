@@ -7,7 +7,7 @@ import { intParam, queryString } from "../../lib/http";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { mapServiceErrorToCode } from "../../lib/service-error";
 import { idempotency } from "../../middlewares/idempotency";
-import { requireAdmin } from "../../middlewares/requireAdmin";
+import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ServiceError, TopupService } from "../../services/topup.service";
 
 const router = Router();
@@ -115,6 +115,10 @@ router.get("/topups", requireAdmin, async (req, res) => {
       payment_reference: r.topup.paymentReference ?? null,
       status: r.topup.status,
       admin_note: r.topup.adminNote ?? null,
+      // A4-04 (R116): reviewer attribution — surfaced on the card so an
+      // incident review reads "who approved this" off the queue itself.
+      reviewed_by: r.topup.reviewedBy ?? null,
+      reviewed_at: r.topup.reviewedAt?.toISOString() ?? null,
       created_at: r.topup.createdAt?.toISOString(),
     })),
   );
@@ -140,8 +144,14 @@ router.post(
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
-      const result = await TopupService.approve(id, adminNote);
-      void writeAuditLog(req, "topup.approve", "topup", id, { admin_note: adminNote });
+      // A4-04 (R116): the acting admin's username rides the service call —
+      // TopupService persists it on the row with reviewed_at.
+      const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
+      const result = await TopupService.approve(id, adminNote, actingUsername);
+      void writeAuditLog(req, "topup.approve", "topup", id, {
+        admin_note: adminNote,
+        reviewed_by: actingUsername,
+      });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {
@@ -173,8 +183,12 @@ router.post(
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
-      const result = await TopupService.reject(id, adminNote);
-      void writeAuditLog(req, "topup.reject", "topup", id, { admin_note: adminNote });
+      const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
+      const result = await TopupService.reject(id, adminNote, actingUsername);
+      void writeAuditLog(req, "topup.reject", "topup", id, {
+        admin_note: adminNote,
+        reviewed_by: actingUsername,
+      });
       return res.json(result);
     } catch (err) {
       if (err instanceof ServiceError) {

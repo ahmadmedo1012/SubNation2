@@ -164,12 +164,15 @@ async function handleCallbackQuery(
   try {
     if (action === "approve") {
       await import("../services/topup.service").then((m) =>
-        m.TopupService.approve(topupId, `موافقة عبر تليقرام بواسطة ${actorTag}`),
+        // A4-04 (R116): the Telegram actor rides reviewed_by too — the
+        // operator-facing queue attributes webhook approvals to the
+        // tapping operator, not just the note text.
+        m.TopupService.approve(topupId, `موافقة عبر تليقرام بواسطة ${actorTag}`, actorTag),
       );
       outcomeLine = `\n\n✅ الحالة: تمت الموافقة بواسطة ${actorTag}`;
     } else {
       await import("../services/topup.service").then((m) =>
-        m.TopupService.reject(topupId, `رفض عبر تليقرام بواسطة ${actorTag}`),
+        m.TopupService.reject(topupId, `رفض عبر تليقرام بواسطة ${actorTag}`, actorTag),
       );
       outcomeLine = `\n\n❌ الحالة: تم الرفض بواسطة ${actorTag}`;
     }

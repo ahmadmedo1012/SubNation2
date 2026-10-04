@@ -31,6 +31,7 @@ import {
   getListOrdersQueryKey,
   getMe,
   getProduct,
+  useGetMe,
   type CreateOrderBody,
   type Order,
   type Product,
@@ -503,9 +504,29 @@ export default function CheckoutPage() {
   const [pricesUpdatedNotice, setPricesUpdatedNotice] = useState<string | null>(null);
   const [droppedLineNotices, setDroppedLineNotices] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [balance, setBalance] = useState<number | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [balanceError, setBalanceError] = useState(false);
+  // R116-S2 (P3): the balance now rides the SEEDED useGetMe cache (the
+  // shared /api/auth/me key Navbar/boot populate, 60 s staleTime) — a
+  // raw duplicate fetch on every checkout mount was both an extra
+  // request and a staleness hazard of its own. The post-purchase
+  // refreshMeBalance() seeds this exact key with a no-store response,
+  // so the balance chip re-renders the moment a unit is charged (that
+  // has always been the mechanism — this page is now an observer of
+  // it instead of a second writer).
+  const {
+    data: me,
+    isLoading: balanceLoading,
+    isError: balanceError,
+  } = useGetMe({
+    query: { queryKey: getGetMeQueryKey(), enabled: !!token, staleTime: 60_000 },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+  // Do NOT fake balance=0 — an absent/failed probe must render the
+  // unknown marker («—») and the honest warning banner, never the
+  // "insufficient balance" verdict for a solvent user.
+  const balance =
+    typeof me?.wallet_balance === "number" && Number.isFinite(me.wallet_balance)
+      ? me.wallet_balance
+      : null;
   // Persistent in-page failure banner (critical money errors must NOT
   // live in a 4-second toast). Cleared on a new submission attempt.
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -528,47 +549,6 @@ export default function CheckoutPage() {
       navigate("/login?redirect=/checkout");
     }
   }, [token, navigate]);
-
-  useEffect(() => {
-    if (!token) return;
-    let aborted = false;
-    setBalanceLoading(true);
-    setBalanceError(false);
-    // 93-C5 / sim P2 (navbar balance staleness after cart purchase):
-    // cache:"no-store" — /api/auth/me serves Cache-Control: private,
-    // max-age=30, so this probe used to seed the browser HTTP cache with
-    // the PRE-purchase balance seconds before purchase; the
-    // post-purchase invalidate→refetch was then answered from that cache
-    // and the Navbar kept showing the old balance. Don't poison it.
-    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
-      .then((res) => {
-        if (!res.ok) throw new Error("balance fetch failed");
-        return res.json();
-      })
-      .then((data: Pick<User, "wallet_balance"> | null) => {
-        if (aborted) return;
-        setBalance(
-          typeof data?.wallet_balance === "number" && Number.isFinite(data.wallet_balance)
-            ? data.wallet_balance
-            : null,
-        );
-      })
-      .catch(() => {
-        // Do NOT fake balance=0 — a failed probe used to render the
-        // "insufficient balance" banner for solvent users. Show a
-        // retry-able error instead of lying about the balance.
-        if (!aborted) {
-          setBalance(null);
-          setBalanceError(true);
-        }
-      })
-      .finally(() => {
-        if (!aborted) setBalanceLoading(false);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [token]);
 
   // Cart lines are part of the validation input (98-F2: per-line UNIT
   // prices) — any line/quantity/PRICE change voids the stored coupon
@@ -1276,7 +1256,10 @@ export default function CheckoutPage() {
                   variant="outline"
                   onClick={clearAppliedCoupon}
                   aria-label="إزالة الكوبون"
-                  className="shrink-0 font-bold"
+                  /* R116-S2 (P2/P3): 44px touch floor on the coupon
+                     apply/clear pair — the money path's most-tapped
+                     secondary controls (was min-h-9). */
+                  className="h-11 shrink-0 font-bold"
                 >
                   <X className="w-3.5 h-3.5" />
                 </Button>
@@ -1286,7 +1269,7 @@ export default function CheckoutPage() {
                   variant="outline"
                   onClick={() => void applyCoupon()}
                   disabled={!coupon.trim() || couponChecking || isEmpty}
-                  className="shrink-0 font-bold"
+                  className="h-11 shrink-0 font-bold"
                 >
                   {couponChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : "تحقق"}
                 </Button>
@@ -1507,8 +1490,12 @@ export default function CheckoutPage() {
                      symmetrically outside the rounded CTA on the money screen.
                      whitespace-normal + text-balance override the base (twMerge)
                      so the honest full label wraps gracefully instead, and
-                     min-h-12 (was fixed h-12) lets the button grow for 2 lines. */
-                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold min-h-12 whitespace-normal text-balance leading-snug"
+                     min-h-12 (was fixed h-12) lets the button grow for 2 lines.
+                     R116-S2 CTA recipe: size=lg owns the height/text/weight
+                     base; the remaining overrides are the functional wrap
+                     guards above + the w-full summary-card layout. */
+                  size="lg"
+                  className="w-full min-h-12 whitespace-normal text-balance leading-snug"
                 >
                   {submitting ? (
                     <>

@@ -258,6 +258,8 @@ CREATE TABLE wallet_topups (
   payment_reference varchar(255),
   status topup_status NOT NULL DEFAULT 'pending',
   admin_note text,
+  -- V1-M23 (R116): reviewer attribution on wallet_topups.
+  reviewed_by varchar(100),
   reviewed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -396,6 +398,41 @@ CREATE TABLE ticket_replies (
 );
 CREATE INDEX idx_replies_ticket ON ticket_replies (ticket_id, created_at);
 
+-- R116 (B6-03 + A9-1): audit_logs (writeAuditLog on the credentials
+-- reveal) + notifications (durable order-status rows) — mirrors the
+-- production tables (shared/db/src/schema).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
+    CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id serial PRIMARY KEY,
+  actor_id integer,
+  actor_type audit_actor_type NOT NULL DEFAULT 'system',
+  action varchar(100) NOT NULL,
+  target_type varchar(50),
+  target_id integer,
+  metadata text,
+  ip varchar(45),
+  user_agent varchar(500),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_audit_logs_action ON audit_logs (action);
+CREATE INDEX idx_audit_logs_actor ON audit_logs (actor_id, actor_type);
+CREATE INDEX idx_audit_logs_target ON audit_logs (target_type, target_id);
+CREATE TABLE notifications (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type varchar(20) NOT NULL DEFAULT 'system',
+  title varchar(255) NOT NULL,
+  message text,
+  link varchar(255),
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_notifications_user ON notifications (user_id, is_read);
+
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.
 CREATE INDEX idx_orders_status_created ON orders(status, created_at);
@@ -422,6 +459,8 @@ const TABLES = [
   "users",
   "ticket_replies",
   "support_tickets",
+  "audit_logs",
+  "notifications",
 ];
 
 /** Build the fresh schema once. Call in a global beforeAll. */

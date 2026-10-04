@@ -1,8 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
+import {
+  CATEGORY_ACCENT,
+  CATEGORY_ICON,
+  DEFAULT_ACCENT,
+} from "@/components/ProductCard";
 import { useGetFlashSale, useListProducts, type Product } from "@workspace/api-client-react";
-import { Flame, Clock, Sparkles, Tag, WifiOff } from "lucide-react";
+import { Flame, Clock, Package, Sparkles, Tag, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
@@ -73,6 +78,13 @@ function FlashCard({
   const discount = product.discount_percent ?? 0;
   const isDeal = discount > 0;
 
+  // R116-S1 card convergence: the SAME accent + category-icon fallback
+  // idiom ProductCard uses (exported from it), so a Netflix flash card
+  // without an image reads identically on both surfaces.
+  const cat = product.category ?? "streaming";
+  const accent = CATEGORY_ACCENT[cat] ?? DEFAULT_ACCENT;
+  const FallbackIcon = CATEGORY_ICON[cat] ?? Package;
+
   const timeLabel =
     h > 0
       ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
@@ -80,31 +92,44 @@ function FlashCard({
 
   return (
     <Link href={product.slug ? `/product/${product.slug}` : `/product/${product.id}`}>
+      {/* R116-S1 card convergence: ProductCard's hover physics
+          (card-spring + token shadow) and aspect-square ratio replace
+          the ad-hoc -translate-y-1 / shadow-black / active-scale stack. */}
       <div
         className={`float-in ${stagger}
-          bg-card border border-border/60 rounded-2xl overflow-hidden
-          hover:border-primary/30 hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1
-          transition-all duration-250 cursor-pointer group active:scale-[0.99]`}
+          bg-card border border-border/50 rounded-2xl overflow-hidden
+          card-spring hover:border-border/80 hover:shadow-xl
+          cursor-pointer group`}
       >
         <div className="relative">
-          <div className="aspect-[4/3] bg-muted/60 flex items-center justify-center overflow-hidden">
+          <div className="relative aspect-square bg-card overflow-hidden">
             {product.image_url ? (
               <img
                 src={product.image_url}
                 alt={product.name}
                 loading="lazy"
                 decoding="async"
-                className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
+                className="absolute inset-0 z-[2] m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
               />
             ) : (
-              <span className="text-5xl font-bold text-primary/20 select-none">
-                {(product.name ?? "?")[0]}
-              </span>
+              <div
+                className={`absolute inset-0 z-[2] flex items-center justify-center pointer-events-none bg-gradient-to-br ${accent.gradient}`}
+              >
+                <div
+                  className={`flex items-center justify-center w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 rounded-2xl border ${accent.bg} ${accent.border} shadow-sm transition-transform duration-300 ease-out group-hover:scale-105`}
+                >
+                  <FallbackIcon
+                    className={`w-9 h-9 sm:w-10 sm:h-10 ${accent.text}`}
+                    strokeWidth={1.6}
+                    aria-hidden="true"
+                  />
+                </div>
+              </div>
             )}
           </div>
 
           {isDeal && (
-            <div className="absolute top-3 right-3 bg-status-error text-white text-2xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
+            <div className="absolute top-3 right-3 z-10 bg-status-error text-destructive-foreground text-2xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
               {/* 93-C8 (A11 §5): U+2212 minus to match product.tsx's
                   discount rendering (was an ASCII hyphen). */}
               <Tag className="w-3 h-3" />−{discount}%
@@ -112,7 +137,7 @@ function FlashCard({
           )}
 
           {!expired && (
-            <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
+            <div className="absolute top-3 left-3 z-10 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
               <Clock className="w-3 h-3 text-status-warning" />
               {timeLabel}
             </div>
@@ -126,11 +151,13 @@ function FlashCard({
                 maps it through categoryLabel(). */}
             {product.category ? categoryLabel(product.category) : "عروض"}
           </div>
-          <div className="font-bold text-sm leading-snug mb-2.5 truncate group-hover:text-primary transition-colors">
+          <div className="font-bold text-sm leading-snug mb-2.5 truncate group-hover:text-primary-text transition-colors">
             {product.name}
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="font-bold text-lg text-primary tabular-nums">
+            {/* R116-S1: price rides --primary-text (the AA text variant of
+                the brand hue) like every other price in the storefront. */}
+            <span className="font-bold text-lg text-primary-text tabular-nums">
               {formatCurrency(salePrice)}
             </span>
             {isDeal && (
@@ -208,7 +235,7 @@ export default function FlashSalesPage() {
             <Flame className="w-8 h-8 text-status-error" />
           </div>
         </div>
-        <h1 className="text-3xl font-bold mb-2">عروض فلاش 🔥</h1>
+        <h1 className="text-3xl font-bold mb-2">عروض فلاش</h1>
         <p className="text-muted-foreground font-bold text-sm">
           {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}
         </p>
@@ -230,7 +257,7 @@ export default function FlashSalesPage() {
       ) : isError ? (
         /* Distinct from "no offers": an API outage previously rendered the
            empty state — misleading during incidents. */
-        <div className="text-center py-20 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
+        <div className="text-center py-20 px-4 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
             <WifiOff className="w-8 h-8 text-status-error/70" />
           </div>
@@ -238,15 +265,14 @@ export default function FlashSalesPage() {
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
           </p>
-          <Button
-            onClick={() => refetch()}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-          >
+          {/* R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — no
+              per-page bg/shadow/press overrides on the gradient variant. */}
+          <Button size="lg" className="w-full sm:w-auto" onClick={() => refetch()}>
             إعادة المحاولة
           </Button>
         </div>
       ) : onSale.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
+        <div className="text-center py-20 px-4 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">
             <Sparkles className="w-8 h-8 opacity-25" />
           </div>
@@ -254,12 +280,12 @@ export default function FlashSalesPage() {
           <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
             تابعنا أو راجع الكتالوج — العروض تعود قريباً!
           </p>
-          <Link href="/">
-            <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold">
+          <Button asChild size="lg" className="w-full sm:w-auto">
+            <Link href="/">
               <Sparkles className="w-4 h-4" />
               تصفح الكتالوج
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : (
         <>

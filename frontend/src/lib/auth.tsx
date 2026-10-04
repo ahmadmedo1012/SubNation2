@@ -72,6 +72,73 @@ const AuthContext = createContext<AuthContextType | null>(null);
  */
 export const COOKIE_AUTH_SENTINEL = "__cookie_session__";
 
+/**
+ * A5-2 (R116): hard ceiling for the boot probes. A hanging /api/auth/probe
+ * (server stalled, proxy black-holing) used to hold the splash screen
+ * FOREVER — Promise.allSettled only settles once both probes do. 10 s is
+ * ~30× the normal 50-300 ms probe; past it the answer is "treat as
+ * unauthenticated" (the same path as a 401) so the app always boots.
+ */
+const BOOT_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * A5-2: AbortSignal.timeout, degrading to an unbounded probe on engines
+ * that lack it (older Safari / embedded webviews) — a missing signal must
+ * never throw at boot (that would break the effect before the .catch
+ * chains and hang the splash permanently).
+ */
+function bootProbeSignal(): AbortSignal | undefined {
+  try {
+    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+      return AbortSignal.timeout(BOOT_PROBE_TIMEOUT_MS);
+    }
+  } catch {
+    // Degrade to an unbounded probe.
+  }
+  return undefined;
+}
+
+/**
+ * A5-1 (R116): does this boot identity carry a Firebase-backed
+ * credential (Google sign-in / legacy Firebase-era users)?
+ *
+ * The background token refresher only does anything when the browser
+ * holds a signed-in Firebase SDK user — i.e. identities minted through
+ * Firebase. WhatsApp / Telegram users and guests never have one, so
+ * arming the refresher for them imported the whole Firebase SDK
+ * (~100 KB+ gz) 2 s after load for a listener that fires once with a
+ * null user and then idles forever.
+ *
+ * Fields come straight off the /api/auth/probe (and /me) user payload:
+ *   - `auth_provider`: "firebase_google" (Google), "firebase" (other
+ *     Firebase), "firebase_phone" (legacy Firebase-era default) vs
+ *     "whatsapp_phone" / "telegram" for the cookie-native providers.
+ *   - `linked_identities[].provider`: "firebase.com" for linked
+ *     Firebase identities (the account-link flow) — belt and braces
+ *     for users whose primary tag is a cookie-native provider but who
+ *     also carry a Google identity.
+ *
+ * Exported for the gating regression test (auth-firebase-gating).
+ */
+export function isFirebaseBackedUser(user: unknown): boolean {
+  if (!user || typeof user !== "object") return false;
+  const { auth_provider: authProvider, linked_identities: linked } = user as {
+    auth_provider?: unknown;
+    linked_identities?: unknown;
+  };
+  if (typeof authProvider === "string" && authProvider.startsWith("firebase")) {
+    return true;
+  }
+  if (!Array.isArray(linked)) return false;
+  return linked.some(
+    (identity) =>
+      identity !== null &&
+      typeof identity === "object" &&
+      typeof (identity as { provider?: unknown }).provider === "string" &&
+      ["firebase.com", "google.com"].includes((identity as { provider: string }).provider),
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [adminToken, setAdminTokenState] = useState<string | null>(null);
@@ -85,6 +152,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token]);
   const [adminPermissions, setAdminPermissionsState] = useState<string[]>([]);
   const [initializing, setInitializing] = useState(true);
+  /**
+   * A5-1 (R116): set to true by the boot probe when (and only when) the
+   * authenticated identity is Firebase-backed (Google sign-in / legacy
+   * Firebase-era users). Gates the background token-refresher effect
+   * below — see isFirebaseBackedUser for the field contract.
+   */
+  const [firebaseIdentity, setFirebaseIdentity] = useState(false);
   const queryClient = useQueryClient();
 
   /**
@@ -186,7 +260,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const first = query.queryKey[0];
           return (
             typeof first === "string" &&
-            (first.startsWith("/api/admin") || first.startsWith("admin-alerts"))
+            (first === "admin" ||
+              // A5-3 (R116): the "admin" root carries the AdminProtectedRoutes
+              // session guard (App.tsx). A stale "session valid" verdict from
+              // the previous operator must never admit the next one without a
+              // fresh /api/admin/session round-trip — every admin-session-END
+              // path (logout, 401 expiry, App.tsx's guard) funnels through
+              // setAdminToken(null), so the guard cache dies with the session.
+              first.startsWith("/api/admin") ||
+              first.startsWith("admin-alerts"))
           );
         },
       });
@@ -300,9 +382,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // useGetMe queryKey pre-seed below is identical. The probe avoids
     // the cosmetic console-visible 401 on the unauthenticated path
     // that Lighthouse counts as a console error.
+    //
+    // A5-2 (R116): both probes carry a 10 s abort signal — a stalled
+    // network can no longer hold the splash screen hostage (the abort
+    // rejection lands in the .catch → unauthenticated → the app boots).
     const userProbe = fetch("/api/auth/probe", {
       credentials: "include",
       headers: { Accept: "application/json" },
+      signal: bootProbeSignal(),
     })
       .then(async (res) => {
         if (cancelled) return;
@@ -312,12 +399,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (body.authenticated && body.user) {
           setTokenState(COOKIE_AUTH_SENTINEL);
           queryClient.setQueryData(getGetMeQueryKey(), body.user);
+          // A5-1 (R116): arm the Firebase background refresher ONLY for
+          // Firebase-backed identities. The probe response is the one
+          // authoritative signal at boot — WhatsApp/Telegram users and
+          // guests never pay the Firebase SDK download + init for a
+          // listener that can never fire for them. Mid-session Google
+          // sign-ins are unaffected (the button path imports firebase/auth
+          // on click; the refresher arms on their next reload).
+          if (isFirebaseBackedUser(body.user)) {
+            setFirebaseIdentity(true);
+          }
         }
         // body.authenticated === false → leave token null, render unauthed.
       })
       .catch(() => {
-        // Network error → unauthenticated. Real errors are reported
-        // by Sentry's network instrumentation elsewhere.
+        // Network error / A5-2 probe timeout abort → unauthenticated.
+        // Real errors are reported by Sentry's network instrumentation
+        // elsewhere.
       });
 
     // Admin session probe — mirrors the user probe but for the
@@ -342,6 +440,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? fetch("/api/admin/probe", {
           credentials: "include",
           headers: { Accept: "application/json" },
+          signal: bootProbeSignal(),
         })
           .then(async (res) => {
             if (cancelled) return;
@@ -373,12 +472,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Firebase token-refresh listener ───────────────────────────────────
   //
-  // Wired exactly once. The 2-second delay is intentional: it pushes the
-  // Firebase SDK initialization off the critical-paint path. The cleanup
-  // function unsubscribes on unmount AND if a remount races to install a
-  // duplicate (the `installedRef` guard).
+  // A5-1 (R116): wired only when the boot probe reports a Firebase-backed
+  // identity. Previously this armed on EVERY boot (2 s after load) —
+  // guests, WhatsApp and Telegram users paid the whole Firebase SDK
+  // download + initialization for a listener that fires once with a
+  // null user and then idles forever. The Google sign-in BUTTON path
+  // imports firebase/auth dynamically on click, so this gate cannot
+  // break Google login; Google users keep the identical refresh loop
+  // (2 s deferral off the critical-paint path, silent rotation setter,
+  // unsubscribe on unmount, installedRef double-arm guard).
   const installedRef = useRef(false);
   useEffect(() => {
+    if (!firebaseIdentity) return;
     if (installedRef.current) return;
     installedRef.current = true;
 
@@ -413,12 +518,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout);
       if (unsubscribe) unsubscribe();
     };
-    // Empty dep array: this effect intentionally runs once for the
-    // lifetime of the AuthProvider. Re-running on `setTokenSilently`
-    // identity change would tear down and rebuild the listener on
-    // every render where the function ref churned, causing duplicate
-    // listeners and the very flicker we're trying to prevent.
-  }, []);
+    // A5-1: re-runs only when the probe flips the identity verdict
+    // (false → true, once per boot). setTokenSilently is a stable
+    // useCallback; the installedRef guard keeps double-arming
+    // impossible even across the verdict-driven re-run.
+  }, [firebaseIdentity, setTokenSilently]);
 
   const value = useMemo(
     () => ({

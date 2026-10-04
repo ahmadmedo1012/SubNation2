@@ -14,6 +14,12 @@ import { logger } from "../lib/logger";
  *  - `refunded_live_credentials` — emitted by refund.service since B2-03
  *    via an `as unknown as AlertType` cast; declared here so the union
  *    matches what actually flows through the column.
+ *
+ * R116 (A9-4): `whatsapp_channel` — declared here (previously emitted by
+ * services/whatsapp-watch.ts through an `as unknown as AlertType` cast,
+ * which worked only because the column is a free varchar(30) and the
+ * drawer's TYPE_META happened to cover it). The union now matches the
+ * emitter without casts.
  */
 export type AlertType =
   | "coupon_expired"
@@ -25,6 +31,7 @@ export type AlertType =
   | "low_stock"
   | "no_stock"
   | "refunded_live_credentials"
+  | "whatsapp_channel"
   | "system";
 
 export interface AlertDedupeOpts {

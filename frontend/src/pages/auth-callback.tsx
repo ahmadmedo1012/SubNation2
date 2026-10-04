@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const HANG_TIMEOUT_MS = 12_000;
 
@@ -69,7 +70,7 @@ export default function AuthCallbackPage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
       <div className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center">
         {hangVisible ? (
           <>
@@ -80,12 +81,12 @@ export default function AuthCallbackPage() {
             <p className="text-xs leading-relaxed">
               قد تكون الشبكة بطيئة أو هناك مشكلة في الخادم. يمكنك المحاولة مرة أخرى من صفحة الدخول.
             </p>
-            <Link
-              href="/login"
-              className="mt-2 inline-flex items-center justify-center h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold press-spring shadow-md shadow-primary/22"
-            >
-              العودة لتسجيل الدخول
-            </Link>
+            {/* R116-S1 CTA recipe + token discipline: system Button
+                (gradient variant, text-primary-foreground) replaces the
+                hand-rolled bg-primary/text-white link. */}
+            <Button asChild size="lg" className="mt-2">
+              <Link href="/login">العودة لتسجيل الدخول</Link>
+            </Button>
           </>
         ) : (
           <>

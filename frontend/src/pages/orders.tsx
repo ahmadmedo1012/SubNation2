@@ -4,9 +4,13 @@ import {
   formatCount,
   formatCurrency,
   formatDateShort,
-  statusColor,
   statusLabel,
 } from "@/lib/utils";
+import {
+  STATUS_TONE,
+  StatusBadge,
+  UNKNOWN_STATUS_TONE,
+} from "@/components/ui/status-badge";
 import { getListOrdersQueryKey, useListOrders } from "@workspace/api-client-react";
 import {
   CheckCircle,
@@ -71,12 +75,21 @@ function statusAccentBorder(status: string): string {
 }
 
 const FILTER_TONES: Record<
-  "neutral" | "warning" | "success" | "error",
+  "neutral" | "info" | "warning" | "success" | "error",
   { active: string; idle: string }
 > = {
   neutral: {
     active: "bg-foreground text-background border-foreground shadow-sm shadow-black/20",
     idle: "bg-muted/40 border-border/55 text-muted-foreground hover:text-foreground hover:bg-muted/60",
+  },
+  // R116-S2 (P3): the refunded/failed bucket rides the INFO tone — a
+  // refund is not a failure (the money came back; the pill + row accent
+  // already carry status-info). Pure «فشل» red mislabeled every
+  // refunded order in the list.
+  info: {
+    active:
+      "bg-status-info/15 border-status-info/45 text-status-info shadow-sm shadow-status-info/20",
+    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-info hover:border-status-info/35",
   },
   warning: {
     active:
@@ -108,7 +121,7 @@ function FilterChip({
   icon: typeof Clock;
   label: string;
   count: number;
-  tone: "neutral" | "warning" | "success" | "error";
+  tone: "neutral" | "info" | "warning" | "success" | "error";
 }) {
   const styles = FILTER_TONES[tone];
   return (
@@ -116,7 +129,10 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center gap-1.5 text-xs font-bold border px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 transition-all duration-150 press-spring ${
+      /* R116-S2 (P2/P3): 44px touch floor on the filter chips (was
+         ~30px — a mis-tap while scrolling the list dropped a filter
+         silently). */
+      className={`flex items-center gap-1.5 min-h-11 text-xs font-bold border px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 transition-all duration-150 press-spring ${
         active ? styles.active : styles.idle
       }`}
     >
@@ -254,10 +270,13 @@ export default function OrdersPage() {
             <FilterChip
               active={filter === "failed"}
               onClick={() => setFilter("failed")}
-              icon={XCircle}
-              label="فشل / مُسترد"
+              icon={Undo2}
+              /* R116-S2 (P3): «مُسترد» leads — most rows in this bucket are
+                 refunds (the money came back), not failures; info tone
+                 matches the row pill/accent (R115-I1 A8 P2-3). */
+              label="مُسترد / فشل"
               count={failed.length}
-              tone="error"
+              tone="info"
             />
           )}
         </div>
@@ -285,7 +304,10 @@ export default function OrdersPage() {
           </p>
           <Button
             onClick={() => refetch()}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            /* R116-S2 (P3): 44px floor on the retry affordance (the
+               drifted active:scale-[0.97] rides the global press-spring
+               now). */
+            className="min-h-11 gap-2"
           >
             إعادة المحاولة
           </Button>
@@ -304,7 +326,7 @@ export default function OrdersPage() {
             ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي
           </p>
           <Link href="/">
-            <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold">
+            <Button className="min-h-11 gap-2">
               <Sparkles className="w-4 h-4" />
               تصفح الكتالوج
             </Button>
@@ -367,6 +389,15 @@ export default function OrdersPage() {
                       <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors duration-150">
                         {order.product_name}
                       </div>
+                      {/* R116-S2 (P2): the purchased option under the product
+                          name — the same chip idiom as cart.tsx (the
+                          shopper's mental model of WHAT the line is, not just
+                          which brand). Null for legacy pre-variant orders. */}
+                      {order.variant_label && (
+                        <div className="text-2xs font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
+                          {order.variant_label}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span
                           dir="ltr"
@@ -413,12 +444,20 @@ export default function OrdersPage() {
                         <div className="font-bold text-sm tabular-nums">
                           {formatCurrency(order.amount)}
                         </div>
-                        <div
-                          className={`flex items-center gap-1 text-2xs font-bold px-2 py-0.5 rounded-full border mt-1 justify-end whitespace-nowrap ${statusColor(order.status)}`}
+                        {/* R116: shared StatusBadge (STATUS_TONE)
+                            replaces the deprecated statusColor() — 93-C7
+                            follow-up; the status glyph stays a child. */}
+                        <StatusBadge
+                          variant={
+                            STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                            UNKNOWN_STATUS_TONE
+                          }
+                          size="sm"
+                          className="mt-1 justify-end"
                         >
                           <StatusIcon status={order.status} />
                           <span>{statusLabel(order.status)}</span>
-                        </div>
+                        </StatusBadge>
                       </div>
                       <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
                     </div>

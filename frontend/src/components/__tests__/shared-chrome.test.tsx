@@ -1,21 +1,20 @@
 /**
  * 94-C3 — targeted regressions for the remaining shared-chrome fixes:
  *
- *   • ui/dialog.tsx close button (A3 P1-3 + P3-14): the shadcn default
- *     was a bare ~16px icon pinned to the physical top-RIGHT — in this
- *     RTL app the title starts at the right edge, so the close belongs
- *     at the opposite corner, and the hit box must clear the 44px
- *     WCAG 2.5.5 floor.
  *   • NavigationProgress (A3 P3-2 + P3-10): the bar grows from the
  *     RIGHT (the RTL reading origin), and every scheduled timer —
  *     including the 200ms hide step that used to be untracked — is
  *     cleared when the component unmounts mid-flight.
+ *
+ * R116-S2: the ui/dialog.tsx close-button describes were REMOVED —
+ * the component was deleted (TopupWaitingModal migrated to AppDialog);
+ * their contract is pinned in topup-waiting-modal-aria.test.tsx
+ * (AppDialog close: 44px hit box + RTL END corner).
  */
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router, Link } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NavigationProgress } from "@/components/NavigationProgress";
 
 beforeEach(() => {
@@ -34,33 +33,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-});
-
-describe("ui/dialog close button — RTL corner + 44px hit box (A3 P1-3/P3-14)", () => {
-  function renderDialog() {
-    render(
-      <Dialog open onOpenChange={vi.fn()}>
-        <DialogContent>
-          <DialogTitle className="sr-only">حوار</DialogTitle>
-          محتوى الحوار
-        </DialogContent>
-      </Dialog>,
-    );
-  }
-
-  it("places the close at the physical LEFT corner (opposite the RTL title origin)", () => {
-    renderDialog();
-    const close = screen.getByRole("button", { name: "إغلاق" });
-    expect(close.className).toContain("left-4");
-    expect(close.className).not.toContain("right-4");
-  });
-
-  it("gives the close a 44px hit box (was a bare ~16px icon)", () => {
-    renderDialog();
-    const close = screen.getByRole("button", { name: "إغلاق" });
-    expect(close.className).toContain("h-11 w-11");
-    expect(close.className).toContain("touch-target");
-  });
 });
 
 describe("NavigationProgress — RTL growth + full timer cleanup (A3 P3-2/P3-10)", () => {

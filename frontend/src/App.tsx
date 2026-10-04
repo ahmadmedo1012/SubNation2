@@ -3,7 +3,6 @@ import { AppSplashScreen } from "@/components/AppSplashScreen";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { MetaTags } from "@/components/seo/MetaTags";
 import { RouteSkeleton, type RouteSkeletonShape } from "@/components/ui/route-skeleton";
-import { Toaster } from "@/components/ui/sonner";
 import { SessionActivityManager } from "@/components/SessionActivityManager";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { UserSessionWatcher } from "@/lib/user-session";
@@ -13,8 +12,8 @@ import { useDocumentDirection } from "@/lib/direction";
 import { ThemeProvider } from "@/lib/theme";
 import { getListProductsQueryKey } from "@workspace/api-client-react";
 import type { Product } from "@workspace/api-client-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Suspense, useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
@@ -80,6 +79,16 @@ const AdminWhatsAppPage = lazyWithRetry(() => import("@/pages/admin/whatsapp"));
 
 // Public pages without customer chrome
 const StatusPage = lazyWithRetry(() => import("@/pages/status"));
+
+// A5-5 (R116 — lazy Toaster): sonner + the wrapper's five lucide icons
+// used to ride the ENTRY graph for every visitor, yet toasts are an
+// error/feedback surface, never first-paint content. The Toaster now
+// mounts on idle via the same dynamic-import pattern main.tsx uses
+// for use-toast (see IdleToaster below); ui/sonner.tsx carries a
+// replay bridge that flushes toasts fired before the chunk mounted.
+const Toaster = lazyWithRetry(() =>
+  import("@/components/ui/sonner").then((m) => ({ default: m.Toaster })),
+);
 
 /**
  * Route → RouteSkeleton shape map. Used by the Suspense fallback to
@@ -365,52 +374,85 @@ export function isHomeBootPath(pathname: string, routerBase: string): boolean {
   return pathname === `${routerBase}/` || pathname === "/";
 }
 
+/**
+ * A5-3 (R116): TanStack cache key for the admin session guard. Lives
+ * under the "admin" root so AuthProvider.setAdminToken(null) — the
+ * admin identity-switch choke point — removes it together with every
+ * other admin-scoped query (see the predicate in lib/auth.tsx): a
+ * stale "session valid" verdict from the previous admin must never
+ * admit the next one without a fresh round-trip.
+ */
+const ADMIN_SESSION_GUARD_QUERY_KEY = ["admin", "session", "guard"] as const;
+
 function AdminProtectedRoutes() {
   const { adminToken, setAdminToken } = useAuth();
   const [location, navigate] = useLocation();
-  const [isCheckingSession, setIsCheckingSession] = useState(false);
 
-  useEffect(() => {
-    if (!adminToken) {
-      setIsCheckingSession(false);
-      navigate("/admin/login");
-      return;
-    }
-
-    const controller = new AbortController();
-    setIsCheckingSession(true);
-
-    fetch("/api/admin/session", {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (response.ok) return;
+  // A5-3 (R116 — admin guard refetch storm): the guard used to
+  // raw-fetch /api/admin/session on EVERY mount — and the /admin vs
+  // /admin/:rest* route split below remounts this component on every
+  // admin navigation, so each hop re-paid the round-trip behind a
+  // blank min-h-screen div. TanStack Query now owns the fetch:
+  // remounts read the cached verdict (staleTime 5 min) and only the
+  // first mount — or a >5 min stale verdict — talks to the network,
+  // rendering the admin route skeleton (not a blank div) while
+  // pending. The 401/403 behavior is byte-identical: clear the admin
+  // token + soft-redirect to the admin login. The admin-session 401
+  // interceptor (useAdminHeaders → lib/admin-session) is untouched and
+  // keeps covering page-level queries. Transient failures (network /
+  // 5xx) still surface to the admin pages themselves instead of
+  // trapping a valid session on a blank guard screen (retry: false —
+  // the old raw fetch never retried either).
+  const sessionQuery = useQuery({
+    queryKey: ADMIN_SESSION_GUARD_QUERY_KEY,
+    enabled: !!adminToken,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+    queryFn: async ({ signal }) => {
+      try {
+        const response = await fetch("/api/admin/session", {
+          headers: { Authorization: `Bearer ${adminToken}` },
+          signal,
+        });
+        if (response.ok) return { valid: true };
 
         if (response.status === 401 || response.status === 403) {
           setAdminToken(null);
           navigate("/admin/login");
+          return { valid: false };
         }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") {
-          // Let the admin pages surface transient API failures instead of
-          // trapping a valid local session on a blank guard screen.
+
+        // Non-401/403 failure (5xx, offline): keep the locally-valid
+        // session and let the admin pages surface transient API
+        // failures instead of trapping a valid local session on a
+        // blank guard screen — the same posture as the raw fetch this
+        // replaces (which logged and rendered the children).
+        throw new Error(`admin session check failed: HTTP ${response.status}`);
+      } catch (error) {
+        if ((error as { name?: string } | null | undefined)?.name !== "AbortError") {
           console.warn("Admin session validation failed", error);
         }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsCheckingSession(false);
-        }
-      });
+        throw error;
+      }
+    },
+  });
 
-    return () => controller.abort();
-  }, [adminToken, navigate, setAdminToken]);
+  // No local admin token → nothing to guard. Mirrors the old effect:
+  // bounce to the admin login (effect, not render-phase, so wouter
+  // navigation stays side-effect free during render).
+  useEffect(() => {
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
 
   if (!adminToken) return null;
-  if (isCheckingSession) {
-    return <div className="min-h-screen bg-background" aria-busy="true" />;
+  if (sessionQuery.isPending) {
+    // A5-3: the guard previously rendered a BLANK div here — a
+    // full-screen flash of nothing on every admin navigation while
+    // the guard re-fetched. The admin route skeleton (the same shape
+    // the lazy page Suspense fallback renders below) fills the space
+    // instead: a content-fill, not a blank jump.
+    return <RouteSuspenseFallback adminOnly />;
   }
 
   return (
@@ -459,13 +501,112 @@ function AdminProtectedRoutes() {
  * on navigation, and nothing else did — navigating from a 4000px-scrolled
  * home landed you MID-PAGE on /wallet. Scroll to top on every location
  * change.
+ *
+ * F3-07 (R116 — route-change focus management): the location change now
+ * ALSO moves keyboard/screen-reader focus to the main content container.
+ * SPA navigations leave focus wherever the activating element was —
+ * for screen-reader users the "page" never changed (no page-load
+ * announcement, the URL silently swapped), and keyboard users restart
+ * their Tab walk from wherever they happened to be, often deep in the
+ * footer of the PREVIOUS route. Focusing <main> (tabIndex={-1}, see the
+ * <main> element in AppRoutes) makes the new page's content the
+ * reading/cursor start point — the same contract a full page load gives.
+ * preventScroll: the window.scrollTo above already reset the scroll
+ * position; letting focus() scroll too would double-scroll and fight
+ * the reset.
+ *
+ * Covers storefront AND admin navigations — <main id="main-content">
+ * wraps both route trees (the admin Switch renders inside the same
+ * <main>). Exported for the focus-on-navigate regression test (same
+ * pattern as shapeForRoute / DeferredSocketInitializer).
  */
-function ScrollToTop() {
+export function ScrollToTop() {
   const [location] = useLocation();
+  const isFirstRunRef = useRef(true);
   useEffect(() => {
     window.scrollTo(0, 0);
+    // First run is the app BOOT, not a route change — the browser's
+    // own page-load focus/announcement already covers it, and a late
+    // programmatic focus jump (the auth gate holds the tree for the
+    // probe's 50-300 ms) could interrupt a screen reader mid-cue.
+    if (isFirstRunRef.current) {
+      isFirstRunRef.current = false;
+      return;
+    }
+    document.getElementById("main-content")?.focus({ preventScroll: true });
   }, [location]);
   return null;
+}
+
+/**
+ * F3-07 (R116): delay before the announcer first reads the new title.
+ * Warm navigations (chunk cached) usually have MetaTags flushed by the
+ * time this fires; cold ones are covered by the <title> observer below.
+ */
+const ROUTE_ANNOUNCE_DELAY_MS = 150;
+
+/**
+ * F3-07 (R116): sr-only polite live region announcing the new page's
+ * document.title after every SPA navigation. Sighted users get a full
+ * page-load cue (spinner flash, scroll reset); screen-reader users got
+ * NOTHING — the route swapped silently. Every route maintains its
+ * <title> via its useSeo / MetaTags block, so the announced text is the
+ * page's real name (e.g. «SubNation — المحفظة»).
+ *
+ * Timing: routes are lazily code-split and the destination route writes
+ * its title only when its chunk swaps in — reading document.title
+ * synchronously on the location change would announce the PREVIOUS
+ * page's title on cold navigations. The announcer therefore (a) reads
+ * the title after a short delay (covers warm chunks) and (b) observes
+ * <title> mutations so the announcement tracks the final title
+ * whenever it lands. The very first mount is deliberately silent —
+ * the browser's own page-load announcement already covers it.
+ *
+ * Styled with the sr-only utility (Tailwind core class) — visually
+ * hidden, screen-reader exposed. Rendered for storefront AND admin
+ * routes (AppRoutes mounts it outside the isAdmin conditionals).
+ *
+ * Exported for the announcement regression test (same pattern as
+ * ScrollToTop above).
+ */
+export function RouteAnnouncer() {
+  const [location] = useLocation();
+  const [announcement, setAnnouncement] = useState("");
+  const isFirstRunRef = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRunRef.current) {
+      isFirstRunRef.current = false;
+      return;
+    }
+    // Wipe the previous route's text first: navigating between two
+    // routes that share a title must still fire an SR utterance (a
+    // live region whose text did not change is not announced).
+    setAnnouncement("");
+
+    const announce = () => {
+      const title = (document.title || "").trim();
+      if (title) setAnnouncement(title);
+    };
+
+    const timer = setTimeout(announce, ROUTE_ANNOUNCE_DELAY_MS);
+    const observer = new MutationObserver(announce);
+    const titleEl = document.head.querySelector("title");
+    if (titleEl) {
+      observer.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    }
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [location]);
+
+  return (
+    <div aria-live="polite" role="status" className="sr-only">
+      {announcement}
+    </div>
+  );
 }
 
 function AppRoutes() {
@@ -483,6 +624,9 @@ function AppRoutes() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ScrollToTop />
+      {/* F3-07 (R116): sr-only polite announcement of the new page's
+          title on every SPA navigation — storefront AND admin. */}
+      <RouteAnnouncer />
       <NavigationProgress />
       {/* ── Default SEO tags ────────────────────────────────────────────
           FALLBACK instance (V3-A1): applies only when no page-level
@@ -525,6 +669,7 @@ function AppRoutes() {
       )}
       <main
         id="main-content"
+        tabIndex={-1}
         className={!isAdmin && !isChromeless && token ? "mobile-nav-safe-pad md:pb-0" : ""}
       >
         {/* 98-F7 (r97 F-14): resetKey = the route path — the boundary
@@ -623,6 +768,43 @@ export function DeferredSocketInitializer() {
   );
 }
 
+/**
+ * A5-5 (R116): mounts the lazy Toaster once the main thread goes idle.
+ * requestIdleCallback keeps the sonner chunk fetch + render off the
+ * first-paint critical path; the 2 s timeout guarantee bounds the
+ * window in which toasts queue in the sonner store instead of
+ * rendering (the replay bridge in ui/sonner flushes them on mount,
+ * so nothing is lost).
+ *
+ * Exported for the gating regression test (same pattern as
+ * DeferredSocketInitializer above).
+ */
+export function IdleToaster() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    type IdleWindow = Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const w = window as IdleWindow;
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setMounted(true), { timeout: 2_000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(() => setMounted(true), 2_000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <Toaster />
+    </Suspense>
+  );
+}
+
 function App() {
   // Lock document direction once at boot. Defends against any descendant
   // (e.g. a route-level Helmet block flushing on unmount) that might
@@ -646,9 +828,15 @@ function App() {
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <AppRoutes />
             </WouterRouter>
-            <Toaster />
           </AuthGate>
         </AuthProvider>
+        {/* A5-5 (R116): the Toaster is mounted OUTSIDE the auth gate so
+            boot-window toasts (session-expired, SW updates) can render
+            even while the splash screen holds the route tree — the
+            replay bridge in ui/sonner flushes anything fired before
+            the idle mount. Needs ThemeProvider (useTheme), nothing
+            from auth. */}
+        <IdleToaster />
       </ThemeProvider>
     </QueryClientProvider>
   );

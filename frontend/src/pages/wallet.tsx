@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/CopyButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 import { useOnScreen } from "@/hooks/use-on-screen";
+import { useSocket } from "@/hooks/use-socket";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -13,22 +15,27 @@ import {
   type TransferNetwork,
 } from "@/lib/transfer-code";
 import {
-  copyToClipboard,
   formatCurrency,
   formatDate,
   formatRelativeTime,
-  statusColor,
   statusLabel,
   tierColor,
   tierLabel,
 } from "@/lib/utils";
+import {
+  STATUS_TONE,
+  StatusBadge,
+  UNKNOWN_STATUS_TONE,
+} from "@/components/ui/status-badge";
 import { isValidLibyanPhone, libyanPhoneError } from "@/lib/validation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetMeQueryKey,
   getGetWalletLedgerQueryKey,
   getGetWalletQueryKey,
   getListTopupsQueryKey,
   useCreateTopup,
+  useGetMe,
   useGetWallet,
   useGetWalletLedger,
   useListTopups,
@@ -38,10 +45,8 @@ import {
   AlertCircle,
   ArrowLeftRight,
   Building2,
-  Check,
   CheckCircle,
   Clock,
-  Copy,
   Lock,
   PhoneCall,
   Plus,
@@ -230,8 +235,8 @@ function topupStatusIcon(status: string) {
  * deliver Arabic-Indic (٠-٩) or Persian (۰-۹) digits and locale decimal
  * separators (٫ / ,); paste can deliver letters and multiple dots. Only
  * digits and ONE decimal point survive — mirrors the sender-phone digit
- * sanitizer in step 4. The 0.5-step rounding stays in onBlur +
- * handleSubmit (unchanged).
+ * sanitizer in step 4. R116-S2 (P2): the whole-dinar rounding stays in
+ * onBlur + handleSubmit (unchanged contract, new integer domain).
  */
 function sanitizeAmountInput(raw: string): string {
   let s = raw
@@ -246,49 +251,6 @@ function sanitizeAmountInput(raw: string): string {
     s = s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
   }
   return s;
-}
-
-function CopyBtn({ text, label }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const handle = async () => {
-    // Shared helper (secure-context check + execCommand fallback +
-    // boolean result). Copying the IBAN/account number is part of the
-    // money path — the previous raw `navigator.clipboard.writeText`
-    // rejected silently on non-secure contexts / strict Firefox,
-    // leaving the button dead with an unhandled rejection (B4 P1-2).
-    const ok = await copyToClipboard(text);
-    if (!ok) {
-      setFailed(true);
-      setTimeout(() => setFailed(false), 2000);
-      return;
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      onClick={handle}
-      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-180 press-spring border ${
-        failed
-          ? "bg-status-error/12 text-status-error border-status-error/25"
-          : copied
-            ? "bg-status-success/12 text-status-success border-status-success/25"
-            : "bg-primary/8 text-primary border-primary/20 hover:bg-primary/15"
-      }`}
-    >
-      {failed ? (
-        <XCircle className="w-3 h-3" />
-      ) : copied ? (
-        <Check className="w-3 h-3" />
-      ) : (
-        <Copy className="w-3 h-3" />
-      )}
-      {/* R111-F2 Q2: canonical copy-failure label (CopyButton.tsx:62 /
-          CopilotPanel) — was «فشل النسخ», a duplicate verb form. */}
-      {failed ? "تعذّر النسخ" : copied ? "تم" : (label ?? "نسخ")}
-    </button>
-  );
 }
 
 function StepDot({
@@ -374,6 +336,24 @@ function ledgerAmountDisplay(entry: LedgerEntry): { text: string; credit: boolea
 }
 
 /**
+ * R116-S2 (P3): attribution label for a statement row.
+ *
+ * `adjustment` rows are the generic bucket — a loyalty conversion
+ * lands there with reference_type "loyalty_conversion" and an Arabic
+ * description («تحويل N نقطة ولاء إلى رصيد»). Without this mapping the
+ * credit rendered as the generic «تسوية رصيد», unattributable to the
+ * loyalty action that produced it. Priority: the writer's own
+ * description → the loyalty_conversion mapping → the served
+ * type_label → the raw type.
+ */
+function ledgerEntryLabel(entry: LedgerEntry): string {
+  const description = entry.description?.trim();
+  if (description) return description;
+  if (entry.reference_type === "loyalty_conversion") return "تحويل نقاط";
+  return entry.type_label ?? entry.type ?? "حركة";
+}
+
+/**
  * R115 (A8 P2): the user-facing wallet STATEMENT — every LYD movement
  * from wallet_ledger (topups, purchases, refunds, loyalty conversions,
  * referral/welcome credits), newest first.
@@ -409,13 +389,19 @@ function WalletStatementCard({
         </h2>
         {entries.length > 0 && (
           <span className="mr-auto text-xs text-muted-foreground font-semibold">
-            {formatCount(entries.length, {
-              one: "حركة",
-              two: "حركتان",
-              few: "حركات",
-              many: "حركة",
-              other: "حركة",
-            })}
+            {/* R116-S2 (P3): the backend caps the ledger at 100 rows —
+                a full page is a TRUNCATED window, not the user's total
+                history. Saying «100 حركة» implied "exactly 100 ever";
+                the caption states what's actually shown. */}
+            {entries.length >= 100
+              ? "عرض آخر 100 حركة"
+              : formatCount(entries.length, {
+                  one: "حركة",
+                  two: "حركتان",
+                  few: "حركات",
+                  many: "حركة",
+                  other: "حركة",
+                })}
           </span>
         )}
       </div>
@@ -477,7 +463,7 @@ function WalletStatementCard({
                 className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold mb-0.5">{e.type_label ?? e.type ?? "حركة"}</div>
+                  <div className="text-xs font-bold mb-0.5">{ledgerEntryLabel(e)}</div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {typeof e.balance_after === "number" && (
                       <span className="text-3xs text-muted-foreground tabular-nums">
@@ -568,7 +554,10 @@ function TransferCodePanel({
               «كود التحويل». */}
           رمز التحويل
         </div>
-        {code && <CopyBtn text={code} />}
+        {/* R116-S2 (P2, money path): the shared 44px CopyButton replaces
+            the local pill — the transfer CODE is what the user must dial,
+            so the copy affordance is the money-critical control here. */}
+        {code && <CopyButton text={code} />}
       </div>
 
       {/* 96-F6 (R96 A6 #19): the empty-state hint is Arabic — it used to
@@ -643,7 +632,10 @@ function PaymentReferenceField({
   return (
     <div className="mt-3">
       <Label htmlFor={id} className="text-xs font-bold text-muted-foreground mb-2 block">
-        رقم مرجع التحويل <span className="font-semibold">(اختياري)</span>
+        {/* R116-S2: unified «رمز» family (رمز التحويل above, رمز الكوبون)
+            — was «رقم مرجع التحويل», the only «رقم مرجع» outlier on the
+            topup money flow. */}
+        رمز التحويل <span className="font-semibold">(اختياري)</span>
       </Label>
       <Input
         id={id}
@@ -668,6 +660,22 @@ export default function WalletPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+
+  // R116-S2 (P3): page-scoped realtime — the SAME pattern as
+  // order-detail (the reference mount). The /api/auth/me query is the
+  // SHARED key Navbar/home already populate (60 s staleTime → cache
+  // hit, no extra request); `me?.id` arms the socket once the identity
+  // is known. The topup-updated handler in use-socket invalidates
+  // getListTopups/getGetWallet, so a pending→approved flip lands
+  // in-page (balance card + topup list) the moment the admin decides —
+  // even after the waiting modal was dismissed. connectSocket() is a
+  // module-level singleton (off/on dedupe), so a user navigating
+  // order-detail → wallet never opens a second socket.
+  const { data: me } = useGetMe({
+    query: { queryKey: getGetMeQueryKey(), enabled: !!token, staleTime: 60_000 },
+    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+  });
+  useSocket(me?.id);
 
   const [method, setMethod] = useState<Method>("mobile_transfer");
   const [network, setNetwork] = useState("libyana");
@@ -963,20 +971,33 @@ export default function WalletPage() {
       setError("يرجى إدخال مبلغ صالح");
       return;
     }
-    // R94-A1 #13 (P3): specific bounds + the submit path repeats the
-    // onBlur rounding. A direct Enter (no blur) used to ship an
-    // unrounded fraction, and sub-0.01 values passed the client check
-    // then died on the backend's generic INVALID_DATA envelope.
-    if (parsedAmount < 0.01) {
-      setError("أقل مبلغ شحن هو 0.01 د.ل");
+    // R116-S2 (P2): whole-dinar floor. USSD transfer codes can only
+    // carry integers — a fractional topup dialed a FLOORED code while
+    // submitting the fraction (guaranteed mismatch on every fractional
+    // amount). The client floor is 1 LYD (mirrored by the blur snap
+    // below); the old «0.01» claim was unreachable fiction — the
+    // submit-time snap clamped everything to ≥1 anyway.
+    if (parsedAmount < 1) {
+      setError("أقل مبلغ شحن هو 1 د.ل");
       return;
     }
     if (parsedAmount > 10000) {
       setError("الحد الأقصى للشحن هو 10,000 د.ل");
       return;
     }
-    const normalizedAmount = Math.min(10000, Math.max(1, Math.round(parsedAmount * 2) / 2));
-    if (normalizedAmount !== parsedAmount) setAmount(String(normalizedAmount));
+    // R116-S2 (P2): Math.round to the nearest WHOLE dinar (was the
+    // 0.5-step snap) — matches the USSD code the user was told to dial.
+    const normalizedAmount = Math.min(10000, Math.max(1, Math.round(parsedAmount)));
+    if (normalizedAmount !== parsedAmount) {
+      setAmount(String(normalizedAmount));
+      // The submit-time normalization changed the payload → a DIFFERENT
+      // intent. Rotate the Idempotency-Key under the POST-normalization
+      // fingerprint so this submission can never replay onto the
+      // fractional intent a previous key was minted for (96-F6/98-F2
+      // rotation contract; the backend's 409 same-key-different-body
+      // branch stays unreachable).
+      resetTopupKey(topupIntentFingerprint(String(normalizedAmount), method, senderPhone));
+    }
 
     if (method === "mobile_transfer") {
       setSenderPhoneTouched(true);
@@ -1179,11 +1200,18 @@ export default function WalletPage() {
                   آخر طلب: {formatCurrency(latestTopup.amount)}
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span
-                    className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(latestTopup.status)}`}
+                  {/* R116: shared StatusBadge (STATUS_TONE) replaces the
+                      deprecated statusColor() string-concat — 93-C7
+                      follow-up, same tokens/pill shape as the rest. */}
+                  <StatusBadge
+                    variant={
+                      STATUS_TONE[latestTopup.status as keyof typeof STATUS_TONE] ??
+                      UNKNOWN_STATUS_TONE
+                    }
+                    size="xs"
                   >
                     {statusLabel(latestTopup.status)}
-                  </span>
+                  </StatusBadge>
                   <span className="text-3xs text-muted-foreground">
                     {formatRelativeTime(latestTopup.created_at)}
                   </span>
@@ -1331,25 +1359,32 @@ export default function WalletPage() {
                        0.5-step domain) were literally untypable. The
                        sanitizer in handleAmountChange keeps digits + ONE
                        decimal point alive; min/step semantics stay enforced
-                       by the onBlur rounding + handleSubmit's own bounds. */
+                       by the onBlur rounding + handleSubmit's own bounds.
+                       R116-S2 (P2): the domain is now WHOLE dinars (USSD
+                       codes cannot carry fractions) — step=1 + the
+                       Math.round blur/submit snaps keep the amount
+                       integer; inputMode stays decimal so a stray
+                       separator is still typable (and then rounded). */
                     type="text"
                     inputMode="decimal"
                     autoComplete="off"
                     enterKeyHint="done"
                     min="1"
                     max="10000"
-                    step="0.5"
+                    step={1}
                     placeholder="أو أدخل مبلغاً آخر..."
                     value={amount}
                     onChange={handleAmountChange}
                     onBlur={(e) => {
-                      // Native step="0.5" only enforces on the spinner;
-                      // a typed "1.3" would otherwise reach the backend.
-                      // Round to the nearest 0.5 + clamp to [1, 10000]
-                      // when the user finishes editing.
+                      // R116-S2 (P2): native step=1 only enforces on the
+                      // spinner — a typed "24.9" would otherwise reach
+                      // the backend AND disagree with the USSD code the
+                      // panel above told the user to dial. Round to the
+                      // nearest whole dinar + clamp [1, 10000] when the
+                      // user finishes editing.
                       const v = parseFloat(e.target.value);
                       if (!Number.isFinite(v)) return;
-                      const rounded = Math.min(10000, Math.max(1, Math.round(v * 2) / 2));
+                      const rounded = Math.min(10000, Math.max(1, Math.round(v)));
                       if (rounded !== v) setAmount(String(rounded));
                     }}
                     required
@@ -1518,7 +1553,12 @@ export default function WalletPage() {
                   )}
                   <Button
                     type="submit"
-                    className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl transition-all"
+                    /* R116-S2 CTA recipe: size=lg (h-12-class primary)
+                      + w-full form layout — the drifted h-11/bg-primary/
+                      shadow overrides are gone (button.tsx's lg + default
+                      variant own them now). */
+                    size="lg"
+                    className="w-full cta-glow rounded-xl"
                     disabled={submitting || topupMutation.isPending}
                   >
                     {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
@@ -1541,7 +1581,7 @@ export default function WalletPage() {
                     <InfoRow label="الفرع" value={LYPAY_INFO.branch} />
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
                       <InfoRow label="رقم الحساب" value={LYPAY_INFO.account_number} />
-                      <CopyBtn text={LYPAY_INFO.account_number} label="نسخ" />
+                      <CopyButton text={LYPAY_INFO.account_number} label="نسخ" size="md" />
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
                       <div className="min-w-0">
@@ -1552,7 +1592,7 @@ export default function WalletPage() {
                           {LYPAY_INFO.iban}
                         </div>
                       </div>
-                      <CopyBtn text={LYPAY_INFO.iban.replace(/\s/g, "")} label="نسخ" />
+                      <CopyButton text={LYPAY_INFO.iban.replace(/\s/g, "")} label="نسخ" size="md" />
                     </div>
                   </div>
                 </div>
@@ -1590,21 +1630,23 @@ export default function WalletPage() {
                       id="topup-amount-lypay"
                       /* 96-F6 (R96 A2 P1-6): decimal keyboard — twin of the
                          mobile-transfer amount field (type="number" had no
-                         decimal separator on Arabic-locale iOS keypads). */
+                         decimal separator on Arabic-locale iOS keypads).
+                         R116-S2 (P2): whole-dinar domain (step=1 + the
+                         Math.round blur snap), matching the mobile flow. */
                       type="text"
                       inputMode="decimal"
                       autoComplete="off"
                       enterKeyHint="done"
                       min="1"
                       max="10000"
-                      step="0.5"
+                      step={1}
                       placeholder="المبلغ بالدينار الليبي"
                       value={amount}
                       onChange={handleAmountChange}
                       onBlur={(e) => {
                         const v = parseFloat(e.target.value);
                         if (!Number.isFinite(v)) return;
-                        const rounded = Math.min(10000, Math.max(1, Math.round(v * 2) / 2));
+                        const rounded = Math.min(10000, Math.max(1, Math.round(v)));
                         if (rounded !== v) setAmount(String(rounded));
                       }}
                       required
@@ -1671,7 +1713,9 @@ export default function WalletPage() {
                     )}
                     <Button
                       type="submit"
-                      className="w-full bg-primary hover:bg-primary/90 font-bold h-11 shadow-md shadow-primary/22 cta-glow rounded-xl"
+                      /* R116-S2 CTA recipe (lypay twin of the mobile CTA). */
+                      size="lg"
+                      className="w-full cta-glow rounded-xl"
                       disabled={submitting || topupMutation.isPending}
                     >
                       {submitting || topupMutation.isPending
@@ -1786,11 +1830,14 @@ export default function WalletPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span
-                          className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${statusColor(t.status)}`}
+                        {/* R116: shared StatusBadge (STATUS_TONE) replaces
+                            the deprecated statusColor() — 93-C7 follow-up. */}
+                        <StatusBadge
+                          variant={STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
+                          size="xs"
                         >
                           {statusLabel(t.status)}
-                        </span>
+                        </StatusBadge>
                         <span className="text-3xs text-muted-foreground">
                           {formatDate(t.created_at)}
                         </span>

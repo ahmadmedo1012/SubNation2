@@ -31,9 +31,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../whatsapp-watch", () => ({
   observeWhatsAppChannel: vi.fn(),
+  // A9-2 (R116): the rolling send-failure counter — same mock surface.
+  observeWhatsAppSendFailure: vi.fn(),
 }));
 
-import { observeWhatsAppChannel } from "../whatsapp-watch";
+import { observeWhatsAppChannel, observeWhatsAppSendFailure } from "../whatsapp-watch";
 
 vi.mock("../../lib/whatsapp-epoch-store", () => ({
   readEpochMarker: vi.fn(async () => null),
@@ -46,6 +48,7 @@ vi.mock("../../lib/redis-client", () => ({
 }));
 
 const observeMock = vi.mocked(observeWhatsAppChannel);
+const observeFailureMock = vi.mocked(observeWhatsAppSendFailure);
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const SESSION_ID = "sess_watch_1";
@@ -145,6 +148,9 @@ describe("send-path outcomes feed the channel-death watch (B5-5, R111)", () => {
     expect(sends).toBe(3);
     expect(observeMock).toHaveBeenCalledTimes(1);
     expect(observeMock).toHaveBeenCalledWith({ configured: true, status: "send_500" });
+    // A9-2 (R116): the exhausted send also feeds the rolling failure counter.
+    expect(observeFailureMock).toHaveBeenCalledTimes(1);
+    expect(observeFailureMock).toHaveBeenCalledWith("send_500");
   });
 
   it("recipient_not_on_whatsapp feeds NOTHING — a wrong number is not channel health", async () => {
@@ -172,6 +178,13 @@ describe("send-path outcomes feed the channel-death watch (B5-5, R111)", () => {
     });
     expect(observeMock).toHaveBeenCalledTimes(1);
     expect(observeMock).toHaveBeenCalledWith({ configured: true, status: "qr_ready" });
+    // A9-2 (R116): the pre-send failure also feeds the rolling failure
+    // counter with the RAW lifecycle status (same taxonomy as the
+    // channel feed). No exact count — a pending observation from an
+    // earlier test's module instance can land inside this window (the
+    // mock is file-shared); the LAST call is this test's feed.
+    expect(observeFailureMock).toHaveBeenCalledWith("qr_ready");
+    expect(observeFailureMock.mock.lastCall?.[0]).toBe("qr_ready");
   });
 
   it("a delivered warm-up self-check feeds ready; a failing one feeds send_<status>", async () => {

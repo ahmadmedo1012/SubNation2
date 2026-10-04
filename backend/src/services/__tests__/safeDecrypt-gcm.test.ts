@@ -13,11 +13,18 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 // 32-byte hex key — test-only, never production material. Set before the
-// first encrypt/decrypt call (the key is read lazily per call, not at
-// import).
+// first encrypt/decrypt call (the key is read lazily and memoized at
+// first use — B6-03/R116; a mid-file rotation uses the reset seam to
+// model a new process booting with a different key).
 process.env.ENCRYPTION_KEY = "11".repeat(32);
 
-import { decrypt, encrypt, isEncrypted, safeDecrypt } from "../../lib/encryption";
+import {
+  __resetEncryptionKeyCacheForTests,
+  decrypt,
+  encrypt,
+  isEncrypted,
+  safeDecrypt,
+} from "../../lib/encryption";
 
 beforeAll(() => {
   // Ensure the key stays consistent for the whole suite even if another
@@ -61,10 +68,16 @@ describe("B2-11: safeDecrypt on GCM authentication failure", () => {
     const ct = encrypt("hunter2");
     const original = process.env.ENCRYPTION_KEY;
     try {
+      // B6-03 (R116): the parsed key is memoized at first use (env is
+      // immutable per process) — a rotation means a NEW process. The seam
+      // models exactly that: forget the cached key, then set the rotated
+      // one; the old ciphertext now fails GCM auth → null.
+      __resetEncryptionKeyCacheForTests();
       process.env.ENCRYPTION_KEY = "22".repeat(32);
       expect(safeDecrypt(ct)).toBeNull();
     } finally {
       process.env.ENCRYPTION_KEY = original;
+      __resetEncryptionKeyCacheForTests();
     }
     // Restored key decrypts fine — no state pollution.
     expect(safeDecrypt(ct)).toBe("hunter2");

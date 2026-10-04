@@ -132,7 +132,7 @@ async function openBulkConfirm(statusLabel: string) {
   if (!anchor) throw new Error("dropdown anchor not found");
   fireEvent.click(within(anchor).getByRole("button", { name: statusLabel }));
 
-  const title = await screen.findByText("استرجاع جماعي للطلبات");
+  const title = await screen.findByText("استرداد جماعي للطلبات");
   const dialog = title.closest('[role="alertdialog"]');
   if (!dialog) throw new Error("confirm dialog not rendered");
   return within(dialog as HTMLElement);
@@ -171,7 +171,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     renderPage();
 
     const dialog = await openBulkConfirm("مسترجع");
-    fireEvent.click(dialog.getByRole("button", { name: "استرجاع" }));
+    fireEvent.click(dialog.getByRole("button", { name: "استرداد" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -180,7 +180,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     expect(JSON.parse(String(init.body))).toMatchObject({ ids: [1, 2], status: "refunded" });
 
     const toastArg = toastMock.mock.calls[0][0];
-    expect(toastArg.title).toBe("✓ تم استرجاع 2 طلب");
+    expect(toastArg.title).toBe("تم استرداد 2 طلب");
     expect(toastArg.variant).toBe("success");
   });
 
@@ -200,7 +200,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     renderPage();
 
     const dialog = await openBulkConfirm("مسترجع");
-    fireEvent.click(dialog.getByRole("button", { name: "استرجاع" }));
+    fireEvent.click(dialog.getByRole("button", { name: "استرداد" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];
@@ -208,7 +208,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     expect(toastArg.description).toContain("فشلت 1");
     expect(toastArg.description).toContain("#1");
     // RefundService code mapped to its Arabic reason.
-    expect(toastArg.description).toContain("مسترجع مسبقاً");
+    expect(toastArg.description).toContain("مُسترد مسبقاً");
     expect(toastArg.variant).toBe("destructive");
   });
 
@@ -230,7 +230,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];
-    expect(toastArg.title).toBe("✓ تم تحديث حالة 2 طلب");
+    expect(toastArg.title).toBe("تم تحديث حالة 2 طلب");
     expect(toastArg.description).toContain("مكتمل");
     expect(toastArg.variant).toBe("success");
   });

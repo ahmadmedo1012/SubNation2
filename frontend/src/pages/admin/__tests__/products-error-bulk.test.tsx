@@ -243,7 +243,7 @@ describe("AdminProductsPage — honest bulk-archive summaries (A2 P2-8)", () => 
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];
-    expect(toastArg.title).toBe("✓ تمت الأرشفة 2 منتجات");
+    expect(toastArg.title).toBe("تمت الأرشفة 2 منتجات");
     expect(toastArg.variant).toBe("success");
   });
 });

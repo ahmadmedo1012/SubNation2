@@ -236,30 +236,54 @@ describe("P0-sim: formatOrder delivered-credential serialization (GET /api/order
 });
 
 describe("P0-sim: wallet recent_orders mirror (GET /api/wallet)", () => {
-  it("completed order shows decrypted credentials; refunded shows all null", async () => {
-    const { user, order } = await seedCompletedOrderEncrypted();
+  it("B6-03 (R116): the summary NO LONGER decrypts — delivered_* null + has_credentials flag", async () => {
+    const { user } = await seedCompletedOrderEncrypted();
     const token = signUserToken({ userId: user.id });
 
     const before = (await getJson("/api/wallet", token)) as {
       status: number;
-      body: { balance: number; recent_orders: DeliveredFields[] };
+      body: {
+        balance: number;
+        recent_orders: Array<{
+          status: string;
+          has_credentials: boolean;
+          delivered_email: string | null;
+          delivered_password: string | null;
+          delivered_extra_details: string | null;
+          delivered_usage_terms: string | null;
+        }>;
+      };
     };
     expect(before.status).toBe(200);
     expect(before.body.recent_orders).toHaveLength(1);
-    expect(before.body.recent_orders[0].delivered_email).toBe("buyer-account@test.local");
-    expect(before.body.recent_orders[0].delivered_extra_details).toBe("RECOVERY-CODE-9981");
+    // Availability flag instead of the plaintext — the buyer's credential
+    // surface is GET /api/orders (formatOrder decrypts there).
+    expect(before.body.recent_orders[0].has_credentials).toBe(true);
+    expect(before.body.recent_orders[0].delivered_email).toBeNull();
+    expect(before.body.recent_orders[0].delivered_password).toBeNull();
+    expect(before.body.recent_orders[0].delivered_extra_details).toBeNull();
+    // usage_terms / delivered_at stay as-is (plain columns).
     expect(before.body.recent_orders[0].delivered_usage_terms).toContain("كلمة المرور");
+  });
+
+  it("refunded order: has_credentials flips false (RefundService nulls the columns)", async () => {
+    const { user, order } = await seedCompletedOrderEncrypted();
+    const token = signUserToken({ userId: user.id });
 
     await RefundService.refundOrder(order.id, { adminId: ADMIN_ID });
 
     const after = (await getJson("/api/wallet", token)) as {
       status: number;
-      body: { recent_orders: DeliveredFields[] };
+      body: {
+        recent_orders: Array<{
+          status: string;
+          has_credentials: boolean;
+          delivered_usage_terms: string | null;
+        }>;
+      };
     };
     expect(after.body.recent_orders[0].status).toBe("refunded");
-    expect(after.body.recent_orders[0].delivered_email).toBeNull();
-    expect(after.body.recent_orders[0].delivered_password).toBeNull();
-    expect(after.body.recent_orders[0].delivered_extra_details).toBeNull();
+    expect(after.body.recent_orders[0].has_credentials).toBe(false);
     expect(after.body.recent_orders[0].delivered_usage_terms).toBeNull();
   });
 });

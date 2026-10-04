@@ -2,12 +2,17 @@ import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
+import {
+  STATUS_TONE,
+  StatusBadge,
+  UNKNOWN_STATUS_TONE,
+} from "@/components/ui/status-badge";
 import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
-import { categoryLabel, formatCount, formatCurrency, statusColor, statusLabel } from "@/lib/utils";
+import { categoryLabel, formatCount, formatCurrency, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -380,8 +385,11 @@ export default function HomePage() {
     ],
   });
 
+  // R116-S1 dvh straggler: min-h-screen → the codebase's min-h-[100dvh]
+  // convention (login/register/onboarding pattern) — 100vh overscrolls
+  // on mobile dynamic-toolbar viewports.
   return (
-    <div className="min-h-screen">
+    <div className="min-h-[100dvh]">
       {seoBlock}
       <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
         {/* ── Hero ─────────────────────────────────────────── */}
@@ -399,12 +407,12 @@ export default function HomePage() {
                 landed. sm+ stays single-row (~120px). Measured by class
                 analysis (see A7 P3-6); min-h so a longer name can only
                 grow it, never clip. */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15 min-h-[150px] sm:min-h-[120px] skeleton-shimmer" />
+            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg min-h-[150px] sm:min-h-[120px] skeleton-shimmer" />
           </div>
         ) : token && user ? (
           <div className="mb-5 page-in">
             {/* Hero banner card */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg shadow-black/15">
+            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg">
               {/* Background gradient layers */}
               <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
               <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
@@ -415,7 +423,7 @@ export default function HomePage() {
                   <p className="text-muted-foreground text-xs mb-0.5 font-semibold">
                     مرحباً بك مجدداً
                   </p>
-                  <h1 className="text-fluid-2xl font-bold leading-tight text-gradient-animated">
+                  <h1 className="text-fluid-2xl font-bold text-gradient-animated">
                     اشترِ اشتراكك المفضل اليوم
                   </h1>
                 </div>
@@ -462,7 +470,7 @@ export default function HomePage() {
             {ordersPending ? (
               <div
                 aria-hidden="true"
-                className="bg-card border border-border/45 rounded-2xl overflow-hidden shadow-sm shadow-black/10"
+                className="bg-card border border-border/45 rounded-2xl overflow-hidden shadow-sm"
               >
                 <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/25">
                   <div className="w-3.5 h-3.5 rounded-full skeleton-shimmer" />
@@ -496,7 +504,7 @@ export default function HomePage() {
               </div>
             ) : (
               latestOrders.length > 0 && (
-                <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm shadow-black/10">
+                <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm">
                   <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
                     <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
                       <Clock className="w-3.5 h-3.5" />
@@ -532,11 +540,19 @@ export default function HomePage() {
                             </div>
                             <div className="flex items-center gap-1 mt-0.5">
                               <OrderStatusIcon status={order.status} />
-                              <span
-                                className={`text-3xs font-bold ${statusColor(order.status).split(" ")[0]}`}
+                              {/* R116-S1: shared StatusBadge (STATUS_TONE)
+                                  replaces the deprecated statusColor()
+                                  string-slicing — same tokens, same pill
+                                  shape as the rest of the app. */}
+                              <StatusBadge
+                                variant={
+                                  STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                                  UNKNOWN_STATUS_TONE
+                                }
+                                size="xs"
                               >
                                 {statusLabel(order.status)}
-                              </span>
+                              </StatusBadge>
                             </div>
                           </div>
                           <div className="text-xs font-bold tabular-nums shrink-0">
@@ -555,7 +571,7 @@ export default function HomePage() {
           /* Guest: editorial hero */
           <div
             ref={guestHeroRef}
-            className="relative overflow-hidden rounded-3xl border border-border/40 mb-6 bg-card page-in shadow-xl shadow-black/20"
+            className="relative overflow-hidden rounded-3xl border border-border/40 mb-6 bg-card page-in shadow-xl"
           >
             {/* Background layers */}
             <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
@@ -585,7 +601,7 @@ export default function HomePage() {
                       سوق الاشتراكات الرقمية
                     </span>
                   </div>
-                  <h1 className="text-fluid-3xl font-bold mb-3 leading-[1.15] tracking-tight">
+                  <h1 className="text-fluid-3xl font-bold mb-3">
                     {/*
                       Single contiguous phrase for Google's NLU. Visual
                       two-line split is achieved with `block` + a styled
@@ -647,17 +663,22 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* CTAs — mobile: stacked with primary dominant; desktop: inline */}
+                  {/* CTAs — mobile: stacked with primary dominant; desktop: inline.
+                      R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — the
+                      per-page bg/shadow/height/press overrides and the pulsing
+                      cta-glow halo are gone; the gradient variant + global
+                      press-spring carry the affordance. */}
                   <div className="flex flex-col sm:flex-row gap-2.5 sm:flex-wrap">
                     <Link href="/register" className="contents sm:block">
-                      <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 shadow-xl shadow-primary/28 active:scale-[0.97] h-12 sm:h-11 px-7 font-bold transition-all cta-glow text-sm rounded-xl">
+                      <Button size="lg" className="w-full sm:w-auto">
                         إنشاء حساب مجاني
                       </Button>
                     </Link>
                     <Link href="/login" className="contents sm:block">
                       <Button
                         variant="ghost"
-                        className="w-full sm:w-auto active:scale-[0.97] h-11 sm:h-11 sm:px-4 transition-all text-sm gap-1.5 hover:bg-muted/40 rounded-xl text-muted-foreground hover:text-foreground"
+                        size="lg"
+                        className="w-full sm:w-auto gap-1.5 text-muted-foreground"
                       >
                         لدي حساب — تسجيل الدخول
                         <ArrowLeft className="w-3.5 h-3.5 opacity-40" />
@@ -841,7 +862,7 @@ export default function HomePage() {
               />
               {/* Search history dropdown */}
               {showSearchHistory && searchHistory.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border/50 rounded-xl shadow-lg shadow-black/20 z-50 overflow-hidden">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border/50 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="p-2">
                     <div className="flex items-center justify-between px-2 py-1.5 mb-1">
                       <span className="text-xs font-bold text-muted-foreground">
@@ -905,9 +926,9 @@ export default function HomePage() {
                     key={c.value}
                     onClick={() => setCategory(c.value)}
                     aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-[38px] shrink-0 ${
+                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 shrink-0 ${
                       active
-                        ? "bg-primary text-white shadow-md shadow-primary/30 font-bold"
+                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/30 font-bold"
                         : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
                     }`}
                   >
@@ -919,7 +940,7 @@ export default function HomePage() {
               <button
                 onClick={() => setAvailableOnly((v) => !v)}
                 aria-pressed={availableOnly}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-[38px] shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
                   availableOnly
                     ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
                     : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
@@ -952,7 +973,7 @@ export default function HomePage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-2.5 py-1 rounded-lg hover:bg-primary/8 press-spring font-semibold"
+                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-3 py-2.5 min-h-11 rounded-lg hover:bg-primary/8 press-spring font-semibold"
               >
                 مسح ({activeFilterCount})
               </button>
@@ -998,7 +1019,7 @@ export default function HomePage() {
           /* Distinct from "no results": a failed products API previously
              rendered the empty-search state — an outage read as "no products
              match your search", which is actively misleading. */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-3xl float-in shadow-sm shadow-black/8">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-3xl float-in shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/20 mx-auto mb-4 flex items-center justify-center">
               <WifiOff className="w-6 h-6 text-status-error/70" />
             </div>
@@ -1014,7 +1035,7 @@ export default function HomePage() {
             </button>
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-3xl float-in shadow-sm shadow-black/8">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-3xl float-in shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-muted/60 mx-auto mb-4 flex items-center justify-center">
               <PackageSearch className="w-6 h-6 opacity-35" />
             </div>

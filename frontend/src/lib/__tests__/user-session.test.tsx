@@ -78,14 +78,18 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     window.history.pushState({}, "", "/checkout?coupon=NETFLIX");
   });
 
-  it("toasts once (Arabic), clears the token, disconnects the socket, soft-redirects with ?redirect=", () => {
+  it("toasts once (Arabic), clears the token, disconnects the socket, soft-redirects with ?redirect=", async () => {
     const clear = vi.fn();
     simulateUserSession(clear);
 
     const handled = handleUserUnauthorized("/api/orders");
 
     expect(handled).toBe(true);
-    expect(toastMock).toHaveBeenCalledTimes(1);
+    // A5-12: the toast fires through a dynamic use-toast import — one
+    // microtask later than the (still synchronous) clear + redirect.
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledTimes(1);
+    });
     expect(toastMock.mock.calls[0][0]).toMatchObject({
       title: USER_SESSION_EXPIRED_MESSAGE,
       variant: "destructive",
@@ -100,7 +104,7 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     );
   });
 
-  it("dedupes the 401 burst from parallel queries: one toast + one redirect", () => {
+  it("dedupes the 401 burst from parallel queries: one toast + one redirect", async () => {
     simulateUserSession(vi.fn());
 
     const first = handleUserUnauthorized("/api/orders");
@@ -111,8 +115,11 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     // Handled (caller skips its own generic error toast)…
     expect(second).toBe(true);
     expect(third).toBe(true);
-    // …but no additional side effects.
-    expect(toastMock).toHaveBeenCalledTimes(1);
+    // …but no additional side effects (A5-12: the toast is async now —
+    // flush the dynamic import before counting).
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledTimes(1);
+    });
     expect(disconnectMock).toHaveBeenCalledTimes(1);
   });
 
@@ -127,16 +134,21 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     expect(window.location.pathname).toBe("/checkout");
   });
 
-  it("routes /api/admin/* URLs to admin-session's handler exactly (admin toast + /admin/login)", () => {
+  it("routes /api/admin/* URLs to admin-session's handler exactly (admin toast + /admin/login)", async () => {
     // Admin session mirrored (as useAdminHeaders does) — the admin
     // branch must behave identically to calling it directly.
     setAdminSessionMirror(true, vi.fn());
 
-    const handled = handleUserUnauthorized("/api/admin/topups");
+    // A5-12: the FIRST admin 401 runs admin-session through a dynamic
+    // import (a microtask later); every subsequent one is synchronous
+    // through the cached handler ref.
+    const first = handleUserUnauthorized("/api/admin/topups");
+    expect(first).toBe(false); // not yet decided — admin-session loading
 
-    expect(handled).toBe(true);
-    // Admin toast — the SAME shared toast mock admin-session uses.
-    expect(toastMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      // Admin toast — the SAME shared toast mock admin-session uses.
+      expect(toastMock).toHaveBeenCalledTimes(1);
+    });
     expect(toastMock.mock.calls[0][0]).toMatchObject({
       title: "انتهت الجلسة — سجّل دخولك مجددًا",
       variant: "destructive",
@@ -144,6 +156,11 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     expect(window.location.pathname).toBe("/admin/login");
     // The USER side must stay silent for admin URLs.
     expect(disconnectMock).not.toHaveBeenCalled();
+
+    // The handler ref is cached now — the next admin 401 decides
+    // synchronously, exactly like the pre-A5-12 static delegation.
+    const second = handleUserUnauthorized("/api/admin/orders");
+    expect(second).toBe(true);
   });
 
   it("admin URL with NO admin session is not the user's business (no user logout)", () => {
@@ -170,12 +187,14 @@ describe("handleUserUnauthorized — storefront 401 router (96-F3 §3.1)", () =>
     expect(window.location.pathname).toBe("/login");
   });
 
-  it("does not re-navigate when the session dies while already on /login", () => {
+  it("does not re-navigate when the session dies while already on /login", async () => {
     window.history.pushState({}, "", "/login");
     simulateUserSession(vi.fn());
 
     expect(handleUserUnauthorized("/api/orders")).toBe(true);
-    expect(toastMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(toastMock).toHaveBeenCalledTimes(1);
+    });
     // Still on /login — no self-referencing redirect param.
     expect(window.location.pathname).toBe("/login");
     expect(window.location.search).toBe("");

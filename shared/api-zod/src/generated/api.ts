@@ -631,6 +631,12 @@ export const ListOrdersResponseItem = zod
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
     status: zod.enum(["pending", "completed", "failed", "refunded"]),
+    has_credentials: zod
+      .boolean()
+      .optional()
+      .describe(
+        "True when any delivered credential column is set (B6-03).\nAlways present on \/wallet recent_orders; the storefront\n\/orders surfaces omit it (they decrypt directly).\n",
+      ),
     delivered_email: zod.string().nullish(),
     delivered_password: zod.string().nullish(),
     delivered_extra_details: zod.string().nullish(),
@@ -641,7 +647,7 @@ export const ListOrdersResponseItem = zod
     created_at: zod.string(),
   })
   .describe(
-    'Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n',
+    "Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n\nB6-03 (R116): on the \/wallet summary's recent_orders block the\ndelivered_\* credential fields are ALWAYS null — that surface no\nlonger decrypts; has_credentials (boolean) carries the\navailability signal instead. The buyer's credential surface is\nGET \/orders + \/orders\/{orderCode}.\n",
   );
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 
@@ -700,6 +706,12 @@ export const CreateOrderResponse = zod
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
     status: zod.enum(["pending", "completed", "failed", "refunded"]),
+    has_credentials: zod
+      .boolean()
+      .optional()
+      .describe(
+        "True when any delivered credential column is set (B6-03).\nAlways present on \/wallet recent_orders; the storefront\n\/orders surfaces omit it (they decrypt directly).\n",
+      ),
     delivered_email: zod.string().nullish(),
     delivered_password: zod.string().nullish(),
     delivered_extra_details: zod.string().nullish(),
@@ -710,7 +722,7 @@ export const CreateOrderResponse = zod
     created_at: zod.string(),
   })
   .describe(
-    'Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n',
+    "Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n\nB6-03 (R116): on the \/wallet summary's recent_orders block the\ndelivered_\* credential fields are ALWAYS null — that surface no\nlonger decrypts; has_credentials (boolean) carries the\navailability signal instead. The buyer's credential surface is\nGET \/orders + \/orders\/{orderCode}.\n",
   );
 
 /**
@@ -737,6 +749,12 @@ export const GetOrderResponse = zod
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
     status: zod.enum(["pending", "completed", "failed", "refunded"]),
+    has_credentials: zod
+      .boolean()
+      .optional()
+      .describe(
+        "True when any delivered credential column is set (B6-03).\nAlways present on \/wallet recent_orders; the storefront\n\/orders surfaces omit it (they decrypt directly).\n",
+      ),
     delivered_email: zod.string().nullish(),
     delivered_password: zod.string().nullish(),
     delivered_extra_details: zod.string().nullish(),
@@ -747,7 +765,7 @@ export const GetOrderResponse = zod
     created_at: zod.string(),
   })
   .describe(
-    'Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n',
+    "Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n\nB6-03 (R116): on the \/wallet summary's recent_orders block the\ndelivered_\* credential fields are ALWAYS null — that surface no\nlonger decrypts; has_credentials (boolean) carries the\navailability signal instead. The buyer's credential surface is\nGET \/orders + \/orders\/{orderCode}.\n",
   );
 
 /**
@@ -776,6 +794,12 @@ export const GetWalletResponse = zod.object({
         product_image_url: zod.string().nullish(),
         amount: zod.number(),
         status: zod.enum(["pending", "completed", "failed", "refunded"]),
+        has_credentials: zod
+          .boolean()
+          .optional()
+          .describe(
+            "True when any delivered credential column is set (B6-03).\nAlways present on \/wallet recent_orders; the storefront\n\/orders surfaces omit it (they decrypt directly).\n",
+          ),
         delivered_email: zod.string().nullish(),
         delivered_password: zod.string().nullish(),
         delivered_extra_details: zod.string().nullish(),
@@ -786,7 +810,7 @@ export const GetWalletResponse = zod.object({
         created_at: zod.string(),
       })
       .describe(
-        'Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n',
+        "Delivered-credential fields (delivered_email, delivered_password,\ndelivered_extra_details, delivered_usage_terms) are non-null ONLY\nwhile status is \"completed\" (B2-03 round-92 + P0-sim round-93):\nrefund nulls email\/password\/extra_details in the refund\ntransaction and the API gate nulls every other non-completed\nstate. Encrypted-at-rest fields are decrypted at the boundary;\nusage terms are catalog text (present for completed orders).\n\nB6-03 (R116): on the \/wallet summary's recent_orders block the\ndelivered_\* credential fields are ALWAYS null — that surface no\nlonger decrypts; has_credentials (boolean) carries the\navailability signal instead. The buyer's credential surface is\nGET \/orders + \/orders\/{orderCode}.\n",
       ),
   ),
 });
@@ -1424,14 +1448,46 @@ export const ListAdminOrdersResponseItem = zod.object({
   product_name: zod.string(),
   amount: zod.number(),
   status: zod.enum(["pending", "completed", "failed", "refunded"]),
-  delivered_email: zod.string().nullish(),
-  delivered_password: zod.string().nullish(),
-  delivered_extra_details: zod.string().nullish(),
+  has_credentials: zod
+    .boolean()
+    .optional()
+    .describe("True when any delivered credential column is set (refund nulls them)."),
   coupon_code: zod.string().nullish(),
   discount_amount: zod.number().optional(),
   created_at: zod.string(),
 });
 export const ListAdminOrdersResponse = zod.array(ListAdminOrdersResponseItem);
+
+/**
+ * B6-03 (R116, credentials-on-demand): the ONLY admin surface that
+decrypts the delivered credential columns, for a single order —
+an explicit, per-order reveal for support/reconciliation. Every
+successful reveal writes an `order.credentials_view` audit row
+(who opened WHICH order's credentials). Cache-Control: no-store.
+404 when the order id doesn't exist. Refunded orders return
+has_credentials:false + all nulls (RefundService nulls the
+columns in the refund tx); safeDecrypt passes legacy plaintext
+through unchanged.
+
+ * @summary Reveal one order's delivered credentials (requireAdmin + orders scope; audited)
+ */
+
+export const GetAdminOrderCredentialsParams = zod.object({
+  id: zod.coerce
+    .number()
+    .min(1)
+    .describe("Order id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const GetAdminOrderCredentialsResponse = zod.object({
+  id: zod.number(),
+  order_code: zod.string(),
+  status: zod.enum(["pending", "completed", "failed", "refunded"]),
+  has_credentials: zod.boolean(),
+  delivered_email: zod.string().nullish(),
+  delivered_password: zod.string().nullish(),
+  delivered_extra_details: zod.string().nullish(),
+});
 
 /**
  * status="refunded" processes each id through RefundService.refundOrder
@@ -1533,6 +1589,13 @@ export const ListAdminTopupsResponseItem = zod.object({
   payment_reference: zod.string().nullish(),
   status: zod.enum(["pending", "approved", "rejected"]),
   admin_note: zod.string().nullish(),
+  reviewed_by: zod
+    .string()
+    .nullish()
+    .describe(
+      "Who approved\/rejected this topup (admin username, or the\nTelegram actor tag for webhook approvals). Null for pending\nrows, legacy rows, and the automated gateway path.\n",
+    ),
+  reviewed_at: zod.string().nullish(),
   created_at: zod.string(),
 });
 export const ListAdminTopupsResponse = zod.array(ListAdminTopupsResponseItem);

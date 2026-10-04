@@ -202,8 +202,18 @@ export class TopupService {
 
     return topup;
   }
-  /** Approve a pending topup: credit wallet, update loyalty, handle referrals */
-  static async approve(topupId: number, adminNote: string | null) {
+  /**
+   * Approve a pending topup: credit wallet, update loyalty, handle referrals.
+   *
+   * A4-04 (R116): `reviewedBy` (admin username / Telegram actor tag) is
+   * persisted on the row in the same guarded UPDATE as reviewed_at —
+   * nullable so legacy + automated-gateway approvals stay valid.
+   */
+  static async approve(
+    topupId: number,
+    adminNote: string | null,
+    reviewedBy?: string | null,
+  ) {
     const [topup] = await db
       .select()
       .from(walletTopupsTable)
@@ -357,7 +367,14 @@ export class TopupService {
         // preventing double-credit of the wallet.
         const flipped = await tx
           .update(walletTopupsTable)
-          .set({ status: "approved", adminNote, reviewedAt: new Date() })
+          .set({
+            status: "approved",
+            adminNote,
+            reviewedAt: new Date(),
+            // A4-04 (R116): reviewer attribution, same guarded UPDATE as
+            // the status flip (bounded to the admin-username column width).
+            ...(reviewedBy ? { reviewedBy: reviewedBy.trim().slice(0, 100) } : {}),
+          })
           .where(and(eq(walletTopupsTable.id, topupId), eq(walletTopupsTable.status, "pending")))
           .returning({ id: walletTopupsTable.id });
         if (flipped.length !== 1) {
@@ -598,8 +615,14 @@ export class TopupService {
     return { success: true, message: "تمت الموافقة على طلب الشحن وإضافة الرصيد" };
   }
 
-  /** Reject a pending topup */
-  static async reject(topupId: number, adminNote: string | null) {
+  /**
+   * Reject a pending topup. `reviewedBy` semantics mirror approve (A4-04).
+   */
+  static async reject(
+    topupId: number,
+    adminNote: string | null,
+    reviewedBy?: string | null,
+  ) {
     const [topup] = await db
       .select()
       .from(walletTopupsTable)
@@ -613,7 +636,14 @@ export class TopupService {
     // clause + rowsAffected check makes a double-click idempotent.
     const flipped = await db
       .update(walletTopupsTable)
-      .set({ status: "rejected", adminNote, reviewedAt: new Date() })
+      .set({
+        status: "rejected",
+        adminNote,
+        reviewedAt: new Date(),
+        // A4-04 (R116): reviewer attribution, same guarded UPDATE as the
+        // status flip.
+        ...(reviewedBy ? { reviewedBy: reviewedBy.trim().slice(0, 100) } : {}),
+      })
       .where(and(eq(walletTopupsTable.id, topupId), eq(walletTopupsTable.status, "pending")))
       .returning({ id: walletTopupsTable.id });
     if (flipped.length !== 1) {

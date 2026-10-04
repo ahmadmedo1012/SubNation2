@@ -12,7 +12,6 @@ import { Router } from "express";
 import { logger } from "../lib/logger";
 import { roundLydString } from "../lib/money";
 import { normalizeLibyanPhone } from "../lib/crypto";
-import { safeDecrypt } from "../lib/encryption";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
@@ -78,8 +77,20 @@ router.get("/", requireUser, async (req, res) => {
   // Round-3 (8-c §2.6): user → orders → pending-count was 3 sequential
   // round trips; the two aggregates only depend on userId, so all three
   // queries now run concurrently.
+  // B6-03 (R116) hygiene: projected user read — the summary only needs the
+  // money/loyalty fields; a bare select() pulled every users column over
+  // the wire for nothing.
   const [[user], recentOrders, [{ pendingCount }]] = await Promise.all([
-    db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
+    db
+      .select({
+        id: usersTable.id,
+        walletBalance: usersTable.walletBalance,
+        loyaltyPoints: usersTable.loyaltyPoints,
+        loyaltyTier: usersTable.loyaltyTier,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1),
     db
       .select({
         order: ordersTable,
@@ -115,13 +126,15 @@ router.get("/", requireUser, async (req, res) => {
     // refund tx, but the gate also covers every other non-completed state
     // (mirrors formatOrder in routes/orders.ts).
     //
-    // P0-sim (round-93 live simulation, 93-SIM-live-findings): this block
-    // had the same asymmetry as formatOrder — delivered_password went
-    // through safeDecrypt while delivered_email /
-    // delivered_extra_details were returned raw (ciphertext for
-    // encrypted-at-rest rows), and extra_details/usage_terms were not
-    // gated on status at all (leaked after refund). Now identical to
-    // formatOrder: decrypt-if-encrypted, null unless completed.
+    // B6-03 (R116, credentials-on-demand): this summary STOPPED decrypting
+    // the AES-GCM credential columns. The buyer's credential surface is
+    // GET /api/orders + /api/orders/:orderCode (formatOrder decrypts
+    // there); the wallet summary was a SECOND decrypt path whose only
+    // consumer is the wallet page's card list — which never renders
+    // delivered_* fields (grep-verified; the card shows product / amount /
+    // status only). Rows now carry has_credentials instead, so the card
+    // can badge availability without paying a per-refresh decrypt tax.
+    // usage_terms / delivered_at stay as-is (plain columns, no decrypt).
     recent_orders: recentOrders.map((r) => ({
       id: r.order.id,
       order_code: r.order.orderCode,
@@ -130,11 +143,12 @@ router.get("/", requireUser, async (req, res) => {
       product_image_url: r.productImageUrl ?? null,
       amount: toNumber(r.order.amount),
       status: r.order.status,
-      delivered_email: r.order.status === "completed" ? safeDecrypt(r.order.deliveredEmail) : null,
-      delivered_password:
-        r.order.status === "completed" ? safeDecrypt(r.order.deliveredPassword) : null,
-      delivered_extra_details:
-        r.order.status === "completed" ? safeDecrypt(r.order.deliveredExtraDetails) : null,
+      has_credentials: !!(
+        r.order.deliveredEmail || r.order.deliveredPassword || r.order.deliveredExtraDetails
+      ),
+      delivered_email: null,
+      delivered_password: null,
+      delivered_extra_details: null,
       delivered_usage_terms:
         r.order.status === "completed" ? (r.order.deliveredUsageTerms ?? null) : null,
       delivered_at: r.order.deliveredAt?.toISOString() ?? null,
@@ -638,8 +652,20 @@ router.post(
       })();
     }
 
+    // B6-03 (R116) hygiene: projected identity read — notifyNewTopup needs
+    // phone and derivePrimaryProvider needs telegramId/firebaseUid (the
+    // other identity fields ride the projection for future notify use; a
+    // bare select() pulled every users column for nothing).
     const [currentUser] = await db
-      .select()
+      .select({
+        id: usersTable.id,
+        phone: usersTable.phone,
+        displayName: usersTable.displayName,
+        authProvider: usersTable.authProvider,
+        googleId: usersTable.googleId,
+        telegramId: usersTable.telegramId,
+        firebaseUid: usersTable.firebaseUid,
+      })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);

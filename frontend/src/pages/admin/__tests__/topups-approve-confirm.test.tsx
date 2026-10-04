@@ -148,7 +148,7 @@ describe("AdminTopupsPage — single approve confirmation (T-1/S-1)", () => {
 
     // Success feedback includes the amount (not silent).
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    expect(toastMock.mock.calls[0][0].title).toBe("✓ تمت الموافقة");
+    expect(toastMock.mock.calls[0][0].title).toBe("تمت الموافقة");
     expect(toastMock.mock.calls[0][0].description).toContain("50.00 د.ل");
   });
 

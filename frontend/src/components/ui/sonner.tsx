@@ -1,8 +1,9 @@
 "use client";
 
 import { useTheme } from "@/lib/theme";
-import { Toaster as Sonner } from "sonner";
+import { toast, Toaster as Sonner } from "sonner";
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -22,6 +23,18 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
  *
  * Lucide icons replace Sonner's defaults at the Toaster level so every
  * variant renders with consistent stroke-width and visual weight.
+ *
+ * A5-5 (R116 — lazy mount + pre-mount replay): App mounts this module
+ * via React.lazy on idle (see IdleToaster in App.tsx), so sonner + the
+ * five lucide icons stay out of the entry graph. sonner 2.x hydrates a
+ * freshly-mounted <Toaster/> from an EMPTY list and only receives
+ * toasts published AFTER its subscription — anything fired while this
+ * chunk was still loading (session-expired redirects, boot-window
+ * errors) would be silently lost. The mount effect below re-publishes
+ * every active store toast (same ids, so later updates/dismissals
+ * keep targeting them) — the queue flushes the moment the Toaster
+ * appears, and each replayed toast restarts its duration timer (the
+ * user has not seen it yet, so it keeps its full reading window).
  */
 const Toaster = ({ ...props }: ToasterProps) => {
   // App theme (sn_theme), NOT the OS preference. The previous import of
@@ -29,6 +42,28 @@ const Toaster = ({ ...props }: ToasterProps) => {
   // is ever mounted in this SPA — toasts then followed the OS theme instead
   // of the theme the user picked in the app.
   const { theme } = useTheme();
+
+  useEffect(() => {
+    // The Sonner <Toaster/> child subscribes in its own mount effect,
+    // and child effects run before this parent effect — so every
+    // re-publish below is delivered to it exactly once.
+    for (const active of toast.getToasts()) {
+      // Dismiss-shaped entries are not renderable toasts.
+      if (!("title" in active)) continue;
+      // ExternalToast deliberately omits `type`/`title`/`jsx` (the
+      // variant helpers own them) — but the runtime store carries
+      // them and the Toaster reads `type` for the icon + [data-type]
+      // accent styling. Spread the stored payload whole so the replay
+      // is pixel-identical to a live toast; the id is preserved so
+      // dedup / update / dismiss all keep working.
+      toast(active.title, {
+        ...(active as unknown as Record<string, unknown>),
+        id: active.id,
+      } as Parameters<typeof toast>[1]);
+    }
+    // Mount-only: the bridge exists solely to hydrate toasts fired
+    // BEFORE this lazy chunk mounted.
+  }, []);
 
   return (
     <Sonner

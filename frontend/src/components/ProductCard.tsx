@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { formatCurrency, categoryLabel } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useCartCommands } from "@/lib/cart";
+import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
   AppWindow,
@@ -61,10 +62,13 @@ export interface CatalogVariant {
 // shade references here, so a Netflix card on the light theme uses a
 // darker, AA-readable violet automatically.
 //
+// R116-S1: exported so the flash-sales page renders the SAME accent +
+// category-icon fallback idiom on its cards (single source of truth).
+//
 // Tailwind needs the full class strings present in source for its
 // content scan to keep them in the bundle, which is why each variant
 // is spelled out instead of computed.
-const CATEGORY_ACCENT: Record<
+export const CATEGORY_ACCENT: Record<
   string,
   { bg: string; text: string; border: string; gradient: string; accentLine: string }
 > = {
@@ -135,7 +139,7 @@ const CATEGORY_ACCENT: Record<
   },
 };
 
-const DEFAULT_ACCENT = {
+export const DEFAULT_ACCENT = {
   bg: "bg-primary/10",
   text: "text-primary-text",
   border: "border-primary/20",
@@ -146,8 +150,9 @@ const DEFAULT_ACCENT = {
 // Category → Lucide icon. Used as the image-area fallback when a
 // product has no image_url, so the empty-image card reads as a
 // category placeholder rather than a giant first-letter glyph that
-// doesn't carry visual identity.
-const CATEGORY_ICON: Record<string, LucideIcon> = {
+// doesn't carry visual identity. Exported alongside CATEGORY_ACCENT
+// (R116-S1 flash-sales convergence).
+export const CATEGORY_ICON: Record<string, LucideIcon> = {
   streaming: Tv2,
   music: Music2,
   software: AppWindow,
@@ -292,7 +297,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
-        card-spring hover:border-border/80 hover:shadow-2xl hover:shadow-black/40
+        card-spring hover:border-border/80 hover:shadow-xl
         ${unavailable ? "opacity-45 saturate-[0.3] pointer-events-none" : ""}
       `}
     >
@@ -395,7 +400,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         <div className="p-3.5 pt-3 flex flex-1 flex-col">
           <div className="flex items-start gap-2 mb-1.5">
-            <h2 className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200">
+            <h2
+              dir="auto"
+              className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+            >
               {product.name}
             </h2>
             <span
@@ -420,7 +428,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               {product.price_from && (
                 <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>
               )}
-              <span className="font-bold text-foreground text-[17px] leading-none tabular-nums">
+              <span className="font-bold text-foreground text-lg leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </span>
               {product.sale_price && (
@@ -467,16 +475,20 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           Real buttons (siblings of the details Link — valid HTML,
           keyboard-focusable, no nested interactive elements). The old
           markup was a <div> that looked like a button but the whole
-          card navigated to the product page instead. */}
+          card navigated to the product page instead.
+          R116-S1: both CTAs ride the shared <Button> (gradient variant
+          + global press-spring) instead of a hand-rolled flat
+          bg-primary — same look as every system CTA, one source of
+          truth. min-h-11 keeps the 44px tap-target floor. */}
       {product.is_available ? (
-        <button
+        <Button
           type="button"
           onClick={handleAddToCart}
-          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-bold shadow-lg shadow-primary/25 transition-all cursor-pointer"
+          className="mx-3.5 mb-3.5 mt-0 md:hidden min-h-11 text-xs font-bold"
         >
-          <ShoppingCart className="w-3.5 h-3.5" />
+          <ShoppingCart aria-hidden="true" />
           أضف للسلة
-        </button>
+        </Button>
       ) : (
         // Mobile: keep card height stable when unavailable by
         // rendering a static muted bar in place of the buy CTA.
@@ -494,14 +506,14 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
       {product.is_available && (
         <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 group-focus-within:translate-y-0 transition-transform duration-220 ease-out">
-          <button
+          <Button
             type="button"
             onClick={handleAddToCart}
-            className="mx-3 mb-3 min-h-11 w-[calc(100%-1.5rem)] rounded-xl bg-primary hover:bg-primary/90 active:scale-[0.98] flex items-center justify-center gap-1.5 text-primary-foreground text-xs font-bold shadow-lg shadow-primary/35 transition-all cursor-pointer"
+            className="mx-3 mb-3 min-h-11 w-[calc(100%-1.5rem)] text-xs font-bold"
           >
-            <ShoppingCart className="w-3.5 h-3.5" />
+            <ShoppingCart aria-hidden="true" />
             أضف للسلة
-          </button>
+          </Button>
         </div>
       )}
     </div>

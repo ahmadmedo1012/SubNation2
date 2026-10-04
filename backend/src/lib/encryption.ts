@@ -18,8 +18,30 @@ function parseKey(): Buffer {
   return buf;
 }
 
+// B6-03 (R116): memoize the parsed 32-byte key at first use. Env vars are
+// immutable per process (mutating process.env.ENCRYPTION_KEY mid-flight has
+// never been a supported shape), yet every encrypt/decrypt re-parsed the
+// hex string — the credential-heavy surfaces (orders list era, inventory
+// reads) paid the parse cost thousands of times per refresh. First failure
+// is NOT cached: a throw here propagates exactly as before, so the boot
+// assertion + lazy-validation semantics are unchanged.
+let memoizedKey: Buffer | null = null;
+
 function getKey(): Buffer {
-  return parseKey();
+  if (memoizedKey === null) {
+    memoizedKey = parseKey();
+  }
+  return memoizedKey;
+}
+
+/**
+ * Test seam — forget the memoized key so the NEXT first-use re-parses
+ * process.env. Production never calls this (env is immutable per process);
+ * tests that simulate a key rotation mid-file use it to model "a new
+ * process booting with a different key".
+ */
+export function __resetEncryptionKeyCacheForTests(): void {
+  memoizedKey = null;
 }
 
 /**
@@ -94,6 +116,27 @@ export function isEncrypted(value: string | null): boolean {
   );
 }
 
+// B6-03 (R116): throttle the safeDecrypt failure warn. A key mismatch or a
+// corrupted batch produces the SAME failure for every row — the admin
+// orders list era decrypted up to 600 fields per refresh, and each failure
+// logged its own warn line: a 600-lines-per-refresh log flood that drowned
+// every other signal in the stream (and is exactly what B6-03 removes at
+// the source). One warn per window per process now, carrying the count of
+// suppressed repeats so the magnitude stays visible. Env-tunable for tests.
+let safeDecryptLastWarnAt = 0;
+let safeDecryptSuppressedSinceWarn = 0;
+
+/** Test seam — reset the throttle + counter between scenarios. */
+export function __resetSafeDecryptWarnThrottleForTests(): void {
+  safeDecryptLastWarnAt = 0;
+  safeDecryptSuppressedSinceWarn = 0;
+}
+
+function safeDecryptWarnThrottleWindowMs(): number {
+  const raw = Number(process.env.SAFE_DECRYPT_WARN_THROTTLE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 60_000;
+}
+
 export function safeDecrypt(value: string | null): string | null {
   if (!value) return null;
   if (isEncrypted(value)) {
@@ -110,15 +153,27 @@ export function safeDecrypt(value: string | null): string | null {
       // sees a proper absence rather than ciphertext garbage. The failing
       // value itself is NOT logged (it is credential material); only a
       // redacted fingerprint (length + format validity) is.
-      logger.warn(
-        {
-          category: "security",
-          err,
-          valueLength: value.length,
-          looksWellFormed: isEncrypted(value),
-        },
-        "safeDecrypt: decryption failed — returning null (check ENCRYPTION_KEY consistency)",
-      );
+      //
+      // B6-03 (R116): one warn line per throttle window — repeated
+      // failures are counted, not re-logged (see the block comment above).
+      const now = Date.now();
+      if (now - safeDecryptLastWarnAt >= safeDecryptWarnThrottleWindowMs()) {
+        const suppressed = safeDecryptSuppressedSinceWarn;
+        safeDecryptLastWarnAt = now;
+        safeDecryptSuppressedSinceWarn = 0;
+        logger.warn(
+          {
+            category: "security",
+            err,
+            valueLength: value.length,
+            looksWellFormed: isEncrypted(value),
+            ...(suppressed > 0 ? { suppressed_failures_since_last_warn: suppressed } : {}),
+          },
+          "safeDecrypt: decryption failed — returning null (check ENCRYPTION_KEY consistency)",
+        );
+      } else {
+        safeDecryptSuppressedSinceWarn += 1;
+      }
       return null;
     }
   }

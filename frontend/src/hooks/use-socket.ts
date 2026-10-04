@@ -14,18 +14,20 @@ import { formatCurrency, statusLabel } from "@/lib/utils";
  * be mounted at the App root for every authenticated user — a 25 s
  * ping/pong socket held for the whole session that kept the Render free
  * instance permanently awake (voiding the accepted sleep design). Now
- * ONLY the order-detail page mounts it (the one storefront surface with
- * a genuine realtime need: watching a fresh purchase flip to delivered).
- * While mounted it:
+ * only the pages with a genuine realtime need mount it: order-detail
+ * (watching a fresh purchase flip to delivered) and the wallet page
+ * (R116-S2: watching a pending topup flip to approved/rejected in-page
+ * after the waiting modal closes). While mounted it:
  *
  *   - order-updated → toast "تم تحديث حالة طلبك …" + invalidate orders
  *   - topup-updated → toast (success or destructive based on status)
  *   - notification-new → window event → NotificationBell refetch
  *
  * Every other storefront surface runs on its existing fallbacks
- * (NotificationBell 60 s foreground poll, TopupWaitingModal 3 s poll
- * while pending, SessionActivityManager visibility resync). The socket
- * parks when the tab is hidden ≥ 15 min or idle ≥ 30 min
+ * (NotificationBell 60 s foreground poll, TopupWaitingModal 3 s
+ * FOREGROUND poll while pending — R116-S2: no background polling — and
+ * SessionActivityManager visibility resync). The socket parks when the
+ * tab is hidden ≥ 15 min or idle ≥ 30 min
  * (SessionActivityManager) and revives on user presence.
  *
  * All toasts route through the unified `@/hooks/use-toast` shim (Sonner
@@ -152,5 +154,11 @@ export function useSocket(userId?: number | string) {
         socketRef.current.off("error");
       }
     };
-  }, [userId]);
+    // R116-S2 (use-socket.ts:155 exhaustive-deps): queryClient listed —
+    // the effect closes over it (three invalidation calls). It is a
+    // stable reference from useQueryClient() (documented TanStack
+    // contract), so listing it cannot re-run the effect in practice;
+    // the real risk was the opposite direction (a future swap to a
+    // context-derived client would silently keep the stale one).
+  }, [userId, queryClient]);
 }

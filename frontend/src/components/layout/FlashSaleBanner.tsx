@@ -118,10 +118,19 @@ export function FlashSaleBanner() {
   }, [data]);
 
   // ── 1s countdown — hard stop at zero (flash-sales.tsx parity) ─────
+  // R116-S1 (exhaustive-deps fix): the interval closure previously
+  // captured the whole `flashSale` OBJECT while the dep array only
+  // tracked `flashSale?.ends_at` — a refetch delivering a new sale
+  // object with an identical ends_at re-ran nothing (stale object in
+  // the closure) and the pair failed exhaustive-deps. Deriving the
+  // primitive first makes the dep list complete AND correct: an
+  // identical ends_at needs no re-run (same window), a different one
+  // restarts the interval against the new sale.
+  const endsAtMs = flashSale ? new Date(flashSale.ends_at).getTime() : null;
   useEffect(() => {
-    if (!flashSale || expired) return;
+    if (endsAtMs === null || Number.isNaN(endsAtMs) || expired) return;
     const update = () => {
-      const diff = new Date(flashSale.ends_at).getTime() - Date.now();
+      const diff = endsAtMs - Date.now();
       if (diff <= 0) {
         // Expired: stop the timer instead of re-rendering `0` every
         // second forever — the exact fix documented in flash-sales.tsx.
@@ -142,7 +151,7 @@ export function FlashSaleBanner() {
     update(); // paint the first value immediately
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [flashSale?.ends_at, expired]);
+  }, [endsAtMs, expired]);
 
   if (expired || dismissed) return null;
 

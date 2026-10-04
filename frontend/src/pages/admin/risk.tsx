@@ -20,6 +20,7 @@ import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { AdminLayout } from "./layout";
+import { formatDate } from "@/lib/utils";
 
 type RiskLevel = "low" | "medium" | "high" | "critical";
 
@@ -341,7 +342,7 @@ export default function AdminRiskPage() {
                               href={`/admin/risk/events/${e.id}`}
                               className="text-primary hover:underline"
                             >
-                              {new Date(e.created_at).toLocaleString("ar-LY-u-nu-latn")}
+                              {formatDate(e.created_at)}
                             </Link>
                           </td>
                         </tr>
@@ -372,7 +373,7 @@ export default function AdminRiskPage() {
                       <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
                       <div className="flex items-center justify-between text-2xs text-muted-foreground border-t border-border/30 pt-2">
                         <span>{e.action_taken}</span>
-                        <span>{new Date(e.created_at).toLocaleString("ar-LY-u-nu-latn")}</span>
+                        <span>{formatDate(e.created_at)}</span>
                       </div>
                     </div>
                   </Link>

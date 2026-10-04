@@ -54,11 +54,9 @@
  *      localStorage is left untouched.
  */
 
-import { toast } from "@/hooks/use-toast";
 import { addUnauthorizedHandler } from "@workspace/api-client-react";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { handleAdminUnauthorized } from "@/lib/admin-session";
 import { disconnectSocket } from "@/lib/socket";
 
 /** Arabic toast copy for the session-expired redirect. */
@@ -92,6 +90,31 @@ function isAuthApiUrl(url: string): boolean {
 let userSessionActive = false;
 let clearUserSession: (() => void) | null = null;
 let lastHandledAt = 0;
+
+/**
+ * A5-12 (R116): cached handleAdminUnauthorized, filled on the FIRST
+ * admin-URL 401 by the dynamic import below. Every subsequent admin
+ * 401 runs through it synchronously — byte-identical behavior to the
+ * old static delegation.
+ */
+let handleAdminUnauthorizedRef: ((url: string) => boolean) | null = null;
+
+/**
+ * A5-12 (R116): admin-session (169 lines + its toast dependency chain)
+ * used to be STATICALLY imported here — and this module hangs off the
+ * entry graph via App.tsx's <UserSessionWatcher>, so every guest
+ * downloaded it. It now loads on the admin-401 error path only, once
+ * (module cache): admin URLs reaching this router before any admin
+ * page mounted is the rare path, and any admin page mount loads the
+ * module anyway (useAdminHeaders imports it statically), making the
+ * dynamic resolution a cache hit.
+ */
+function loadAdminSessionHandler(): Promise<(url: string) => boolean> {
+  return import("./admin-session").then((m) => {
+    handleAdminUnauthorizedRef = m.handleAdminUnauthorized;
+    return m.handleAdminUnauthorized;
+  });
+}
 
 /**
  * Keep the module's view of "a user session exists" in sync with the
@@ -134,7 +157,21 @@ function navigateToLogin(): void {
 export function handleUserUnauthorized(url: string): boolean {
   // Router: admin URLs keep admin-session's behavior EXACTLY — same
   // exemption list (login/probe/session), same mirror, same dedupe.
-  if (isAdminApiUrl(url)) return handleAdminUnauthorized(url);
+  if (isAdminApiUrl(url)) {
+    const handle = handleAdminUnauthorizedRef;
+    if (handle) return handle(url);
+    // A5-12: admin-session not loaded yet (no admin page has mounted
+    // this session — otherwise useAdminHeaders' static import would
+    // have it in the module map). Load it once and run the admin
+    // handling on the resolved microtask: the toast + /admin/login
+    // redirect still fire (the shared client ignores this return
+    // value; only the rare first call is deferred, every later one
+    // is synchronous through the cached ref).
+    void loadAdminSessionHandler().then((handleAdmin) => {
+      handleAdmin(url);
+    });
+    return false;
+  }
   // Auth-flow 401s (wrong OTP code, unauthenticated probe, login) are
   // the owning form's business — not mid-journey expiry.
   if (isAuthApiUrl(url)) return false;
@@ -149,11 +186,23 @@ export function handleUserUnauthorized(url: string): boolean {
   lastHandledAt = now;
   userSessionActive = false;
 
-  toast({
-    title: USER_SESSION_EXPIRED_MESSAGE,
-    variant: "destructive",
-    duration: 6000,
-  });
+  // A5-12 (R116): the toast shim statically imports sonner — keeping
+  // it eager here pinned sonner to the ENTRY graph for every guest.
+  // The 401 path is the error path (runs at most once per 15 s dedupe
+  // window); the dynamic import resolves from the module cache after
+  // the first call. The toast fires a microtask later — imperceptible
+  // next to the navigation below, which stays synchronous.
+  void import("@/hooks/use-toast")
+    .then(({ toast }) => {
+      toast({
+        title: USER_SESSION_EXPIRED_MESSAGE,
+        variant: "destructive",
+        duration: 6000,
+      });
+    })
+    .catch(() => {
+      // A failed toast chunk must never block the redirect below.
+    });
   try {
     clearUserSession?.();
   } catch {
@@ -209,4 +258,7 @@ export function __resetUserSessionForTests(): void {
   userSessionActive = false;
   clearUserSession = null;
   lastHandledAt = 0;
+  // A5-12: drop the cached admin handler too, so each case exercises
+  // the same first-call path production sees after a fresh boot.
+  handleAdminUnauthorizedRef = null;
 }

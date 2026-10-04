@@ -9,6 +9,12 @@ export interface AdminAuthenticatedRequest extends Request {
   adminId: number;
   role: string;
   /**
+   * A4-04 (R116): the acting admin's username — materialized here (one
+   * extra column on the row lookup this middleware already performs) so
+   * money-review surfaces can attribute rows without a second query.
+   */
+  adminUsername: string;
+  /**
    * A8-01 (round-94): the admin_sessions row id bound to this token.
    * null for sid-less tokens (only possible outside production — see
    * the strictness note in requireAdmin).
@@ -107,6 +113,7 @@ export async function requireAdmin(
   const [admin] = await db
     .select({
       id: adminUsersTable.id,
+      username: adminUsersTable.username,
       role: adminUsersTable.role,
       isActive: adminUsersTable.isActive,
       permissions: adminUsersTable.permissions,
@@ -130,6 +137,7 @@ export async function requireAdmin(
   const adminReq = req as AdminAuthenticatedRequest;
   adminReq.adminId = admin.id;
   adminReq.role = admin.role;
+  adminReq.adminUsername = admin.username;
   adminReq.adminSessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
   adminReq.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
   next();

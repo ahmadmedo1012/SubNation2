@@ -81,7 +81,7 @@ import { readEpochMarker, writeEpochMarker } from "../lib/whatsapp-epoch-store";
 // by REAL observations (readiness probes + OTP send attempts) instead
 // of a 60 s interval timer. One-way dependency — whatsapp-watch imports
 // nothing from this module, so no cycle.
-import { observeWhatsAppChannel } from "./whatsapp-watch";
+import { observeWhatsAppChannel, observeWhatsAppSendFailure } from "./whatsapp-watch";
 
 interface GatewayAuthConfig {
   baseUrl: string;
@@ -589,6 +589,9 @@ async function runWarmupCycle(): Promise<void> {
     // Feed the watch so a persistently failing warm-up escalates on the
     // same 15-minute streak as any other channel death.
     observeWhatsAppChannel({ configured: true, status: sendFailureWatchStatus(result) });
+    // A9-2 (R116): the warm-up self-check IS a send attempt — it also
+    // counts toward the rolling send-failure window.
+    observeSendFailure(result);
   }
 }
 
@@ -961,6 +964,19 @@ function sendFailureWatchStatus(result: Extract<SendResult, { ok: false }>): str
   }
 }
 
+/**
+ * A9-2 (R116): feed the rolling send-failure counter — every OTP / warm-up
+ * send attempt that exhausted its retries and was NOT the expected
+ * post-pairing settle window (settling is a WORKING channel inside its
+ * gate; counting it would alert on routine pairing). null status maps to
+ * the watch's "unreachable" token.
+ */
+function observeSendFailure(result: Extract<SendResult, { ok: false }>): void {
+  const status = sendFailureWatchStatus(result);
+  if (status === "settling") return;
+  observeWhatsAppSendFailure(status ?? "unreachable");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public send
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1109,6 +1125,10 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     // B5-5 (R111): the inline taxonomy moved into
     // sendFailureWatchStatus (shared with the post-send feed below).
     observeWhatsAppChannel({ configured: true, status: sendFailureWatchStatus(session) });
+    // A9-2 (R116): a failed pre-send session resolution is a failed OTP
+    // send attempt — count it (settling is excluded inside
+    // observeSendFailure).
+    observeSendFailure(session);
     return session;
   }
 
@@ -1143,6 +1163,13 @@ export async function sendWhatsAppMessage(chatId: string, text: string): Promise
     configured: true,
     status: result.ok ? "ready" : sendFailureWatchStatus(result),
   });
+  // A9-2 (R116): an exhausted send failure counts toward the rolling
+  // send-failure window — interleaved successes must not mask an
+  // intermittently dying channel (that gap is exactly what the rolling
+  // counter closes vs. the streak-reset-on-success watch above).
+  if (!result.ok) {
+    observeSendFailure(result);
+  }
   return result;
 }
 

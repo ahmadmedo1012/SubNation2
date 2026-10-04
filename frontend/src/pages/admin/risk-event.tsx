@@ -27,6 +27,7 @@ import {
 import { useState } from "react";
 import { Link, useRoute } from "wouter";
 import { AdminLayout } from "./layout";
+import { formatDate } from "@/lib/utils";
 
 type RiskLevel = "low" | "medium" | "high" | "critical";
 type LabelKind = "confirmed_fraud" | "false_positive" | "escalated";
@@ -176,7 +177,7 @@ export default function AdminRiskEventPage() {
               without ar-LY data fall back to Arabic-Indic numerals). */}
           <Stat
             label="الوقت"
-            value={new Date(event.created_at).toLocaleString("ar-LY-u-nu-latn")}
+            value={formatDate(event.created_at)}
             mono
           />
         </div>
@@ -240,7 +241,7 @@ export default function AdminRiskEventPage() {
                       </span>
                       <span className="text-muted-foreground mr-auto">
                         {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits. */}
-                        {new Date(l.labeled_at).toLocaleString("ar-LY-u-nu-latn")}
+                        {formatDate(l.labeled_at)}
                       </span>
                     </div>
                     {l.notes && <div className="text-muted-foreground">{l.notes}</div>}

@@ -154,6 +154,12 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
     upsertMeta('meta[property="og:type"]', "property", "og:type", ogType);
     upsertMeta('meta[property="og:url"]', "property", "og:url", url);
     upsertMeta('meta[property="og:image"]', "property", "og:image", image);
+    // R116-S1: explicit dimensions alongside og:image — scrapers
+    // (WhatsApp is the dominant share channel) can size the unfurl
+    // without a headless image fetch. 1200×630 is the summary_large_image
+    // ideal the SeoInput doc already names.
+    upsertMeta('meta[property="og:image:width"]', "property", "og:image:width", "1200");
+    upsertMeta('meta[property="og:image:height"]', "property", "og:image:height", "630");
     upsertMeta('meta[property="og:locale"]', "property", "og:locale", ogLocale);
     // AUD103-6-F10 (r103): og:locale:alternate DROPPED — the alternate
     // list must name REAL translations; advertising a nonexistent en_US

@@ -400,6 +400,12 @@ transaction and the API gate nulls every other non-completed
 state. Encrypted-at-rest fields are decrypted at the boundary;
 usage terms are catalog text (present for completed orders).
 
+B6-03 (R116): on the /wallet summary's recent_orders block the
+delivered_* credential fields are ALWAYS null — that surface no
+longer decrypts; has_credentials (boolean) carries the
+availability signal instead. The buyer's credential surface is
+GET /orders + /orders/{orderCode}.
+
  */
 export interface Order {
   id: number;
@@ -420,6 +426,11 @@ export interface Order {
   product_image_url?: string | null;
   amount: number;
   status: OrderStatus;
+  /** True when any delivered credential column is set (B6-03).
+Always present on /wallet recent_orders; the storefront
+/orders surfaces omit it (they decrypt directly).
+ */
+  has_credentials?: boolean;
   /** @nullable */
   delivered_email?: string | null;
   /** @nullable */
@@ -1039,12 +1050,8 @@ export interface AdminOrder {
   product_name: string;
   amount: number;
   status: AdminOrderStatus;
-  /** @nullable */
-  delivered_email?: string | null;
-  /** @nullable */
-  delivered_password?: string | null;
-  /** @nullable */
-  delivered_extra_details?: string | null;
+  /** True when any delivered credential column is set (refund nulls them). */
+  has_credentials?: boolean;
   /** @nullable */
   coupon_code?: string | null;
   discount_amount?: number;
@@ -1094,6 +1101,16 @@ export interface AdminTopup {
   status: AdminTopupStatus;
   /** @nullable */
   admin_note?: string | null;
+  /**
+   * Who approved/rejected this topup (admin username, or the
+Telegram actor tag for webhook approvals). Null for pending
+rows, legacy rows, and the automated gateway path.
+
+   * @nullable
+   */
+  reviewed_by?: string | null;
+  /** @nullable */
+  reviewed_at?: string | null;
   created_at: string;
 }
 
@@ -2133,6 +2150,29 @@ export const ListAdminOrdersStatus = {
   failed: "failed",
   refunded: "refunded",
 } as const;
+
+export type GetAdminOrderCredentials200Status =
+  (typeof GetAdminOrderCredentials200Status)[keyof typeof GetAdminOrderCredentials200Status];
+
+export const GetAdminOrderCredentials200Status = {
+  pending: "pending",
+  completed: "completed",
+  failed: "failed",
+  refunded: "refunded",
+} as const;
+
+export type GetAdminOrderCredentials200 = {
+  id: number;
+  order_code: string;
+  status: GetAdminOrderCredentials200Status;
+  has_credentials: boolean;
+  /** @nullable */
+  delivered_email?: string | null;
+  /** @nullable */
+  delivered_password?: string | null;
+  /** @nullable */
+  delivered_extra_details?: string | null;
+};
 
 export type ListAdminTopupsParams = {
   /**

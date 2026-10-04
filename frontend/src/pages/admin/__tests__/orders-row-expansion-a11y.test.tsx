@@ -24,10 +24,10 @@
  * Same module-boundary mock pattern as orders-bulk-status.test.tsx.
  */
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminOrdersPage from "@/pages/admin/orders";
 import { listAdminOrders } from "@workspace/api-client-react";
@@ -51,6 +51,10 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
+// B6-03 (R116): the list no longer ships decrypted credentials — the
+// plaintext comes from GET /api/admin/orders/:id/credentials on first
+// reveal. The endpoint is mocked at the fetch boundary (same stubGlobal
+// pattern as orders-bulk-status.test.tsx).
 const ORDER = {
   id: 7,
   order_code: "SN-1007",
@@ -59,9 +63,28 @@ const ORDER = {
   amount: 25,
   status: "completed",
   created_at: "2026-09-03T10:00:00.000Z",
+  has_credentials: true,
+};
+
+const CREDENTIALS_BODY = {
+  id: 7,
+  order_code: "SN-1007",
+  status: "completed",
+  has_credentials: true,
   delivered_email: "user@example.com",
   delivered_password: "s3cret-pass",
+  delivered_extra_details: null,
 };
+
+function resLike(body: unknown) {
+  return {
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
+const fetchMock = vi.fn();
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -83,9 +106,12 @@ async function desktopExpandButton() {
 }
 
 /** The desktop credentials row (inside a <tr> — the mobile card's copy
- *  renders the same «البريد:» label outside any table). */
-function desktopExpandedRow() {
-  const el = screen.getAllByText("البريد:").find((n) => n.closest("tr"));
+ *  renders the same «البريد:» label outside any table). Async: B6-03
+ *  fetches the values from the per-order endpoint, so the row appears
+ *  a tick after the expand click. */
+async function desktopExpandedRow() {
+  const els = await screen.findAllByText("البريد:");
+  const el = els.find((n) => n.closest("tr"));
   if (!el) throw new Error("desktop expanded credentials row not found");
   return el.closest("tr") as HTMLElement;
 }
@@ -94,6 +120,13 @@ describe("AdminOrdersPage — keyboard row expansion (F3-02, WCAG 2.1.1)", () =>
   beforeEach(() => {
     vi.clearAllMocks();
     (listAdminOrders as unknown as Mock).mockResolvedValue([ORDER]);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(resLike(CREDENTIALS_BODY));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("the expand control is a real button with aria-expanded + a state-aware name", async () => {
@@ -105,8 +138,10 @@ describe("AdminOrdersPage — keyboard row expansion (F3-02, WCAG 2.1.1)", () =>
 
     fireEvent.click(toggle);
     // The credentials row opened and the toggle state flipped + renamed.
-    expect(screen.getAllByText("البريد:").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("كلمة المرور:").length).toBeGreaterThan(0);
+    // B6-03 (R116): the values arrive from the per-order credentials
+    // fetch — await them.
+    await screen.findAllByText("البريد:");
+    await screen.findAllByText("كلمة المرور:");
     const expanded = await desktopExpandButton();
     expect(expanded).toHaveAttribute("aria-expanded", "true");
     expect(expanded.getAttribute("aria-label")).toBe("إخفاء بيانات تسليم الطلب SN-1007");
@@ -121,11 +156,43 @@ describe("AdminOrdersPage — keyboard row expansion (F3-02, WCAG 2.1.1)", () =>
 
     fireEvent.click(await desktopExpandButton());
 
-    const expandedRow = desktopExpandedRow();
+    const expandedRow = await desktopExpandedRow();
     // The reveal toggle and the shared CopyButton are real buttons in the
     // expanded row's a11y tree — Tab reaches them once the row is open.
     expect(within(expandedRow).getByRole("button", { name: "إظهار البريد" })).toBeInTheDocument();
     expect(within(expandedRow).getAllByRole("button", { name: "نسخ" }).length).toBeGreaterThan(0);
+  });
+
+  it("B6-03: first reveal fetches the audited per-order endpoint once and caches per order id", async () => {
+    renderPage();
+
+    fireEvent.click(await desktopExpandButton());
+
+    // The audited endpoint was called exactly once with the admin headers.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/admin/orders/7/credentials");
+    expect(init.method).toBeUndefined(); // plain GET
+
+    // Collapse + re-expand: served from the per-order cache — no re-fetch
+    // (every reveal would write another audit row for nothing).
+    const expanded = await desktopExpandButton();
+    fireEvent.click(expanded);
+    expect(screen.queryByText("البريد:")).not.toBeInTheDocument();
+    fireEvent.click(await desktopExpandButton());
+    await screen.findAllByText("البريد:");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("B6-03: values stay masked until revealed (the fetch itself never unmasks)", async () => {
+    renderPage();
+
+    fireEvent.click(await desktopExpandButton());
+
+    const expandedRow = await desktopExpandedRow();
+    // Both credential fields render masked (email + password).
+    expect(within(expandedRow).getAllByText("••••••")).toHaveLength(2);
+    expect(within(expandedRow).queryByText("s3cret-pass")).not.toBeInTheDocument();
   });
 
   it("the mobile card carries the same named expand toggle (shared expandedRow state)", async () => {
@@ -150,6 +217,13 @@ describe("AdminOrdersPage — bulk-select name + state (F3-08, WCAG 1.1.1 + 4.1.
   beforeEach(() => {
     vi.clearAllMocks();
     (listAdminOrders as unknown as Mock).mockResolvedValue([ORDER]);
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(resLike(CREDENTIALS_BODY));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("row selectors expose an accessible name and aria-pressed", async () => {

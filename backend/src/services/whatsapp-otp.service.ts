@@ -110,6 +110,11 @@ interface StartOtpInput {
  * On gateway delivery failure the row is NOT created — that prevents
  * a downed gateway from accumulating dead rows that otherwise count
  * toward the hourly limit.
+ *
+ * A9-3 (R116): concurrent /start calls for the SAME phone are serialized
+ * by a per-phone pg advisory lock (see withPhoneStartLock below) — the
+ * loser gets the rate-limit style cooldown verdict instead of racing the
+ * cooldown probe and double-sending two different codes.
  */
 export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
   // 2026-09-20 (free-infrastructure round): real OTP intent is the
@@ -131,6 +136,122 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
     return { ok: false, reason: "invalid_phone" };
   }
 
+  return withPhoneStartLock(phone, input);
+}
+
+// ── A9-3 (R116): cross-process /start serialization per phone ──────────
+
+/**
+ * The pre-A9-3 TOCTOU: two concurrent /start calls for the same phone
+ * (double-tap, two tabs, a racing client retry) both ran the cooldown
+ * probe before either inserted its row — both passed, both sent, and the
+ * user received TWO WhatsApp messages with two DIFFERENT codes ("which
+ * one is mine?") while the second also burned an hourly-limit slot. The
+ * cooldown check is read-then-act with the insert deliberately deferred
+ * until after the send (a failed delivery must not leave a dead row), so
+ * the only honest serializer is a lock spanning probe → send → insert.
+ *
+ * pg_try_advisory_lock(hashtext('otp-start:' || phone)) on a DEDICATED
+ * pooled client: session-scoped advisory locks live on the connection
+ * that took them, so acquire + release MUST share one client
+ * (pool.connect() … release()). The key is namespaced so it can never
+ * collide with the topup/alertLogger advisory locks (hashtextextended
+ * keys) — different hash functions, but the prefix removes all doubt.
+ *
+ * Busy → the existing rate-limit style verdict (`cooldown` + a short
+ * retryAfterSec; the route answers 429 + Retry-After) — by the time the
+ * client retries, the winner's row backs the real cooldown probe.
+ *
+ * Pool loading is lazy + defensive: the pglite test harness and the
+ * module-boundary mocks of @workspace/db export no `pool` — in those
+ * contexts the gate is skipped (single-process tests serialize via the
+ * event loop and mock the boundary). Production always has the
+ * node-postgres pool (shared/db/src/index.ts exports it).
+ */
+const OTP_START_LOCK_RETRY_SEC = 15;
+
+interface PoolClientLike {
+  query: (text: string, values?: readonly unknown[]) => Promise<{
+    rows: Array<Record<string, unknown>>;
+  }>;
+  release: () => void;
+}
+
+interface PoolLike {
+  connect: () => Promise<PoolClientLike>;
+}
+
+let cachedPool: PoolLike | null | undefined;
+
+async function resolveDbPool(): Promise<PoolLike | null> {
+  if (cachedPool !== undefined) return cachedPool;
+  try {
+    const mod = (await import("@workspace/db")) as { pool?: unknown };
+    cachedPool =
+      mod.pool && typeof (mod.pool as PoolLike).connect === "function"
+        ? (mod.pool as PoolLike)
+        : null;
+  } catch {
+    cachedPool = null;
+  }
+  return cachedPool;
+}
+
+async function withPhoneStartLock(
+  phone: string,
+  input: StartOtpInput,
+): Promise<StartOtpResult> {
+  const pool = await resolveDbPool();
+  if (pool === null) {
+    // No pool (test harness / module-boundary mocks) — no cross-process
+    // gate. Single-process behavior is unchanged.
+    return startOtpLocked(input, phone);
+  }
+  const lockKey = `otp-start:${phone}`;
+  const client = await pool.connect();
+  let acquired = false;
+  try {
+    const res = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS acquired", [
+      lockKey,
+    ]);
+    acquired = Boolean(res.rows?.[0]?.acquired);
+    if (!acquired) {
+      // Same phone already has a start in flight — the rate-limit style
+      // verdict. The loser never reaches the send path.
+      await safeLog({
+        identifier: `wa:${phone}`,
+        action: "register",
+        success: false,
+        failureReason: "cooldown",
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
+      return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
+    }
+    return await startOtpLocked(input, phone);
+  } finally {
+    if (acquired) {
+      try {
+        await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]);
+      } catch (err) {
+        // Best-effort: a dead connection drops the lock server-side on
+        // close — log and move on, the flow result is already decided.
+        logger.warn(
+          {
+            category: "whatsapp.otp",
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "[whatsapp-otp] start-lock advisory unlock failed (non-fatal — released on connection close)",
+        );
+      }
+    }
+    client.release();
+  }
+}
+
+/** The pre-A9-3 startOtp body — always called with the phone-start gate
+ *  held (or consciously bypassed in pool-less contexts). */
+async function startOtpLocked(input: StartOtpInput, phone: string): Promise<StartOtpResult> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const cooldownStart = new Date(Date.now() - OTP_RESEND_COOLDOWN_SEC * 1000);
 

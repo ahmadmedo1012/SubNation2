@@ -37,6 +37,15 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListTopupsQueryKey: () => ["/api/wallet/topups"],
   getGetWalletLedgerQueryKey: () => ["/api/wallet/ledger"],
+  // R116-S2 (task 5): the wallet page mounts useSocket(me?.id) —
+  // in-page topup updates via the shared /api/auth/me key.
+  getGetMeQueryKey: () => ["/api/auth/me"],
+  useGetMe: vi.fn(() => ({
+    data: { id: 7, wallet_balance: 150 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   useGetWallet: vi.fn(() => ({
     data: { balance: 150, loyalty_points: 0, loyalty_tier: "bronze" },
     isLoading: false,
@@ -214,5 +223,71 @@ describe("WalletPage — the wallet STATEMENT (R115, A8 P2)", () => {
         }),
       }),
     );
+  });
+
+  // ── R116-S2 (P3): attribution + truncation captions ──────────────────
+
+  it("attributes a loyalty-conversion credit via its description (R116-S2, task 3)", () => {
+    // The loyalty route writes the conversion into wallet_ledger as an
+    // `adjustment` row with reference_type "loyalty_conversion" and a
+    // description — the generic «تسوية رصيد» label left the credit
+    // unattributable.
+    mockLedger({
+      data: [
+        ledgerRow({
+          id: 9,
+          type: "adjustment",
+          type_label: "تسوية رصيد",
+          amount: 1.5,
+          balance_after: 51.5,
+          reference_type: "loyalty_conversion",
+          description: "تحويل 150 نقطة ولاء إلى رصيد",
+        }),
+      ] as never,
+    });
+    renderPage();
+
+    expect(screen.getByText("تحويل 150 نقطة ولاء إلى رصيد")).toBeInTheDocument();
+    expect(screen.queryByText("تسوية رصيد")).not.toBeInTheDocument();
+    expect(screen.getByText("+1.50 د.ل")).toBeInTheDocument();
+  });
+
+  it("maps a description-less loyalty_conversion row to «تحويل نقاط»", () => {
+    mockLedger({
+      data: [
+        ledgerRow({
+          id: 10,
+          type: "adjustment",
+          type_label: "تسوية رصيد",
+          reference_type: "loyalty_conversion",
+          description: null,
+        }),
+      ] as never,
+    });
+    renderPage();
+
+    expect(screen.getByText("تحويل نقاط")).toBeInTheDocument();
+    expect(screen.queryByText("تسوية رصيد")).not.toBeInTheDocument();
+  });
+
+  it("a full 100-row page shows the truncated-window caption, not a count (R116-S2, task 12)", () => {
+    mockLedger({
+      data: Array.from({ length: 100 }, (_, i) => ledgerRow({ id: i + 1 })) as never,
+    });
+    renderPage();
+
+    // The backend caps the ledger at 100 rows — a full page is a
+    // truncated window, never "exactly 100 movements ever".
+    expect(screen.getByText("عرض آخر 100 حركة")).toBeInTheDocument();
+  });
+
+  it("a partial page keeps the pluralized count (no truncation caption)", () => {
+    mockLedger({
+      data: [ledgerRow({ id: 1 }), ledgerRow({ id: 2 })] as never,
+    });
+    renderPage();
+
+    expect(screen.getByText("2 حركتان")).toBeInTheDocument();
+    expect(screen.queryByText("عرض آخر 100 حركة")).not.toBeInTheDocument();
   });
 });

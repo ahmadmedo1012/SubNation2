@@ -111,7 +111,9 @@ beforeAll(async () => {
   );
   await db.execute(
     sql.raw(`DO $$ BEGIN
-  CREATE TYPE audit_actor_type AS ENUM ('user','admin','system');
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'audit_actor_type') THEN
+    CREATE TYPE audit_actor_type AS ENUM ('user', 'admin', 'system');
+  END IF;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;`),
   );
   await db.execute(

@@ -43,6 +43,14 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],
   getListOrdersQueryKey: () => ["/api/orders"],
+  // R116-S2 (P3): the balance rides the seeded useGetMe cache now —
+  // solvent by default so the confirm CTA stays enabled.
+  useGetMe: vi.fn(() => ({
+    data: { id: 7, wallet_balance: 1_000_000 },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
   getMe: (...args: unknown[]) => getMeMock(...(args as [])),
   getProduct: (...args: unknown[]) => getProductMock(...(args as [])),
 }));

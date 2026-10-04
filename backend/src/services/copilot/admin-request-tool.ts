@@ -254,9 +254,24 @@ export async function executeAdminRequest(
       body: { error: pathCheck.reason, code: "COPILOT_PATH_BLOCKED" },
     };
   }
-  // The check above already normalized; capture the canonical pathname
-  // so the fetch() call uses it instead of the model-supplied form.
-  const safePath = new URL(path, "http://x").pathname;
+  // The check above already normalized; capture the canonical pathname +
+  // QUERY STRING so the fetch() call uses it instead of the model-supplied
+  // form. A7-4 (R116): the query was silently DROPPED — a GET like
+  // /api/admin/topups?status=pending executed as /api/admin/topups (the
+  // default list), so pagination/filters the model asked for (and showed
+  // the admin in its answer) never reached the route. The combined
+  // normalized form is re-checked against the allowlist — belt-and-braces
+  // so a query smuggling a blocked prefix can't ride along.
+  const safeUrl = new URL(path, "http://x");
+  const safePath = `${safeUrl.pathname}${safeUrl.search}`;
+  const combinedPathCheck = isPathAllowed(safePath);
+  if (!combinedPathCheck.ok) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: combinedPathCheck.reason, code: "COPILOT_PATH_BLOCKED" },
+    };
+  }
 
   // ── SEC-92-03 mutation confirmation gate ────────────────────────────
   //

@@ -11,7 +11,7 @@ import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
 import { and, asc, count, eq, inArray, isNotNull, min, or, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { intParam } from "../lib/http";
+import { escapeLikeTerm, intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const router = Router();
@@ -234,7 +234,12 @@ router.get("/", catalogCache, async (req, res) => {
       conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
     }
     if (hasSearch) {
-      conditions.push(sql`${productsTable.name} ILIKE ${"%" + search.trim() + "%"}`);
+      // A6-9 (R116): escape %/_ so a literal percent in the query can't
+      // reshape the LIKE pattern (parity with the admin search sweep,
+      // r103 AUD103-3-F4).
+      conditions.push(
+        sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(search.trim()) + "%"}`
+      );
     }
 
     // Aggregate stock + order counts as a single subquery join, no JS-side reduce.

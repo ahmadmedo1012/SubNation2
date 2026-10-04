@@ -79,9 +79,11 @@ export function MobileNav() {
           fixed bar over constantly scrolling content forced per-frame GPU
           re-rasterization on low-end Android for a blur that was barely
           visible behind the 92%-opaque background anyway. The themed
-          border (94-C3 A3 P2-7) stays, plus a subtle top shadow for the
-          depth the blur used to fake. */}
-      <div className="absolute inset-0 bg-card border-t border-border/35 shadow-[0_-4px_12px_rgba(0,0,0,0.12)]" />
+          border (94-C3 A3 P2-7) stays, plus a subtle token shadow for
+          the depth the blur used to fake (R116-S1: the raw
+          rgba(0,0,0,.12) arbitrary is gone — shadow-sm re-tones per
+          theme instead of forcing black on light mode). */}
+      <div className="absolute inset-0 bg-card border-t border-border/35 shadow-sm" />
 
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />

@@ -60,12 +60,10 @@
  * NOTE (import shape): logAdminAlert is imported LAZILY inside the emit
  * helpers — same defensive pattern as web-scheduler.ts. A static named
  * import would break link-time for any test that mocks
- * jobs/alertLogger with a partial surface; the type-only `AlertType`
- * import is erased at runtime and carries no such risk.
+ * jobs/alertLogger with a partial surface.
  */
 
 import { logger } from "../lib/logger";
-import type { AlertType } from "../jobs/alertLogger";
 
 /** Minimal observation shape — a subset of WhatsAppGatewayReadiness. */
 export interface WhatsAppChannelObservation {
@@ -115,6 +113,7 @@ function resetEpisode(): void {
 export function resetWhatsAppWatchForTests(): void {
   resetEpisode();
   lastSeenStatus = undefined;
+  sendFailureTimestamps = [];
 }
 
 async function emitChannelAlert(status: string | null, sinceMs: number): Promise<void> {
@@ -130,10 +129,10 @@ async function emitChannelAlert(status: string | null, sinceMs: number): Promise
     ? `تعذّر الوصول إلى بوابة WhatsApp (probe فشل) منذ ~${minutes} دقيقة — لا يمكن تحديد حالة الجلسة. افحص خدمة البوابة على Render ثم لوحة الأدمن (قسم WhatsApp).`
     : `حالة القناة "${token}" مستمرة منذ ~${minutes} دقيقة (ليست ready/settling). ${token === "qr_ready" ? "لم يُكمَل الاقتران — لم يُدخَل رمز QR/رمز الربط خلال هذه المدة." : "الاقتران الحالي غير صالح — القناة تحتاج إعادة ربط من لوحة الأدمن (قسم WhatsApp)."} مستخدمو الدخول عبر WhatsApp يحصلون على فشل إرسال الرمز.`;
   const outcome = await logAdminAlert(
-    // AlertType is a closed TS union over a free varchar(30) column; the
-    // alerts drawer falls back to the "system" badge for unknown types,
-    // so a new type string is safe without touching jobs/alertLogger.ts.
-    "whatsapp_channel" as unknown as AlertType,
+    // A9-4 (R116): "whatsapp_channel" is a declared member of the
+    // AlertType union now (jobs/alertLogger.ts) — no cast. The column is
+    // a free varchar(30); the union documents what actually flows.
+    "whatsapp_channel",
     title,
     message,
     // Same dedupe contract as stockWatcher: {identity} + the 24h default
@@ -150,7 +149,7 @@ async function emitRecoveryAlert(status: string): Promise<void> {
   // Lazy import — see the import-shape NOTE at the top of the file.
   const { logAdminAlert } = await import("../jobs/alertLogger");
   const outcome = await logAdminAlert(
-    "whatsapp_channel" as unknown as AlertType,
+    "whatsapp_channel",
     "قناة WhatsApp OTP استعادت الجاهزية",
     `عادت حالة القناة إلى "${status}" — القناة جاهزة لتدفّق رموز OTP من جديد.`,
     // One-time recovery signal per 24 h window (info severity).
@@ -248,6 +247,84 @@ async function observe(observation: WhatsAppChannelObservation): Promise<void> {
 export function observeWhatsAppChannel(observation: WhatsAppChannelObservation): void {
   void observe(observation);
 }
+
+// ── A9-2 (R116): rolling SEND-FAILURE watch ──────────────────────────────
+//
+// The 15-minute streak watch resets on ANY healthy observation, so an
+// INTERMITTENT channel — failing every other OTP send while probing
+// `ready` in between — never accumulates an unhealthy streak and never
+// alerts: users silently get 503s half the time with no operator signal.
+// This counter is the complement: it counts SEND failures in a rolling
+// 60-minute window REGARDLESS of interleaved successes, and alerts at
+// the 3rd failure within the window (dedupe key
+// `whatsapp:sendfails:{token}`, the logAdminAlert 24h window — the same
+// stockWatcher contract as the streak alerts).
+//
+// After an emission attempt (suppressed or not) the window is cleared, so
+// a persistently flapping channel re-attempts at most once per 3 failures
+// while the DB dedupe keeps the drawer to a state, not a history.
+const SEND_FAILURE_ALERT_THRESHOLD = 3;
+const SEND_FAILURE_WINDOW_MS = 60 * 60_000;
+let sendFailureTimestamps: number[] = [];
+
+async function emitSendFailureAlert(token: string, count: number): Promise<void> {
+  // Lazy import — see the import-shape NOTE at the top of the file.
+  const { logAdminAlert } = await import("../jobs/alertLogger");
+  const outcome = await logAdminAlert(
+    "whatsapp_channel",
+    "فشل إرسال متكرر عبر قناة WhatsApp OTP",
+    `فشلت ${count} محاولات إرسال خلال آخر 60 دقيقة (آخر حالة: "${token}") رغم نجاح محاولات أخرى بينها — القناة تعمل بشكل متقطع. افحص بوابة OpenWA وسجلات الجلسة (لوحة الأدمن، قسم WhatsApp).`,
+    { dedupeKey: `whatsapp:sendfails:${token}` },
+  );
+  logger.info(
+    {
+      category: "whatsapp.gateway",
+      token,
+      count,
+      suppressed: outcome.suppressed,
+    },
+    "[whatsapp-watch] rolling send-failure alert emitted",
+  );
+}
+
+async function recordSendFailure(token: string): Promise<void> {
+  const now = Date.now();
+  sendFailureTimestamps.push(now);
+  // Prune to the rolling window (oldest first).
+  while (
+    sendFailureTimestamps.length > 0 &&
+    now - sendFailureTimestamps[0] > SEND_FAILURE_WINDOW_MS
+  ) {
+    sendFailureTimestamps.shift();
+  }
+  if (sendFailureTimestamps.length < SEND_FAILURE_ALERT_THRESHOLD) return;
+  const count = sendFailureTimestamps.length;
+  // Clear BEFORE the await — the next failure starts a fresh window even
+  // if this emission throws (the catch below swallows it), mirroring the
+  // alertedTokens-before-await discipline of the streak path.
+  sendFailureTimestamps = [];
+  await emitSendFailureAlert(token, count);
+}
+
+/**
+ * Feed one send-failure observation (an OTP send attempt — or the
+ * operator warm-up self-check — that exhausted its retries). Synchronous
+ * + fire-and-forget; never throws across the caller.
+ */
+export function observeWhatsAppSendFailure(token: string): void {
+  void recordSendFailure(token).catch((err) =>
+    logger.warn(
+      {
+        category: "whatsapp.gateway",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[whatsapp-watch] send-failure observation processing failed (non-fatal)",
+    ),
+  );
+}
+
+/** Test seam — await one send-failure observation's internal processing. */
+export const observeWhatsAppSendFailureForTests = recordSendFailure;
 
 /**
  * Test seam — feed one observation and AWAIT the internal processing so

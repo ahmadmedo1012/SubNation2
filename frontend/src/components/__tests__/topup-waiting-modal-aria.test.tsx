@@ -11,6 +11,16 @@
  *   - RejectedBody root  → role="alert"   (assertive)
  *   - the waiting countdown's own aria-live region stays as-is.
  *
+ * R116-S2 (P2/P3) additions:
+ *   - the shell migrated to AppDialog — the accessible NAME now rides
+ *     the header title (per state), so the name-wiring assertions
+ *     below also cover the migration;
+ *   - the modal's mobile geometry (bottom sheet + dvh cap + sm:max-w-md)
+ *     and the 44px action buttons — the expectations folded in from the
+ *     deleted components/ui/dialog.tsx (dialog-mobile.test.tsx);
+ *   - the ~10 s «إغلاق والمتابعة» dismiss affordance (was a full 30 s
+ *     lock that read as a frozen modal).
+ *
  * `@workspace/api-client-react` is mocked at the module boundary (the
  * vitest config's documented pattern for component tests) — the modal's
  * status is driven by the mocked topups list.
@@ -68,28 +78,30 @@ describe("TopupWaitingModal — decision states are announced (96-F6 / R96 A6 #3
     listTopupsMock.mockReset();
   });
 
-  it("approved state renders a polite live status region", () => {
+  it("approved state renders a polite live status region (R116-S2: title rides the header)", () => {
     renderModal({ ...BASE, status: "approved" });
 
+    // The state heading is the DIALOG's accessible name (AppDialog title).
+    expect(screen.getByRole("dialog", { name: "تمت إضافة الرصيد" })).toBeInTheDocument();
     const region = screen.getByRole("status");
     expect(region).toHaveAttribute("aria-live", "polite");
-    // The decision copy itself is inside the announced region.
-    expect(region).toHaveTextContent("تمت إضافة الرصيد");
+    // The receipt copy is inside the announced region.
+    expect(region).toHaveTextContent("تم اعتماد طلب الشحن وإيداعه في محفظتك.");
     expect(screen.getByText("+ 50.00 د.ل")).toBeInTheDocument();
   });
 
   it("rejected state renders an assertive alert region (incl. the admin note)", () => {
     renderModal({ ...BASE, status: "rejected", admin_note: "لم نعثر على التحويل" });
 
+    expect(screen.getByRole("dialog", { name: "تم رفض الطلب" })).toBeInTheDocument();
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("تم رفض الطلب");
     expect(alert).toHaveTextContent("لم نعثر على التحويل");
   });
 
   it("waiting state keeps the countdown's own live region (unchanged behaviour)", () => {
     renderModal({ ...BASE, status: "pending" });
 
-    expect(screen.getByText("تم استلام طلب الشحن")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "تم استلام طلب الشحن" })).toBeInTheDocument();
     // The initial cosmetic countdown (30s) is the polite/atomic live
     // region from the pre-fix design — it must survive the round-96 fix.
     const countdown = screen.getByText("30");
@@ -102,8 +114,8 @@ describe("TopupWaitingModal — decision states are announced (96-F6 / R96 A6 #3
 });
 
 describe("TopupWaitingModal — the dialog is NAMED per state (F3-04 / R111, WCAG 4.1.2)", () => {
-  // Each body's heading is a real DialogTitle, so Radix wires
-  // aria-labelledby on the DialogContent — screen readers announce
+  // Each state's heading is the AppDialog title, so Radix wires
+  // aria-labelledby on the content — screen readers announce
   // «تم استلام طلب الشحن، حوار» instead of an unnamed "dialog".
   it.each([
     ["pending", "تم استلام طلب الشحن"],
@@ -128,5 +140,86 @@ describe("TopupWaitingModal — the dialog is NAMED per state (F3-04 / R111, WCA
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("TopupWaitingModal — ~10s dismiss affordance (R116-S2 / P2)", () => {
+  it("locks close actions for the first ~10 s of the countdown", () => {
+    vi.useFakeTimers();
+    try {
+      renderModal({ ...BASE, status: "pending" });
+
+      // 9 s in: still locked — no «إغلاق والمتابعة» body affordance and
+      // the header close is disabled (AppDialog dismissable=false).
+      act(() => {
+        vi.advanceTimersByTime(9_000);
+      });
+      expect(screen.queryByRole("button", { name: "إغلاق والمتابعة" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "إغلاق" })).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unlocks at ~10 s: the «إغلاق والمتابعة» button appears + the header close enables", () => {
+    vi.useFakeTimers();
+    try {
+      renderModal({ ...BASE, status: "pending" });
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+
+      const close = screen.getByRole("button", { name: "إغلاق والمتابعة" });
+      expect(close).toBeInTheDocument();
+      // R116-S2 (P2/P3): the 44px touch floor on every modal action.
+      expect(close.className).toContain("min-h-11");
+      expect(screen.getByRole("button", { name: "إغلاق" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("TopupWaitingModal — AppDialog mobile geometry (R116-S2, folded from ui/dialog)", () => {
+  // The legacy components/ui/dialog.tsx was deleted; its mobile-geometry
+  // contract lives on through the shared AppDialog shell this modal now
+  // rides. Assertions are re-scoped to the modal's OWN dialog element.
+  function dialogEl(): HTMLElement {
+    return screen.getByRole("dialog");
+  }
+
+  it("renders the AppDialog mobile bottom-sheet geometry (rounded top, bottom-anchored, dvh cap)", () => {
+    renderModal({ ...BASE, status: "approved" });
+
+    const cls = dialogEl().className;
+    // Mobile: full-width bottom sheet…
+    expect(cls).toContain("bottom-0");
+    expect(cls).toContain("rounded-t-2xl");
+    // …that becomes a centered card ≥sm, capped at the md preset.
+    expect(cls).toContain("sm:max-w-md");
+    // Long Arabic content: the card is capped + the body scrolls.
+    expect(cls).toContain("max-h-[85dvh]");
+  });
+
+  it("the header close keeps the 44px hit box (94-C3 / A3 P1-3)", () => {
+    renderModal({ ...BASE, status: "approved" });
+
+    const close = screen.getByRole("button", { name: "إغلاق" });
+    expect(close.className).toContain("h-11 w-11");
+  });
+
+  it("every full-width action button clears the 44px touch floor", () => {
+    // Approved state: the body's primary «تم» (the header close is the
+    // h-11 w-11 icon button pinned above — a different element).
+    renderModal({ ...BASE, status: "approved" });
+    const done = screen.getByRole("button", { name: "تم" });
+    expect(done.className).toContain("min-h-11");
+
+    // Rejected state: the body's full-width «إغلاق» (the LAST إغلاق in
+    // DOM order — the header close renders first).
+    renderModal({ ...BASE, status: "rejected", id: 2 });
+    const closes = screen.getAllByRole("button", { name: "إغلاق" });
+    expect(closes.length).toBe(2);
+    expect(closes[1].className).toContain("min-h-11");
   });
 });

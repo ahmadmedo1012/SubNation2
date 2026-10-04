@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Home, ArrowRight, Compass } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
 
 export default function NotFound() {
@@ -18,7 +19,7 @@ export default function NotFound() {
   });
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 text-center">
+    <div className="min-h-[calc(100dvh-4rem)] flex flex-col items-center justify-center px-4 text-center">
       {seoBlock}
       <div className="space-y-8 max-w-sm w-full">
         {/* Illustration */}
@@ -30,7 +31,10 @@ export default function NotFound() {
             {/* R111-F2 C1: Latin digits — the site-wide numeral convention
                 (utils.ts -u-nu-latn pins, Arabic-Indic input conversion).
                 Was the only shipped Arabic-Indic string in frontend/src. */}
-            <span className="text-4xl font-bold text-primary/25 tracking-tighter">404</span>
+            {/* tracking-tighter removed (R116-S1): the global Arabic
+                letter-spacing guard pins every tracking utility to 0 —
+                the class was dead weight. */}
+            <span className="text-4xl font-bold text-primary/25">404</span>
           </div>
         </div>
 
@@ -44,23 +48,27 @@ export default function NotFound() {
           </p>
         </div>
 
-        {/* Actions */}
+        {/* Actions — R116-S1 CTA recipe: primary rides the canonical
+            Button (size lg, w-full sm:w-auto); secondary rides the
+            system secondary variant. */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link href="/">
-            <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-white font-bold px-6 py-3 rounded-xl transition-all duration-150 shadow-lg shadow-primary/20 w-full sm:w-auto">
+          <Button asChild size="lg" className="w-full sm:w-auto">
+            <Link href="/">
               <Home className="w-4 h-4" />
               العودة للرئيسية
-            </button>
-          </Link>
-          <button
+            </Link>
+          </Button>
+          <Button
+            variant="secondary"
+            size="lg"
             onClick={() => window.history.back()}
-            className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-semibold px-6 py-3 rounded-xl transition-all duration-150 w-full sm:w-auto"
+            className="w-full sm:w-auto"
           >
             {/* RTL: "back" points right (unified icon-direction decision) */}
             <ArrowRight className="w-4 h-4" />
             {/* 93-C8 (A11 §2): unified back-navigation verb «رجوع». */}
             رجوع
-          </button>
+          </Button>
         </div>
 
         {/* Quick links */}
