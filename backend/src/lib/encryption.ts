@@ -107,7 +107,8 @@ export function decrypt(ciphertext: string): string {
   // Strict tag length: the format gate (isEncrypted) pins 128-bit tags, so
   // accepting a shorter tag here would widen the forgery surface for any
   // row that skipped that gate (mission W7 semgrep gcm-no-tag-length).
-  decipher.setAuthTag(authTag, { authTagLength: AUTH_TAG_BYTES });
+  if (authTag.length !== AUTH_TAG_BYTES) throw new Error("Invalid auth tag length");
+  decipher.setAuthTag(authTag);
   return decipher.update(encrypted) + decipher.final("utf8");
 }
 
