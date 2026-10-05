@@ -46,7 +46,8 @@ COPY . .
 # IMPORTANT: keep this list in sync with the VITE_* build args in
 # docker-compose.yml (the compose/local path) and the Coolify build-args
 # panel (the production path — docs/deployment/COOLIFY_FINAL_SETUP.md §2.2).
-# render.yaml is a FROZEN legacy rollback file — do not add new keys there.
+# (render.yaml was removed 2026-10-05 — Vercel/Render fully retired; historical
+# comment references below were written when it existed.)
 # Adding a new VITE_* env var without listing it here means production code
 # will see `undefined` even though the platform has the value set.
 # -----------------------------------------------------------------------------

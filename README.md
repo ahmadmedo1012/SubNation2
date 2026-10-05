@@ -7,7 +7,7 @@
 Streaming, music, gaming and productivity subscriptions — bought with an in-app
 wallet and delivered instantly with encrypted account credentials.
 
-[![Status](https://img.shields.io/badge/status-cutover_pending-f59e0b)](./docs/deployment/FINAL_MIGRATION_READINESS.md)
+[![Status](https://img.shields.io/badge/status-production_live-22c55e)](./docs/project-state/source-of-truth.md)
 [![Stack](https://img.shields.io/badge/stack-React_19_·_Express_5_·_Postgres-3b82f6)](#tech-stack)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](#requirements)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220)](#requirements)
@@ -25,13 +25,10 @@ It is **passwordless** for customers — sign in with **Google**, **Telegram**, 
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> 🚧 **Status (2026-09-23): production is offline.** The Render free tier has
-> been billing-suspended since ~2026-09-11 (`subnation.ly` answers 503; the
-> Render API rejects deploys for billing-suspended services). The project is
-> mid-migration to self-hosted Docker on Oracle Cloud (Coolify, ARM64) —
-> cutover pending. Details: [Deployment status](#deployment-status-2026-09-23)
-> below and
-> [`docs/deployment/FINAL_MIGRATION_READINESS.md`](./docs/deployment/FINAL_MIGRATION_READINESS.md).
+> ✅ **Status (2026-10-05): production is LIVE on Coolify (Contabo VPS).** Deployment chain:
+> GitHub main → Coolify (git-source dockerfile build, push-to-deploy webhook) → Traefik →
+> `subnation.ly`. Vercel/Render are retired (frozen-era docs below are historical). Current
+> truth: [`docs/project-state/source-of-truth.md`](./docs/project-state/source-of-truth.md).
 
 ---
 
@@ -169,18 +166,16 @@ Full guide + runbook: `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
 `docs/deployment/FINAL_MIGRATION_READINESS.md`; target architecture:
 `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
 
-### Deployment status (2026-09-23)
+### Historical: deployment status during the Render→Coolify migration
 
-- **Production is offline.** All eight services on the Render free-tier
-  account (including `subnation` and the openwa gateway) have been
-  billing-suspended since ~2026-09-11: `subnation.ly` answers 503 and the
-  Render API rejects both resumes and deploys for billing-suspended services.
-  The last live deploy runs 2026-09-11 code. The dated records
-  `docs/free-tier-optimization-2026-09-20.md` and
-  `docs/final-audit-2026-09-20.md` capture the suspension and the operator's
-  options (a billing action in the Render dashboard, or the free-hours
-  reset). The `deploy.yml` Render hook stays kill-switched behind the
-  `RENDER_DEPLOY_ENABLED` repo variable.
+- **(2026-09-23 snapshot — HISTORICAL, superseded 2026-10-05.)** Production was
+  offline while the Render free tier was billing-suspended. Production is now
+  live on Coolify (Contabo VPS); Vercel/Render are retired. The dated records
+  `docs/free-tier-optimization-2026-09-20.md`,
+  `docs/final-audit-2026-09-20.md` and
+  `docs/deployment/RENDER_LEGACY_FALLBACK.md` are preserved as historical
+  audit evidence of the migration era. The Render deploy-hook workflow was
+  removed from `.github/workflows/` on 2026-10-05.
 - **The active path is the self-hosted migration** to Oracle Cloud Always
   Free (ARM64) + Coolify described above — cutover pending; nothing in the
   code requires Render or Vercel (r107 hosting-coupling audit).
