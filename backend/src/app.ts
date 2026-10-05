@@ -24,7 +24,7 @@ import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import seoRouter from "./routes/seo";
 import { ErrorCode, createErrorResponse } from "./lib/errors";
-import { getConfiguredOrigins, warnLegacySplitOriginEnvAtBoot } from "./lib/origins";
+import { getConfiguredOrigins } from "./lib/origins";
 
 const app = express();
 
@@ -41,11 +41,6 @@ function resolveFrontendDist(): string | null {
 // ── CORS / Allowed Origins ────────────────────────────────────────────────────
 // In production restrict to APP_ORIGINS; in dev allow all origins.
 const allowedOrigins = getConfiguredOrigins();
-// A7-2 (R116): boot-time warn when split-era origin vars (the retired
-// Render/Vercel stack) ride along the single-origin Coolify shape — an
-// env block copied from an old runbook silently re-arms the cross-origin
-// cookie class. Names only; never a throw.
-warnLegacySplitOriginEnvAtBoot();
 const isProduction = process.env.NODE_ENV === "production";
 
 /**
@@ -320,25 +315,9 @@ app.use(cloudflareClientIp);
 //
 // Skips /api/healthz/* so Render's own probes (which always hit the onrender
 // hostname internally) never get a 301. Production-only.
-const CANONICAL_HOST = "subnation.ly";
-// subnation2.onrender.com was the API origin of the retired Vercel→Render
-// split — in that era it had to stay unredirected so API and Socket.IO
-// traffic kept working. The split is gone (Render suspended, rollback-only):
-// the hostname stays OUT of LEGACY_HOSTS so a Render rollback (if ever
-// exercised) keeps working — its health probes hit the onrender hostname
-// and must never receive a 301.
-const LEGACY_HOSTS = new Set(["www.subnation.ly"]);
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV !== "production") return next();
-  if (req.path === "/api/healthz" || req.path.startsWith("/api/healthz/")) return next();
-
-  const hostname = (req.hostname || "").toLowerCase();
-  if (LEGACY_HOSTS.has(hostname)) {
-    res.set("Cache-Control", "max-age=86400");
-    return res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
-  }
-  return next();
-});
+// R116: removed www→non-www redirect middleware. Cloudflare/Traefik already
+// issues non-www→www (307), so the old 301 created a bidirectional loop.
+// The canonical host is now enforced solely by the external proxy layer.
 
 // ── Compression ─────────────────────────────────────────────────────────────
 app.use(compression());
