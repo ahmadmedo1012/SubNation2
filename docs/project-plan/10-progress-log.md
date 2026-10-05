@@ -51,3 +51,32 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   SHA-tagged image → healthcheck → Traefik → live SHA verifiable inside (env), outside (behavior),
   and in the Coolify deployment record. Old manual chain (image push + fake DB rows) retired.
 
+- **21:1x–21:2x** Automated deploy verified end-to-end: the Wave-1 docs push (`d92de60`) triggered
+  webhook deployment `tsis4zig` → build → rolling update → live `GIT_SHA=d92de60…`, healthz ok.
+  Zero manual steps.
+
+- **21:2x** WAVE 2 — WhatsApp operational completion:
+  1. **Root cause of the WhatsApp outage found and fixed**: backend calls `http://openwa:2785`, but
+     under Coolify's generated compose the gateway container's alias was its UUID only (the old
+     manual compose named the service `openwa`). Added `custom_network_aliases=openwa` to the
+     OpenWA app (API PATCH) → verified `openwa` resolves from the SubNation container.
+  2. During the gateway redeploy Coolify's builder failed to pull the private
+     `ghcr.io/.../openwa:sha-ba6a843` (denied). Image already on the VPS → applied the regenerated
+     compose directly (recreated container with the alias). Two-gateways rule briefly violated by
+     the leftover old container — removed immediately. **Blocker recorded**: openwa redeploys via
+     Coolify need the GHCR package made public (or registry credentials).
+  3. **Live contract verification** (public endpoint, no admin auth needed):
+     `POST /api/auth/whatsapp/start` → `503 gateway_waking retry_after_sec=30` (cold) → backend
+     auto-created session `subnation-otp` → `503 whatsapp_not_paired` (channel up, awaiting
+     pairing). Exactly the documented B5-2 state machine.
+  4. Restart drill: `docker restart` on the gateway → healthy in 12 s, SubNation unaffected,
+     unpaired session correctly ephemeral (persistence covers PAIRED sessions via
+     `openwa_sessions`). Post-restart `/start` returns the waking→not_paired sequence again.
+  5. `docs/WHATSAPP_OPERATIONS.md` (R117 rewrite) already matches the new topology — pairing
+     runbook (phone-code + QR) confirmed current; no doc changes needed.
+
+  Outcome: WhatsApp channel infrastructure fully operational from the SubNation admin surface.
+  **Only remaining step is operator-only: QR/phone-code pairing on a WhatsApp phone** at
+  https://subnation.ly/admin/whatsapp (session `subnation-otp` already created).
+
+
