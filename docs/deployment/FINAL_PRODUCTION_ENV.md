@@ -154,7 +154,7 @@ entry. Carrying any of these onto Coolify re-splits or misconfigures the stack.
 
 | Variable | Why it exists there | Operator action |
 |---|---|---|
-| `VERCEL_FRONTEND_ORIGIN` | render.yaml pins `https://subnation-seven.vercel.app` — Vercel→Render split remnant (code still reads it in `lib/origins.ts`, split-only) | DO NOT SET — single-origin stack |
+| `VERCEL_FRONTEND_ORIGIN` | render.yaml pin REMOVED (R116 A7-2) — Vercel→Render split remnant; backend still reads it in `lib/origins.ts` for rollback compat | Leave unset on the single-origin stack |
 | `FRONTEND_ORIGINS` | render.yaml `sync:false` — same split-deployment class | DO NOT SET |
 | `RENDER_DASHBOARD_URL` | render.yaml `sync:false` — Render console deep link (admin observability) | DO NOT SET — link dies with Render anyway |
 | `ADMIN_RESET_PASSWORD` | render.yaml `"false"` — seed-script flag (`scripts/src/seed.ts`), zero backend runtime readers | DO NOT SET |

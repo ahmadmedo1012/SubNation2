@@ -34,6 +34,15 @@ Single-origin contract: `VITE_API_BASE_URL`/`VITE_SOCKET_URL`/`VITE_API_URL`
 stay EMPTY — the browser speaks relative `/api` and same-origin WebSockets.
 There is no second origin anywhere in the path.
 
+> **Observed host (R117 live probe, 2026-10-05):** live A records for both
+> `subnation.ly` and `www.subnation.ly` point at `169.58.100.161` (PTR
+> `vmi3624162.contaboserver.net` — **Contabo VPS, not the Oracle VM** this page
+> and the migration runbooks describe), TLS is a Let's Encrypt cert at origin,
+> and no `cf-ray`/`server: cloudflare` headers appear (the Cloudflare zone is
+> DNS-only, grey-cloud). Verify and reconcile: if the fleet moved hosts, update
+> the DR/backup runbook host references (`ORACLE_FINAL_SETUP.md`,
+> `DISASTER_RECOVERY.md`) to the real host.
+
 ## 2. The OTP path (login code via WhatsApp)
 
 ```

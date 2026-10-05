@@ -1265,12 +1265,8 @@ export default function AdminOrdersPage() {
                                       needs the ENCRYPTION_KEY signal, not
                                       a misleading "no data". */}
                                   {order.has_credentials && creds?.decrypt_failed && (
-                                    <span
-                                      role="alert"
-                                      className="text-destructive font-bold"
-                                    >
-                                      تعذّر فك التشفير — راجع مطابقة
-                                      ENCRYPTION_KEY مع مفتاح التشفير
+                                    <span role="alert" className="text-destructive font-bold">
+                                      تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير
                                       الأصلي
                                     </span>
                                   )}
@@ -1443,12 +1439,8 @@ export default function AdminOrdersPage() {
                             /* R117 (A1-P6): mobile card parity — the
                                decrypt-failure signal must reach the
                                phone too, not just the desktop row. */
-                            <span
-                              role="alert"
-                              className="text-xs text-destructive font-bold"
-                            >
-                              تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY
-                              مع مفتاح التشفير الأصلي
+                            <span role="alert" className="text-xs text-destructive font-bold">
+                              تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
                             </span>
                           )}
                           {!creds.delivered_email &&

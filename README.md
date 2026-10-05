@@ -99,7 +99,7 @@ the next free port automatically and wires the Vite `/api` proxy for you.
 > dev server runs automatically on every cold start. The `drizzle-kit push`
 > script is intentionally not part of the workflow — it generates SQL this
 > schema rejects and can drop tables that exist only in production (see
-> `scripts/post-merge.sh` and `docs/deep-audit-2026-09-06.md`). The dev server
+> `docs/deep-audit-2026-09-06.md`). The dev server
 > must be running (or have completed boot) before `pnpm run db:seed`, which is
 > idempotent and safe to re-run.
 

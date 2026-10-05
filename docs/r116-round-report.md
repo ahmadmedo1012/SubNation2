@@ -94,8 +94,10 @@
 - Admin local CopyButton (bare-icon, dense rows) still separate from the
   shared labeled CopyButton (consolidation needs a bare-icon variant).
 - B6-07/08 index DDL batches — still deferred (live tables tiny).
-- A4-03 wallet-history admin tab + A4-05 server-side product search —
-  not started (stretch scope).
+- A4-03 wallet-history admin tab not started; A4-05 beyond-name search
+  (description/variants/typo tolerance) not started — the `name` ILIKE
+  pushdown (`products.ts:236-243`) predates R116 and was hardened in A6-9
+  (LIKE-escape).
 - Dark-theme white-on-status-error badge ≈3.2:1 (predates round;
   visually identical token swap queued for a dark-tone pass).
 - Operator: TOTP on the sole admin + `import-seo.ts --apply` for the 37

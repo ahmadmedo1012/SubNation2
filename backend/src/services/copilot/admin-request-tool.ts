@@ -172,11 +172,7 @@ export function isPathAllowed(path: string): { ok: true } | { ok: false; reason:
   // (e.g. `?next=https://x//y`, `?from=../../docs`) — scanning the raw
   // input 400-ed those legal requests. The query never participates in
   // path routing, so traversal rules on it were pure false positives.
-  if (
-    normalized.includes("/../") ||
-    normalized.endsWith("/..") ||
-    normalized.includes("//")
-  ) {
+  if (normalized.includes("/../") || normalized.endsWith("/..") || normalized.includes("//")) {
     return {
       ok: false,
       reason: "path must not contain '..' segments or empty components",

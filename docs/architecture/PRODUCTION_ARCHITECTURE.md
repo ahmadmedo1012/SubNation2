@@ -28,6 +28,15 @@
 **Stack in one line:** `Oracle VM ARM64 (2 OCPU / 12 GB) → Coolify/Traefik →
 subnation Express :8080 + openwa :2785 (internal) → external Neon + Cloudflare`.
 
+> **Observed host (R117 live probe, 2026-10-05):** live A records for both
+> `subnation.ly` and `www.subnation.ly` point at `169.58.100.161` (PTR
+> `vmi3624162.contaboserver.net` — **Contabo VPS, not the Oracle VM** this doc
+> and the migration runbooks describe), TLS is a Let's Encrypt cert at origin,
+> and no `cf-ray`/`server: cloudflare` headers appear (Cloudflare zone is
+> DNS-only). Verify and reconcile: if the fleet moved hosts, update the
+> DR/backup runbook host references (`ORACLE_FINAL_SETUP.md`,
+> `DISASTER_RECOVERY.md`) to the real host.
+
 The unique engineering content below is what the TOPOLOGY does **not** carry.
 
 ---
@@ -58,7 +67,7 @@ The unique engineering content below is what the TOPOLOGY does **not** carry.
 └──────────────┬─────────────────────────────────────────────┬───────────────────────────────┘
                │                                              │
       Neon PostgreSQL (EXTERNAL)                     Cloudflare → subnation.ly
-      ├── business schema (boot reconciler, V1-M6…V1-M22)  DNS proxy, WAF, WS passthrough
+      ├── business schema (boot reconciler, V1-M6…V1-M23)  DNS proxy, WAF, WS passthrough
       ├── openwa_sessions (gateway-owned, AES-GCM)
       └── scheduler_leader_lease (multi-instance shape only — idle by default)
 ```
@@ -131,17 +140,18 @@ This is the same scheduler behaviour folded into the request lifecycles in
 ## 3. Schema authority — boot reconciler + Drizzle chain
 
 The database schema is created/reconciled by the boot reconciler
-`backend/src/migrate.ts` (labeled stages **V1-M6 … V1-M22** — the current chain;
+`backend/src/migrate.ts` (labeled stages **V1-M6 … V1-M23** — the current chain;
 the V1-M11 number was never used). The boot reconciler is the source of truth at
 runtime; the Drizzle chain mirrors it for the CI drift gate.
 
-- **Drizzle chain** in `shared/db/drizzle/`: **0000–0014** at HEAD
-  `6caa63b` (r115 — the loyalty economics core: points_ledger, precise reversals,
-  unified welcome policy). 0013 (r110) re-synced the mirror for the CI drift
-  gate; 0014 (r115) is the latest re-emit. The old "0000–0012 at bb4418e / 0013
-  lands in r110" text was stale.
+- **Drizzle chain** in `shared/db/drizzle/`: **0000–0015** (mirror re-emitted
+  R117; runtime chain V1-M23). 0013 (r110) re-synced the mirror for the CI drift
+  gate; 0014 (r115 — the loyalty economics core: points_ledger, precise
+  reversals, unified welcome policy) and 0015 (R117 — the V1-M23
+  `wallet_topups.reviewed_by` re-emit) are the latest re-emits. The old
+  "0000–0012 at bb4418e / 0013 lands in r110" text was stale.
 - **Migrate stages** run at every boot: probe → alert pattern, idempotent
-  DO-block existence checks. Current max stage is **V1-M22** (the r107 map's
+  DO-block existence checks. Current max stage is **V1-M23** (the r107 map's
   "V1-M6…V1-M20" / "12 migrations" counts were stale).
 
 ---
@@ -166,7 +176,8 @@ runtime; the Drizzle chain mirrors it for the CI drift gate.
   (stock/flash-sale/coupon/OTP-prune/copilot-reaper, throttled 5-60 min per
   job) — no artificial traffic anywhere (the 2026-09-20 purge is complete).
 - **Money invariants** (topup atomicity M1, topup dedup M2, `mobile_transfer`
-  requires a payment reference M3 — `wallet.ts:301`, refunds M7, etc.) are the
+  requires a payment reference M3 — `wallet.ts:365` (see
+  `docs/FINAL_MONEY_INVARIANTS.md`, the cite-owner), refunds M7, etc.) are the
   full invariant set in `docs/FINAL_MONEY_INVARIANTS.md`; M3/M4 are the two most
   relevant to this topology.
 
@@ -234,4 +245,4 @@ multi-instance shape.
   request-path/OTP/data-path canonicalization.
 - **r113–r115:** deploy/ops runbooks (Docker verify, OpenWA gate, cutover
   preflight), the loyalty economics core (points_ledger, reversals, welcome
-  policy) — the current Drizzle HEAD `6caa63b`.
+  policy) — the r115 Drizzle HEAD `6caa63b` (0015 re-emit followed in R117).

@@ -144,3 +144,30 @@ dashboard edits only.** Optional, later: a narrowly-scoped token
 automated record/TTL auditor). Never commit it; Coolify's DNS-01
 certificate integration (if ever adopted) is a separate, explicit operator
 decision — not needed for this cutover.
+
+## 8. R117 canonical-host addendum (observed 2026-10-05)
+
+Observed live reality, recorded by the R117 smoke audit — it differs from
+what §1–§2 above describe and from the `f10bb9b` commit's premise:
+
+- **The zone is DNS-only (grey cloud).** No `cf-ray` / `server: cloudflare` /
+  `cf-cache-status` headers appear on any response; TLS is a Let's Encrypt
+  cert terminated at origin. No Cloudflare proxy rule (redirect or otherwise)
+  exists in the live path.
+- **No hostname redirect exists at ANY layer.** `https://subnation.ly/` and
+  `https://www.subnation.ly/` both answer `200` with byte-identical bodies;
+  the only redirects are scheme-only (`http→https`, hostname-preserving).
+  The `f10bb9b` premise — that the external proxy already issues a
+  non-www→www 307 — is **not currently true**; the R116 Cloudflare redirect
+  loop is "broken" only in the sense that nothing redirects at all.
+- **Every canonical signal points at the apex:** sitemap (all 56 `<loc>`),
+  robots (`Sitemap:`), og:image/og URLs, and the runtime `<link
+  rel=canonical>` all use `https://subnation.ly` (a static canonical link is
+  also baked into `index.html` as of R117).
+
+**Recommended operator action:** add a single **www→apex 301** at the
+**Traefik/Coolify layer** (where both Host rules already exist) — **NOT
+in-app**. The R116 Cloudflare-loop incident is exactly why the in-app
+redirect was removed; re-adding it at the app layer would recreate the
+loop class. With the 301 at the proxy, the two live origins collapse into
+one canonical host (apex) and the SEO surfaces become consistent end-to-end.
