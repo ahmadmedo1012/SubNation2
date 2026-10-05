@@ -1,0 +1,23 @@
+%% Admin capabilities — /admin/* routes verified in App.tsx + backend routes/admin/
+graph TB
+    subgraph AdminPages["Frontend admin pages (21 routes)"]
+        D["/admin dashboard"]
+        FIN["/admin/topups finance · /admin/orders"]
+        PROD["/admin/products (+variants+inventory upload)<br/>/admin/pricing · /admin/promotions · /admin/coupons"]
+        USR["/admin/users · /admin/referrals · /admin/admins"]
+        SEC["/admin/security · /admin/alerts · /admin/risk"]
+        SYS["/admin/system · /admin/settings · /admin/tickets"]
+        PROV["/admin/products/enrichment"]
+        WA["/admin/whatsapp (gateway session manager)"]
+    end
+
+    subgraph BackendScopes["Backend route scopes (requireAdmin + requirePermission)"]
+        S1["auth · stats · copilot · risk · forecast · enrichment"]
+        S2["topups (finance) · orders · users · tickets · alerts"]
+        S3["security · admins · settings · observability · diagnostics"]
+        S4["products · product-variants · pricing-* · flash-sales"]
+    end
+
+    AdminPages --> BackendScopes
+
+    CHECK["⚠ Mission Wave 4 checks: no manual provider-selection UI exists<br/>(provider layer is env-driven); manual inventory upload IS the<br/>designed model today — stays until Embronic sync lands, then<br/>manual injection for provider-backed products must be removed"]

@@ -1,0 +1,14 @@
+%% Commerce flow — customer money path (M1–M14 invariants in brackets)
+graph LR
+    C["Customer"] --> B["browse catalog<br/>GET /api/products (45 live, 3 available today)"]
+    B --> P["product page + variant"]
+    P --> AUTH["authenticate<br/>(Google OFF / Telegram LIVE / WhatsApp OTP DOWN)"]
+    AUTH --> WAL["wallet<br/>topup: mobile_transfer (payment_reference REQUIRED, M3)<br/>or lypay; MAX 3 pending (M2); idempotent create (M5)"]
+    WAL -->|operator approves<br/>UI or Telegram bot| CR["wallet credit<br/>TopupService.approve: one tx + CAS (M1)<br/>partial-unique payment_reference (M12)<br/>reviewed_by attribution (V1-M23)"]
+    CR --> CO["checkout<br/>ONE atomic transaction (M4):<br/>provider.fulfill() → wallet debit + ledger (M9)<br/>→ loyalty points → coupon → order insert<br/>→ idempotency key claim (M5/M6)"]
+    CO --> FUL["fulfillment<br/>FULFILLMENT_PROVIDER=manual today:<br/>FOR UPDATE SKIP LOCKED claim (M11)<br/>provider_fulfillments row per attempt"]
+    FUL --> DEL["delivery<br/>delivered_* copies on order<br/>credentials via /orders/:id<br/>admin reveal gated R117"]
+    DEL --> NTF["notification<br/>Socket.IO emitToUser + in-app"]
+    CO --> REC["reconciliation<br/>refund.service transactional (M7)<br/>admin wallet adjust intent-keyed (M8)"]
+
+    FAIL["failure: stock=0 → fail closed;<br/>undecryptable ciphertext → fail closed (M14)"] -.-> CO

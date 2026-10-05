@@ -1,0 +1,21 @@
+%% WhatsApp flow — operator + OTP paths (verified against code + live probes)
+graph TB
+    subgraph AdminUI["SubNation Admin /admin/whatsapp"]
+        UI["sessions list / create / start / QR /<br/>pair-code / status pills / delete"]
+    end
+
+    UI -->|"GET/POST /api/admin/diagnostics/whatsapp/sessions<br/>POST …/:id/start | :id/pair-code | GET …/:id/qr<br/>DELETE …/:id — audited"| BE["backend openwa.service.ts"]
+
+    BE -->|"WHATSAPP_OTP_BASE_URL http://openwa:2785<br/>X-API-Key: WHATSAPP_OTP_API_KEY<br/>(must equal OPENWA_API_KEY)"| GW["OpenWA gateway (Baileys)<br/>Coolify app 6x3ekglvh7megkkhfsnyhm8h<br/>image sha-ba6a843, port 2785, healthy"]
+
+    GW -->|"GET/POST /api/sessions<br/>/:id/start | :id/qr | :id/messages/send-text<br/>:id/contacts/check/:digits"| WA["WhatsApp network"]
+
+    GW -->|"PERSISTENCE_URL → Neon<br/>openwa_sessions (creds BYTEA)<br/>+ volume openwa-data:/data"| NEON[("Neon")]
+
+    USER["User logging in"] -->|"POST /api/auth/whatsapp/start"| BE
+    BE -->|"session cold → 503 gateway_waking<br/>Retry-After 30 (B5-2)"| USER
+
+    STATUS["⚠ LIVE STATE: /api/sessions → []<br/>openwa_sessions table EMPTY<br/>WhatsApp OTP DOWN until a session is<br/>created AND QR-paired (operator-only,<br/>needs the WhatsApp phone)"]
+
+    classDef down fill:#fee,stroke:#c00
+    class STATUS down

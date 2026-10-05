@@ -1,0 +1,10 @@
+%% Deployment chain — TARGET (Wave 1): Coolify is the real deployment authority
+graph TB
+    DEV["git push (verified waves)"] --> GH["GitHub main<br/>single canonical branch"]
+    GH -->|"Coolify git source (deploy key)<br/>git@github.com:ahmadmedo1012/SubNation2.git#main"| CL["Coolify build (dockerfile pack)<br/>repo-root Dockerfile<br/>build args: GIT_SHA + VITE_*"]
+    CL -->|"GIT_SHA=<short sha>"| IMG["image built on VPS docker"]
+    IMG --> CN["container recreated<br/>healthcheck /api/healthz"]
+    CN --> LIVE["subnation.ly via Traefik<br/>live SHA verifiable outside + inside"]
+    LIVE -->|"GIT_SHA mismatch → rollback:<br/>redeploy previous deployment"| CN
+
+    MAN["No manual image push<br/>No fake DB status writes<br/>No hand-edited generated compose"] -.->|enforced| CL

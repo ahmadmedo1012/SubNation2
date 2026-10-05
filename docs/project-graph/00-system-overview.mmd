@@ -1,0 +1,34 @@
+%% SubNation system overview — verified 2026-10-05 against live production (HEAD ef3d0c3 expected, f10bb9b deployed pre-Wave-1)
+%% Reality-checked: live probes + VPS docker/coolify inspection + Neon read-only queries.
+graph TB
+    subgraph Internet
+        C[Customer / Operator browser]
+        CF[Cloudflare DNS-only<br/>no proxy per R117 finding]
+    end
+
+    CF --> TRA
+
+    subgraph VPS["Contabo VPS vmi3624162 (x86_64, 4c/8G) — 169.58.100.161"]
+        TRA["Coolify Traefik proxy<br/>Let's Encrypt, 443"]
+
+        subgraph APP["Coolify app uuid wbgj7cszizukrlrblncq8by5 (applicationId=2 'subnation')"]
+            SN["SubNation container<br/>ghcr.io/ahmadmedo1012/subnation2:coolify-latest<br/>PORT=3000, SINGLE_INSTANCE_MODE=true<br/>SPA + API + Socket.IO + schedulers in ONE process"]
+        end
+
+        subgraph OPENWA_APP["Coolify app uuid 6x3ekglvh7megkkhfsnyhm8h (openwa)"]
+            WA["OpenWA gateway<br/>ghcr.io/ahmadmedo1012/openwa:sha-ba6a843<br/>port 2785, internal-only<br/>Baileys WhatsApp bridge"]
+        end
+    end
+
+    NEON[("Neon PostgreSQL<br/>ep-spring-term-avwgxrte-pooler<br/>calm-art-99771185")]
+
+    C -->|https://subnation.ly + www| TRA
+    TRA -->|HTTP :3000 internal| SN
+    SN -->|DATABASE_URL sslmode=require| NEON
+    WA -->|PERSISTENCE_URL openwa_sessions table| NEON
+    SN -->|"WHATSAPP_OTP_BASE_URL http://openwa:2785<br/>X-API-Key shared secret"| WA
+    WA -->|WhatsApp Cloud via Baileys| W[WhatsApp network]
+    W -->|OTP message| C
+
+    classDef attention fill:#fee,stroke:#c00
+    class SN attention

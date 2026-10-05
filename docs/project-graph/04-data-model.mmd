@@ -1,0 +1,65 @@
+%% Data model — core business tables and money flow (Drizzle, shared/db/src/schema/)
+erDiagram
+    users ||--o{ orders : places
+    users ||--o{ wallet_topups : requests
+    users ||--o{ wallet_ledger : "money entries"
+    users ||--o{ sessions : "revocable sessions"
+    users ||--o{ user_auth_identities : "linked providers"
+    users ||--o{ points_ledger : "loyalty ledger"
+    products ||--o{ product_variants : has
+    products ||--o{ inventory : "stock units"
+    product_variants ||--o{ inventory : "variant-scoped (nullable)"
+    orders ||--o| provider_fulfillments : "one row per fulfillment attempt"
+    orders }o--|| product_variants : "variant_id"
+
+    users {
+        uuid id PK
+        varchar wallet_balance "in-tx nonneg CHECK M9"
+        integer loyalty_points
+        varchar telegram_id "unique"
+        varchar firebase_uid
+        varchar google_id
+        varchar referral_code
+        boolean welcome_bonus_granted "V1-M21"
+    }
+    wallet_topups {
+        uuid id PK
+        varchar status "pending|approved|rejected"
+        varchar payment_network "ليبيانا|مدار"
+        varchar payment_reference "M3 guard"
+        varchar reviewed_by "V1-M23 reviewer attribution"
+        varchar sender_phone
+        decimal amount "CHECK amount_pos"
+    }
+    wallet_ledger {
+        uuid id PK
+        varchar type "topup|purchase|refund|adjustment|referral_credit"
+        decimal amount "CHECK amount<>0 (signed)"
+        uuid order_id "V1-M9 FK polymorphic-safe"
+    }
+    orders {
+        uuid id PK
+        decimal amount "FROZEN — zero UPDATE sites (M10)"
+        varchar status
+        text delivered_email "delivered credential copy"
+        text delivered_password
+        timestamp refunded_at
+        decimal refund_amount
+        uuid refunded_by_admin_id
+    }
+    inventory {
+        uuid id PK
+        uuid product_id FK
+        uuid variant_id FK "nullable"
+        text account_email "plaintext or cipher"
+        text account_password "AES-256-GCM"
+        boolean is_sold "single-writer claim M11"
+        timestamp sold_at
+    }
+    provider_fulfillments {
+        uuid id PK
+        varchar provider "operator-only vocabulary"
+        varchar provider_order_id "UNIQUE (provider, provider_order_id)"
+        varchar status
+        uuid order_id FK
+    }

@@ -1,0 +1,15 @@
+%% Provider/fulfillment flow — current manual + prepared Embronic boundary
+graph TB
+    subgraph Now["CURRENT (production truth)"]
+        CO["checkout.service (single tx)"] -->|"FULFILLMENT_PROVIDER=manual<br/>(registry fails safe to 'manual' on unknown)"| MP["manual.provider.ts<br/>variant-scoped FOR UPDATE SKIP LOCKED →<br/>then variant_id IS NULL →<br/>deliverability gate (M14 fail-closed) →<br/>guarded UPDATE is_sold=false"]
+        MP --> INV[("inventory table<br/>6 available units / 13 total<br/>manual upload via admin<br/>InventoryUploadDialog")]
+        CO --> PF[("provider_fulfillments<br/>one row per attempt<br/>UNIQUE (provider, provider_order_id)")]
+    end
+
+    subgraph Target["PREPARED BOUNDARY (Wave 6) — no invented endpoints"]
+        IF["FulfillmentProvider interface<br/>types.ts: fulfill(req, tx),<br/>syncCatalog?, queryStatus?, release?"]
+        IF -.->|"future: embronic.provider.ts<br/>official API only — blocked on<br/>docs + credentials (operator)"| EMB["Embronic"]
+        IF -.->|"contract tests + mocks<br/>idempotency + reconciliation design"| T["tests"]
+    end
+
+    SECRECY["Provider must never leak: cost price, provider identity,<br/>supplier data, internal SKU, credentials, API responses<br/>→ public API/UI. Enforced by catalog-security tests."]
