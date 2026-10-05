@@ -5,7 +5,7 @@
 import "./instrument";
 
 import { ErrorCode } from "@workspace/error-codes";
-import { pool } from "@workspace/db";
+import { pool, lockPool } from "@workspace/db";
 import * as Sentry from "@sentry/node";
 import { createServer, type Server } from "http";
 import express from "express";
@@ -24,6 +24,12 @@ import { logTelegramBootStatus } from "./telegram";
 // through the timer. Must run BEFORE any query — install at module
 // load, before bootstrap()'s bootMigrations call.
 instrumentDbPool(pool);
+
+// R117 (A1-P2): the dedicated advisory-lock pool gets the same slow-query
+// + Sentry wiring — its 'error' events are just as critical (a wedged lock
+// client is an OTP-login availability signal), and its advisory-lock
+// queries flowing through the timer costs nothing.
+instrumentDbPool(lockPool);
 
 const rawPort = process.env["PORT"] || process.env["API_PORT"] || "8080";
 
@@ -328,11 +334,19 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
         httpServer.closeIdleConnections?.();
       });
 
-      // 4. DB pool.
+      // 4. DB pools.
       try {
         await pool.end();
       } catch (err) {
         logger.warn({ err }, "[server] pool end error during shutdown");
+      }
+      try {
+        // R117 (A1-P2): drain the advisory-lock pool too — an undrained
+        // lock client would hold its session (and any leaked advisory
+        // lock) open past process exit.
+        await lockPool.end();
+      } catch (err) {
+        logger.warn({ err }, "[server] lockPool end error during shutdown");
       }
 
       // 5. Sentry queue flush.

@@ -150,25 +150,37 @@ export function isPathAllowed(path: string): { ok: true } | { ok: false; reason:
       reason: `path must start with ${ALLOWED_PREFIX}`,
     };
   }
-  // Defense-in-depth against path traversal: a path like
-  // `/api/admin/../auth/login` passes the startsWith check, but the URL
-  // constructor (used downstream by fetch()) normalizes `..` segments and
-  // would land on /auth/login — bypassing the disallow list. Reject any
-  // path containing `..` segments or empty path components.
-  if (path.includes("/../") || path.endsWith("/..") || path.includes("//")) {
-    return {
-      ok: false,
-      reason: "path must not contain '..' segments or empty components",
-    };
-  }
-  // Re-normalize via URL and confirm the resulting pathname still starts
-  // with ALLOWED_PREFIX. Belt-and-braces — catches any remaining
-  // normalization edge case (e.g. percent-encoded traversal).
+  // Re-normalize via URL FIRST — this both confirms the resulting
+  // pathname still starts with ALLOWED_PREFIX (belt-and-braces against
+  // normalization edge cases like percent-encoded traversal) and gives
+  // us the clean pathname the traversal checks below must apply to.
   let normalized: string;
   try {
     normalized = new URL(path, "http://x").pathname;
   } catch {
     return { ok: false, reason: "path is not a valid URL pathname" };
+  }
+  // Defense-in-depth against path traversal: a path like
+  // `/api/admin/../auth/login` passes the startsWith check, but the URL
+  // constructor (used downstream by fetch()) normalizes `..` segments and
+  // would land on /auth/login — bypassing the disallow list. Reject any
+  // PATHNAME containing `..` segments or empty path components.
+  //
+  // R117 (A1-P5): the checks run on the URL-normalized PATHNAME only.
+  // The A7-4 re-check feeds `pathname + search` through this function,
+  // and a legitimate query string can legally contain `//` or `..`
+  // (e.g. `?next=https://x//y`, `?from=../../docs`) — scanning the raw
+  // input 400-ed those legal requests. The query never participates in
+  // path routing, so traversal rules on it were pure false positives.
+  if (
+    normalized.includes("/../") ||
+    normalized.endsWith("/..") ||
+    normalized.includes("//")
+  ) {
+    return {
+      ok: false,
+      reason: "path must not contain '..' segments or empty components",
+    };
   }
   if (!normalized.startsWith(ALLOWED_PREFIX)) {
     return {

@@ -13,9 +13,52 @@ import { idempotency } from "../../middlewares/idempotency";
 import { RefundError, RefundService } from "../../services/refund.service";
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
 import { runStockSweep } from "../../jobs/stockWatcher";
+import { logAdminAlert } from "../../jobs/alertLogger";
 import { createNotification } from "../../notify";
 
 const router = Router();
+
+// ── R117 (A1-P4): per-admin credentials-reveal volume gate ─────────────────
+//
+// The reveal endpoint is orders-scoped and audited, but the global
+// apiLimiter (600/min, IP-keyed) never throttles a compromised ADMIN
+// SESSION — an orders-scoped cookie could sweep every order's
+// credentials at machine speed with nothing but audit rows as the
+// trace. A sliding-window per-admin budget makes bulk exfiltration
+// LOUD: over-budget reveals answer 429 and raise a deduped admin alert
+// naming the admin (so the compromise is visible in the bell, not just
+// in the audit trail).
+//
+// In-memory by design: the production topology is single-instance
+// (same store class as every rate limiter in this repo); a Map of
+// number[] keyed by admin id is bounded by the admin population with
+// expired windows dropped opportunistically.
+const CREDENTIALS_VIEW_WINDOW_MS = 10 * 60 * 1000;
+const CREDENTIALS_VIEW_MAX = 60;
+const credentialsViewTimes = new Map<number, number[]>();
+
+/** Records a reveal attempt for the admin and returns false when the
+ *  sliding-window budget is exhausted. */
+function recordCredentialsViewAndGate(adminId: number): boolean {
+  const now = Date.now();
+  const windowStart = now - CREDENTIALS_VIEW_WINDOW_MS;
+  const times = (credentialsViewTimes.get(adminId) ?? []).filter((t) => t > windowStart);
+  times.push(now);
+  credentialsViewTimes.set(adminId, times);
+  // Opportunistic hygiene: drop admins whose windows fully expired so
+  // the map stays bounded by ACTIVE revealers, not all-time admins.
+  if (credentialsViewTimes.size > 50) {
+    for (const [id, stamps] of credentialsViewTimes) {
+      if (stamps.every((t) => t <= windowStart)) credentialsViewTimes.delete(id);
+    }
+  }
+  return times.length <= CREDENTIALS_VIEW_MAX;
+}
+
+/** R117: test seam — reset the volume-gate window between cases. */
+export function __resetCredentialsViewGateForTests(): void {
+  credentialsViewTimes.clear();
+}
 
 // AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
 // this surface carries delivered credentials + buyer PII (phones, emails); an intermediary must never
@@ -212,6 +255,29 @@ router.get("/orders/:id/credentials", requireAdmin, async (req, res) => {
   if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
+  // R117 (A1-P4): volume gate BEFORE any decrypt or DB row leaves the
+  // process — over-budget answers 429 (Rate-Limited class) and raises a
+  // deduped admin alert. fire-and-forget: the 429 is the enforcement,
+  // the alert is the visibility.
+  const adminReq = req as AdminAuthenticatedRequest;
+  if (!recordCredentialsViewAndGate(adminReq.adminId)) {
+    void logAdminAlert(
+      "system",
+      "نشاط غير معتاد في عرض بيانات الاعتماد",
+      `المشرف «${adminReq.adminUsername ?? adminReq.adminId}» تجاوز حد عرض بيانات اعتماد الطلبات (${CREDENTIALS_VIEW_MAX} عرضًا في ${CREDENTIALS_VIEW_WINDOW_MS / 60000} دقائق) — قد تكون الجلسة مخترقة. راجع سجل التدقيق order.credentials_view فورًا.`,
+      { dedupeKey: `credentials-sweep:${adminReq.adminId}`, dedupeWindowMs: 60 * 60 * 1000 },
+    ).catch(() => undefined);
+    return res
+      .status(429)
+      .setHeader("Retry-After", "300")
+      .json(
+        createErrorResponse(
+          "تم تجاوز الحد المسموح من عمليات عرض بيانات الاعتماد — حاول لاحقًا",
+          ErrorCode.RATE_LIMITED,
+        ),
+      );
+  }
+
   const [order] = await db
     .select({
       id: ordersTable.id,
@@ -236,18 +302,32 @@ router.get("/orders/:id/credentials", requireAdmin, async (req, res) => {
     status: order.status,
   });
 
+  const hasCredentials = !!(
+    order.deliveredEmail ||
+    order.deliveredPassword ||
+    order.deliveredExtraDetails
+  );
+  const deliveredEmail = safeDecrypt(order.deliveredEmail);
+  const deliveredPassword = safeDecrypt(order.deliveredPassword);
+  const deliveredExtraDetails = safeDecrypt(order.deliveredExtraDetails);
+
   return res.json({
     id: order.id,
     order_code: order.orderCode,
     status: order.status,
-    has_credentials: !!(
-      order.deliveredEmail ||
-      order.deliveredPassword ||
-      order.deliveredExtraDetails
-    ),
-    delivered_email: safeDecrypt(order.deliveredEmail),
-    delivered_password: safeDecrypt(order.deliveredPassword),
-    delivered_extra_details: safeDecrypt(order.deliveredExtraDetails),
+    has_credentials: hasCredentials,
+    delivered_email: deliveredEmail,
+    delivered_password: deliveredPassword,
+    delivered_extra_details: deliveredExtraDetails,
+    // R117 (A1-P6): honest decrypt-failure signal. Under an
+    // ENCRYPTION_KEY mismatch the raw columns are populated
+    // (has_credentials:true) but every GCM auth fails → all nulls. The
+    // pre-R117 shape rendered that as "لا توجد بيانات" (empty panel),
+    // telling the operator the order HAD no credentials when the truth
+    // is the key cannot decrypt them. This flag lets the UI say so.
+    ...(hasCredentials && !deliveredEmail && !deliveredPassword && !deliveredExtraDetails
+      ? { decrypt_failed: true }
+      : {}),
   });
 });
 

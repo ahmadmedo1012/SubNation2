@@ -24,7 +24,14 @@ import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
 import seoRouter from "./routes/seo";
 import { ErrorCode, createErrorResponse } from "./lib/errors";
-import { getConfiguredOrigins } from "./lib/origins";
+import { getConfiguredOrigins, warnLegacySplitOriginEnvAtBoot } from "./lib/origins";
+
+// A7-2 (R116): boot-time hygiene warn on split-era origin env vars
+// (VERCEL_FRONTEND_ORIGIN / FRONTEND_ORIGINS). f10bb9b accidentally
+// deleted this call together with the www-redirect removal — restored
+// in R117 (A1-P3/A3-P5): the folding still happens in
+// getConfiguredOrigins(), so the boot signal must survive with it.
+warnLegacySplitOriginEnvAtBoot();
 
 const app = express();
 

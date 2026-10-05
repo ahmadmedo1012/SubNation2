@@ -102,6 +102,36 @@ if (parsedDatabaseUrl.searchParams.get("channel_binding") === "require") {
 
 export const pool = new Pool(poolConfig);
 
+// ── R117 (A1-P2): dedicated advisory-lock pool ─────────────────────────────
+//
+// Session-scoped advisory locks (pg_try_advisory_lock) live on the
+// connection that took them, so a lock holder occupies its client for the
+// WHOLE critical section. The OTP start gate (whatsapp-otp.service.ts)
+// spans an external WhatsApp send (~30 s worst case with retries), so
+// holders taken from the runtime pool could pin up to `max` runtime
+// clients: with the production pin (DB_POOL_MAX=8), eight concurrent OTP
+// starts for distinct phones would wedge every start on pool acquisition
+// (10 s connectionTimeout → 500s) AND starve the app's entire DB layer
+// while the sends were in flight.
+//
+// This tiny separate pool bounds that occupancy to 2 connections that no
+// request path shares. Callers map lock-pool saturation to a busy/retry
+// verdict (429-style), never to a runtime 500. connectionTimeoutMillis is
+// deliberately short (2 s): under a lock burst the excess callers fail
+// fast into the retry path instead of queueing behind holders.
+export const lockPool = new Pool({
+  ...poolConfig,
+  max: 2,
+  connectionTimeoutMillis: 2_000,
+});
+
+// Same rationale as the runtime pool's handler: an idle lock client killed
+// by a Neon suspend / socket reset surfaces here instead of throwing as an
+// unhandled EventEmitter 'error' (which would take the process down).
+lockPool.on("error", (err) => {
+  console.error("[db] PostgreSQL lockPool error", err);
+});
+
 // Exported for unit tests (R4) — the exact config handed to pg.Pool.
 export { poolConfig as dbPoolConfig };
 

@@ -239,6 +239,28 @@ export function resetNeonFailureStreakForTests(): void {
  * be made to fail deterministically in the pglite test harness).
  */
 export async function checkNeonWith(probe: () => Promise<unknown>): Promise<CheckResult> {
+  // R117 (A4-P2): warmup probe. Neon's serverless tiers auto-suspend
+  // idle compute (~5 min); the first query on a suspended cluster pays a
+  // ~0.5–2 s resume penalty that is NOT a health signal — it made the
+  // public /healthz/summary flap "degraded" on every cold aggregate of
+  // an otherwise healthy idle store (measured live 2026-10-05: 5/5
+  // degraded probes during an idle window, all-ok once one DB-touching
+  // request warmed the compute). The UNMEASURED warmup probe triggers
+  // the resume; the measured probe below then reports steady-state
+  // latency — the signal the 500 ms threshold was designed for. A
+  // warmup failure is not swallowed: the measured probe hits the same
+  // (broken) dependency and its failure is counted with normal
+  // semantics, so genuine outages keep escalating exactly as before.
+  try {
+    await Promise.race([
+      probe(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Neon query timeout")), checkTimeoutMs()),
+      ),
+    ]);
+  } catch {
+    // fall through — the measured probe produces the honest verdict
+  }
   const start = Date.now();
   try {
     const result = await Promise.race([
@@ -472,6 +494,11 @@ async function checkRiskPipeline(redis: any): Promise<CheckResult> {
 
 router.get("/healthz", (_req, res) => {
   const data = HealthCheckResponse.parse({ status: "ok" });
+  // R117 (A4-P8): family consistency — /healthz/live sends
+  // `public, max-age=5` and /healthz/summary `max-age=15`, but the base
+  // probe sent nothing (only an etag), so intermediate caches were free
+  // to apply their own freshness heuristics to a liveness probe.
+  res.setHeader("Cache-Control", "public, max-age=5");
   res.json(data);
 });
 

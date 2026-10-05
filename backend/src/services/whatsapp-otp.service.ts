@@ -158,15 +158,24 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
  * collide with the topup/alertLogger advisory locks (hashtextextended
  * keys) — different hash functions, but the prefix removes all doubt.
  *
+ * R117 (A1-P2): the client comes from the DEDICATED lock pool
+ * (`lockPool`, max 2) exported by @workspace/db — never from the
+ * runtime pool. The critical section spans an external WhatsApp send
+ * (~30 s worst case); holders taken from the runtime pool (max 8 in
+ * production) could pin the entire app DB layer under a burst of
+ * concurrent starts. Saturation of the lock pool (3rd+ concurrent
+ * start) fails fast (2 s connectionTimeout) into the SAME busy verdict
+ * as a lock loser — a retryable 429, never a runtime 500.
+ *
  * Busy → the existing rate-limit style verdict (`cooldown` + a short
  * retryAfterSec; the route answers 429 + Retry-After) — by the time the
  * client retries, the winner's row backs the real cooldown probe.
  *
  * Pool loading is lazy + defensive: the pglite test harness and the
- * module-boundary mocks of @workspace/db export no `pool` — in those
- * contexts the gate is skipped (single-process tests serialize via the
- * event loop and mock the boundary). Production always has the
- * node-postgres pool (shared/db/src/index.ts exports it).
+ * module-boundary mocks of @workspace/db export no `lockPool` — in
+ * those contexts the gate is skipped (single-process tests serialize
+ * via the event loop and mock the boundary). Production always has the
+ * node-postgres lockPool (shared/db/src/index.ts exports it).
  */
 const OTP_START_LOCK_RETRY_SEC = 15;
 
@@ -177,7 +186,7 @@ interface PoolClientLike {
   ) => Promise<{
     rows: Array<Record<string, unknown>>;
   }>;
-  release: () => void;
+  release: (destroy?: boolean) => void;
 }
 
 interface PoolLike {
@@ -186,13 +195,20 @@ interface PoolLike {
 
 let cachedPool: PoolLike | null | undefined;
 
+/** R117: test seam — inject a fake lock pool to exercise the lock path
+ *  (the module-boundary mocks used by the suite export no lockPool, so
+ *  the gate is otherwise bypassed and untested). */
+export function __setOtpStartLockPoolForTests(p: PoolLike | null): void {
+  cachedPool = p;
+}
+
 async function resolveDbPool(): Promise<PoolLike | null> {
   if (cachedPool !== undefined) return cachedPool;
   try {
-    const mod = (await import("@workspace/db")) as { pool?: unknown };
+    const mod = (await import("@workspace/db")) as { lockPool?: unknown };
     cachedPool =
-      mod.pool && typeof (mod.pool as PoolLike).connect === "function"
-        ? (mod.pool as PoolLike)
+      mod.lockPool && typeof (mod.lockPool as PoolLike).connect === "function"
+        ? (mod.lockPool as PoolLike)
         : null;
   } catch {
     cachedPool = null;
@@ -203,12 +219,29 @@ async function resolveDbPool(): Promise<PoolLike | null> {
 async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<StartOtpResult> {
   const pool = await resolveDbPool();
   if (pool === null) {
-    // No pool (test harness / module-boundary mocks) — no cross-process
+    // No lock pool (test harness / module-boundary mocks) — no cross-process
     // gate. Single-process behavior is unchanged.
     return startOtpLocked(input, phone);
   }
   const lockKey = `otp-start:${phone}`;
-  const client = await pool.connect();
+  // R117 (A1-P2): lock-pool saturation (burst of concurrent starts, or the
+  // DB briefly unreachable) fails fast into the SAME busy verdict as a lock
+  // loser — retryable, honest ("try again in a moment"), and it never 500s
+  // the auth path. A genuinely down DB still surfaces loudly through every
+  // other query path + the neon health check.
+  let client: PoolClientLike;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    logger.warn(
+      {
+        category: "whatsapp.otp",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[whatsapp-otp] start-lock pool saturated — answering busy (retryable)",
+    );
+    return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
+  }
   let acquired = false;
   try {
     const res = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS acquired", [
@@ -231,21 +264,28 @@ async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<
     return await startOtpLocked(input, phone);
   } finally {
     if (acquired) {
+      let unlockOk = true;
       try {
         await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]);
       } catch (err) {
-        // Best-effort: a dead connection drops the lock server-side on
-        // close — log and move on, the flow result is already decided.
+        unlockOk = false;
         logger.warn(
           {
             category: "whatsapp.otp",
             err: err instanceof Error ? err.message : String(err),
           },
-          "[whatsapp-otp] start-lock advisory unlock failed (non-fatal — released on connection close)",
+          "[whatsapp-otp] start-lock advisory unlock failed — destroying the client so Postgres drops the session lock server-side",
         );
       }
+      // R117 (A1-P3): a session-scoped advisory lock dies with the SESSION.
+      // A plain release() would return a still-locked live session to the
+      // pool — that phone would then 429 "cooldown" on every future start
+      // until process restart. On unlock failure release(true) destroys the
+      // client (closing the session → server drops the lock) instead.
+      client.release(!unlockOk);
+    } else {
+      client.release();
     }
-    client.release();
   }
 }
 
