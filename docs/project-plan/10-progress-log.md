@@ -79,4 +79,31 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   **Only remaining step is operator-only: QR/phone-code pairing on a WhatsApp phone** at
   https://subnation.ly/admin/whatsapp (session `subnation-otp` already created).
 
+- **22:0x–23:0x** WAVES 3–8 executed (details in `docs/project-state/wave-345-audit.md` and
+  `docs/project-state/embronic-adapter-design.md`):
+  - W3: provider boundary verified coherent — no cleanup needed; Embronic design prepared.
+  - W4: no manual provider-selection UI exists (env-driven); inventory upload confirmed as the
+    stopgap supply model with the provider-migration boundary documented.
+  - W5: full Google/Firebase/tracking matrix verified; dead-code list recorded; enablement gated
+    on operator creds only.
+  - W7: Mimosa deep scan (115 candidate hypotheses, all inconclusive-static, triaged); Semgrep
+    (10 ERRORs = test fixtures; 2 real findings — GCM tag length FIXED with strict 128-bit
+    validation, risk-dsl readPath triaged admin-only); Trivy prod vulns 35→11 (one HIGH: node-forge,
+    no upstream fix); OSV 113→75 via lockfile overrides (protobufjs 7.6.6, busboy 3.2.2,
+    ws≥8.21.0, brace-expansion 2.1.7). First hardened deploy failed on
+    ERR_PNPM_OUTDATED_LOCKFILE (backend/package.json specifier not committed with the lockfile) —
+    root-caused, fixed, redeployed.
+  - W8: Playwright QA on production — home/catalog/product/login/admin-login, desktop + iPhone
+    viewport, RTL + light/dark: zero unexpected console errors, zero failed requests; WhatsApp
+    UI flow verified end-to-end (honest `recipient_not_on_whatsapp` verdict for a fake number);
+    product page correctly auth-gates purchase for anonymous users.
+  - W9: no new measured problems — bundle budget gate green (entry 9.5 KB gzip vs 55 KB limit),
+    healthz fast, R116/R117 already optimized. Recorded no-action.
+  - W10: final state — live SHA `3f1dc2b` (main HEAD), single container healthy, summary `ok`.
+
+  One production incident during the session (cutover domain/label race, ~50 min, root-caused:
+  baked stale custom_labels + ports_exposes reset by the create flow) — fixed, documented, and
+  the pipeline now regenerates labels from ports_exposes on every deploy.
+
+
 
