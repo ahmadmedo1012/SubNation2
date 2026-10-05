@@ -34,6 +34,11 @@ function bundleBudgetPlugin(): Plugin {
       }
 
       const filePath = path.join(outDir, indexFile);
+      // Containment guard: the scanned file must resolve inside outDir.
+      if (path.relative(outDir, filePath).startsWith("..")) {
+        console.error("[bundle-budget] Resolved path escapes outDir:", filePath);
+        process.exit(1);
+      }
 
       // 96-main (R96 P3-8): gzipSync over the full buffer — the old
       // streaming createGzip + pipeline combo resolved on "finish" and
