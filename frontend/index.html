@@ -50,6 +50,17 @@
     <meta data-rh="true" property="og:image:width" content="1200" />
     <meta data-rh="true" property="og:image:height" content="630" />
     <meta data-rh="true" name="twitter:card" content="summary_large_image" />
+    <!-- R117 (A4-P3-4): static canonical link for the no-JS baseline.
+         The apex is the canonical host everywhere (sitemap, robots,
+         og:image, runtime MetaTags canonical, seo-builders
+         DEFAULT_ORIGIN) — but pre-R117 a no-JS crawler saw NO
+         consolidation hint at all, because both apex and www served
+         byte-identical 200s with no redirect at any layer (the R116
+         f10bb9b Cloudflare-loop fix removed the in-app redirect and its
+         external-307 premise measured false live). This link gives
+         non-JS crawlers the consolidation signal the runtime already
+         provides; MetaTags upserts it in place per route at runtime. -->
+    <link data-rh="true" rel="canonical" href="https://subnation.ly/" />
     <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
     <meta
       data-rh="true"

@@ -12,6 +12,7 @@ import { CATEGORY_META } from "@/lib/categories";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
+import { quietNextScrollToTopReset } from "@/lib/navigation-quiet";
 import {
   createOrder,
   customFetch,
@@ -367,7 +368,17 @@ export default function ProductPage() {
     if (!isLegacyNumeric) return;
     const productSlug = (byIdQuery.data as { slug?: string | null } | undefined)?.slug;
     if (productSlug && typeof window !== "undefined") {
-      window.history.replaceState(null, "", `/product/${productSlug}`);
+      const next = `/product/${productSlug}`;
+      // R117 (F-4): wouter 3.9 patches replaceState into a location
+      // change, so this rewrite re-fired ScrollToTop (scroll-to-top +
+      // #main-content.focus()) while the user was mid-read. Arm the
+      // one-shot suppression ONLY when the path actually changes — a
+      // same-URL replaceState emits nothing and an armed-but-unconsumed
+      // flag would wrongly swallow the next real navigation's reset.
+      if (window.location.pathname !== next) {
+        quietNextScrollToTopReset();
+        window.history.replaceState(null, "", next);
+      }
     }
   }, [isLegacyNumeric, byIdQuery.data]);
 
@@ -1140,40 +1151,20 @@ export default function ProductPage() {
             )}
           </div>
 
-          {/* FAQ accordion (Phase 2 SEO content). Renders only when the
-            product carries curated FAQ entries. The visible text mirrors
-            the FAQPage JSON-LD emitted by useSeo() above — Google
-            specifically requires the on-page accordion to match the
-            structured data for FAQ rich results to trigger. R116-S2: at lg
-            it closes the START (content) column; order-10 preserves its
-            mobile position between the trust grid and the coupon field. */}
-          {productFaqs && (
-            <details className="order-10 max-lg:px-5 lg:px-5 lg:pb-5 rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
-              <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
-                <span>الأسئلة الشائعة</span>
-                <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
-              </summary>
-              <div className="border-t border-border/30 divide-y divide-border/30">
-                {productFaqs.map((faq, idx) => (
-                  <details key={idx} className="group/q">
-                    <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
-                      <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
-                      <span className="flex-1">{faq.question}</span>
-                    </summary>
-                    <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
-                      {faq.answer}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </details>
-          )}
+          {/* R117 (F-3): the FAQ accordion now lives in the END (buy panel)
+            column, directly after the trust grid — moving it there made
+            the mobile DOM/reading order match the visual order (it used
+            to sit here in DOM, right after the features list, while
+            rendering visually after the trust grid — a WCAG 1.3.2
+            divergence). See the R117 (F-3) comment at its new home. */}
         </section>
 
         {/* R116-S2: END column — at lg this is the sticky buy panel
-          (selector → price → usage → error → trust → CTA); below lg it
-          dissolves (max-lg:contents) so the blocks keep their exact
-          pre-split mobile order via flex order-5..order-12. */}
+          (selector → price → usage → error → trust → FAQ → coupon → CTA —
+          the FAQ joined this column in R117 F-3 so mobile DOM order matches
+          the visual order); below lg it dissolves (max-lg:contents) so the
+          blocks keep their exact pre-split mobile order via flex
+          order-5..order-12. */}
         <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
           <div className="max-lg:contents lg:p-5 lg:space-y-4">
             {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
@@ -1182,7 +1173,7 @@ export default function ProductPage() {
               products skip the selector entirely (their price block IS the
               variant). Touch targets ≥ 44px, high-contrast selected state. */}
             {sortedVariants.length > 1 && (
-              <div className="order-5">
+              <div className="order-5 max-lg:px-5">
                 <VariantSelector
                   variants={sortedVariants}
                   selectedId={selectedVariant?.id ?? null}
@@ -1192,7 +1183,10 @@ export default function ProductPage() {
             )}
 
             {/* Price + stock */}
-            <div className="order-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
+            {/* R117 (F-1): max-lg:mx-5 restores the 20px side gutter the
+              pre-split p-5 container gave this tinted box on mobile —
+              mx (not px) so the gutter sits OUTSIDE the rounded border. */}
+            <div className="order-6 max-lg:mx-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
               <div className="flex-1">
                 <div className="text-3xl font-bold text-primary leading-none tabular-nums">
                   {formatCurrency(displayPrice)}
@@ -1239,7 +1233,7 @@ export default function ProductPage() {
 
             {/* Usage terms */}
             {product.usage_terms && (
-              <div className="order-7 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
+              <div className="order-7 max-lg:mx-5 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{product.usage_terms}</span>
               </div>
@@ -1249,7 +1243,7 @@ export default function ProductPage() {
             {error && (
               <div
                 role="alert"
-                className="order-8 flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
+                className="order-8 max-lg:mx-5 flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
@@ -1257,7 +1251,7 @@ export default function ProductPage() {
             )}
 
             {/* Trust signals */}
-            <div className="order-9 grid grid-cols-3 gap-2">
+            <div className="order-9 max-lg:px-5 grid grid-cols-3 gap-2">
               {TRUST_SIGNALS.map((item) => (
                 <div
                   key={item.label}
@@ -1272,9 +1266,41 @@ export default function ProductPage() {
               ))}
             </div>
 
+            {/* R117 (F-3): FAQ moved here from the START column so the
+              mobile DOM/reading/Tab order matches the visual order
+              (WCAG 1.3.2 / 2.4.3) — pre-R117 it sat in DOM right after
+              the features list while visually rendering after this trust
+              grid, so keyboard users Tabbed from features straight to a
+              visually distant block and back up. order-10 keeps it in
+              the same visual slot at <lg; at lg it now closes the buy
+              panel column under the trust grid. The section's lg:p-5 +
+              space-y-4 provide desktop spacing; max-lg:mx-5 is the
+              mobile gutter (R117 F-1 — mx, outside the bordered box). */}
+            {productFaqs && (
+              <details className="order-10 max-lg:mx-5 rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
+                <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
+                  <span>الأسئلة الشائعة</span>
+                  <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
+                </summary>
+                <div className="border-t border-border/30 divide-y divide-border/30">
+                  {productFaqs.map((faq, idx) => (
+                    <details key={idx} className="group/q">
+                      <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
+                        <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
+                        <span className="flex-1">{faq.question}</span>
+                      </summary>
+                      <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
+                        {faq.answer}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </details>
+            )}
+
             {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
             {token && (
-              <div className="order-11 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
+              <div className="order-11 max-lg:mx-5 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
                 <CouponField
                   token={token}
                   couponInput={couponInput}
@@ -1289,7 +1315,7 @@ export default function ProductPage() {
             )}
 
             {/* CTA — desktop only (mobile uses sticky bar) */}
-            <div className="order-12 hidden sm:block">
+            <div className="order-12 max-lg:px-5 hidden sm:block">
               <CtaBlock
                 token={token}
                 product={product}
@@ -1333,6 +1359,18 @@ export default function ProductPage() {
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
         className={`sm:hidden z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
+          stickyBarHiddenByKeyboard
+            ? /* R117 (F-2): the iOS virtual keyboard was covering the fixed
+                 buy bar — the hook value existed since R116 but was never
+                 consumed, so the bar stayed put under the keyboard. */
+              "hidden"
+            : ""
+        } ${
+          /* R117 (F-2): pure-CSS fallback for very short viewports
+             (phone landscape) where the keyboard-visibility hook can't
+             help — the bar would eat half the screen. */
+          "[@media(max-height:480px)]:hidden"
+        } ${
           token
             ? "fixed left-0 right-0 mobile-sticky-above-nav pb-3"
             : /* 96-F4 (R96 A1 M11): guests get neither clearance utility
@@ -1437,7 +1475,7 @@ function CouponField({
                mirror checkout's coupon field (Enter already validates). */
             autoComplete="off"
             enterKeyHint="send"
-            className="pr-9 h-9 text-base md:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            className="pr-9 h-11 text-base md:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
             disabled={!!couponResult}
           />
         </div>
@@ -1445,7 +1483,7 @@ function CouponField({
           <button
             onClick={onCouponClear}
             aria-label="إزالة الكوبون"
-            className="h-9 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
+            className="min-h-11 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1453,7 +1491,7 @@ function CouponField({
           <button
             onClick={onCouponValidate}
             disabled={!couponInput.trim() || couponValidating}
-            className="h-9 px-3 rounded-lg bg-muted/50 border border-border/60 text-xs font-bold hover:bg-muted hover:border-border transition-all press-spring disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-11 px-3 rounded-lg bg-muted/50 border border-border/60 text-xs font-bold hover:bg-muted hover:border-border transition-all press-spring disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {couponValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "تحقق"}
           </button>

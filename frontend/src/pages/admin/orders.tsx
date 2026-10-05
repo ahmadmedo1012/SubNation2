@@ -63,6 +63,10 @@ interface OrderCredentials {
   delivered_email: string | null;
   delivered_password: string | null;
   delivered_extra_details: string | null;
+  /** R117 (A1-P6): true when the raw columns are populated but every
+   *  decrypt returned null — an ENCRYPTION_KEY mismatch, not "no
+   *  data". The backend only emits it on that exact condition. */
+  decrypt_failed?: boolean;
 }
 
 const BULK_STATUSES = [
@@ -1256,6 +1260,20 @@ export default function AdminOrdersPage() {
                                       تعذّر تحميل بيانات التسليم
                                     </span>
                                   )}
+                                  {/* R117 (A1-P6): raw columns populated but
+                                      every decrypt null — the operator
+                                      needs the ENCRYPTION_KEY signal, not
+                                      a misleading "no data". */}
+                                  {order.has_credentials && creds?.decrypt_failed && (
+                                    <span
+                                      role="alert"
+                                      className="text-destructive font-bold"
+                                    >
+                                      تعذّر فك التشفير — راجع مطابقة
+                                      ENCRYPTION_KEY مع مفتاح التشفير
+                                      الأصلي
+                                    </span>
+                                  )}
                                   {creds?.delivered_email && (
                                     <MaskedCredential
                                       label="البريد"
@@ -1421,11 +1439,25 @@ export default function AdminOrdersPage() {
                               value={creds.delivered_password}
                             />
                           )}
-                          {!creds.delivered_email && !creds.delivered_password && (
-                            <span className="text-xs text-muted-foreground">
-                              لا توجد بيانات تسليم
+                          {creds.decrypt_failed && (
+                            /* R117 (A1-P6): mobile card parity — the
+                               decrypt-failure signal must reach the
+                               phone too, not just the desktop row. */
+                            <span
+                              role="alert"
+                              className="text-xs text-destructive font-bold"
+                            >
+                              تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY
+                              مع مفتاح التشفير الأصلي
                             </span>
                           )}
+                          {!creds.delivered_email &&
+                            !creds.delivered_password &&
+                            !creds.decrypt_failed && (
+                              <span className="text-xs text-muted-foreground">
+                                لا توجد بيانات تسليم
+                              </span>
+                            )}
                         </div>
                       ) : (
                         <div className="mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">

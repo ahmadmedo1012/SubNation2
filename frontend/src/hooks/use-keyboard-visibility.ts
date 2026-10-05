@@ -24,18 +24,38 @@ export function useKeyboardVisibility(): boolean {
     const vv = window.visualViewport;
     if (!vv) return; // jsdom / old browsers — CSS fallback still applies
     let baseline = vv.height;
+    const reanchor = () => {
+      baseline = vv.height;
+      setKeyboardVisible(false);
+    };
     const onResize = () => {
       if (vv.height >= baseline) {
         // Grew back (keyboard closed / rotated to a taller viewport) —
         // re-anchor and restore.
-        baseline = vv.height;
-        setKeyboardVisible(false);
+        reanchor();
         return;
       }
       setKeyboardVisible(baseline - vv.height > 120);
     };
+    // R117 (F-7): a >120px shrink that is NOT a keyboard (portrait →
+    // landscape on a tablet: 1024 → 768) used to latch
+    // keyboardVisible=true forever — the baseline could only re-anchor
+    // on GROWTH past the stale value, which landscape never does.
+    // orientationchange fires after the rotation settles: re-anchor
+    // there too, so a rotation is never mistaken for a held keyboard.
+    // (visualViewport resize + orientationchange both firing is fine —
+    // re-anchor is idempotent.)
+    const onOrientationChange = () => {
+      // Defer one frame: visualViewport settles a tick AFTER the
+      // orientation event on some engines.
+      requestAnimationFrame(reanchor);
+    };
     vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onOrientationChange);
+    return () => {
+      vv.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onOrientationChange);
+    };
   }, []);
 
   return keyboardVisible;

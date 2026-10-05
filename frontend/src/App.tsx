@@ -9,6 +9,7 @@ import { UserSessionWatcher } from "@/lib/user-session";
 import { apiUrl } from "@/lib/api-config";
 import { useTelegramWebAppAutoLogin } from "@/hooks/use-telegram-webapp-auto-login";
 import { useDocumentDirection } from "@/lib/direction";
+import { consumeQuietScrollToTopReset } from "@/lib/navigation-quiet";
 import { ThemeProvider } from "@/lib/theme";
 import { getListProductsQueryKey } from "@workspace/api-client-react";
 import type { Product } from "@workspace/api-client-react";
@@ -524,6 +525,12 @@ export function ScrollToTop() {
   const [location] = useLocation();
   const isFirstRunRef = useRef(true);
   useEffect(() => {
+    // R117 (F-4): programmatic URL rewrites (product.tsx's legacy
+    // numeric-id → slug replaceState) arrive here as location changes —
+    // they must not scroll-to-top or steal focus mid-read. The flag is
+    // one-shot and armed only when the rewrite actually changes the
+    // path, so every REAL navigation keeps its full reset.
+    if (consumeQuietScrollToTopReset()) return;
     window.scrollTo(0, 0);
     // First run is the app BOOT, not a route change — the browser's
     // own page-load focus/announcement already covers it, and a late
@@ -584,9 +591,25 @@ export function RouteAnnouncer() {
     // live region whose text did not change is not announced).
     setAnnouncement("");
 
+    // R117 (F-5): the pre-navigation title. The old 150 ms timer
+    // frequently beat the destination chunk's MetaTags on COLD
+    // navigations — it announced the PREVIOUS page's title, then the
+    // MutationObserver announced the real one when it landed: a
+    // stale + fresh double utterance. Both paths now skip any value
+    // equal to the pre-navigation title: the timer only announces
+    // titles that already CHANGED (warm chunks), the observer only
+    // announces real mutations (cold chunks), and `announced` makes
+    // the win exactly once even when MetaTags upserts several times.
+    // Same-title navigations (rare, zero new information) are silent
+    // by design under this rule.
+    const titleAtNavStart = (document.title || "").trim();
+    let announced = false;
     const announce = () => {
+      if (announced) return;
       const title = (document.title || "").trim();
-      if (title) setAnnouncement(title);
+      if (!title || title === titleAtNavStart) return;
+      announced = true;
+      setAnnouncement(title);
     };
 
     const timer = setTimeout(announce, ROUTE_ANNOUNCE_DELAY_MS);

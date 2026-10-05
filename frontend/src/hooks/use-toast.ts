@@ -139,8 +139,18 @@ function helperInput(
     !isValidElement(second) &&
     !Array.isArray(second)
   ) {
-    const { description, duration, action, id } = second as Omit<ToastInput, "title" | "variant">;
-    return { title, description, duration, action, id, variant };
+    // R117 (F-6): forward the REMAINING sonner options instead of
+    // silently dropping them — a sonner-idiomatic caller passing
+    // onDismiss / onAutoClose / closeButton / invert / position / …
+    // had those swallowed without error. The four destructured keys
+    // stay explicit for the type contract; everything else rides
+    // along unchanged.
+    const { description, duration, action, id, ...rest } = second as Omit<
+      ToastInput,
+      "title" | "variant"
+    > &
+      Record<string, unknown>;
+    return { title, description, duration, action, id, ...(rest as object), variant };
   }
   return { title, description: second, variant };
 }

@@ -134,12 +134,16 @@ describe("RouteAnnouncer — sr-only title announcement (F3-07)", () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByRole("link", { name: "محفظة" }));
-    // 200 ms pass — the chunk is still loading, title unchanged: the
-    // delayed read announced the stale title…
+    // 200 ms pass — the chunk is still loading, title unchanged.
+    // R117 (F-5): the delayed read must stay SILENT on the stale
+    // previous-page title (the old behavior announced it, then the
+    // observer announced the real one — a stale+fresh double
+    // utterance). Only titles that differ from the pre-navigation one
+    // are ever announced.
     await act(async () => {
       vi.advanceTimersByTime(200);
     });
-    expect(screen.getByRole("status")).toHaveTextContent("الصفحة الأولى");
+    expect(screen.getByRole("status")).toHaveTextContent("");
 
     // …then the route mounts and writes its title — the <title>
     // observer must pick it up (MutationObserver path).
@@ -155,7 +159,7 @@ describe("RouteAnnouncer — sr-only title announcement (F3-07)", () => {
     vi.useRealTimers();
   });
 
-  it("re-announces when two routes share the same title (live-region wipe)", async () => {
+  it("stays silent when two routes share the same title (R117 F-5)", async () => {
     vi.useFakeTimers();
     document.title = "SubNation";
     render(<Harness />);
@@ -164,15 +168,19 @@ describe("RouteAnnouncer — sr-only title announcement (F3-07)", () => {
     await act(async () => {
       vi.advanceTimersByTime(200);
     });
-    expect(screen.getByRole("status")).toHaveTextContent("SubNation");
+    // R117 (F-5): a same-title navigation carries no new information —
+    // the pre-R117 wipe+re-announce re-read the identical string,
+    // which the skip-stale rule now (correctly) filters out.
+    expect(screen.getByRole("status")).toHaveTextContent("");
 
-    // Navigate again — the title is IDENTICAL, but the region was
-    // wiped first, so the text change must still register.
+    // A later navigation to a DIFFERENT title still announces.
     fireEvent.click(screen.getByRole("link", { name: "الطلبات" }));
+    document.title = "SubNation — الطلبات";
     await act(async () => {
+      await Promise.resolve();
       vi.advanceTimersByTime(200);
     });
-    expect(screen.getByRole("status")).toHaveTextContent("SubNation");
+    expect(screen.getByRole("status")).toHaveTextContent("SubNation — الطلبات");
     vi.useRealTimers();
   });
 });
