@@ -1,0 +1,1 @@
+ALTER TABLE "wallet_topups" ADD COLUMN "reviewed_by" varchar(100);

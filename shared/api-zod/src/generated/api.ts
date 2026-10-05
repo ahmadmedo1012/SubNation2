@@ -1469,6 +1469,13 @@ has_credentials:false + all nulls (RefundService nulls the
 columns in the refund tx); safeDecrypt passes legacy plaintext
 through unchanged.
 
+R117 (A1-P4): per-admin volume gate — 60 reveals / 10 min
+sliding window; over-budget answers 429 RATE_LIMITED with
+Retry-After 300 and raises a deduped admin alert.
+R117 (A1-P6): decrypt_failed:true appears ONLY when the raw
+columns are populated but every decrypt returned null (an
+ENCRYPTION_KEY mismatch — the UI says so instead of "no data").
+
  * @summary Reveal one order's delivered credentials (requireAdmin + orders scope; audited)
  */
 
@@ -1487,6 +1494,12 @@ export const GetAdminOrderCredentialsResponse = zod.object({
   delivered_email: zod.string().nullish(),
   delivered_password: zod.string().nullish(),
   delivered_extra_details: zod.string().nullish(),
+  decrypt_failed: zod
+    .boolean()
+    .optional()
+    .describe(
+      'R117 (A1-P6): present only when has_credentials is\ntrue but every decrypt came back null — the raw\ncolumns hold ciphertext the current ENCRYPTION_KEY\ncannot decrypt. The honest operator signal (vs.\n\"no data\").\n',
+    ),
 });
 
 /**

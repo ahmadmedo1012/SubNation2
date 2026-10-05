@@ -1900,6 +1900,13 @@ paths:
         has_credentials:false + all nulls (RefundService nulls the
         columns in the refund tx); safeDecrypt passes legacy plaintext
         through unchanged.
+
+        R117 (A1-P4): per-admin volume gate — 60 reveals / 10 min
+        sliding window; over-budget answers 429 RATE_LIMITED with
+        Retry-After 300 and raises a deduped admin alert.
+        R117 (A1-P6): decrypt_failed:true appears ONLY when the raw
+        columns are populated but every decrypt returned null (an
+        ENCRYPTION_KEY mismatch — the UI says so instead of "no data").
       parameters:
         - name: id
           in: path
@@ -1933,6 +1940,14 @@ paths:
                     type: ["string", "null"]
                   delivered_extra_details:
                     type: ["string", "null"]
+                  decrypt_failed:
+                    type: boolean
+                    description: |
+                      R117 (A1-P6): present only when has_credentials is
+                      true but every decrypt came back null — the raw
+                      columns hold ciphertext the current ENCRYPTION_KEY
+                      cannot decrypt. The honest operator signal (vs.
+                      "no data").
                 required: [id, order_code, status, has_credentials]
         "400":
           description: Non-integer id (INVALID_DATA)
@@ -1954,6 +1969,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            R117 (A1-P4): per-admin volume gate — over 60 reveals / 10 min
+            (Retry-After 300; raises a deduped admin alert naming the admin).
           content:
             application/json:
               schema:

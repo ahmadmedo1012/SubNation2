@@ -2172,6 +2172,13 @@ export type GetAdminOrderCredentials200 = {
   delivered_password?: string | null;
   /** @nullable */
   delivered_extra_details?: string | null;
+  /** R117 (A1-P6): present only when has_credentials is
+true but every decrypt came back null — the raw
+columns hold ciphertext the current ENCRYPTION_KEY
+cannot decrypt. The honest operator signal (vs.
+"no data").
+ */
+  decrypt_failed?: boolean;
 };
 
 export type ListAdminTopupsParams = {
