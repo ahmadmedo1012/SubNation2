@@ -45,7 +45,7 @@ import {
 } from "../services/openwa.service";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 import { getConfiguredOrigins } from "../lib/origins";
-import { cacheWrap } from "../lib/cache";
+import { cacheDelete, cacheWrap } from "../lib/cache";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -151,21 +151,36 @@ async function getSetting(key: string): Promise<Record<string, any>> {
   }
 }
 
-async function getAllAuthSettings(): Promise<Map<string, Record<string, any>>> {
+/**
+ * R119-B2 (A3 F-2): returns a PLAIN Record, not a Map. The value this
+ * produces flows through cacheWrap → cacheSet, and cacheSet persists
+ * whatever the loader returned via `JSON.stringify(value)` — and
+ * `JSON.stringify(new Map()) === "{}"`. The in-memory fallback stores the
+ * object reference UNserialized, which is exactly why this stayed dormant
+ * while production ran Redis-less: the Map round-tripped by reference. The
+ * moment REDIS_URL provisions a client (the cache layer auto-activates on
+ * redis ready), every cache HIT inside the 60 s TTL would parse "{}" back
+ * and the provider handler's `.get(...)` below would throw a TypeError →
+ * 500 on the login page's provider list for the rest of each window. A
+ * plain object survives the JSON round-trip identically on both branches;
+ * consumers use index access with a `?? {}` default, which preserves the
+ * exact miss semantics `Map.get()` gave them.
+ */
+async function getAllAuthSettings(): Promise<Record<string, Record<string, any>>> {
   const result = await db.execute(
     sql`SELECT key, value FROM system_settings WHERE key LIKE 'auth.%'`,
   );
   const rows = Array.isArray(result) ? result : ((result as any).rows ?? []);
-  const map = new Map<string, Record<string, any>>();
+  const settings: Record<string, Record<string, any>> = {};
   for (const row of rows) {
     const r = row as any;
     try {
-      map.set(r.key, JSON.parse(String(r.value ?? "{}")));
+      settings[r.key] = JSON.parse(String(r.value ?? "{}"));
     } catch {
-      map.set(r.key, {});
+      settings[r.key] = {};
     }
   }
-  return map;
+  return settings;
 }
 
 async function upsertSetting(key: string, value: Record<string, any>) {
@@ -213,17 +228,40 @@ export const authProviderPublicRouter = Router();
  */
 const COOKIE_SESSION_SENTINEL = "__cookie_session__";
 
+/**
+ * Cache key for the public providers payload (60 s cacheWrap window).
+ * R119-B2: the admin PATCH below invalidates this key after every
+ * upsertSetting — keep the two references in sync (single constant so a
+ * rename can't drift them apart).
+ */
+const AUTH_PROVIDERS_CACHE_KEY = "auth:providers:settings";
+
 // GET /api/auth/providers
+//
+// R119-B2 (A5 F-3) — TTL composition of this header, spelled out so the
+// next editor doesn't have to re-derive it. The response is served from
+// the 60 s cacheWrap window below (origin-side) AND the SPA caches the
+// providers module for 60 s (client-side), so today's composed worst
+// case for a config change to reach the login page is ≈ 120 s — with
+// Cloudflare in DNS-only mode nothing sits between the two. If the edge
+// ever goes PROXIED, s-maxage=60 lets Cloudflare answer from cache for
+// another 60 s and stale-while-revalidate=300 keeps serving the stale
+// body while it revalidates in the background, so the operator-visible
+// window would stretch past 2 min. The PATCH invalidation added in
+// R119-B2 (A3 F-1) bounds the ORIGIN leg of that staleness: the moment
+// an admin save lands, the next cacheWrap read misses and reloads fresh
+// — only the SPA's 60 s module cache (and, if proxied, the edge SWR
+// window) can still show the old provider buttons after that.
 const authProviderCache = (_req: Request, res: Response, next: NextFunction) => {
   res.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
   next();
 };
 
 authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) => {
-  const settingsMap = await cacheWrap("auth:providers:settings", 60, getAllAuthSettings);
+  const settings = await cacheWrap(AUTH_PROVIDERS_CACHE_KEY, 60, getAllAuthSettings);
 
   // Google: fall back to env var if not configured in DB
-  const googleConfig = { ...(settingsMap.get("auth.google") ?? {}) };
+  const googleConfig = { ...(settings["auth.google"] ?? {}) };
   if (!googleConfig.client_id && process.env.GOOGLE_CLIENT_ID) {
     googleConfig.enabled = true;
     googleConfig.client_id = process.env.GOOGLE_CLIENT_ID;
@@ -233,7 +271,7 @@ authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) 
   const firebaseEnabled = process.env.FIREBASE_AUTH_ENABLED === "true";
 
   const providers = PROVIDERS.map((meta) => {
-    const cfg = meta.id === "google" ? googleConfig : (settingsMap.get(`auth.${meta.id}`) ?? {});
+    const cfg = meta.id === "google" ? googleConfig : (settings[`auth.${meta.id}`] ?? {});
     const enabled = !!cfg.enabled;
     // "has_config" = at least one non-secret public field is filled
     const hasConfig = meta.fields.some((f) => !f.isSecret && !!cfg[f.key]);
@@ -1106,10 +1144,10 @@ export const authProviderAdminRouter = Router();
 
 // GET /api/admin/settings/auth
 authProviderAdminRouter.get("/auth", requireAdmin, async (_req, res) => {
-  const settingsMap = await getAllAuthSettings();
+  const settings = await getAllAuthSettings();
 
   const providers = PROVIDERS.map((meta) => {
-    const config = settingsMap.get(`auth.${meta.id}`) ?? {};
+    const config = settings[`auth.${meta.id}`] ?? {};
     return {
       id: meta.id,
       label: meta.label,
@@ -1188,6 +1226,30 @@ authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
   }
 
   await upsertSetting(key, updated);
+
+  // R119-B2 (A3 F-1 / A5 F-1): kill the public providers cache entry the
+  // moment the config write lands. GET /api/auth/providers serves this
+  // key from a 60 s cacheWrap window, so without this a provider disabled
+  // here kept its login button live for up to ~2+ min (60 s origin cache
+  // + 60 s SPA module cache) — an operator disabling a compromised
+  // provider had to wait the window out while users kept clicking
+  // through. cacheDelete is awaited (not fire-and-forget like the audit
+  // log below) so the 200 the admin sees implies the invalidation has
+  // already happened — same posture as the risk-config PUT awaiting
+  // invalidateRiskConfig(). cacheDelete routes every Redis failure into
+  // the memory fallback internally (lib/cache.ts), so the .catch is a
+  // defensive belt only: a cache hiccup must never fail the operator's
+  // save. Worst case on a Redis outage the entry simply lives out its
+  // remaining TTL (bounded staleness, the pre-fix behavior).
+  await cacheDelete(AUTH_PROVIDERS_CACHE_KEY).catch((err) => {
+    logger.warn(
+      {
+        category: "auth.settings",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "[auth-settings] providers-cache invalidation failed after PATCH (payload stays stale until TTL expiry)",
+    );
+  });
 
   void writeAuditLog(req, "settings.auth_provider.update", "settings", null, {
     provider: meta.id,
