@@ -30,7 +30,10 @@
     │  certs — TLS terminates HERE, at origin)
     │  router: subnation.ly / www → subnation
     ▼
- subnation container :8080  (internal only — never a host port)
+ subnation container :3000  (Coolify production shape — PORT=3000 per the
+    │  Wave-1 cutover record; internal only, never a host port. The docker-
+    │  compose bare-VM fallback shape differs: PORT=8080 internal + host bind
+    │  127.0.0.1:3000→8080 — see §4 for the full two-shape port map)
     Express 5, ONE origin serves EVERYTHING:
     ├── SPA static (frontend/dist, Arabic RTL, PWA)
     ├── /api/*            (auth, catalog, checkout, wallet, admin, SEO files)
@@ -76,7 +79,8 @@ starting a new one** (`FINAL_ROLLBACK_RUNBOOK.md` §0).
                                              business schema (boot reconciler
                                              V1-M6…V1-M23; drizzle mirror chain
                                              0015 applied live — 0016 (R118)
-                                             lands next; autosuspend-aware
+                                             has landed, in merge `966d70f`;
+                                             autosuspend-aware
                                              pool: small max, short idle)
  openwa   ──PERSISTENCE_URL (sslmode=require)► same Neon
                                              openwa_sessions (gateway-created,
@@ -95,10 +99,17 @@ queries — nothing keeps Neon awake.
 | 80/tcp | **PUBLIC** | HTTP→HTTPS redirect + Let's Encrypt ACME |
 | 443/tcp | **PUBLIC** | all production traffic (HTTPS + WebSocket) |
 | 8000/tcp | TEMPORARY | Coolify first-boot wizard — closed in both layers after setup |
-| 8080 | internal (docker network) | subnation Express — Traefik-only reach |
-| 2785 | internal (docker network) | openwa gateway — subnation-only reach |
-| 3000/3001 | loopback-only | compose debug binds (`127.0.0.1:3000→8080`, `127.0.0.1:3001→2785`); ABSENT in the Coolify deployment |
+| 3000 | internal (Coolify network) | subnation Express in the **Coolify production app** (`kjxqu…`): `PORT=3000` per the Wave-1 cutover record (`docs/project-plan/10-progress-log.md` "ports 3000") — Traefik-only reach, never a host port |
+| 8080 | internal (docker network) | subnation Express in the **docker-compose bare-VM fallback shape ONLY** (`docker-compose.yml`: `PORT=8080` internal, host bind `127.0.0.1:3000→8080`) — not the Coolify production shape |
+| 2785 | internal (docker network) | openwa gateway — subnation-only reach (both shapes) |
+| 3001 | loopback-only (compose shape) | compose debug bind `127.0.0.1:3001→2785` |
 | 5432, 6379 | nothing listens | Postgres is external (Neon); no Redis exists |
+
+Two port shapes exist — label every mention by host: the **Coolify production
+app** runs `PORT=3000` (Wave-1 cutover record; `00-system-overview.mmd` "PORT=3000");
+the **docker-compose bare-VM fallback topology** (`docker-compose.yml`) runs
+`PORT=8080` internal with a `127.0.0.1:3000→8080` host bind. The rows above
+name which shape each port belongs to.
 
 Two-layer rule: a port is reachable only if BOTH the provider security group
 (e.g. the Contabo firewall, if enabled) and the host iptables/ufw allow it.
@@ -110,7 +121,7 @@ provider-console part to the actual host).
 
 | Holder | Secrets |
 |---|---|
-| subnation resource | `DATABASE_URL` · `SESSION_SECRET` · `ENCRYPTION_KEY` (64 hex) · `ADMIN_JWT_SECRET` (≠ session) · `WHATSAPP_OTP_API_KEY` (+ optional integrations) |
+| subnation resource | `DATABASE_URL` · `SESSION_SECRET` · `ENCRYPTION_KEY` (64 hex) · `ENCRYPTION_KEY_PREV` (optional — decrypt-only rotation fallback, R118 crypto v2; drop after the re-encrypt job drains all v1+v2 blobs) · `ADMIN_JWT_SECRET` (≠ session) · `WHATSAPP_OTP_API_KEY` (+ optional integrations) |
 | openwa resource | `OPENWA_API_KEY` · `PERSISTENCE_URL` · `OPENWA_CREDENTIALS_KEY` (generate-ONCE, restore-verbatim) (+ optional `DASHBOARD_*`) |
 
 The ONE cross-service equality: `OPENWA_API_KEY` == `WHATSAPP_OTP_API_KEY`

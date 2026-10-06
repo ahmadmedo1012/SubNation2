@@ -1,8 +1,10 @@
 %% Commerce flow — customer money path (M1–M14 invariants in brackets)
+%% Wave-0 snapshot (2026-10-05) — superseded where contradicted by the merge (966d70f); see docs/project-state/source-of-truth.md.
+%% (Wave-0 stock figures below stay as snapshot evidence; WhatsApp OTP is paired & READY since 2026-10-05.)
 graph LR
     C["Customer"] --> B["browse catalog<br/>GET /api/products (45 live, 3 available today)"]
     B --> P["product page + variant"]
-    P --> AUTH["authenticate<br/>(Google OFF / Telegram LIVE / WhatsApp OTP DOWN)"]
+    P --> AUTH["authenticate<br/>(Google OFF / Telegram LIVE / WhatsApp OTP paired & READY — session subnation-otp, 2026-10-05)"]
     AUTH --> WAL["wallet<br/>topup: mobile_transfer (payment_reference REQUIRED, M3)<br/>or lypay; MAX 3 pending (M2); idempotent create (M5)"]
     WAL -->|operator approves<br/>UI or Telegram bot| CR["wallet credit<br/>TopupService.approve: one tx + CAS (M1)<br/>partial-unique payment_reference (M12)<br/>reviewed_by attribution (V1-M23)"]
     CR --> CO["checkout<br/>ONE atomic transaction (M4):<br/>provider.fulfill() → wallet debit + ledger (M9)<br/>→ loyalty points → coupon → order insert<br/>→ idempotency key claim (M5/M6)"]

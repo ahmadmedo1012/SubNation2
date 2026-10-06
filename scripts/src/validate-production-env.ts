@@ -428,6 +428,9 @@ function main(): void {
     // (r110, 109-q) OTP_HMAC_KEY already arrives via SECRET_VARS — it was
     // listed twice here, double-reporting every placeholder error.
     ...SECRET_VARS,
+    // (R119, A7-F1) optional decrypt-only rotation fallback — catches the
+    // uncomment-the-template-without-filling-it trap during a rotation.
+    "ENCRYPTION_KEY_PREV",
     "DATABASE_URL",
     "PERSISTENCE_URL",
     "OPENWA_API_KEY",
@@ -494,6 +497,29 @@ function main(): void {
     report.checked++;
     if (!isHex64(get("ENCRYPTION_KEY")))
       report.add("error", "ENCRYPTION_KEY", "not exactly 64 hex chars");
+  }
+  // (R119, A7-F1) ENCRYPTION_KEY_PREV — optional decrypt-only rotation
+  // fallback (backend/src/lib/encryption.ts). Unset is the NORMAL state
+  // (no finding); validate only when the operator is mid-rotation.
+  // Deliberately NOT in SECRET_VARS/INDEPENDENT_SECRET_FAMILY: PREV is
+  // related to (not independent of) ENCRYPTION_KEY, so the equality gets
+  // a dedicated rule here instead of the generic cross-equality message
+  // (same precedent as the gateway-parity pair).
+  if (isSet(env, "ENCRYPTION_KEY_PREV")) {
+    report.checked++;
+    if (!isHex64(get("ENCRYPTION_KEY_PREV"))) {
+      report.add(
+        "error",
+        "ENCRYPTION_KEY_PREV",
+        "not exactly 64 hex chars (32 bytes) — the backend WARNs and disables the rotation fallback, so v1 blobs would fail to decrypt",
+      );
+    } else if (secretEqual(get("ENCRYPTION_KEY_PREV"), get("ENCRYPTION_KEY"))) {
+      report.add(
+        "error",
+        "ENCRYPTION_KEY_PREV",
+        "equals ENCRYPTION_KEY — the fallback would retry the same key (rotation no-op); set it to the PREVIOUS key or unset it",
+      );
+    }
   }
   if (isSet(env, "OPENWA_CREDENTIALS_KEY")) {
     report.checked++;

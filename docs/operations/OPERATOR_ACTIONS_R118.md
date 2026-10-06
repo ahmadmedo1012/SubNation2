@@ -1,16 +1,21 @@
 # Operator Actions — R118 (the ordered list)
 
-> Status: CURRENT @ 2026-10-06 (R118). Read this first.
+> Status: CURRENT @ 2026-10-06 (R118; supply-chain + rotation follow-ups
+> re-dated R119, 2026-10-07). Read this first.
 > Every item carries its evidence anchor (`docs/inspection-r118/*`). Live
-> truth this list was written against (verified R118, 2026-10-06):
+> truth this list was written against (verified R118, 2026-10-06;
+> deployment state re-verified R119):
 > production **LIVE** at https://subnation.ly (Contabo VM + Coolify +
 > Traefik + Let's Encrypt at origin; Neon Postgres 17 us-east-1, pooled;
 > Cloudflare DNS-only) · single admin `ahmadmedo` (username login + argon2,
 > TOTP implemented but **not enrolled**) · sellable stock = **3 placeholder
 > units** (inventory rows 79/80/81 — `extra_details` only, uploaded
-> 2026-10-05) + 42 active products with zero stock · **live deploy is
-> older than `main`** (the R116→R118 chain awaits deploy) · www and apex
-> both serve 200 (301 www→apex recommended).
+> 2026-10-05) + 42 active products with zero stock · **`main` is now ahead
+> again**: the R118 chain + the waves merge (966d70f) pushed 2026-10-06
+> 17:23Z via the push-to-deploy webhook (live healthz ok, no SHA exposed
+> externally — confirm the live `GIT_SHA` in the Coolify dashboard before
+> ticking action 1) · www and apex both serve 200 (301 www→apex
+> recommended).
 
 **Launch blockers: actions 1–3.** The store cannot sell safely, and the
 admin account is single-factor, until those three are done. 4–5 are

@@ -76,17 +76,27 @@ Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch prote
 
 ### 4. Render service config — LEGACY (pre-migration)
 
-`render.yaml` checked in. Re-applying via `render blueprint apply` recreates the web service definition modulo `sync: false` secrets, which must be repopulated from password manager. Post-migration the stack definition is `docker-compose.yml` + Coolify (re-provision from `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git).
+`render.yaml` preserved in git history (deleted from the working tree
+2026-10-05). Re-applying via `render blueprint apply` recreates the web
+service definition modulo `sync: false` secrets, which must be repopulated
+from password manager. Post-migration the stack definition is
+`docker-compose.yml` + Coolify (re-provision from
+`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git).
 
 ### 5. Secrets
 
-Owner-managed. Rotation procedure: rotate from the source of truth for each secret
-(e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
-Sentry dashboard for DSNs) then update the matching Render env var and
-redeploy. The list of `sync: false` keys on the Render service *(r99 —
-regenerated verbatim from render.yaml; the previous list predated rounds
-93–98 and was missing over half the keys — dangerous in the rotation
-scenario below, where this list IS the runbook)*:
+Owner-managed. Rotation procedure: rotate from the source of truth for each
+secret (e.g. BotFather for TELEGRAM_BOT_TOKEN, Neon console for DATABASE_URL,
+Sentry dashboard for DSNs), then update the matching value on the CURRENT
+surface — the Coolify env panel / the compose `.env` — and redeploy.
+*(LEGACY — Render, pre-migration: this procedure said "update the matching
+Render env var and redeploy", and the `sync: false` list below was the
+rotation checklist. `ENCRYPTION_KEY` rotation now has a documented 3-step
+`ENCRYPTION_KEY_PREV` procedure — see the ENCRYPTION_KEY_PREV block in
+`config/env.example`.)* The list of `sync: false` keys on the Render
+service *(r99 — regenerated verbatim from render.yaml; the previous list
+predated rounds 93–98 and was missing over half the keys — dangerous in
+the rotation scenario, where this list WAS the runbook)*:
 
 - **Core secrets**: `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_JWT_SECRET`, `ENCRYPTION_KEY`, `METRICS_ADMIN_TOKEN`
 - **Origins**: `FRONTEND_ORIGINS`, `VITE_SENTRY_DSN`, `VITE_GSC_VERIFICATION`, `VITE_GA_TRACKING_ID`
@@ -98,7 +108,8 @@ scenario below, where this list IS the runbook)*:
 - **Dashboards/alerting**: `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`, `ALERTING_RUNBOOK_URL`, `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL`
 - **AI (optional — off by default)**: copilot: `COPILOT_PROVIDER`, `COPILOT_API_KEY`, `COPILOT_MODEL`, `COPILOT_BASE_URL` — dormant until all four are set; runs in-process, NO worker tier needed. Enrichment caps: `ENRICHMENT_DAILY_TOKEN_CAP`, `ENRICHMENT_PER_RUN_CAP` — additionally gated on `WORKER_TIER=true`, which the single-instance topology never sets → permanently inert (see `docs/deployment/FINAL_PRODUCTION_ENV.md`)
 
-Keep these in a password manager (1Password / Bitwarden) with the service entry "SubNation Render".
+Keep these in a password manager (1Password / Bitwarden) with the service
+entry "SubNation (Coolify/compose env)".
 
 ## Automated backups (r110 — host cron on the VM)
 

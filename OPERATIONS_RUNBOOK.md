@@ -35,7 +35,7 @@ explain ANALYZE SELECT …  (via query_render_postgres or psql)
 
 The four dashboard deep links in the admin observability panel
 (`/admin/system`) and alert footers are env-gated: `SENTRY_DASHBOARD_URL`, `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`,
-`ALERTING_RUNBOOK_URL` (render.yaml `sync: false`). Unset = the panel hides
+`ALERTING_RUNBOOK_URL`. Unset = the panel hides
 the link — see `config/env.example` (observability section) for the annotated
 rows.
 
@@ -202,8 +202,9 @@ ORDER BY duration DESC;
    - Pick the latest `live` / `succeeded` deploy that pre-dates the regression.
 2. **Trigger rollback:**
    - Render dashboard → service → Deploys → "Rollback" on the chosen deploy.
-   - Render MCP equivalent forthcoming once `RENDER_API_KEY` is wired into
-     the admin observability backend.
+   - Render MCP equivalent — ABANDONED with the Render retirement
+     (2026-10-05): `RENDER_API_KEY` will never be wired into the admin
+     observability backend.
 3. **Verify:**
    - `GET /api/healthz/ready` (admin JWT required) returns `{status:"ok"}`
      within 30 s.
@@ -502,8 +503,8 @@ backend's helmet CSP — the domain was NOT served by Vercel.
 
 ## 10. WhatsApp OTP — operator knob
 
-`WHATSAPP_OTP_SETTLE_MS` (default 45 000 ms, clamped 0–300 000; `render.yaml`
-`sync: false`) tunes the round-96 settle gate: how long a freshly-paired
+`WHATSAPP_OTP_SETTLE_MS` (default 45 000 ms, clamped 0–300 000) tunes the
+round-96 settle gate: how long a freshly-paired
 OpenWA session must wait after linking before it may dispatch OTPs (pair-code
 key propagation takes 10–30 s; a QR device-list rebuild can take longer).
 Full annotated reference: `config/env.example` (WhatsApp OTP section).

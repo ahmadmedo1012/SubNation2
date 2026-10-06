@@ -3,8 +3,10 @@
 # SubNation — FINAL CUTOVER PRE-FLIGHT (R112 §7)
 # =============================================================================
 # Everything that can be validated BEFORE the DNS cutover, in one script.
-# Run it on the Oracle VM (or anywhere Docker + the repo + .env exist) after
-# Coolify brings the stack up but BEFORE you touch Cloudflare.
+# Run it on the production VM (originally the Oracle VM; live host since
+# 2026-10 = a Contabo VM, per the R117 live probe — or anywhere Docker +
+# the repo + .env exist) after Coolify brings the stack up but BEFORE you
+# touch Cloudflare.
 #
 # Sections:
 #   A. architecture / Docker / Compose / binaries
@@ -47,8 +49,12 @@ step() { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 step "A. machine: architecture / docker / compose / binaries"
 ARCH="$(uname -m)"
 case "$ARCH" in
-  aarch64|arm64) ok "architecture: ${ARCH} (Oracle Ampere A1 target — native)" ;;
-  x86_64)        warn "architecture: ${ARCH} — this is NOT the ARM64 production target; run docker-verify.sh --arm64 for a cross-build proof, or run this preflight on the VM itself" ;;
+  # (R119, audit A7-F9) Contabo-era truth: the live production host since
+  # 2026-10 is a Contabo x86_64 VM (R117 live probe; the original target
+  # was Oracle Ampere A1 ARM64). BOTH arches are supported — the images
+  # are multi-arch; docker-verify.sh --arm64 proves the ARM64 cross-build.
+  x86_64)        ok "architecture: ${ARCH} (Contabo VM — the live production shape since 2026-10)" ;;
+  aarch64|arm64) ok "architecture: ${ARCH} (ARM64 — the original Oracle Ampere A1 target; supported multi-arch insurance)" ;;
   *)             bad "architecture: ${ARCH} — unsupported for production" ;;
 esac
 if command -v docker >/dev/null 2>&1; then

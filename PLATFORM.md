@@ -182,6 +182,12 @@ Admin (requires admin role):
 
 ## WhatsApp OTP
 
+> **LEGACY (Render/Vercel era) entry points below.** Current: the gateway
+> is internal at `http://openwa:2785` (Coolify compose network — never
+> exposed), the key lives in the Coolify env / compose `.env`
+> (`WHATSAPP_OTP_API_KEY`), and the admin UI is
+> `https://subnation.ly/admin/whatsapp`.
+
 - Session name: subnation-otp
 - Gateway base URL: https://openwa-gateway-7aaa.onrender.com
 - API key: stored in Render env `WHATSAPP_OTP_API_KEY` (server-side only)

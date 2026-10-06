@@ -8,7 +8,10 @@
 > Index written **R118 (2026-10-06)**, executing the proposal in
 > `docs/inspection-r118/R118-A7-docs.md` §5 (96 files inventoried at `ef3d0c3`;
 > this index reconciles it against the live tree: +7 `inspection-r118/` reports
-> + 4 new operations docs + this file = **108 markdown files** under `docs/`).
+> + 4 new operations docs + this file = 108 markdown files under `docs/` at
+> R118). **Post-merge recount (2026-10-07, R119-B4): merge `966d70f` added the
+> three mission-era trees (+15 md) — total markdown under `docs/` is now
+> 123**; see "Mission-era truth maps" below and Index stats.
 > Live baseline for every "current state" claim: `https://subnation.ly` 200,
 > Contabo VM + Coolify + Traefik + Let's Encrypt at origin, Neon Postgres 17
 > (us-east-1, pooled endpoint), Cloudflare **DNS-only (grey)** — verified
@@ -97,6 +100,23 @@ action list for this round — deploy, stock, TOTP are launch-blocking).
 `R118-A6-performance.md` (latency census, plans, pool math) ·
 `R118-A7-docs.md` (this docs audit + the index proposal this file executes).
 
+## Mission-era truth maps (waves line, merged in `966d70f`) — 3 trees
+
+> **Pointer hierarchy (declared once, of record):** `docs/README.md` (this
+> index) = the front door → `docs/project-state/source-of-truth.md` = current
+> live state → `docs/architecture/FINAL_*` = topology/capacity records.
+
+These three trees are the mission-era truth maps (Wave-0..10 snapshot,
+2026-10-05; live truth reconciled post-merge `966d70f` — discrepancies are
+recorded in `project-state/source-of-truth.md` "Known contradictions" #7,
+R119-B4 pass 2026-10-07):
+
+| Tree | Files | What it is |
+|---|---|---|
+| `project-graph/` | 13 `.mmd` (00–12) | Mermaid truth maps: system overview, repository, runtime, deployment (CURRENT map = `03-deployment-target.mmd`; the stale pre-Wave-1 `03-deployment.mmd` was deleted 2026-10-07, preserved in git history), data model, authentication, commerce flow, WhatsApp flow, admin capabilities, provider flow, external integrations, env/secrets, source-of-truth |
+| `project-plan/` | 11 `.md` (00–10) | Master plan (all waves DONE 2026-10-05), current/target state, dependency graph, critical path, execution waves, verification matrix, deployment plan, rollback plan, external blockers (rows 3 + 6 RESOLVED), append-only progress log (ends with the `966d70f` merge record) |
+| `project-state/` | 4 `.md` | `source-of-truth.md` (current live state — part of the pointer hierarchy above), `external-integrations-final.md` (Vercel DELETED / Render RETIRED record, Coolify production authority, WhatsApp `subnation-otp` paired & READY), `wave-345-audit.md`, `embronic-adapter-design.md` |
+
 ## STALE (truth-pass or re-scope before trusting) — 6 files under docs/
 
 > The **R118-B4a truth pass landed 2026-10-06**: the two repo-root historical
@@ -157,8 +177,9 @@ dated files get the ARCHIVED banner instead of deletion).
 - **STALE: 6** under `docs/` (+2 repo-root historical snapshots + the two
   root front-door docs named in the header).
 - **ARCHIVED proposals: 63.**
-- Total markdown under `docs/`: 103 pre-R118 + 5 new (this index + 4
-  operations docs) = **108**.
+- Total markdown under `docs/`: 108 at R118 + 15 from the merged waves line
+  (11 `project-plan/` + 4 `project-state/`) = **123** (recounted 2026-10-07,
+  R119-B4; excludes the 13 `.mmd` graph files under `project-graph/`).
 
 ## House rules (from A7 §5, binding for new docs)
 

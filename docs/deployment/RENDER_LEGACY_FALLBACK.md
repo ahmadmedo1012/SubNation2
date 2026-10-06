@@ -1,5 +1,10 @@
 # Render Legacy Fallback (§24 — the emergency-only truth)
 
+> **(R119-B5 note)** `render.yaml` was DELETED from the repo on 2026-10-05
+> (`62ee976`) — the references to it below are recoverable from **git
+> history only**. This doc stays as a historical emergency reference; the
+> live rollback path is `FINAL_ROLLBACK_RUNBOOK.md`.
+
 > The Render account is NOT the production target. It is the retired legacy
 > stack, kept (suspended) as a paper fallback only. Production (live since
 > the 2026-10 cutover) = Cloudflare (DNS-only, grey) → self-hosted VM

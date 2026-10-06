@@ -84,6 +84,12 @@ services:
       args:
         # R107: neutral release identity — log/health/Sentry version tags.
         GIT_SHA: ${GIT_SHA:-}
+        # R119 (audit A7-F4): Coolify injects SOURCE_COMMIT automatically
+        # (include_source_commit_in_build); passing it here too gives
+        # local/bare-VM compose builds the same release identity (the
+        # Dockerfile falls back GIT_SHA → SOURCE_COMMIT). Harmless no-op
+        # for Coolify and when unset.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
         # Leave every VITE_* API/socket var EMPTY (single-origin contract).
         # Public, non-secret build-time overrides only (optional):
         VITE_APP_ORIGIN: ${VITE_APP_ORIGIN:-}

@@ -30,7 +30,9 @@
       password). VM prep — firewall contract (public 22/80/443 only), swap,
       Docker: `docs/deployment/ORACLE_FINAL_SETUP.md`.
 - [ ] GitHub connected to Coolify (source-control providers) with a token
-      that can READ `ahmadmedo1012/SubNation2` (private repo; read-only PAT).
+      that can READ `ahmadmedo1012/SubNation2` (repo is PUBLIC since the
+      wave-1 cutover — API `private:false`, verified 2026-10-07; a token is
+      only needed if you flip it back to private; read-only if so).
 - [ ] Secrets generated ONCE, stored offline:
       `./scripts/generate-production-secrets.sh` → SESSION_SECRET, ENCRYPTION_KEY
       (64 hex), ADMIN_JWT_SECRET, OPENWA_API_KEY, OPENWA_CREDENTIALS_KEY, plus

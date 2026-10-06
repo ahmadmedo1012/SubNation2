@@ -3,7 +3,7 @@ graph TB
     subgraph LIVE["LIVE in production"]
         NEON["Neon PostgreSQL<br/>calm-art-99771185<br/>ep-spring-term-avwgxrte-pooler<br/>DATABASE_URL + PERSISTENCE_URL"]
         TG["Telegram<br/>login (DB-config) LIVE ·<br/>alert bot env unset = degraded channel ·<br/>approval webhook disabled (env unset)"]
-        WA["OpenWA / WhatsApp<br/>gateway healthy, ZERO sessions → OTP DOWN"]
+        WA["OpenWA / WhatsApp<br/>gateway healthy · session subnation-otp<br/>paired & READY since 2026-10-05"]
         GSC2["Let's Encrypt via Traefik<br/>cert for subnation.ly + www"]
     end
 
@@ -15,8 +15,8 @@ graph TB
         ALERTS["Discord/generic alert webhooks — unset"]
     end
 
-    subgraph DEAD["DEAD / FROZEN"]
-        RENDER["Render — services suspended (r115-db event)<br/>render.yaml = frozen legacy rollback doc<br/>RENDER_* env reads = graceful fallbacks only"]
-        VERCEL["Vercel — frozen vercel.json (rollback reference)<br/>VERCEL_FRONTEND_ORIGIN folded into origins w/ boot warn<br/>GitHub App integration = operator task to disconnect"]
+    subgraph DEAD["DEAD / RETIRED"]
+        RENDER["Render — RETIRED (services suspended, r115-db event)<br/>render.yaml removed from repo 2026-10-05 (62ee976)<br/>— preserved in git history only<br/>RENDER_* env reads = graceful fallbacks only"]
+        VERCEL["Vercel — project + GitHub App DELETED (2026-10-05)<br/>vercel.json removed from repo (62ee976)<br/>— preserved in git history only<br/>VERCEL_FRONTEND_ORIGIN folded into origins w/ boot warn"]
         ORACLE["Oracle A1 migration path — ABANDONED<br/>docs describe it; reality is Contabo x86_64"]
     end

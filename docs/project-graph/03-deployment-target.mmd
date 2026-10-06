@@ -1,10 +1,12 @@
-%% Deployment chain — TARGET (Wave 1): Coolify is the real deployment authority
+%% Deployment chain — CURRENT: Coolify is the deployment authority since Wave 1 (2026-10-05)
+%% (This was the "TARGET (Wave 1)" map at Wave 0; Wave 1 executed it, so it now describes the
+%%  live chain. The pre-Wave-1 panel it replaced is preserved in git history as 03-deployment.mmd.)
 graph TB
     DEV["git push (verified waves)"] --> GH["GitHub main<br/>single canonical branch"]
-    GH -->|"Coolify git source (deploy key)<br/>git@github.com:ahmadmedo1012/SubNation2.git#main"| CL["Coolify build (dockerfile pack)<br/>repo-root Dockerfile<br/>build args: GIT_SHA + VITE_*"]
+    GH -->|"Coolify git source<br/>https://github.com/ahmadmedo1012/SubNation2.git#main<br/>(public repo — no credentials needed)<br/>app kjxqu3ytcnwb1btmlw56la5r"| CL["Coolify build (dockerfile pack)<br/>repo-root Dockerfile<br/>build args: GIT_SHA + VITE_*"]
     CL -->|"GIT_SHA=<short sha>"| IMG["image built on VPS docker"]
     IMG --> CN["container recreated<br/>healthcheck /api/healthz"]
-    CN --> LIVE["subnation.ly via Traefik<br/>live SHA verifiable outside + inside"]
+    CN --> LIVE["subnation.ly via Traefik<br/>live SHA verifiable in Coolify record<br/>+ container env (healthz exposes no SHA)"]
     LIVE -->|"GIT_SHA mismatch → rollback:<br/>redeploy previous deployment"| CN
 
     MAN["No manual image push<br/>No fake DB status writes<br/>No hand-edited generated compose"] -.->|enforced| CL

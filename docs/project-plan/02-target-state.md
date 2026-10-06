@@ -1,5 +1,10 @@
 # 02 — Target State
 
+> **Status: ACHIEVED 2026-10-05** (Waves 0–10 executed — see `10-progress-log.md`). Wave-0-era target
+> snapshot, superseded where contradicted by the merge (`966d70f`); see
+> `docs/project-state/source-of-truth.md`. One execution note: the git source is the public HTTPS
+> URL `https://github.com/ahmadmedo1012/SubNation2.git#main` (no deploy key needed — repo is public).
+
 ## Production topology (final)
 
 ```
@@ -33,5 +38,5 @@ Internet → subnation.ly (Cloudflare DNS-only)
   behind the interface with secrets server-side and zero provider leakage to public surfaces.
 - Security: semgrep/trivy/osv/gitleaks passes green; authz/IDOR/CSRF/CORS/rate-limit reviewed.
 - QA: Playwright green across desktop/mobile/iPhone/RTL/dark-light on money + auth + admin paths.
-- Docs: `docs/project-*` truth maps + runbooks match reality; Render/Vercel files remain clearly
-  labeled frozen references only.
+- Docs: `docs/project-*` truth maps + runbooks match reality; the repo files `render.yaml` /
+  `vercel.json` / `deploy.yml` were removed 2026-10-05 (`62ee976`) — preserved in git history only.

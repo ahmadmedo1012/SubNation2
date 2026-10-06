@@ -1,5 +1,10 @@
 # 01 — Current State (Wave 0 evidence, 2026-10-05)
 
+> Wave-0 snapshot (2026-10-05) — superseded where contradicted by the merge (`966d70f`); see
+> `docs/project-state/source-of-truth.md` (contradiction #7). WhatsApp OTP is paired & READY
+> since 2026-10-05; the app-2 dockerimage deployment described below was deleted at the
+> Wave-1 cutover.
+
 ## Repository
 
 - Branch `main` at `ef3d0c3` = GitHub main (synced after Wave 0; local repo was 4 commits behind —
@@ -11,7 +16,8 @@
   frontend 751 tests — all pass individually; ~4 backend + ~3 frontend tests flake only under full
   parallel load (timing-sensitive scheduler/whatsapp-readiness/admin-layout tests) — deflake later
   (P3). Build exit 0 (entry 27.12 KB gz, PWA precache 10).
-- CI: billing-disabled. `docker.yml` GHCR workflow never run. `deploy.yml` Render hook OFF.
+- CI: billing-disabled. `docker.yml` GHCR workflow never run. (`deploy.yml` Render hook was
+  removed from the repo 2026-10-05, `62ee976` — preserved in git history only.)
 
 ## Production (verified live)
 
@@ -37,13 +43,16 @@
 - `GET /api/auth/providers` → telegram only (enabled, bot SubNation_USERS_bot) + whatsapp_enabled.
 - `POST /api/auth/firebase/session` → 503 "Firebase غير مهيأة" (backend Admin SDK not configured).
 - `POST /api/auth/telegram` with garbage → `bad_signature` (verification layer live and configured).
-- WhatsApp: gateway `/api/sessions` → `[]`; no session ⇒ OTP path cannot deliver.
+- WhatsApp: gateway `/api/sessions` → `[]` at Wave 0 (no session ⇒ OTP path cannot deliver).
+  **Superseded 2026-10-05**: session `subnation-otp` paired & READY since Wave 2
+  (see `docs/project-state/external-integrations-final.md`).
 
 ## Known issue backlog entering Wave 1
 
 1. Coolify build authority (P0 for mission) — Wave 1.
 2. Stuck/failed fake deployment rows — Wave 1 cleanup.
 3. WhatsApp OTP down (session pairing) — operator gate; everything else verifiable — Wave 2.
+   **RESOLVED 2026-10-05**: session `subnation-otp` paired & READY.
 4. Google login off (creds) — operator gate — Wave 5.
 5. Store nearly unsellable (6 units, 3 under archived tests) — operator gate (restock/Embronic) — Wave 4/6 context.
 6. Flaky-under-load tests — P3 — Wave 8/9.

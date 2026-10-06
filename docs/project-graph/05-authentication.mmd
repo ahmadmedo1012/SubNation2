@@ -4,7 +4,8 @@ graph TB
         direction TB
         G["Google / Firebase<br/>frontend: signInWithPopup (firebase v9, dynamic import)<br/>backend: verifyFirebaseIdToken (admin SDK, checkRevoked)<br/>STATUS: OFF in production — no FIREBASE_* env,<br/>live probe: 503 'Firebase غير مهيأة'<br/>PRODUCTION BLOCKER: needs service-account creds"]
         T["Telegram<br/>Login Widget + WebApp + callback<br/>HMAC-SHA256 by SHA256(botToken), 30-min freshness,<br/>Redis-or-memory replay guard<br/>STATUS: LIVE — config in system_settings DB<br/>(bot SubNation_USERS_bot / bot_id 8884466008)"]
-        W["WhatsApp OTP<br/>POST /auth/whatsapp/start|verify → whatsapp-otp.service<br/>per-phone 60s cooldown, 5/hour, 5 attempts<br/>delivery via OpenWA gateway (X-API-Key)<br/>STATUS: DOWN — openwa_sessions table EMPTY,<br/>no session paired (operator must QR-pair)"]
+        W["WhatsApp OTP<br/>POST /auth/whatsapp/start|verify → whatsapp-otp.service<br/>per-phone 60s cooldown, 5/hour, 5 attempts<br/>delivery via OpenWA gateway (X-API-Key)<br/>STATUS: READY — session subnation-otp<br/>paired & READY since 2026-10-05 (Wave 2)"]
+        CACHE["GET /api/auth/providers — 60s server cache<br/>cacheWrap('auth:providers:settings', 60)<br/>+ Cache-Control s-maxage=60, SWR 300<br/>(merged R118 line, c37ddd5)"]
     end
 
     subgraph AdminAuth["Admin authentication"]
@@ -20,4 +21,4 @@ graph TB
     W --> S
 
     classDef down fill:#fee,stroke:#c00
-    class G,W down
+    class G down

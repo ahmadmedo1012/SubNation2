@@ -7,7 +7,7 @@ graph TB
 
     subgraph Runtime["Runtime state"]
         COOLIFY["Coolify (169.58.100.161:8000, v4.3.23)<br/>application config + env + deployments<br/>DB: coolify-db (root SSH access)"]
-        IMAGE["ghcr.io/ahmadmedo1012/subnation2 — image artifacts<br/>(Wave 1 target: built BY Coolify from Git)"]
+        IMAGE["ghcr.io/ahmadmedo1012/subnation2 — image artifacts<br/>(since Wave 1: built BY Coolify from Git —<br/>see 03-deployment-target.mmd, the CURRENT deployment map)"]
         CONTAINER["Docker container — ephemeral runtime"]
     end
 
@@ -18,6 +18,7 @@ graph TB
     subgraph Docs["Documentation"]
         HERMES[".hermes.md — agent contract"]
         DOCS["docs/ — topology (FINAL_PRODUCTION_TOPOLOGY),<br/>money invariants (FINAL_MONEY_INVARIANTS),<br/>env matrix, runbooks"]
+        DEPMAP["docs/project-graph/03-deployment-target.mmd —<br/>CURRENT deployment map (Coolify git-source<br/>chain since Wave 1, 2026-10-05)"]
         GRAPH["docs/project-graph/ + project-state/ + project-plan/<br/>mission-era truth maps"]
     end
 

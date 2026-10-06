@@ -44,9 +44,9 @@
 # in the real environment WIN over the file (so you can point DATABASE_URL
 # at a scratch DB without editing .env). The container then receives the
 # FULL production runtime set (APP_URL, APP_ORIGINS, SINGLE_INSTANCE_MODE,
-# WHATSAPP_OTP_*, optional integrations — everything the app reads), so the
-# verification models the real production environment instead of a stripped
-# dev one. REQUIRED after loading: DATABASE_URL, SESSION_SECRET,
+# WHATSAPP_OTP_*, optional integrations — the RUNTIME_VARS list below), so
+# the verification models the real production environment instead of a
+# stripped dev one. REQUIRED after loading: DATABASE_URL, SESSION_SECRET,
 # ENCRYPTION_KEY, ADMIN_JWT_SECRET, APP_URL, APP_ORIGINS — the harness
 # fails loudly naming exactly what is missing; it never silently
 # substitutes defaults for production requirements.
@@ -88,12 +88,13 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 if [[ -z "$ENV_FILE" && -f "$ROOT_DIR/.env" ]]; then ENV_FILE="$ROOT_DIR/.env"; fi
-# Every runtime variable the production container reads (deploy/
-# env.compose.example is the template; ENVIRONMENT_MATRIX.md the matrix).
-# Anything in this list that ends up SET (file or environment) is passed to
-# the verify container — nothing else ever is.
+# The runtime set from deploy/env.compose.example (the template;
+# ENVIRONMENT_MATRIX.md is the full matrix — optional knobs beyond this
+# list exist and are all unset-safe). Anything in this list that ends up
+# SET (file or environment) is passed to the verify container — nothing
+# else ever is.
 RUNTIME_VARS=(
-  DATABASE_URL SESSION_SECRET ENCRYPTION_KEY ADMIN_JWT_SECRET
+  DATABASE_URL SESSION_SECRET ENCRYPTION_KEY ENCRYPTION_KEY_PREV ADMIN_JWT_SECRET
   APP_URL APP_ORIGINS APP_ORIGIN AUTH_COOKIE_SAMESITE
   SINGLE_INSTANCE_MODE DISABLE_WEB_SCHEDULERS DISABLE_BOOT_MIGRATIONS
   WHATSAPP_OTP_BASE_URL WHATSAPP_OTP_API_KEY WHATSAPP_OTP_SESSION

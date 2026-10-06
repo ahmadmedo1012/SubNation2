@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# (r110) Host-level backup automation for the Oracle VM — the cron wrapper
+# (r110) Host-level backup automation for the production VM (originally
+# the Oracle VM; live host since 2026-10 = a Contabo VM, per the R117 live
+# probe) — the cron wrapper
 # the operator installs so the nightly `pg_dump` actually runs (R109 §27 P1:
 # the project had NO automated backup before cutover).
 #

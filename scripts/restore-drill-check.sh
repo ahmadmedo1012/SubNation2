@@ -12,7 +12,9 @@
 #   - the URL's database part must contain "drill" or "scratch" or "restore"
 #     (whichever naming you chose when creating the scratch DB)
 #
-# Usage (on the Oracle VM, after restoring a dump into a scratch database):
+# Usage (on the production VM — originally the Oracle VM; live host since
+# 2026-10 = a Contabo VM, per the R117 live probe — after restoring a dump
+# into a scratch database):
 #   ./scripts/restore-drill-check.sh "postgresql://user:pass@host:5432/subnation_drill?sslmode=require"
 #
 # Exit codes: 0 = drill database validated · 1 = validation failed ·

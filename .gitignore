@@ -138,3 +138,7 @@ backups/
 .mimosa/
 .playwright-cli/
 frontend/.mimosa/
+# (R119-B5) `.hermes/` is the agent STATE directory (runtime artifacts —
+# never commit). The contract file `.hermes.md` at the repo root stays
+# TRACKED; only the directory is ignored.
+.hermes/

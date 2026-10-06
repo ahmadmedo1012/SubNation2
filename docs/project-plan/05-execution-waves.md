@@ -4,7 +4,7 @@
 Evidence: live probes, VPS inspection, Neon read-only queries, gate suite run, repo sync to
 `ef3d0c3`. Artifacts: `docs/project-graph/00–12`, `docs/project-state/source-of-truth.md`, this plan.
 
-## WAVE 1 — Production deployment correctness (in progress)
+## WAVE 1 — Production deployment correctness ✅ DONE (2026-10-05)
 1. Snapshot Coolify app 2 config (full JSON → VPS `/data/backups/` + local docs dir).
 2. Mint a Coolify API token (Sanctum-format row) → verify API round-trip.
 3. Deploy key: generate ed25519 pair; register public half on GitHub (read-only) via API; register

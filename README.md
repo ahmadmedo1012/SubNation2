@@ -215,6 +215,7 @@ Most important keys:
 | `DATABASE_URL`                   | Postgres connection string (**required**)                                                                                              |
 | `SESSION_SECRET`                 | JWT signing secret (**required in prod**, ≥ 32 chars)                                                                                  |
 | `ENCRYPTION_KEY`                 | AES-256-GCM key (64 hex chars) for inventory credentials                                                                               |
+| `ENCRYPTION_KEY_PREV`            | Optional decrypt-only rotation fallback for `ENCRYPTION_KEY` — set only during rotation, drop after the re-encrypt job drains the old blobs (see `config/env.example`) |
 | `REDIS_URL`                      | Redis connection (**optional** — unset in the target topology; rate-limit/cache/idempotency degrade to in-process fallbacks; the single-instance scheduler mode needs no lease) |
 | `APP_URL` / `APP_ORIGINS`        | Public origin and CORS allow-list                                                                                                      |
 | `FIREBASE_*` / `VITE_FIREBASE_*` | Enable Google Sign-In                                                                                                                  |

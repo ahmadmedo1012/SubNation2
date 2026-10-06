@@ -18,7 +18,8 @@
 #   5. optional off-VM target: BACKUP_PRESIGNED_PUT_URL shape (https, host
 #      present — value never printed)
 #
-# Usage (on the Oracle VM, root or the app user):
+# Usage (on the production VM — originally the Oracle VM; live host since
+# 2026-10 = a Contabo VM, per the R117 live probe — root or the app user):
 #   ./scripts/backup-preflight.sh [ENV_FILE]
 #     ENV_FILE defaults to ./.env next to the repo root (same lookup order
 #     as backup-cron.sh)

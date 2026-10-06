@@ -13,6 +13,8 @@
 Immutable floors: never delete Neon data or openwa volumes; never force-push; never weaken M1–M14;
 never deploy `6caa63b` / `3a2e2e1`.
 
-Wave-1 specific rollback: re-point app 2 back to `source_type=dockerimage`
-(`ghcr.io/ahmadmedo1012/subnation2:coolify-latest` still on the VPS) + redeploy; restore env from
-the preserved snapshot.
+Wave-1 rollback note (superseded 2026-10-05): the pre-Wave-1 dockerimage app (app 2,
+`wbgj7cszizukrlrblncq8by5`, `ghcr.io/ahmadmedo1012/subnation2:coolify-latest`) **no longer
+exists** — it was deleted during the Wave-1 cutover, and that image is frozen pre-R117/R118
+(no crypto v2, no money fixes): it is NOT a rollback asset. Rollback is ALWAYS row 1 of the
+table above: redeploy the previous Coolify deployment.

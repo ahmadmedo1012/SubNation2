@@ -15,7 +15,7 @@ graph TB
     USER["User logging in"] -->|"POST /api/auth/whatsapp/start"| BE
     BE -->|"session cold → 503 gateway_waking<br/>Retry-After 30 (B5-2)"| USER
 
-    STATUS["⚠ LIVE STATE: /api/sessions → []<br/>openwa_sessions table EMPTY<br/>WhatsApp OTP DOWN until a session is<br/>created AND QR-paired (operator-only,<br/>needs the WhatsApp phone)"]
+    STATUS["✅ LIVE STATE (2026-10-05): session subnation-otp<br/>PAIRED & READY — operator completed<br/>pairing 2026-10-05 (Wave 2).<br/>Do NOT recreate/re-pair: one linked device<br/>per credential (single-gateway rule —<br/>re-pairing evicts the live session)"]
 
-    classDef down fill:#fee,stroke:#c00
-    class STATUS down
+    classDef ready fill:#efe,stroke:#0a0
+    class STATUS ready

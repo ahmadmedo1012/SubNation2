@@ -12,7 +12,7 @@
 > against `deploy/env.compose.example`, `config/env.example`,
 > `docs/deployment/ENVIRONMENT_MATRIX.md`, `backend/src/lib/env.ts`,
 > `scripts/src/validate-production-env.ts`, `Dockerfile`, `docker-compose.yml`,
-> and the frozen `render.yaml`. **Zero undocumented variables · zero phantom
+> and render.yaml before its deletion (2026-10-05, `62ee976`). **Zero undocumented variables · zero phantom
 > variables · zero stale Render-only requirements.**
 >
 > Legend — **Req**: required (boot fails / validator errors without it) ·

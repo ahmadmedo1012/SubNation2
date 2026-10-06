@@ -6,6 +6,62 @@ trail. Rounds before R116 are summarized compactly at the bottom — full
 history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (proposed `docs/archive/`).
 
+## Merge `966d70f` — 2026-10-06 (one main, one production chain)
+
+Unified the R118 audit round with the parallel mission-waves line (below) —
+both diverged from `ef3d0c3`. Reconciliations of record:
+
+- **`encryption.ts` superset** — R118 crypto v2 kept (`v2:` prefix +
+  `ENCRYPTION_KEY_PREV` rotation fallback + re-encrypt job); the waves-line W7
+  strict 128-bit GCM auth-tag check ported into `decryptSegments` (the single
+  funnel covering all three decrypt paths).
+- **README status unified** — the merged README carries the single production
+  story: Coolify git-source build + push-to-deploy webhook, Vercel/Render
+  retired, R118 test counts.
+- **`render.yaml` + `vercel.json` deletions ratified** (remote retirement wins;
+  preserved in git history only).
+- **Two latent type errors fixed** — auth-settings cache middleware express
+  type imports (`NextFunction`/`Request`/`Response`); nullable `message`
+  column type in `admin-credentials-gate-alert.test.ts`.
+- **Gates re-verified on the merged tree** — backend 188 files / 1697 tests,
+  frontend 111 / 770, typecheck clean, lint 0/90, build in budget (27,171 gz).
+- Post-merge docs truth pass over the mission-era trees: R119-B4 (2026-10-07).
+
+## Mission waves 0–10 — 2026-10-05 (Coolify-only productionization)
+
+Parallel line by the mission agent (base `ef3d0c3`; merged in `966d70f`
+above). Evidence: `docs/project-plan/10-progress-log.md` (append-only),
+`docs/project-state/`. Headline commits: `d92de60` (W1), `af4d4ff` (W2),
+`f717c6f`/`3f1dc2b` (W7), `62ee976` (retirement), `a507adb` (integrations
+record).
+
+### Changed
+- **Coolify git-source cutover (Wave 1)** — new app `kjxqu3ytcnwb1btmlw56la5r`
+  (applicationId 3): git source `#main`, dockerfile pack, push-to-deploy
+  GitHub webhook (HMAC-verified), healthcheck-gated; old dockerimage app 2
+  deleted; all 21 runtime envs migrated server-side; `SOURCE_COMMIT` build
+  arg feeds `GIT_SHA` (`728b6a6`).
+- **Vercel/Render retired** — Vercel project + GitHub App integration deleted
+  after an independence proof; `deploy.yml` / `render.yaml` / `vercel.json`
+  removed from the repo (`62ee976` — preserved in git history only).
+- **Supply-chain overrides** — lockfile pins (protobufjs 7.6.6, busboy 3.2.2,
+  ws ≥ 8.21.0, brace-expansion 2.1.7): Trivy prod vulns 35→11 at the time
+  (one HIGH: node-forge, no upstream fix); OSV 113→75 (W7).
+- **128-bit GCM tag strictness** — decrypt rejects auth tags that are not
+  exactly 128-bit before `setAuthTag` (`bfc974b`; ported into
+  `decryptSegments` by the merge).
+- **WhatsApp control plane fixed + session paired** — root cause of the OTP
+  outage (missing `openwa` network alias under Coolify's generated compose)
+  fixed; session `subnation-otp` paired & READY (operator, 2026-10-05).
+- **auth-providers 60s cache** — `cacheWrap("auth:providers:settings", 60)` +
+  `Cache-Control: s-maxage=60, stale-while-revalidate=300` (`c37ddd5`).
+
+### Added
+- **29 mission doc files** — `docs/project-graph/` (14 Mermaid maps at the
+  time; 13 after the R119-B4 stale-map deletion), `docs/project-plan/`
+  (00–10), `docs/project-state/` (4) — incl. the Embronic adapter design (no
+  invented endpoints) and the external-integrations final record.
+
 ## R118 — 2026-10-06 (landing this round)
 
 Audit fleet (7 agents, reports under `docs/inspection-r118/`) + fixes.

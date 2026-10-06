@@ -107,3 +107,28 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
 
 
 
+
+## 2026-10-06/07 — R118 line landed + merge 966d70f + R119 (append-only record)
+
+- **2026-10-06** The R118 audit round (the parallel line this mission's Wave 0 noted as "4 commits
+  ahead") landed on main and grew: `427aa47` (money-contract + crypto v2 + perf + Drizzle mirror
+  guards incl. migration `0016`) · `90ac9a6` (buyer decrypt honesty + UX fixes) · `151b87d` (R118
+  docs truth pass + 6 new ops docs + audit reports) — plus `c37ddd5` on this mission line
+  (auth-providers 60s cache) as the waves-line tip.
+- **2026-10-06** Merge `966d70f` unified both lines: `encryption.ts` kept R118 crypto v2 as the
+  superset and ported the W7 strict 128-bit GCM auth-tag check into `decryptSegments` (single funnel
+  for all three decrypt paths); README status unified; two latent type errors fixed
+  (auth-settings middleware express type imports; nullable `message` column type in
+  admin-credentials-gate-alert.test.ts); `render.yaml`/`vercel.json` deletions ratified.
+- **2026-10-06 17:23:48Z** Merge pushed to GitHub (`pushed_at` 2026-10-06T17:23:48Z) → push-to-deploy
+  webhook fired → production updated. Live `/api/healthz` + `/api/healthz/summary` → `{"status":"ok"}`
+  (probed 2026-10-07; neither endpoint exposes the SHA — verify the live `GIT_SHA` in the Coolify
+  dashboard / container env, not from healthz).
+- **Gates on the merged tree (re-verified 2026-10-07, R119):** backend 188 files / 1697 tests PASS;
+  frontend 111 files / 770 tests PASS; lint 0 errors / 90 warnings; typecheck clean; build in budget.
+- **Main HEAD is now `966d70f`+.** The W10 entry above ("live SHA `3f1dc2b` = main HEAD") records the
+  pre-R118 state and is superseded by this entry.
+- **2026-10-07** R119-B4 docs truth pass over the `project-*` trees (this file, the graphs, the
+  plans, `source-of-truth.md`): all discrepancies from the merge recorded in
+  `docs/project-state/source-of-truth.md` "Known contradictions" #7. Stale `03-deployment.mmd`
+  (pre-Wave-1 panel) deleted; `03-deployment-target.mmd` retitled as the CURRENT deployment map.
