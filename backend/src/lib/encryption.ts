@@ -43,17 +43,25 @@ function getKey(): Buffer {
 }
 
 /**
- * R118-B1c (A4 F-2): the DECRYPT-ONLY rotation fallback key.
+ * R118-B1c (A4 F-2), extended R119-B1 (A1 F-1): the DECRYPT-ONLY rotation
+ * fallback key.
  *
  * ENCRYPTION_KEY_PREV holds the key that was current before a rotation.
- * v1 blobs (no prefix) that fail GCM auth against the current key get one
- * retry against it; v2 blobs never do (a v2 blob is by construction tied
- * to the key that minted it — a failure there means key trouble, not a
- * rotation in progress). Optional by design: unset (or malformed — see
- * the warn below) simply means “no fallback”, the exact pre-R118
- * behaviour. NEVER used for encryption — new writes are always v2 under
- * the current key, so the prev key can be retired once the re-encrypt
- * job (jobs/reencrypt-v1-credentials.ts) has drained every v1 blob.
+ * ANY blob — v1 (no prefix) or v2 — that fails GCM auth against the
+ * current key gets ONE retry against it: during a rotation window a
+ * current-key failure means “minted by the previous key before the
+ * switch” (mid-rotation material), not “corrupt”. R118's original
+ * “v2 blobs never fall back” rationale (“a v2 blob is by construction
+ * tied to the key that minted it”) was single-shot — it held only until
+ * the FIRST rotation completed and every blob on disk was v2, at which
+ * point a SECOND rotation orphaned all of them (R119-A1 finding P1:
+ * checkout INVENTORY_CORRUPT, buyer/admin decrypt_failed, admin 2FA
+ * locked out behind a misleading wrong-code 401). Optional by design:
+ * unset (or malformed — see the warn below) simply means “no fallback”,
+ * the exact pre-R118 behaviour. NEVER used for encryption — new writes
+ * are always v2 under the current key, so the prev key can be retired
+ * once the re-encrypt job (jobs/reencrypt-v1-credentials.ts) has drained
+ * every v1 blob AND re-keyed every v2 blob the prev key minted.
  *
  * Memoized like the current key (B6-03); the “memoized: absent” state is
  * tracked separately so a per-process first-use failure shape stays
@@ -114,14 +122,17 @@ export function __resetEncryptionKeyCacheForTests(): void {
  * passwords plaintext — and a module-load throw would break that path.
  * Parsing rules are identical to getKey() by construction (shared helper).
  *
- * NOTE for rotation (R118-B1c supersedes the blind-rotation warning):
- * rotation is now a three-step, zero-data-loss procedure —
+ * NOTE for rotation (R118-B1c; extended by R119-B1, A1 F-1): rotation is
+ * a REPEATABLE, zero-data-loss procedure —
  *   1. set ENCRYPTION_KEY to the new key and ENCRYPTION_KEY_PREV to the
- *      old one (new writes become v2 blobs under the new key; v1 reads
- *      fall back to PREV),
+ *      old one (new writes become v2 blobs under the new key; reads of
+ *      old-key material — v1 OR v2 — fall back to PREV),
  *   2. let the re-encrypt one-shot (jobs/reencrypt-v1-credentials.ts)
- *      upgrade every remaining v1 blob to v2,
- *   3. once no v1 blobs remain, drop ENCRYPTION_KEY_PREV.
+ *      upgrade every remaining v1 blob to v2 AND re-key every v2 blob
+ *      the old key minted (its R119-B1 second pass),
+ *   3. once nothing is left that needs PREV, drop ENCRYPTION_KEY_PREV —
+ *      and the NEXT rotation starts again at step 1 (N rotations are
+ *      supported, not just one).
  */
 export function assertEncryptionKeyConfigured(): void {
   const raw = process.env.ENCRYPTION_KEY;
@@ -141,8 +152,9 @@ export function assertEncryptionKeyConfigured(): void {
       `ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars) for AES-256-GCM; the ` +
         `current value decodes to ${bytes} byte(s). Generate a fresh key with ` +
         "`openssl rand -hex 32` and update it on the host. Rotation note: set ENCRYPTION_KEY_PREV " +
-        "to the old key before switching, then run the v1→v2 re-encrypt one-shot " +
-        "(jobs/reencrypt-v1-credentials.ts) before retiring the old key.",
+        "to the old key before switching, then let the re-encrypt one-shot " +
+        "(jobs/reencrypt-v1-credentials.ts) re-key the old key's material " +
+        "(v1 and v2) before retiring the old key.",
     );
   }
   // R118-B1c: advisory checks on the OPTIONAL rotation fallback. These
@@ -198,10 +210,11 @@ function decryptSegments(
 ): string {
   const decipher = createDecipheriv(ALGORITHM, key, segments.iv);
   // Strict tag length (mission W7, semgrep gcm-no-tag-length): only ever
-  // accept a full 128-bit GCM tag. All three decrypt funnels (v2 current,
-  // v1 current, v1 PREV-fallback) pass through here, so this single gate
-  // pins them all. isEncrypted() already enforces the length for values
-  // that went through it, but decrypt() is a public entry — a shorter tag
+  // accept a full 128-bit GCM tag. Every decrypt funnel — the current key
+  // and the PREV fallback, for BOTH blob generations (R119-B1, A1 F-1
+  // unified the ladders) — passes through here, so this single gate pins
+  // them all. isEncrypted() already enforces the length for values that
+  // went through it, but decrypt() is a public entry — a shorter tag
   // reaching setAuthTag would widen the forgery surface.
   if (segments.authTag.length !== AUTH_TAG_BYTES) {
     throw new Error("Invalid auth tag length");
@@ -210,30 +223,113 @@ function decryptSegments(
   return decipher.update(segments.encrypted) + decipher.final("utf8");
 }
 
-export function decrypt(ciphertext: string): string {
-  // v2 blobs are minted by the key that was CURRENT at write time and are
-  // only ever written together with it — no fallback key applies.
-  if (ciphertext.startsWith(V2_PREFIX)) {
-    return decryptSegments(parseSegments(ciphertext.slice(V2_PREFIX.length)), getKey());
-  }
-  // v1 (prefixless) blob: current key first (the overwhelming case —
-  // every v1 blob on disk was made by what is usually still the current
-  // key), then the ENCRYPTION_KEY_PREV rotation fallback. If both fail
-  // (or no fallback is configured), rethrow the CURRENT-key error: the
-  // failure semantics stay exactly as before (safeDecrypt → null;
-  // decrypt → throws).
-  const segments = parseSegments(ciphertext);
+/** Parse the `iv:tag:ct` triple out of either generation (v2 = prefix + triple). */
+function parseBlobSegments(ciphertext: string): {
+  iv: Buffer;
+  authTag: Buffer;
+  encrypted: Buffer;
+} {
+  return parseSegments(
+    ciphertext.startsWith(V2_PREFIX) ? ciphertext.slice(V2_PREFIX.length) : ciphertext,
+  );
+}
+
+/** Which configured key opened a blob (see decryptForRotation below). */
+export type RotationDecryptStatus = "current" | "prev" | "undecryptable";
+
+export interface RotationDecryptOutcome {
+  status: RotationDecryptStatus;
+  /** The plaintext for "current"/"prev"; null when undecryptable. */
+  plaintext: string | null;
+}
+
+/**
+ * The shared current→PREV ladder behind decrypt() and decryptForRotation().
+ * Current key first (the overwhelming case — in steady state every blob
+ * on disk was minted by what is still the current key), then ONE
+ * ENCRYPTION_KEY_PREV retry (the rotation window). Reports the winning
+ * key so the re-encrypt job can tell “already current” from
+ * “mid-rotation material” apart.
+ *
+ * R119-B1 (A1 F-1, fixing audit finding P3): when BOTH attempts fail (or
+ * no fallback is configured), the CURRENT-key error is the one rethrown —
+ * the R118 comment promised exactly that, but the unguarded PREV attempt
+ * let the PREV error propagate instead. Both failures are equally “wrong
+ * key”, yet the current key is the one the operator just set, so its
+ * error is the diagnostically honest one (and the shape every pre-R118
+ * caller was built around: safeDecrypt → null, decrypt → throws).
+ */
+function decryptSegmentsWithFallback(segments: {
+  iv: Buffer;
+  authTag: Buffer;
+  encrypted: Buffer;
+}): { plaintext: string; source: "current" | "prev" } {
   let currentKeyError: unknown;
   try {
-    return decryptSegments(segments, getKey());
+    return { plaintext: decryptSegments(segments, getKey()), source: "current" };
   } catch (err) {
     currentKeyError = err;
   }
   const prevKey = getPrevKey();
   if (prevKey !== null) {
-    return decryptSegments(segments, prevKey);
+    try {
+      return { plaintext: decryptSegments(segments, prevKey), source: "prev" };
+    } catch {
+      // Both keys failed — fall through to the current-key rethrow.
+    }
   }
   throw currentKeyError;
+}
+
+export function decrypt(ciphertext: string): string {
+  // R119-B1 (A1 F-1): ONE ladder for both blob generations. R118's v2
+  // branch ("tied to the key that minted it — no fallback applies") was
+  // single-shot: it silently assumed at most one rotation would ever
+  // happen, so after the first rotation drained every v1 blob, a SECOND
+  // rotation orphaned every v2 blob on disk (checkout refused all sales,
+  // reveals degraded, admin 2FA failed behind a wrong-code 401 — R119-A1
+  // finding P1). The corrected truth: a v2 blob that fails the current
+  // key DURING A ROTATION WINDOW is mid-rotation material — minted by the
+  // previous key before the switch — and gets one PREV retry, mirroring
+  // v1 exactly. Steady state is unchanged: PREV unset means no fallback,
+  // the pre-R118 failure shape (safeDecrypt → null, decrypt → throws).
+  return decryptSegmentsWithFallback(parseBlobSegments(ciphertext)).plaintext;
+}
+
+/**
+ * R119-B1 (A1 F-1): true iff the rotation fallback is ARMED —
+ * ENCRYPTION_KEY_PREV is set AND decodes to 32 bytes (a malformed value
+ * disables the fallback exactly like an unset one, per getPrevKey). The
+ * re-encrypt job's v2 pass gates on this: when false, the pass must not
+ * even SCAN the v2 rows — steady-state boot cost stays identical to the
+ * R118 ship.
+ */
+export function isPrevKeyConfigured(): boolean {
+  return getPrevKey() !== null;
+}
+
+/**
+ * R119-B1 (A1 F-1) — tri-state decrypt for the re-encrypt job.
+ *
+ * decrypt() cannot tell its caller WHICH key won (the fallback is silent
+ * by design), yet the job's v2 pass must distinguish three states per
+ * row: already minted by the CURRENT key (skip — nothing to do), minted
+ * by the PREVIOUS key before a rotation switch (mid-rotation material —
+ * re-encrypt under the current key), or dead under every configured key
+ * (failed bucket + operator alert — the red flag the v1-only scan of
+ * R118 could never see). This seam runs the exact same current→PREV
+ * ladder as decrypt() but REPORTS the winning key, and never throws:
+ * format garbage, short auth tags and both-keys-dead all collapse to
+ * status "undecryptable" (ciphertext-at-rest that no rotation can
+ * rescue — only manual key recovery can).
+ */
+export function decryptForRotation(ciphertext: string): RotationDecryptOutcome {
+  try {
+    const { plaintext, source } = decryptSegmentsWithFallback(parseBlobSegments(ciphertext));
+    return { status: source, plaintext };
+  } catch {
+    return { status: "undecryptable", plaintext: null };
+  }
 }
 
 export function isEncrypted(value: string | null): boolean {

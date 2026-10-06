@@ -13,8 +13,15 @@
  *   - after a rotation (ENCRYPTION_KEY switched, old key parked in
  *     ENCRYPTION_KEY_PREV), v1 blobs made with the OLD key decrypt via
  *     the fallback;
- *   - v2 blobs NEVER consult the fallback key — a v2 blob that fails the
- *     current key fails, full stop (safeDecrypt → null, decrypt → throws);
+ *   - R119-B1 (A1 F-1): v2 blobs made with the OLD key ALSO decrypt via
+ *     the fallback — a v2 blob that fails the current key during a
+ *     rotation window is mid-rotation material (minted by the previous
+ *     key before the switch), mirroring v1. The R118 pin asserted the
+ *     opposite ("v2 never consults PREV") and was single-shot: it held
+ *     only until the first rotation drained every v1 blob, at which
+ *     point a second rotation orphaned every v2 blob on disk. With PREV
+ *     unset — or armed with an UNRELATED key — a v2 blob under a foreign
+ *     key still fails cleanly (safeDecrypt → null, decrypt → throws);
  *   - prefix-detection edge cases: a "v2:"-prefixed garbage string is
  *     ciphertext-classified (decrypt throws / safeDecrypt nulls it), never
  *     silently passed through as a "plaintext" credential.
@@ -110,14 +117,34 @@ describe("R118-B1c — v2 blob format (new writes)", () => {
     expect(safeDecrypt(blob)).toBe("v2-roundtrip");
   });
 
-  it("v2 blobs never consult ENCRYPTION_KEY_PREV — a v2 blob under a foreign key fails cleanly", () => {
-    // A v2 blob minted under KEY_B while the process runs KEY_A + PREV=KEY_B.
-    // The fallback must NOT rescue it: v2 means "current-key generation".
-    process.env.ENCRYPTION_KEY = KEY_A;
-    process.env.ENCRYPTION_KEY_PREV = KEY_B;
+  it("R119-B1 (A1 F-1): a v2 blob minted under the PREVIOUS key decrypts via the PREV fallback (mid-rotation material, mirroring v1)", () => {
+    // The R118 pin here asserted v2-under-PREV THROWS — wrong by design
+    // from the second rotation on. Corrected story: the process used to
+    // run KEY_A (every blob it minted is v2-under-A), then rotated —
+    // booted with ENCRYPTION_KEY=KEY_B and KEY_A parked in PREV. The
+    // v2-under-A blob must decrypt through the fallback exactly like a
+    // v1-under-A blob would (rotation #2 survival: checkout, reveals,
+    // admin 2FA all keep working mid-rotation).
+    process.env.ENCRYPTION_KEY = KEY_B;
+    process.env.ENCRYPTION_KEY_PREV = KEY_A;
     __resetEncryptionKeyCacheForTests();
-    const foreignV2 = `v2:${encryptV1WithKey("foreign", KEY_B)}`;
+    const midRotationV2 = `v2:${encryptV1WithKey("rotation2-secret", KEY_A)}`;
+    expect(isEncrypted(midRotationV2)).toBe(true);
+    expect(decrypt(midRotationV2)).toBe("rotation2-secret");
+    expect(safeDecrypt(midRotationV2)).toBe("rotation2-secret");
+  });
+
+  it("R119-B1 companion: a v2 blob under a foreign key still fails cleanly when PREV is unset — or armed with an unrelated key", () => {
+    // Steady state (PREV unset = no fallback, the exact pre-R118 shape) …
+    const foreignV2 = `v2:${encryptV1WithKey("foreign", KEY_B)}`; // KEY_A current
     expect(isEncrypted(foreignV2)).toBe(true);
+    expect(() => decrypt(foreignV2)).toThrow();
+    expect(safeDecrypt(foreignV2)).toBeNull();
+    // … and with PREV armed to an UNRELATED third key: the fallback only
+    // rescues material the previous key actually minted, never a third
+    // generation nobody configured.
+    process.env.ENCRYPTION_KEY_PREV = KEY_C;
+    __resetEncryptionKeyCacheForTests();
     expect(() => decrypt(foreignV2)).toThrow();
     expect(safeDecrypt(foreignV2)).toBeNull();
   });
@@ -141,7 +168,7 @@ describe("R118-B1c — rotation fallback (ENCRYPTION_KEY_PREV)", () => {
     expect(safeDecrypt(v1FromOldKey)).toBeNull();
   });
 
-  it("PREV only rescues v1: the current key remains the only encryption key (encrypt output decrypts without fallback)", () => {
+  it("the current key stays the only ENCRYPTION key: current-key v2 material decrypts with the fallback dropped (PREV is a read rescue, not a shadow key)", () => {
     process.env.ENCRYPTION_KEY_PREV = KEY_B;
     __resetEncryptionKeyCacheForTests();
     const blob = encrypt("current-key-write");
@@ -151,12 +178,17 @@ describe("R118-B1c — rotation fallback (ENCRYPTION_KEY_PREV)", () => {
     expect(decrypt(blob)).toBe("current-key-write");
   });
 
-  it("a malformed ENCRYPTION_KEY_PREV disables the fallback (no crash, legacy failure shape)", () => {
+  it("a malformed ENCRYPTION_KEY_PREV disables the fallback for BOTH generations (no crash, legacy failure shape)", () => {
     process.env.ENCRYPTION_KEY_PREV = "not-hex-at-all-64-characters-padded-to-look-right!!";
     __resetEncryptionKeyCacheForTests();
     const v1FromOldKey = encryptV1WithKey("pre-rotation-secret", KEY_B);
     expect(() => decrypt(v1FromOldKey)).toThrow();
     expect(safeDecrypt(v1FromOldKey)).toBeNull();
+    // R119-B1 (A1 F-1): the v2 fallback path is the same ladder — a
+    // malformed PREV disarms it identically (getPrevKey → null).
+    const v2FromOldKey = `v2:${encryptV1WithKey("pre-rotation-secret", KEY_B)}`;
+    expect(() => decrypt(v2FromOldKey)).toThrow();
+    expect(safeDecrypt(v2FromOldKey)).toBeNull();
     // Current-key v1 blobs are unaffected by the bad fallback value.
     expect(decrypt(encryptV1WithKey("fine", KEY_A))).toBe("fine");
   });
@@ -165,7 +197,11 @@ describe("R118-B1c — rotation fallback (ENCRYPTION_KEY_PREV)", () => {
     process.env.ENCRYPTION_KEY_PREV = KEY_B;
     __resetEncryptionKeyCacheForTests();
     // Tampered v1 blob: fails current key, fails prev key → throws the
-    // CURRENT-key error (existing semantics).
+    // CURRENT-key error. R119-B1 (A1 F-1, audit finding P3): the PREV
+    // attempt is now guarded, so the current-key error is genuinely the
+    // one rethrown (R118 let the prev error propagate instead). Node's
+    // GCM auth-failure message is identical for both keys, so the
+    // assertion stays shape-based (throws / safeDecrypt → null).
     const v1 = encryptV1WithKey("hunter2", KEY_A);
     const parts = v1.split(":");
     const body = parts[2];
@@ -173,6 +209,15 @@ describe("R118-B1c — rotation fallback (ENCRYPTION_KEY_PREV)", () => {
     const tampered = `${parts[0]}:${parts[1]}:${body.slice(0, -1)}${flipped}`;
     expect(() => decrypt(tampered)).toThrow();
     expect(safeDecrypt(tampered)).toBeNull();
+    // Same both-keys-dead shape for a TAMPERED v2 blob (the unified
+    // ladder covers both generations).
+    const v2 = encrypt("hunter2");
+    const v2Parts = v2.split(":");
+    const v2Body = v2Parts[3];
+    const v2Flipped = `${v2Body[v2Body.length - 1] === "0" ? "1" : "0"}`;
+    const tamperedV2 = `${v2Parts[0]}:${v2Parts[1]}:${v2Parts[2]}:${v2Body.slice(0, -1)}${v2Flipped}`;
+    expect(() => decrypt(tamperedV2)).toThrow();
+    expect(safeDecrypt(tamperedV2)).toBeNull();
   });
 });
 

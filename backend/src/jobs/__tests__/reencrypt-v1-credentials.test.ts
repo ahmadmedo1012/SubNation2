@@ -1,11 +1,12 @@
 /**
  * R118-B1c (A4 F-2) — the v1→v2 credential re-encrypt one-shot.
+ * R119-B1 (A1 F-1) — the SECOND pass: mid-rotation v2 re-keying.
  *
  * The job upgrades legacy prefixless AES-256-GCM blobs
  * (`iv:tag:ct`, every pre-R118 row incl. the 15 live credential blobs) to
- * the versioned `v2:` format under the current ENCRYPTION_KEY. Locked
- * behaviours (real pglite DB, real encryption lib — the only mocks are
- * none):
+ * the versioned `v2:` format under the current ENCRYPTION_KEY, and (since
+ * R119-B1) re-keys v2 blobs the PREVIOUS key minted. Locked behaviours
+ * (real pglite DB, real encryption lib — the only mocks are none):
  *
  *   - v1 rows across EVERY target column upgrade to v2 with the plaintext
  *     bit-for-bit preserved (decrypt(new) === original secret);
@@ -24,6 +25,25 @@
  *   - varchar budget: a 512-char v1 blob in a varchar(512) column whose
  *     v2 form (+3 chars) would not fit is failed loudly, not 22001'd;
  *     the v1 blob survives (still decryptable by the reader path).
+ *
+ * R119-B1 (A1 F-1) additions — rotation #2 regression + the v2 pass:
+ *
+ *   - full second-rotation story against the REAL modules: v2 minted
+ *     under key A survives a boot on key B via the PREV fallback, is
+ *     re-keyed to v2-under-B by the job's second pass (through the PUBLIC
+ *     entry point the boot one-shot registers), still decrypts with PREV
+ *     dropped, and a third rotation (key C, PREV=B) works the same — N
+ *     rotations, not one;
+ *   - with PREV unset the v2 pass does not even SCAN (steady-state boot
+ *     cost identical to the R118 ship);
+ *   - with PREV armed, current-key v2 rows are probed but skipped
+ *     byte-identically (idempotence — no churn rewrite, no updated_at
+ *     bump);
+ *   - a v2 blob dead under BOTH keys lands in its own failed bucket
+ *     with a DISTINCT deduped alert (reencrypt-v2:undecryptable) — the
+ *     operator can tell it apart from the v1 undecryptables;
+ *   - the v2 re-key keeps the optimistic-WHERE race guard (stale
+ *     candidate → 0 rows, newer value wins).
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -40,12 +60,13 @@ import {
   usersTable,
   adminAlertsTable,
 } from "../../test/db";
+import { __resetEncryptionKeyCacheForTests, decrypt, encrypt } from "../../lib/encryption";
 import {
-  __resetEncryptionKeyCacheForTests,
-  decrypt,
-  encrypt,
-} from "../../lib/encryption";
-import { reencryptV1CredentialBlobs, upgradeV1Candidates } from "../reencrypt-v1-credentials";
+  reencryptMidRotationV2Blobs,
+  reencryptV1CredentialBlobs,
+  upgradeV1Candidates,
+  upgradeV2Candidates,
+} from "../reencrypt-v1-credentials";
 
 /** A valid 32-byte hex key that is NOT the test env's ENCRYPTION_KEY. */
 const OTHER_KEY = "ff".repeat(32);
@@ -60,6 +81,11 @@ function encryptV1WithKey(plaintext: string, keyHex: string): string {
 }
 
 const ORIGINAL_PREV = process.env.ENCRYPTION_KEY_PREV;
+// R119-B1 (A1 F-1): the rotation tests below simulate new processes by
+// switching ENCRYPTION_KEY itself — capture the module-load value (the
+// vitest synthetic bootstrap, src/test/env.ts) and restore it after every
+// test so later suites in this file always start from the same generation.
+const ORIGINAL_KEY = process.env.ENCRYPTION_KEY as string;
 
 async function seedProduct(): Promise<number> {
   const [p] = await db
@@ -125,11 +151,13 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetTestDb();
+  process.env.ENCRYPTION_KEY = ORIGINAL_KEY;
   delete process.env.ENCRYPTION_KEY_PREV;
   __resetEncryptionKeyCacheForTests();
 });
 
 afterEach(() => {
+  process.env.ENCRYPTION_KEY = ORIGINAL_KEY;
   if (ORIGINAL_PREV === undefined) {
     delete process.env.ENCRYPTION_KEY_PREV;
   } else {
@@ -330,5 +358,174 @@ describe("R118-B1c (A4 F-2) — v1→v2 re-encrypt one-shot", () => {
     ]);
     expect(outcome).toEqual({ scanned: 0, upgraded: 0, stale: 0, failed: 0 });
     expect((await fetchInventory(invId)).accountPassword).toBe("plain");
+  });
+});
+
+describe("R119-B1 (A1 F-1) — mid-rotation v2 re-key pass (rotation #2+ survival)", () => {
+  // Key generations for the rotation stories. KEY_A is the module-load
+  // ENCRYPTION_KEY (the vitest synthetic bootstrap); B and C are fresh
+  // 32-byte hex keys standing in for the 2nd/3rd generations.
+  const KEY_B = "22".repeat(32);
+  const KEY_C = "33".repeat(32);
+
+  it("full second-rotation story: v2-under-A survives key B, is re-keyed by the job, and rotation #3 (key C) works too", async () => {
+    const KEY_A = ORIGINAL_KEY;
+
+    // (a) The R118 steady state after rotation #1: encrypt() mints v2
+    // under the then-current key A. Nothing v1 is left on disk.
+    process.env.ENCRYPTION_KEY = KEY_A;
+    delete process.env.ENCRYPTION_KEY_PREV;
+    __resetEncryptionKeyCacheForTests();
+    const blobUnderA = encrypt("rotation-2-secret");
+    expect(blobUnderA.startsWith("v2:")).toBe(true);
+    const invId = await seedInventory(blobUnderA, null);
+
+    // Rotation #2: the process re-boots with key B current, key A parked
+    // in PREV. The mid-rotation READ path survives via the R119-B1 v2
+    // fallback (pre-R119 this is where checkout died with
+    // INVENTORY_CORRUPT and 2FA failed behind a wrong-code 401).
+    process.env.ENCRYPTION_KEY = KEY_B;
+    process.env.ENCRYPTION_KEY_PREV = KEY_A;
+    __resetEncryptionKeyCacheForTests();
+    expect(decrypt((await fetchInventory(invId)).accountPassword!)).toBe("rotation-2-secret");
+
+    // (b) The boot one-shot (its PUBLIC entry — what boot-one-shots.ts
+    // registers) drains v1 (nothing left) and re-keys the mid-rotation
+    // v2 blob to v2-under-B.
+    const outcome = await reencryptV1CredentialBlobs();
+    expect(outcome).toEqual({ scanned: 0, upgraded: 0, stale: 0, failed: 0 }); // v1 pass: nothing to do
+    const blobUnderB = (await fetchInventory(invId)).accountPassword!;
+    expect(blobUnderB.startsWith("v2:")).toBe(true);
+    expect(blobUnderB).not.toBe(blobUnderA); // actually re-encrypted (fresh IV)
+
+    // (c) PREV dropped — the steady state under key B ALONE still
+    // decrypts, proving the blob is now key-B material (not a fallback
+    // rescue) and the rotation has fully completed.
+    delete process.env.ENCRYPTION_KEY_PREV;
+    __resetEncryptionKeyCacheForTests();
+    expect(decrypt(blobUnderB)).toBe("rotation-2-secret");
+
+    // (d) Rotation #3 (key C current, key B in PREV): the same story
+    // repeats — the mechanism supports N rotations, not just one.
+    process.env.ENCRYPTION_KEY = KEY_C;
+    process.env.ENCRYPTION_KEY_PREV = KEY_B;
+    __resetEncryptionKeyCacheForTests();
+    expect(decrypt(blobUnderB)).toBe("rotation-2-secret"); // fallback read again
+    const outcome3 = await reencryptV1CredentialBlobs();
+    expect(outcome3).toEqual({ scanned: 0, upgraded: 0, stale: 0, failed: 0 });
+    const blobUnderC = (await fetchInventory(invId)).accountPassword!;
+    delete process.env.ENCRYPTION_KEY_PREV;
+    __resetEncryptionKeyCacheForTests();
+    expect(decrypt(blobUnderC)).toBe("rotation-2-secret"); // pure key-C material now
+  });
+
+  it("with PREV unset, the v2 pass must not even scan (steady-state boot cost identical to the R118 ship)", async () => {
+    const blob = encrypt("steady-state-v2");
+    const invId = await seedInventory(blob, null);
+    // PREV is deleted by beforeEach — the armed-gate must short-circuit
+    // before any SELECT runs.
+    const outcome = await reencryptMidRotationV2Blobs();
+    expect(outcome).toEqual({ scanned: 0, upgraded: 0, stale: 0, failed: 0 });
+    expect((await fetchInventory(invId)).accountPassword).toBe(blob);
+  });
+
+  it("with PREV armed, current-key v2 rows are probed but skipped byte-identically (idempotent — no churn rewrite)", async () => {
+    const blob = encrypt("current-generation"); // v2 under the current key
+    const invId = await seedInventory(blob, null);
+    process.env.ENCRYPTION_KEY_PREV = OTHER_KEY;
+    __resetEncryptionKeyCacheForTests();
+
+    const outcome = await reencryptMidRotationV2Blobs();
+    expect(outcome).toEqual({ scanned: 1, upgraded: 0, stale: 0, failed: 0 });
+    // Byte-identical: the pass re-keys MID-ROTATION material only — the
+    // steady state is never rewritten (no new IV, no updated_at bump).
+    expect((await fetchInventory(invId)).accountPassword).toBe(blob);
+  });
+
+  it("a v2 blob dead under BOTH keys → v2 failed bucket, row untouched, DISTINCT v2 alert (not the v1 one)", async () => {
+    // Minted under a THIRD key nobody configured: current key cannot read
+    // it, PREV cannot read it. The R118 job would have reported zero
+    // failures here (nothing matches its v1 scan) — R119-A1 finding P1.
+    process.env.ENCRYPTION_KEY_PREV = OTHER_KEY;
+    __resetEncryptionKeyCacheForTests();
+    const deadV2 = `v2:${encryptV1WithKey("dead-under-both", "aa".repeat(32))}`;
+    const invId = await seedInventory(deadV2, null);
+
+    const outcome = await reencryptMidRotationV2Blobs();
+    expect(outcome).toEqual({ scanned: 1, upgraded: 0, stale: 0, failed: 1 });
+
+    // Never destroyed — recoverable only via manual key recovery.
+    expect((await fetchInventory(invId)).accountPassword).toBe(deadV2);
+
+    // Distinct deduped alert, so the operator can tell "v2 undecryptable
+    // under both keys" (corruption / older-than-PREV) apart from the v1
+    // condition (fixable by setting ENCRYPTION_KEY_PREV).
+    const v2Alerts = await db
+      .select()
+      .from(adminAlertsTable)
+      .where(eq(adminAlertsTable.dedupeKey, "reencrypt-v2:undecryptable"));
+    expect(v2Alerts).toHaveLength(1);
+    const v1Alerts = await db
+      .select()
+      .from(adminAlertsTable)
+      .where(eq(adminAlertsTable.dedupeKey, "reencrypt-v1:undecryptable"));
+    expect(v1Alerts).toHaveLength(0);
+  });
+
+  it("v1 and v2 undecryptables coexist: BOTH alerts fire, each with its own dedupe key and message", async () => {
+    process.env.ENCRYPTION_KEY_PREV = OTHER_KEY;
+    __resetEncryptionKeyCacheForTests();
+    const orphanedV1 = encryptV1WithKey("orphaned-v1", "aa".repeat(32));
+    const deadV2 = `v2:${encryptV1WithKey("dead-v2", "bb".repeat(32))}`;
+    // One row, both conditions: account_password is dead v1 material,
+    // extra_details is dead v2 material.
+    const invId = await seedInventory(orphanedV1, deadV2);
+
+    const outcome = await reencryptV1CredentialBlobs();
+    // The PUBLIC return carries the v1 pass's counters only (the shape
+    // every existing caller was built around)…
+    expect(outcome).toEqual({ scanned: 1, upgraded: 0, stale: 0, failed: 1 });
+    // …while the v2 pass (run inside the same one-shot) drains its own
+    // failed bucket and raises its own alert.
+    const v1Alerts = await db
+      .select()
+      .from(adminAlertsTable)
+      .where(eq(adminAlertsTable.dedupeKey, "reencrypt-v1:undecryptable"));
+    expect(v1Alerts).toHaveLength(1);
+    const v2Alerts = await db
+      .select()
+      .from(adminAlertsTable)
+      .where(eq(adminAlertsTable.dedupeKey, "reencrypt-v2:undecryptable"));
+    expect(v2Alerts).toHaveLength(1);
+    expect(v1Alerts[0].title).not.toBe(v2Alerts[0].title);
+
+    // Both rows survive untouched.
+    const inv = await fetchInventory(invId);
+    expect(inv.accountPassword).toBe(orphanedV1);
+    expect(inv.extraDetails).toBe(deadV2);
+  });
+
+  it("the v2 re-key keeps the optimistic-WHERE race guard: a stale v2 candidate commits 0 rows", async () => {
+    // Mid-rotation blob (minted under the key now parked in PREV), but a
+    // concurrent writer replaced the row before our UPDATE committed.
+    process.env.ENCRYPTION_KEY_PREV = KEY_B;
+    __resetEncryptionKeyCacheForTests();
+    const midRotation = `v2:${encryptV1WithKey("mid-rotation-race", KEY_B)}`;
+    const invId = await seedInventory(midRotation, null);
+    const newerV2 = encrypt("newer-concurrent-write"); // fresh current-key v2
+    await db
+      .update(inventoryTable)
+      .set({ accountPassword: newerV2 })
+      .where(eq(inventoryTable.id, invId));
+
+    const outcome = await upgradeV2Candidates([
+      { table: "inventory", column: "account_password", id: invId, value: midRotation },
+    ]);
+    expect(outcome).toEqual({ scanned: 1, upgraded: 0, stale: 1, failed: 0 });
+
+    // The newer value won — nothing was overwritten.
+    const inv = await fetchInventory(invId);
+    expect(inv.accountPassword).toBe(newerV2);
+    expect(decrypt(inv.accountPassword!)).toBe("newer-concurrent-write");
   });
 });
