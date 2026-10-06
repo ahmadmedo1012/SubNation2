@@ -133,3 +133,8 @@ PageSpeed*.json
 # write here when run without an explicit BACKUP_DIR). *.sql.gz is already
 # ignored above; this covers the directory + ledger/log files inside it.
 backups/
+
+# Agent/tool artifacts
+.mimosa/
+.playwright-cli/
+frontend/.mimosa/
