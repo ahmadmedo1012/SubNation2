@@ -684,11 +684,29 @@ function AppRoutes() {
           تخطّى إلى المحتوى الرئيسي
         </a>
       )}
-      {!isAdmin && !isChromeless && <Navbar />}
+      {/* R118-B2 (A2 F-5): chrome isolation. Every storefront chrome
+          block previously rendered ABOVE the route boundary (:703) with
+          no guard of its own — a render throw in Navbar (the most
+          data-driven chrome: auth chip, balance, search, cart badge,
+          NotificationBell polling) took the WHOLE tree down to a white
+          screen on every route, since main.tsx's onUncaughtError only
+          forwards to Sentry. Each block now rides its own slim boundary
+          whose fallback is null: a crashed chrome block degrades to
+          boundary-less navigation while route content keeps rendering.
+          Boundary-outside-Suspense order: chunk-load failures AND render
+          throws both reach the boundary. resetKey = location, same
+          recovery contract as the route boundary. */}
       {!isAdmin && !isChromeless && (
-        <Suspense fallback={null}>
-          <FlashSaleBanner />
-        </Suspense>
+        <ErrorBoundary resetKey={location} fallback={null}>
+          <Navbar />
+        </ErrorBoundary>
+      )}
+      {!isAdmin && !isChromeless && (
+        <ErrorBoundary resetKey={location} fallback={null}>
+          <Suspense fallback={null}>
+            <FlashSaleBanner />
+          </Suspense>
+        </ErrorBoundary>
       )}
       <main
         id="main-content"
@@ -734,14 +752,18 @@ function AppRoutes() {
         </ErrorBoundary>
       </main>
       {!isAdmin && !isChromeless && (
-        <Suspense fallback={null}>
-          <Footer />
-        </Suspense>
+        <ErrorBoundary resetKey={location} fallback={null}>
+          <Suspense fallback={null}>
+            <Footer />
+          </Suspense>
+        </ErrorBoundary>
       )}
       {!isAdmin && !isChromeless && (
-        <Suspense fallback={null}>
-          <MobileNav />
-        </Suspense>
+        <ErrorBoundary resetKey={location} fallback={null}>
+          <Suspense fallback={null}>
+            <MobileNav />
+          </Suspense>
+        </ErrorBoundary>
       )}
     </div>
   );

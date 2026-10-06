@@ -21,6 +21,16 @@ interface Props {
    * fallback for any future mount site that renders a stable child.
    */
   resetKey?: string | number;
+  /**
+   * R118-B2 (A2 F-5): slim fallback for NON-route boundaries (App
+   * chrome — Navbar / FlashSaleBanner / Footer / MobileNav). When
+   * provided, a caught error renders THIS instead of the full-screen
+   * recovery page: chrome crashes degrade to boundary-less navigation
+   * while route content keeps rendering, instead of a whole-app white
+   * screen (the chrome previously sat ABOVE the route boundary with
+   * no guard of its own). `fallback={null}` is the intended usage.
+   */
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -79,6 +89,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      // R118-B2 (A2 F-5): slim-fallback mount sites (App chrome) render
+      // their own degradation UI (usually null) — the full-screen page
+      // below is the ROUTE boundary's recovery experience.
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
       return (
         <div className="min-h-screen bg-background flex items-center justify-center px-4" dir="rtl">
           <div className="text-center max-w-sm w-full space-y-7">

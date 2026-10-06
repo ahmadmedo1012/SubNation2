@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Info,
   Package,
+  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
@@ -253,6 +254,17 @@ export default function OrderDetailPage() {
     order.delivered_password ||
     order.delivered_extra_details
   );
+  // R118-B2 (A2 fix, buyer side — mirrors admin orders.tsx:1267): the
+  // backend sets decrypt_failed:true on a COMPLETED order whose raw
+  // credential columns are populated but could not be decrypted with
+  // the current key (every safeDecrypt returned null). Without this
+  // branch the page fell through to the «قيد الإعداد» card — telling
+  // the buyer their data is still being prepared when it will never
+  // arrive that way. The honest message points at support instead.
+  // Local cast: the flag ships on the buyer Order response
+  // independently of the generated schema revision.
+  const decryptFailed =
+    !hasDelivery && !!(order as { decrypt_failed?: boolean }).decrypt_failed;
   const discountAmount = (order as { discount_amount?: number }).discount_amount;
   const couponCode = (order as { coupon_code?: string }).coupon_code;
   const originalAmount = discountAmount ? (order.amount ?? 0) + discountAmount : null;
@@ -438,9 +450,33 @@ export default function OrderDetailPage() {
               </div>
             )}
           </div>
-        ) : (
-          order.status !== "failed" &&
-          order.status !== "refunded" && (
+        ) : order.status !== "failed" && order.status !== "refunded" ? (
+          decryptFailed ? (
+            /* R118-B2 (A2): honest decrypt-failure card — same visual
+                idiom as the «قيد الإعداد» card it replaces (icon tile /
+                bold title / muted body), warning-toned because the
+                order itself completed fine: only the delivery payload
+                is undecryptable, and support holds the recovery path. */
+            <div
+              role="alert"
+              className="bg-card border border-status-warning/30 rounded-2xl p-7 text-center float-in stagger-1"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-status-warning/10 border border-status-warning/25 mx-auto mb-3 flex items-center justify-center">
+                <ShieldAlert className="w-5 h-5 text-status-warning" />
+              </div>
+              <p className="font-bold text-sm mb-1">تعذّر فك تشفير بيانات التسليم</p>
+              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto mb-4">
+                طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم وستصلك
+                بياناتك فوراً.
+              </p>
+              <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
+                <Button className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  تواصل مع الدعم
+                </Button>
+              </Link>
+            </div>
+          ) : (
             <div className="bg-card border border-border/50 rounded-2xl p-7 text-center float-in stagger-1">
               <div className="w-12 h-12 rounded-2xl bg-muted/50 border border-border/35 mx-auto mb-3 flex items-center justify-center">
                 <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
@@ -452,7 +488,7 @@ export default function OrderDetailPage() {
               </p>
             </div>
           )
-        )}
+        ) : null}
 
         {/* ── Failed / Refunded ──────────────────────────────────── */}
         {(order.status === "failed" || order.status === "refunded") && (

@@ -25,11 +25,23 @@ function bundleBudgetPlugin(): Plugin {
         process.exit(1);
       }
 
-      // Find index-*.js file
-      const files = readdirSync(outDir);
-      const indexFile = files.find((f) => /^index-[A-Za-z0-9-_]+\.js$/.test(f));
+      // Find the ENTRY index-*.js file. R118: must resolve from the HTML —
+      // route splitting can emit MULTIPLE index-*.js chunks (a shared
+      // index-* chunk landed next to the real entry this round), and the
+      // old files.find() picked whichever readdir() returned first,
+      // measuring a 9.5 KB shared chunk while the actual module entry was
+      // 27.1 KB — the gate was silently vacuous. The HTML's
+      // <script type="module" src> is the ground truth.
+      const htmlPath = path.resolve(import.meta.dirname, "dist/public/index.html");
+      if (!existsSync(htmlPath)) {
+        console.error("[bundle-budget] index.html not found:", htmlPath);
+        process.exit(1);
+      }
+      const html = readFileSync(htmlPath, "utf8");
+      const entryMatch = html.match(/<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/);
+      const indexFile = entryMatch?.[1];
       if (!indexFile) {
-        console.error("[bundle-budget] No index-*.js file found in", outDir);
+        console.error("[bundle-budget] No module entry index-*.js found in index.html");
         process.exit(1);
       }
 

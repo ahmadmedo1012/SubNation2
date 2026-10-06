@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
 import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
-import { useEffect, useState } from "react";
 
 const TABS = [
   { href: "/", icon: Home, label: "الرئيسية" },
@@ -38,31 +38,16 @@ export function MobileNav() {
   // 96-F5 (R96 P2-3): hide the nav while the virtual keyboard is open —
   // a fixed bottom bar riding above the keyboard eats the vertical
   // space next to the caret and, on some iOS versions, visually covers
-  // the focused input's row. Strategy: watch window.visualViewport; a
-  // drop of >120px from the anchored baseline means a keyboard is
-  // covering the viewport → set the hidden state (plain `hidden`
-  // class, i.e. display: none). Growing back re-anchors the baseline
-  // and restores the nav. The [@media(max-height:480px)]:hidden class
-  // below is the no-JS fallback for short viewports (landscape phones,
-  // keyboard-resized layouts that don't fire visualViewport).
-  const [keyboardHidden, setKeyboardHidden] = useState(false);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return; // jsdom / old browsers — CSS fallback still applies
-    let baseline = vv.height;
-    const onResize = () => {
-      if (vv.height >= baseline) {
-        // Grew back (keyboard closed / rotated to a taller viewport) —
-        // re-anchor and restore.
-        baseline = vv.height;
-        setKeyboardHidden(false);
-        return;
-      }
-      setKeyboardHidden(baseline - vv.height > 120);
-    };
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
-  }, []);
+  // the focused input's row. R118-B2 (A2 F-2): the detector now consumes
+  // the SHARED useKeyboardVisibility hook (extracted R116-S2 for the
+  // product sticky bar) instead of an inline copy — the inline copy
+  // predated R117 F-7 and never received the orientationchange
+  // re-anchor fix, so a portrait→landscape rotation could latch the nav
+  // hidden forever. One detector, one fix, every consumer. The
+  // [@media(max-height:480px)]:hidden class below stays as the no-JS
+  // fallback for short viewports (landscape phones, keyboard-resized
+  // layouts that don't fire visualViewport).
+  const keyboardVisible = useKeyboardVisibility();
 
   if (!token) return null;
 
@@ -70,7 +55,7 @@ export function MobileNav() {
     <nav
       aria-label="التنقل السفلي"
       className={`md:hidden fixed bottom-0 left-0 right-0 z-50 [@media(max-height:480px)]:hidden ${
-        keyboardHidden ? "hidden" : ""
+        keyboardVisible ? "hidden" : ""
       }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >

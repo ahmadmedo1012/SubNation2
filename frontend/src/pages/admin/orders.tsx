@@ -40,7 +40,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -183,6 +183,314 @@ function MaskedCredential({ label, value }: { label: string; value: string }) {
   );
 }
 
+/* ── R118-B2 (A6 F-8): memoized order rows ──────────────────────────────
+ * The search box is a CONTROLLED input — every keystroke re-rendered the
+ * whole page and (with rows inlined in the map closures) recomputed up to
+ * 200 desktop <tr> subtrees + 200 mobile cards: ~400 row subtrees with
+ * fresh inline handlers/className closures each keystroke (the network is
+ * debounced at 300ms, but the RENDER path was not). The rows are now
+ * module-level React.memo components whose props are stable across a
+ * keystroke (order refs come from the memoized allOrders array;
+ * isSelected/expanded/credsFailed are primitives; creds is the cached
+ * per-order object; the two callbacks are useCallBack-stable) — so a
+ * keystroke re-renders the search box and NOTHING else. Selection /
+ * expansion flips bust exactly ONE row.
+ *
+ * Shared prop contract for both layouts. */
+interface OrderRowProps {
+  order: AdminOrderRow;
+  /** Position in `filtered` — drives the desktop zebra striping
+   *  (idx % 2). Optional: the mobile card has no zebra. */
+  idx?: number;
+  isSelected: boolean;
+  expanded: boolean;
+  /** B6-03 (R116): cached per-order credentials payload (undefined until
+   * the first expansion's audited fetch resolves). */
+  creds?: OrderCredentials;
+  credsFailed: boolean;
+  onToggleSelect: (id: number) => void;
+  onToggleExpand: (id: number) => void;
+}
+
+/** Desktop table row: the visible <tr> plus its expansion <tr>. */
+const DesktopOrderRow = React.memo(function DesktopOrderRow({
+  order,
+  idx,
+  isSelected,
+  expanded,
+  creds,
+  credsFailed,
+  onToggleSelect,
+  onToggleExpand,
+}: OrderRowProps) {
+  return (
+    <React.Fragment>
+      <tr
+        className={`border-b border-border/30 transition-colors hover:bg-muted/20 cursor-pointer group ${
+          isSelected ? "bg-primary/3" : (idx ?? 0) % 2 !== 0 ? "bg-muted/[0.035]" : ""
+        }`}
+      >
+        <td className="px-4 py-2.5">
+          {/* F3-08 (R111): name + aria-pressed on the row selector (was an
+              icon-only button — the selection state feeding the bulk
+              refund was visual-only). */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(order.id);
+            }}
+            aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
+            aria-pressed={isSelected}
+            className="text-muted-foreground hover:text-primary transition-colors"
+          >
+            {isSelected ? (
+              <CheckSquare className="w-3.5 h-3.5 text-primary" />
+            ) : (
+              <Square className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </td>
+        <td
+          className="px-4 py-2.5 font-mono text-xs text-muted-foreground"
+          onClick={() => onToggleExpand(order.id)}
+        >
+          {order.order_code}
+        </td>
+        <td
+          className="px-4 py-2.5 font-mono text-xs font-bold"
+          onClick={() => onToggleExpand(order.id)}
+        >
+          {displayUserName(userFromRow(order))}
+        </td>
+        <td
+          className="px-4 py-2.5 font-semibold text-sm max-w-40 truncate"
+          onClick={() => onToggleExpand(order.id)}
+        >
+          {order.product_name}
+        </td>
+        <td
+          className="px-4 py-2.5 font-bold text-primary text-sm tabular-nums"
+          onClick={() => onToggleExpand(order.id)}
+        >
+          {formatCurrency(order.amount)}
+        </td>
+        <td className="px-4 py-2.5" onClick={() => onToggleExpand(order.id)}>
+          {/* R116: shared StatusBadge (STATUS_TONE) replaces the deprecated
+              statusColor() — 93-C7 follow-up. */}
+          <StatusBadge
+            variant={STATUS_TONE[order.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
+            size="sm"
+          >
+            {statusLabel(order.status)}
+          </StatusBadge>
+        </td>
+        <td
+          className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums"
+          onClick={() => onToggleExpand(order.id)}
+        >
+          {order.created_at ? formatDate(order.created_at) : "—"}
+        </td>
+        {/* F3-02 (R111 WCAG 2.1.1): the toggle is now a real <button>
+            (Enter/Space work natively) with aria-expanded + a state-aware
+            accessible name; the other cells keep their onClick for the
+            mouse-affordance of tapping anywhere on the row.
+            stopPropagation keeps a click on the chevron from
+            double-firing the td handler. */}
+        <td className="px-4 py-2.5 text-muted-foreground transition-colors">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(order.id);
+            }}
+            aria-expanded={expanded}
+            aria-label={
+              expanded
+                ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
+                : `عرض بيانات تسليم الطلب ${order.order_code}`
+            }
+            className="p-1.5 -m-1 rounded-lg text-muted-foreground group-hover:text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="bg-muted/10">
+          <td colSpan={8} className="px-4 py-3 border-b border-border/30">
+            <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
+              {/* B6-03 (R116): values render from the per-order credentials
+                  fetch (the list no longer decrypts) — masking + copy UX
+                  unchanged (96-F7). */}
+              {order.has_credentials && !creds && !credsFailed && (
+                <span className="text-muted-foreground">جارٍ تحميل بيانات التسليم…</span>
+              )}
+              {order.has_credentials && credsFailed && (
+                <span className="text-destructive">تعذّر تحميل بيانات التسليم</span>
+              )}
+              {/* R117 (A1-P6): raw columns populated but every decrypt
+                  null — the operator needs the ENCRYPTION_KEY signal,
+                  not a misleading "no data". */}
+              {order.has_credentials && creds?.decrypt_failed && (
+                <span role="alert" className="text-destructive font-bold">
+                  تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
+                </span>
+              )}
+              {creds?.delivered_email && (
+                <MaskedCredential label="البريد" value={creds.delivered_email} />
+              )}
+              {creds?.delivered_password && (
+                <MaskedCredential label="كلمة المرور" value={creds.delivered_password} />
+              )}
+              {creds?.delivered_extra_details && (
+                <div>
+                  <span className="text-muted-foreground">تفاصيل: </span>
+                  <span>{creds.delivered_extra_details}</span>
+                </div>
+              )}
+              {order.coupon_code && (
+                <div>
+                  <span className="text-muted-foreground">الكوبون: </span>
+                  <span className="font-mono font-bold text-emerald-400">{order.coupon_code}</span>
+                  {(order.discount_amount ?? 0) > 0 && (
+                    <span className="text-muted-foreground mr-1">
+                      (خصم {formatCurrency(order.discount_amount ?? 0)})
+                    </span>
+                  )}
+                </div>
+              )}
+              {!order.has_credentials && !creds?.delivered_extra_details && !order.coupon_code && (
+                <span className="text-muted-foreground">لا توجد بيانات تسليم</span>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </React.Fragment>
+  );
+});
+
+/** Mobile card: the list card plus its inline expansion. */
+const MobileOrderCard = React.memo(function MobileOrderCard({
+  order,
+  isSelected,
+  expanded,
+  creds,
+  credsFailed,
+  onToggleSelect,
+  onToggleExpand,
+}: OrderRowProps) {
+  return (
+    <div
+      className={`bg-card border rounded-2xl p-4 cursor-pointer transition-colors ${
+        isSelected ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-border"
+      }`}
+      onClick={() => onToggleExpand(order.id)}
+    >
+      <div className="flex items-start gap-2 mb-2">
+        {/* F3-08 (R111): same name + aria-pressed fix as the desktop row
+            selector. */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(order.id);
+          }}
+          aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
+          aria-pressed={isSelected}
+          className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
+        >
+          {isSelected ? (
+            <CheckSquare className="w-4 h-4 text-primary" />
+          ) : (
+            <Square className="w-4 h-4" />
+          )}
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm">{order.product_name}</div>
+          <div className="font-mono text-xs text-muted-foreground mt-0.5">
+            {displayUserName(userFromRow(order))}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="font-bold text-primary tabular-nums">{formatCurrency(order.amount)}</div>
+          {/* R116: shared StatusBadge (STATUS_TONE) replaces the
+              deprecated statusColor() — 93-C7 follow-up. */}
+          <StatusBadge
+            variant={STATUS_TONE[order.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
+            size="sm"
+            className="mt-1"
+          >
+            {statusLabel(order.status)}
+          </StatusBadge>
+        </div>
+      </div>
+      {/* F3-02 (R111 WCAG 2.1.1): the mobile card was a mouse-only onClick
+          div — the meta row is now the keyboard-reachable expand toggle
+          (real <button>, Enter/Space native, aria-expanded + state-aware
+          name, chevron affordance). The card keeps its onClick so taps
+          anywhere still expand. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleExpand(order.id);
+        }}
+        aria-expanded={expanded}
+        aria-label={
+          expanded
+            ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
+            : `عرض بيانات تسليم الطلب ${order.order_code}`
+        }
+        className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
+      >
+        <span className="font-mono">{order.order_code}</span>
+        {order.created_at && (
+          <>
+            <span>·</span>
+            <span>{formatDate(order.created_at)}</span>
+          </>
+        )}
+        <ChevronDown
+          className={`w-3.5 h-3.5 ms-auto transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      {expanded &&
+        order.has_credentials &&
+        (credsFailed ? (
+          <div className="mt-2 pt-2 border-t border-border/30 text-xs text-destructive">
+            تعذّر تحميل بيانات التسليم
+          </div>
+        ) : creds ? (
+          <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
+            {creds.delivered_email && (
+              <MaskedCredential label="البريد" value={creds.delivered_email} />
+            )}
+            {creds.delivered_password && (
+              <MaskedCredential label="كلمة المرور" value={creds.delivered_password} />
+            )}
+            {creds.decrypt_failed && (
+              /* R117 (A1-P6): mobile card parity — the decrypt-failure
+                 signal must reach the phone too, not just the desktop
+                 row. */
+              <span role="alert" className="text-xs text-destructive font-bold">
+                تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
+              </span>
+            )}
+            {!creds.delivered_email && !creds.delivered_password && !creds.decrypt_failed && (
+              <span className="text-xs text-muted-foreground">لا توجد بيانات تسليم</span>
+            )}
+          </div>
+        ) : (
+          <div className="mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
+            جارٍ تحميل بيانات التسليم…
+          </div>
+        ))}
+    </div>
+  );
+});
+
 export default function AdminOrdersPage() {
   const { adminToken } = useAuth();
   const jsonHeaders = useAdminHeaders({ json: true });
@@ -305,7 +613,14 @@ export default function AdminOrdersPage() {
 
   // Same relaxed widening the page always used for the delivered-* /
   // coupon_* extra fields the generated AdminOrder type doesn't carry.
-  const allOrders = (ordersPages?.pages ?? []).flat() as AdminOrderRow[];
+  // R118-B2 (A6 F-8): memoized — `.flat()` mints a fresh array identity
+  // on every render, which would defeat the useMemo chain below (and
+  // every row's `order` prop identity) on each keystroke. ordersPages
+  // only changes identity on query updates.
+  const allOrders = useMemo(
+    () => (ordersPages?.pages ?? []).flat() as AdminOrderRow[],
+    [ordersPages],
+  );
 
   // B6-03 (R116): expanding a row whose list entry carries the
   // has_credentials flag triggers the one-time audited fetch. The gate
@@ -325,6 +640,92 @@ export default function AdminOrdersPage() {
   // known — otherwise the honest count is «عرض N» (A2 P1-1).
   const knownTotal = (ordersPages?.pages.length ?? 0) <= 1 && allOrders.length < ORDERS_PAGE_SIZE;
   const loadErrorMessage = isError ? getErrorMessage(error) : null;
+
+  // ── R118-B2 (A6 F-8): memoized filter/aggregate chain ─────────────
+  // The search box is controlled state — every keystroke re-rendered
+  // the page and recomputed these chains (statusCounts / byStatus /
+  // byDate / todayCount / revenue + coupon aggregates) plus every row
+  // subtree for nothing (the server search only runs after the 300ms
+  // debounce). All of it is now derived through useMemo keyed on
+  // [allOrders, statusFilter, dateRange] so a keystroke skips the work
+  // entirely; the memoized row components below skip the DOM side.
+  // Lives ABOVE the adminToken early-return (rules of hooks).
+  const statusCounts = useMemo(
+    () =>
+      allOrders.reduce((acc: Record<string, number>, o) => {
+        acc[o.status] = (acc[o.status] ?? 0) + 1;
+        return acc;
+      }, {}),
+    [allOrders],
+  );
+
+  const filtered = useMemo(() => {
+    const byStatus = statusFilter ? allOrders.filter((o) => o.status === statusFilter) : allOrders;
+    const byDate = dateRange
+      ? byStatus.filter((o) => o.created_at && isWithinDays(o.created_at, dateRange))
+      : byStatus;
+    // 94-C2 (A2 P2-2): search already ran on the server — only the status
+    // tab and date quick-filter stay client-side over the accumulated
+    // pages (keeping status local preserves the tab counts' honesty over
+    // the loaded set — the risk.tsx P3-1 lesson).
+    return byDate;
+  }, [allOrders, statusFilter, dateRange]);
+
+  const todayCount = useMemo(
+    () =>
+      allOrders.filter((o) => {
+        if (!o.created_at) return false;
+        const d = new Date(o.created_at);
+        const now = new Date();
+        return (
+          d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate()
+        );
+      }).length,
+    // `new Date()` per render would be fine correctness-wise but keeps
+    // the memo forever-fresh; one snapshot per allOrders change matches
+    // the old behavior (recomputed on data updates).
+    [allOrders],
+  );
+
+  const totalRevenue = useMemo(
+    () => filtered.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0),
+    [filtered],
+  );
+
+  // Coupon stats from ALL orders (not filtered) for the overview panel
+  const { couponOrders, totalDiscounts, totalRevenueAll, topCoupons, uniqueCouponCount } =
+    useMemo(() => {
+      const couponOrders = allOrders.filter((o) => o.coupon_code);
+      const totalDiscounts = couponOrders.reduce(
+        (sum: number, o) => sum + (Number(o.discount_amount) || 0),
+        0,
+      );
+      const totalRevenueAll = allOrders.reduce(
+        (sum: number, o) => sum + (Number(o.amount) || 0),
+        0,
+      );
+      // Top coupon codes: { code, uses, totalDiscount }
+      const couponMap = couponOrders.reduce(
+        (acc: Record<string, { uses: number; totalDiscount: number }>, o) => {
+          const c = o.coupon_code as string;
+          if (!acc[c]) acc[c] = { uses: 0, totalDiscount: 0 };
+          acc[c].uses++;
+          acc[c].totalDiscount += Number(o.discount_amount) || 0;
+          return acc;
+        },
+        {},
+      );
+      const topCoupons = (
+        Object.entries(couponMap) as Array<[string, { uses: number; totalDiscount: number }]>
+      )
+        .map(([code, v]) => ({ code, ...v }))
+        .sort((a, b) => b.uses - a.uses)
+        .slice(0, 4);
+      const uniqueCouponCount = Object.keys(couponMap).length;
+      return { couponOrders, totalDiscounts, totalRevenueAll, topCoupons, uniqueCouponCount };
+    }, [allOrders]);
 
   // B5-02 (round-92 audit): the bulk-status endpoint (including bulk
   // refund — a money action) used to complete SILENTLY on success: the
@@ -475,61 +876,26 @@ export default function AdminOrdersPage() {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
+  // R118-B2 (A6 F-8): the row callbacks are useCallback-stable so the
+  // memoized row components bail out on keystroke re-renders (selection /
+  // expansion flips bust exactly ONE row via its boolean prop).
+  // R118 fix: declared BEFORE the !adminToken early return — hooks must
+  // run unconditionally (rules-of-hooks); setters are stable so hoisting
+  // is behavior-neutral for the authenticated render.
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleExpand = useCallback((id: number) => {
+    setExpandedRow((prev) => (prev === id ? null : id));
+  }, []);
+
   if (!adminToken) return null;
-
-  const statusCounts = allOrders.reduce((acc: Record<string, number>, o) => {
-    acc[o.status] = (acc[o.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const byStatus = statusFilter ? allOrders.filter((o) => o.status === statusFilter) : allOrders;
-  const byDate = dateRange
-    ? byStatus.filter((o) => o.created_at && isWithinDays(o.created_at, dateRange))
-    : byStatus;
-  // 94-C2 (A2 P2-2): search already ran on the server — only the status
-  // tab and date quick-filter stay client-side over the accumulated
-  // pages (keeping status local preserves the tab counts' honesty over
-  // the loaded set — the risk.tsx P3-1 lesson).
-  const filtered = byDate;
-
-  const todayCount = allOrders.filter((o) => {
-    if (!o.created_at) return false;
-    const d = new Date(o.created_at);
-    const now = new Date();
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate()
-    );
-  }).length;
-
-  const totalRevenue = filtered.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
-
-  // Coupon stats from ALL orders (not filtered) for the overview panel
-  const couponOrders = allOrders.filter((o) => o.coupon_code);
-  const totalDiscounts = couponOrders.reduce(
-    (sum: number, o) => sum + (Number(o.discount_amount) || 0),
-    0,
-  );
-  const totalRevenueAll = allOrders.reduce((sum: number, o) => sum + (Number(o.amount) || 0), 0);
-
-  // Top coupon codes: { code, uses, totalDiscount }
-  const couponMap = couponOrders.reduce(
-    (acc: Record<string, { uses: number; totalDiscount: number }>, o) => {
-      const c = o.coupon_code as string;
-      if (!acc[c]) acc[c] = { uses: 0, totalDiscount: 0 };
-      acc[c].uses++;
-      acc[c].totalDiscount += Number(o.discount_amount) || 0;
-      return acc;
-    },
-    {},
-  );
-  const topCoupons = (
-    Object.entries(couponMap) as Array<[string, { uses: number; totalDiscount: number }]>
-  )
-    .map(([code, v]) => ({ code, ...v }))
-    .sort((a, b) => b.uses - a.uses)
-    .slice(0, 4);
 
   const exportCSV = () => {
     const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
@@ -549,15 +915,6 @@ export default function AdminOrdersPage() {
     a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   const toggleSelectAll = () => {
@@ -743,7 +1100,7 @@ export default function AdminOrdersPage() {
                       كوبونات مستخدمة
                     </div>
                     <div className="font-bold text-base tabular-nums">
-                      {Object.keys(couponMap).length}
+                      {uniqueCouponCount}
                     </div>
                     <div className="text-3xs text-muted-foreground mt-0.5">كود فريد</div>
                   </div>
@@ -1121,200 +1478,19 @@ export default function AdminOrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((order, idx: number) => {
-                      const isSelected = selectedIds.has(order.id);
-                      // B6-03 (R116): decrypted credentials come from the
-                      // per-order endpoint, cached on first reveal.
-                      const creds = credentialsCache.get(order.id);
-                      const credsFailed = failedCredentialIds.has(order.id);
-                      return (
-                        <React.Fragment key={order.id}>
-                          <tr
-                            className={`border-b border-border/30 transition-colors hover:bg-muted/20 cursor-pointer group ${
-                              isSelected ? "bg-primary/3" : idx % 2 !== 0 ? "bg-muted/[0.035]" : ""
-                            }`}
-                          >
-                            <td className="px-4 py-2.5">
-                              {/* F3-08 (R111): name + aria-pressed on the
-                                  row selector (was an icon-only button —
-                                  the selection state feeding the bulk
-                                  refund was visual-only). */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSelect(order.id);
-                                }}
-                                aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
-                                aria-pressed={isSelected}
-                                className="text-muted-foreground hover:text-primary transition-colors"
-                              >
-                                {isSelected ? (
-                                  <CheckSquare className="w-3.5 h-3.5 text-primary" />
-                                ) : (
-                                  <Square className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-                            </td>
-                            <td
-                              className="px-4 py-2.5 font-mono text-xs text-muted-foreground"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {order.order_code}
-                            </td>
-                            <td
-                              className="px-4 py-2.5 font-mono text-xs font-bold"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {displayUserName(userFromRow(order))}
-                            </td>
-                            <td
-                              className="px-4 py-2.5 font-semibold text-sm max-w-40 truncate"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {order.product_name}
-                            </td>
-                            <td
-                              className="px-4 py-2.5 font-bold text-primary text-sm tabular-nums"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {formatCurrency(order.amount)}
-                            </td>
-                            <td
-                              className="px-4 py-2.5"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {/* R116: shared StatusBadge (STATUS_TONE)
-                                  replaces the deprecated statusColor() —
-                                  93-C7 follow-up. */}
-                              <StatusBadge
-                                variant={
-                                  STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
-                                  UNKNOWN_STATUS_TONE
-                                }
-                                size="sm"
-                              >
-                                {statusLabel(order.status)}
-                              </StatusBadge>
-                            </td>
-                            <td
-                              className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums"
-                              onClick={() =>
-                                setExpandedRow(expandedRow === order.id ? null : order.id)
-                              }
-                            >
-                              {order.created_at ? formatDate(order.created_at) : "—"}
-                            </td>
-                            {/* F3-02 (R111 WCAG 2.1.1): the toggle is now a
-                                real <button> (Enter/Space work natively) with
-                                aria-expanded + a state-aware accessible name;
-                                the other cells keep their onClick for the
-                                mouse-affordance of tapping anywhere on the
-                                row. stopPropagation keeps a click on the
-                                chevron from double-firing the td handler. */}
-                            <td className="px-4 py-2.5 text-muted-foreground transition-colors">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedRow(expandedRow === order.id ? null : order.id);
-                                }}
-                                aria-expanded={expandedRow === order.id}
-                                aria-label={
-                                  expandedRow === order.id
-                                    ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
-                                    : `عرض بيانات تسليم الطلب ${order.order_code}`
-                                }
-                                className="p-1.5 -m-1 rounded-lg text-muted-foreground group-hover:text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                <ChevronDown
-                                  className={`w-3.5 h-3.5 transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`}
-                                />
-                              </button>
-                            </td>
-                          </tr>
-                          {expandedRow === order.id && (
-                            <tr key={`exp-${order.id}`} className="bg-muted/10">
-                              <td colSpan={8} className="px-4 py-3 border-b border-border/30">
-                                <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
-                                  {/* B6-03 (R116): values render from the
-                                      per-order credentials fetch (the list
-                                      no longer decrypts) — masking + copy
-                                      UX unchanged (96-F7). */}
-                                  {order.has_credentials && !creds && !credsFailed && (
-                                    <span className="text-muted-foreground">
-                                      جارٍ تحميل بيانات التسليم…
-                                    </span>
-                                  )}
-                                  {order.has_credentials && credsFailed && (
-                                    <span className="text-destructive">
-                                      تعذّر تحميل بيانات التسليم
-                                    </span>
-                                  )}
-                                  {/* R117 (A1-P6): raw columns populated but
-                                      every decrypt null — the operator
-                                      needs the ENCRYPTION_KEY signal, not
-                                      a misleading "no data". */}
-                                  {order.has_credentials && creds?.decrypt_failed && (
-                                    <span role="alert" className="text-destructive font-bold">
-                                      تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير
-                                      الأصلي
-                                    </span>
-                                  )}
-                                  {creds?.delivered_email && (
-                                    <MaskedCredential
-                                      label="البريد"
-                                      value={creds.delivered_email}
-                                    />
-                                  )}
-                                  {creds?.delivered_password && (
-                                    <MaskedCredential
-                                      label="كلمة المرور"
-                                      value={creds.delivered_password}
-                                    />
-                                  )}
-                                  {creds?.delivered_extra_details && (
-                                    <div>
-                                      <span className="text-muted-foreground">تفاصيل: </span>
-                                      <span>{creds.delivered_extra_details}</span>
-                                    </div>
-                                  )}
-                                  {order.coupon_code && (
-                                    <div>
-                                      <span className="text-muted-foreground">الكوبون: </span>
-                                      <span className="font-mono font-bold text-emerald-400">
-                                        {order.coupon_code}
-                                      </span>
-                                      {(order.discount_amount ?? 0) > 0 && (
-                                        <span className="text-muted-foreground mr-1">
-                                          (خصم {formatCurrency(order.discount_amount ?? 0)})
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                  {!order.has_credentials &&
-                                    !creds?.delivered_extra_details &&
-                                    !order.coupon_code && (
-                                      <span className="text-muted-foreground">
-                                        لا توجد بيانات تسليم
-                                      </span>
-                                    )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+                    {filtered.map((order, idx: number) => (
+                      <DesktopOrderRow
+                        key={order.id}
+                        order={order}
+                        idx={idx}
+                        isSelected={selectedIds.has(order.id)}
+                        expanded={expandedRow === order.id}
+                        creds={credentialsCache.get(order.id)}
+                        credsFailed={failedCredentialIds.has(order.id)}
+                        onToggleSelect={toggleSelect}
+                        onToggleExpand={toggleExpand}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -1332,133 +1508,18 @@ export default function AdminOrdersPage() {
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
-              {filtered.map((order) => {
-                const isSelected = selectedIds.has(order.id);
-                // B6-03 (R116): same per-order credential cache as the
-                // desktop expanded row.
-                const creds = credentialsCache.get(order.id);
-                const credsFailed = failedCredentialIds.has(order.id);
-                return (
-                  <div
-                    key={order.id}
-                    className={`bg-card border rounded-2xl p-4 cursor-pointer transition-colors ${isSelected ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-border"}`}
-                    onClick={() => setExpandedRow(expandedRow === order.id ? null : order.id)}
-                  >
-                    <div className="flex items-start gap-2 mb-2">
-                      {/* F3-08 (R111): same name + aria-pressed fix as the
-                          desktop row selector. */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSelect(order.id);
-                        }}
-                        aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
-                        aria-pressed={isSelected}
-                        className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-primary" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm">{order.product_name}</div>
-                        <div className="font-mono text-xs text-muted-foreground mt-0.5">
-                          {displayUserName(userFromRow(order))}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="font-bold text-primary tabular-nums">
-                          {formatCurrency(order.amount)}
-                        </div>
-                        {/* R116: shared StatusBadge (STATUS_TONE)
-                            replaces the deprecated statusColor() — 93-C7
-                            follow-up. */}
-                        <StatusBadge
-                          variant={
-                            STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
-                            UNKNOWN_STATUS_TONE
-                          }
-                          size="sm"
-                          className="mt-1"
-                        >
-                          {statusLabel(order.status)}
-                        </StatusBadge>
-                      </div>
-                    </div>
-                    {/* F3-02 (R111 WCAG 2.1.1): the mobile card was a
-                        mouse-only onClick div — the meta row is now the
-                        keyboard-reachable expand toggle (real <button>,
-                        Enter/Space native, aria-expanded + state-aware
-                        name, chevron affordance). The card keeps its
-                        onClick so taps anywhere still expand. */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedRow(expandedRow === order.id ? null : order.id);
-                      }}
-                      aria-expanded={expandedRow === order.id}
-                      aria-label={
-                        expandedRow === order.id
-                          ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
-                          : `عرض بيانات تسليم الطلب ${order.order_code}`
-                      }
-                      className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
-                    >
-                      <span className="font-mono">{order.order_code}</span>
-                      {order.created_at && (
-                        <>
-                          <span>·</span>
-                          <span>{formatDate(order.created_at)}</span>
-                        </>
-                      )}
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 ms-auto transition-transform duration-150 ${expandedRow === order.id ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {expandedRow === order.id &&
-                      order.has_credentials &&
-                      (credsFailed ? (
-                        <div className="mt-2 pt-2 border-t border-border/30 text-xs text-destructive">
-                          تعذّر تحميل بيانات التسليم
-                        </div>
-                      ) : creds ? (
-                        <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
-                          {creds.delivered_email && (
-                            <MaskedCredential label="البريد" value={creds.delivered_email} />
-                          )}
-                          {creds.delivered_password && (
-                            <MaskedCredential
-                              label="كلمة المرور"
-                              value={creds.delivered_password}
-                            />
-                          )}
-                          {creds.decrypt_failed && (
-                            /* R117 (A1-P6): mobile card parity — the
-                               decrypt-failure signal must reach the
-                               phone too, not just the desktop row. */
-                            <span role="alert" className="text-xs text-destructive font-bold">
-                              تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
-                            </span>
-                          )}
-                          {!creds.delivered_email &&
-                            !creds.delivered_password &&
-                            !creds.decrypt_failed && (
-                              <span className="text-xs text-muted-foreground">
-                                لا توجد بيانات تسليم
-                              </span>
-                            )}
-                        </div>
-                      ) : (
-                        <div className="mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
-                          جارٍ تحميل بيانات التسليم…
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
+              {filtered.map((order) => (
+                <MobileOrderCard
+                  key={order.id}
+                  order={order}
+                  isSelected={selectedIds.has(order.id)}
+                  expanded={expandedRow === order.id}
+                  creds={credentialsCache.get(order.id)}
+                  credsFailed={failedCredentialIds.has(order.id)}
+                  onToggleSelect={toggleSelect}
+                  onToggleExpand={toggleExpand}
+                />
+              ))}
             </div>
 
             {/* 94-C2 (A2 P1-1): "load more" appends the next page in

@@ -19,10 +19,17 @@
  *      controller pattern) so real runtimes kill the stale request at
  *      the source.
  *
+ * R118 (A5 W-6 follow-up): migration to vi.useFakeTimers is still PENDING —
+ * the suite still sleeps real 340/700/800ms per test (known top flake
+ * candidate on a loaded 2-CPU runner; green at R118 full gates). Convert
+ * using the repo's fake-timer idiom (whatsapp-phone-sign-in.test.tsx):
+ * act(vi.advanceTimersByTime) + microtask flush; NEVER waitFor/findBy
+ * (they poll on faked timers and hang).
+ *
  * Module-boundary mocks follow referrals-error-state.test.tsx.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";

@@ -11,7 +11,9 @@
  * the cursor affordance for every interactive element in the app.
  *
  * Also pins:
- *   • .pb-safe — exactly ONE definition, WITH env() fallback (P2-6)
+ *   • .pb-safe / .pt-safe — stay DELETED (R118-B2 / A2 F-3; the round-94
+ *     P2-6 duplicate-collapse upgraded to full removal once exhaustive
+ *     grep showed zero production consumers)
  *   • --badge-outline — stays deleted (P3-5 dead token)
  *   • --color-brand-whatsapp(-ink) — WhatsApp tokens exist (P2-5)
  *   • .touch-target — the 44px floor the P1-3 fixes rely on
@@ -80,19 +82,31 @@ describe("index.css — global cursor:pointer rule (A3 P1-1)", () => {
   });
 });
 
-describe("index.css — pb-safe single definition with fallback (A3 P2-6)", () => {
-  it("declares .pb-safe exactly once", () => {
-    expect((cssText.match(/\.pb-safe\s*\{/g) ?? []).length).toBe(1);
+describe("index.css — pb-safe / pt-safe stay deleted (R118-B2 / A2 F-3)", () => {
+  // A3 P2-6 (round-94) collapsed the duplicate declarations to one
+  // definition each. R118-B2 (A2 F-3) went one step further and removed
+  // both classes entirely — exhaustive grep showed ZERO production
+  // consumers (the live safe-area reservations are the Tailwind env()
+  // arbitraries, `mobile-sticky-bottom-safe`, and MobileNav's inline
+  // paddingBottom). Same guard shape as the --badge-outline deletion
+  // below: the classes stay dead so nobody cargo-cults them back.
+  it(".pb-safe is not declared anywhere", () => {
+    expect(cssText).not.toMatch(/\.pb-safe\s*\{/);
   });
 
-  it("declares .pt-safe exactly once", () => {
-    expect((cssText.match(/\.pt-safe\s*\{/g) ?? []).length).toBe(1);
+  it(".pt-safe is not declared anywhere", () => {
+    expect(cssText).not.toMatch(/\.pt-safe\s*\{/);
   });
 
-  it("the surviving definition carries an env() fallback", () => {
-    expect(cssText).toMatch(
-      /\.pb-safe\s*\{\s*padding-bottom:\s*env\(safe-area-inset-bottom,\s*20px\);/,
-    );
+  it("the dead R118-B2 entrance/elevation classes stay deleted too", () => {
+    expect(cssText).not.toMatch(/\.card-enter\s*\{/);
+    expect(cssText).not.toMatch(/@keyframes card-enter/);
+    expect(cssText).not.toMatch(/\.text-fluid-xl\s*\{/);
+    // hover-elevate-2 never shipped a consumer (button.tsx uses
+    // `hover-elevate active-elevate-2` — the ACTIVE -2 stays live).
+    expect(cssText).not.toMatch(/\.hover-elevate-2[:{\s]/);
+    expect(cssText).toMatch(/\.hover-elevate:not\(/);
+    expect(cssText).toMatch(/\.active-elevate-2:active:not\(/);
   });
 });
 

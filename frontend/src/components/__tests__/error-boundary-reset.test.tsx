@@ -14,6 +14,8 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 function Boom(): never {
@@ -100,5 +102,65 @@ describe("ErrorBoundary — reset by resetKey, not children identity (r97 F-14)"
       </ErrorBoundary>,
     );
     expect(screen.getByText("legacy-healthy")).toBeInTheDocument();
+  });
+});
+
+describe("ErrorBoundary — slim chrome fallback (R118-B2 / A2 F-5)", () => {
+  // App chrome (Navbar / FlashSaleBanner / Footer / MobileNav) used to
+  // render ABOVE the route boundary with no guard of its own — a Navbar
+  // throw white-screened the whole app. Chrome mount sites now pass a
+  // `fallback` (null): a caught error degrades that ONE block instead of
+  // painting the full-screen recovery page over the still-healthy route.
+
+  it("renders the provided fallback instead of the full-screen recovery page", () => {
+    const { container } = render(
+      <ErrorBoundary resetKey="/wallet" fallback={null}>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    // Null fallback: nothing renders at all (no white-screen recovery
+    // UI, no crashed chrome) — and crucially no throw escapes.
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("حدث خطأ غير متوقع")).not.toBeInTheDocument();
+  });
+
+  it("a non-null fallback renders its own degradation UI", () => {
+    render(
+      <ErrorBoundary resetKey="/wallet" fallback={<div>chrome-degraded</div>}>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText("chrome-degraded")).toBeInTheDocument();
+    expect(screen.queryByText("حدث خطأ غير متوقع")).not.toBeInTheDocument();
+  });
+
+  it("the fallback path still resets on resetKey change (navigation retries the chrome)", () => {
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/wallet" fallback={null}>
+        <Boom />
+      </ErrorBoundary>,
+    );
+    expect(screen.queryByText("nav-healthy")).not.toBeInTheDocument();
+
+    rerender(
+      <ErrorBoundary resetKey="/" fallback={null}>
+        <div>nav-healthy</div>
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText("nav-healthy")).toBeInTheDocument();
+  });
+
+  it("App.tsx wraps every storefront chrome block in a slim boundary (source contract)", () => {
+    // AppRoutes is not exported; the mobile-nav-clearance precedent —
+    // asserting on App.tsx's source text — pins the wiring instead.
+    const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    const chromeBoundary = /<ErrorBoundary resetKey=\{location\} fallback=\{null\}>/g;
+    const count = appText.match(chromeBoundary)?.length ?? 0;
+    // Navbar + FlashSaleBanner + Footer + MobileNav = 4 slim boundaries.
+    expect(count).toBeGreaterThanOrEqual(4);
+    // The full-screen route boundary keeps its resetKey-only shape.
+    expect(appText).toContain("<ErrorBoundary resetKey={location}>");
+    // And the chrome still renders only on non-admin, non-chromeless routes.
+    expect(appText).toContain("{!isAdmin && !isChromeless && (\n        <ErrorBoundary resetKey={location} fallback={null}>\n          <Navbar />");
   });
 });

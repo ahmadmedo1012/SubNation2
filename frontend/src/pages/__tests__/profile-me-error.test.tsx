@@ -16,7 +16,7 @@
  * /api/auth/providers/linked probe is stubbed at the global fetch.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -115,7 +115,7 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });
 
-  it("the healthy path still renders the identity card (sanity)", () => {
+  it("the healthy path still renders the identity card (sanity)", async () => {
     vi.mocked(useGetMe).mockReturnValue({
       data: ME_FIXTURE,
       isLoading: false,
@@ -124,6 +124,19 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     } as unknown as MeResult);
 
     renderPage();
+
+    // R118-B2 (A5 W-4): settle the mount-time /auth/providers/linked probe
+    // (stubbed at the global fetch below) before asserting. The probe
+    // resolves AFTER a synchronous test body returns, and its post-await
+    // state updates (setLinkedProviders + setLoadingProviders(false))
+    // were the source of this suite's 2 act() warnings — updates landed
+    // outside any act scope. Draining the promise chain inside act
+    // absorbs them; NO assertions changed.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     expect(screen.getByText("سالم")).toBeInTheDocument();
     expect(screen.getByText("SNXYZ99")).toBeInTheDocument();

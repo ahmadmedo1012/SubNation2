@@ -81,3 +81,68 @@ describe("toast() — severity-aware default duration (94-C3 / A3 P3-1)", () => 
     expect(optionsOf(vi.mocked(sonnerToast.success))).toMatchObject({ duration: 4_000 });
   });
 });
+
+describe("toast() — sonner option forwarding end-to-end (R118-B2 / A2 F-1)", () => {
+  // R117 F-6 wired helperInput to CAPTURE the remaining sonner options,
+  // but emit() still built a closed opts object — onDismiss / onAutoClose
+  // / position / closeButton / className were silently dropped at the
+  // last hop. R118-B2 forwards the remainder verbatim. These tests pin
+  // the full path (helperInput → toast() → emit() → sonner).
+
+  it("a sonner-idiomatic helper call forwards onDismiss / onAutoClose / position / closeButton", () => {
+    const onDismiss = vi.fn();
+    const onAutoClose = vi.fn();
+    toast.error("خطأ فادح", {
+      description: "الوصف",
+      duration: 6_000,
+      onDismiss,
+      onAutoClose,
+      position: "bottom-center",
+      closeButton: true,
+    });
+
+    const opts = optionsOf(vi.mocked(sonnerToast.error));
+    expect(opts).toMatchObject({
+      description: "الوصف",
+      duration: 6_000,
+      position: "bottom-center",
+      closeButton: true,
+    });
+    expect(opts.onDismiss).toBe(onDismiss);
+    expect(opts.onAutoClose).toBe(onAutoClose);
+  });
+
+  it("plain toast() callers without extra options are unaffected (rest = {})", () => {
+    toast({ title: "تم", description: "تم الحفظ", variant: "success" });
+
+    // The closed-contract keys arrive exactly as before…
+    expect(optionsOf(vi.mocked(sonnerToast.success))).toMatchObject({
+      description: "تم الحفظ",
+      duration: 4_000,
+    });
+    // …and nothing leaked into the options bag.
+    const optsBag = vi.mocked(sonnerToast.success).mock.calls[0]![1] as Record<string, unknown>;
+    expect(Object.keys(optsBag).sort()).toEqual(["action", "description", "duration", "id"]);
+  });
+
+  it("update() keeps the toast id (the replacement carries idOverride)", () => {
+    const onDismiss = vi.fn();
+    const handle = toast.warning("تحذير", { onDismiss, className: "wide-toast" });
+    handle.update({ title: "تحديث", description: "جديد" });
+
+    // The initial call rode sonnerToast.warning with the passthrough opts…
+    expect(vi.mocked(sonnerToast.warning)).toHaveBeenCalledTimes(1);
+    const initialOpts = vi.mocked(sonnerToast.warning).mock.calls[0]![1] as Record<string, unknown>;
+    expect(initialOpts.onDismiss).toBe(onDismiss);
+    expect(initialOpts.className).toBe("wide-toast");
+    // …while the update (no variant on the replacement input) rides the
+    // base sonnerToast with the SAME id so sonner replaces in place.
+    expect(vi.mocked(sonnerToast)).toHaveBeenCalledTimes(1);
+    const updateOpts = vi.mocked(sonnerToast).mock.calls[0]![1] as Record<string, unknown>;
+    expect(updateOpts.id).toBe(handle.id);
+    expect(updateOpts.description).toBe("جديد");
+    // Forwarding is per-call, never sticky — the update's own options win
+    // (the caller passed none here).
+    expect(updateOpts.onDismiss).toBeUndefined();
+  });
+});

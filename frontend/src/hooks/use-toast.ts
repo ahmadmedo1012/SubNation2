@@ -81,16 +81,29 @@ function defaultDuration(variant: ToastInput["variant"]): number {
 }
 
 function emit(input: ToastInput, idOverride?: string | number): string | number {
-  const opts: Parameters<typeof sonnerToast>[1] = {
-    description: input.description ?? undefined,
-    duration: input.duration ?? defaultDuration(input.variant),
-    id: idOverride ?? input.id,
+  // R118-B2 (A2 F-1 — completes R117 F-6): helperInput captures every
+  // REMAINING sonner option into the ToastInput (onDismiss /
+  // onAutoClose / position / closeButton / className / …), but this
+  // opts object used to be CLOSED — the rest was silently dropped at
+  // the last hop, so a sonner-idiomatic caller's options never reached
+  // sonner. Destructure the five keys we OWN (title/variant feed the
+  // switch; description/duration/id/action map 1:1) and forward
+  // everything else verbatim. The intersection with Record<string,
+  // unknown> is the same escape hatch helperInput uses — the closed
+  // ToastInput contract stays intact for existing callers (rest = {}).
+  const { title, description, duration, id, action, variant, ...rest } = input as ToastInput &
+    Record<string, unknown>;
+  const opts: Parameters<typeof sonnerToast>[1] & Record<string, unknown> = {
+    description: description ?? undefined,
+    duration: duration ?? defaultDuration(variant),
+    id: idOverride ?? id,
     // 96-main (R96 F-7b): pass-through — only the SW-update toast sets it.
-    action: input.action,
+    action,
+    ...rest,
   };
-  const titleText = input.title ?? "";
+  const titleText = title ?? "";
 
-  switch (input.variant) {
+  switch (variant) {
     case "destructive":
       return sonnerToast.error(titleText, opts);
     case "success":

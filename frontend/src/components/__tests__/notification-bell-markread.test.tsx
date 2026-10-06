@@ -17,11 +17,20 @@
  *   3. fetchAll: a late stale poll response never overwrites a newer
  *      socket-triggered fetch's list.
  *
+ * R118-B6 (A5 W-6): migrated to vi.useFakeTimers — the stale-poll race
+ * used to sleep a real 650ms (top flake candidate on a loaded 2-CPU
+ * runner). The repo's established fake-timer idiom
+ * (whatsapp-phone-sign-in.test.tsx): advance via
+ * act(vi.advanceTimersByTime) + a microtask flush; NEVER waitFor/findBy
+ * (they poll on faked timers and hang). The mount poll's 500ms delayed
+ * response is a fake timer now, so "the older response resolves after
+ * the newer one" is driven deterministically.
+ *
  * Auth/toast mocked at the module boundary (notification-bell-panel
  * test pattern); fetch routed per URL + method.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -58,12 +67,29 @@ function notif(id: number, title: string, isRead: boolean) {
 
 const fetchMock = vi.fn();
 
+/** Drains the promise continuations behind the mocked fetch (fake timers freeze macrotasks). */
+async function flushAsync() {
+  await act(async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  });
+}
+
+/** Advances fake time, then drains whatever the fired timers started. */
+async function advance(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+  await flushAsync();
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
+  vi.useFakeTimers();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function renderBell() {
@@ -74,9 +100,11 @@ function renderBell() {
   );
 }
 
-async function openPanel() {
+function openPanel() {
   fireEvent.click(screen.getByRole("button", { name: "الإشعارات" }));
-  return screen.findByRole("dialog", { name: "الإشعارات" });
+  // The portal'd panel renders in the same commit as the click — no
+  // findBy needed (and none possible: it polls on faked timers).
+  return screen.getByRole("dialog", { name: "الإشعارات" });
 }
 
 /** The "mark all read" header action only renders while unread > 0 —
@@ -102,25 +130,26 @@ describe("NotificationBell — mark* rollback + fetchAll ordering (r97 F-10)", (
     });
 
     renderBell();
-    // Unread badge = 1.
-    const badge = await screen.findByText("1");
+    // The mount fetchAll settles on the microtask queue — drain it and
+    // the unread badge ("1") is there, deterministically.
+    await flushAsync();
+    const badge = screen.getByText("1");
     expect(badge).toBeInTheDocument();
 
-    await openPanel();
+    openPanel();
     const markButton = screen.getByRole("button", { name: "تحديد كمقروء" });
     fireEvent.click(markButton);
 
     // Optimistic flip: every unread surface disappears (badge, header
-    // count chip, per-row chips, the mark-all action)…
-    await waitFor(() => {
-      expect(unreadProxy()).not.toBeInTheDocument();
-      expect(screen.queryByText("1")).not.toBeInTheDocument();
-    });
-    // …then the 500 lands and the pre-click truth returns everywhere.
-    await waitFor(() => {
-      expect(unreadProxy()).toBeInTheDocument();
-      expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
-    });
+    // count chip, per-row chips, the mark-all action) — synchronously
+    // with the click, before the request is even awaited…
+    expect(unreadProxy()).not.toBeInTheDocument();
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
+    // …then the 500 lands (microtask flush) and the pre-click truth
+    // returns everywhere.
+    await flushAsync();
+    expect(unreadProxy()).toBeInTheDocument();
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
     // The row itself is unread again (its mark-as-read chip is back).
     expect(screen.getByRole("button", { name: "تحديد كمقروء" })).toBeInTheDocument();
   });
@@ -142,24 +171,22 @@ describe("NotificationBell — mark* rollback + fetchAll ordering (r97 F-10)", (
     });
 
     renderBell();
-    await screen.findByText("1");
-    await openPanel();
+    await flushAsync();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    openPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "تحديد الكل كمقروء" }));
 
     // Optimistic: everything reads as read — the unread proxy action, the
     // badge and the header count chip are gone…
-    await waitFor(() => {
-      expect(unreadProxy()).not.toBeInTheDocument();
-      expect(screen.queryByText("1")).not.toBeInTheDocument();
-    });
+    expect(unreadProxy()).not.toBeInTheDocument();
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
     // …and the exact pre-click snapshot is restored on failure (badge +
     // header chip both reappear — getAllByText, they legitimately match
     // the same count).
-    await waitFor(() => {
-      expect(unreadProxy()).toBeInTheDocument();
-      expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
-    });
+    await flushAsync();
+    expect(unreadProxy()).toBeInTheDocument();
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("مقروءة سابقاً")).toBeInTheDocument();
     expect(screen.getByText("غير مقروءة")).toBeInTheDocument();
   });
@@ -188,16 +215,19 @@ describe("NotificationBell — mark* rollback + fetchAll ordering (r97 F-10)", (
     });
 
     renderBell();
-    await openPanel();
+    // The mount poll (call 1) is in flight, pending on its 500ms fake
+    // timer — the panel opens against the still-empty list.
+    openPanel();
 
     // Socket push lands while the mount poll is still in flight →
     // refetch returns the newer list immediately.
     window.dispatchEvent(new Event(NOTIFICATION_NEW_EVENT));
-    expect(await screen.findByText("قائمة حديثة FRESH")).toBeInTheDocument();
+    await flushAsync();
+    expect(screen.getByText("قائمة حديثة FRESH")).toBeInTheDocument();
 
-    // Wait WELL past the older response's 500ms delay — it resolves now,
-    // after the newer one, and must be dropped.
-    await new Promise((r) => setTimeout(r, 650));
+    // Advance WELL past the older response's 500ms delay — it resolves
+    // now, after the newer one, and must be dropped (seq guard).
+    await advance(500);
     expect(screen.queryByText("قائمة قديمة STALE")).not.toBeInTheDocument();
     expect(screen.getByText("قائمة حديثة FRESH")).toBeInTheDocument();
   });

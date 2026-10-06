@@ -955,6 +955,44 @@ export default function ProductPage() {
               </div>
             )}
 
+            {/* R118-B2 (A2 fix, buyer side): the purchase succeeded and the
+                order completed, but the credential payload could not be
+                decrypted (backend decrypt_failed:true — delivered_* null).
+                Previously the receipt just omitted the credentials box
+                entirely, implying the product ships without account data.
+                The honest notice rides the usage-terms warning idiom
+                (status-warning card + icon) and hands the buyer the
+                support link — support can re-deliver the credentials. */}
+            {orderResult.decrypt_failed &&
+              !orderResult.delivered_email &&
+              !orderResult.delivered_password && (
+                <div
+                  role="alert"
+                  className="bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5 flex items-start gap-2.5"
+                >
+                  <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-status-warning leading-relaxed">
+                      تعذّر فك تشفير بيانات التسليم
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 mb-2.5">
+                      طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم
+                      وستصلك بياناتك فوراً.
+                    </p>
+                    <Link href="/support">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-4 gap-1.5 rounded-xl font-bold"
+                      >
+                        <Headphones className="w-3.5 h-3.5" />
+                        تواصل مع الدعم
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+
             {orderResult.delivered_extra_details && (
               /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
                  direction runs (activation links / PIN codes inside Arabic

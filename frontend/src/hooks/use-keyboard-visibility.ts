@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 /**
  * R116-S2 (P2): virtual-keyboard visibility via window.visualViewport.
  *
- * Same detection strategy as MobileNav (96-F5 / R96 P2-3 — do NOT edit
- * that component): a drop of >120px from the anchored baseline means a
- * keyboard is covering the viewport. Growing back re-anchors the
- * baseline and restores the element. Extracted into a hook so other
- * fixed/sticky bottom surfaces (the product page's sticky buy bar) can
- * share the exact same thresholds without duplicating the listener.
+ * Detection strategy (originally 96-F5 / R96 P2-3 in MobileNav, extracted
+ * R116-S2; R118-B2 / A2 F-2 merged MobileNav onto this hook so there is
+ * exactly ONE detector — the nav's old inline copy predated R117 F-7 and
+ * had missed the orientationchange re-anchor): a drop of >120px from the
+ * anchored baseline means a keyboard is covering the viewport. Growing
+ * back re-anchors the baseline and restores the element. Consumers:
+ * the product page's sticky buy bar AND the MobileNav bottom bar.
  *
  * Consumers should pair this with the no-JS CSS fallback
  * `[@media(max-height:480px)]:hidden` (short viewports / keyboard

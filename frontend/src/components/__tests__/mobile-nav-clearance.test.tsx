@@ -20,7 +20,7 @@
  * single non-collapsing reservation.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -186,6 +186,67 @@ describe("MobileNav — 96-F5 (R96 F-4 + P2-3): GPU diet + keyboard hide", () =>
       expect(nav.classList.contains("hidden")).toBe(false);
       unmount();
     } finally {
+      delete (window as unknown as Record<string, unknown>).visualViewport;
+    }
+  });
+
+  it("R118-B2 (A2 F-2): a portrait→landscape rotation never latches the nav hidden — the shared hook's orientationchange re-anchor", async () => {
+    // The pre-merge inline detector (96-F5 copy) never received R117 F-7:
+    // a >120px shrink that is NOT a keyboard (portrait 800 → landscape
+    // 620) latched keyboardHidden=true forever — the baseline could only
+    // re-anchor on GROWTH past the stale value. MobileNav now consumes
+    // the shared useKeyboardVisibility hook, whose orientationchange
+    // handler re-anchors after the rotation settles (deferred one rAF).
+    const vvListeners: Record<string, (() => void) | undefined> = {};
+    const windowListeners: Record<string, Array<() => void>> = {};
+    const vv = {
+      height: 800,
+      addEventListener: (type: string, cb: () => void) => {
+        vvListeners[type] = cb;
+      },
+      removeEventListener: () => {},
+    };
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    const originalAdd = window.addEventListener.bind(window);
+    const addSpy = vi
+      .spyOn(window, "addEventListener")
+      .mockImplementation(((type: string, cb: EventListenerOrEventListenerObject) => {
+        (windowListeners[type] ??= []).push(cb as () => void);
+        return originalAdd(type, cb);
+      }) as typeof window.addEventListener);
+    try {
+      render(
+        <Router>
+          <MobileNav />
+        </Router>,
+      );
+      const nav = screen.getByRole("navigation");
+
+      // Rotation begins: the viewport shrinks 800 → 620 (>120px — the
+      // resize handler honestly reports "keyboard-like" at first)…
+      act(() => {
+        vv.height = 620;
+        vvListeners.resize?.();
+      });
+      expect(nav.classList.contains("hidden")).toBe(true);
+
+      // …then the rotation settles: orientationchange fires and the
+      // shared hook re-anchors (deferred one rAF → await a frame).
+      act(() => {
+        for (const cb of windowListeners.orientationchange ?? []) cb();
+      });
+      await waitFor(() => expect(nav.classList.contains("hidden")).toBe(false));
+
+      // The baseline re-anchored at the LANDSCAPE height: a real keyboard
+      // from here (620 → 420, drop 200) still hides the nav — the
+      // re-anchor didn't break the detector, it corrected the anchor.
+      act(() => {
+        vv.height = 420;
+        vvListeners.resize?.();
+      });
+      expect(nav.classList.contains("hidden")).toBe(true);
+    } finally {
+      addSpy.mockRestore();
       delete (window as unknown as Record<string, unknown>).visualViewport;
     }
   });

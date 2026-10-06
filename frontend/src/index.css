@@ -470,17 +470,6 @@
   }
 }
 
-@keyframes card-enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.975);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 @keyframes shake {
   0%,
   100% {
@@ -685,13 +674,11 @@
     animation: fade-in 0.22s ease-out both;
   }
 
-  /* Card entrance */
-  .card-enter {
-    animation: card-enter 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  /* Stagger delay helpers (safe-area helpers live in the dedicated
-     safe-area section near .touch-target — one definition each;
-     the stray duplicate .pb-safe here is what P2-6 removed). */
+  /* R118-B2 (A2 F-3): .card-enter removed — zero production consumers
+     since its extraction (the entrance vocabulary that shipped is
+     float-in / stagger-* / slide-up / reveal-up). Its keyframes went
+     with it. */
+  /* Stagger delay helpers */
   .stagger-1 {
     animation-delay: 0.04s;
   }
@@ -907,10 +894,8 @@
   }
 
   /* ── Typography ──────────────────────────────────── */
-  /* Fluid type scale */
-  .text-fluid-xl {
-    font-size: clamp(1.125rem, 3vw + 0.5rem, 1.375rem);
-  }
+  /* Fluid type scale (R118-B2 / A2 F-3: .text-fluid-xl removed —
+     zero consumers; 2xl/3xl are the live steps). */
   .text-fluid-2xl {
     font-size: clamp(1.375rem, 4vw + 0.5rem, 2rem);
   }
@@ -961,17 +946,18 @@
     scrollbar-color: hsl(var(--border)) transparent;
   }
 
-  /* Surface elevation helpers */
+  /* Surface elevation helpers (R118-B2 / A2 F-3: the -2 hover twin
+     removed — button.tsx ships `hover-elevate active-elevate-2`, so
+     only the ACTIVE -2 line is live; a hover-elevate-2 class never
+     had a consumer). */
   .hover-elevate:not(.no-default-hover-elevate),
   .active-elevate:not(.no-default-active-elevate),
-  .hover-elevate-2:not(.no-default-hover-elevate),
   .active-elevate-2:not(.no-default-active-elevate) {
     position: relative;
     z-index: 0;
   }
   .hover-elevate:not(.no-default-hover-elevate)::after,
   .active-elevate:not(.no-default-active-elevate)::after,
-  .hover-elevate-2:not(.no-default-hover-elevate)::after,
   .active-elevate-2:not(.no-default-active-elevate)::after {
     content: "";
     pointer-events: none;
@@ -984,13 +970,11 @@
   .active-elevate:active:not(.no-default-active-elevate)::after {
     background-color: var(--elevate-1);
   }
-  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
   .active-elevate-2:active:not(.no-default-active-elevate)::after {
     background-color: var(--elevate-2);
   }
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,
-  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
@@ -1013,19 +997,11 @@
     min-width: 44px;
   }
 
-  /* ── Safe area padding helpers ─────────────────────── */
-  /* Single definition (A3 P2-6): .pb-safe used to be declared twice
-     in this layer with conflicting fallbacks (20px vs none). The later
-     declaration won wherever env() was supported, and in browsers
-     without env() support the fallback-less one made the whole
-     declaration invalid at computed-value time. One definition, one
-     explicit fallback, next to its safe-area siblings. */
-  .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 20px);
-  }
-  .pt-safe {
-    padding-top: env(safe-area-inset-top, 20px);
-  }
+  /* R118-B2 (A2 F-3): .pb-safe / .pt-safe removed — zero production
+     consumers (the live safe-area reservations are the Tailwind
+     arbitrary `env()` styles, `mobile-sticky-bottom-safe`, and the
+     MobileNav inline paddingBottom). They looked like the live
+     `mobile-sticky-bottom-safe` family and invited cargo-cult use. */
 
   /* ── Mobile-only layout utilities ──────────────────────────────────
      All utilities below are scoped to the breakpoints where their
@@ -1105,7 +1081,7 @@
 /* ── REDUCED MOTION ───────────────────────────────────
  * Global kill-switch covers ALL keyframes + every transition in one
  * wildcard (no per-animation maintenance). Entrance animations
- * (float-in / reveal-up / page-in / card-enter / slide-*) start at
+ * (float-in / reveal-up / page-in / slide-*) start at
  * opacity:0 — finishing them in ~0ms (rather than cancelling) lands the
  * element at its final visible frame, so reduced-motion users still SEE
  * the content. Infinite loops (blob-drift / cta-glow / *-pulse / shine)

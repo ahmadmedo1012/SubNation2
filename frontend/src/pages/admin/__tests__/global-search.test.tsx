@@ -16,11 +16,22 @@
  *      goTo* helpers carry `?search=` and the orders/users/products
  *      pages consume it on arrival.
  *
+ * R118-B6 (A5 W-6): migrated to vi.useFakeTimers — the suite used to
+ * sleep real 260/500ms per test to orchestrate the race interleavings
+ * (top flake candidate on a loaded 2-CPU runner). The repo's
+ * established fake-timer idiom (whatsapp-phone-sign-in.test.tsx):
+ * advance via act(vi.advanceTimersByTime) + a microtask flush; NEVER
+ * waitFor/findBy (they poll on faked timers and hang). The 220ms
+ * debounce and the mock's 400ms stale-response delay are now FAKE
+ * timers, so the "older response resolves after the newer one"
+ * interleaving is driven deterministically by advancing exactly past
+ * each delay.
+ *
  * The auth hook, theme, copilot panel and toast hook are mocked at
  * the module boundary; fetch is routed per URL.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router, useLocation, useSearch } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -113,9 +124,26 @@ function renderLayout() {
   );
 }
 
-async function openPaletteAndType(value: string) {
+/** Drains the promise continuations behind the mocked fetch (fake timers freeze macrotasks). */
+async function flushAsync() {
+  await act(async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  });
+}
+
+/** Advances fake time, then drains whatever the fired timers started. */
+async function advance(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+  await flushAsync();
+}
+
+function openPaletteAndType(value: string) {
   fireEvent.click(screen.getByRole("button", { name: /بحث\.\.\./ }));
-  const input = await screen.findByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
+  // The palette renders in the same commit as the click — no findBy
+  // needed (and none possible: it polls on faked timers).
+  const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
   fireEvent.change(input, { target: { value } });
   return input;
 }
@@ -125,9 +153,11 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
     localStorage.setItem("sn_last_alert_id", "0");
+    vi.useFakeTimers();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     localStorage.removeItem("sn_last_alert_id");
   });
 
@@ -136,11 +166,12 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
     vi.stubGlobal("fetch", failing);
 
     renderLayout();
-    await openPaletteAndType("ab");
+    openPaletteAndType("ab");
 
-    // The 220ms debounce settles; the failure path renders the
-    // honest empty state (and never throws on the envelope body).
-    await screen.findByText(/لا نتائج لـ "ab"/);
+    // The 220ms debounce fires on faked time; the failure path renders
+    // the honest empty state (and never throws on the envelope body).
+    await advance(220);
+    expect(screen.getByText(/لا نتائج لـ "ab"/)).toBeInTheDocument();
   });
 
   it("a late-resolving OLDER response is dropped — results match the typed query", async () => {
@@ -157,28 +188,37 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
     vi.stubGlobal("fetch", racing);
 
     renderLayout();
-    const input = await openPaletteAndType("ab");
-    // Wait past the first debounce so the "ab" request is in flight…
-    await new Promise((r) => setTimeout(r, 260));
-    fireEvent.change(input, { target: { value: "abc" } });
+    const input = openPaletteAndType("ab");
+    // The first debounce (220ms) fires on faked time — the "ab" request
+    // goes in flight and stays pending on its own 400ms fake timer.
+    await advance(220);
 
-    // The newer response lands…
-    await screen.findByText("نتيجة حديثة FRESH");
-    // …and the stale one NEVER overwrites it, even after it resolves.
-    await new Promise((r) => setTimeout(r, 500));
+    // Complete to "abc" — the change aborts the older controller, but
+    // the mock deliberately IGNORES the abort signal (belt-only path):
+    // only the ordering guard can keep the stale response out.
+    fireEvent.change(input, { target: { value: "abc" } });
+    // The second debounce fires; the NEWER response lands immediately.
+    await advance(220);
+    expect(screen.getByText("نتيجة حديثة FRESH")).toBeInTheDocument();
+
+    // Advance WELL past the older response's 400ms delay — it resolves
+    // now, AFTER the newer one, and must be dropped.
+    await advance(400);
     expect(screen.queryByText("نتيجة قديمة STALE")).not.toBeInTheDocument();
+    expect(screen.getByText("نتيجة حديثة FRESH")).toBeInTheDocument();
   });
 
   it("clicking an orders result navigates WITH the query (?search= survives)", async () => {
     renderLayout();
-    await openPaletteAndType("abc");
+    openPaletteAndType("abc");
 
-    const row = await screen.findByText("نتيجة صحيحة");
+    await advance(220);
+    const row = screen.getByText("نتيجة صحيحة");
     fireEvent.click(row.closest('[role="option"]')!);
 
-    await waitFor(() => {
-      const probe = screen.getByTestId("location-probe");
-      expect(probe.textContent).toBe("/admin/orders?search=abc");
-    });
+    // wouter's navigate commits synchronously inside the click's act
+    // scope; the microtask flush absorbs the post-click state updates.
+    await flushAsync();
+    expect(screen.getByTestId("location-probe").textContent).toBe("/admin/orders?search=abc");
   });
 });

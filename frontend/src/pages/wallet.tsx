@@ -53,7 +53,7 @@ import {
   WifiOff,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
 
@@ -349,6 +349,53 @@ function ledgerEntryLabel(entry: LedgerEntry): string {
   return entry.type_label ?? entry.type ?? "حركة";
 }
 
+/* R118-B2 (A6 F-8): memoized ledger row. The wallet page re-renders on
+ * every keystroke of the topup amount input — the statement card's up
+ * to 100 rows were re-rendered inline each time for nothing. The row is
+ * pure display (entry + index drive everything; no callbacks), so a
+ * shallow-compare memo bails every row on unrelated parent state.
+ * Same pattern as the admin orders rows extracted this round. */
+const LedgerEntryRow = memo(function LedgerEntryRow({
+  entry,
+  index,
+}: {
+  entry: LedgerEntry;
+  index: number;
+}) {
+  const { text, credit } = ledgerAmountDisplay(entry);
+  return (
+    <div
+      className={`float-in stagger-${Math.min(index, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-bold mb-0.5">{ledgerEntryLabel(entry)}</div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {typeof entry.balance_after === "number" && (
+            <span className="text-3xs text-muted-foreground tabular-nums">
+              الرصيد بعدها: {formatCurrency(entry.balance_after)}
+            </span>
+          )}
+          {entry.created_at && (
+            <span className="text-3xs text-muted-foreground">
+              · {formatDate(entry.created_at)}
+            </span>
+          )}
+        </div>
+      </div>
+      {/* dir="ltr": the sign must lead the number inside the RTL
+          layout; tabular-nums aligns the column of amounts. */}
+      <span
+        dir="ltr"
+        className={`text-xs font-bold tabular-nums shrink-0 ${
+          credit ? "text-status-success" : "text-foreground/85"
+        }`}
+      >
+        {text}
+      </span>
+    </div>
+  );
+});
+
 /**
  * R115 (A8 P2): the user-facing wallet STATEMENT — every LYD movement
  * from wallet_ledger (topups, purchases, refunds, loyalty conversions,
@@ -451,41 +498,9 @@ function WalletStatementCard({
         </div>
       ) : (
         <div className="space-y-2.5 lg:max-h-[480px] overflow-y-auto scrollbar-none">
-          {entries.map((e, i: number) => {
-            const { text, credit } = ledgerAmountDisplay(e);
-            return (
-              <div
-                key={e.id ?? i}
-                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold mb-0.5">{ledgerEntryLabel(e)}</div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {typeof e.balance_after === "number" && (
-                      <span className="text-3xs text-muted-foreground tabular-nums">
-                        الرصيد بعدها: {formatCurrency(e.balance_after)}
-                      </span>
-                    )}
-                    {e.created_at && (
-                      <span className="text-3xs text-muted-foreground">
-                        · {formatDate(e.created_at)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {/* dir="ltr": the sign must lead the number inside the RTL
-                    layout; tabular-nums aligns the column of amounts. */}
-                <span
-                  dir="ltr"
-                  className={`text-xs font-bold tabular-nums shrink-0 ${
-                    credit ? "text-status-success" : "text-foreground/85"
-                  }`}
-                >
-                  {text}
-                </span>
-              </div>
-            );
-          })}
+          {entries.map((e, i: number) => (
+            <LedgerEntryRow key={e.id ?? i} entry={e} index={i} />
+          ))}
         </div>
       )}
     </section>
